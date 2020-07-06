@@ -2358,3 +2358,37 @@ def get_admin_ep_cert(dc_role):
     secret_data['dc_root_ca_crt'] = ca_crt
     secret_data['admin_ep_crt'] = "%s%s" % (tls_key, tls_crt)
     return secret_data
+
+
+def verify_ca_crt(crt):
+    cmd = ['openssl', 'verify']
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc.stdin.write(crt)
+    stdout, stderr = proc.communicate()
+    if 0 == proc.returncode:
+        return True
+    else:
+        LOG.info('Provided ca cert is invalid \n%s\n%s\n%s' % (
+            crt, stdout, stderr
+        ))
+        return False
+
+
+def verify_intermediate_ca_cert(ca_crt, tls_crt):
+    with tempfile.NamedTemporaryFile() as tmpfile:
+        tmpfile.write(ca_crt)
+        tmpfile.flush()
+        cmd = ['openssl', 'verify', '-CAfile', tmpfile.name]
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        stdout, stderr = proc.communicate(input=tls_crt)
+        proc.wait()
+        if 0 == proc.returncode:
+            return True
+        else:
+            LOG.info('Provided intermediate CA cert is invalid\n%s\n%s\n%s' %
+                     (tls_crt, stdout, stderr))
+
+            return False

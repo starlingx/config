@@ -523,12 +523,12 @@ class CertificateController(rest.RestController):
                 _("Update admin endpoint intermediate CA certificate is "
                   "supported on subclouds only"))
 
-        if not utils.verify_ca_crt(data.root_ca_crt):
+        if not cutils.verify_ca_crt(data.root_ca_crt):
             raise wsme.exc.ClientSideError(
                 _("Provided CA cert is invalid")
             )
 
-        if not utils.verify_intermediate_ca_cert(
+        if not cutils.verify_intermediate_ca_cert(
                 data.root_ca_crt, data.sc_ca_cert):
             raise wsme.exc.ClientSideError(
                 _("Provided intermediate CA cert is invalid")

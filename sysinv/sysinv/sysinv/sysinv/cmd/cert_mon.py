@@ -19,6 +19,7 @@
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_service import service
+from sysinv.cert_mon import messaging
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
@@ -27,8 +28,17 @@ CONF = cfg.CONF
 def main():
     logging.register_options(CONF)
     CONF(project='sysinv', prog='certmon')
+
+    common_opts = [
+        cfg.StrOpt('host',
+                   default='localhost',
+                   help='hostname of the machine')
+    ]
+    CONF.register_opts(common_opts)
+
     logging.set_defaults()
     logging.setup(cfg.CONF, 'certmon')
+    messaging.setup()
 
     from sysinv.cert_mon import service as cert_mon
     LOG.info("Configuration:")

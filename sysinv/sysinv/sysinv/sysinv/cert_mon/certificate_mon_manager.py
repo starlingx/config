@@ -17,28 +17,32 @@
 # of this software may be licensed only pursuant to the terms
 # of an applicable Wind River license agreement.
 #
-from oslo_config import cfg
-import greenlet
+import base64
 from eventlet import greenthread
+import greenlet
+from oslo_config import cfg
 from oslo_log import log
 from oslo_service import periodic_task
 import time
 
-from sysinv.openstack.common import context
 from sysinv.cert_mon import watcher
+from sysinv.cert_mon import utils
+from sysinv.common import constants
+from sysinv.common import utils as cutils
 
 LOG = log.getLogger(__name__)
+TASK_NAME_PAUSE_AUDIT = 'pause'
 
 cert_mon_opts = [
     cfg.IntOpt('audit_interval',
                default=86400,  # 24 hours
                help='Interval to run certificate audit'),
     cfg.IntOpt('retry_interval',
-               default=10,
+               default=10 * 60,  # retry every 10 minutes
                help='interval to reattempt accessing external system '
                     'if failure occurred'),
     cfg.IntOpt('max_retry',
-               default=5,
+               default=14,  # retry 14 times to give at least 2 hours to recover
                help='interval to reattempt accessing external system '
                     'if failure occurred'),
 ]
@@ -54,16 +58,110 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         self.audit_thread = None
         self.monitor = None
         self.reattempt_tasks = []
+        self.subclouds_to_audit = []
 
     def periodic_tasks(self, context, raise_on_error=False):
         """Tasks to be run at a periodic interval."""
         return self.run_periodic_tasks(context, raise_on_error=raise_on_error)
 
     @periodic_task.periodic_task(spacing=CONF.certmon.audit_interval)
-    def audit_cert_task(self, context):
-        # [Place holder for] auditing subcloud certificate
+    def audit_sc_cert_start(self, context):
+        # auditing subcloud certificate
         # this task runs every very long period of time, such as 24 hours
-        LOG.info('Audit certificate')
+        dc_role = utils.get_dc_role()
+        if dc_role != constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+            # Do nothing if it is not systemcontroller
+            return
+
+        self.subclouds_to_audit = utils.get_subclouds()[:]
+
+    def on_start_audit(self):
+        """
+        On service start audit
+        Audit all subclouds that are out-of-sync
+        """
+        dc_role = utils.get_dc_role()
+        if dc_role != constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+            # Do nothing if it is not systemcontroller
+            return
+
+        number_of_sc_to_audit = 0
+        token = utils.get_token()
+        subclouds = utils.get_subclouds_from_dcmanager(token)
+        for sc in subclouds:
+            if sc[utils.ENDPOINT_TYPE_DC_CERT] == utils.SYNC_STATUS_OUT_OF_SYNC:
+                self.subclouds_to_audit.append(sc['name'])
+                LOG.info('%s is out-of-sync, adding it to audit.' % sc['name'])
+                number_of_sc_to_audit = number_of_sc_to_audit + 1
+
+        if number_of_sc_to_audit > 0:
+            LOG.info('%d subcloud(s) found out-of-sync to be audited' %
+                     number_of_sc_to_audit)
+        else:
+            LOG.info('All subclouds are in-sync. No startup audit is required')
+
+    @periodic_task.periodic_task(spacing=5)
+    def audit_sc_cert_task(self, context):
+        if len(self.subclouds_to_audit) > 0:
+            subcloud_name = self.subclouds_to_audit[0]
+            if subcloud_name == TASK_NAME_PAUSE_AUDIT:
+                LOG.info('Pause audit for ongoing update to complete')
+                self.subclouds_to_audit.pop(0)
+                return
+
+            LOG.info('Auditing %s' % subcloud_name)
+
+            try:
+                subcloud_sysinv_url = utils.dc_get_subcloud_sysinv_url(subcloud_name)
+                sc_ssl_cert = utils.get_endpoint_certificate(subcloud_sysinv_url)
+
+                secret = utils.get_sc_intermediate_ca_secret(subcloud_name)
+                check_list = ['ca.crt', 'tls.crt', 'tls.key']
+                for item in check_list:
+                    if item not in secret.data:
+                        raise Exception('%s certificate data missing %s'
+                                        % (subcloud_name, item))
+
+                cm_ssl_cert = base64.b64decode(secret.data['tls.crt'])
+                cm_ca_cert = base64.b64decode(secret.data['ca.crt'])
+            except Exception as e:
+                LOG.error('Cannot audit ssl certificate on %s' % subcloud_name)
+                LOG.exception(e)
+                # certificate is not ready, no reaudit. Will be picked up
+                # by certificate MODIFIED event if it comes back
+                self.subclouds_to_audit.pop(0)
+                return
+
+            cert_chain = cm_ssl_cert + cm_ca_cert
+            dc_token = utils.get_dc_token(subcloud_name)
+            if not cutils.verify_intermediate_ca_cert(cert_chain, sc_ssl_cert):
+                # The subcloud needs renewal.
+                LOG.info('Updating {} intermediate CA as it is out-of-sync'.format(subcloud_name))
+                # move the subcloud to the end of the queue for reauditing
+                self.requeue_audit(subcloud_name)
+
+                utils.update_subcloud_status(dc_token, subcloud_name,
+                                             utils.SYNC_STATUS_OUT_OF_SYNC)
+                ca_crt = secret.data['ca.crt']
+                tls_crt = secret.data['tls.crt']
+                tls_key = secret.data['tls.key']
+
+                try:
+                    utils.update_subcloud_ca_cert(dc_token,
+                                                  subcloud_name,
+                                                  subcloud_sysinv_url,
+                                                  ca_crt,
+                                                  tls_crt,
+                                                  tls_key)
+                except Exception as e:
+                    LOG.info('Failed to update intermediate CA on %s')
+                    LOG.exception(e)
+            else:
+                LOG.info('%s intermediate CA cert is in-sync' % subcloud_name)
+                utils.update_subcloud_status(dc_token, subcloud_name,
+                                             utils.SYNC_STATUS_IN_SYNC)
+
+                self.subclouds_to_audit.remove(subcloud_name)
 
     @periodic_task.periodic_task(spacing=CONF.certmon.retry_interval)
     def retry_task(self, context):
@@ -74,27 +172,33 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             if task.run():
                 self.reattempt_tasks.remove(task)
                 LOG.info('Reattempt has succeeded')
-            elif task.number_of_reattempt == max_attempts:
+            elif task.number_of_reattempt >= max_attempts:
                 LOG.error('Maximum attempts (%s) has been reached. Give up' %
                           max_attempts)
                 if task in self.reattempt_tasks:
                     self.reattempt_tasks.remove(task)
 
+                # task has failed
+                task.failed()
+
     def start_audit(self):
         LOG.info('Auditing interval %s' % CONF.certmon.audit_interval)
+        utils.init_keystone_auth_opts()
         self.audit_thread = greenthread.spawn(self.audit_cert)
+        self.on_start_audit()
 
     def init_monitor(self):
         self.monitor = watcher.CertWatcher()
         self.monitor.initialize()
 
     def start_monitor(self):
+        utils.init_keystone_auth_opts()
         while True:
             try:
                 self.init_monitor()
             except Exception as e:
-                LOG.error(e)
-                time.sleep(CONF.certmon.retry_interval)
+                LOG.exception(e)
+                time.sleep(5)
             else:
                 break
         self.mon_thread = greenthread.spawn(self.monitor_cert)
@@ -110,15 +214,14 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             self.audit_thread.wait()
 
     def audit_cert(self):
-        admin_context = context.RequestContext('admin', 'admin', is_admin=True)
         while True:
             try:
-                self.run_periodic_tasks(context=admin_context)
+                self.run_periodic_tasks(context=None)
                 time.sleep(1)
             except greenlet.GreenletExit:
                 break
             except Exception as e:
-                LOG.error(e)
+                LOG.exception(e)
 
     def monitor_cert(self):
         while True:
@@ -131,14 +234,29 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             except Exception as e:
                 # A bug somewhere?
                 # It shouldn't fall to here, but log and restart if it did
-                LOG.error(e)
+                LOG.exception(e)
 
     def _add_reattempt_task(self, task):
         id = task.get_id()
+        self._purge_reattempt_task(id)
+        self.reattempt_tasks.append(task)
+
+    def _purge_reattempt_task(self, id):
         for t in self.reattempt_tasks:
             if t.get_id() == id:
                 self.reattempt_tasks.remove(t)
-                LOG.info('Older task %s is replaced with new task' % id)
+                LOG.info('Older task %s is removed for new operation' % id)
                 break
 
-        self.reattempt_tasks.append(task)
+    def requeue_audit(self, subcloud_name):
+        # move the subcloud to the end of the queue for auditing
+        # adding enough spaces so that the renewal would complete by
+        # next audit
+        self.subclouds_to_audit.remove(subcloud_name)
+        for i in range(12, self.subclouds_to_audit.count(TASK_NAME_PAUSE_AUDIT), -1):
+            self.subclouds_to_audit.append(TASK_NAME_PAUSE_AUDIT)
+        self.subclouds_to_audit.append(subcloud_name)
+
+    def audit_subcloud(self, subcloud_name):
+        if subcloud_name not in self.subclouds_to_audit:
+            self.subclouds_to_audit.append(subcloud_name)
