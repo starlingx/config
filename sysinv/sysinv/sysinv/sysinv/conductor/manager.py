@@ -2127,6 +2127,8 @@ class ConductorManager(service.PeriodicService):
                     pass
 
         if ihost.invprovision not in [constants.PROVISIONED, constants.PROVISIONING]:
+            LOG.info("Updating %s host invprovision from %s to %s" %
+                     (ihost.hostname, ihost.invprovision, constants.UNPROVISIONED))
             value = {'invprovision': constants.UNPROVISIONED}
             self.dbapi.ihost_update(ihost_uuid, value)
 
