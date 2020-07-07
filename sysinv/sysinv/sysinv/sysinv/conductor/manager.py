@@ -11727,6 +11727,13 @@ class ConductorManager(service.PeriodicService):
             os.remove(image_file_path)
         except OSError:
             LOG.exception("Failed to delete bitstream file %s" % image_file_path)
+        # If no device image is uploaded, clear the in-progress alarm.
+        images = self.dbapi.deviceimages_get_all()
+        if not images:
+            system_uuid = self.dbapi.isystem_get_one().uuid
+            entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_SYSTEM, system_uuid)
+            self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_DEVICE_IMAGE_UPDATE_IN_PROGRESS,
+                                    entity_instance_id)
 
     def apply_device_image(self, context, host_uuid):
         """Apply device image"""
