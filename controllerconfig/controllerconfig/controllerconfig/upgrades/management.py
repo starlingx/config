@@ -307,16 +307,7 @@ def abort_upgrade(from_load, to_load, upgrade):
         except OSError:
             LOG.exception("Failed to remove upgrade directory %s" % directory)
 
-    simplex_backup_filename = get_upgrade_backup_filename(upgrade) + "*"
-    simplex_backup_files = glob.glob(os.path.join(
-        tsc.PLATFORM_BACKUP_PATH, simplex_backup_filename))
-
-    for file in simplex_backup_files:
-        try:
-            LOG.info("Removing simplex upgrade file %s" % file)
-            os.remove(file)
-        except OSError:
-            LOG.exception("Failed to remove %s" % file)
+    remove_simplex_upgrade_data(upgrade)
 
     LOG.info("Finished upgrade abort")
 
@@ -352,7 +343,20 @@ def activate_upgrade(from_load, to_load, i_system):
     LOG.info("Finished upgrade activation")
 
 
-def complete_upgrade(from_load, to_load):
+def remove_simplex_upgrade_data(upgrade):
+    simplex_backup_filename = get_upgrade_backup_filename(upgrade) + "*"
+    simplex_backup_files = glob.glob(os.path.join(
+        tsc.PLATFORM_BACKUP_PATH, simplex_backup_filename))
+
+    for file in simplex_backup_files:
+        try:
+            LOG.info("Removing simplex upgrade file %s" % file)
+            os.remove(file)
+        except OSError:
+            LOG.exception("Failed to remove %s" % file)
+
+
+def complete_upgrade(from_load, to_load, upgrade):
     """ Executed on release N+1, cleans up data created for upgrade. """
     LOG.info("Starting upgrade complete - from: %s, to: %s" %
              (from_load, to_load))
@@ -374,5 +378,7 @@ def complete_upgrade(from_load, to_load):
             shutil.rmtree(directory)
         except OSError:
             LOG.exception("Failed to remove upgrade directory %s" % directory)
+
+    remove_simplex_upgrade_data(upgrade)
 
     LOG.info("Finished upgrade complete")
