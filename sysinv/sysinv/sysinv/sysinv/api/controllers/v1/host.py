@@ -4642,7 +4642,8 @@ class HostController(rest.RestController):
         if 'operational' in hostupdate.delta and \
                 hostupdate.ihost_patch['operational'] == \
                 constants.OPERATIONAL_ENABLED:
-            if hostupdate.ihost_orig['invprovision'] == constants.PROVISIONING:
+            if hostupdate.ihost_orig['invprovision'] == constants.PROVISIONING or \
+                    hostupdate.ihost_orig['invprovision'] == constants.UNPROVISIONED:
                 # first time unlocked successfully
                 local_hostname = cutils.get_local_controller_hostname()
                 if (hostupdate.ihost_patch['hostname'] ==
