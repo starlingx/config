@@ -26,6 +26,7 @@ import os
 import pecan
 import re
 import socket
+import tempfile
 import wsme
 
 from fm_api import constants as fm_constants
@@ -351,6 +352,41 @@ def lookup_static_ip_address(name, networktype):
         return address.address
     except exception.AddressNotFoundByName:
         return None
+
+
+def verify_ca_crt(crt):
+    cmd = ['openssl', 'verify']
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc.stdin.write(crt)
+    proc.wait()
+    if 0 == proc.returncode:
+        return True
+    else:
+        stdout, stderr = proc.communicate()
+        LOG.info('Provided CA cert is invalid \n%s\n%s\n%s' % (
+            crt, stdout, stderr
+        ))
+        return False
+
+
+def verify_intermediate_ca_cert(ca_crt, tls_crt):
+    with tempfile.NamedTemporaryFile() as tmpfile:
+        tmpfile.write(ca_crt)
+        tmpfile.flush()
+        cmd = ['openssl', 'verify', '-CAfile', tmpfile.name]
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        stdout, stderr = proc.communicate(input=tls_crt)
+        proc.wait()
+        if 0 == proc.returncode:
+            return True
+        else:
+            LOG.info('Provided intermediate CA cert is invalid\n%s\n%s\n%s' %
+                     (tls_crt, stdout, stderr))
+
+            return False
 
 
 def update_address_mode(interface, family, mode, pool):

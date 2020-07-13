@@ -452,6 +452,8 @@ class CertificateController(rest.RestController):
         LOG.info('refresh_admin_endpoint_certificate %s' % data.certtype)
         if data.certtype == constants.CERTIFICATE_TYPE_ADMIN_ENDPOINT:
             return self._update_admin_endpoint_cert(data)
+        elif data.certtype == constants.CERTIFICATE_TYPE_ADMIN_ENDPOINT_INTERMEDIATE_CA:
+            return self._update_inter_ca_cert(data)
         else:
             raise wsme.exc.ClientSideError(_("Not implemented"))
 
@@ -466,6 +468,34 @@ class CertificateController(rest.RestController):
 
         pecan.request.rpcapi.update_admin_ep_certificate(
             pecan.request.context)
+
+        res = RequestResult()
+        res.result = 'OK'
+
+        return res
+
+    @staticmethod
+    def _update_inter_ca_cert(data):
+        role = utils.get_distributed_cloud_role()
+        if role != constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+            raise wsme.exc.ClientSideError(
+                _("Update admin endpoint intermediate CA certificate is "
+                  "supported on subclouds only"))
+
+        if not utils.verify_ca_crt(data.root_ca_crt):
+            raise wsme.exc.ClientSideError(
+                _("Provided CA cert is invalid")
+            )
+
+        if not utils.verify_intermediate_ca_cert(
+                data.root_ca_crt, data.sc_ca_cert):
+            raise wsme.exc.ClientSideError(
+                _("Provided intermediate CA cert is invalid")
+            )
+
+        pecan.request.rpcapi.update_intermediate_ca_certificate(
+            pecan.request.context,
+            data.root_ca_crt, data.sc_ca_cert, data.sc_ca_key)
 
         res = RequestResult()
         res.result = 'OK'

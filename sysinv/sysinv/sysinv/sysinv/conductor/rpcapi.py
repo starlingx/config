@@ -1605,6 +1605,20 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('update_admin_ep_certificate'))
 
+    def update_intermediate_ca_certificate(self, context,
+                                    root_ca_crt, sc_ca_cert, sc_ca_key):
+        """Update intermediate CA certificate
+        :param context: request context
+        :param root_ca_crt:  root CA certificate
+        :param sc_ca_cert:   intermediate CA certificate
+        :param sc_ca_key:    private key
+        """
+        return self.call(context,
+                         self.make_msg('update_intermediate_ca_certificate',
+                                       root_ca_crt=root_ca_crt,
+                                       sc_ca_cert=sc_ca_cert,
+                                       sc_ca_key=sc_ca_key))
+
     def get_helm_chart_namespaces(self, context, chart_name):
         """Get supported chart namespaces.
 

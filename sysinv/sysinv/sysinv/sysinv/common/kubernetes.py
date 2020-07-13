@@ -326,7 +326,7 @@ class KubeOperator(object):
     def kube_patch_secret(self, name, namespace, body):
         c = self._get_kubernetesclient_core()
         try:
-            c.patch_namespaced_secret(name, namespace, body)
+            return c.patch_namespaced_secret(name, namespace, body)
         except Exception as e:
             LOG.error("Failed to patch Secret %s under Namespace %s: "
                       "%s" % (name, namespace, e))
@@ -350,7 +350,7 @@ class KubeOperator(object):
 
         c = self._get_kubernetesclient_core()
         try:
-            c.delete_namespaced_secret(name, namespace, body)
+            return c.delete_namespaced_secret(name, namespace, body)
         except ApiException as e:
             if e.status == httplib.NOT_FOUND:
                 LOG.warn("Secret %s under Namespace %s "

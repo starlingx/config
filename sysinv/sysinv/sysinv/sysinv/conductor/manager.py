@@ -29,6 +29,7 @@ collection of inventory data for each host.
 
 """
 
+import base64
 import errno
 import filecmp
 import fnmatch
@@ -10875,6 +10876,43 @@ class ConductorManager(service.PeriodicService):
                                                 force=True)
 
         return update_required
+
+    def update_intermediate_ca_certificate(self, context,
+                                    root_ca_crt, sc_ca_cert, sc_ca_key):
+        """
+        Update intermediate CA certificate
+        """
+        sc_endpoint_cert_secret_ns = 'sc-cert'
+        sc_intermediate_ca_secret_name = 'sc-adminep-ca-certificate'
+        sc_admin_endpoint_secret_name = 'sc-adminep-certificate'
+        kube_operator = kubernetes.KubeOperator()
+        secret = kube_operator.kube_get_secret(sc_intermediate_ca_secret_name,
+                                               sc_endpoint_cert_secret_ns)
+        if not hasattr(secret, 'data'):
+            raise Exception('Invalid secret %s\\%s' % (
+                sc_endpoint_cert_secret_ns, sc_intermediate_ca_secret_name
+            ))
+
+        ca_key = base64.b64encode(sc_ca_key)
+        ca_cert = base64.b64encode(sc_ca_cert)
+        secret.data['tls.key'] = ca_key
+        secret.data['tls.crt'] = ca_cert
+
+        new = kube_operator.kube_patch_secret(sc_intermediate_ca_secret_name,
+                                              sc_endpoint_cert_secret_ns,
+                                              secret)
+        if new.data['tls.key'] == ca_key and new.data['tls.crt'] == ca_cert:
+            res = kube_operator.kube_delete_secret(sc_admin_endpoint_secret_name,
+                                             sc_endpoint_cert_secret_ns)
+
+            LOG.info('Deleting %s:%s, result %s, msg %s' %
+                     (sc_endpoint_cert_secret_ns,
+                      sc_admin_endpoint_secret_name,
+                      res.status, res.message))
+        else:
+            raise Exception("Unexpected result updating %s\\%s. tls.crt "
+                            "and/or tls.key don't match"
+                            % (sc_endpoint_cert_secret_ns, sc_endpoint_cert_secret_ns))
 
     def get_helm_chart_namespaces(self, context, chart_name):
         """Get supported chart namespaces.

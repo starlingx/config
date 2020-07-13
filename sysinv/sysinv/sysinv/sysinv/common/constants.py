@@ -1640,6 +1640,7 @@ SYSINV_TMPDIR = '/scratch/sysinv-tmpdir'
 
 # Unique name of certificate
 CERTIFICATE_TYPE_ADMIN_ENDPOINT = 'admin-endpoint-cert'
+CERTIFICATE_TYPE_ADMIN_ENDPOINT_INTERMEDIATE_CA = 'intermediate-ca-cert'
 
 ADMIN_EP_CERT_FILENAME = os.path.join(SSL_CERT_DIR, 'admin-ep-cert.pem')
 
