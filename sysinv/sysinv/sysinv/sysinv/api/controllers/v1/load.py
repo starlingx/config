@@ -285,6 +285,7 @@ class LoadController(rest.RestController):
     def import_load(self):
         """Create a new Load."""
 
+        LOG.info("Load import request received.")
         err_msg = None
 
         # Only import loads on controller-0. This is required because the load
@@ -361,6 +362,8 @@ class LoadController(rest.RestController):
             return dict(error=str(e.value))
 
         new_load_dict = new_load.as_dict()
+        LOG.info("Load import request validated, returning new load data: %s"
+                 % new_load_dict)
         return dict(new_load=new_load_dict)
 
     @cutils.synchronized(LOCK_NAME)
