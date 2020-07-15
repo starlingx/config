@@ -10,9 +10,7 @@ import yaml
 
 from sysinv.common import constants
 from sysinv.common import service
-from sysinv.conductor import rpcapi as conductor_rpcapi
 from sysinv.db import api
-from sysinv.openstack.common import context
 
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -26,10 +24,6 @@ CONF = cfg.CONF
 
 def create_host_overrides(filename):
     try:
-        ctxt = context.get_admin_context()
-        rpcapi = conductor_rpcapi.ConductorAPI(
-            topic=conductor_rpcapi.MANAGER_TOPIC)
-
         dbapi = api.get_instance()
         data = {}
 
@@ -161,21 +155,6 @@ def create_host_overrides(filename):
             # Get the docker https_proxy info if it exists
             elif docker.name == constants.SERVICE_PARAM_NAME_DOCKER_HTTPS_PROXY:
                 data.update({'docker_https_proxy': docker.value})
-
-        # Save local registry images tags
-        temp_image_name_list = rpcapi.docker_registry_image_list(ctxt)
-        image_name_tag_list = []
-        for temp_image_name in temp_image_name_list:
-            image_name = temp_image_name.get('name', None)
-            if image_name:
-                temp_image_tags = rpcapi.docker_registry_image_tags(ctxt,
-                                                                    image_name)
-                for image_name_tag in temp_image_tags:
-                    image_tag = image_name_tag.get('tag', None)
-                    if image_tag:
-                        image_name_tag_list.append("%s:%s" % (image_name, image_tag))
-
-        data.update({'additional_local_registry_images': image_name_tag_list})
 
         # Save collected information in file
         with open(filename, 'w') as outfile:
