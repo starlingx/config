@@ -3598,7 +3598,7 @@ profiles.
 Lists all profiles
 ********************
 
-.. rest_method:: GET /v1/iprofiles
+.. rest_method:: GET /v1/iprofile
 
 **Normal response codes**
 
@@ -3703,7 +3703,7 @@ This operation does not accept a request body.
 Shows information about a specific profile
 ********************************************
 
-.. rest_method:: GET /v1/iprofiles/​{profile_id}​
+.. rest_method:: GET /v1/iprofile/​{profile_id}​
 
 **Normal response codes**
 
@@ -3858,7 +3858,7 @@ This operation does not accept a request body.
 Creates a profile
 *******************
 
-.. rest_method:: POST /v1/iprofiles
+.. rest_method:: POST /v1/iprofile
 
 **Normal response codes**
 
@@ -4020,7 +4020,7 @@ badMediaType (415)
 Deletes a specific profile
 ****************************
 
-.. rest_method:: DELETE /v1/iprofiles/​{profile_id}​
+.. rest_method:: DELETE /v1/iprofile/​{profile_id}​
 
 **Normal response codes**
 
