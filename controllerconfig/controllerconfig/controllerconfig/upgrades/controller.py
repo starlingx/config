@@ -1252,6 +1252,8 @@ def upgrade_controller_simplex(backup_file):
 
     # Backup sysinv.conf
     shutil.move("/etc/sysinv/sysinv.conf", "/etc/sysinv/sysinv-temp.conf")
+    # Backup fm.conf
+    shutil.move("/etc/fm/fm.conf", "/etc/fm/fm-temp.conf")
 
     migrate_platform_conf(staging_dir)
 
@@ -1309,6 +1311,8 @@ def upgrade_controller_simplex(backup_file):
 
     # Restore sysinv.conf
     shutil.move("/etc/sysinv/sysinv-temp.conf", "/etc/sysinv/sysinv.conf")
+    # Restore fm.conf
+    shutil.move("/etc/fm/fm-temp.conf", "/etc/fm/fm.conf")
 
     print_log_info("Data restore complete")
 
