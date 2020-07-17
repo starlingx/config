@@ -8790,5 +8790,8 @@ class Connection(api.Connection):
         if image_id:
             query = query.filter_by(image_id=image_id)
         if status:
-            query = query.filter_by(status=status)
+            if isinstance(status, list):
+                query = query.filter(models.DeviceImageState.status.in_(status))
+            else:
+                query = query.filter_by(status=status)
         return query.all()

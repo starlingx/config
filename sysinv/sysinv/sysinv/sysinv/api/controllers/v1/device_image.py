@@ -265,17 +265,19 @@ class DeviceImageController(rest.RestController):
         device_image = objects.device_image.get_by_uuid(
             pecan.request.context, deviceimage_uuid)
 
-        # Check if the image has been written to any of the devices
+        # Check if the image has been written or is being written to any of the devices
         if pecan.request.dbapi.device_image_state_get_all(
                 image_id=device_image.id,
-                status=dconstants.DEVICE_IMAGE_UPDATE_COMPLETED):
+                status=[dconstants.DEVICE_IMAGE_UPDATE_COMPLETED,
+                        dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS]):
             raise wsme.exc.ClientSideError(_(
-                "Delete failed: device image has already been written to devices"))
+                "Delete failed: device image is being written to or has "
+                "already been written to devices"))
 
+        pecan.request.dbapi.deviceimage_destroy(deviceimage_uuid)
         filename = cutils.format_image_filename(device_image)
         pecan.request.rpcapi.delete_bitstream_file(pecan.request.context,
                                                    filename)
-        pecan.request.dbapi.deviceimage_destroy(deviceimage_uuid)
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(DeviceImage, types.uuid, wtypes.text, body=types.apidict)
