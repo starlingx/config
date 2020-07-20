@@ -11719,6 +11719,7 @@ class ConductorManager(service.PeriodicService):
                 raise
         shutil.copyfile(image_tmp_path, image_file_path)
         LOG.info("copied %s to %s" % (image_tmp_path, image_file_path))
+        os.remove(image_tmp_path)
 
     def delete_bitstream_file(self, context, filename):
         """Delete FPGA bitstream file"""
@@ -11737,10 +11738,11 @@ class ConductorManager(service.PeriodicService):
 
     def apply_device_image(self, context, host_uuid):
         """Apply device image"""
-        host = objects.host.get_by_uuid(context, host_uuid)
-        if host.device_image_update != dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS:
-            host.device_image_update = dconstants.DEVICE_IMAGE_UPDATE_PENDING
-            host.save()
+        if host_uuid is not None:
+            host = objects.host.get_by_uuid(context, host_uuid)
+            if host.device_image_update != dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS:
+                host.device_image_update = dconstants.DEVICE_IMAGE_UPDATE_PENDING
+                host.save()
 
         # Raise device image update alarm if not already exists
         alarm_id = fm_constants.FM_ALARM_ID_DEVICE_IMAGE_UPDATE_IN_PROGRESS

@@ -25,11 +25,12 @@ class DeviceLabelTestCase(base.FunctionalTest, dbbase.ControllerHostTestCase):
         self.fpga_device = dbutils.create_test_fpga_device(
             host_id=self.host.id,
             pci_id=self.pci_device.id)
-        self.generic_labels = {
-            'pcidevice_uuid': self.pci_device.uuid,
-            'key1': 'value1',
-            'key2': 'value2'
-        }
+        self.generic_labels = [
+            {'pcidevice_uuid': self.pci_device.uuid},
+            {'key1': 'value1'},
+            # {'key1': 'value2'},
+            {'key2': 'value2'}
+        ]
 
     def _get_path(self, params=None):
         path = '/device_labels'
@@ -41,8 +42,8 @@ class DeviceLabelTestCase(base.FunctionalTest, dbbase.ControllerHostTestCase):
     def validate_labels(self, input_data, response_data):
         for t in response_data:
             for k, v in t.items():
-                if k in input_data.keys():
-                    self.assertEqual(v, input_data[k])
+                if k in input_data[0].keys():
+                    self.assertEqual(v, input_data[0][k])
 
     def assign_labels(self, input_data, parameters=None):
         response = self.post_json('%s' % self._get_path(parameters), input_data)
@@ -73,50 +74,51 @@ class DeviceLabelAssignTestCase(DeviceLabelTestCase):
     def test_overwrite_device_labels_success(self):
         self.assign_labels(self.generic_labels)
 
-        new_input_values = {
-            'pcidevice_uuid': self.pci_device.uuid,
-            'key1': 'string1',
-            'key2': 'string2'
-        }
+        new_input_values = [
+            {'pcidevice_uuid': self.pci_device.uuid},
+            {'key1': 'string1'},
+            {'key2': 'string2'}
+        ]
         self.assign_labels(new_input_values, parameters={'overwrite': True})
         response_data = self.get_device_labels()
         self.validate_labels(new_input_values, response_data)
 
     def test_overwrite_device_labels_failure(self):
-        label1 = {
-            'pcidevice_uuid': self.pci_device.uuid,
-            'key1': 'value1',
-        }
+        label1 = [
+            {'pcidevice_uuid': self.pci_device.uuid},
+            {'key1': 'value1'},
+        ]
         self.assign_labels(label1)
 
-        label2 = {
-            'pcidevice_uuid': self.pci_device.uuid,
-            'key1': 'value2',
-        }
+        label2 = [
+            {'pcidevice_uuid': self.pci_device.uuid},
+            {'key1': 'value2'}
+        ]
         self.assign_labels(label2)
 
-        new_input_values = {
-            'pcidevice_uuid': self.pci_device.uuid,
-            'key1': 'string1',
-        }
+        new_input_values = [
+            {'pcidevice_uuid': self.pci_device.uuid},
+            {'key1': 'string1'},
+        ]
         self.assign_labels_failure(new_input_values, parameters={'overwrite': True})
 
     def test_create_validated_device_labels_success(self):
-        label1 = {
-            'pcidevice_uuid': self.pci_device.uuid,
-            'key1': 'value1',
-        }
+        label1 = [
+            {'pcidevice_uuid': self.pci_device.uuid},
+            {'key1': 'value1'},
+        ]
         self.assign_labels(label1)
-        label2 = {
-            'pcidevice_uuid': self.pci_device.uuid,
-            'key2': 'value2',
-        }
+        label2 = [
+            {'pcidevice_uuid': self.pci_device.uuid},
+            {'key2': 'value2'},
+        ]
         self.assign_labels(label2)
 
-        input_data = {}
-        for input_label in [label1, label2]:
-            input_data.update(input_label)
-
+        input_data = [
+            {'pcidevice_uuid': self.pci_device.uuid},
+            {'key1': 'value1'},
+            {'key2': 'value2'},
+        ]
         response_data = self.get_device_labels()
         self.validate_labels(input_data, response_data)
 

@@ -348,13 +348,13 @@ class TestPatch(TestDeviceImage):
 
         # Assign label to a device
         self.post_json('/device_labels',
-                       {'pcidevice_uuid': self.pci_device.uuid,
-                        'key1': 'value1'},
+                       [{'pcidevice_uuid': self.pci_device.uuid},
+                        {'key1': 'value1'}],
                        headers=self.API_HEADERS)
 
         # Apply the device image with label
         path = '/device_images/%s?action=apply' % self.device_image.uuid
-        response = self.patch_json(path, {'key1': 'value1'},
+        response = self.patch_json(path, [{'key1': 'value1'}],
                                    headers=self.API_HEADERS)
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
@@ -363,7 +363,7 @@ class TestPatch(TestDeviceImage):
         self.assertEqual(response.json['pci_vendor'], '80ee')
         self.assertEqual(response.json['pci_device'], 'beef')
         self.assertEqual(response.json['bitstream_id'], '12345')
-        self.assertEqual(response.json['applied_labels'], {'key1': ['value1']})
+        self.assertEqual(response.json['applied_labels'], [{'key1': 'value1'}])
 
         # Verify that the image to device mapping is updated
         dev_img_state = self.dbapi.device_image_state_get_by_image_device(
@@ -371,38 +371,35 @@ class TestPatch(TestDeviceImage):
         self.assertEqual(dconstants.DEVICE_IMAGE_UPDATE_PENDING,
                          dev_img_state.status)
 
-    def test_device_image_apply_invalid_label(self):
-        # Test applying device image with non-existing device label
+    def test_device_image_apply_with_label_without_device(self):
+        # Test applying device image with label with non-existing device
 
         # Apply the device image
         path = '/device_images/%s?action=apply' % self.device_image.uuid
-        response = self.patch_json(path, {'key1': 'value1'},
-                                   headers=self.API_HEADERS,
-                                   expect_errors=True)
-        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        response = self.patch_json(path, [{'key1': 'value1'}],
+                                   headers=self.API_HEADERS)
         self.assertEqual('application/json', response.content_type)
-        self.assertIn("Device image apply failed: label key1=value1 does not"
-                      " exist", response.json['error_message'])
+        self.assertEqual(response.status_code, http_client.OK)
 
     def test_device_image_apply_overwrite_functional(self):
         # Test applying second device image with label
 
         # Assign label to a device
         self.post_json('/device_labels',
-                       {'pcidevice_uuid': self.pci_device.uuid,
-                        'key1': 'value1'},
+                       [{'pcidevice_uuid': self.pci_device.uuid},
+                        {'key1': 'value1'}],
                        headers=self.API_HEADERS)
 
         # Apply the device image with label
         path = '/device_images/%s?action=apply' % self.device_image.uuid
-        response = self.patch_json(path, {'key1': 'value1'},
+        response = self.patch_json(path, [{'key1': 'value1'}],
                                    headers=self.API_HEADERS)
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
 
         # Apply a second functional device image with label
         path = '/device_images/%s?action=apply' % self.device_image2.uuid
-        response = self.patch_json(path, {'key1': 'value1'},
+        response = self.patch_json(path, [{'key1': 'value1'}],
                                    headers=self.API_HEADERS,
                                    expect_errors=True)
         self.assertEqual(response.content_type, 'application/json')
@@ -427,20 +424,20 @@ class TestPatch(TestDeviceImage):
 
         # Assign label to a device
         self.post_json('/device_labels',
-                       {'pcidevice_uuid': self.pci_device.uuid,
-                       'key1': 'value1'},
+                       [{'pcidevice_uuid': self.pci_device.uuid},
+                        {'key1': 'value1'}],
                        headers=self.API_HEADERS)
 
         # Apply the device image with label
         path = '/device_images/%s?action=apply' % self.device_image.uuid
-        response = self.patch_json(path, {'key1': 'value1'},
+        response = self.patch_json(path, [{'key1': 'value1'}],
                                    headers=self.API_HEADERS)
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
 
         # Remove the device image with label
         path = '/device_images/%s?action=remove' % self.device_image.uuid
-        response = self.patch_json(path, {'key1': 'value1'},
+        response = self.patch_json(path, [{'key1': 'value1'}],
                                    headers=self.API_HEADERS)
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
@@ -450,24 +447,22 @@ class TestPatch(TestDeviceImage):
         self.assertEqual(response.json['pci_device'], 'beef')
         self.assertEqual(response.json['bitstream_id'], '12345')
 
-    def test_device_image_remove_by_label_not_applied(self):
-        # Test removing device image by label where device label is not applied
+    def test_device_image_remove_by_label_without_device(self):
+        # Test removing device image by label without device
 
-        # Assign label to a device
-        self.post_json('/device_labels',
-                       {'pcidevice_uuid': self.pci_device.uuid,
-                       'key1': 'value1'},
-                       headers=self.API_HEADERS)
+        # Apply the device image with label
+        path = '/device_images/%s?action=apply' % self.device_image.uuid
+        response = self.patch_json(path, [{'key1': 'value1'}],
+                                   headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Remove the device image with label
         path = '/device_images/%s?action=remove' % self.device_image.uuid
-        response = self.patch_json(path, {'key1': 'value1'},
-                                   headers=self.API_HEADERS,
-                                   expect_errors=True)
-        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        response = self.patch_json(path, [{'key1': 'value1'}],
+                                   headers=self.API_HEADERS)
         self.assertEqual('application/json', response.content_type)
-        self.assertIn("Device image %s not associated with label key1=value1" %
-                      self.device_image.uuid, response.json['error_message'])
+        self.assertEqual(response.status_code, http_client.OK)
 
 
 class TestDelete(TestDeviceImage):

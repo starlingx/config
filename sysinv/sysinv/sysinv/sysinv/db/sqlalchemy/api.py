@@ -8563,7 +8563,8 @@ class Connection(api.Connection):
         query = model_query(models.DeviceLabel)
         query = query.filter_by(label_key=label_key,
                                 label_value=label_value)
-        return query.all()
+        return _paginate_query(models.DeviceLabel, limit, marker,
+                               sort_key, sort_dir, query)
 
     @objects.objectify(objects.device_label)
     def device_label_update(self, uuid, values):

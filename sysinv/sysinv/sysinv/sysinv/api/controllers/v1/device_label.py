@@ -179,13 +179,20 @@ class DeviceLabelController(rest.RestController):
     def post(self, overwrite=False, body=None):
         """Assign a new device label."""
 
-        pcidevice_uuid = body['pcidevice_uuid']
-        del body['pcidevice_uuid']
+        label_dict = []
+        for d in body:
+            k, v = d.popitem()
+            if k == 'pcidevice_uuid':
+                pcidevice_uuid = v
+            else:
+                label_dict.append({k: v})
+
         pcidevice = objects.pci_device.get_by_uuid(pecan.request.context,
                                                    pcidevice_uuid)
 
         existing_labels = {}
-        for label_key in body.keys():
+        for lbl in label_dict:
+            label_key, label_value = list(lbl.items())[0]
             labels = pecan.request.dbapi.device_label_query(
                 pcidevice.id, label_key)
             if len(labels) == 0:
@@ -197,9 +204,14 @@ class DeviceLabelController(rest.RestController):
                     raise wsme.exc.ClientSideError(_(
                         "Cannot overwrite label value as multiple device "
                         "labels exist with label key %s for this device") % label_key)
+            elif (len(labels) == 1 and labels[0].label_value == label_value):
+                raise wsme.exc.ClientSideError(_(
+                    "Device label (%s, %s) already exists for this device") %
+                    (label_key, label_value))
 
         new_records = []
-        for key, value in body.items():
+        for lbl in label_dict:
+            key, value = list(lbl.items())[0]
             values = {
                 'host_id': pcidevice.host_id,
                 'pcidevice_id': pcidevice.id,

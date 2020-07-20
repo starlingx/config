@@ -12,7 +12,8 @@ def _print_device_image_show(obj):
     fields = ['uuid', 'bitstream_type',
               'pci_vendor', 'pci_device',
               'bitstream_id', 'key_signature', 'revoke_key_id',
-              'name', 'description', 'image_version', 'applied_labels']
+              'name', 'description', 'image_version',
+              'applied', 'applied_labels']
 
     if type(obj) is dict:
         data = [(f, obj.get(f, '')) for f in fields]
@@ -36,10 +37,12 @@ def do_device_image_list(cc, args):
 
     labels = ['uuid', 'bitstream_type', 'pci_vendor', 'pci_device',
               'bitstream_id', 'key_signature', 'revoke_key_id',
-              'name', 'description', 'image_version', 'applied_labels']
+              'name', 'description', 'image_version',
+              'applied', 'applied_labels']
     fields = ['uuid', 'bitstream_type', 'pci_vendor', 'pci_device',
               'bitstream_id', 'key_signature', 'revoke_key_id',
-              'name', 'description', 'image_version', 'applied_labels']
+              'name', 'description', 'image_version',
+              'applied', 'applied_labels']
     device_images = cc.device_image.list()
     utils.print_list(device_images, fields, labels, sortby=1)
 
@@ -119,7 +122,7 @@ def do_device_image_upload(cc, args):
            help="List of device labels")
 def do_device_image_apply(cc, args):
     """Apply the device image"""
-    attributes = utils.extract_keypairs(args)
+    attributes = utils.args_array_to_list_dict(args.attributes[0])
     try:
         response = cc.device_image.apply(args.device_image_uuid,
                                          attributes)
@@ -138,7 +141,7 @@ def do_device_image_apply(cc, args):
            help="List of device labels")
 def do_device_image_remove(cc, args):
     """Remove the device image"""
-    attributes = utils.extract_keypairs(args)
+    attributes = utils.args_array_to_list_dict(args.attributes[0])
     try:
         response = cc.device_image.remove(args.device_image_uuid,
                                           attributes)
