@@ -259,7 +259,7 @@ class DeviceImageController(rest.RestController):
         return dict(success="", error="", device_image=device_image_dict)
 
     @cutils.synchronized(LOCK_NAME)
-    @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
+    @wsme_pecan.wsexpose(DeviceImage, types.uuid, status_code=202)
     def delete(self, deviceimage_uuid):
         """Delete a device image."""
         device_image = objects.device_image.get_by_uuid(
@@ -278,6 +278,7 @@ class DeviceImageController(rest.RestController):
         filename = cutils.format_image_filename(device_image)
         pecan.request.rpcapi.delete_bitstream_file(pecan.request.context,
                                                    filename)
+        return DeviceImage.convert_with_links(device_image)
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(DeviceImage, types.uuid, wtypes.text, body=types.apidict)
