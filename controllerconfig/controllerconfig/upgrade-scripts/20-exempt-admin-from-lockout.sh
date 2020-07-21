@@ -46,7 +46,7 @@ if [ "$TO_RELEASE" == "20.06" ] && [ "$ACTION" == "activate" ]; then
     req_url="${OS_AUTH_URL}/users/${user_id}"
     data_json="{\"user\": {\"options\": {\"${option}\": ${option_value}}}}"
 
-    ret=$(/usr/bin/curl -X PATCH -H "X-Auth-Token: ${token}" \
+    ret=$(/usr/bin/curl -g -X PATCH -H "X-Auth-Token: ${token}" \
             -H "Content-Type: application/json" -d "${data_json}" "${req_url}")
     if [ $? -ne 0 ]; then
         log "$NAME: Set ${option} option for user ${user_name} failed."
