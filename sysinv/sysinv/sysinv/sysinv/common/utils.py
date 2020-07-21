@@ -2246,7 +2246,7 @@ def get_admin_ep_cert(dc_role):
     raise Exception for kubernetes data errors
     """
     if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-        endpoint_cert_secret_name = 'dc-adminep-root-ca-certificate'
+        endpoint_cert_secret_name = 'dc-adminep-certificate'
         endpoint_cert_secret_ns = 'dc-cert'
     elif dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
         endpoint_cert_secret_name = 'sc-adminep-certificate'
@@ -2265,19 +2265,15 @@ def get_admin_ep_cert(dc_role):
         ))
 
     data = secret.data
-    if (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER
-        and 'ca.crt' not in data) or \
-            'tls.crt' not in data or 'tls.key' not in data:
+    if 'tls.crt' not in data or 'tls.key' not in data:
         raise Exception("Invalid admin endpoint certificate data.")
 
-    ca_crt = None
     try:
-        if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-            ca_crt = base64.b64decode(data['ca.crt'])
         tls_crt = base64.b64decode(data['tls.crt'])
         tls_key = base64.b64decode(data['tls.key'])
     except TypeError:
-        raise Exception('admin endpoint root ca certification is invalid')
+        raise Exception('admin endpoint secret is invalid %s' %
+                        endpoint_cert_secret_name)
 
     if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
         try:
@@ -2288,9 +2284,23 @@ def get_admin_ep_cert(dc_role):
             # when intermediate or root ca is renewed.
             # but the operation should not stop here, b/c if admin endpoint
             # certificate is not updated, system controller may lost
-            # access to the subcloud admin endpoints which will make the situation
-            # impossible to recover.
+            # access to the subcloud admin endpoints which will make the
+            # situation impossible to recover.
             LOG.error('Cannot read DC root CA certificate %s' % e)
+    elif dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+        root_ca_secret_name = 'dc-adminep-root-ca-certificate'
+        secret = kube.kube_get_secret(
+            root_ca_secret_name, endpoint_cert_secret_ns)
+
+        if not hasattr(secret, 'data'):
+            raise Exception('Invalid secret %s\\%s' % (
+                endpoint_cert_secret_ns, endpoint_cert_secret_name
+            ))
+        try:
+            ca_crt = base64.b64decode(data['ca.crt'])
+        except TypeError:
+            raise Exception('admin endpoint secret is invalid %s' %
+                            root_ca_secret_name)
 
     secret_data['dc_root_ca_crt'] = ca_crt
     secret_data['admin_ep_crt'] = "%s%s" % (tls_key, tls_crt)

@@ -1,6 +1,7 @@
 workerconfig
 controllerconfig
 storageconfig
+sysinv/cert-mon
 sysinv/cgts-client
 sysinv/sysinv-agent
 sysinv/sysinv-fpga-agent
