@@ -45,7 +45,6 @@ from sysinv.common import kubernetes
 from sysinv.common.retrying import retry
 from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import K8RbdProvisioner
-from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.conductor import kube_pod_helper as kube_pod
 from sysinv.conductor import openstack
 from sysinv.helm import common
@@ -944,29 +943,6 @@ class AppOperator(object):
             if null_labels:
                 self._update_kubernetes_labels(host.hostname, null_labels)
 
-    def _rbd_provisioner_required(self, app_name):
-        """ Check if Ceph's RBD provisioner is required """
-        # Since RBD provisioner requires Ceph, return false when not enabled
-        if not StorageBackendConfig.has_backend(
-            self._dbapi,
-            constants.SB_TYPE_CEPH
-        ):
-            return False
-
-        # TODO(rchurch): This needs to be driven by applications either via
-        # application metadata and queried as part of a lifecycle plugin or the
-        # applications should provide a chart component to generate the secret
-        # if required. This falls under future decoupling activities.
-        #
-        # For now, skip specific platform apps that do not have any persistent
-        # storage requirements
-        if app_name in [constants.HELM_APP_CERT_MANAGER,
-                        constants.HELM_APP_OIDC_AUTH,
-                        constants.HELM_APP_NGINX_IC]:
-            return False
-        else:
-            return True
-
     def _create_rbd_provisioner_secrets(self, app_name):
         """ Provide access to the system persistent RBD provisioner.
 
@@ -1573,6 +1549,7 @@ class AppOperator(object):
                     self._get_metadata_flag(app,
                                             constants.APP_METADATA_HELM_TOOLKIT_REQUIRED,
                                             True)
+
                 if helm_toolkit_app:
                     return 1
                 else:
@@ -1693,33 +1670,18 @@ class AppOperator(object):
                 LOG.error(e)
                 raise
 
-    def _delete_app_specific_resources(self, app_name, operation_type):
-        """Remove application specific k8s resources.
+    def _delete_ceph_persistent_volume_claim(self, namespace):
+        self._delete_persistent_volume_claim(namespace)
 
-        Some applications may need resources created outside of the existing
-        charts to properly integrate with the current capabilities of the
-        system. Remove these resources here.
-
-        :param app_name: Name of the application.
-        """
-
-        def _delete_ceph_persistent_volume_claim(namespace):
-            self._delete_persistent_volume_claim(namespace)
-
-            try:
-                # Remove the configmap with the ceph monitor information
-                # required by the application into the application namespace
-                self._kube.kube_delete_config_map(
-                    self.APP_OPENSTACK_RESOURCE_CONFIG_MAP,
-                    namespace)
-            except Exception as e:
-                LOG.error(e)
-                raise
-            self._delete_namespace(namespace)
-
-        if (app_name == constants.HELM_APP_OPENSTACK and
-                operation_type == constants.APP_REMOVE_OP):
-            _delete_ceph_persistent_volume_claim(common.HELM_NS_OPENSTACK)
+        try:
+            # Remove the configmap with the ceph monitor information
+            # required by the application into the application namespace
+            self._kube.kube_delete_config_map(
+                self.APP_OPENSTACK_RESOURCE_CONFIG_MAP,
+                namespace)
+        except Exception as e:
+            LOG.error(e)
+            raise
 
     def _in_upgrade_old_app_is_non_decoupled(self, old_app):
         """Special case application upgrade check for STX 4.0
@@ -2115,6 +2077,27 @@ class AppOperator(object):
                                              alarm.entity_instance_id)
         return flag_exists
 
+    def app_lifecycle_actions(self, context, conductor_obj, rpc_app, operation, relative_timing):
+        """Perform application specific lifecycle actions
+
+        This method will perform any lifecycle actions necessary for the
+        application based on the operation and relative_timing of the operation.
+
+        :param context: request context
+        :param conductor_obj: conductor object
+        :param rpc_app: application object in the RPC request
+        :param operation: application operation
+        :param relative_timing: relative timing of the operation
+        """
+
+        app = AppOperator.Application(rpc_app)
+
+        LOG.info("kube_app.py lifecycle action for application %s (%s) operation %s (%s) started." %
+                  (app.name, app.version, operation, relative_timing))
+
+        manifest_op = self._helm.get_armada_manifest_operator(app.name)
+        manifest_op.app_lifecycle_actions(context, conductor_obj, self._dbapi, operation, relative_timing)
+
     def perform_app_apply(self, rpc_app, mode, caller=None):
         """Process application install request
 
@@ -2175,10 +2158,13 @@ class AppOperator(object):
                 if AppOperator.is_app_aborted(app.name):
                     raise exception.KubeAppAbort()
 
-                if self._rbd_provisioner_required(app.name):
-                    self._create_rbd_provisioner_secrets(app.name)
-                self._create_app_specific_resources(app.name)
                 self._plugins.activate_plugins(app)
+
+                manifest_op = self._helm.get_armada_manifest_operator(app.name)
+                manifest_op.app_rbd_actions(self, self._dbapi, app.name,
+                                            constants.APP_APPLY_OP)
+
+                self._create_app_specific_resources(app.name)
 
             self._update_app_status(
                 app, new_progress=constants.APP_PROGRESS_GENERATE_OVERRIDES)
@@ -2472,9 +2458,10 @@ class AppOperator(object):
             try:
                 self._delete_local_registry_secrets(app.name)
                 if app.system_app:
-                    if self._rbd_provisioner_required(app.name):
-                        self._delete_rbd_provisioner_secrets(app.name)
-                    self._delete_app_specific_resources(app.name, constants.APP_REMOVE_OP)
+                    self._plugins.activate_plugins(app)
+                    manifest_op = self._helm.get_armada_manifest_operator(app.name)
+                    manifest_op.app_rbd_actions(self, self._dbapi, app.name,
+                                                constants.APP_REMOVE_OP)
                     if deactivate_plugins:
                         self._plugins.deactivate_plugins(app)
             except Exception as e:
@@ -2569,7 +2556,13 @@ class AppOperator(object):
         app = AppOperator.Application(rpc_app)
         try:
             if app.system_app:
-                self._delete_app_specific_resources(app.name, constants.APP_DELETE_OP)
+                self._plugins.activate_plugins(app)
+
+                manifest_op = self._helm.get_armada_manifest_operator(app.name)
+                manifest_op.app_rbd_actions(self, self._dbapi, app.name,
+                                            constants.APP_DELETE_OP)
+
+                self._plugins.deactivate_plugins(app)
             self._dbapi.kube_app_destroy(app.name)
             self._cleanup(app)
             self._utils._patch_report_app_dependencies(app.name + '-' + app.version)

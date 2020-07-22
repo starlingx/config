@@ -194,6 +194,12 @@ class KubeAppController(rest.RestController):
         """Retrieve a single application."""
         return self._get_one(app_name)
 
+    def _app_lifecycle_actions(self, db_app, operation, relative_timing):
+        """Perform lifecycle actions for application
+        """
+        pecan.request.rpcapi.app_lifecycle_actions(
+            pecan.request.context, db_app, operation, relative_timing)
+
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(KubeApp, body=types.apidict)
     def post(self, body):
@@ -272,6 +278,14 @@ class KubeAppController(rest.RestController):
             except exception.IncompatibleKubeVersion as e:
                 raise wsme.exc.ClientSideError(_(
                     "Application-apply rejected: " + str(e)))
+
+            try:
+                self._app_lifecycle_actions(db_app,
+                                            constants.APP_APPLY_OP,
+                                            constants.APP_LIFECYCLE_PRE)
+            except Exception as e:
+                raise wsme.exc.ClientSideError(_(
+                    "Application-apply rejected: " + str(e.message)))
 
             if db_app.status == constants.APP_APPLY_IN_PROGRESS:
                 raise wsme.exc.ClientSideError(_(

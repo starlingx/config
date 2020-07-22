@@ -11128,6 +11128,31 @@ class ConductorManager(service.PeriodicService):
         else:
             LOG.info("%s app status does not warrant re-apply", app.name)
 
+    def app_lifecycle_actions(self, context, rpc_app, operation, relative_timing):
+        """Perform any lifecycle actions for the operation and timing supplied.
+
+        :param context: request context.
+        :param rpc_app: application to be checked
+        :param operation: operation being performed
+        :param relative_timing: timing of operation
+        """
+
+        LOG.info("app_lifecycle_actions for app "
+                 "%s, opp %s %s %s" % (rpc_app.name, operation, relative_timing, rpc_app.status))
+
+        if rpc_app.status in [constants.APP_APPLY_IN_PROGRESS,
+                              constants.APP_APPLY_SUCCESS,
+                              constants.APP_APPLY_FAILURE]:
+            self._app.app_lifecycle_actions(context, self, rpc_app, operation, relative_timing)
+        else:
+            self._app.activate_app_plugins(rpc_app)
+            try:
+                self._app.app_lifecycle_actions(context, self, rpc_app, operation, relative_timing)
+            except Exception:
+                raise
+            finally:
+                self._app.deactivate_app_plugins(rpc_app)
+
     def perform_app_upload(self, context, rpc_app, tarfile):
         """Handling of application upload request (via AppOperator)
 
@@ -11158,6 +11183,15 @@ class ConductorManager(service.PeriodicService):
             # The radosgw chart may have been enabled/disabled. Regardless of
             # the prior apply state, update the ceph config
             self._update_radosgw_config(context)
+
+        if app_applied:
+            try:
+                # perform any post apply lifecycle actions
+                self.app_lifecycle_actions(context, rpc_app,
+                                           constants.APP_APPLY_OP,
+                                           constants.APP_LIFECYCLE_POST)
+            except Exception as e:
+                LOG.error("Error performing app_lifecycle_actions %s" % str(e))
 
         return app_applied
 
@@ -11219,7 +11253,23 @@ class ConductorManager(service.PeriodicService):
                 self._app.deactivate_app_plugins(rpc_app)
 
         else:
-            app_removed = self._app.perform_app_remove(rpc_app)
+
+            # Remove the application but defer disabling the application plugins
+            # for access by post-removal actions
+            app_removed = self._app.perform_app_remove(
+                rpc_app, deactivate_plugins=False)
+
+            if app_removed:
+                # Perform for any post remove lifecycle actions and
+                # deactivate the plugins.
+                try:
+                    self.app_lifecycle_actions(context, rpc_app,
+                                               constants.APP_REMOVE_OP,
+                                               constants.APP_LIFECYCLE_POST)
+                except Exception as e:
+                    LOG.error("Error performing app_lifecycle_actions %s" % str(e))
+                finally:
+                    self._app.deactivate_app_plugins(rpc_app)
 
         return app_removed
 
