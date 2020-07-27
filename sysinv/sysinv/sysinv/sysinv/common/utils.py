@@ -1792,15 +1792,6 @@ def is_app_applied(dbapi, app_name):
         return False
 
 
-def is_monitor_applied(dbapi):
-    """ Checks whether the Monitor application is applied successfully. """
-    try:
-        monitor_app = dbapi.kube_app_get(constants.HELM_APP_MONITOR)
-        return monitor_app.active
-    except exception.KubeAppNotFound:
-        return False
-
-
 def is_openstack_applied(dbapi):
     """ Checks whether the OpenStack application is applied successfully. """
     return is_app_applied(dbapi, constants.HELM_APP_OPENSTACK)

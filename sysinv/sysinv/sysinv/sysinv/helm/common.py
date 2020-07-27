@@ -25,15 +25,6 @@ HELM_REPO_FOR_PLATFORM = 'stx-platform'
 HELM_CHART_ATTR_ENABLED = 'enabled'
 HELM_CHART_ATTRS = [HELM_CHART_ATTR_ENABLED]
 
-# TODO(rchurch): These are still needed for _check_monitor_labels(). This method
-# should migrated to the monitor application with the application framework
-# providing a hook to call for app specific label checking.
-HELM_CHART_ELASTICSEARCH_MASTER = 'elasticsearch-master'
-HELM_CHART_ELASTICSEARCH_DATA = 'elasticsearch-data'
-HELM_CHART_ELASTICSEARCH_CLIENT = 'elasticsearch-client'
-HELM_CHART_ELASTICSEARCH_CURATOR = 'elasticsearch-curator'
-HELM_CHART_LOGSTASH = 'logstash'
-
 # Namespaces
 HELM_NS_CEPH = 'ceph'
 HELM_NS_DEFAULT = 'default'
@@ -65,11 +56,6 @@ LABEL_COMPUTE_LABEL = 'openstack-compute-node'
 LABEL_OPENVSWITCH = 'openvswitch'
 LABEL_REMOTE_STORAGE = 'remote-storage'
 LABEL_SRIOVDP = 'sriovdp'
-
-LABEL_MONITOR_CONTROLLER = 'elastic-controller'
-LABEL_MONITOR_MASTER = 'elastic-master'
-LABEL_MONITOR_DATA = 'elastic-data'
-LABEL_MONITOR_CLIENT = 'elastic-client'
 
 # Label values
 LABEL_VALUE_ENABLED = 'enabled'
