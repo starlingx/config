@@ -109,7 +109,6 @@ from sysinv.openstack.common import context as ctx
 from sysinv.openstack.common import periodic_task
 from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
-from sysinv.helm import common as helm_common
 from sysinv.helm import helm
 
 MANAGER_TOPIC = 'sysinv.conductor_manager'
@@ -6919,20 +6918,6 @@ class ConductorManager(service.PeriodicService):
             LOG.error("PART Unexpected Error.")
             self.dbapi.partition_update(partition_data['uuid'], part_updates)
 
-    def _update_config_for_stx_monitor(self, context):
-        """ Update config applicable to stx-monitor app. """
-        personalities = [constants.CONTROLLER, constants.WORKER]
-
-        config_uuid = self._config_update_hosts(context, personalities)
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::collectd::restart']
-        }
-
-        self._config_apply_runtime_manifest(context,
-                                            config_uuid,
-                                            config_dict)
-
     def _update_vim_config(self, context):
         """ Update the VIM's configuration. """
         personalities = [constants.CONTROLLER]
@@ -11174,14 +11159,6 @@ class ConductorManager(service.PeriodicService):
             # the prior apply state, update the ceph config
             self._update_radosgw_config(context)
 
-        if constants.HELM_APP_MONITOR == appname and app_applied:
-            logstash_active = cutils.is_chart_enabled(self.dbapi, constants.HELM_APP_MONITOR,
-                                                      helm_common.HELM_CHART_LOGSTASH,
-                                                      helm_common.HELM_NS_MONITOR)
-
-            if logstash_active:
-                self._update_config_for_stx_monitor(context)
-
         return app_applied
 
     def perform_app_update(self, context, from_rpc_app, to_rpc_app, tarfile,
@@ -11215,8 +11192,7 @@ class ConductorManager(service.PeriodicService):
         # TODO(rchurch): Decouple this. No specific app names should be
         # specified. Needs to be generalized as some apps may require more
         # complex application integration with the platform.
-        if appname in [constants.HELM_APP_OPENSTACK,
-                       constants.HELM_APP_MONITOR]:
+        if appname in [constants.HELM_APP_OPENSTACK]:
 
             # Pre-removal actions:
             if constants.HELM_APP_OPENSTACK == appname:
@@ -11237,15 +11213,6 @@ class ConductorManager(service.PeriodicService):
                     self._update_vim_config(context)
                     self._update_pciirqaffinity_config(context)
                     self._update_radosgw_config(context)
-
-                if constants.HELM_APP_MONITOR == appname:
-                    logstash_active = cutils.is_chart_enabled(
-                        self.dbapi, constants.HELM_APP_MONITOR,
-                        helm_common.HELM_CHART_LOGSTASH,
-                        helm_common.HELM_NS_MONITOR)
-
-                    if logstash_active:
-                        self._update_config_for_stx_monitor(context)
 
                 # Now that post removal actions are complete, deactivate the
                 # plugins

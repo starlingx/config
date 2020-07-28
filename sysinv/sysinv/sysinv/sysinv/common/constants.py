@@ -1419,7 +1419,6 @@ SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_DEFAULT_OPTS = SYSTEM_SECURITY_FEATURE_
 # Helm: Supported application (aka chart bundles)
 HELM_APP_OPENSTACK = 'stx-openstack'
 HELM_APP_PLATFORM = 'platform-integ-apps'
-HELM_APP_MONITOR = 'stx-monitor'
 HELM_APP_OIDC_AUTH = 'oidc-auth-apps'
 HELM_APP_CERT_MANAGER = 'cert-manager'
 HELM_APP_NGINX_IC = 'nginx-ingress-controller'
@@ -1501,6 +1500,10 @@ APP_REMOVE_OP = 'remove'
 APP_DELETE_OP = 'delete'
 APP_UPDATE_OP = 'update'
 APP_ROLLBACK_OP = 'rollback'
+
+# Application metadata constants
+APP_METADATA_MAINTAIN_USER_OVERRIDES = 'maintain_user_overrides'
+APP_METADATA_HELM_TOOLKIT_REQUIRED = 'helm_toolkit_required'
 
 # Progress constants
 APP_PROGRESS_ABORTED = 'operation aborted, check logs for detail'

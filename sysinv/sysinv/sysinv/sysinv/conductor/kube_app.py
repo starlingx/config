@@ -964,15 +964,6 @@ class AppOperator(object):
                         constants.HELM_APP_OIDC_AUTH,
                         constants.HELM_APP_NGINX_IC]:
             return False
-
-        check_rbd_provisioner_apps = [constants.HELM_APP_MONITOR]
-        if app_name not in check_rbd_provisioner_apps:
-            return True
-
-        system = self._dbapi.isystem_get_one()
-        if system.distributed_cloud_role == \
-                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-            return False
         else:
             return True
 
@@ -1466,21 +1457,21 @@ class AppOperator(object):
             except Exception as e:
                 LOG.exception(e)
 
-    def _get_user_overrides_flag_from_metadata(self, app):
-        # This function gets the "maintain_user_overrides"
+    def _get_metadata_flag(self, app, flag, default):
+        # This function gets a boolean
         # parameter from application metadata
-        reuse_overrides = False
+        flag_result = default
         metadata_file = os.path.join(app.inst_path,
                                      constants.APP_METADATA_FILE)
         if os.path.exists(metadata_file) and os.path.getsize(metadata_file) > 0:
             with open(metadata_file, 'r') as f:
                 try:
                     y = yaml.safe_load(f)
-                    reuse_overrides = y.get('maintain_user_overrides', False)
+                    flag_result = y.get(flag, default)
                 except KeyError:
                     # metadata file does not have the key
                     pass
-        return reuse_overrides
+        return flag_result
 
     def _preserve_user_overrides(self, from_app, to_app):
         """Dump user overrides
@@ -1578,13 +1569,14 @@ class AppOperator(object):
             LOG.info("Starting progress monitoring thread for app %s" % app.name)
 
             def _progress_adjust(app):
-                # helm-toolkit doesn't count; it is not in stx-monitor
-                non_helm_toolkit_apps = [constants.HELM_APP_MONITOR]
-                if app.name in non_helm_toolkit_apps:
-                    adjust = 0
+                helm_toolkit_app = \
+                    self._get_metadata_flag(app,
+                                            constants.APP_METADATA_HELM_TOOLKIT_REQUIRED,
+                                            True)
+                if helm_toolkit_app:
+                    return 1
                 else:
-                    adjust = 1
-                return adjust
+                    return 0
 
             try:
                 with Timeout(INSTALLATION_TIMEOUT,
@@ -1728,11 +1720,6 @@ class AppOperator(object):
         if (app_name == constants.HELM_APP_OPENSTACK and
                 operation_type == constants.APP_REMOVE_OP):
             _delete_ceph_persistent_volume_claim(common.HELM_NS_OPENSTACK)
-        elif app_name == constants.HELM_APP_MONITOR:
-            if operation_type == constants.APP_DELETE_OP:
-                _delete_ceph_persistent_volume_claim(common.HELM_NS_MONITOR)
-            elif (operation_type == constants.APP_REMOVE_OP):
-                self._wait_for_pod_termination(common.HELM_NS_MONITOR)
 
     def _in_upgrade_old_app_is_non_decoupled(self, old_app):
         """Special case application upgrade check for STX 4.0
@@ -2364,7 +2351,9 @@ class AppOperator(object):
             result = False
             if operation == constants.APP_APPLY_OP:
                 reuse_overrides = \
-                    self._get_user_overrides_flag_from_metadata(to_app)
+                    self._get_metadata_flag(to_app,
+                                            constants.APP_METADATA_MAINTAIN_USER_OVERRIDES,
+                                            False)
                 if reuse_user_overrides is not None:
                     reuse_overrides = reuse_user_overrides
 
