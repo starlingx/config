@@ -325,6 +325,12 @@ class HTTPClient(httplib2.Http):
     def authenticate(self):
         if self.auth_strategy != 'keystone':
             raise exceptions.HTTPUnauthorized('Unknown auth strategy')
+
+        if self.auth_url is None:
+            raise exceptions.HTTPUnauthorized("No auth_url provided")
+
+        token_url = self.auth_url + "/tokens"
+
         if self.tenant_id:
             body = {'auth': {'passwordCredentials':
                              {'username': self.username,
@@ -335,8 +341,6 @@ class HTTPClient(httplib2.Http):
                              {'username': self.username,
                               'password': self.password, },
                              'tenantName': self.tenant_name, }, }
-
-        token_url = self.auth_url + "/tokens"
 
         # Make sure we follow redirects when trying to reach Keystone
         tmp_follow_all_redirects = self.follow_all_redirects
