@@ -782,6 +782,19 @@ def extract_keypairs(args):
     return attributes
 
 
+def args_array_to_list_dict(attributes):
+    list_of_dict = []
+    for attr in attributes:
+        # Check that there is a '='
+        if attr.find('=') > -1:
+            name, value = attr.split("=", 1)
+            list_of_dict.append({name: value})
+        else:
+            raise exc.CommandError('Attributes must be a list of '
+                                   'NAME=VALUE not "%s"' % attr)
+    return list_of_dict
+
+
 def size_unit_conversion(size, step):
     """
       This function converts size from a smaller unit (e.g. KiB)

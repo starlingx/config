@@ -42,10 +42,14 @@ def do_device_label_list(cc, args):
     """List all device labels"""
     device_labels = cc.device_label.list()
     for dl in device_labels[:]:
-        pci_device = cc.pci_device.get(dl.pcidevice_uuid)
-        setattr(dl, 'devicename', getattr(pci_device, 'name'))
-        host = ihost_utils._find_ihost(cc, getattr(pci_device, 'host_uuid'))
-        setattr(dl, 'hostname', host.hostname)
+        if dl.pcidevice_uuid is None:
+            setattr(dl, 'devicename', "")
+            setattr(dl, 'hostname', "")
+        else:
+            pci_device = cc.pci_device.get(dl.pcidevice_uuid)
+            setattr(dl, 'devicename', getattr(pci_device, 'name'))
+            host = ihost_utils._find_ihost(cc, getattr(pci_device, 'host_uuid'))
+            setattr(dl, 'hostname', host.hostname)
     field_labels = ['hostname', 'PCI device name', 'label key', 'label value']
     fields = ['hostname', 'devicename', 'label_key', 'label_value']
     utils.print_list(device_labels, fields, field_labels, sortby=1)
@@ -68,11 +72,11 @@ def do_device_label_list(cc, args):
            help="Allow existing label values to be overwritten")
 def do_host_device_label_assign(cc, args):
     """Assign a label to a device of a host"""
-    attributes = utils.extract_keypairs(args)
+    attributes = utils.args_array_to_list_dict(args.attributes[0])
     parameters = ["overwrite=" + str(args.overwrite)]
     host = ihost_utils._find_ihost(cc, args.hostnameorid)
     device = pci_device.find_device(cc, host, args.nameorpciaddr)
-    attributes.update({'pcidevice_uuid': device.uuid})
+    attributes.append({'pcidevice_uuid': device.uuid})
     new_device_labels = cc.device_label.assign(attributes, parameters)
     for p in new_device_labels.device_labels:
         uuid = p['uuid']
@@ -101,20 +105,14 @@ def do_host_device_label_remove(cc, args):
     host = ihost_utils._find_ihost(cc, args.hostnameorid)
     device = pci_device.find_device(cc, host, args.nameorpciaddr)
     for i in args.attributes[0]:
-        lbl = _find_host_device_label(cc, host, device, i)
-        if lbl:
-            cc.device_label.remove(lbl.uuid)
-            print('Deleted device label %s for host %s device %s' %
-                  (i, host.hostname, device.name))
-
-
-def _find_host_device_label(cc, host, device, label):
-    device_labels = cc.device_label.list()
-    for lbl in device_labels:
-        if (lbl.pcidevice_uuid == device.uuid and lbl.label_key == label):
-            break
-    else:
-        lbl = None
-        print('Host device label not found: host %s, device %s, label key %s ' %
-              (host.hostname, device.name, label))
-    return lbl
+        device_labels = cc.device_label.list()
+        found = False
+        for lbl in device_labels:
+            if (lbl.pcidevice_uuid == device.uuid and lbl.label_key == i):
+                cc.device_label.remove(lbl.uuid)
+                print('Deleted device label (%s, %s) for host %s device %s' %
+                      (lbl.label_key, lbl.label_value, host.hostname, device.name))
+                found = True
+        if not found:
+            print('Host device label not found: host %s, device %s, label key %s ' %
+                  (host.hostname, device.name, i))
