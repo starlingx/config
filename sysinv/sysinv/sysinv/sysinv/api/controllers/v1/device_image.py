@@ -162,11 +162,16 @@ def _get_applied_labels(device_image):
             applied_labels.append({label.label_key: label.label_value})
         device_image.applied_labels = applied_labels
 
-    # if applied without labels, insert a null dict to applied-labels
+    # In the database, 'applied' field is True if the image is applied without
+    # labels and False if the image is not applied.
+    # In the api response, 'applied' field is True if the image is applied with
+    # or without labels.
     if device_image.applied:
+        # image is applied without labels, insert a null dict to applied-labels
         applied_labels.append({})
         device_image.applied_labels = applied_labels
     elif device_image.applied_labels is not None:
+        # image is applied with labels, set the applied attribute to True
         device_image.applied = True
     return device_image
 
@@ -327,13 +332,12 @@ class DeviceImageController(rest.RestController):
                         update_device_image_state(device_label.host_id,
                             device_label.pcidevice_id,
                             device_image.id, dconstants.DEVICE_IMAGE_UPDATE_PENDING)
+                        update_host_device_image_update(device_label.host_uuid)
                     # Create an entry of image to label mapping
                     pecan.request.dbapi.device_image_label_create({
                         'image_id': device_image.id,
                         'label_id': device_label.id,
                     })
-                    pecan.request.rpcapi.apply_device_image(
-                        pecan.request.context, device_label.host_uuid)
                 elif action == dconstants.REMOVE_ACTION:
                     try:
                         img_lbl = pecan.request.dbapi.device_image_label_get_by_image_label(
@@ -365,17 +369,30 @@ class DeviceImageController(rest.RestController):
                         update_device_image_state(host.id,
                             dev.pci_id, device_image.id,
                             dconstants.DEVICE_IMAGE_UPDATE_PENDING)
-                        pecan.request.rpcapi.apply_device_image(
-                            pecan.request.context, host.uuid)
+                        update_host_device_image_update(host.uuid)
                     elif action == dconstants.REMOVE_ACTION:
                         delete_device_image_state(dev.pci_id, device_image)
-            # set applied flag to indicate if the image is applied without label or not
+
             if action == dconstants.APPLY_ACTION:
+                # set applied flag to True to indicate the image is applied
+                # without label
                 pecan.request.dbapi.deviceimage_update(device_image.uuid,
                                                        {'applied': True})
-            else:
+            elif action == dconstants.REMOVE_ACTION:
+                # set applied flag to False to indicate the image is not applied
                 pecan.request.dbapi.deviceimage_update(device_image.uuid,
                                                        {'applied': False})
+
+        if action == dconstants.APPLY_ACTION:
+            # If any of the devices needs updating, call rpc to raise alarm
+            if pecan.request.dbapi.device_image_state_get_all(
+                    image_id=device_image.id,
+                    status=[dconstants.DEVICE_IMAGE_UPDATE_PENDING,
+                            dconstants.DEVICE_IMAGE_UPDATE_FAILED,
+                            dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS]):
+                pecan.request.rpcapi.apply_device_image(pecan.request.context)
+        elif action == dconstants.REMOVE_ACTION:
+            pecan.request.rpcapi.remove_device_image(pecan.request.context)
         device_image = objects.device_image.get_by_uuid(pecan.request.context, uuid)
         return DeviceImage.convert_with_links(device_image)
 
@@ -445,6 +462,13 @@ def _validate_syntax(device_image):
         if not msg:
             msg = _check_revoke_key(device_image)
     return msg
+
+
+def update_host_device_image_update(host_uuid):
+    host = objects.host.get_by_uuid(pecan.request.context, host_uuid)
+    if host.device_image_update != dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS:
+        host.device_image_update = dconstants.DEVICE_IMAGE_UPDATE_PENDING
+        host.save()
 
 
 def update_device_image_state(host_id, pcidevice_id, image_id, status):

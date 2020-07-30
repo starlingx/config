@@ -11816,14 +11816,8 @@ class ConductorManager(service.PeriodicService):
             self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_DEVICE_IMAGE_UPDATE_IN_PROGRESS,
                                     entity_instance_id)
 
-    def apply_device_image(self, context, host_uuid):
+    def apply_device_image(self, context):
         """Apply device image"""
-        if host_uuid is not None:
-            host = objects.host.get_by_uuid(context, host_uuid)
-            if host.device_image_update != dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS:
-                host.device_image_update = dconstants.DEVICE_IMAGE_UPDATE_PENDING
-                host.save()
-
         # Raise device image update alarm if not already exists
         alarm_id = fm_constants.FM_ALARM_ID_DEVICE_IMAGE_UPDATE_IN_PROGRESS
         system_uuid = self.dbapi.isystem_get_one().uuid
@@ -11842,6 +11836,9 @@ class ConductorManager(service.PeriodicService):
                 suppression=False,
                 service_affecting=False)
             self.fm_api.set_fault(fault)
+
+    def remove_device_image(self, context):
+        self._clear_device_image_alarm(context)
 
     def host_device_image_update_next(self, context, host_uuid):
         # Find the first device on this host that needs updating,
@@ -11957,11 +11954,13 @@ class ConductorManager(service.PeriodicService):
                                                         img.image_uuid))
 
     def _clear_device_image_alarm(self, context):
-        # If there are no more pending device image update in the DB
-        # for any host, and if no host has the "reboot needed" DB entry set,
-        # then the "Device image update in progress" alarm is cleared.
+        # If there are no more pending, failed or in-progress device image
+        # update in the DB for any host, and if no host has the "reboot needed"
+        # DB entry set, then the "Device image update in progress" alarm is cleared.
         dev_img_list = self.dbapi.device_image_state_get_all(
-            status=dconstants.DEVICE_IMAGE_UPDATE_PENDING)
+            status=[dconstants.DEVICE_IMAGE_UPDATE_PENDING,
+                    dconstants.DEVICE_IMAGE_UPDATE_FAILED,
+                    dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS])
         if not dev_img_list:
             if self.dbapi.count_hosts_matching_criteria(reboot_needed=True) > 0:
                 return
