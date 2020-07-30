@@ -1757,6 +1757,20 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('evaluate_app_reapply',
                                                 app_name=app_name))
 
+    def app_lifecycle_actions(self, context, rpc_app, operation, relative_timing):
+        """Synchronously, perform any lifecycle actions required
+        for the operation
+
+        :param context: request context.
+        :param rpc_app: data object provided in the rpc request
+        :param operation: operation being performed
+        :param relative_timing: relative timing of operation
+        """
+        return self.call(context, self.make_msg('app_lifecycle_actions',
+                                                rpc_app=rpc_app,
+                                                operation=operation,
+                                                relative_timing=relative_timing))
+
     def perform_app_upload(self, context, rpc_app, tarfile):
         """Handle application upload request
 

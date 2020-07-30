@@ -1501,6 +1501,10 @@ APP_DELETE_OP = 'delete'
 APP_UPDATE_OP = 'update'
 APP_ROLLBACK_OP = 'rollback'
 
+# Lifecycle constants
+APP_LIFECYCLE_PRE = 'pre'
+APP_LIFECYCLE_POST = 'post'
+
 # Application metadata constants
 APP_METADATA_MAINTAIN_USER_OVERRIDES = 'maintain_user_overrides'
 APP_METADATA_HELM_TOOLKIT_REQUIRED = 'helm_toolkit_required'
