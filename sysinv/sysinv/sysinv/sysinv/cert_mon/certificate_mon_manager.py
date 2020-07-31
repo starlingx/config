@@ -122,8 +122,9 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
                         raise Exception('%s certificate data missing %s'
                                         % (subcloud_name, item))
 
-                cm_ssl_cert = base64.b64decode(secret.data['tls.crt'])
-                cm_ca_cert = base64.b64decode(secret.data['ca.crt'])
+                txt_ssl_cert = base64.b64decode(secret.data['tls.crt'])
+                txt_ssl_key = base64.b64decode(secret.data['tls.key'])
+                txt_ca_cert = base64.b64decode(secret.data['ca.crt'])
             except Exception as e:
                 LOG.error('Cannot audit ssl certificate on %s' % subcloud_name)
                 LOG.exception(e)
@@ -132,7 +133,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
                 self.subclouds_to_audit.pop(0)
                 return
 
-            cert_chain = cm_ssl_cert + cm_ca_cert
+            cert_chain = txt_ssl_cert + txt_ca_cert
             dc_token = utils.get_dc_token(subcloud_name)
             if not cutils.verify_intermediate_ca_cert(cert_chain, sc_ssl_cert):
                 # The subcloud needs renewal.
@@ -142,20 +143,15 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
 
                 utils.update_subcloud_status(dc_token, subcloud_name,
                                              utils.SYNC_STATUS_OUT_OF_SYNC)
-                ca_crt = secret.data['ca.crt']
-                tls_crt = secret.data['tls.crt']
-                tls_key = secret.data['tls.key']
-
                 try:
                     utils.update_subcloud_ca_cert(dc_token,
                                                   subcloud_name,
                                                   subcloud_sysinv_url,
-                                                  ca_crt,
-                                                  tls_crt,
-                                                  tls_key)
-                except Exception as e:
-                    LOG.info('Failed to update intermediate CA on %s')
-                    LOG.exception(e)
+                                                  txt_ca_cert,
+                                                  txt_ssl_cert,
+                                                  txt_ssl_key)
+                except Exception:
+                    LOG.exception('Failed to update intermediate CA on %s' % subcloud_name)
             else:
                 LOG.info('%s intermediate CA cert is in-sync' % subcloud_name)
                 utils.update_subcloud_status(dc_token, subcloud_name,
@@ -189,7 +185,8 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
 
     def init_monitor(self):
         self.monitor = watcher.CertWatcher()
-        self.monitor.initialize()
+        self.monitor.initialize(
+            audit_subcloud=lambda subcloud_name: self.requeue_audit(subcloud_name))
 
     def start_monitor(self):
         utils.init_keystone_auth_opts()
@@ -228,7 +225,9 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             # never exit until exit signal received
             try:
                 self.monitor.start_watch(
-                    func=lambda task: self._add_reattempt_task(task))
+                    on_success=lambda task_id: self._purge_reattempt_task(task_id),
+                    on_error=lambda task: self._add_reattempt_task(task),
+                )
             except greenlet.GreenletExit:
                 break
             except Exception as e:
@@ -252,7 +251,8 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         # move the subcloud to the end of the queue for auditing
         # adding enough spaces so that the renewal would complete by
         # next audit
-        self.subclouds_to_audit.remove(subcloud_name)
+        if subcloud_name in self.subclouds_to_audit:
+            self.subclouds_to_audit.remove(subcloud_name)
         for i in range(12, self.subclouds_to_audit.count(TASK_NAME_PAUSE_AUDIT), -1):
             self.subclouds_to_audit.append(TASK_NAME_PAUSE_AUDIT)
         self.subclouds_to_audit.append(subcloud_name)

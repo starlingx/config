@@ -17,7 +17,6 @@
 # of this software may be licensed only pursuant to the terms
 # of an applicable Wind River license agreement.
 #
-import base64
 import json
 import re
 from keystoneclient.v3 import client as keystone_client
@@ -69,10 +68,10 @@ def update_admin_ep_cert(token, ca_crt, tls_crt, tls_key):
     resp = rest_api_request(token, "POST", api_cmd, json.dumps(api_cmd_payload))
 
     if 'result' in resp and resp['result'] == 'OK':
-        LOG.info('Update admin endpoint request succeed')
+        LOG.info('Update admin endpoint certificate request succeeded')
     else:
         LOG.error('Request response %s' % resp)
-        raise Exception('Update %s admin endpoint failed')
+        raise Exception('Update admin endpoint certificate failed')
 
 
 def dc_get_subcloud_sysinv_url(subcloud_name):
@@ -154,10 +153,13 @@ def update_subcloud_ca_cert(
     api_cmd_payload = dict()
     api_cmd_payload['certtype'] = \
         constants.CERTIFICATE_TYPE_ADMIN_ENDPOINT_INTERMEDIATE_CA
-    api_cmd_payload['root_ca_crt'] = base64.b64decode(ca_crt)
-    api_cmd_payload['sc_ca_cert'] = base64.b64decode(tls_crt)
-    api_cmd_payload['sc_ca_key'] = base64.b64decode(tls_key)
-    resp = rest_api_request(token, "POST", api_cmd, json.dumps(api_cmd_payload))
+    api_cmd_payload['root_ca_crt'] = ca_crt
+    api_cmd_payload['sc_ca_cert'] = tls_crt
+    api_cmd_payload['sc_ca_key'] = tls_key
+    timeout = int(CONF.endpoint_cache.http_connect_timeout)
+
+    resp = rest_api_request(token, "POST", api_cmd, json.dumps(api_cmd_payload),
+                            timeout=timeout)
 
     if 'result' in resp and resp['result'] == 'OK':
         LOG.info('Update %s intermediate CA cert request succeed' % sc_name)
@@ -234,9 +236,6 @@ def rest_api_request(token, method, api_cmd,
     api_cmd_headers = dict()
     api_cmd_headers['Content-type'] = "application/json"
     api_cmd_headers['User-Agent'] = "cert-mon/1.0"
-
-    LOG.debug("%s cmd:%s hdr:%s payload:%s" % (method,
-             api_cmd, api_cmd_headers, api_cmd_payload))
 
     try:
         request_info = Request(api_cmd)
@@ -445,27 +444,37 @@ def init_keystone_auth_opts():
     cfg.CONF.register_opts(endpoint_opts, group=endpoint_cache_group.name)
 
 
-def get_subclouds():
-    """get all name of all subclouds from k8s secret
-
-    Every subcloud comes with an intermediate CA entry in k8s secret
-    :return: list of subcloud names
+def get_subcloud_secrets():
+    """get subcloud name and ICA secret name pairs from k8s secret
+       Every subcloud comes with an ICA entry in k8s secret
+       :return: dict of subcloud name and ICA secret name pairs
     """
 
     secret_pattern = re.compile('-adminep-ca-certificate$')
     kube_op = sys_kube.KubeOperator()
     secret_list = kube_op.kube_list_secret(ENDPOINT_TYPE_DC_CERT)
 
-    subcloud_names = []
+    dict = {}
     for secret in secret_list:
         secret_name = secret.metadata.name
         m = secret_pattern.search(secret_name)
         if m:
             start = m.start()
             if start > 0:
-                subcloud_names.append(secret_name[0:m.start()])
+                dict.update({secret_name[0:m.start()]: secret_name})
 
-    return subcloud_names
+    return dict
+
+
+def get_subclouds():
+    """get name of all subclouds from k8s secret
+
+    Every subcloud comes with an ICA entry in k8s secret
+    :return: list of subcloud names
+    """
+
+    subcloud_secrets = get_subcloud_secrets()
+    return subcloud_secrets.keys()
 
 
 def get_intermediate_ca_secret_name(sc):

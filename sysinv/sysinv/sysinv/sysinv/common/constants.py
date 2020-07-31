@@ -1646,6 +1646,14 @@ SYSINV_TMPDIR = '/scratch/sysinv-tmpdir'
 CERTIFICATE_TYPE_ADMIN_ENDPOINT = 'admin-endpoint-cert'
 CERTIFICATE_TYPE_ADMIN_ENDPOINT_INTERMEDIATE_CA = 'intermediate-ca-cert'
 
+DC_ADMIN_ENDPOINT_SECRET_NAME = 'dc-adminep-certificate'
+SC_ADMIN_ENDPOINT_SECRET_NAME = 'sc-adminep-certificate'
+
+DC_ADMIN_ROOT_CA_SECRET_NAME = 'dc-adminep-root-ca-certificate'
+
+DC_ADMIN_ENDPOINT_NAMESPACE = 'dc-cert'
+SC_ADMIN_ENDPOINT_NAMESPACE = 'sc-cert'
+
 ADMIN_EP_CERT_FILENAME = os.path.join(SSL_CERT_DIR, 'admin-ep-cert.pem')
 
 DC_ROOT_CA_CERT_FILE = 'dc-adminep-root-ca.crt'

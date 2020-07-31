@@ -2299,10 +2299,10 @@ def get_admin_ep_cert(dc_role):
     raise Exception for kubernetes data errors
     """
     if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-        endpoint_cert_secret_name = 'dc-adminep-certificate'
+        endpoint_cert_secret_name = constants.DC_ADMIN_ENDPOINT_SECRET_NAME
         endpoint_cert_secret_ns = 'dc-cert'
     elif dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-        endpoint_cert_secret_name = 'sc-adminep-certificate'
+        endpoint_cert_secret_name = constants.SC_ADMIN_ENDPOINT_SECRET_NAME
         endpoint_cert_secret_ns = 'sc-cert'
     else:
         return None
@@ -2341,19 +2341,11 @@ def get_admin_ep_cert(dc_role):
             # situation impossible to recover.
             LOG.error('Cannot read DC root CA certificate %s' % e)
     elif dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-        root_ca_secret_name = 'dc-adminep-root-ca-certificate'
-        secret = kube.kube_get_secret(
-            root_ca_secret_name, endpoint_cert_secret_ns)
-
-        if not hasattr(secret, 'data'):
-            raise Exception('Invalid secret %s\\%s' % (
-                endpoint_cert_secret_ns, endpoint_cert_secret_name
-            ))
         try:
             ca_crt = base64.b64decode(data['ca.crt'])
         except TypeError:
             raise Exception('admin endpoint secret is invalid %s' %
-                            root_ca_secret_name)
+                            endpoint_cert_secret_name)
 
     secret_data['dc_root_ca_crt'] = ca_crt
     secret_data['admin_ep_crt'] = "%s%s" % (tls_key, tls_crt)
@@ -2392,3 +2384,22 @@ def verify_intermediate_ca_cert(ca_crt, tls_crt):
                      (tls_crt, stdout, stderr))
 
             return False
+
+
+def get_root_ca_cert():
+    secret_name = constants.DC_ADMIN_ROOT_CA_SECRET_NAME
+    dc_ns = constants.DC_ADMIN_ENDPOINT_NAMESPACE
+    kube = kubernetes.KubeOperator()
+    secret = kube.kube_get_secret(secret_name, dc_ns)
+
+    if not hasattr(secret, 'data'):
+        raise Exception('Invalid secret %s\\%s' % (dc_ns, secret_name))
+
+    data = secret.data
+    try:
+        ca_crt = base64.b64decode(data['ca.crt'])
+    except TypeError:
+        raise Exception('Secret is invalid %s' % secret_name)
+
+    secret_data = {'dc_root_ca_crt': ca_crt}
+    return secret_data
