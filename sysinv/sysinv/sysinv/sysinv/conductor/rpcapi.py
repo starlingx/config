@@ -919,6 +919,14 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.cast(context,
                          self.make_msg('docker_registry_garbage_collect'))
 
+    def get_apps_image_list(self, context):
+        """Synchronously, request a list of images for all apps.
+
+        :param context: request context.
+        """
+        return self.call(context,
+                         self.make_msg('get_apps_image_list'))
+
     def update_lvm_cinder_config(self, context):
         """Synchronously, have the conductor update Cinder LVM on a controller.
 

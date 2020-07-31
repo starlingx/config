@@ -1567,6 +1567,29 @@ class ConductorManager(service.PeriodicService):
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
+    def get_apps_image_list(self, context):
+        """
+        Return a list of all images from local registry used by apps.
+        """
+
+        images = []
+        try:
+            for kapp in self.dbapi.kube_app_get_all():
+                app = self._app.Application(kapp)
+                images_to_download = self._app.get_image_tags_by_charts(
+                    app.sync_imgfile, app.sync_armada_mfile, app.sync_overrides_dir)
+                stripped_images = [x.replace(constants.DOCKER_REGISTRY_HOST + ':' +
+                                             constants.DOCKER_REGISTRY_PORT + '/', '')
+                                   for x in images_to_download]
+                images.extend(stripped_images)
+                LOG.info("Application images for %s are: %s" % (kapp.name,
+                                                                str(stripped_images)))
+        except Exception as e:
+            LOG.info("Get images for all apps error.")
+            LOG.exception(e)
+
+        return images
+
     def _configure_worker_host(self, context, host):
         """Configure a worker host with the supplied data.
 

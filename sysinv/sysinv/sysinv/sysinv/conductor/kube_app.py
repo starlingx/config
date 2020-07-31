@@ -517,7 +517,7 @@ class AppOperator(object):
         finally:
             os.chown(constants.APP_INSTALL_ROOT_PATH, orig_uid, orig_gid)
 
-    def _get_image_tags_by_charts(self, app_images_file, app_manifest_file, overrides_dir):
+    def get_image_tags_by_charts(self, app_images_file, app_manifest_file, overrides_dir):
         """ Mine the image tags for charts from the images file. Add the
             image tags to the manifest file if the image tags from the
             charts do not exist in the manifest file. Convert the image
@@ -649,7 +649,7 @@ class AppOperator(object):
 
         self._save_images_list_by_charts(app)
         # Get the list of images from the updated images overrides
-        images_to_download = self._get_image_tags_by_charts(
+        images_to_download = self.get_image_tags_by_charts(
             app.sync_imgfile, app.sync_armada_mfile, app.sync_overrides_dir)
 
         if not images_to_download:
@@ -720,7 +720,7 @@ class AppOperator(object):
             # saved images list.
             saved_images_list = self._retrieve_images_list(app.sync_imgfile)
             saved_download_images_list = list(saved_images_list.get("download_images"))
-            images_to_download = self._get_image_tags_by_charts(
+            images_to_download = self.get_image_tags_by_charts(
                 app.sync_imgfile, app.sync_armada_mfile, app.sync_overrides_dir)
             if set(saved_download_images_list) != set(images_to_download):
                 saved_images_list.update({"download_images": images_to_download})
