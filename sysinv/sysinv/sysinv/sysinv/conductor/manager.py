@@ -2511,7 +2511,8 @@ class ConductorManager(service.PeriodicService):
                     "Couldn't update LLDP neighbour: %s") % e)
 
     def pci_device_update_by_host(self, context,
-                                  host_uuid, pci_device_dict_array):
+                                  host_uuid, pci_device_dict_array,
+                                  cleanup_stale=False):
         """Create devices for an ihost with the supplied data.
 
         This method allows records for devices for ihost to be created.
@@ -2519,6 +2520,7 @@ class ConductorManager(service.PeriodicService):
         :param context: an admin context
         :param host_uuid: host uuid unique id
         :param pci_device_dict_array: initial values for device objects
+        :param cleanup_stale: Do we want to clean up stale device entries?
         :returns: pass or fail
         """
         LOG.debug("Entering device_update_by_host %s %s" %
@@ -2595,8 +2597,9 @@ class ConductorManager(service.PeriodicService):
             except Exception:
                 pass
 
-        # Now clean up N3000 devices that have changed addresses.
-        self.cleanup_stale_n3000_devices(host, pci_device_dict_array)
+        if cleanup_stale:
+            # Now clean up N3000 devices that have changed addresses.
+            self.cleanup_stale_n3000_devices(host, pci_device_dict_array)
 
     def cleanup_stale_n3000_devices(self, host, pci_device_dict_array):
         # Special-case the N3000 FPGA because we know it might change
@@ -11837,7 +11840,7 @@ class ConductorManager(service.PeriodicService):
                 service_affecting=False)
             self.fm_api.set_fault(fault)
 
-    def remove_device_image(self, context):
+    def clear_device_image_alarm(self, context):
         self._clear_device_image_alarm(context)
 
     def host_device_image_update_next(self, context, host_uuid):
@@ -11887,12 +11890,18 @@ class ConductorManager(service.PeriodicService):
             return
         LOG.info("no more device images to process")
 
-        # TODO: what should host.device_image_update be set to if one or more
-        # of the device image updates failed?
-
-        # Getting here should mean that we're done processing so we can
-        # clear the "this host is currently updating device images" flag.
-        host.device_image_update = dconstants.DEVICE_IMAGE_UPDATE_NULL
+        # If one or more of the device image updates failed, set
+        # host.device_image_update to pending because we are going to retry
+        # writing them next time we run host_device_image_update().
+        failed_device_image_states = self.dbapi.device_image_state_get_all(
+            host_id=host.id,
+            status=dconstants.DEVICE_IMAGE_UPDATE_FAILED)
+        if len(failed_device_image_states) >= 1:
+            host.device_image_update = dconstants.DEVICE_IMAGE_UPDATE_PENDING
+        else:
+            # Getting here should mean that we're done processing so we can
+            # clear the "this host is currently updating device images" flag.
+            host.device_image_update = dconstants.DEVICE_IMAGE_UPDATE_NULL
         host.save(context)
 
     def host_device_image_update(self, context, host_uuid):

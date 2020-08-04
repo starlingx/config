@@ -261,7 +261,8 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                           neighbour_dict_array=neighbour_dict_array))
 
     def pci_device_update_by_host(self, context,
-                                  host_uuid, pci_device_dict_array):
+                                  host_uuid, pci_device_dict_array,
+                                  cleanup_stale=False):
         """Create pci_devices for an ihost with the supplied data.
 
         This method allows records for pci_devices for ihost to be created.
@@ -269,12 +270,29 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param context: an admin context
         :param host_uuid: ihost uuid unique id
         :param pci_device_dict_array: initial values for device objects
+        :param cleanup_stale: Do we want to clean up stale device entries
         :returns: pass or fail
         """
-        return self.call(context,
-                         self.make_msg('pci_device_update_by_host',
-                                       host_uuid=host_uuid,
-                                       pci_device_dict_array=pci_device_dict_array))
+        try:
+            return self.call(
+                context,
+                self.make_msg('pci_device_update_by_host',
+                              host_uuid=host_uuid,
+                              pci_device_dict_array=pci_device_dict_array,
+                              cleanup_stale=cleanup_stale))
+        except TypeError as exc:
+            # Handle talking to sysinv-conductor that doesn't understand
+            # the cleanup_stale parameter.
+            exc = repr(exc)
+            if "unexpected keyword argument" in exc and "cleanup_stale" in exc:
+                LOG.info("retrying without cleanup_stale")
+                return self.call(
+                    context,
+                    self.make_msg('pci_device_update_by_host',
+                                  host_uuid=host_uuid,
+                                  pci_device_dict_array=pci_device_dict_array))
+            else:
+                raise
 
     def inumas_update_by_ihost(self, context,
                                ihost_uuid, inuma_dict_array):
@@ -1970,12 +1988,12 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.cast(context, self.make_msg('apply_device_image'))
 
-    def remove_device_image(self, context):
-        """Asynchronously, have the conductor remove the device image
+    def clear_device_image_alarm(self, context):
+        """Asynchronously, have the conductor  clear device image alarm
 
         :param context: request context
         """
-        return self.cast(context, self.make_msg('remove_device_image'))
+        return self.cast(context, self.make_msg('clear_device_image_alarm'))
 
     def host_device_image_update(self, context, host_uuid):
         """Asynchronously, have the conductor update the device image

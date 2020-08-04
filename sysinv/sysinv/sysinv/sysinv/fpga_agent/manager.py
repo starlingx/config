@@ -581,7 +581,8 @@ class FpgaAgentManager(service.PeriodicService):
                          (host_uuid, pci_device_list))
                 rpcapi.pci_device_update_by_host(context,
                                                  host_uuid,
-                                                 pci_device_list)
+                                                 pci_device_list,
+                                                 cleanup_stale=True)
         except Exception:
             LOG.exception("Exception updating n3000 PCI devices, "
                           "this will likely cause problems.")
