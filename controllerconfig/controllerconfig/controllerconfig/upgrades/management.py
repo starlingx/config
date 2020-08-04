@@ -222,12 +222,16 @@ def create_simplex_backup(software_upgrade):
     with open(metadata_filename, 'w') as metadata_file:
         metadata_file.write(json_data)
 
-    backup_filename = get_upgrade_backup_filename(software_upgrade)
-    backup_vars = "platform_backup_file=%s.tgz backup_dir=%s" % (
-        backup_filename, tsc.PLATFORM_BACKUP_PATH)
+    upgrade_data, upgrade_images_data = get_upgrade_backup_filenames(
+        software_upgrade)
+    backup_vars = [
+        "platform_backup_file=%s.tgz" % upgrade_data,
+        "docker_local_registry_backup_file=%s.tgz" % upgrade_images_data,
+        "backup_user_local_registry=true",
+        "backup_dir=%s" % tsc.PLATFORM_BACKUP_PATH]
     args = [
         'ansible-playbook',
-        '-e', backup_vars,
+        '-e', ' '.join(backup_vars),
         sysinv_constants.ANSIBLE_PLATFORM_BACKUP_PLAYBOOK]
     proc = subprocess.Popen(args, stdout=subprocess.PIPE)
     out, _ = proc.communicate()
@@ -237,13 +241,15 @@ def create_simplex_backup(software_upgrade):
     LOG.info("Create simplex backup complete")
 
 
-def get_upgrade_backup_filename(software_upgrade):
+def get_upgrade_backup_filenames(software_upgrade):
     """Generates the simplex upgrade backup filename"""
     created_at_date = software_upgrade.created_at.replace(
         microsecond=0).replace(tzinfo=None)
     date_time = created_at_date.isoformat().replace(':', '')
-    filename = 'upgrade_data_' + date_time + '_' + software_upgrade.uuid
-    return filename
+    suffix = date_time + '_' + software_upgrade.uuid
+    upgrade_data = 'upgrade_data_' + suffix
+    upgrade_images_data = 'upgrade_images_data_' + suffix
+    return upgrade_data, upgrade_images_data
 
 
 def abort_upgrade(from_load, to_load, upgrade):
@@ -344,9 +350,11 @@ def activate_upgrade(from_load, to_load, i_system):
 
 
 def remove_simplex_upgrade_data(upgrade):
-    simplex_backup_filename = get_upgrade_backup_filename(upgrade) + "*"
-    simplex_backup_files = glob.glob(os.path.join(
-        tsc.PLATFORM_BACKUP_PATH, simplex_backup_filename))
+    upgrade_data, upgrade_images_data = get_upgrade_backup_filenames(upgrade)
+    simplex_backup_files = glob.glob(
+        os.path.join(tsc.PLATFORM_BACKUP_PATH, upgrade_data + "*"))
+    simplex_backup_files += glob.glob(
+        os.path.join(tsc.PLATFORM_BACKUP_PATH, upgrade_images_data + "*"))
 
     for file in simplex_backup_files:
         try:
