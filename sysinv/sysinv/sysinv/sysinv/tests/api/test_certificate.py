@@ -216,7 +216,7 @@ class ApiCertificateTestCaseMixin(object):
                 cert = x509.load_pem_x509_certificate(pem_contents[index::],
                                                       default_backend())
                 certs.append(cert)
-                start = start + index + len(marker)
+                start = index + len(marker)
         return certs
 
     @staticmethod
@@ -350,6 +350,169 @@ class ApiCertificatePostTestSuite(ApiCertificateTestCaseMixin,
                         str(in_cert.not_valid_after):
                     found_match = True
             self.assertTrue(found_match)
+
+    # Test successful POST operation to install ssl certificate signed by
+    # intermediate CA
+    def test_install_2xcert_1xkey_ssl_certificate(self):
+        mode = 'ssl'
+        certfile = os.path.join(os.path.dirname(__file__), "data",
+                                'ssl-cert-2xcert-1xkey-with-key.pem')
+
+        in_certs = self.extract_certs_from_pem_file(certfile)
+        fake_config_certificate_return = []
+        for index, in_cert in enumerate(in_certs):
+            is_ca = False if index == 0 else True
+            fake_config_certificate_return.append(
+                        {'signature': self.get_cert_signature(mode, in_cert),
+                         'not_valid_before': in_cert.not_valid_before,
+                         'not_valid_after': in_cert.not_valid_after,
+                         'is_ca': is_ca})
+        self.fake_conductor_api.\
+            setup_config_certificate(fake_config_certificate_return)
+
+        data = {'mode': mode}
+        files = [('file', certfile)]
+        response = self.post_with_files('%s/%s' % (self.API_PREFIX, 'certificate_install'),
+                                  data,
+                                  upload_files=files,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=False)
+
+        self.assertEqual(response.status_code, http_client.OK)
+        resp = json.loads(response.body)
+        self.assertIn('certificates', resp)
+        ret_certs = resp.get('certificates')
+
+        # The installed cert contains the server cert and the intermediate
+        # CA cert but the API returns only the server cert, which should match
+        # the server cert in the cert file (the first one).
+        self.assertEqual(len(ret_certs), 1)
+        ret_cert = ret_certs[0]
+        in_cert = in_certs[0]
+
+        self.assertIn('certtype', ret_cert)
+        self.assertEqual(ret_cert.get('certtype'), mode)
+        self.assertIn('signature', ret_cert)
+        self.assertIn('start_date', ret_cert)
+        self.assertIn('expiry_date', ret_cert)
+
+        ret_cert_start_date = str(ret_cert.get('start_date'))
+        ret_cert_start_date = ret_cert_start_date.replace('+00:00', '')
+        ret_cert_expiry_date = str(ret_cert.get('expiry_date'))
+        ret_cert_expiry_date = ret_cert_expiry_date.replace('+00:00', '')
+        found_match = False
+        if ret_cert.get('signature') == \
+                self.get_cert_signature(mode, in_cert) and \
+                ret_cert_start_date == \
+                str(in_cert.not_valid_before) and \
+                ret_cert_expiry_date == \
+                str(in_cert.not_valid_after):
+            found_match = True
+        self.assertTrue(found_match)
+
+    # Test POST operation to install ssl certificate signed by intermediate CA,
+    # but the server cert and intermediate cert in the file is in wrong order.
+    def test_install_2xcert_1xkey_ssl_certificate_wrong_order(self):
+        mode = 'ssl'
+        certfile = os.path.join(os.path.dirname(__file__), "data",
+                                'ssl-cert-2xcert-1xkey-with-key-wrong-order.pem')
+
+        data = {'mode': mode}
+        files = [('file', certfile)]
+        response = self.post_with_files('%s/%s' % (self.API_PREFIX, 'certificate_install'),
+                                  data,
+                                  upload_files=files,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        self.assertTrue(response.body)
+        resp = json.loads(response.body)
+        self.assertTrue(resp.get('error'))
+        fault_string_expected = 'The first cert in the file should not be a ' \
+                                'CA cert'
+        self.assertIn(fault_string_expected, str(resp.get('error')))
+
+    # Test successful POST operation to install docker_registry certificate
+    # signed by intermediate CA
+    def test_install_2xcert_1xkey_docker_registry_certificate(self):
+        mode = 'docker_registry'
+        certfile = os.path.join(os.path.dirname(__file__), "data",
+                                'docker_registry-cert-2xcert-1xkey-with-key.pem')
+
+        in_certs = self.extract_certs_from_pem_file(certfile)
+        fake_config_certificate_return = []
+        for index, in_cert in enumerate(in_certs):
+            is_ca = False if index == 0 else True
+            fake_config_certificate_return.append(
+                        {'signature': self.get_cert_signature(mode, in_cert),
+                         'not_valid_before': in_cert.not_valid_before,
+                         'not_valid_after': in_cert.not_valid_after,
+                         'is_ca': is_ca})
+        self.fake_conductor_api.\
+            setup_config_certificate(fake_config_certificate_return)
+
+        data = {'mode': mode}
+        files = [('file', certfile)]
+        response = self.post_with_files('%s/%s' % (self.API_PREFIX, 'certificate_install'),
+                                  data,
+                                  upload_files=files,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=False)
+
+        self.assertEqual(response.status_code, http_client.OK)
+        resp = json.loads(response.body)
+        self.assertIn('certificates', resp)
+        ret_certs = resp.get('certificates')
+
+        # The installed cert contains the server cert and the intermediate
+        # CA cert but the API returns only the server cert, which should match
+        # the server cert in the cert file (the first one).
+        self.assertEqual(len(ret_certs), 1)
+        ret_cert = ret_certs[0]
+        in_cert = in_certs[0]
+
+        self.assertIn('certtype', ret_cert)
+        self.assertEqual(ret_cert.get('certtype'), mode)
+        self.assertIn('signature', ret_cert)
+        self.assertIn('start_date', ret_cert)
+        self.assertIn('expiry_date', ret_cert)
+
+        ret_cert_start_date = str(ret_cert.get('start_date'))
+        ret_cert_start_date = ret_cert_start_date.replace('+00:00', '')
+        ret_cert_expiry_date = str(ret_cert.get('expiry_date'))
+        ret_cert_expiry_date = ret_cert_expiry_date.replace('+00:00', '')
+        found_match = False
+        if ret_cert.get('signature') == \
+                self.get_cert_signature(mode, in_cert) and \
+                ret_cert_start_date == \
+                str(in_cert.not_valid_before) and \
+                ret_cert_expiry_date == \
+                str(in_cert.not_valid_after):
+            found_match = True
+        self.assertTrue(found_match)
+
+    # Test POST operation to install docker_registry certificate signed by
+    # intermediate CA, but the server cert and intermediate cert in the file
+    # is in wrong order.
+    def test_install_2xcert_1xkey_docker_registry_certificate_wrong_order(self):
+        mode = 'docker_registry'
+        certfile = os.path.join(os.path.dirname(__file__), "data",
+                                'docker_registry-cert-2xcert-1xkey-with-key-wrong-order.pem')
+
+        data = {'mode': mode}
+        files = [('file', certfile)]
+        response = self.post_with_files('%s/%s' % (self.API_PREFIX, 'certificate_install'),
+                                  data,
+                                  upload_files=files,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        self.assertTrue(response.body)
+        resp = json.loads(response.body)
+        self.assertTrue(resp.get('error'))
+        fault_string_expected = 'The first cert in the file should not be a ' \
+                                'CA cert'
+        self.assertIn(fault_string_expected, str(resp.get('error')))
 
 
 class ApiCertificateDeleteTestSuite(ApiCertificateTestCaseMixin,
