@@ -8580,7 +8580,7 @@ class Connection(api.Connection):
     def device_label_destroy(self, uuid):
         with _session_for_write() as session:
             query = model_query(models.DeviceLabel, session=session)
-            query = query.filter_by(uuid=uuid)
+            query = add_identity_filter(query, uuid)
             try:
                 query.one()
             except NoResultFound:
