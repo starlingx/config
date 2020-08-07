@@ -3510,15 +3510,19 @@ class PluginHelper(object):
             LOG.info("PluginHelper: Removing invalid plugin pth: %s" % pth)
             os.remove(pth)
 
-        # Examine existing applications in an applying state and make sure they
-        # are activated
+        self.activate_apps_plugins()
+
+    def activate_apps_plugins(self):
+        # Examine existing applications in an applying/restoring state and make
+        # sure they are activated
         apps = self._dbapi.kube_app_get_all()
         for app in apps:
-            # If the app is in some form of apply the the plugins should be
-            # enabled
+            # If the app is in some form of apply/restore the the plugins
+            # should be enabled
             if app.status in [constants.APP_APPLY_IN_PROGRESS,
                               constants.APP_APPLY_SUCCESS,
-                              constants.APP_APPLY_FAILURE]:
+                              constants.APP_APPLY_FAILURE,
+                              constants.APP_RESTORE_REQUESTED]:
                 self.activate_plugins(AppOperator.Application(app))
 
     def install_plugins(self, app):
