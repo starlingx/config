@@ -9388,11 +9388,6 @@ class ConductorManager(service.PeriodicService):
                  (from_version, to_version))
 
         try:
-            # Extract N+1 packages necessary for installation of controller-1
-            # (ie. installer images, kickstarts)
-            subprocess.check_call(['/usr/sbin/upgrade-start-pkg-extract',
-                                   '-r', to_version])
-
             if tsc.system_mode == constants.SYSTEM_MODE_SIMPLEX:
                 LOG.info("Generating agent request to create simplex upgrade "
                          "data")
@@ -9401,6 +9396,10 @@ class ConductorManager(service.PeriodicService):
                 rpcapi.create_simplex_backup(context, software_upgrade)
                 return
             else:
+                # Extract N+1 packages necessary for installation of controller-1
+                # (ie. installer images, kickstarts)
+                subprocess.check_call(['/usr/sbin/upgrade-start-pkg-extract',
+                                       '-r', to_version])
                 # get the floating management IP
                 mgmt_address = self.dbapi.address_get_by_name(
                     cutils.format_address_name(constants.CONTROLLER_HOSTNAME,

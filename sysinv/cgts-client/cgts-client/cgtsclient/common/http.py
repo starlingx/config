@@ -307,10 +307,17 @@ class HTTPClient(httplib2.Http):
         enc = MultipartEncoder(fields)
         headers = {'Content-Type': enc.content_type,
                    "X-Auth-Token": self.auth_token}
-        req = requests.post(connection_url,
-                            data=enc,
-                            headers=headers)
-        return req.json()
+        response = requests.post(connection_url,
+                                 data=enc,
+                                 headers=headers)
+
+        if kwargs.get('check_exceptions'):
+            if response.status_code != 200:
+                err_message = self._extract_error_json(response.text)
+                fault_text = err_message.get('faultstring') or "Unknown Error"
+                raise exceptions.HTTPBadRequest(fault_text)
+
+        return response.json()
 
     #################
     # AUTHENTICATE

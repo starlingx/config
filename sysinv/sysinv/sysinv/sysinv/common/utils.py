@@ -1078,33 +1078,28 @@ class ISO(object):
 
 
 def get_active_load(loads):
-    active_load = None
-    for db_load in loads:
-        if db_load.state == constants.ACTIVE_LOAD_STATE:
-            active_load = db_load
-
-    if active_load is None:
+    active_state = constants.ACTIVE_LOAD_STATE
+    matches = [load for load in loads if load.state == active_state]
+    if matches:
+        return matches[0]
+    else:
         raise exception.SysinvException(_("No active load found"))
-
-    return active_load
 
 
 def get_imported_load(loads):
-    imported_load = None
-    for db_load in loads:
-        if db_load.state == constants.IMPORTED_LOAD_STATE:
-            imported_load = db_load
-
-    if imported_load is None:
+    imported_states = constants.IMPORTED_LOAD_STATES
+    matches = [load for load in loads if load.state in imported_states]
+    if matches:
+        return matches[0]
+    else:
         raise exception.SysinvException(_("No imported load found"))
-
-    return imported_load
 
 
 def validate_loads_for_import(loads):
-    for db_load in loads:
-        if db_load.state == constants.IMPORTED_LOAD_STATE:
-            raise exception.SysinvException(_("Imported load exists."))
+    imported_states = constants.IMPORTED_LOAD_STATES
+    matches = [load for load in loads if load.state in imported_states]
+    if matches:
+        raise exception.SysinvException(_("Imported load exists."))
 
 
 def validate_load_for_delete(load):
@@ -1113,6 +1108,7 @@ def validate_load_for_delete(load):
 
     valid_delete_states = [
         constants.IMPORTED_LOAD_STATE,
+        constants.IMPORTED_METADATA_LOAD_STATE,
         constants.ERROR_LOAD_STATE,
         constants.DELETING_LOAD_STATE
     ]

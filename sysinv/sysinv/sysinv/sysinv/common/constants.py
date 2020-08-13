@@ -752,8 +752,13 @@ MNT_DIR = '/tmp/mnt'
 ACTIVE_LOAD_STATE = 'active'
 IMPORTING_LOAD_STATE = 'importing'
 IMPORTED_LOAD_STATE = 'imported'
+IMPORTED_METADATA_LOAD_STATE = 'imported-metadata'
 ERROR_LOAD_STATE = 'error'
 DELETING_LOAD_STATE = 'deleting'
+IMPORTED_LOAD_STATES = [
+    IMPORTED_LOAD_STATE,
+    IMPORTED_METADATA_LOAD_STATE
+]
 
 DELETE_LOAD_SCRIPT = '/etc/sysinv/upgrades/delete_load.sh'
 IMPORTED_LOAD_MAX_COUNT = 1
