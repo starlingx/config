@@ -28,6 +28,9 @@ from sysinv.helm import common
 
 LOG = logging.getLogger(__name__)
 
+# Disable yaml feature 'alias' for clean and readable output
+yaml.Dumper.ignore_aliases = lambda *data: True
+
 # Number of characters to strip off from helm plugin name defined in setup.cfg,
 # in order to allow controlling the order of the helm plugins, without changing
 # the names of the plugins.

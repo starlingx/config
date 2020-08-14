@@ -16,6 +16,14 @@ from sysinv.common import constants
 LOG = log.getLogger(__name__)
 
 
+# NOTE: updates in the following functions should also be reflected in
+#       its corresponding duplicate in openstack-armada-app nova plugin
+#       - openstack-armada-app/python-k8sapp-openstack/k8sapp_openstack/k8sapp_openstack/helm/nova.py
+#
+#       _get_port_interface_id_index()
+#       _get_interface_name_index()
+#       _get_interface_name_datanets()
+#       _get_address_interface_name_index()
 def _get_port_interface_id_index(dbapi, host):
     """
     Builds a dictionary of ports indexed by interface id.
