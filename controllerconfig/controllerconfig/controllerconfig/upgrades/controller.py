@@ -1179,6 +1179,15 @@ def migrate_platform_conf(staging_dir):
     with open(PLATFORM_CONF_FILE, 'a') as conf_file:
         for option in options:
             conf_file.write(option)
+    # Workaround to fix mismatched UUID. Long term we need to correctly merge
+    # the two platform.conf files. For now just strip out the UUID and let the
+    # sysinv-agent populate it with the correct value after the db is restored.
+    with open(PLATFORM_CONF_FILE, "r") as conf_file:
+        lines = conf_file.readlines()
+    with open(PLATFORM_CONF_FILE, "w") as conf_file:
+        for line in lines:
+            if not line.startswith("UUID="):
+                conf_file.write(line)
 
 
 def get_simplex_metadata(archive, staging_dir):
