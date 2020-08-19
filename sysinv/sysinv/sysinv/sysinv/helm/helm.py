@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -560,14 +560,15 @@ class HelmOperator(object):
 
             # Apply changes by calling out to helm to do values merge
             # using a dummy chart.
-            output = subprocess.check_output(cmd, env=env)
+            output = subprocess.check_output(cmd, env=env, stderr=subprocess.STDOUT)
 
             # Check output for failure
 
             # Extract the info we want.
             values = output.split('USER-SUPPLIED VALUES:\n')[1].split(
                 '\nCOMPUTED VALUES:')[0]
-        except Exception:
+        except subprocess.CalledProcessError as e:
+            LOG.error("Failed to merge overrides %s" % e.output)
             raise
         finally:
             os.remove(chartfile)

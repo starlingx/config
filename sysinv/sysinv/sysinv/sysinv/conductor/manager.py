@@ -11180,24 +11180,28 @@ class ConductorManager(service.PeriodicService):
                     old_hash[f] = hashlib.md5(file.read()).hexdigest()
 
             # Regenerate overrides and compute new hash
-            new_hash = {}
-            app.charts = self._app._get_list_of_charts(app.sync_armada_mfile)
-            self._helm.generate_helm_application_overrides(
-                app.sync_overrides_dir, app.name, None, cnamespace=None,
-                armada_format=True, armada_chart_info=app.charts, combined=True)
-            (helm_files, armada_files) = self._app._get_overrides_files(
-                app.sync_overrides_dir, app.charts, app.name, None)
-            for f in helm_files + armada_files:
-                with open(f, 'rb') as file:
-                    new_hash[f] = hashlib.md5(file.read()).hexdigest()
+            try:
+                new_hash = {}
+                app.charts = self._app._get_list_of_charts(app.sync_armada_mfile)
+                self._helm.generate_helm_application_overrides(
+                    app.sync_overrides_dir, app.name, None, cnamespace=None,
+                    armada_format=True, armada_chart_info=app.charts, combined=True)
+                (helm_files, armada_files) = self._app._get_overrides_files(
+                    app.sync_overrides_dir, app.charts, app.name, None)
+                for f in helm_files + armada_files:
+                    with open(f, 'rb') as file:
+                        new_hash[f] = hashlib.md5(file.read()).hexdigest()
 
-            if old_hash != new_hash:
-                LOG.info("There has been an overrides change, setting up "
-                         "reapply of %s", app.name)
-                self._app.set_reapply(app.name)
-            else:
-                LOG.info("No override change after configuration action, "
-                         "skipping re-apply of %s", app.name)
+                if old_hash != new_hash:
+                    LOG.info("There has been an overrides change, setting up "
+                             "reapply of %s", app.name)
+                    self._app.set_reapply(app.name)
+                else:
+                    LOG.info("No override change after configuration action, "
+                             "skipping re-apply of %s", app.name)
+            except Exception as e:
+                LOG.exception("Failed to regenerate the overrides for app %s. %s" %
+                              (app.name, e))
         else:
             LOG.info("%s app status does not warrant re-apply", app.name)
 
