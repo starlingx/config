@@ -67,6 +67,12 @@ def do_load_delete(cc, args):
 @utils.arg('sigpath',
            metavar='<path to detached signature>',
            help="The full path of the detached signature file corresponding to the iso [REQUIRED]")
+@utils.arg('-a', '--active',
+           action='store_true',
+           default=False,
+           help=("Perform an active load import operation. "
+                 "Applicable only for SystemController to allow import of "
+                 "an active load for subcloud install"))
 def do_load_import(cc, args):
     """Import a load."""
     # If absolute path is not specified, we assume it is the relative path.
@@ -83,17 +89,23 @@ def do_load_import(cc, args):
     if not os.path.isfile(args.sigpath):
         raise exc.CommandError(_("File %s does not exist." % args.sigpath))
 
-    # The following logic is taken from sysinv api as it takes a while for
-    # this large POST request to reach the server.
-    #
-    # Ensure the request does not exceed load import limit before sending.
-    loads = cc.load.list()
-    if len(loads) > IMPORTED_LOAD_MAX_COUNT:
-        raise exc.CommandError(_(
-            "Max number of loads (2) reached. Please remove the "
-            "old or unused load before importing a new one."))
+    active = None
+    if args.active is True:
+        active = 'true'
+    else:
+        # The following logic is taken from sysinv api as it takes a while for
+        # this large POST request to reach the server.
+        #
+        # Ensure the request does not exceed load import limit before sending.
 
-    patch = {'path_to_iso': args.isopath, 'path_to_sig': args.sigpath}
+        loads = cc.load.list()
+        if len(loads) > IMPORTED_LOAD_MAX_COUNT:
+            raise exc.CommandError(_(
+                "Max number of loads (2) reached. Please remove the "
+                "old or unused load before importing a new one."))
+
+    patch = {'path_to_iso': args.isopath, 'path_to_sig': args.sigpath,
+             'active': active}
 
     try:
         print("This operation will take a while. Please wait.")

@@ -23,6 +23,7 @@ import os
 import pecan
 from pecan import rest
 import six
+import shutil
 import socket
 import wsme
 from wsme import types as wtypes
@@ -288,6 +289,15 @@ class LoadController(rest.RestController):
         LOG.info("Load import request received.")
         err_msg = None
 
+        system_controller_import_active = False
+        data = dict((k, v) for (k, v) in request.POST.items())
+        if data.get('active') == 'true':
+            if pecan.request.dbapi.isystem_get_one().\
+                    distributed_cloud_role == \
+                    constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+                LOG.info("System Controller allow start import_load")
+                system_controller_import_active = True
+
         # Only import loads on controller-0. This is required because the load
         # is only installed locally and we will be booting controller-1 from
         # this load during the upgrade.
@@ -312,9 +322,12 @@ class LoadController(rest.RestController):
                                     "to complete before importing a new one.")
                     else:
                         # Already imported or being imported
-                        err_msg = _("Max number of loads (2) reached. Please "
-                                    "remove the old or unused load before "
-                                    "importing a new one.")
+                        # For SystemController allow import of an active load
+                        if not system_controller_import_active:
+                            err_msg = _(
+                                "Max number of loads (2) reached. Please "
+                                "remove the old or unused load before "
+                                "importing a new one.")
         if err_msg:
             return dict(error=err_msg)
 
@@ -338,28 +351,35 @@ class LoadController(rest.RestController):
                 return dict(error=err_msg)
 
         LOG.info("Load files: %s saved to disk." % load_files)
+
         try:
             new_load = pecan.request.rpcapi.start_import_load(
                 pecan.request.context,
                 load_files[constants.LOAD_ISO],
-                load_files[constants.LOAD_SIGNATURE])
+                load_files[constants.LOAD_SIGNATURE],
+                system_controller_import_active)
         except common.RemoteError as e:
+            if os.path.isdir(constants.LOAD_FILES_STAGING_DIR):
+                shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
             # Keep only the message raised originally by sysinv conductor.
             return dict(error=str(e.value))
 
         if new_load is None:
             return dict(error=_("Error importing load. Load not found"))
 
-        # Signature and upgrade path checks have passed, make rpc call
-        # to the conductor to run import script in the background.
-        try:
-            pecan.request.rpcapi.import_load(
-                pecan.request.context,
-                load_files[constants.LOAD_ISO],
-                new_load)
-        except common.RemoteError as e:
-            # Keep only the message raised originally by sysinv conductor.
-            return dict(error=str(e.value))
+        if not system_controller_import_active:
+            # Signature and upgrade path checks have passed, make rpc call
+            # to the conductor to run import script in the background.
+            try:
+                pecan.request.rpcapi.import_load(
+                    pecan.request.context,
+                    load_files[constants.LOAD_ISO],
+                    new_load)
+            except common.RemoteError as e:
+                if os.path.isdir(constants.LOAD_FILES_STAGING_DIR):
+                    shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
+                # Keep only the message raised originally by sysinv conductor.
+                return dict(error=str(e.value))
 
         new_load_dict = new_load.as_dict()
         LOG.info("Load import request validated, returning new load data: %s"
