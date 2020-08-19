@@ -227,6 +227,19 @@ class ServiceParameterController(rest.RestController):
         return ServiceParameter.convert_with_links(rpc_parameter)
 
     @staticmethod
+    def _check_read_only_parameter(svc_param):
+        """Check the read-only attribute of service parameter"""
+        service = svc_param['service']
+        section = svc_param['section']
+        name = svc_param['name']
+
+        schema = service_parameter.SERVICE_PARAMETER_SCHEMA[service][section]
+        readonly_parameters = schema.get(service_parameter.SERVICE_PARAM_READONLY, [])
+        if name in readonly_parameters:
+            msg = _("The parameter '%s' is readonly." % name)
+            raise wsme.exc.ClientSideError(msg)
+
+    @staticmethod
     def _check_parameter_syntax(svc_param):
         """Check the attributes of service parameter"""
         service = svc_param['service']
@@ -534,6 +547,7 @@ class ServiceParameterController(rest.RestController):
         parameter.update(updates)
 
         self._check_parameter_syntax(parameter)
+        self._check_read_only_parameter(parameter)
 
         updated_parameter = pecan.request.dbapi.service_parameter_update(
             uuid, updates)

@@ -326,6 +326,12 @@ class PlatformPuppet(base.BasePuppet):
                 system.system_type,
         })
 
+        virtual_system = utils.is_virtual_system_config(self.dbapi)
+        config.update({
+            'platform::params::virtual_system':
+                virtual_system
+        })
+
         cpu_count = self._get_platform_cpu_count(host)
         config.update({
             'platform::params::platform_cpu_count':
@@ -921,6 +927,11 @@ class PlatformPuppet(base.BasePuppet):
         config = {}
         if self._distributed_cloud_role() == \
                 constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+            # For regular DC, central-cloud's local registry is exposed on the OAM
+            # interface (to provide the ability to push images externally to central
+            # registry), so "registry.central" domain in dnsmasq.conf is set to system
+            # controller's OAM IP on subcloud to allow subcloud to pull images from
+            # central registry via the OAM interface.
             sc_network = self.dbapi.network_get_by_type(
                 constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM)
             sc_network_addr_pool = self.dbapi.address_pool_get(
@@ -928,4 +939,19 @@ class PlatformPuppet(base.BasePuppet):
             sc_addr = sc_network_addr_pool.floating_address
             config.update({'platform::params::system_controller_addr':
                           sc_addr})
+
+            # For virtual subcloud (StarlingX running in Openstack Nova VM - QEMU/KVM),
+            # there is no physical OAM interface (no external network access) to connect
+            # to central-cloud's local registry, so central registry is exposed on the
+            # MGMT interface and "registry.central" domain needs to be set to system
+            # controller's MGMT IP to allow subcloud to pull images from central registry
+            # via the MGMT interface.
+            if utils.is_virtual_system_config(self.dbapi):
+                sc_mgmt_network = self.dbapi.network_get_by_type(
+                    constants.NETWORK_TYPE_SYSTEM_CONTROLLER)
+                sc_mgmt_network_addr_pool = self.dbapi.address_pool_get(
+                    sc_mgmt_network.pool_uuid)
+                sc_mgmt_addr = sc_mgmt_network_addr_pool.floating_address
+                config.update({'platform::params::system_controller_mgmt_addr':
+                              sc_mgmt_addr})
         return config
