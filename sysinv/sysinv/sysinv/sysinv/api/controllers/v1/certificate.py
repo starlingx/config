@@ -319,10 +319,14 @@ class CertificateController(rest.RestController):
                 pecan.request.dbapi.certificate_get_by_certtype(
                     constants.CERT_MODE_SSL)
             except exception.CertificateTypeNotFound:
-                msg = "No openstack certificates have been added, " \
-                      "platform SSL certificate is not installed."
-                LOG.info(msg)
-                return dict(success="", error=msg)
+                try:
+                    pecan.request.dbapi.certificate_get_by_certtype(
+                        constants.CERT_MODE_TPM)
+                except exception.CertificateTypeNotFound:
+                    msg = "No openstack certificates have been added, " \
+                          "platform SSL certificate is not installed."
+                    LOG.info(msg)
+                    return dict(success="", error=msg)
 
         if not fileitem.filename:
             return dict(success="", error="Error: No file uploaded")
