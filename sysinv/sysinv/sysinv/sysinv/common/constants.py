@@ -304,17 +304,27 @@ DEFAULT_DOCKER_DISTRIBUTION_STOR_SIZE = 1
 DEFAULT_DATABASE_STOR_SIZE = 10
 DEFAULT_SMALL_DATABASE_STOR_SIZE = 5
 DEFAULT_SMALL_BACKUP_STOR_SIZE = 20
-DEFAULT_VIRTUAL_DATABASE_STOR_SIZE = 5
-DEFAULT_VIRTUAL_BACKUP_STOR_SIZE = 5
+DEFAULT_TINY_DATABASE_STOR_SIZE = 1
+DEFAULT_TINY_BACKUP_STOR_SIZE = 1
+DEFAULT_TINY_PLATFORM_STOR_SIZE = 1
 DEFAULT_EXTENSION_STOR_SIZE = 1
 DEFAULT_DC_VAULT_STOR_SIZE = 15
-DEFAULT_ETCD_STORE_SIZE = 1
 
 BACKUP_OVERHEAD = 5
+IMAGE_CONVERSION_SIZE = 1
+KUBERNETES_DOCKER_STOR_SIZE = 30
+DOCKER_DISTRIBUTION_STOR_SIZE = 16
+ETCD_STOR_SIZE = 5
+KUBELET_STOR_SIZE = 10
+TINY_KUBERNETES_DOCKER_STOR_SIZE = 20
+TINY_DOCKER_DISTRIBUTION_STOR_SIZE = 8
+TINY_ETCD_STOR_SIZE = 1
+TINY_KUBELET_STOR_SIZE = 2
 
 # The threshold between small and large disks is 240GiB
 DEFAULT_SMALL_DISK_SIZE = 240
-# The minimum disk size needed to create all partitions
+
+# The minimum small disk size needed to create all partitions
 # Value based on the following calculation:
 # 2*DEFAULT_SMALL_DATABASE_STOR_SIZE                   10 (2*5)
 # DEFAULT_SMALL_BACKUP_STOR_SIZE                       20
@@ -334,13 +344,27 @@ DEFAULT_SMALL_DISK_SIZE = 240
 # buffer for partition creation                         1
 # -------------------------------------------------------
 #                                                     154
-MINIMUM_DISK_SIZE = 154
+MINIMUM_SMALL_DISK_SIZE = 154
 
-KUBERNETES_DOCKER_STOR_SIZE = 30
-IMAGE_CONVERSION_SIZE = 1
-DOCKER_DISTRIBUTION_STOR_SIZE = 16
-ETCD_STOR_SIZE = 5
-KUBELET_STOR_SIZE = 10
+# The minimum tiny disk size needed to create all partitions
+# Value based on the following calculation:
+# 2*DEFAULT_TINY_DATABASE_STOR_SIZE                     2 (2*1)
+# DEFAULT_TINY_BACKUP_STOR_SIZE                         1
+# LOG_VOL_SIZE (reserved in kickstarts)                 3
+# SCRATCH_VOL_SIZE (reserved in kickstarts)             2
+# DEFAULT_TINY_PLATFORM_STOR_SIZE                       1
+# DEFAULT_EXTENSION_STOR_SIZE                           1
+# DEFAULT_RABBIT_STOR_SIZE                              2
+# TINY_KUBERNETES_DOCKER_STOR_SIZE                     20
+# TINY_DOCKER_DISTRIBUTION_STOR_SIZE                    8
+# TINY_ETCD_STOR_SIZE                                   1
+# TINY_KUBELET_STOR_SIZE                                2
+# platform backup partition (created in kickstarts)     1
+# root partition (created in kickstarts)               15
+# boot/EFI partition (created in kickstarts)            1
+# -------------------------------------------------------
+#                                                      60
+MINIMUM_TINY_DISK_SIZE = 60
 
 # Openstack Interface names
 OS_INTERFACE_PUBLIC = 'public'
