@@ -5,6 +5,7 @@
 #
 
 from sysinv.common import exception
+from sysinv.common import utils as cutils
 from sysinv.helm import common
 from sysinv.helm import openstack
 
@@ -29,6 +30,16 @@ class MariadbHelm(openstack.OpenstackBaseHelm):
                 'endpoints': self._get_endpoints_overrides(),
             }
         }
+
+        if not cutils.is_std_system(self.dbapi):
+            config_override = {
+                'conf': {
+                    'database': {
+                        'config_override': ''
+                    }
+                }
+            }
+            overrides[common.HELM_NS_OPENSTACK].update(config_override)
 
         if namespace in self.SUPPORTED_NAMESPACES:
             return overrides[namespace]
