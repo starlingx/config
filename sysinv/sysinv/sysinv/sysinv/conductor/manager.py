@@ -7509,39 +7509,40 @@ class ConductorManager(service.PeriodicService):
             # Defaults: 500G root disk
             #
             #          8 G - /var/log (reserved in kickstart)
-            #          8 G - /scratch (reserved in kickstart)
+            #         16 G - /scratch (reserved in kickstart)
             #          2 G - pgsql_lv (DRBD bootstrap manifest)
             #          2 G - rabbit_lv (DRBD bootstrap manifest)
             #         10 G - platform_lv (DRBD bootstrap manifest)
             #          1 G - extension_lv (DRBD bootstrap manifest)
             #        -----
-            #         31 G - cgts-vg contents when we get to these checks
+            #         39 G - cgts-vg contents when we get to these checks
             #
             #
             #       Final defaults view after controller manifests
             #          8 G - /var/log (reserved in kickstart)
-            #          8 G - /scratch (reserved in kickstart)
+            #         16 G - /scratch (reserved in kickstart)
             #         20 G - /var/lib/postgresql
             #          2 G - /var/lib/rabbitmq
             #         10 G - /opt/platform
             #          1 G - /opt/extension
             #         25 G - /opt/backup
-            #         30 G - /var/lib/docker (--kubernetes)
-            #         16 G - /var/lib/docker-distribution (--kubernetes)
-            #          5 G - /opt/etcd (--kubernetes)
-            #         20 G - /var/lib/ceph/mon (--kubernetes)
-            #         15 G - /opt/dc-vault (DRBD ctlr manifest for
-            #                   Distributed Cloud System Controller)
+            #         30 G - /var/lib/docker
+            #         16 G - /var/lib/docker-distribution
+            #          5 G - /opt/etcd
+            #         10 G - /var/lib/kubelet
+            #         20 G - /var/lib/ceph/mon
+            #         15 G - /opt/dc-vault (DRBD ctlr manifest for DCSC)
             #        -----
-            #        160 G
+            #        163 G / 178 G(DCSC)
             #
             #  The absolute minimum disk size for these default settings:
+            #      2.0 G - buffer
             #      0.5 G - /boot
             #     10.0 G - /opt/platform-backup
             #     20.0 G - /
-            #    160.0 G - cgts-vg PV
+            #    163.0 G / 178.0 G - cgts-vg PV
             #   -------
-            #    190.5 G min size disk
+            #    ~ 196 G / 210 G(DCSC) min size disk
             #
             database_storage = constants.DEFAULT_DATABASE_STOR_SIZE
 
@@ -7549,41 +7550,43 @@ class ConductorManager(service.PeriodicService):
 
             LOG.info("Disk size : %s ... small disk defaults" % disk_size)
 
-            # Small disk: under 240G root disk
+            # Small disk: under 240G and over 181G root disk
             #
             #          8 G - /var/log (reserved in kickstart)
-            #          8 G - /scratch (reserved in kickstart)
+            #         16 G - /scratch (reserved in kickstart)
             #          2 G - pgsql_lv (DRBD bootstrap manifest)
             #          2 G - rabbit_lv (DRBD bootstrap manifest)
             #         10 G - platform_lv (DRBD bootstrap manifest)
             #          1 G - extension_lv (DRBD bootstrap manifest)
             #        -----
-            #         31 G - cgts-vg contents when we get to these checks
+            #         39 G - cgts-vg contents when we get to these checks
             #
             #
             #       Final defaults view after controller manifests
             #          8 G - /var/log (reserved in kickstart)
-            #          8 G - /scratch (reserved in kickstart)
+            #         16 G - /scratch (reserved in kickstart)
             #         10 G - /var/lib/postgresql
             #          2 G - /var/lib/rabbitmq
             #         10 G - /opt/platform
             #          1 G - /opt/extension
             #         20 G - /opt/backup
-            #         30 G - /var/lib/docker (--kubernetes)
-            #         16 G - /var/lib/docker-distribution (--kubernetes)
-            #         20 G - /var/lib/ceph/mon (--kubernetes)
-            #          5 G - /opt/etcd (--kubernetes)
+            #         30 G - /var/lib/docker
+            #         16 G - /var/lib/docker-distribution
+            #         20 G - /var/lib/ceph/mon
+            #          5 G - /opt/etcd
+            #         10 G - /var/lib/kubelet
             #         15 G - /opt/dc-vault (DRBD ctlr manifest for DCSC)
             #        -----
-            #        145 G
+            #        148 G / 163 G(DCSC)
             #
             #  The absolute minimum disk size for these default settings:
+            #     2.0 G - buffer
             #     0.5 G - /boot
             #    10.0 G - /opt/platform-backup
             #    20.0 G - /
-            #   145.0 G - cgts-vg PV
+            #   148.0 G / 163.0 G - cgts-vg PV
             #   -------
-            #   175.5 G min size disk
+            #   ~ 181 G / 196 G(DCSC) min size disk
             #
             database_storage = \
                 constants.DEFAULT_SMALL_DATABASE_STOR_SIZE
