@@ -22,6 +22,7 @@ from sysinv.common import constants
 from sysinv.common import device as dconstants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
+from sysinv.fpga_agent import constants as fpga_constants
 from sysinv import objects
 
 LOG = log.getLogger(__name__)
@@ -251,6 +252,9 @@ class DeviceImageController(rest.RestController):
         msg = _validate_syntax(data)
         if msg:
             return dict(success="", error=msg)
+        msg = _validate_pci_device(data)
+        if msg:
+            return dict(error=msg)
 
         device_image = pecan.request.dbapi.deviceimage_create(data)
         device_image_dict = device_image.as_dict()
@@ -478,6 +482,17 @@ def _validate_syntax(device_image):
         msg = _validate_bitstream_type(device_image)
         if not msg:
             msg = _check_revoke_key(device_image)
+    return msg
+
+
+def _validate_pci_device(device_image):
+    msg = None
+    if (device_image['pci_vendor'] != fpga_constants.N3000_VENDOR or
+           device_image['pci_device'] != fpga_constants.N3000_DEVICE):
+        msg = _("Invalid PCI vendor/device ID: %s %s. "
+                "Supported vendor ID: %s and supported device ID: %s" %
+                (device_image['pci_vendor'], device_image['pci_device'],
+                 fpga_constants.N3000_VENDOR, fpga_constants.N3000_DEVICE))
     return msg
 
 

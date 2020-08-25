@@ -16,7 +16,7 @@ from six.moves import http_client
 
 from sysinv.common import constants
 from sysinv.common import device as dconstants
-
+from sysinv.fpga_agent import constants as fpga_constants
 from sysinv.tests.api import base
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
@@ -115,8 +115,8 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
                                 'bitstream.bit')
         data = {
             'bitstream_type': dconstants.BITSTREAM_TYPE_FUNCTIONAL,
-            'pci_vendor': '80ee',
-            'pci_device': 'beef',
+            'pci_vendor': fpga_constants.N3000_VENDOR,
+            'pci_device': fpga_constants.N3000_DEVICE,
             'bitstream_id': '12345',
         }
         upload_file = [('file', bitstream_file)]
@@ -137,8 +137,8 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
         # Verify that the device image has the expected attributes
         self.assertEqual(resp_dict['bitstream_type'],
                          dconstants.BITSTREAM_TYPE_FUNCTIONAL)
-        self.assertEqual(resp_dict['pci_vendor'], '80ee')
-        self.assertEqual(resp_dict['pci_device'], 'beef')
+        self.assertEqual(resp_dict['pci_vendor'], fpga_constants.N3000_VENDOR)
+        self.assertEqual(resp_dict['pci_device'], fpga_constants.N3000_DEVICE)
         self.assertEqual(resp_dict['bitstream_id'], '12345')
 
     def test_create_root_key_image(self):
@@ -147,8 +147,8 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
                                 'bitstream.bit')
         data = {
             'bitstream_type': dconstants.BITSTREAM_TYPE_ROOT_KEY,
-            'pci_vendor': '80ee',
-            'pci_device': 'beef',
+            'pci_vendor': fpga_constants.N3000_VENDOR,
+            'pci_device': fpga_constants.N3000_DEVICE,
             'key_signature': '12345',
         }
         upload_file = [('file', bitstream_file)]
@@ -169,8 +169,8 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
         # Verify that the device image has the expected attributes
         self.assertEqual(resp_dict['bitstream_type'],
                          dconstants.BITSTREAM_TYPE_ROOT_KEY)
-        self.assertEqual(resp_dict['pci_vendor'], '80ee')
-        self.assertEqual(resp_dict['pci_device'], 'beef')
+        self.assertEqual(resp_dict['pci_vendor'], fpga_constants.N3000_VENDOR)
+        self.assertEqual(resp_dict['pci_device'], fpga_constants.N3000_DEVICE)
         self.assertEqual(resp_dict['key_signature'], '12345')
 
     def test_create_revoke_key_image(self):
@@ -179,8 +179,8 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
                                 'bitstream.bit')
         data = {
             'bitstream_type': dconstants.BITSTREAM_TYPE_KEY_REVOCATION,
-            'pci_vendor': '80ee',
-            'pci_device': 'beef',
+            'pci_vendor': fpga_constants.N3000_VENDOR,
+            'pci_device': fpga_constants.N3000_DEVICE,
             'revoke_key_id': 12345,
         }
         upload_file = [('file', bitstream_file)]
@@ -201,8 +201,8 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
         # Verify that the device image has the expected attributes
         self.assertEqual(resp_dict['bitstream_type'],
                          dconstants.BITSTREAM_TYPE_KEY_REVOCATION)
-        self.assertEqual(resp_dict['pci_vendor'], '80ee')
-        self.assertEqual(resp_dict['pci_device'], 'beef')
+        self.assertEqual(resp_dict['pci_vendor'], fpga_constants.N3000_VENDOR)
+        self.assertEqual(resp_dict['pci_device'], fpga_constants.N3000_DEVICE)
         self.assertEqual(resp_dict['revoke_key_id'], 12345)
 
     def test_create_functional_image_failure(self):
@@ -211,8 +211,8 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
                                 'bitstream.bit')
         data = {
             'bitstream_type': dconstants.BITSTREAM_TYPE_FUNCTIONAL,
-            'pci_vendor': '80ee',
-            'pci_device': 'beef',
+            'pci_vendor': fpga_constants.N3000_VENDOR,
+            'pci_device': fpga_constants.N3000_DEVICE,
             'revoke_key_id': '12345',
         }
         upload_file = [('file', bitstream_file)]
@@ -229,8 +229,8 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
                                 'bitstream.bit')
         data = {
             'bitstream_type': dconstants.BITSTREAM_TYPE_ROOT_KEY,
-            'pci_vendor': '80ee',
-            'pci_device': 'beef',
+            'pci_vendor': fpga_constants.N3000_VENDOR,
+            'pci_device': fpga_constants.N3000_DEVICE,
             'revoke_key_id': '12345',
         }
         upload_file = [('file', bitstream_file)]
@@ -247,8 +247,8 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
                                 'bitstream.bit')
         data = {
             'bitstream_type': dconstants.BITSTREAM_TYPE_KEY_REVOCATION,
-            'pci_vendor': '80ee',
-            'pci_device': 'beef',
+            'pci_vendor': fpga_constants.N3000_VENDOR,
+            'pci_device': fpga_constants.N3000_DEVICE,
             'bitstream_id': '12345',
         }
         upload_file = [('file', bitstream_file)]
@@ -265,6 +265,23 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
                                 'bitstream.bit')
         data = {
             'bitstream_type': 'wrong_type',
+            'pci_vendor': fpga_constants.N3000_VENDOR,
+            'pci_device': fpga_constants.N3000_DEVICE,
+            'bitstream_id': '12345',
+        }
+        upload_file = [('file', bitstream_file)]
+        result = self.post_with_files('/device_images', data,
+                                      upload_files=upload_file,
+                                      headers=self.API_HEADERS,
+                                      expect_errors=True)
+        self.assertIn("Bitstream type wrong_type not supported", str(result))
+
+    def test_create_pci_vendor_device_invalid(self):
+        # Test creation of device image
+        bitstream_file = os.path.join(os.path.dirname(__file__), "data",
+                                'bitstream.bit')
+        data = {
+            'bitstream_type': dconstants.BITSTREAM_TYPE_FUNCTIONAL,
             'pci_vendor': '80ee',
             'pci_device': 'beef',
             'bitstream_id': '12345',
@@ -274,7 +291,7 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
                                       upload_files=upload_file,
                                       headers=self.API_HEADERS,
                                       expect_errors=True)
-        self.assertIn("Bitstream type wrong_type not supported", str(result))
+        self.assertIn("Supported vendor ID", str(result))
 
 
 class TestPatch(TestDeviceImage):
