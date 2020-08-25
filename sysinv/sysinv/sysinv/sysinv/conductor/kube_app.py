@@ -2053,7 +2053,7 @@ class AppOperator(object):
         for alarm in self._fm_api.get_faults_by_id(
                 fm_constants.FM_ALARM_ID_APPLICATION_REAPPLY_PENDING) or []:
             if alarm.entity_instance_id == target_entity:
-                self._fm_api.clear_fault(alarm.id,
+                self._fm_api.clear_fault(alarm.alarm_id,
                                          alarm.entity_instance_id)
 
     def needs_reapply(self, app_name):
@@ -2073,7 +2073,7 @@ class AppOperator(object):
             for alarm in self._fm_api.get_faults_by_id(
                     fm_constants.FM_ALARM_ID_APPLICATION_REAPPLY_PENDING) or []:
                 if alarm.entity_instance_id == target_entity:
-                    self._fm_api.clear_fault(alarm.id,
+                    self._fm_api.clear_fault(alarm.alarm_id,
                                              alarm.entity_instance_id)
         return flag_exists
 
