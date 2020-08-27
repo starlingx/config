@@ -116,7 +116,7 @@ class HTTPClient(httplib2.Http):
                  endpoint_type='publicURL',
                  auth_strategy='keystone', ca_cert=None, log_credentials=False,
                  **kwargs):
-        if 'ca_file' in kwargs:
+        if 'ca_file' in kwargs and kwargs['ca_file']:
             ca_cert = kwargs['ca_file']
 
         super(HTTPClient, self).__init__(timeout=timeout, ca_certs=ca_cert)
