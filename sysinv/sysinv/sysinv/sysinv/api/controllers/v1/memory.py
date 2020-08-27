@@ -70,8 +70,8 @@ class Memory(base.APIBase):
             try:
                 ihost = objects.host.get_by_uuid(pecan.request.context, value)
                 self._minimum_platform_reserved_mib = \
-                    cutils.get_minimum_platform_reserved_memory(ihost,
-                                                                self.numa_node)
+                    cutils.get_minimum_platform_reserved_memory(
+                        pecan.request.dbapi, ihost, self.numa_node)
             except exception.NodeNotFound as e:
                 # Change error code because 404 (NotFound) is inappropriate
                 # response for a POST request to create a Port
@@ -400,6 +400,8 @@ class MemoryController(rest.RestController):
             ihostId = rpc_port['ihost_uuid']
 
         host_id = pecan.request.dbapi.ihost_get(ihostId)
+        if host_id['personality'] == constants.STORAGE:
+            raise exception.OperationNotPermitted
 
         vm_hugepages_nr_2M_pending = None
         vm_hugepages_nr_1G_pending = None
@@ -445,23 +447,32 @@ class MemoryController(rest.RestController):
             raise wsme.exc.ClientSideError(_(
                   "Hostname or uuid must be defined"))
 
-        try:
-            # Semantics checks and update hugepage memory accounting
-            patch = _check_huge_values(rpc_port, patch,
-                                       vm_hugepages_nr_2M_pending,
-                                       vm_hugepages_nr_1G_pending,
-                                       vswitch_hugepages_reqd,
-                                       vswitch_hugepages_size_mib,
-                                       platform_reserved_mib,
-                                       vm_pending_as_percentage)
-        except wsme.exc.ClientSideError as e:
-            inode = pecan.request.dbapi.inode_get(inode_id=rpc_port.forinodeid)
-            numa_node = inode.numa_node
-            msg = _('Processor {0}:'.format(numa_node)) + e.message
-            raise wsme.exc.ClientSideError(msg)
+        if cutils.host_has_function(host_id, constants.WORKER):
+            try:
+                # Semantics checks and update hugepage memory accounting
+                patch = _check_huge_values(rpc_port, patch,
+                                           vm_hugepages_nr_2M_pending,
+                                           vm_hugepages_nr_1G_pending,
+                                           vswitch_hugepages_reqd,
+                                           vswitch_hugepages_size_mib,
+                                           platform_reserved_mib,
+                                           vm_pending_as_percentage)
+            except wsme.exc.ClientSideError as e:
+                inode = pecan.request.dbapi.inode_get(inode_id=rpc_port.forinodeid)
+                numa_node = inode.numa_node
+                msg = _('Processor {0}:'.format(numa_node)) + e.message
+                raise wsme.exc.ClientSideError(msg)
+        else:
+            # Standard/system controller or storage node
+            if (vm_hugepages_nr_2M_pending is not None or
+                    vm_hugepages_nr_1G_pending is not None or
+                    vswitch_hugepages_reqd is not None or
+                    vswitch_hugepages_size_mib is not None):
+                raise wsme.exc.ClientSideError(_(
+                    "Hugepages memory configuration is not supported for this node."))
 
         # Semantics checks for platform memory
-        _check_memory(rpc_port, host_id, platform_reserved_mib,
+        _check_memory(pecan.request.dbapi, rpc_port, host_id, platform_reserved_mib,
                       vm_hugepages_nr_2M_pending, vm_hugepages_nr_1G_pending,
                       vswitch_hugepages_reqd, vswitch_hugepages_size_mib,
                       vm_pending_as_percentage)
@@ -530,6 +541,8 @@ def _update(mem_uuid, mem_values):
         ihostId = rpc_port['ihost_uuid']
 
     host_id = pecan.request.dbapi.ihost_get(ihostId)
+    if host_id['personality'] == constants.STORAGE:
+        raise exception.OperationNotPermitted
 
     if 'platform_reserved_mib' in mem_values:
         platform_reserved_mib = mem_values['platform_reserved_mib']
@@ -557,17 +570,26 @@ def _update(mem_uuid, mem_values):
         raise wsme.exc.ClientSideError((
             "Hostname or uuid must be defined"))
 
-    # Semantics checks and update hugepage memory accounting
-    mem_values = _check_huge_values(rpc_port, mem_values,
-                                    vm_hugepages_nr_2M_pending,
-                                    vm_hugepages_nr_1G_pending,
-                                    vswitch_hugepages_reqd,
-                                    vswitch_hugepages_size_mib,
-                                    platform_reserved_mib,
-                                    vm_pending_as_percentage)
+    if cutils.host_has_function(host_id, constants.WORKER):
+        # Semantics checks and update hugepage memory accounting
+        mem_values = _check_huge_values(rpc_port, mem_values,
+                                        vm_hugepages_nr_2M_pending,
+                                        vm_hugepages_nr_1G_pending,
+                                        vswitch_hugepages_reqd,
+                                        vswitch_hugepages_size_mib,
+                                        platform_reserved_mib,
+                                        vm_pending_as_percentage)
+    else:
+        # Standard/system controller or storage node
+        if (vm_hugepages_nr_2M_pending is not None or
+                vm_hugepages_nr_1G_pending is not None or
+                vswitch_hugepages_reqd is not None or
+                vswitch_hugepages_size_mib is not None):
+            raise wsme.exc.ClientSideError(_(
+                "Hugepages memory configuration is not supported for this node."))
 
     # Semantics checks for platform memory
-    _check_memory(rpc_port, host_id, platform_reserved_mib,
+    _check_memory(pecan.request.dbapi, rpc_port, host_id, platform_reserved_mib,
                   vm_hugepages_nr_2M_pending, vm_hugepages_nr_1G_pending,
                   vswitch_hugepages_reqd, vm_pending_as_percentage)
 
@@ -589,7 +611,7 @@ def _check_host(ihost):
             raise wsme.exc.ClientSideError(_("Host must be locked."))
 
 
-def _check_memory(rpc_port, ihost, platform_reserved_mib=None,
+def _check_memory(dbapi, rpc_port, ihost, platform_reserved_mib=None,
                   vm_hugepages_nr_2M_pending=None, vm_hugepages_nr_1G_pending=None,
                   vswitch_hugepages_reqd=None, vswitch_hugepages_size_mib=None,
                   vm_pending_as_percentage=None):
@@ -610,20 +632,25 @@ def _check_memory(rpc_port, ihost, platform_reserved_mib=None,
         # Check for lower limit
         inode_id = rpc_port['forinodeid']
         inode = pecan.request.dbapi.inode_get(inode_id)
-        min_platform_memory = cutils.get_minimum_platform_reserved_memory(ihost, inode.numa_node)
+        min_platform_memory = cutils.get_minimum_platform_reserved_memory(
+            dbapi, ihost, inode.numa_node)
         if int(platform_reserved_mib) < min_platform_memory:
             raise wsme.exc.ClientSideError(_(
                 "Platform reserved memory for numa node %s must be greater than the minimum value %d")
                                            % (inode.numa_node, min_platform_memory))
 
         # Check if it is within 2/3 percent of the total memory
-        node_memtotal_mib = rpc_port['node_memtotal_mib']
+        if cutils.host_has_function(ihost, constants.WORKER):
+            node_memtotal_mib = rpc_port['node_memtotal_mib']
+        else:
+            node_memtotal_mib = rpc_port['memtotal_mib']
+
         max_platform_reserved = node_memtotal_mib * 2 / 3
         if int(platform_reserved_mib) > max_platform_reserved:
             low_core = cutils.is_low_core_system(ihost, pecan.request.dbapi)
             required_platform_reserved = \
-                cutils.get_required_platform_reserved_memory(ihost,
-                                                             inode.numa_node, low_core)
+                cutils.get_required_platform_reserved_memory(
+                    pecan.request.dbapi, ihost, inode.numa_node, low_core)
             msg_platform_over = (_("Platform reserved memory %s MiB "
                                    "on node %s is not within range [%s, %s]")
                                  % (int(platform_reserved_mib),
@@ -643,6 +670,8 @@ def _check_memory(rpc_port, ihost, platform_reserved_mib=None,
             vs_hp_size = int(vswitch_hugepages_size_mib)
         else:
             vs_hp_size = rpc_port['vswitch_hugepages_size_mib']
+            if vs_hp_size is None:
+                vs_hp_size = 0
 
         vs_hp_nr = 0
         if vswitch_hugepages_reqd:

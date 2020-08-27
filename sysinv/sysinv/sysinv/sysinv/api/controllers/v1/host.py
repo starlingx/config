@@ -3568,7 +3568,8 @@ class HostController(rest.RestController):
         # Determine required platform reserved memory for this numa node
         low_core = cutils.is_low_core_system(ihost, pecan.request.dbapi)
         reserved = cutils. \
-            get_required_platform_reserved_memory(ihost, node['numa_node'], low_core)
+            get_required_platform_reserved_memory(
+                pecan.request.dbapi, ihost, node['numa_node'], low_core)
 
         # Determine configured memory for this numa node
         mems = pecan.request.dbapi.imemory_get_by_inode(node['id'])

@@ -955,16 +955,19 @@ def is_low_core_system(ihost, dba):
     return number_physical_cores <= constants.NUMBER_CORES_XEOND
 
 
-def get_minimum_platform_reserved_memory(ihost, numa_node):
+def get_minimum_platform_reserved_memory(dbapi, ihost, numa_node):
     """Returns the minimum amount of memory to be reserved by the platform for a
-        given NUMA node.  Compute nodes require reserved memory because the
-        balance of the memory is allocated to VM instances.  Other node types
-        have exclusive use of the memory so no explicit reservation is
-        required. Memory required by platform core is not included here.
-        """
+    given NUMA node. Standard controller, system controller and compute nodes
+    all require reserved memory because the balance of the memory is allocated
+    to pods or VM instances. Storage nodes have exclusive use of the memory
+    so no explicit reservation is required.
+    """
     reserved = 0
-    if numa_node is None:
-        return reserved
+
+    system = dbapi.isystem_get_one()
+    ihost_inodes = dbapi.inode_get_by_ihost(ihost['uuid'])
+    numa_node_count = len(ihost_inodes)
+
     if is_virtual() or is_virtual_worker(ihost):
         # minimal memory requirements for VirtualBox
         if host_has_function(ihost, constants.WORKER):
@@ -974,23 +977,34 @@ def get_minimum_platform_reserved_memory(ihost, numa_node):
                     reserved += 5000
             else:
                 reserved += 500
-    else:
-        if host_has_function(ihost, constants.WORKER):
+    elif (system.distributed_cloud_role ==
+              constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and
+          ihost['personality'] == constants.CONTROLLER):
+        reserved += \
+            constants.DISTRIBUTED_CLOUD_CONTROLLER_MEMORY_RESERVED_MIB // numa_node_count
+    elif host_has_function(ihost, constants.WORKER):
             # Engineer 1G per numa node for disk IO RSS overhead
             reserved += constants.DISK_IO_RESIDENT_SET_SIZE_MIB
+    elif ihost['personality'] == constants.CONTROLLER:
+        # Standard controller
+        reserved += constants.STANDARD_CONTROLLER_MEMORY_RESERVED_MIB // numa_node_count
+
     return reserved
 
 
-def get_required_platform_reserved_memory(ihost, numa_node, low_core=False):
+def get_required_platform_reserved_memory(dbapi, ihost, numa_node, low_core=False):
     """Returns the amount of memory to be reserved by the platform for a
-    given NUMA node.  Compute nodes require reserved memory because the
-    balance of the memory is allocated to VM instances.  Other node types
-    have exclusive use of the memory so no explicit reservation is
-    required.
+    given NUMA node. Standard controller, system controller and compute nodes
+    all require reserved memory because the balance of the memory is allocated
+    to pods or VM instances. Storage nodes have exclusive use of the memory
+    so no explicit reservation is required.
     """
     required_reserved = 0
-    if numa_node is None:
-        return required_reserved
+
+    system = dbapi.isystem_get_one()
+    ihost_inodes = dbapi.inode_get_by_ihost(ihost['uuid'])
+    numa_node_count = len(ihost_inodes)
+
     if is_virtual() or is_virtual_worker(ihost):
         # minimal memory requirements for VirtualBox
         required_reserved += constants.DISK_IO_RESIDENT_SET_SIZE_MIB_VBOX
@@ -1012,30 +1026,39 @@ def get_required_platform_reserved_memory(ihost, numa_node, low_core=False):
             else:
                 required_reserved += \
                     constants.DISK_IO_RESIDENT_SET_SIZE_MIB_VBOX
-    else:
-        if host_has_function(ihost, constants.WORKER):
-            # Engineer 2G per numa node for disk IO RSS overhead
-            required_reserved += constants.DISK_IO_RESIDENT_SET_SIZE_MIB
-            if numa_node == 0:
-                # Engineer 2G for worker to give some headroom;
-                # typically requires 650 MB PSS
-                required_reserved += \
-                    constants.PLATFORM_CORE_MEMORY_RESERVED_MIB
-                if host_has_function(ihost, constants.CONTROLLER):
-                    # Over-engineer controller memory.
-                    # Typically require 5GB PSS; accommodate 2GB headroom.
-                    # Controller memory usage depends on number of workers.
-                    if low_core:
-                        required_reserved += \
-                            constants.COMBINED_NODE_CONTROLLER_MEMORY_RESERVED_MIB_XEOND
-                    else:
-                        required_reserved += \
-                            constants.COMBINED_NODE_CONTROLLER_MEMORY_RESERVED_MIB
-                else:
-                    # If not a controller,
-                    # add overhead for metadata and vrouters
+    elif (system.distributed_cloud_role ==
+             constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and
+          ihost['personality'] == constants.CONTROLLER):
+        required_reserved += \
+            constants.DISTRIBUTED_CLOUD_CONTROLLER_MEMORY_RESERVED_MIB // numa_node_count
+    elif host_has_function(ihost, constants.WORKER):
+        # Engineer 2G per numa node for disk IO RSS overhead
+        required_reserved += constants.DISK_IO_RESIDENT_SET_SIZE_MIB
+        if numa_node == 0:
+            # Engineer 2G for worker to give some headroom;
+            # typically requires 650 MB PSS
+            required_reserved += \
+                constants.PLATFORM_CORE_MEMORY_RESERVED_MIB
+            if host_has_function(ihost, constants.CONTROLLER):
+                # Over-engineer controller memory.
+                # Typically require 5GB PSS; accommodate 2GB headroom.
+                # Controller memory usage depends on number of workers.
+                if low_core:
                     required_reserved += \
-                        constants.NETWORK_METADATA_OVERHEAD_MIB
+                        constants.COMBINED_NODE_CONTROLLER_MEMORY_RESERVED_MIB_XEOND
+                else:
+                    required_reserved += \
+                        constants.COMBINED_NODE_CONTROLLER_MEMORY_RESERVED_MIB
+            else:
+                # If not a controller,
+                # add overhead for metadata and vrouters
+                required_reserved += \
+                    constants.NETWORK_METADATA_OVERHEAD_MIB
+    elif ihost['personality'] == constants.CONTROLLER:
+        # Standard controller
+        required_reserved += \
+            constants.STANDARD_CONTROLLER_MEMORY_RESERVED_MIB // numa_node_count
+
     return required_reserved
 
 

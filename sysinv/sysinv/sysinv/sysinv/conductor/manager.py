@@ -2967,7 +2967,8 @@ class ConductorManager(service.PeriodicService):
 
     def _get_platform_reserved_memory(self, ihost, node):
         low_core = cutils.is_low_core_system(ihost, self.dbapi)
-        reserved = cutils.get_required_platform_reserved_memory(ihost, node, low_core)
+        reserved = cutils.get_required_platform_reserved_memory(
+            self.dbapi, ihost, node, low_core)
         return {'platform_reserved_mib': reserved} if reserved else {}
 
     def imemory_update_by_ihost(self, context,
