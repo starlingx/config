@@ -1208,19 +1208,22 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('get_host_ttys_dcd',
                                        ihost_id=ihost_id))
 
-    def start_import_load(self, context, path_to_iso, path_to_sig):
+    def start_import_load(self, context, path_to_iso, path_to_sig,
+                          import_active=False):
         """Synchronously, mount the ISO and validate the load for import
 
         :param context: request context.
         :param path_to_iso: the file path of the iso on this host
         :param path_to_sig: the file path of the iso's detached signature on
                             this host
+        :param import_active: boolean allow import of active load
         :returns: the newly create load object.
         """
         return self.call(context,
                          self.make_msg('start_import_load',
                                        path_to_iso=path_to_iso,
-                                       path_to_sig=path_to_sig))
+                                       path_to_sig=path_to_sig,
+                                       import_active=import_active))
 
     def import_load(self, context, path_to_iso, new_load):
         """Asynchronously, import a load and add it to the database

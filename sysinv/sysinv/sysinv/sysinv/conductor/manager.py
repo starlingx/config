@@ -8999,7 +8999,19 @@ class ConductorManager(service.PeriodicService):
                                               "database for load id: %s")
                                             % new_load['id'])
 
-    def start_import_load(self, context, path_to_iso, path_to_sig):
+    @staticmethod
+    def _unmount_iso(mounted_iso, mntdir):
+        # We need to sleep here because the mount/umount is happening too
+        # fast and cause the following kernel logs
+        #   Buffer I/O error on device loopxxx, logical block x
+        # We sleep 1 sec to give time for the mount to finish processing
+        # properly.
+        time.sleep(1)
+        mounted_iso._umount_iso()
+        shutil.rmtree(mntdir)
+
+    def start_import_load(self, context, path_to_iso, path_to_sig,
+                          import_active=False):
         """
         Mount the ISO and validate the load for import
         """
@@ -9007,7 +9019,8 @@ class ConductorManager(service.PeriodicService):
 
         active_load = cutils.get_active_load(loads)
 
-        cutils.validate_loads_for_import(loads)
+        if not import_active:
+            cutils.validate_loads_for_import(loads)
 
         current_version = active_load.software_version
 
@@ -9035,6 +9048,7 @@ class ConductorManager(service.PeriodicService):
 
         metadata_file_path = mntdir + '/upgrades/metadata.xml'
         if not os.path.exists(metadata_file_path):
+            self._unmount_iso(mounted_iso, mntdir)
             raise exception.SysinvException(_("Metadata file not found"))
 
         # Read in the metadata file
@@ -9044,21 +9058,31 @@ class ConductorManager(service.PeriodicService):
             metadata_file.close()
 
         except Exception:
+            self._unmount_iso(mounted_iso, mntdir)
             raise exception.SysinvException(_(
                 "Unable to read metadata file"))
 
         # unmount iso
-
-        # We need to sleep here because the mount/umount is happening too
-        # fast and cause the following kernel logs
-        #   Buffer I/O error on device loopxxx, logical block x
-        # We sleep 1 sec to give time for the mount to finish processing
-        # properly.
-        time.sleep(1)
-        mounted_iso._umount_iso()
-        shutil.rmtree(mntdir)
+        self._unmount_iso(mounted_iso, mntdir)
 
         new_version = root.findtext('version')
+
+        if import_active:
+            if new_version != current_version:
+                raise exception.SysinvException(
+                    _("Active version and import version must match (%s)")
+                    % current_version)
+
+            # return the matching (active) load in the database
+            loads = self.dbapi.load_get_list()
+            for load in loads:
+                if load.software_version == new_version:
+                    break
+            else:
+                raise exception.SysinvException(
+                    _("Active load not found (%s)") % current_version)
+
+            return load
 
         if new_version == current_version:
             raise exception.SysinvException(

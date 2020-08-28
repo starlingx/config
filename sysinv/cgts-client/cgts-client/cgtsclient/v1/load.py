@@ -12,7 +12,8 @@ from cgtsclient import exc
 
 CREATION_ATTRIBUTES = ['software_version', 'compatible_version',
                        'required_patches']
-IMPORT_ATTRIBUTES = ['path_to_iso', 'path_to_sig']
+
+IMPORT_ATTRIBUTES = ['path_to_iso', 'path_to_sig', 'active']
 
 
 class Load(base.Resource):
@@ -45,14 +46,22 @@ class LoadManager(base.Manager):
 
     def import_load(self, **kwargs):
         path = '/v1/loads/import_load'
-        new = {}
+
+        active = None
+        load_info = {}
         for (key, value) in kwargs.items():
             if key in IMPORT_ATTRIBUTES:
-                new[key] = value
+                if key == 'active':
+                    active = value
+                else:
+                    load_info[key] = value
             else:
                 raise exc.InvalidAttribute(key)
 
-        return self._upload_multipart(path, body=new)
+        return self._upload_multipart(
+            path,
+            load_info,
+            data={'active': active})
 
     def delete(self, load_id):
         path = '/v1/loads/%s' % load_id
