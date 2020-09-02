@@ -6188,12 +6188,6 @@ class ConductorManager(service.PeriodicService):
 
             if not reboot_required and filesystem_list:
                 # apply the manifest at runtime, otherwise a reboot is required
-                if os.path.isfile(CONFIG_CONTROLLER_FINI_FLAG):
-                    os.remove(CONFIG_CONTROLLER_FINI_FLAG)
-
-                if os.path.isfile(CFS_DRBDADM_RECONFIGURED):
-                    os.remove(CFS_DRBDADM_RECONFIGURED)
-
                 # map the updated file system to the runtime puppet class
                 classmap = {
                     constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION:
