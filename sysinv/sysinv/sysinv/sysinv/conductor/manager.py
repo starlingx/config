@@ -5428,17 +5428,22 @@ class ConductorManager(service.PeriodicService):
 
     @staticmethod
     def _check_software_orchestration_in_progress():
-        """
-        Returns the progress of upgrades, patches and firmware updates
-        """
+        """Returns the progress of upgrades, patches and firmware updates."""
 
-        vim_resp = vim_api.vim_get_sw_update_strategy(
-            None,
-            constants.VIM_DEFAULT_TIMEOUT_IN_SECS)
-
-        if vim_resp['sw-update-type'] is not None and \
-                vim_resp['in-progress'] is not None:
-            return vim_resp['in-progress']
+        try:
+            vim_resp = vim_api.vim_get_sw_update_strategy(
+                None,
+                constants.VIM_DEFAULT_TIMEOUT_IN_SECS)
+            # A timeout will return None for vim_resp
+            if vim_resp is None:
+                LOG.info("vim_api get_sw_update_strategy timed out")
+                return False
+            if vim_resp.get('sw-update-type') is not None and \
+               vim_resp.get('in-progress') is not None:
+                return vim_resp['in-progress']
+        except Exception as e:
+            LOG.warn("Failed vim_api get_sw_update_strategy. (%s)" % str(e))
+            return False
 
         return False
 
