@@ -101,6 +101,8 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
                     keystone_auth_data['admin_project_name'],
                 'nfv::nfvi::openstack_auth_host':
                     keystone_auth_data['auth_host'],
+                'nfv::nfvi::openstack_auth_port':
+                    keystone_auth_data['auth_port'],
                 'nfv::nfvi::openstack_user_domain':
                     keystone_auth_data['admin_user_domain'],
                 'nfv::nfvi::openstack_project_domain':
@@ -114,6 +116,8 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
                     keystone_auth_data['admin_project_name'],
                 'nfv::alarm::openstack_auth_host':
                     keystone_auth_data['auth_host'],
+                'nfv::alarm::openstack_auth_port':
+                    keystone_auth_data['auth_port'],
                 'nfv::alarm::openstack_user_domain':
                     keystone_auth_data['admin_user_domain'],
                 'nfv::alarm::openstack_project_domain':
@@ -127,6 +131,8 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
                     keystone_auth_data['admin_project_name'],
                 'nfv::event_log::openstack_auth_host':
                     keystone_auth_data['auth_host'],
+                'nfv::event_log::openstack_auth_port':
+                    keystone_auth_data['auth_port'],
                 'nfv::event_log::openstack_user_domain':
                     keystone_auth_data['admin_user_domain'],
                 'nfv::event_log::openstack_project_domain':
