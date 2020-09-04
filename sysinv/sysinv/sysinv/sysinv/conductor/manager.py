@@ -10926,7 +10926,7 @@ class ConductorManager(service.PeriodicService):
             config_dict = {
                 "personalities": personalities,
                 "classes": ['platform::config::dc_root_ca::runtime',
-                            'platform::haproxy::runtime']
+                            'platform::haproxy::restart::runtime']
             }
 
             self._config_apply_runtime_manifest(context,
@@ -10943,7 +10943,12 @@ class ConductorManager(service.PeriodicService):
         """
         sc_endpoint_cert_secret_ns = 'sc-cert'
         sc_intermediate_ca_secret_name = 'sc-adminep-ca-certificate'
-        sc_admin_endpoint_secret_name = 'sc-adminep-certificate'
+        sc_admin_endpoint_secret_name = constants.SC_ADMIN_ENDPOINT_SECRET_NAME
+        if root_ca_crt is None:
+            LOG.error('Root CA cert is not provided')
+            raise exception.SysinvException(_(
+                "Root CA certificate is not provided"))
+
         kube_operator = kubernetes.KubeOperator()
         secret = kube_operator.kube_get_secret(sc_intermediate_ca_secret_name,
                                                sc_endpoint_cert_secret_ns)
@@ -10952,15 +10957,19 @@ class ConductorManager(service.PeriodicService):
                 sc_endpoint_cert_secret_ns, sc_intermediate_ca_secret_name
             ))
 
-        ca_key = base64.b64encode(sc_ca_key)
-        ca_cert = base64.b64encode(sc_ca_cert)
-        secret.data['tls.key'] = ca_key
-        secret.data['tls.crt'] = ca_cert
+        tls_key = base64.b64encode(sc_ca_key)
+        tls_crt = base64.b64encode(sc_ca_cert)
+        ca_crt = base64.b64encode(root_ca_crt)
+        secret.data['ca.crt'] = ca_crt
+        secret.data['tls.key'] = tls_key
+        secret.data['tls.crt'] = tls_crt
 
         new = kube_operator.kube_patch_secret(sc_intermediate_ca_secret_name,
                                               sc_endpoint_cert_secret_ns,
                                               secret)
-        if new.data['tls.key'] == ca_key and new.data['tls.crt'] == ca_cert:
+        if new.data['tls.key'] == tls_key and new.data['tls.crt'] == tls_crt:
+            with open(constants.DC_ROOT_CA_CONFIG_PATH, 'w') as f:
+                f.write(root_ca_crt)
             res = kube_operator.kube_delete_secret(sc_admin_endpoint_secret_name,
                                              sc_endpoint_cert_secret_ns)
 

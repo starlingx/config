@@ -17,6 +17,7 @@
 # of this software may be licensed only pursuant to the terms
 # of an applicable Wind River license agreement.
 #
+import base64
 import re
 import hashlib
 from datetime import datetime
@@ -25,6 +26,7 @@ from kubernetes import client
 from kubernetes import watch
 from kubernetes.client import Configuration
 from kubernetes import config
+import os
 from oslo_config import cfg
 from oslo_log import log
 from six.moves.urllib.error import URLError
@@ -76,7 +78,7 @@ class CertUpdateEventData(object):
         data = raw_obj['data']
         managed_fields = metadata['managedFields']
         self.action = event_data['type']
-        self.cert_name = metadata['name']
+        self.secret_name = metadata['name']
 
         self.last_operation = ''
         self.last_operation_time = None
@@ -87,13 +89,28 @@ class CertUpdateEventData(object):
 
         creation_timestamp = metadata['creationTimestamp']
         self.creation_time = parse(creation_timestamp).replace(tzinfo=None)
-        self.ca_crt = data['ca.crt'] if 'ca.crt' in data else ''
-        self.tls_crt = data['tls.crt'] if 'tls.crt' in data else ''
-        self.tls_key = data['tls.key'] if 'tls.key' in data else ''
+        self.ca_crt = None
+        self.tls_crt = None
+        self.tls_key = None
+        try:
+            self.ca_crt = base64.b64decode(data['ca.crt']).strip() \
+                if 'ca.crt' in data else ''
+            self.tls_crt = base64.b64decode(data['tls.crt']).strip() \
+                if 'tls.crt' in data else ''
+            self.tls_key = base64.b64decode(data['tls.key']).strip() \
+                if 'tls.key' in data else ''
+        except TypeError:
+            LOG.error('Invalid secret data.')
+            if self.ca_crt is None:
+                LOG.error('ca.crt = %s' % data['ca.crt'])
+            elif self.tls_crt is None:
+                LOG.error('tls.crt = %s' % data['tls.crt'])
+            else:
+                LOG.error('tls.key = %s' % data['tls.key'])
 
     def equal(self, obj):
         return self.action == obj.action and \
-               self.cert_name == obj.cert_name and \
+               self.secret_name == obj.secret_name and \
                self.ca_crt == obj.ca_crt and \
                self.tls_crt == obj.tls_crt and \
                self.tls_key == obj.tls_key and \
@@ -105,7 +122,7 @@ class CertUpdateEventData(object):
         format = 'action %s (%s)\nhash: ca_crt: %s tls_crt %s tls_key %s\n' \
                  'created at %s last operation %s last update at %s'
         return format % (
-            self.action, self.cert_name, self.hash(self.ca_crt),
+            self.action, self.secret_name, self.hash(self.ca_crt),
             self.hash(self.tls_crt), self.hash(self.tls_key),
             self.creation_time, self.last_operation,
             self.last_operation_time)
@@ -143,7 +160,7 @@ class CertUpdateEvent(object):
         A task will be replaced with a newer task with the same id
         when it is in a queue (for reattempting)
         """
-        return 'cert-update: %s' % self.event_data.cert_name
+        return 'cert-update: %s' % self.event_data.secret_name
 
     def failed(self):
         self.listener.action_failed(self.event_data)
@@ -156,6 +173,8 @@ class CertWatcherListener(object):
     def notify_changed(self, event_data):
         if self.check_filter(event_data):
             self.do_action(event_data)
+        else:
+            return False
 
     def check_filter(self, event_data):
         return False
@@ -191,7 +210,7 @@ class CertWatcher(object):
     def register_listener(self, listener):
         return self.listeners.append(listener)
 
-    def start_watch(self, func):
+    def start_watch(self, on_success, on_error):
         config.load_kube_config(KUBE_CONFIG_PATH)
         c = Configuration()
         c.verify_ssl = True
@@ -203,16 +222,17 @@ class CertWatcher(object):
         for item in w.stream(ccApi.list_namespaced_secret, namespace=self.namespace):
             event_data = CertUpdateEventData(item)
             for listener in self.listeners:
+                update_event = CertUpdateEvent(listener, event_data)
                 try:
-                    listener.notify_changed(event_data)
+                    if listener.notify_changed(event_data):
+                        on_success(update_event.get_id())
                 except Exception as e:
                     LOG.error('Monitoring action %s failed. %s' % (event_data, e))
                     if not isinstance(e, URLError):
                         LOG.exception(e)
-                    reattempt = CertUpdateEvent(listener, event_data)
-                    func(reattempt)
+                    on_error(update_event)
 
-    def initialize(self):
+    def initialize(self, audit_subcloud):
         self.context.initialize()
         role = self.context.dc_role
         LOG.info('DC role: %s' % role)
@@ -226,7 +246,8 @@ class CertWatcher(object):
         self.context.kubernete_namespace = ns
         self.register_listener(AdminEndpointRenew(self.context))
         if role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-            self.register_listener(DCIntermediateCertRenew(self.context))
+            self.register_listener(DCIntermediateCertRenew(self.context, audit_subcloud))
+            self.register_listener(RootCARenew(self.context))
 
 
 class CertificateRenew(CertWatcherListener):
@@ -244,12 +265,12 @@ class CertificateRenew(CertWatcherListener):
 
     def recreate_secret(self, event_data):
         """
-        It a workaround, delete the secret for cert-manager to recreate it with
+        It is a workaround, delete the secret for cert-manager to recreate it with
         new private key
         """
         kube_op = sys_kube.KubeOperator()
-        kube_op.kube_delete_secret(event_data.cert_name, self.context.kubernete_namespace)
-        LOG.info('Delete secret %s:%s' % (self.context.kubernete_namespace, event_data.cert_name))
+        kube_op.kube_delete_secret(event_data.secret_name, self.context.kubernete_namespace)
+        LOG.info('Recreate secret %s:%s' % (self.context.kubernete_namespace, event_data.secret_name))
 
     def update_certificate(self, event_data):
         pass
@@ -284,14 +305,14 @@ class AdminEndpointRenew(CertificateRenew):
         super(AdminEndpointRenew, self).__init__(context)
         role = self.context.dc_role
         if role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-            self.cert_name = "dc-adminep-certificate"
+            self.secret_name = constants.DC_ADMIN_ENDPOINT_SECRET_NAME
         elif role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-            self.cert_name = "sc-adminep-certificate"
+            self.secret_name = constants.SC_ADMIN_ENDPOINT_SECRET_NAME
         else:
-            self.cert_name = None
+            self.secret_name = None
 
     def check_filter(self, event_data):
-        if self.cert_name == event_data.cert_name:
+        if self.secret_name == event_data.secret_name:
             return self.certificate_is_ready(event_data)
         else:
             return False
@@ -303,20 +324,21 @@ class AdminEndpointRenew(CertificateRenew):
 
 
 class DCIntermediateCertRenew(CertificateRenew):
-    def __init__(self, context):
+    def __init__(self, context, audit_subcloud):
         super(DCIntermediateCertRenew, self).__init__(context)
         self.secret_pattern = re.compile('-adminep-ca-certificate$')
+        self.audit_subcloud = audit_subcloud
 
     def check_filter(self, event_data):
-        m = self.secret_pattern.search(event_data.cert_name)
+        m = self.secret_pattern.search(event_data.secret_name)
         if m and m.start() > 0:
             return self.certificate_is_ready(event_data)
         else:
             return False
 
     def _get_subcloud_name(self, event_data):
-        m = self.secret_pattern.search(event_data.cert_name)
-        return event_data.cert_name[0:m.start()]
+        m = self.secret_pattern.search(event_data.secret_name)
+        return event_data.secret_name[0:m.start()]
 
     def update_certificate(self, event_data):
         subcloud_name = self._get_subcloud_name(event_data)
@@ -330,6 +352,8 @@ class DCIntermediateCertRenew(CertificateRenew):
                                       event_data.ca_crt,
                                       event_data.tls_crt,
                                       event_data.tls_key)
+
+        self.audit_subcloud(subcloud_name)
 
     def action_failed(self, event_data):
         sc_name = self._get_subcloud_name(event_data)
@@ -363,3 +387,87 @@ class DCIntermediateCertRenew(CertificateRenew):
                         utils.update_subcloud_status(dc_token, sc_name,
                                                      utils.SYNC_STATUS_OUT_OF_SYNC)
                         break
+
+
+class RootCARenew(CertificateRenew):
+    def __init__(self, context):
+        super(RootCARenew, self).__init__(context)
+        self.secrets_to_recreate = []
+
+    def notify_changed(self, event_data):
+        if self.check_filter(event_data):
+            self.do_action(event_data)
+        else:
+            return False
+
+    def check_filter(self, event_data):
+        if self.context.dc_role != \
+            constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER or \
+                event_data.secret_name != constants.DC_ADMIN_ROOT_CA_SECRET_NAME or \
+                not self.certificate_is_ready(event_data):
+            return False
+
+        # check against current root CA cert to see if it is updated
+        if not os.path.isfile(constants.DC_ROOT_CA_CERT_PATH):
+            return True
+
+        with open(constants.DC_ROOT_CA_CERT_PATH, 'r') as f:
+            crt = f.read()
+
+        m = hashlib.md5()
+        m.update(event_data.ca_crt)
+        md5sum = m.hexdigest()
+
+        if crt.strip() != event_data.ca_crt:
+            LOG.info('root ca certificate has changed. md5sum %s' % md5sum)
+            # a root CA update, all required secrets needs to be recreated
+            self.secrets_to_recreate = []
+            return True
+        else:
+            LOG.info('root ca certificate remains the same. md5sum %s' % md5sum)
+            return False
+
+    def do_action(self, event_data):
+        LOG.info('%s' % event_data)
+        if len(self.secrets_to_recreate) == 0:
+            self.update_certificate(event_data)
+
+        self.recreate_secrets()
+
+    def action_failed(self, event_data):
+        LOG.Error('Updating root CA certificate has failed.')
+        if len(self.secrets_to_recreate) > 0:
+            LOG.Error('%s are not refreshed' % self.secrets_to_recreate)
+            self.secrets_to_recreate = []
+
+    def update_certificate(self, event_data):
+        # currently the root CA cert renewal does not replace private key
+        # This is not ideal it is caused by a cert-manager issue.
+        # The root CA cert is to be updated by when the admin endpoint
+        # certification is updated
+        # https://github.com/jetstack/cert-manager/issues/2978
+        self.secrets_to_recreate = self.get_secrets_to_recreate()
+        LOG.info('Secrets to be recreated %s' % self.secrets_to_recreate)
+
+    @staticmethod
+    def get_secrets_to_recreate():
+        secret_names = utils.get_subcloud_secrets().values()
+        secret_names.insert(0, constants.DC_ADMIN_ENDPOINT_SECRET_NAME)
+        return secret_names
+
+    def recreate_secrets(self):
+        kube_op = sys_kube.KubeOperator()
+        secret_list = self.secrets_to_recreate[:]
+        for secret in secret_list:
+            try:
+                LOG.info('Recreate %s:%s' % (utils.CERT_NAMESPACE_SYS_CONTROLLER, secret))
+                kube_op.kube_delete_secret(secret, utils.CERT_NAMESPACE_SYS_CONTROLLER)
+            except Exception as e:
+                LOG.error('Deleting secret %s:%s. Error %s' %
+                          (utils.CERT_NAMESPACE_SYS_CONTROLLER, secret, e))
+            else:
+                self.secrets_to_recreate.remove(secret)
+
+        if len(self.secrets_to_recreate) > 0:
+            # raise exception to keep reattempting
+            raise Exception('Some secrets were not recreated successfully')

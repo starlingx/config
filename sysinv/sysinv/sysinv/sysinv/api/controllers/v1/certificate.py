@@ -542,6 +542,7 @@ class CertificateController(rest.RestController):
             pecan.request.context,
             data.root_ca_crt, data.sc_ca_cert, data.sc_ca_key)
 
+        LOG.info('Update admin endpoint intermediate CA certificate succeed')
         res = RequestResult()
         res.result = 'OK'
 
