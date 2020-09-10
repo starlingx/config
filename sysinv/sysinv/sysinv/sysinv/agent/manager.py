@@ -17,7 +17,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 
 
@@ -1095,6 +1095,119 @@ class AgentManager(service.PeriodicService):
                 return False
         return True
 
+    def _create_host_filesystems(self, rpcapi, icontext):
+        # Create the hosts filesystems for kubelet, docker, backup, scratch
+
+        filesystems = []
+
+        if self._prev_fs is not None:
+            # Skip if host filesystems already exists
+            return
+
+        try:
+            # Get the supported filesystems for this host with default
+            # sizes
+            kubelet_lv_size = constants.KUBELET_STOR_SIZE
+            docker_lv_size = constants.KUBERNETES_DOCKER_STOR_SIZE
+
+            disk_size = utils.get_disk_capacity_mib(self._ihost_rootfs_device)
+            disk_size = int(disk_size / 1024)
+
+            if disk_size > constants.DEFAULT_SMALL_DISK_SIZE:
+                LOG.info("Disk size for %s: %s ... large disk defaults" %
+                         (self._ihost_rootfs_device, disk_size))
+
+                backup_lv_size = \
+                    constants.DEFAULT_DATABASE_STOR_SIZE + \
+                    constants.DEFAULT_PLATFORM_STOR_SIZE + \
+                    constants.BACKUP_OVERHEAD
+
+            elif disk_size >= constants.MINIMUM_SMALL_DISK_SIZE:
+                LOG.info("Disk size for %s : %s ... small disk defaults" %
+                         (self._ihost_rootfs_device, disk_size))
+
+                # Due to the small size of the disk we can't provide the
+                # proper amount of backup space which is (database + platform_lv
+                # + BACKUP_OVERHEAD) so we are using a smaller default.
+                backup_lv_size = constants.DEFAULT_SMALL_BACKUP_STOR_SIZE
+
+            elif (disk_size >= constants.MINIMUM_TINY_DISK_SIZE and
+                  rpcapi.is_virtual_system_config(icontext) and
+                  tsc.system_type == constants.TIS_AIO_BUILD):
+                # Supports StarlingX running in QEMU/KVM VM with a tiny disk(AIO only)
+                LOG.info("Disk size for %s : %s ... tiny disk defaults "
+                         "for virtual system configuration" %
+                         (self._ihost_rootfs_device, disk_size))
+                kubelet_lv_size = constants.TINY_KUBELET_STOR_SIZE
+                docker_lv_size = constants.TINY_KUBERNETES_DOCKER_STOR_SIZE
+                backup_lv_size = constants.DEFAULT_TINY_BACKUP_STOR_SIZE
+
+            else:
+                LOG.info("Disk size for %s : %s ... disk too small" %
+                         (self._ihost_rootfs_device, disk_size))
+                raise exception.SysinvException("Disk size requirements not met.")
+
+            # check if the scratch fs is supported for current host
+            if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_SCRATCH,
+                                             self._ihost_personality):
+                scratch_lv_size = utils.get_current_fs_size("scratch")
+                data = {
+                    'name': constants.FILESYSTEM_NAME_SCRATCH,
+                    'size': scratch_lv_size,
+                    'logical_volume': constants.FILESYSTEM_LV_DICT[
+                        constants.FILESYSTEM_NAME_SCRATCH]
+                }
+                filesystems.append(data)
+
+            # check if the backup fs is supported for current host
+            if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_BACKUP,
+                                             self._ihost_personality):
+                data = {
+                    'name': constants.FILESYSTEM_NAME_BACKUP,
+                    'size': backup_lv_size,
+                    'logical_volume': constants.FILESYSTEM_LV_DICT[
+                        constants.FILESYSTEM_NAME_BACKUP]
+                }
+                filesystems.append(data)
+
+            # check if the docker fs is supported for current host
+            if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_DOCKER,
+                                             self._ihost_personality):
+                data = {
+                    'name': constants.FILESYSTEM_NAME_DOCKER,
+                    'size': docker_lv_size,
+                    'logical_volume': constants.FILESYSTEM_LV_DICT[
+                        constants.FILESYSTEM_NAME_DOCKER]
+                }
+                filesystems.append(data)
+
+            # check if the kubelet fs is supported for current host
+            if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_KUBELET,
+                                             self._ihost_personality):
+                data = {
+                    'name': constants.FILESYSTEM_NAME_KUBELET,
+                    'size': kubelet_lv_size,
+                    'logical_volume': constants.FILESYSTEM_LV_DICT[
+                        constants.FILESYSTEM_NAME_KUBELET]
+                }
+                filesystems.append(data)
+
+            if filesystems:
+                # Create the filesystems if they do not already exist.
+                # This audit does not check if the fs size has changed.
+                # Doing so would interfere with the resizes done via
+                # the HostFs API
+                rpcapi.create_host_filesystems(
+                    icontext, self._ihost_uuid, filesystems)
+                self._prev_fs = filesystems
+
+            self._inventory_reported.add(self.HOST_FILESYSTEMS)
+        except Exception as e:
+            LOG.exception(
+                "Sysinv Agent exception creating the host filesystems."
+                " %s" % e)
+            self._prev_fs = None
+
     @utils.synchronized(constants.PARTITION_MANAGE_LOCK)
     def _update_disk_partitions(self, rpcapi, icontext,
                                 host_uuid, force_update=False):
@@ -1308,76 +1421,7 @@ class AgentManager(service.PeriodicService):
                     self._prev_lvg = None
                     pass
 
-            # Create the filesystems
-            filesystems = []
-
-            if self._prev_fs is None:
-                try:
-                    # Get the supported filesystems for this host with default
-                    # sizes
-
-                    # check if the scratch fs is supported for current host
-                    if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_SCRATCH,
-                                                     self._ihost_personality):
-                        scratch_lv_size = utils.get_current_fs_size("scratch")
-                        data = {
-                            'name': constants.FILESYSTEM_NAME_SCRATCH,
-                            'size': scratch_lv_size,
-                            'logical_volume': constants.FILESYSTEM_LV_DICT[
-                                constants.FILESYSTEM_NAME_SCRATCH]
-                        }
-                        filesystems.append(data)
-
-                    # check if the backup fs is supported for current host
-                    if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_BACKUP,
-                                                     self._ihost_personality):
-                        backup_lv_size = utils.get_default_controller_fs_backup_size(self._ihost_rootfs_device)
-                        data = {
-                            'name': constants.FILESYSTEM_NAME_BACKUP,
-                            'size': backup_lv_size,
-                            'logical_volume': constants.FILESYSTEM_LV_DICT[
-                                constants.FILESYSTEM_NAME_BACKUP]
-                        }
-                        filesystems.append(data)
-
-                    # check if the docker fs is supported for current host
-                    if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_DOCKER,
-                                                     self._ihost_personality):
-                        data = {
-                            'name': constants.FILESYSTEM_NAME_DOCKER,
-                            'size': constants.KUBERNETES_DOCKER_STOR_SIZE,
-                            'logical_volume': constants.FILESYSTEM_LV_DICT[
-                                constants.FILESYSTEM_NAME_DOCKER]
-                        }
-                        filesystems.append(data)
-
-                    # check if the kubelet fs is supported for current host
-                    if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_KUBELET,
-                                                     self._ihost_personality):
-                        data = {
-                            'name': constants.FILESYSTEM_NAME_KUBELET,
-                            'size': constants.KUBELET_STOR_SIZE,
-                            'logical_volume': constants.FILESYSTEM_LV_DICT[
-                                constants.FILESYSTEM_NAME_KUBELET]
-                        }
-                        filesystems.append(data)
-
-                    if filesystems:
-                        # Create the filesystems if they do not already exist.
-                        # This audit does not check if the fs size has changed.
-                        # Doing so would interfere with the resizes done via
-                        # the HostFs API
-                        rpcapi.create_host_filesystems(icontext,
-                                                       self._ihost_uuid,
-                                                       filesystems)
-                        self._prev_fs = filesystems
-
-                    self._inventory_reported.add(self.HOST_FILESYSTEMS)
-                except Exception as e:
-                    LOG.exception(
-                        "Sysinv Agent exception creating the host filesystems."
-                        " %s" % e)
-                    self._prev_fs = None
+            self._create_host_filesystems(rpcapi, icontext)
 
             # Notify conductor of inventory completion after necessary
             # inventory reports have been sent to conductor.

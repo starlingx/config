@@ -1644,41 +1644,6 @@ def get_current_fs_size(fs_name):
     return size_gib
 
 
-def get_default_controller_fs_backup_size(rootfs_device):
-    """ Get the filesystem backup size.
-    """
-
-    disk_size = get_disk_capacity_mib(rootfs_device)
-    disk_size = int(disk_size / 1024)
-
-    if disk_size > constants.DEFAULT_SMALL_DISK_SIZE:
-        LOG.info("Disk size for %s: %s ... large disk defaults" %
-                 (rootfs_device, disk_size))
-
-        database_storage = constants.DEFAULT_DATABASE_STOR_SIZE
-
-        platform_lv_size = constants.DEFAULT_PLATFORM_STOR_SIZE
-        backup_lv_size = database_storage + platform_lv_size + \
-            constants.BACKUP_OVERHEAD
-
-    elif disk_size >= constants.MINIMUM_DISK_SIZE:
-
-        LOG.info("Disk size for %s : %s ... small disk defaults" %
-                 (rootfs_device, disk_size))
-
-        # Due to the small size of the disk we can't provide the
-        # proper amount of backup space which is (database + platform_lv
-        # + BACKUP_OVERHEAD) so we are using a smaller default.
-        backup_lv_size = constants.DEFAULT_SMALL_BACKUP_STOR_SIZE
-
-    else:
-        LOG.info("Disk size for %s : %s ... disk too small" %
-                 (rootfs_device, disk_size))
-        raise exception.SysinvException("Disk size requirements not met.")
-
-    return backup_lv_size
-
-
 def get_cgts_vg_free_space():
     """Determine free space in cgts-vg"""
 

@@ -1129,6 +1129,13 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        mtc_port=mtc_port,
                                        ihost_mtc_dict=ihost_mtc_dict))
 
+    def is_virtual_system_config(self, context):
+        """
+        Gets the virtual system config from service parameter
+        """
+        return self.call(context,
+                         self.make_msg('is_virtual_system_config'))
+
     def ilvg_get_nova_ilvg_by_ihost(self,
                                     context,
                                     ihost_uuid):

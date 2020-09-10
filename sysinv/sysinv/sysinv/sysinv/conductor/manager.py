@@ -7479,16 +7479,20 @@ class ConductorManager(service.PeriodicService):
         self.dbapi.istor_update(stor_uuid, values)
 
     def create_controller_filesystems(self, context, rootfs_device):
-        """ Create the storage config based on disk size for
-            database, image, backup, img-conversion
+        """ Create the storage config based on disk size for database, platform,
+            extension, rabbit, etcd, docker-distribution, dc-vault(SC)
 
             :param context: an admin context.
             :param rootfs_device: the root disk device
         """
         database_storage = 0
 
-        # Add the extension storage
+        # Set default filesystem sizes
+        platform_storage = constants.DEFAULT_PLATFORM_STOR_SIZE
         extension_lv_size = constants.DEFAULT_EXTENSION_STOR_SIZE
+        etcd_lv_size = constants.ETCD_STOR_SIZE
+        docker_distribution_lv_size = \
+            constants.DOCKER_DISTRIBUTION_STOR_SIZE
 
         system = self.dbapi.isystem_get_one()
         system_dc_role = system.get('distributed_cloud_role', None)
@@ -7541,7 +7545,7 @@ class ConductorManager(service.PeriodicService):
             #
             database_storage = constants.DEFAULT_DATABASE_STOR_SIZE
 
-        elif disk_size >= constants.MINIMUM_DISK_SIZE:
+        elif disk_size >= constants.MINIMUM_SMALL_DISK_SIZE:
 
             LOG.info("Disk size : %s ... small disk defaults" % disk_size)
 
@@ -7584,13 +7588,64 @@ class ConductorManager(service.PeriodicService):
             database_storage = \
                 constants.DEFAULT_SMALL_DATABASE_STOR_SIZE
 
+        elif (disk_size >= constants.MINIMUM_TINY_DISK_SIZE and
+              cutils.is_virtual_system_config(self.dbapi) and
+              cutils.is_aio_system(self.dbapi)):
+
+            LOG.info("Disk size : %s ... tiny disk defaults for virtual system configruation" % disk_size)
+
+            # Tiny disk(StarlingX running in VM, AIO only): under 154G and over 60G root disk
+            #
+            #          3 G - /var/log (reserved in kickstart)
+            #          2 G - /scratch (reserved in kickstart)
+            #          2 G - pgsql_lv (DRBD bootstrap manifest)
+            #          2 G - rabbit_lv (DRBD bootstrap manifest)
+            #          1 G - platform_lv (DRBD bootstrap manifest)
+            #          1 G - extension_lv (DRBD bootstrap manifest)
+            #        -----
+            #         11 G - cgts-vg contents when we get to these checks
+            #
+            #
+            #       Final defaults view after controller manifests
+            #          3 G - /var/log (reserved in kickstart)
+            #          2 G - /scratch (reserved in kickstart)
+            #          2 G - /var/lib/postgresql
+            #          2 G - /var/lib/rabbitmq
+            #          1 G - /opt/platform
+            #          1 G - /opt/extension
+            #          1 G - /opt/backup
+            #         20 G - /var/lib/docker
+            #          8 G - /var/lib/docker-distribution
+            #          2 G - /var/lib/kubelet
+            #          1 G - /opt/etcd
+            #        -----
+            #         43 G
+            #
+            #  The absolute minimum disk size for these default settings:
+            #     0.5 G - /boot
+            #     1.0 G - /opt/platform-backup
+            #    15.0 G - /
+            #    43.0 G - cgts-vg PV
+            #   -------
+            #    ~ 60 G min size disk
+            #
+
+            database_storage = \
+                constants.DEFAULT_TINY_DATABASE_STOR_SIZE
+            platform_storage = \
+                constants.DEFAULT_TINY_PLATFORM_STOR_SIZE
+            docker_distribution_lv_size = \
+                constants.TINY_DOCKER_DISTRIBUTION_STOR_SIZE
+            etcd_lv_size = constants.TINY_ETCD_STOR_SIZE
+
         else:
             LOG.info("Disk size : %s ... disk too small" % disk_size)
             raise exception.SysinvException("Disk size requirements not met.")
 
+        # platform fs added to platform-lv
         data = {
             'name': constants.FILESYSTEM_NAME_PLATFORM,
-            'size': constants.DEFAULT_PLATFORM_STOR_SIZE,
+            'size': platform_storage,
             'logical_volume': constants.FILESYSTEM_LV_DICT[
                 constants.FILESYSTEM_NAME_PLATFORM],
             'replicated': True,
@@ -7599,6 +7654,7 @@ class ConductorManager(service.PeriodicService):
             data['name'], data['logical_volume'], data['size']))
         self.dbapi.controller_fs_create(data)
 
+        # pgsql fs added to pgsql-lv
         data = {
             'name': constants.FILESYSTEM_NAME_DATABASE,
             'size': database_storage,
@@ -7610,6 +7666,7 @@ class ConductorManager(service.PeriodicService):
             data['name'], data['logical_volume'], data['size']))
         self.dbapi.controller_fs_create(data)
 
+        # extension fs added to extension-lv
         data = {
             'name': constants.FILESYSTEM_NAME_EXTENSION,
             'size': extension_lv_size,
@@ -7622,8 +7679,6 @@ class ConductorManager(service.PeriodicService):
         self.dbapi.controller_fs_create(data)
 
         # ETCD fs added to etcd-lv
-        etcd_lv_size = constants.ETCD_STOR_SIZE
-
         data_etcd = {
                 'name': constants.FILESYSTEM_NAME_ETCD,
                 'size': etcd_lv_size,
@@ -7635,9 +7690,10 @@ class ConductorManager(service.PeriodicService):
             data_etcd['name'], data_etcd['logical_volume'], data_etcd['size']))
         self.dbapi.controller_fs_create(data_etcd)
 
+        # docker-distribution fs added to dockerdistribution-lv
         data = {
             'name': constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION,
-            'size': constants.DOCKER_DISTRIBUTION_STOR_SIZE,
+            'size': docker_distribution_lv_size,
             'logical_volume': constants.FILESYSTEM_LV_DICT[
                 constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION],
             'replicated': True,
@@ -7646,6 +7702,7 @@ class ConductorManager(service.PeriodicService):
             data['name'], data['logical_volume'], data['size']))
         self.dbapi.controller_fs_create(data)
 
+        # dc-vault fs added to dc-vault-lv
         if system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
             data = {
                 'name': constants.FILESYSTEM_NAME_DC_VAULT,
@@ -8844,6 +8901,13 @@ class ConductorManager(service.PeriodicService):
             LOG.error("Failed mtc_host_add=%s" % ihost_mtc_dict)
 
         return
+
+    def is_virtual_system_config(self, context):
+        """
+        Gets the virtual system config from service parameter
+        """
+        virtual_system = cutils.is_virtual_system_config(self.dbapi)
+        return virtual_system
 
     def ilvg_get_nova_ilvg_by_ihost(self,
                                     context,
