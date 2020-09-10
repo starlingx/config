@@ -24,6 +24,7 @@
 
 """Utilities and helper functions."""
 
+import ast
 import base64
 import boto3
 from botocore.config import Config
@@ -1995,6 +1996,19 @@ def get_http_port(dbapi):
             constants.SERVICE_PARAM_SECTION_HTTP_CONFIG,
             constants.SERVICE_PARAM_HTTP_PORT_HTTP))
     return http_port
+
+
+def is_virtual_system_config(dbapi):
+    try:
+        virtual_system = ast.literal_eval(
+            dbapi.service_parameter_get_one(
+                constants.SERVICE_TYPE_PLATFORM,
+                constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+                constants.SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL).value)
+    except exception.NotFound:
+        # Not virtual system
+        virtual_system = False
+    return virtual_system
 
 
 def has_openstack_compute(labels):
