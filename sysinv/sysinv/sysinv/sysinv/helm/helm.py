@@ -872,7 +872,8 @@ class HelmOperatorData(HelmOperator):
             'admin_project_name':
                 keystone_operator.get_admin_project_name(),
             'auth_host':
-                'keystone-api.openstack.svc.cluster.local',
+                'keystone.openstack.svc.cluster.local',
+            'auth_port': 80,
             'admin_user_domain':
                 keystone_operator.get_admin_user_domain(),
             'admin_project_domain':
@@ -916,7 +917,7 @@ class HelmOperatorData(HelmOperator):
         nova_operator = self.chart_operators[self.HELM_CHART_NOVA]
         endpoint_data = {
             'endpoint_override':
-                'http://nova-api.openstack.svc.cluster.local:8774',
+                'http://nova-api-internal.openstack.svc.cluster.local:80',
             'region_name':
                 nova_operator.get_region_name(),
         }
