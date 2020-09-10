@@ -334,22 +334,23 @@ DEFAULT_SMALL_DISK_SIZE = 240
 # 2*DEFAULT_SMALL_DATABASE_STOR_SIZE                   10 (2*5)
 # DEFAULT_SMALL_BACKUP_STOR_SIZE                       20
 # LOG_VOL_SIZE (reserved in kickstarts)                 8
-# SCRATCH_VOL_SIZE (reserved in kickstarts)             8
-# RABBIT_LV                                             2
-# PLATFORM_LV                                          10
-# ANCHOR_LV                                             1
+# SCRATCH_VOL_SIZE (reserved in kickstarts)            16
+# DEFAULT_PLATFORM_STOR_SIZE                           10
 # DEFAULT_EXTENSION_STOR_SIZE                           1
-# KUBERNETES_DOCKER_STOR_SIZE (--kubernetes)           30
-# DOCKER_DISTRIBUTION_STOR_SIZE (--kubernetes)         16
-# ETCD_STOR_SIZE (--kubernetes)                         5
-# CEPH_MON_SIZE (--kubernetes)                         20
+# DEFAULT_RABBIT_STOR_SIZE                              2
+# KUBERNETES_DOCKER_STOR_SIZE                          30
+# DOCKER_DISTRIBUTION_STOR_SIZE                        16
+# ETCD_STOR_SIZE                                        5
+# CEPH_MON_SIZE                                        20
+# KUBELET_STOR_SIZE                                    10
 # buffer inside VG for LV creation                      1
+# platform backup partition (created in kickstarts)    10
 # root partition (created in kickstarts)               20
-# boot partition (created in kickstarts)                1
+# boot/EFI partition (created in kickstarts)            1
 # buffer for partition creation                         1
 # -------------------------------------------------------
-#                                                     154
-MINIMUM_SMALL_DISK_SIZE = 154
+#                                                     181
+MINIMUM_SMALL_DISK_SIZE = 181
 
 # The minimum tiny disk size needed to create all partitions
 # Value based on the following calculation:
