@@ -25,6 +25,7 @@ from pecan import rest
 import six
 import shutil
 import socket
+import sys
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
@@ -43,6 +44,7 @@ from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
 from sysinv.openstack.common.rpc import common
+import tsconfig.tsconfig as tsc
 
 LOG = log.getLogger(__name__)
 
@@ -144,6 +146,7 @@ class LoadController(rest.RestController):
     _custom_actions = {
         'detail': ['GET'],
         'import_load': ['POST'],
+        'import_load_metadata': ['POST']
     }
 
     def __init__(self):
@@ -284,10 +287,20 @@ class LoadController(rest.RestController):
     @expose('json')
     @cutils.synchronized(LOCK_NAME)
     def import_load(self):
-        """Create a new Load."""
+        """Import a load from iso/sig files"""
+        try:
+            return self._import_load()
+        except Exception as e:
+            # Duplicate the exception handling behavior of the wsmeext.pecan wsexpose decorator
+            # This can be moved to a decorator if we need to reuse this in other modules
+            exception_code = getattr(e, 'code', None)
+            pecan.response.status = exception_code if wsme.utils.is_valid_code(exception_code) else 500
+            return wsme.api.format_exception(sys.exc_info())
+
+    def _import_load(self):
+        """Create a new load from iso/sig files"""
 
         LOG.info("Load import request received.")
-        err_msg = None
 
         system_controller_import_active = False
         data = dict((k, v) for (k, v) in request.POST.items())
@@ -302,53 +315,26 @@ class LoadController(rest.RestController):
         # is only installed locally and we will be booting controller-1 from
         # this load during the upgrade.
         if socket.gethostname() != constants.CONTROLLER_0_HOSTNAME:
-            err_msg = _("A load can only be imported when %s is "
-                        "active. ") % constants.CONTROLLER_0_HOSTNAME
+            raise wsme.exc.ClientSideError(
+                _("A load can only be imported when %s is active. ") % constants.CONTROLLER_0_HOSTNAME)
         else:
-            loads = pecan.request.dbapi.load_get_list()
-
-            # Only 2 loads are allowed at one time: the active load
-            # and an imported load regardless of its current state
-            # (e.g. importing, error, deleting).
-            if len(loads) > constants.IMPORTED_LOAD_MAX_COUNT:
-                for load in loads:
-                    if load.state == constants.ACTIVE_LOAD_STATE:
-                        pass
-                    elif load.state == constants.ERROR_LOAD_STATE:
-                        err_msg = _("Please remove the load in error state "
-                                    "before importing a new one.")
-                    elif load.state == constants.DELETING_LOAD_STATE:
-                        err_msg = _("Please wait for the current load delete "
-                                    "to complete before importing a new one.")
-                    else:
-                        # Already imported or being imported
-                        # For SystemController allow import of an active load
-                        if not system_controller_import_active:
-                            err_msg = _(
-                                "Max number of loads (2) reached. Please "
-                                "remove the old or unused load before "
-                                "importing a new one.")
-        if err_msg:
-            return dict(error=err_msg)
+            self._check_existing_loads(active_import=system_controller_import_active)
 
         load_files = dict()
         for f in constants.IMPORT_LOAD_FILES:
             if f not in request.POST:
-                err_msg = _("Missing required file for %s") % f
-                return dict(error=err_msg)
+                raise wsme.exc.ClientSideError(_("Missing required file for %s") % f)
 
             file_item = request.POST[f]
             if not file_item.filename:
-                err_msg = _("No %s file uploaded") % f
-                return dict(error=err_msg)
+                raise wsme.exc.ClientSideError(_("No %s file uploaded") % f)
 
             fn = self._upload_file(file_item)
             if fn:
                 load_files.update({f: fn})
             else:
-                err_msg = _("Failed to save file %s to disk. Please check "
-                            "sysinv logs for details." % file_item.filename)
-                return dict(error=err_msg)
+                raise wsme.exc.ClientSideError(_("Failed to save file %s to disk. Please check "
+                            "sysinv logs for details." % file_item.filename))
 
         LOG.info("Load files: %s saved to disk." % load_files)
 
@@ -358,33 +344,91 @@ class LoadController(rest.RestController):
                 load_files[constants.LOAD_ISO],
                 load_files[constants.LOAD_SIGNATURE],
                 system_controller_import_active)
-        except common.RemoteError as e:
-            if os.path.isdir(constants.LOAD_FILES_STAGING_DIR):
-                shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
-            # Keep only the message raised originally by sysinv conductor.
-            return dict(error=str(e.value))
 
-        if new_load is None:
-            return dict(error=_("Error importing load. Load not found"))
+            if new_load is None:
+                raise wsme.exc.ClientSideError(_("Error importing load. Load not found"))
 
-        if not system_controller_import_active:
-            # Signature and upgrade path checks have passed, make rpc call
-            # to the conductor to run import script in the background.
-            try:
+            if not system_controller_import_active:
+                # Signature and upgrade path checks have passed, make rpc call
+                # to the conductor to run import script in the background.
                 pecan.request.rpcapi.import_load(
                     pecan.request.context,
                     load_files[constants.LOAD_ISO],
                     new_load)
-            except common.RemoteError as e:
-                if os.path.isdir(constants.LOAD_FILES_STAGING_DIR):
-                    shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
-                # Keep only the message raised originally by sysinv conductor.
-                return dict(error=str(e.value))
+        except common.RemoteError as e:
+            if os.path.isdir(constants.LOAD_FILES_STAGING_DIR):
+                shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
+            raise wsme.exc.ClientSideError(e.value)
 
-        new_load_dict = new_load.as_dict()
+        load_data = new_load.as_dict()
         LOG.info("Load import request validated, returning new load data: %s"
-                 % new_load_dict)
-        return dict(new_load=new_load_dict)
+                 % load_data)
+        return load_data
+
+    @cutils.synchronized(LOCK_NAME)
+    @wsme_pecan.wsexpose(Load, body=Load)
+    def import_load_metadata(self, load):
+        """Import a new load using only the metadata. Only available to SX subcoulds."""
+
+        LOG.info("Load import metadata request received.")
+        err_msg = None
+
+        # Enforce system type restrictions
+        err_msg = _("Metadata load import is only available to simplex subclouds.")
+        if utils.get_system_mode() != constants.SYSTEM_MODE_SIMPLEX:
+            raise wsme.exc.ClientSideError(err_msg)
+        if utils.get_distributed_cloud_role() != constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+            raise wsme.exc.ClientSideError(err_msg)
+
+        self._check_existing_loads()
+
+        if load.software_version == load.compatible_version:
+            raise wsme.exc.ClientSideError(_("Invalid load software_version."))
+        if load.compatible_version != tsc.SW_VERSION:
+            raise wsme.exc.ClientSideError(_("Load compatible_version does not match SW_VERSION."))
+
+        patch = load.as_dict()
+        self._new_load_semantic_checks(patch)
+        patch['state'] = constants.IMPORTED_METADATA_LOAD_STATE
+        patch['uuid'] = None
+
+        LOG.info("Load import metadata validated, creating new load: %s" % patch)
+        try:
+            new_load = pecan.request.dbapi.load_create(patch)
+        except exception.SysinvException:
+            LOG.exception("Failure to create load")
+            raise wsme.exc.ClientSideError(_("Failure to create load"))
+
+        return load.convert_with_links(new_load)
+
+    def _check_existing_loads(self, active_import=False):
+        loads = pecan.request.dbapi.load_get_list()
+
+        # Only 2 loads are allowed at one time: the active load
+        # and an imported load regardless of its current state
+        # (e.g. importing, error, deleting).
+        load_state = None
+        if len(loads) > constants.IMPORTED_LOAD_MAX_COUNT:
+            for load in loads:
+                if load.state != constants.ACTIVE_LOAD_STATE:
+                    load_state = load.state
+        else:
+            return
+
+        if load_state == constants.ERROR_LOAD_STATE:
+            err_msg = _("Please remove the load in error state "
+                        "before importing a new one.")
+        elif load_state == constants.DELETING_LOAD_STATE:
+            err_msg = _("Please wait for the current load delete "
+                        "to complete before importing a new one.")
+        elif not active_import:
+            # Already imported or being imported
+            err_msg = _("Max number of loads (2) reached. Please "
+                        "remove the old or unused load before "
+                        "importing a new one.")
+        else:
+            return
+        raise wsme.exc.ClientSideError(err_msg)
 
     @cutils.synchronized(LOCK_NAME)
     @wsme.validate(six.text_type, [LoadPatchType])

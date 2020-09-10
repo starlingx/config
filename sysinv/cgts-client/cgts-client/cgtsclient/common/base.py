@@ -57,9 +57,9 @@ class Manager(object):
             'POST', url, body=body, data=data)
         return resp
 
-    def _upload_multipart(self, url, body, data=None):
+    def _upload_multipart(self, url, body, data=None, check_exceptions=False):
         resp = self.api.upload_request_with_multipart(
-            'POST', url, body=body, data=data)
+            'POST', url, body=body, data=data, check_exceptions=check_exceptions)
         return resp
 
     def _json_get(self, url, body=None):

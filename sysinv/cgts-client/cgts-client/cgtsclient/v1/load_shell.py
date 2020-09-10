@@ -111,27 +111,13 @@ def do_load_import(cc, args):
         print("This operation will take a while. Please wait.")
         wait_task = WaitThread()
         wait_task.start()
-        resp = cc.load.import_load(**patch)
+        imported_load = cc.load.import_load(**patch)
         wait_task.join()
-        error = resp.get('error')
-        if error:
-            raise exc.CommandError("%s" % error)
     except Exception as e:
         wait_task.join()
         raise exc.CommandError(_("Load import failed. Reason: %s" % e))
     else:
-        new_load = resp.get('new_load')
-        if new_load:
-            uuid = new_load["uuid"]
-        else:
-            raise exc.CommandError(_("Load was not created."))
-
-        try:
-            load = cc.load.get(uuid)
-        except exc.HTTPNotFound:
-            raise exc.CommandError(_("Load UUID not found: %s" % uuid))
-
-        _print_load_show(load)
+        _print_load_show(imported_load)
 
 
 class WaitThread(threading.Thread):
