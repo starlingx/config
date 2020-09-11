@@ -4611,12 +4611,12 @@ class ConductorManager(service.PeriodicService):
             config_uuid = imsg_dict['config_applied']
             self._update_host_config_applied(context, ihost, config_uuid)
 
-        # Check if platform apps need to be re-applied when host services are
+        # Check if apps need to be re-applied when host services are
         # available (after unlock), but only if system restore is not in
         # progress
         if not os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG) \
            and availability in [constants.VIM_SERVICES_ENABLED]:
-            for app_name in constants.HELM_APPS_PLATFORM_MANAGED:
+            for app_name in constants.HELM_APPS_WITH_REAPPLY_SUPPORT:
                 if cutils.is_app_applied(self.dbapi, app_name):
                     self.evaluate_app_reapply(context, app_name)
 
@@ -5653,20 +5653,17 @@ class ConductorManager(service.PeriodicService):
         return True
 
     def check_nodes_stable(self):
+        """Check if the nodes are in a stable state in order to allow apps to be applied"""
         try:
             hosts = self.dbapi.ihost_get_list()
-            if (utils.is_host_simplex_controller(hosts[0]) and
-                    (not hosts[0].vim_progress_status or
-                    not hosts[0].vim_progress_status.startswith(
-                    constants.VIM_SERVICES_ENABLED))):
-                # If the apply is triggered too early on AIO-SX, tiller will not
-                # be up and cause the re-apply to fail, so wait for services
-                # to enable
-                return False
             for host in hosts:
                 if host.availability == constants.AVAILABILITY_INTEST:
                     return False
                 if host.task:
+                    return False
+                if (host.personality == constants.CONTROLLER and
+                        not host.vim_progress_status.startswith(
+                            constants.VIM_SERVICES_ENABLED)):
                     return False
         except Exception as e:
             LOG.warn("Failed check_nodes_stable. (%s)" % str(e))
