@@ -1461,6 +1461,7 @@ HELM_APP_OIDC_AUTH = 'oidc-auth-apps'
 HELM_APP_CERT_MANAGER = 'cert-manager'
 HELM_APP_NGINX_IC = 'nginx-ingress-controller'
 HELM_APP_VAULT = 'vault'
+HELM_APP_ROOK_CEPH = 'rook-ceph-apps'
 
 # Apply mode for openstack app
 OPENSTACK_RESTORE_DB = 'restore_db'
@@ -1482,6 +1483,7 @@ HELM_APPS_PLATFORM_MANAGED = [
     HELM_APP_PLATFORM,
     HELM_APP_OIDC_AUTH,
     HELM_APP_CERT_MANAGER,
+    HELM_APP_ROOK_CEPH,
 ]
 
 # The order in which apps are listed here is important.

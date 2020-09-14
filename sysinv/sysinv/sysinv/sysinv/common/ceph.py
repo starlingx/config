@@ -24,9 +24,11 @@ from requests.exceptions import ReadTimeout
 from contextlib import contextmanager
 
 from oslo_log import log as logging
+from sysinv.common import kubernetes
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
+from sysinv.helm import common
 
 LOG = logging.getLogger(__name__)
 
@@ -1021,3 +1023,17 @@ def get_ceph_storage_model(dbapi=None):
         # clear (before adding a monitor on a compute or before
         # configuring the first storage node)
         return constants.CEPH_UNDEFINED_MODEL
+
+
+def is_rook_ceph():
+    try:
+        # check function getLabels in rook/pkg/operator/ceph/cluster/mon/spec.go
+        # rook will assign label "mon_cluster=kube-system" to monitor pods
+        label = "mon_cluster=" + common.HELM_NS_STORAGE_PROVISIONER
+        kube = kubernetes.KubeOperator()
+        pods = kube.kube_get_pods_by_selector(common.HELM_NS_STORAGE_PROVISIONER, label, "")
+        if len(pods) > 0:
+            return True
+    except Exception:
+        pass
+    return False

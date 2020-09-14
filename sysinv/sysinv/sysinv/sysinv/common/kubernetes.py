@@ -415,6 +415,24 @@ class KubeOperator(object):
             LOG.error("Kubernetes exception in kube_get_config_map: %s" % e)
             raise
 
+    def kube_read_config_map(self, name, namespace):
+        c = self._get_kubernetesclient_core()
+        try:
+            configmap = c.read_namespaced_config_map(name, namespace)
+            return configmap
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                LOG.error("Failed to read Configmap")
+                return None
+            else:
+                LOG.error("Failed to get ConfigMap %s under "
+                          "Namespace %s: %s" % (name, namespace, e.body))
+                raise
+        except Exception as e:
+            LOG.error("Kubernetes exception in kube_read_config_map: %s" % e)
+            raise
+        return None
+
     def kube_create_config_map(self, namespace, body):
         c = self._get_kubernetesclient_core()
         try:
