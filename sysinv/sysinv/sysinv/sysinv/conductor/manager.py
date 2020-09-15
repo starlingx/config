@@ -163,6 +163,7 @@ CONFIG_FAIL_FLAG = os.path.join(tsc.VOLATILE_PATH, ".config_fail")
 CONFIG_REBOOT_REQUIRED = (1 << 127)
 
 LOCK_NAME_UPDATE_CONFIG = 'update_config_'
+LOCK_AUTO_APPLY = 'AutoApplyLock'
 
 
 AppTarBall = namedtuple(
@@ -5247,25 +5248,13 @@ class ConductorManager(service.PeriodicService):
                         "not met." % app_name)
             return
 
+        LOG.info("Platform managed application %s: Prerequisites "
+                 "met." % app_name)
+
         if self._patching_operation_is_occurring():
             return
 
-        try:
-            app = kubeapp_obj.get_by_name(context, app_name)
-        except exception.KubeAppNotFound as e:
-            LOG.exception(e)
-            return
-
-        app.status = constants.APP_APPLY_IN_PROGRESS
-        app.save()
-
-        # Action: Apply the application
-        # Do not block this audit task or any other periodic task. This
-        # could be long running. The next audit cycle will pick up the
-        # latest status.
-        LOG.info("Platform managed application %s: "
-                    "Applying..." % app_name)
-        greenthread.spawn(self._app.perform_app_apply, app, None)
+        self._inner_sync_auto_apply(context, app_name)
 
     def _check_tarfile(self, app_name):
         tarfiles = []
@@ -5549,6 +5538,11 @@ class ConductorManager(service.PeriodicService):
                      "retry on next audit", app_name)
             return
 
+        self._inner_sync_auto_apply(context, app_name, status_constraints=[constants.APP_APPLY_SUCCESS])
+
+    @cutils.synchronized(LOCK_AUTO_APPLY)
+    def _inner_sync_auto_apply(self, context, app_name, status_constraints=None):
+
         # Check no other app apply is in progress
         for other_app in self.dbapi.kube_app_get_all():
             if other_app.status == constants.APP_APPLY_IN_PROGRESS:
@@ -5557,7 +5551,26 @@ class ConductorManager(service.PeriodicService):
                             "Will retry on next audit",
                          app_name, other_app.name)
                 return
-        self.reapply_app(context, app_name)
+
+        # Check app is present
+        try:
+            app = kubeapp_obj.get_by_name(context, app_name)
+        except exception.KubeAppNotFound:
+            LOG.info("%s app not present, skipping re-apply" % app_name)
+            return
+
+        # Check status conditions list
+        if status_constraints and app.status not in status_constraints:
+            LOG.info("{} app is present but status {} isn't any of the desired {}, "
+                     "skipping re-apply"
+                     .format(app_name, app.status, status_constraints))
+            return
+
+        LOG.info("Auto reapplying %s app" % app_name)
+        app.status = constants.APP_APPLY_IN_PROGRESS
+        app.save()
+
+        greenthread.spawn(self._app.perform_app_apply, app, None)
 
     def _upgrade_downgrade_kube_components(self):
         self._upgrade_downgrade_static_images()
@@ -5658,21 +5671,6 @@ class ConductorManager(service.PeriodicService):
             if host.task:
                 return False
         return True
-
-    def reapply_app(self, context, app_name):
-        try:
-            app = kubeapp_obj.get_by_name(context, app_name)
-            if app.status == constants.APP_APPLY_SUCCESS:
-                LOG.info("Reapplying %s app" % app_name)
-                app.status = constants.APP_APPLY_IN_PROGRESS
-                app.save()
-
-                greenthread.spawn(self._app.perform_app_apply, app, None)
-            else:
-                LOG.info("%s app is present but not applied, "
-                         "skipping re-apply" % app_name)
-        except exception.KubeAppNotFound:
-            LOG.info("%s app not present, skipping re-apply" % app_name)
 
     def get_k8s_namespaces(self, context):
         """ Get Kubernetes namespaces
