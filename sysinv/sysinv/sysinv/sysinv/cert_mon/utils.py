@@ -19,6 +19,8 @@
 #
 import json
 import re
+import ssl
+import urlparse
 from keystoneclient.v3 import client as keystone_client
 from keystoneauth1 import session
 from keystoneclient.auth.identity import v3
@@ -488,16 +490,9 @@ def get_sc_intermediate_ca_secret(sc):
 
 
 def get_endpoint_certificate(endpoint):
-    import urlparse
-    import ssl
     url = urlparse.urlparse(endpoint)
-    server = url.netloc.split(':')
-    if len(server) > 1:
-        host = server[0]
-        port = int(server[1])
-    else:
-        host = server[0]
-        port = 443
+    host = url.hostname
+    port = url.port
     return ssl.get_server_certificate((host, port))
 
 
