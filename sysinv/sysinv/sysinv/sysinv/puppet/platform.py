@@ -900,25 +900,10 @@ class PlatformPuppet(base.BasePuppet):
 
             config.update({
                 'platform::config::dccert::params::dc_root_ca_crt':
-                    dc_root_ca_crt})
-
-            exist_admin_ep_pem = None
-            if os.path.isfile(constants.ADMIN_EP_CERT_FILENAME):
-                with open(constants.ADMIN_EP_CERT_FILENAME, 'r') as f:
-                    exist_admin_ep_pem = f.read()
-
-            if admin_ep_crt != exist_admin_ep_pem:
-                config.update({
-                    'platform::config::dccert::params::dc_adminep_crt':
-                        admin_ep_crt
-                })
-            else:
-                # don't need to update endpoint ssl pem if it has not
-                # been changed
-                config.update({
-                    'platform::config::dccert::params::dc_adminep_crt':
-                        ''
-                })
+                    dc_root_ca_crt,
+                'platform::config::dccert::params::dc_adminep_crt':
+                    admin_ep_crt,
+            })
 
         return config
 
