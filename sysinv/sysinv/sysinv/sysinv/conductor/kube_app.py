@@ -2997,6 +2997,26 @@ class ArmadaHelper(object):
                 return False
         return True
 
+    def _check_pod_ready_probe(self, pod):
+        """Pod is of the form returned by self._kube.kube_get_pods_by_selector.
+        Returns true if last probe shows the container is in 'Ready' state.
+        """
+        conditions = list(filter(lambda x: x.type == 'Ready', pod.status.conditions))
+        if not conditions:
+            return False
+        return conditions[0].status == 'True'
+
+    def _prefer_select_one_running_ready_pod(self, pods):
+        """Find one running and ready pod.
+        Return found if one, otherwise first pod.
+        """
+        for pod in pods:
+            if pod.status.phase == 'Running' and \
+                    pod.metadata.deletion_timestamp is None and \
+                    self._check_pod_ready_probe(pod):
+                return pod
+        return pods[0]
+
     def _start_armada_service(self):
         """Armada pod is managed by Kubernetes / Helm.
            This routine checks and waits for armada to be providing service.
@@ -3028,7 +3048,7 @@ class ArmadaHelper(object):
                     "application=%s" % ARMADA_APPLICATION, "")
                 if not pods:
                     raise RuntimeError('armada pod not found')
-                pod = pods[0]
+                pod = self._prefer_select_one_running_ready_pod(pods)
 
                 if pod and pod.status.phase != 'Running':
                     # Delete the pod, it should restart if it can
@@ -3037,7 +3057,8 @@ class ArmadaHelper(object):
                         LOG.warning("Pod %s/%s deletion unsuccessful...",
                             ARMADA_NAMESPACE, pod.metadata.name)
 
-                if pod and pod.status.phase == 'Running':
+                if pod and pod.status.phase == 'Running' and \
+                        self._check_pod_ready_probe(pod):
                     # Test that we can copy files into armada-api container
                     src = '/etc/build.info'
                     dest_dir = '{}:{}'.format(pod.metadata.name, '/tmp')
@@ -3121,7 +3142,7 @@ class ArmadaHelper(object):
                     "status.phase=Running")
                 if not pods:
                     raise RuntimeError('armada pod not found')
-                armada_pod = pods[0].metadata.name
+                armada_pod = self._prefer_select_one_running_ready_pod(pods).metadata.name
                 if not self.copy_manifests_and_overrides_to_armada(armada_pod, manifest_file):
                     raise RuntimeError('could not access armada pod')
 
