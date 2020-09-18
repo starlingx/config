@@ -24,13 +24,14 @@ LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
 
 
-def local_registry_list(filename, no_apps):
+def local_registry_list(filename, included_apps, include_all_apps=False):
     """ Save the list of images present in the local registry
     to a file in yaml format.
 
     :param filename: name of the file to save to.
-    :param no_apps: if True then the list of apps images will be retrieved and
-                    subtracted from the final list.
+    :param include_apps: list of applications for which images are saved in yaml format.
+    :param include_all_apps: if True then the list of apps images will include all apps
+                             regardless of include_apps list.
     """
 
     ctxt = context.get_admin_context()
@@ -49,24 +50,24 @@ def local_registry_list(filename, no_apps):
         if image_name:
             temp_image_tags = rpcapi.docker_registry_image_tags(ctxt,
                                                                 image_name)
-            if not temp_image_tags:
-                raise Exception("Image tag could not be retrieved "
-                                "for %s" % image_name)
 
             for image_name_tag in temp_image_tags:
                 image_tag = image_name_tag.get('tag', None)
                 if image_tag:
                     image_name_tag_list.append("%s:%s" % (image_name, image_tag))
 
-    # Retrieve the list of images used by all apps if no_apps is true
-    apps_images = []
-    if no_apps:
-        apps_images = rpcapi.get_apps_image_list(ctxt)
+    # Retrieve the images used by apps that should be excluded from yaml file
+    excluded_images = []
+    if not include_all_apps:
+        apps_images = rpcapi.docker_get_apps_images(ctxt).items()
         if not apps_images:
             raise Exception("Apps image list could not be retrieved")
+        for app, images in apps_images:
+            if included_apps is None or app not in included_apps:
+                excluded_images.extend(images)
 
-    # Exclude apps images when no_apps is true
-    image_name_tag_list = list(set(image_name_tag_list) - set(apps_images))
+    # Exclude apps images
+    image_name_tag_list = list(set(image_name_tag_list) - set(excluded_images))
 
     data = {}
     data.update({'images': image_name_tag_list})
@@ -230,7 +231,8 @@ def add_action_parsers(subparsers):
     parser = subparsers.add_parser('local-registry-list')
     parser.set_defaults(func=local_registry_list)
     parser.add_argument('filename', nargs='?')
-    parser.add_argument('--no-apps', action='store_true', default=None)
+    parser.add_argument('--all-apps', action='store_true', default=False)
+    parser.add_argument('--apps', nargs='*', required=False, default=None)
 
 
 CONF.register_cli_opt(
@@ -252,6 +254,6 @@ def main():
         if not CONF.action.filename:
             LOG.error("filename is required")
         else:
-            CONF.action.func(CONF.action.filename, CONF.action.no_apps)
+            CONF.action.func(CONF.action.filename, CONF.action.apps, CONF.action.all_apps)
     else:
         CONF.action.func()

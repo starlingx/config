@@ -1563,12 +1563,12 @@ class ConductorManager(service.PeriodicService):
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-    def get_apps_image_list(self, context):
+    def docker_get_apps_images(self, context):
         """
-        Return a list of all images from local registry used by apps.
+        Return a dictionary of all apps and associated images from local registry.
         """
 
-        images = []
+        images = {}
         try:
             for kapp in self.dbapi.kube_app_get_all():
                 app = self._app.Application(kapp)
@@ -1577,7 +1577,7 @@ class ConductorManager(service.PeriodicService):
                 stripped_images = [x.replace(constants.DOCKER_REGISTRY_HOST + ':' +
                                              constants.DOCKER_REGISTRY_PORT + '/', '')
                                    for x in images_to_download]
-                images.extend(stripped_images)
+                images[kapp.name] = stripped_images
                 LOG.info("Application images for %s are: %s" % (kapp.name,
                                                                 str(stripped_images)))
         except Exception as e:
