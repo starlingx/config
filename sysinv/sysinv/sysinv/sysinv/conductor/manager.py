@@ -203,9 +203,6 @@ class ConductorManager(service.PeriodicService):
         # this will track the config w/ reboot request to apply
         self._host_reboot_config_uuid = {}
 
-        # Guard for a run once function
-        self._requested_restore = False
-
     def start(self):
         self._start()
         # accept API calls and run periodic tasks after
@@ -5391,7 +5388,6 @@ class ConductorManager(service.PeriodicService):
 
                     greenthread.spawn(self._restore_download_images, app)
 
-            self._requested_restore = True
         except Exception as e:
             LOG.info("Helper Task: _k8s_application_images_audit: Will retry")
             LOG.exception(e)
@@ -5408,7 +5404,7 @@ class ConductorManager(service.PeriodicService):
             app.save()
         except Exception as e:
             LOG.exception(e)
-            app.status = constants.APP_APPLY_FAILURE
+            app.status = constants.APP_RESTORE_REQUESTED
             app.progress = constants.APP_PROGRESS_IMAGES_DOWNLOAD_FAILED
             app.save()
 
@@ -5432,6 +5428,10 @@ class ConductorManager(service.PeriodicService):
             return False
 
         return False
+
+    @staticmethod
+    def _verify_restore_in_progress():
+        return os.path.isfile(constants.SYSINV_RESTORE_FLAG)
 
     @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval,
                                  run_immediately=True)
@@ -5457,8 +5457,11 @@ class ConductorManager(service.PeriodicService):
             LOG.debug("Software update orchestration in progress. Defer audit.")
             return
 
-        if not self._requested_restore:
+        if self._verify_restore_in_progress():
             self._k8s_application_images_audit(context)
+            LOG.info("Restore in progress - defer platform managed application "
+                     "activity")
+            return
 
         # Ensure that armada pod is running.
         pods = self._kube.kube_get_pods_by_selector("armada",
@@ -5515,6 +5518,10 @@ class ConductorManager(service.PeriodicService):
         LOG.debug("Periodic Task: _k8s_application_audit: Finished")
 
     def check_pending_app_reapply(self, context):
+        if self._verify_restore_in_progress():
+            LOG.info("Restore in progress - Ignore app reapply checks.")
+            return
+
         # Defer application reapply while an upgrade is active
         try:
             self.verify_upgrade_not_in_progress()
