@@ -71,6 +71,7 @@ from cgtsclient.v1 import port
 from cgtsclient.v1 import ptp
 from cgtsclient.v1 import registry_image
 from cgtsclient.v1 import remotelogging
+from cgtsclient.v1 import restore
 from cgtsclient.v1 import route
 from cgtsclient.v1 import sdn_controller
 from cgtsclient.v1 import service_parameter
@@ -171,3 +172,4 @@ class Client(http.HTTPClient):
         self.device_image = device_image.DeviceImageManager(self)
         self.device_image_state = device_image_state.DeviceImageStateManager(self)
         self.device_label = device_label.DeviceLabelManager(self)
+        self.restore = restore.RestoreManager(self)

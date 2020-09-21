@@ -2065,3 +2065,24 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        status=status,
                                        progress=progress,
                                        err=err))
+
+    def start_restore(self, context):
+        """Synchronously, have the conductor start the restore
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('start_restore'))
+
+    def complete_restore(self, context):
+        """Synchronously, have the conductor complete the restore
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('complete_restore'))
+
+    def get_restore_state(self, context):
+        """Get the restore state
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('get_restore_state'))

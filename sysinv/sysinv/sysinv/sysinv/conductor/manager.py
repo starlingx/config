@@ -12189,6 +12189,66 @@ class ConductorManager(service.PeriodicService):
             # and trigger an update of it.
             self.host_device_image_update_next(context, host_uuid)
 
+    def start_restore(self, context):
+        """Start the restore
+
+        :param context: request context.
+        """
+
+        LOG.info("Preparing for restore procedure. Creating flag file.")
+
+        cutils.touch(constants.SYSINV_RESTORE_FLAG)
+
+        return "Restore procedure started"
+
+    def complete_restore(self, context):
+        """Complete the restore
+
+        :param context: request context.
+        """
+
+        try:
+            controllers = self.dbapi.ihost_get_by_personality(
+                constants.CONTROLLER)
+            invalid_controllers = [
+                controller for controller in controllers if
+                controller.administrative != constants.ADMIN_UNLOCKED or
+                controller.operational != constants.OPERATIONAL_ENABLED or
+                (controller.availability != constants.AVAILABILITY_AVAILABLE and
+                 controller.availability != constants.AVAILABILITY_DEGRADED)]
+
+            if invalid_controllers:
+                message = "Cannot complete the restore procedure. " \
+                          "One of the controllers is not unlocked enabled available/degraded"
+                LOG.info(message)
+                return message
+        except Exception as e:
+            message = "Cannot complete the restore procedure. " \
+                      "Cannot query controllers state."
+            LOG.info(message)
+            LOG.error(e)
+            return message
+
+        LOG.info("Complete the restore procedure. Remove flag file.")
+
+        cutils.delete_if_exists(constants.SYSINV_RESTORE_FLAG)
+
+        return "Restore procedure completed"
+
+    def get_restore_state(self, context):
+        """Get the restore state
+
+        :param context: request context.
+        """
+
+        if self._verify_restore_in_progress():
+            output = "Restore procedure is in progress"
+        else:
+            output = "Restore procedure is not in progress"
+
+        LOG.info(output)
+        return output
+
 
 def device_image_state_sort_key(dev_img_state):
     if dev_img_state.bitstream_type == dconstants.BITSTREAM_TYPE_ROOT_KEY:

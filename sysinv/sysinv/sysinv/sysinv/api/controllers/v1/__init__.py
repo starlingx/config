@@ -67,6 +67,7 @@ from sysinv.api.controllers.v1 import ptp
 from sysinv.api.controllers.v1 import pv
 from sysinv.api.controllers.v1 import registry_image
 from sysinv.api.controllers.v1 import remotelogging
+from sysinv.api.controllers.v1 import restore
 from sysinv.api.controllers.v1 import route
 from sysinv.api.controllers.v1 import sdn_controller
 from sysinv.api.controllers.v1 import certificate
@@ -272,6 +273,9 @@ class V1(base.APIBase):
 
     device_labels = [link.Link]
     "Links to the device labels resource"
+
+    restore = [link.Link]
+    "Links to the restore resource"
 
     @classmethod
     def convert(self):
@@ -841,6 +845,14 @@ class V1(base.APIBase):
                                                 pecan.request.host_url,
                                                 'device_labels', '',
                                                 bookmark=True)]
+
+        v1.restore = [link.Link.make_link('self', pecan.request.host_url,
+                                          'restore', ''),
+                      link.Link.make_link('bookmark',
+                                          pecan.request.host_url,
+                                          'restore', '',
+                                          bookmark=True)
+                      ]
         return v1
 
 
@@ -915,6 +927,7 @@ class Controller(rest.RestController):
     device_images = device_image.DeviceImageController()
     device_image_state = device_image_state.DeviceImageStateController()
     device_labels = device_label.DeviceLabelController()
+    restore = restore.RestoreController()
 
     @wsme_pecan.wsexpose(V1)
     def get(self):

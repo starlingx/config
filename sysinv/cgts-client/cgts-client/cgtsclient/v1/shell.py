@@ -58,6 +58,7 @@ from cgtsclient.v1 import port_shell
 from cgtsclient.v1 import ptp_shell
 from cgtsclient.v1 import registry_image_shell
 from cgtsclient.v1 import remotelogging_shell
+from cgtsclient.v1 import restore_shell
 from cgtsclient.v1 import route_shell
 from cgtsclient.v1 import sdn_controller_shell
 from cgtsclient.v1 import service_parameter_shell
@@ -129,6 +130,7 @@ COMMAND_MODULES = [
     device_image_shell,
     device_image_state_shell,
     device_label_shell,
+    restore_shell,
 ]
 
 
