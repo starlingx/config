@@ -11241,6 +11241,8 @@ class ConductorManager(service.PeriodicService):
 
         except exception.KubeAppNotFound:
             return
+
+        LOG.info("Evaluating app reapply of %s" % app.name)
         if app.active and app.status == constants.APP_APPLY_SUCCESS:
             # Hash the existing overrides
             # TODO these hashes can be stored in the db to reduce overhead,

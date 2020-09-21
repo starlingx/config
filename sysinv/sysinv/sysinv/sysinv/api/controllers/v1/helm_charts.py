@@ -102,10 +102,18 @@ class HelmChartsController(rest.RestController):
         if user_overrides:
             file_overrides.append(user_overrides)
 
-        combined_overrides = None
-        if file_overrides:
-            combined_overrides = pecan.request.rpcapi.merge_overrides(
-                pecan.request.context, file_overrides=file_overrides)
+        try:
+            combined_overrides = None
+            if file_overrides:
+                combined_overrides = pecan.request.rpcapi.merge_overrides(
+                    pecan.request.context, file_overrides=file_overrides)
+        except Exception:
+            # Only log server-side error as we don't want to expose server-side trackback to user
+            LOG.exception("Failed to get helm chart attributes for chart %s "
+                          "under Namespace %s." % (name, namespace))
+            raise wsme.exc.ClientSideError(
+                _("Unable to get the helm chart attributes for chart %s under "
+                  "Namespace %s. Please check sysinv.log for details." % (name, namespace)))
 
         try:
             attributes = {}
@@ -192,15 +200,22 @@ class HelmChartsController(rest.RestController):
             raise wsme.exc.ClientSideError(_("Invalid flag: %s must be either "
                                              "'reuse' or 'reset'.") % flag)
 
-        # Form the response
-        chart = {'name': name, 'namespace': namespace}
-
-        if file_overrides or set_overrides:
-            user_overrides = pecan.request.rpcapi.merge_overrides(
-                pecan.request.context, file_overrides=file_overrides,
-                set_overrides=set_overrides)
-            # update the response
-            chart.update({'user_overrides': user_overrides})
+        try:
+            # Form the response
+            chart = {'name': name, 'namespace': namespace}
+            if file_overrides or set_overrides:
+                user_overrides = pecan.request.rpcapi.merge_overrides(
+                    pecan.request.context, file_overrides=file_overrides,
+                    set_overrides=set_overrides)
+                # update the response
+                chart.update({'user_overrides': user_overrides})
+        except Exception:
+            # Only log server-side error as we don't want to expose server-side trackback to user
+            LOG.exception("Failed to update helm chart attributes for chart %s "
+                          "under Namespace %s." % (name, namespace))
+            raise wsme.exc.ClientSideError(
+                _("Unable to update the helm chart attributes for chart %s under "
+                  "Namespace %s. Please check sysinv.log for details." % (name, namespace)))
 
         # save chart overrides back to DB
         db_chart.user_overrides = user_overrides

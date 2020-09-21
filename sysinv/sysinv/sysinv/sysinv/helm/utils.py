@@ -17,9 +17,18 @@ from sysinv.agent import rpcapi as agent_rpcapi
 from sysinv.common import kubernetes
 from sysinv.common import exception
 from sysinv.openstack.common import context
+import tempfile
 import threading
+import psutil
 
 LOG = logging.getLogger(__name__)
+
+
+def kill_process_and_descendants(proc):
+    # function to kill a process and its children processes
+    for child in psutil.Process(proc.pid).children(recursive=True):
+        child.kill()
+    proc.kill()
 
 
 def refresh_helm_repo_information():
@@ -51,7 +60,7 @@ def retrieve_helm_releases():
         ['helm', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
          'list', '--all-namespaces', '--output', 'yaml'],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    timer = threading.Timer(20, helm_list.kill)
+    timer = threading.Timer(20, kill_process_and_descendants, [helm_list])
 
     try:
         releases = {}
@@ -88,9 +97,9 @@ def retrieve_helm_releases():
     helm_list = subprocess.Popen(
         ['helmv2-cli', '--',
          'helm',
-         'list', '--output', 'yaml'],
+         'list', '--output', 'yaml', '--tiller-connection-timeout 5'],
         env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    timer = threading.Timer(20, helm_list.kill)
+    timer = threading.Timer(20, kill_process_and_descendants, [helm_list])
 
     try:
         releases = {}
@@ -144,9 +153,9 @@ def delete_helm_release(release):
     env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
     helm_cmd = subprocess.Popen(
         ['helmv2-cli', '--',
-         'helm', 'delete', release],
+         'helm', 'delete', release, '--tiller-connection-timeout 5'],
         env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    timer = threading.Timer(20, helm_cmd.kill)
+    timer = threading.Timer(20, kill_process_and_descendants, [helm_cmd])
 
     try:
         timer.start()
@@ -174,11 +183,74 @@ def get_openstack_pending_install_charts():
     env = os.environ.copy()
     env['PATH'] = '/usr/local/sbin:' + env['PATH']
     env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
+    helm_list = subprocess.Popen(
+        ['helmv2-cli', '--',
+         'helm', 'list', '--namespace', 'openstack',
+         '--pending', '--tiller-connection-timeout 5'],
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    timer = threading.Timer(20, kill_process_and_descendants, [helm_list])
+
     try:
-        return subprocess.check_output(
-            ['helmv2-cli', '--',
-             'helm', 'list', '--namespace', 'openstack', '--pending'],
-            env=env)
+        timer.start()
+        out, err = helm_list.communicate()
+        if helm_list.returncode == 0:
+            return out
+        elif err:
+            raise exception.HelmTillerFailure(reason=err)
+        else:
+            err_msg = "helmv2-cli -- helm list operation timeout."
+            raise exception.HelmTillerFailure(reason=err_msg)
     except Exception as e:
         raise exception.HelmTillerFailure(
             reason="Failed to obtain pending charts list: %s" % e)
+    finally:
+        timer.cancel()
+
+
+def install_helm_chart_with_dry_run(args=None):
+    """Simulate a chart install
+
+    This method calls helm install with --dry-run option to simulate
+    a chart install to generate the rendered templates. It's being
+    used to merge the application's system overrides and user overrides
+    by passing helm chart overrides to the helm command.
+
+    :param args: additional arguments to helm command
+    """
+    env = os.environ.copy()
+    env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
+    cmd = ['helm', 'install', '--dry-run', '--debug', '--generate-name']
+    if args:
+        cmd.extend(args)
+
+    timer = None
+    try:
+        # Make a temporary directory with a fake chart in it
+        tmpdir = tempfile.mkdtemp()
+        chartfile = tmpdir + '/Chart.yaml'
+        with open(chartfile, 'w') as tmpchart:
+            tmpchart.write('name: mychart\napiVersion: v1\n'
+                           'version: 0.1.0\n')
+        cmd.append(tmpdir)
+
+        helm_install = subprocess.Popen(
+            cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        timer = threading.Timer(10, kill_process_and_descendants, [helm_install])
+
+        timer.start()
+        out, err = helm_install.communicate()
+        if helm_install.returncode == 0:
+            return out
+        elif err:
+            raise exception.HelmTillerFailure(reason=err)
+        else:
+            err_msg = "Helm install --dry-run operation timeout."
+            raise exception.HelmTillerFailure(reason=err_msg)
+    except Exception as e:
+        raise exception.HelmTillerFailure(
+            reason="Failed to render helm chart: %s" % e)
+    finally:
+        if timer:
+            timer.cancel()
+        os.remove(chartfile)
+        os.rmdir(tmpdir)

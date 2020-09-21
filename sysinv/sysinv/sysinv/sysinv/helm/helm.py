@@ -9,7 +9,6 @@
 from __future__ import absolute_import
 
 import eventlet
-from eventlet.green import subprocess
 import os
 import re
 import tempfile
@@ -21,9 +20,9 @@ from stevedore import extension
 from oslo_log import log as logging
 from sysinv.common import constants
 from sysinv.common import exception
-from sysinv.common import kubernetes
 from sysinv.common import utils
 from sysinv.helm import common
+from sysinv.helm import utils as helm_utils
 
 
 LOG = logging.getLogger(__name__)
@@ -520,7 +519,7 @@ class HelmOperator(object):
         # specified by system or user, values from files and values passed in
         # via --set .  We need to ensure that we call helm using the same
         # mechanisms to ensure the same behaviour.
-        cmd = ['helm', 'install', '--dry-run', '--debug', '--generate-name']
+        args = []
 
         # Process the newly-passed-in override values
         tmpfiles = []
@@ -532,7 +531,7 @@ class HelmOperator(object):
             tmpfile.write(value_file)
             tmpfile.close()
             tmpfiles.append(tmpfile.name)
-            cmd.extend(['--values', tmpfile.name])
+            args.extend(['--values', tmpfile.name])
 
         for value_set in set_overrides:
             keypair = list(value_set.split("="))
@@ -542,37 +541,20 @@ class HelmOperator(object):
             # skip setting like "--set =value", "--set xxxx"
             if len(keypair) == 2 and keypair[0]:
                 if keypair[1] and keypair[1].isdigit():
-                    cmd.extend(['--set-string', value_set])
+                    args.extend(['--set-string', value_set])
                 else:
-                    cmd.extend(['--set', value_set])
+                    args.extend(['--set', value_set])
 
-        env = os.environ.copy()
-        env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
-
-        # Make a temporary directory with a fake chart in it
         try:
-            tmpdir = tempfile.mkdtemp()
-            chartfile = tmpdir + '/Chart.yaml'
-            with open(chartfile, 'w') as tmpchart:
-                tmpchart.write('name: mychart\napiVersion: v1\n'
-                               'version: 0.1.0\n')
-            cmd.append(tmpdir)
-
             # Apply changes by calling out to helm to do values merge
             # using a dummy chart.
-            output = subprocess.check_output(cmd, env=env, stderr=subprocess.STDOUT)
-
-            # Check output for failure
-
+            output = helm_utils.install_helm_chart_with_dry_run(args)
             # Extract the info we want.
             values = output.split('USER-SUPPLIED VALUES:\n')[1].split(
                 '\nCOMPUTED VALUES:')[0]
-        except subprocess.CalledProcessError as e:
-            LOG.error("Failed to merge overrides %s" % e.output)
+        except Exception as e:
+            LOG.error("Failed to merge overrides %s" % e)
             raise
-        finally:
-            os.remove(chartfile)
-            os.rmdir(tmpdir)
 
         for tmpfile in tmpfiles:
             os.remove(tmpfile)
