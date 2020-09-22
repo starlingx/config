@@ -11334,6 +11334,47 @@ forbidden (403), badMethod (405), overLimit (413), itemNotFound (404)
 
 This operation does not accept a request body.
 
+****************************
+Renew System Certificate
+****************************
+
+.. rest_method:: POST /v1/certificate/certificate_renew
+
+Accepts a JSON data structure for renewing a specified certificate.
+
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+badMediaType (415)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "Content-Type multipart/form-data", "JSON", "xsd:string", "{'certtype':'', 'root_ca_crt': '', 'sc_ca_cert': '', 'sc_ca_key':''}. certtype: type of certificate to renew, options are admin-endpoint-cert or intermediate-ca-cert. 'root_ca_crt', required if certtype is intermediate-ca-cert, base64 endcoded root CA certificate. sc_ca_cert: required if certtype is intermediate-ca-cert, base64 endcoded subcloud intermediate CA certificate. sc_ca_key required if certtype is intermediate-ca-cert, base64 endcoded private key of subcloud intermediate CA."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "response", "JSON", "xsd:string", "A json object to return the result of the operation. {'result': '<operation result>'}"
+
+::
+
+   {
+      "result": "OK"
+   }
+
 ---------------
 Docker Registry
 ---------------
