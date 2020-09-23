@@ -97,7 +97,7 @@ def retrieve_helm_releases():
     helm_list = subprocess.Popen(
         ['helmv2-cli', '--',
          'helm',
-         'list', '--output', 'yaml', '--tiller-connection-timeout 5'],
+         'list', '--output', 'yaml', '--tiller-connection-timeout', '5'],
         env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     timer = threading.Timer(20, kill_process_and_descendants, [helm_list])
 
@@ -153,7 +153,7 @@ def delete_helm_release(release):
     env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
     helm_cmd = subprocess.Popen(
         ['helmv2-cli', '--',
-         'helm', 'delete', release, '--tiller-connection-timeout 5'],
+         'helm', 'delete', release, '--tiller-connection-timeout', '5'],
         env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     timer = threading.Timer(20, kill_process_and_descendants, [helm_cmd])
 
@@ -186,7 +186,7 @@ def get_openstack_pending_install_charts():
     helm_list = subprocess.Popen(
         ['helmv2-cli', '--',
          'helm', 'list', '--namespace', 'openstack',
-         '--pending', '--tiller-connection-timeout 5'],
+         '--pending', '--tiller-connection-timeout', '5'],
         env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     timer = threading.Timer(20, kill_process_and_descendants, [helm_list])
 
