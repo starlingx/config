@@ -5586,16 +5586,12 @@ class ConductorManager(service.PeriodicService):
                      " playbook: %s for version %s" %
                      (constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK, kube_version))
 
-            proc = subprocess.Popen(
-                ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
-                 constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK],
-                stdout=subprocess.PIPE)
-            out, _ = proc.communicate()
+            playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
+                            constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK]
+            returncode = cutils.run_playbook(playbook_cmd)
 
-            LOG.info("ansible-playbook: %s." % out)
-
-            if proc.returncode:
-                raise Exception("ansible-playbook returned an error: %s" % proc.returncode)
+            if returncode:
+                raise Exception("ansible-playbook returned an error: %s" % returncode)
         except Exception as e:
             LOG.error("Failed to upgrade/downgrade kubernetes "
                       "networking images: {}".format(e))
@@ -5626,16 +5622,12 @@ class ConductorManager(service.PeriodicService):
                      " playbook: %s for version %s" %
                      (constants.ANSIBLE_KUBE_STATIC_IMAGES_PLAYBOOK, kube_version))
 
-            proc = subprocess.Popen(
-                ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
-                 constants.ANSIBLE_KUBE_STATIC_IMAGES_PLAYBOOK],
-                stdout=subprocess.PIPE)
-            out, _ = proc.communicate()
+            playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
+                            constants.ANSIBLE_KUBE_STATIC_IMAGES_PLAYBOOK]
+            returncode = cutils.run_playbook(playbook_cmd)
 
-            LOG.info("ansible-playbook: %s." % out)
-
-            if proc.returncode:
-                raise Exception("ansible-playbook returned an error: %s" % proc.returncode)
+            if returncode:
+                raise Exception("ansible-playbook returned an error: %s" % returncode)
         except Exception as e:
             LOG.error("Failed to upgrade/downgrade kubernetes "
                       "static images: {}".format(e))
@@ -11623,17 +11615,13 @@ class ConductorManager(service.PeriodicService):
 
         # Execute the playbook to download the images from the external
         # registry to registry.local.
-        proc = subprocess.Popen(
-            ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
-             constants.ANSIBLE_KUBE_PUSH_IMAGES_PLAYBOOK],
-            stdout=subprocess.PIPE)
-        out, _ = proc.communicate()
+        playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
+                        constants.ANSIBLE_KUBE_PUSH_IMAGES_PLAYBOOK]
+        returncode = cutils.run_playbook(playbook_cmd)
 
-        LOG.info("ansible-playbook: %s." % out)
-
-        if proc.returncode:
+        if returncode:
             LOG.warning("ansible-playbook returned an error: %s" %
-                        proc.returncode)
+                        returncode)
             # Update the upgrade state
             kube_upgrade_obj = objects.kube_upgrade.get_one(context)
             kube_upgrade_obj.state = \
@@ -11855,17 +11843,13 @@ class ConductorManager(service.PeriodicService):
         LOG.info("executing playbook: %s for version %s" %
                  (constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK, kube_version))
 
-        proc = subprocess.Popen(
-            ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
-             constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK],
-            stdout=subprocess.PIPE)
-        out, _ = proc.communicate()
+        playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
+                        constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK]
+        returncode = cutils.run_playbook(playbook_cmd)
 
-        LOG.info("ansible-playbook: %s." % out)
-
-        if proc.returncode:
+        if returncode:
             LOG.warning("ansible-playbook returned an error: %s" %
-                        proc.returncode)
+                        returncode)
             # Update the upgrade state
             kube_upgrade_obj = objects.kube_upgrade.get_one(context)
             kube_upgrade_obj.state = \

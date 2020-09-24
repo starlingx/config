@@ -2401,3 +2401,12 @@ def get_root_ca_cert():
 
     secret_data = {'dc_root_ca_crt': ca_crt}
     return secret_data
+
+
+def run_playbook(playbook_command):
+    exec_env = os.environ.copy()
+    exec_env["ANSIBLE_LOG_PATH"] = "/dev/null"
+    proc = subprocess.Popen(playbook_command, stdout=subprocess.PIPE, env=exec_env)
+    out, _ = proc.communicate()
+    LOG.info("ansible-playbook: %s." % out)
+    return proc.returncode
