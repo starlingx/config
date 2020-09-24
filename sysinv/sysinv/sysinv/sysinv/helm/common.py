@@ -45,7 +45,8 @@ SERVICE_ADMIN = 'CGCS'
 # Users
 USER_ADMIN = 'admin'
 USER_TEST = 'test'
-USERS = [USER_ADMIN, USER_TEST]
+USER_STX_ADMIN = 'stx_admin'
+USERS = [USER_ADMIN, USER_TEST, USER_STX_ADMIN]
 
 # Passwords Formatting
 PASSWORD_FORMAT_IDENTITY = 'keystone-auth'

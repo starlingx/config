@@ -848,9 +848,20 @@ class HelmOperatorData(HelmOperator):
     @helm_context
     def get_keystone_auth_data(self):
         keystone_operator = self.chart_operators[self.HELM_CHART_KEYSTONE]
+
+        # use stx_admin account to communicate with openstack app
+        username = common.USER_STX_ADMIN
+        try:
+            password = keystone_operator.get_stx_admin_password()
+        except Exception:
+            # old version app doesn't support stx_admin account yet.
+            # fallback to admin account
+            username = keystone_operator.get_admin_user_name()
+            password = keystone_operator.get_admin_password()
+
         auth_data = {
             'admin_user_name':
-                keystone_operator.get_admin_user_name(),
+                username,
             'admin_project_name':
                 keystone_operator.get_admin_project_name(),
             'auth_host':
@@ -861,7 +872,7 @@ class HelmOperatorData(HelmOperator):
             'admin_project_domain':
                 keystone_operator.get_admin_project_domain(),
             'admin_password':
-                keystone_operator.get_admin_password(),
+                password,
         }
         return auth_data
 
