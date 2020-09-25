@@ -94,8 +94,11 @@ class ArmadaManifestOperator(object):
         if os.path.exists(summary_fqpn):
             self.manifest_path = os.path.dirname(summary_fqpn)
             with open(summary_fqpn, 'r') as f:
+                # The RoundTripLoader removes the superfluous quotes by default,
+                # resulting the dumped out charts not readable in Armada.
+                # Set preserve_quotes=True to preserve all the quotes.
                 files_written = list(yaml.load_all(
-                    f, Loader=yaml.RoundTripLoader))[0]
+                    f, Loader=yaml.RoundTripLoader, preserve_quotes=True))[0]
         return files_written
 
     def load(self, manifest_fqpn):
@@ -111,8 +114,11 @@ class ArmadaManifestOperator(object):
             self.delete_manifest = "%s-del%s" % os.path.splitext(manifest_fqpn)
 
             with open(manifest_fqpn, 'r') as f:
+                # The RoundTripLoader removes the superfluous quotes by default,
+                # resulting the dumped out charts not readable in Armada.
+                # Set preserve_quotes=True to preserve all the quotes.
                 self.content = list(yaml.load_all(
-                    f, Loader=yaml.RoundTripLoader))
+                    f, Loader=yaml.RoundTripLoader, preserve_quotes=True))
 
             # Generate the lookup tables
             # For the individual chart docs

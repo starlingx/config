@@ -536,7 +536,11 @@ class AppOperator(object):
 
         if os.path.exists(app_manifest_file):
             with open(app_manifest_file, 'r') as f:
-                charts = list(yaml.load_all(f, Loader=yaml.RoundTripLoader))
+                # The RoundTripLoader removes the superfluous quotes by default,
+                # resulting the dumped out charts not readable in Armada.
+                # Set preserve_quotes=True to preserve all the quotes.
+                charts = list(yaml.load_all(
+                    f, Loader=yaml.RoundTripLoader, preserve_quotes=True))
 
         for chart in charts:
             if "armada/Chart/" in chart['schema']:
