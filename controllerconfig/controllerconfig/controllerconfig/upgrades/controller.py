@@ -1014,6 +1014,14 @@ def upgrade_controller(from_release, to_release):
     unmount_filesystem("/tmp/etc_platform")
     os.rmdir("/tmp/etc_platform")
 
+    # Restart the sysinv agent to report the inventory status
+    # The sysinv.conf contains temporary parameters that are used for
+    # data-migration. By removing that sysinv.conf we trigger the sysinv-agent
+    # to load the correct conf from the drbd filesystem
+    os.remove("/etc/sysinv/sysinv.conf")
+    LOG.info("Starting sysinv-agent")
+    cutils.start_service("sysinv-agent")
+
     print("Controller-1 upgrade complete")
     LOG.info("Controller-1 upgrade complete!!!")
 
