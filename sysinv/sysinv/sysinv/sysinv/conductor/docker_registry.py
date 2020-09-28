@@ -16,6 +16,7 @@ SYSTEM_CERT_PATH = '/etc/ssl/certs/ca-bundle.crt'
 KEYRING_SERVICE = 'CGCS'
 REGISTRY_USERNAME = 'admin'
 REGISTRY_BASEURL = 'https://%s/v2/' % constants.DOCKER_REGISTRY_SERVER
+MAX_IMAGES_COUNT = 100000  # override default of 100 & allow downloading entire catalog
 
 
 def get_registry_password():
@@ -93,10 +94,10 @@ def docker_registry_get(path, registry_url=REGISTRY_BASEURL):
     headers = {"Accept": "application/vnd.docker.distribution.manifest.v2+json"}
 
     try:
-        resp = requests.get("%s%s" % (registry_url, path),
+        resp = requests.get("%s%s?n=%s" % (registry_url, path, MAX_IMAGES_COUNT),
                             verify=SYSTEM_CERT_PATH, headers=headers)
     except requests.exceptions.SSLError:
-        resp = requests.get("%s%s" % (registry_url, path),
+        resp = requests.get("%s%s?n=%s" % (registry_url, path, MAX_IMAGES_COUNT),
                             verify=DOCKER_CERT_PATH, headers=headers)
 
     # authenticated registry, need to do auth with token server
@@ -104,10 +105,10 @@ def docker_registry_get(path, registry_url=REGISTRY_BASEURL):
         auth_headers = docker_registry_authenticate(resp.headers["Www-Authenticate"])
         headers.update(auth_headers)
         try:
-            resp = requests.get("%s%s" % (registry_url, path),
+            resp = requests.get("%s%s?n=%s" % (registry_url, path, MAX_IMAGES_COUNT),
                                 verify=SYSTEM_CERT_PATH, headers=headers)
         except requests.exceptions.SSLError:
-            resp = requests.get("%s%s" % (registry_url, path),
+            resp = requests.get("%s%s?n=%s" % (registry_url, path, MAX_IMAGES_COUNT),
                                 verify=DOCKER_CERT_PATH, headers=headers)
 
     return resp
