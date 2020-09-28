@@ -5448,6 +5448,10 @@ class ConductorManager(service.PeriodicService):
                  (active_ctrl.operational != constants.OPERATIONAL_ENABLED))):
             return
 
+        if not self.check_nodes_stable():
+            LOG.info("Node(s) are in an unstable state. Defer audit.")
+            return
+
         # Defer platform managed application activity during update orchestration.
         if self._check_software_orchestration_in_progress():
             LOG.debug("Software update orchestration in progress. Defer audit.")
@@ -5649,19 +5653,25 @@ class ConductorManager(service.PeriodicService):
         return True
 
     def check_nodes_stable(self):
-        hosts = self.dbapi.ihost_get_list()
-        if (utils.is_host_simplex_controller(hosts[0]) and
-                not hosts[0].vim_progress_status.startswith(
-                constants.VIM_SERVICES_ENABLED)):
-            # If the apply is triggered too early on AIO-SX, tiller will not
-            # be up and cause the re-apply to fail, so wait for services
-            # to enable
+        try:
+            hosts = self.dbapi.ihost_get_list()
+            if (utils.is_host_simplex_controller(hosts[0]) and
+                    (not hosts[0].vim_progress_status or
+                    not hosts[0].vim_progress_status.startswith(
+                    constants.VIM_SERVICES_ENABLED))):
+                # If the apply is triggered too early on AIO-SX, tiller will not
+                # be up and cause the re-apply to fail, so wait for services
+                # to enable
+                return False
+            for host in hosts:
+                if host.availability == constants.AVAILABILITY_INTEST:
+                    return False
+                if host.task:
+                    return False
+        except Exception as e:
+            LOG.warn("Failed check_nodes_stable. (%s)" % str(e))
             return False
-        for host in hosts:
-            if host.availability == constants.AVAILABILITY_INTEST:
-                return False
-            if host.task:
-                return False
+
         return True
 
     def get_k8s_namespaces(self, context):
