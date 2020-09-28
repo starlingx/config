@@ -27,9 +27,7 @@ from tsconfig.tsconfig import PLATFORM_PATH
 from controllerconfig import utils as cutils
 from controllerconfig.common import constants
 from sysinv.common import constants as sysinv_constants
-# sysinv common utils is needed for adding new service account and endpoints
-# during upgrade.
-# from sysinv.common import utils as sysinv_utils
+from sysinv.common import utils as sysinv_utils
 
 from oslo_log import log
 
@@ -107,6 +105,22 @@ def get_password_from_keyring(service, username):
     except Exception as e:
         LOG.exception("Received exception when attempting to get password "
                       "for service %s, username %s: %s" %
+                      (service, username, e))
+        raise
+    finally:
+        del os.environ["XDG_DATA_HOME"]
+    return password
+
+
+def set_password_in_keyring(service, username):
+    """Generate random password and store in keyring"""
+    os.environ["XDG_DATA_HOME"] = constants.KEYRING_PERMDIR
+    try:
+        password = sysinv_utils.generate_random_password(length=16)
+        keyring.set_password(service, username, password)
+    except Exception as e:
+        LOG.exception("Received exception when attempting to generate "
+                      "password for service %s, username %s: %s" %
                       (service, username, e))
         raise
     finally:

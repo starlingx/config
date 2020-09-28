@@ -778,6 +778,30 @@ def migrate_hiera_data(from_release, to_release, role=None):
     if (from_release == SW_VERSION_20_06 and etcd_security_config):
         static_config.update(etcd_security_config)
 
+    if from_release == SW_VERSION_20_06:
+        # The helm db is new in the release stx5.0 and requires
+        # a password to be generated and a new user to access the DB.
+        # This is required for all types of system upgrade. Should
+        # removed in the release that follows stx5.0
+        static_config.update({
+            'platform::helm::v2::db::postgresql::user': 'admin-helmv2'
+        })
+
+        helmv2_db_pw = utils.get_password_from_keyring('helmv2', 'database')
+        if not helmv2_db_pw:
+            helmv2_db_pw = utils.set_password_in_keyring('helmv2', 'database')
+
+        secure_static_file = os.path.join(
+            constants.HIERADATA_PERMDIR, "secure_static.yaml")
+        with open(secure_static_file, 'r') as yaml_file:
+            secure_static_config = yaml.load(yaml_file)
+        secure_static_config.update({
+            'platform::helm::v2::db::postgresql::password': helmv2_db_pw
+        })
+        with open(secure_static_file, 'w') as yaml_file:
+            yaml.dump(secure_static_config, yaml_file,
+                      default_flow_style=False)
+
     with open(static_file, 'w') as yaml_file:
         yaml.dump(static_config, yaml_file, default_flow_style=False)
 
