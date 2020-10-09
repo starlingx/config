@@ -5627,9 +5627,16 @@ class ConductorManager(service.PeriodicService):
 
         return False
 
-    @staticmethod
-    def _verify_restore_in_progress():
-        return os.path.isfile(constants.SYSINV_RESTORE_FLAG)
+    def _verify_restore_in_progress(self):
+        """Check if restore is in progress"""
+
+        try:
+            self.dbapi.restore_get_one(
+                filters={'state': constants.RESTORE_STATE_IN_PROGRESS})
+        except exception.NotFound:
+            return False
+        else:
+            return True
 
     @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval,
                                  run_immediately=True)
@@ -12699,11 +12706,17 @@ class ConductorManager(service.PeriodicService):
         :param context: request context.
         """
 
-        LOG.info("Preparing for restore procedure. Creating flag file.")
+        LOG.info("Preparing for restore procedure.")
+        try:
+            self.dbapi.restore_get_one(
+                filters={'state': constants.RESTORE_STATE_IN_PROGRESS})
+        except exception.NotFound:
+            self.dbapi.restore_create(
+                values={'state': constants.RESTORE_STATE_IN_PROGRESS})
+        else:
+            return constants.RESTORE_PROGRESS_ALREADY_IN_PROGRESS
 
-        cutils.touch(constants.SYSINV_RESTORE_FLAG)
-
-        return "Restore procedure started"
+        return constants.RESTORE_PROGRESS_STARTED
 
     def complete_restore(self, context):
         """Complete the restore
@@ -12733,11 +12746,18 @@ class ConductorManager(service.PeriodicService):
             LOG.error(e)
             return message
 
-        LOG.info("Complete the restore procedure. Remove flag file.")
+        try:
+            restore = self.dbapi.restore_get_one(
+                filters={'state': constants.RESTORE_STATE_IN_PROGRESS})
+        except exception.NotFound:
+            return constants.RESTORE_PROGRESS_ALREADY_COMPLETED
+        else:
+            self.dbapi.restore_update(restore.uuid,
+                                      values={'state': constants.RESTORE_STATE_COMPLETED})
 
-        cutils.delete_if_exists(constants.SYSINV_RESTORE_FLAG)
+        LOG.info("Complete the restore procedure.")
 
-        return "Restore procedure completed"
+        return constants.RESTORE_PROGRESS_COMPLETED
 
     def get_restore_state(self, context):
         """Get the restore state
@@ -12746,9 +12766,9 @@ class ConductorManager(service.PeriodicService):
         """
 
         if self._verify_restore_in_progress():
-            output = "Restore procedure is in progress"
+            output = constants.RESTORE_PROGRESS_IN_PROGRESS
         else:
-            output = "Restore procedure is not in progress"
+            output = constants.RESTORE_PROGRESS_NOT_IN_PROGRESS
 
         LOG.info(output)
         return output

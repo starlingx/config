@@ -17,8 +17,6 @@ SYSINV_CONFIG_FILE_LOCAL = '/etc/sysinv/sysinv.conf'
 SYSINV_CONF_DEFAULT_FILE = 'sysinv.conf.default'
 SYSINV_CONF_DEFAULT_PATH = os.path.join(SYSINV_CONFIG_PATH,
                                         SYSINV_CONF_DEFAULT_FILE)
-SYSINV_RESTORE_FLAG = os.path.join(SYSINV_CONFIG_PATH,
-                                   ".restore_in_progress")
 
 HTTPS_CONFIG_REQUIRED = os.path.join(tsc.CONFIG_PATH, '.https_config_required')
 ADMIN_ENDPOINT_CONFIG_REQUIRED = os.path.join(tsc.CONFIG_PATH, '.admin_endpoint_config_required')
@@ -1172,6 +1170,18 @@ UPGRADE_COMPLETED = 'completed'
 UPGRADE_ABORTING = 'aborting'
 UPGRADE_ABORT_COMPLETING = 'abort-completing'
 UPGRADE_ABORTING_ROLLBACK = 'aborting-reinstall'
+
+# Restore states
+RESTORE_STATE_IN_PROGRESS = 'restore-in-progress'
+RESTORE_STATE_COMPLETED = 'restore-completed'
+
+# Restore progress constants
+RESTORE_PROGRESS_ALREADY_COMPLETED = "Restore procedure already completed"
+RESTORE_PROGRESS_STARTED = "Restore procedure started"
+RESTORE_PROGRESS_ALREADY_IN_PROGRESS = "Restore procedure already in progress"
+RESTORE_PROGRESS_NOT_IN_PROGRESS = "Restore procedure is not in progress"
+RESTORE_PROGRESS_IN_PROGRESS = "Restore procedure is in progress"
+RESTORE_PROGRESS_COMPLETED = "Restore procedure completed"
 
 # LLDP
 LLDP_OVS_PORT_PREFIX = 'lldp'

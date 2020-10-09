@@ -1536,6 +1536,14 @@ class KubeNotConfigured(SysinvException):
                 "will not be available.")
 
 
+class RestoreAlreadyExists(Conflict):
+    message = _("A Restore with UUID %(uuid)s already exists.")
+
+
+class RestoreNotFound(NotFound):
+    message = _("Restore with UUID %(uuid)s not found.")
+
+
 class LifecycleSemanticCheckException(SysinvException):
     message = _("Semantic check hook for app failed.")
 

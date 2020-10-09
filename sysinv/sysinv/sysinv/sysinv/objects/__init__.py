@@ -12,7 +12,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 
@@ -97,6 +97,7 @@ from sysinv.objects import storage_tier
 from sysinv.objects import storage_ceph_external
 from sysinv.objects import storage_ceph_rook
 from sysinv.objects import host_fs
+from sysinv.objects import restore
 
 
 def objectify(klass):
@@ -203,6 +204,7 @@ device_image_label = device_image_label.DeviceImageLabel
 device_image_state = device_image_state.DeviceImageState
 device_label = device_label.DeviceLabel
 fpga_device = fpga_device.FPGADevice
+restore = restore.Restore
 
 __all__ = ("system",
            "cluster",
@@ -279,6 +281,7 @@ __all__ = ("system",
            "device_image_label",
            "device_label",
            "fpga_device",
+           "restore",
            # alias objects for RPC compatibility
            "ihost",
            "ilvg",

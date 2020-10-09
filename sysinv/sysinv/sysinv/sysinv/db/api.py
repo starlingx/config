@@ -16,7 +16,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 
@@ -4526,4 +4526,70 @@ class Connection(object):
         """Destroy an kube_upgrade.
 
         :param upgrade_id: The id or uuid of a kube_upgrade.
+        """
+
+    @abc.abstractmethod
+    def restore_create(self, values):
+        """Create a new restore entry
+
+        :param values: A dict containing several items used to identify
+                       and track the entry.
+
+                        {
+                         'uuid': uuidutils.generate_uuid(),
+                        }
+        :returns: A restore record.
+        """
+
+    @abc.abstractmethod
+    def restore_get(self, id):
+        """Return a restore entry for a given id
+
+        :param _id: The id or uuid of a restore entry
+        :returns: a restore entry
+        """
+
+    @abc.abstractmethod
+    def restore_get_list(self, limit=None, marker=None,
+                         sort_key=None, sort_dir=None):
+        """Return a list of restore entries.
+
+        :param limit: Maximum number of restore entries to return.
+        :param marker: the last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted.
+        :param sort_dir: direction in which results should be sorted.
+                         (asc, desc)
+        """
+
+    @abc.abstractmethod
+    def restore_get_one(self, filters):
+        """Return exactly one restore.
+
+        :param filters: A dict of filters to apply on the query.
+                        The key of the entry is the column to search in.
+                        The value of the entry is the value to search for.
+                        Capable of simple filtering equivalent to `value in [values]`.
+                        Eg: filters={'state': 'some-state-value'} is equivalent to
+                            `model.MyModel.state in ['some-state-value']`
+
+        :returns: A restore.
+        """
+
+    @abc.abstractmethod
+    def restore_update(self, uuid, values):
+        """Update properties of a restore.
+
+        :param node: The uuid of a restore entry.
+        :param values: Dict of values to update.
+                       {'state': constants.RESTORE_STATE_COMPLETED
+                       }
+        :returns: A restore entry.
+        """
+
+    @abc.abstractmethod
+    def restore_destroy(self, id):
+        """Destroy a restore entry.
+
+        :param id: The id or uuid of a restore entry.
         """
