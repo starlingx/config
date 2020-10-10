@@ -1873,9 +1873,9 @@ badMediaType (415)
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
-   "ilvg_uuid (Optional)", "plain", "csapi:UUID", "This parameter specifies the volume group uuid."
-   "ihost_uuid (Optional)", "plain", "csapi:UUID", "This parameter specifies the compute host uuid."
-   "idisk_uuid (Optional)", "plain", "csapi:UUID", "This parameter specifies the storage disk uuid."
+   "ilvg_uuid", "plain", "csapi:UUID", "This parameter specifies the volume group uuid."
+   "ihost_uuid", "plain", "csapi:UUID", "This parameter specifies the compute host uuid."
+   "disk_or_part_uuid", "plain", "csapi:UUID", "This parameter specifies the storage disk or partition uuid."
 
 **Response parameters**
 
