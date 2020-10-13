@@ -11141,7 +11141,7 @@ itemNotFound (404)
 Deletes a specific ceph monitor
 ***********************************
 
-.. rest_method:: DELETE /v1/ceph_mon/​{ceph_mon_id}​
+.. rest_method:: DELETE /v1/ceph_mon/​{host_uuid}​
 
 Delete a ceph monitor.
 
@@ -11155,7 +11155,7 @@ Delete a ceph monitor.
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
-   "ceph_mon_id", "URI", "csapi:UUID", "The unique identifier of a Ceph monitor."
+   "host_uuid", "URI", "csapi:UUID", "The host UUID that the Ceph monitor belongs to."
 
 This operation does not accept a request body.
 
