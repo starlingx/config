@@ -5118,7 +5118,7 @@ This operation does not accept a request body.
 Shows information about a specific SNMP Trap Destination
 **********************************************************
 
-.. rest_method:: GET /v1/itrapdest/​{trapdest_id}​
+.. rest_method:: GET /v1/itrapdest/​{ip_address}​
 
 **Normal response codes**
 
@@ -5136,7 +5136,7 @@ itemNotFound (404)
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
-   "trapdest_id", "URI", "csapi:UUID", "The unique identifier of an existing SNMP Trap Destination."
+   "ip_address", "plain", "xsd:string", "The IP address of a specific trap destination."
 
 **Response parameters**
 
