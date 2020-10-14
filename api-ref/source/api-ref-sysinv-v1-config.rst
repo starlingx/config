@@ -10060,7 +10060,7 @@ badMediaType (415)
 Deletes an external storage backend
 *************************************
 
-.. rest_method:: Delete /v1/storage_external/​{storage_external_id}​
+.. rest_method:: DELETE /v1/storage_external/​{storage_external_id}​
 
 **Normal response codes**
 
