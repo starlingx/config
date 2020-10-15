@@ -1796,8 +1796,7 @@ def is_valid_domain(url_str):
     r = re.compile(
         r'^(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)'  # domain...
         r'+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'
-        r'[A-Za-z0-9-_]*)'  # localhost, hostname
-        r'(?::\d+)?'  # optional port
+        r'[A-Z0-9-_]*)'  # localhost, hostname
         r'(?:/?|[/?]\S+)$', re.IGNORECASE)
 
     url = r.match(url_str)
@@ -1809,23 +1808,24 @@ def is_valid_domain(url_str):
 
 def is_valid_domain_or_ip(url_str):
     if url_str:
-        if is_valid_domain(url_str):
-            return True
-        ip_with_port = url_str.split(':')
-        if len(ip_with_port) <= 2:
+        url_without_path = url_str.split('/')[0]
+        url_with_port = url_without_path.split(':')
+        if len(url_with_port) <= 2:
+            if is_valid_domain(url_with_port[0]):
+                return True
             # check ipv4 or ipv4 with port
-            return is_valid_ipv4(ip_with_port[0])
+            return is_valid_ipv4(url_with_port[0])
         else:
             # check ipv6
-            if '[' in url_str:
+            if '[' in url_without_path:
                 try:
-                    bkt_idx = url_str.index(']')
-                    return is_valid_ipv6(url_str[1:bkt_idx])
+                    bkt_idx = url_without_path.index(']')
+                    return is_valid_ipv6(url_without_path[1:bkt_idx])
                 except Exception:
                     return False
             else:
                 # check ipv6 without port
-                return is_valid_ipv6(url_str)
+                return is_valid_ipv6(url_without_path)
 
 
 def is_valid_domain_name(value):

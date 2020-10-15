@@ -42,3 +42,41 @@ class TestCommonUtilities(base.TestCase):
             result = utils.format_hex_grouped(
                         t['value'], sep=t['sep'], chunk=t['chunk'])
             self.assertEqual(result, t['expect'])
+
+    def test_is_valid_domain_or_ip(self):
+            SAMPLE_VALIDATION_URLS = (
+                # Valid URL
+                ('localhost', True),  # localhost
+                ('localhost:5000', True),
+                ('localhost/mirror/k8s.gcr.io', True),
+                ('localhost:5000/mirror/k8s.gcr.io', True),
+                ('10.10.10.1', True),  # IPv4
+                ('10.10.10.1:5000', True),
+                ('10.10.10.1/mirror/k8s.gcr.io', True),
+                ('10.10.10.1:5000/mirror/k8s.gcr.io', True),
+                ('2001:0db8:85a3:0000:0000:8a2e:0370:7334', True),  # IPv6
+                ('[2001:0db8:85a3:0000:0000:8a2e:0370:7334]:5000', True),
+                ('[2001:0db8:85a3:0000:0000:8a2e:0370:7334]/mirror/k8s.gcr.io', True),
+                ('[2001:0db8:85a3:0000:0000:8a2e:0370:7334]:5000/mirror/k8s.gcr.io', True),
+                ('g.com', True),  # domain
+                ('www.g.com', True),
+                ('g.com:5000', True),
+                ('g.com/mirror/k8s.gcr.io', True),
+                ('g.com:5000/mirror/k8s.gcr.io', True),
+                ('g.com//mirror/k8s.gcr.io', True),
+                ('has-dash.com', True),
+                # Invalid URL
+                ('localhost:22:5000', False),  # extra conlon
+                ('10.10.10.10.1', False),  # IPv4 with extra segment
+                ('10.10.10.1.', False),
+                ('2001:0db8:85a3:0000:0000:8a2e:0370:7334:5000', False),  # IPv6 withextra segment
+                ('.com', False),  # Domain name without enough labels
+                ('mis-type,comma', False),
+                ('extra space.com', False),  # Extra space in the middle
+                ('has_trailing.com', False),
+                ('hastrailing_.com', False),
+                (' frontspace.com', False),
+                ('backspace .com', False)
+            )
+            for url in SAMPLE_VALIDATION_URLS:
+                self.assertEqual(utils.is_valid_domain_or_ip(url[0]), url[1])
