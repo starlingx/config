@@ -8404,55 +8404,6 @@ itemNotFound (404)
 
 This operation does not accept a request body.
 
-*********************************
-List the storage backends usage
-*********************************
-
-.. rest_method:: GET /v1/storage_backend/usage
-
-**Normal response codes**
-
-200
-
-**Error response codes**
-
-computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
-unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
-itemNotFound (404)
-
-**Response parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "service_name (Optional)", "plain", "xsd:string", "The name of the storage service."
-   "name (Optional)", "plain", "xsd:string", "The name of the storage backend."
-   "backend (Optional)", "plain", "xsd:string", "The type of the storage backend."
-   "free_capacity (Optional)", "plain", "xsd:decimal", "The free storage capacity in GiB."
-   "total_capacity (Optional)", "plain", "xsd:decimal", "The total capacity in GiB."
-
-::
-
-   [
-       {
-           "free_capacity": 7.48,
-           "service_name": "glance",
-           "total_capacity": 7.84,
-           "name": "file-store",
-           "backend": "file"
-       },
-       {
-           "free_capacity": 6.9,
-           "service_name": "cinder",
-           "total_capacity": 6.9,
-           "name": "lvm-store",
-           "backend": "lvm"
-       }
-   ]
-
-This operation does not accept a request body.
-
 ***************************
 List LVM storage backends
 ***************************
