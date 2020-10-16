@@ -504,7 +504,8 @@ class PlatformPuppet(base.BasePuppet):
             for cpu in platform_cpus:
                 platform_cpumask |= 1 << cpu.cpu
 
-            drbd_cpumask = '%x' % platform_cpumask
+            drbd_cpumask = "\"%s\"" % (utils.format_hex_grouped(
+                platform_cpumask, sep=',', chunk=8))
 
             config.update({
                 'platform::drbd::params::cpumask': drbd_cpumask

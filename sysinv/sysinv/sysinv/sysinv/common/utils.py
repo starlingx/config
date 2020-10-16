@@ -2410,3 +2410,21 @@ def run_playbook(playbook_command):
     out, _ = proc.communicate()
     LOG.info("ansible-playbook: %s." % out)
     return proc.returncode
+
+
+def format_hex_grouped(value, sep=',', chunk=8):
+    """
+    Format integer as hex string with a separater every 'chunk'
+    characters from the right.
+
+    E.g., 0x300000003 is formatted as '3,00000003'.
+
+    :param value: integer
+    :param sep: string
+    :param chunk: integer
+    :return: string
+    """
+    x = '{:x}'.format(value)
+    r = x[::-1]
+    chunks = [r[i:i + chunk][::-1] for i in range(0, len(r), chunk)]
+    return sep.join(reversed(chunks))
