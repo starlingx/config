@@ -2017,20 +2017,22 @@ class AgentManager(service.PeriodicService):
 
         return iscsi_initiator_name
 
-    def disk_format_gpt(self, context, host_uuid, idisk_dict,
-                        is_cinder_device):
-        """GPT format a disk
+    def disk_prepare(self, context, host_uuid, idisk_dict,
+                     skip_format, is_cinder_device):
+        """prepare disk for system use.
 
         :param context: an admin context
         :param host_uuid: ihost uuid unique id
         :param idisk_dict: values for idisk volume object
+        :param skip_format: bool value tells if the idisk should be GPT formatted
         :param is_cinder_device: bool value tells if the idisk is for cinder
         """
-        LOG.debug("AgentManager.format_disk_gpt: %s" % idisk_dict)
+        LOG.debug("AgentManager.disk_prepare: %s" % idisk_dict)
         if self._ihost_uuid and self._ihost_uuid == host_uuid:
-            self._idisk_operator.disk_format_gpt(host_uuid,
-                                                 idisk_dict,
-                                                 is_cinder_device)
+            self._idisk_operator.disk_prepare(host_uuid,
+                                              idisk_dict,
+                                              skip_format,
+                                              is_cinder_device)
 
     def update_host_memory(self, context, host_uuid):
         """update the host memory

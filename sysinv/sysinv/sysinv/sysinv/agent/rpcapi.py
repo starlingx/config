@@ -274,22 +274,24 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
 
         return retval
 
-    def disk_format_gpt(self, context, host_uuid, idisk_dict,
-                        is_cinder_device):
-        """Asynchronously, GPT format a disk.
+    def disk_prepare(self, context, host_uuid, idisk_dict,
+                     skip_format, is_cinder_device):
+        """Asynchronously, prepare a disk for system use.
 
         :param context: an admin context
         :param host_uuid: ihost uuid unique id
         :param idisk_dict: values for disk object
+        :param skip_format: bool value tells if the idisk should be GPT formatted
         :param is_cinder_device: bool value tells if the idisk is for cinder
         :returns: pass or fail
         """
 
         return self.fanout_cast(
             context,
-            self.make_msg('disk_format_gpt',
+            self.make_msg('disk_prepare',
                           host_uuid=host_uuid,
                           idisk_dict=idisk_dict,
+                          skip_format=skip_format,
                           is_cinder_device=is_cinder_device))
 
     def update_host_memory(self, context, host_uuid):

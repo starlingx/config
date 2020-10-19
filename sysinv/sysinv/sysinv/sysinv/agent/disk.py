@@ -141,11 +141,13 @@ class DiskOperator(object):
 
         return avail_space_mib
 
-    def disk_format_gpt(self, host_uuid, idisk_dict, is_cinder_device):
+    def disk_prepare(self, host_uuid, idisk_dict,
+                     skip_format, is_cinder_device):
         disk_node = idisk_dict.get('device_path')
 
         disk_utils.disk_wipe(disk_node)
-        utils.execute('parted', disk_node, 'mklabel', 'gpt')
+        if not skip_format:
+            utils.execute('parted', disk_node, 'mklabel', 'gpt')
 
         if is_cinder_device:
             LOG.debug("Removing .node_cinder_lvm_config_complete_file")

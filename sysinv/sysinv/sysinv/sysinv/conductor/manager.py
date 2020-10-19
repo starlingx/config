@@ -3117,8 +3117,8 @@ class ConductorManager(service.PeriodicService):
                 except OSError:
                     pass
 
-            rpcapi.disk_format_gpt(context, ihost.uuid, agent_idisk,
-                                   is_cinder_device)
+            rpcapi.disk_prepare(context, ihost.uuid, agent_idisk,
+                                False, is_cinder_device)
 
             if system_mode == constants.SYSTEM_MODE_SIMPLEX:
                 timeout = 0

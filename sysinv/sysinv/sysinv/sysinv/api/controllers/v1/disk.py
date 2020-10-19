@@ -376,14 +376,16 @@ class DiskController(rest.RestController):
         rpc_idisk = objects.disk.get_by_uuid(
             pecan.request.context, idisk_uuid)
 
-        format_disk = True
+        format_supported = True
         for p in patch:
+            if p['path'] == '/skip_formatting':
+                skip_format = p['value'].lower() == 'true'
             if p['path'] == '/partition_table':
                 value = p['value']
                 if value != constants.PARTITION_TABLE_GPT:
-                    format_disk = False
+                    format_supported = False
 
-        if not format_disk:
+        if not format_supported:
             raise wsme.exc.ClientSideError(
                 _("Only %s disk formatting is supported." %
                   constants.PARTITION_TABLE_GPT))
@@ -392,10 +394,11 @@ class DiskController(rest.RestController):
 
         is_cinder_device = False
         rpcapi = agent_rpcapi.AgentAPI()
-        rpcapi.disk_format_gpt(pecan.request.context,
-                               rpc_idisk.get('ihost_uuid'),
-                               rpc_idisk.as_dict(),
-                               is_cinder_device)
+        rpcapi.disk_prepare(pecan.request.context,
+                            rpc_idisk.get('ihost_uuid'),
+                            rpc_idisk.as_dict(),
+                            skip_format,
+                            is_cinder_device)
 
 
 def _semantic_checks_format(idisk):
