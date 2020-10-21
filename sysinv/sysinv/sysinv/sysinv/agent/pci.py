@@ -270,14 +270,17 @@ class PCIOperator(object):
 
         return vf_device_id
 
+    def get_lspci_output_by_addr(self, pciaddr):
+        with open(os.devnull, "w") as fnull:
+            output = subprocess.check_output(
+                ['lspci', '-vmmks', pciaddr], stderr=fnull)
+        return output
+
     def get_pci_sriov_vf_driver_name(self, pciaddr, sriov_vfs_pci_address):
         vf_driver = None
         for addr in sriov_vfs_pci_address:
-
             try:
-                with open(os.devnull, "w") as fnull:
-                    output = subprocess.check_output(['lspci', '-vmmks', addr],
-                                                    stderr=fnull)
+                output = self.get_lspci_output_by_addr(addr)
             except Exception as e:
                 LOG.error("Error getting PCI data for SR-IOV "
                           "VF address %s: %s", addr, e)
@@ -294,6 +297,29 @@ class PCIOperator(object):
                 break
 
         return vf_driver
+
+    def get_pci_sriov_vf_module_name(self, pciaddr, sriov_vfs_pci_address):
+        vf_module = None
+        for addr in sriov_vfs_pci_address:
+
+            try:
+                output = self.get_lspci_output_by_addr(addr)
+            except Exception as e:
+                LOG.error("Error getting PCI data for SR-IOV "
+                          "VF address %s: %s", addr, e)
+                continue
+
+            for line in output.split('\n'):
+                pci_attr = shlex.split(line.strip())
+                if (pci_attr and len(pci_attr) == 2 and 'Module' in pci_attr[0]):
+                    vf_module = pci_attr[1]
+                    break
+
+            # All VFs have the same module per device.
+            if vf_module:
+                break
+
+        return vf_module
 
     def get_pci_driver_name(self, pciaddr):
         ddriver = '/sys/bus/pci/devices/' + pciaddr + '/driver/module/drivers'
@@ -513,7 +539,12 @@ class PCIOperator(object):
                 sriov_totalvfs = self.get_pci_sriov_totalvfs(a)
                 sriov_numvfs = self.get_pci_sriov_numvfs(a)
                 sriov_vfs_pci_address = self.get_pci_sriov_vfs_pci_address(a, sriov_numvfs)
-                sriov_vf_driver = self.get_pci_sriov_vf_driver_name(a, sriov_vfs_pci_address)
+
+                # For network devices, return the supported kernel module
+                # as the sriov_vf_driver. This is used to determine the driver
+                # to use if an interface has an SR-IOV VF driver of 'netdevice'
+                sriov_vf_driver = self.get_pci_sriov_vf_module_name(a, sriov_vfs_pci_address)
+
                 sriov_vf_pdevice_id = self.get_pci_sriov_vf_device_id(a, sriov_vfs_pci_address)
                 driver = self.get_pci_driver_name(a)
 
