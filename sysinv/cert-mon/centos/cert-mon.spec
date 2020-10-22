@@ -8,6 +8,7 @@ Packager: Wind River <info@windriver.com>
 URL: unknown
 Source0: %{name}-%{version}.tar.gz
 
+BuildArch: noarch
 BuildRequires: systemd-devel
 
 %define ocf_resourced        /usr/lib/ocf/resource.d
@@ -27,8 +28,8 @@ StarlingX Certificate Monitor Package
 %install
 install -m 755 -p -D cert-mon %{buildroot}/usr/lib/ocf/resource.d/platform/cert-mon
 install -m 644 -p -D cert-mon.service %{buildroot}%{_unitdir}/cert-mon.service
-
-%post
+install -m 644 -p -D cert-mon.syslog %{buildroot}%{_sysconfdir}/syslog-ng/conf.d/cert-mon.conf
+install -m 644 -p -D cert-mon.logrotate %{buildroot}%{_sysconfdir}/logrotate.d/cert-mon.conf
 
 
 %clean
@@ -43,3 +44,7 @@ rm -rf $RPM_BUILD_ROOT
 
 # systemctl service files
 %{_unitdir}/cert-mon.service
+
+# logfile config files
+%{_sysconfdir}/syslog-ng/conf.d/cert-mon.conf
+%{_sysconfdir}/logrotate.d/cert-mon.conf
