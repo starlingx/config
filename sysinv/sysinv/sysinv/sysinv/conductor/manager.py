@@ -6117,6 +6117,16 @@ class ConductorManager(service.PeriodicService):
     def update_oam_config(self, context):
         """Update the OAM network configuration"""
 
+        # update kube-apiserver cert's SANs at runtime
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::kubernetes::certsans::runtime']
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+        # there is still pending reboot required config to apply
         self._config_update_hosts(context, [constants.CONTROLLER], reboot=True)
 
         extoam = self.dbapi.iextoam_get_one()
