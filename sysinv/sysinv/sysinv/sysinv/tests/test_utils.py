@@ -22,6 +22,7 @@ import os
 import os.path
 import six.moves.builtins as __builtin__
 import tempfile
+import string
 
 from oslo_config import cfg
 
@@ -305,6 +306,29 @@ class GenericUtilsTestCase(base.TestCase):
         # In the case of raising an exception safe_rstrip() should return the
         # original value.
         self.assertEqual(utils.safe_rstrip(value), value)
+
+    def test_generate_random_password(self):
+        special_chars = "!*_-+="
+
+        for x in range(10):
+            passwd = utils.generate_random_password(16)
+            self.assertEqual(len(passwd), 16)
+            self.assertTrue(any(i in string.ascii_uppercase for i in passwd))
+            self.assertTrue(any(i in string.ascii_lowercase for i in passwd))
+            self.assertTrue(any(i in string.digits for i in passwd))
+            self.assertTrue(any(i in special_chars for i in passwd))
+
+            passwd = utils.generate_random_password(32)
+            self.assertEqual(len(passwd), 32)
+            self.assertTrue(any(i in string.ascii_uppercase for i in passwd))
+            self.assertTrue(any(i in string.ascii_lowercase for i in passwd))
+            self.assertTrue(any(i in string.digits for i in passwd))
+            self.assertTrue(any(i in special_chars for i in passwd))
+
+    def test_generate_random_password_exception(self):
+            self.assertRaises(exception.SysinvException,
+                              utils.generate_random_password,
+                              length=7)
 
 
 class MkfsTestCase(base.TestCase):
