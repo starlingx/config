@@ -233,7 +233,8 @@ class HostStatesController(rest.RestController):
         Example:
         capabilities=[{'function': 'platform', 'sockets': [{'0': 1}, {'1': 0}]},
                       {'function': 'vswitch', 'sockets': [{'0': 2}]},
-                      {'function': 'shared', 'sockets': [{'0': 1}, {'1': 1}]}]
+                      {'function': 'shared', 'sockets': [{'0': 1}, {'1': 1}]},
+                      {'function': 'application-isolated', 'cpulist': '3-5,6'}]
         """
         LOG.info("host_cpus_modify host_uuid=%s capabilities=%s" %
                  (host_uuid, capabilities))
@@ -244,16 +245,28 @@ class HostStatesController(rest.RestController):
         ihost.nodes = pecan.request.dbapi.inode_get_by_ihost(ihost.uuid)
         num_nodes = len(ihost.nodes)
 
+        # Query the database to get the current set of CPUs
+        ihost.cpus = pecan.request.dbapi.icpu_get_by_ihost(ihost.uuid)
+
         # Perform basic sanity on the input
         for icap in capabilities:
             specified_function = icap.get('function', None)
-            specified_sockets = icap.get('sockets', None)
-            if not specified_function or not specified_sockets:
+            specified_sockets = icap.get('sockets', [])
+            specified_cpulist = icap.get('cpulist', None)
+
+            if specified_sockets and specified_cpulist:
                 raise wsme.exc.ClientSideError(
-                    _('host %s:  cpu function=%s or socket=%s not specified '
-                      'for host %s.') % (host_uuid,
-                                         specified_function,
-                                         specified_sockets))
+                    _('host %s:  socket=%s and cpulist=%s may not both be specified') %
+                    (host_uuid, specified_sockets, specified_cpulist))
+
+            if not specified_function or not (specified_sockets or specified_cpulist):
+                raise wsme.exc.ClientSideError(
+                    _('host %s:  cpu function=%s or (socket=%s and cpulist=%s) '
+                      'not specified') % (host_uuid,
+                                          specified_function,
+                                          specified_sockets,
+                                          specified_cpulist))
+
             for specified_socket in specified_sockets:
                 socket, value = specified_socket.items()[0]
                 if int(socket) >= num_nodes:
@@ -264,22 +277,35 @@ class HostStatesController(rest.RestController):
                     raise wsme.exc.ClientSideError(
                         _('Specified cpu values must be non-negative.'))
 
-        # Query the database to get the current set of CPUs and then
-        # organize the data by socket and function for convenience.
-        ihost.cpus = pecan.request.dbapi.icpu_get_by_ihost(ihost.uuid)
+            # Ensure that the cpulist is valid if set
+            if specified_cpulist:
+                # make a list of CPU numbers (which are not necessarily contiguous)
+                host_cpus = [ihost_cpu.cpu for ihost_cpu in ihost.cpus]
+                cpulist = cutils.parse_range_set(specified_cpulist)
+                if max(cpulist) > max(host_cpus):
+                    raise wsme.exc.ClientSideError(
+                        _('Specified cpulist contains nonexistant CPUs.'))
+
+        # organize the cpus by socket and function for convenience.
         cpu_utils.restructure_host_cpu_data(ihost)
 
         # Get the CPU counts for each socket and function for this host
         cpu_counts = cpu_utils.get_cpu_counts(ihost)
 
-        # Update the CPU counts based on the provided values
+        cpu_lists = {}
+
+        # Update the CPU counts and cpulists based on the provided values
         for cap in capabilities:
             function = cap.get('function', None)
             # Normalize the function input
             for const_function in constants.CPU_FUNCTIONS:
                 if const_function.lower() == function.lower():
                     function = const_function
-            sockets = cap.get('sockets', None)
+            sockets = cap.get('sockets', [])
+            # If this function is specified via cpulist, reset count to zero.
+            if not sockets:
+                for numa_node in cpu_counts:
+                    cpu_counts[numa_node][function] = 0
             for numa in sockets:
                 numa_node, value = numa.items()[0]
                 numa_node = int(numa_node)
@@ -288,11 +314,18 @@ class HostStatesController(rest.RestController):
                     value *= 2
                 cpu_counts[numa_node][function] = value
 
+            # Store the cpu ranges per CPU function as well if any exist
+            cpu_range = cap.get('cpulist', None)
+            cpu_list = cutils.parse_range_set(cpu_range)
+            # Uncomment the following line to add any missing HT siblings
+            # cpu_list = cpu_utils.append_ht_sibling(ihost, cpu_list)
+            cpu_lists[function] = cpu_list
+
         # Semantic check to ensure the minimum/maximum values are enforced
-        cpu_utils.check_core_allocations(ihost, cpu_counts)
+        cpu_utils.check_core_allocations(ihost, cpu_counts, cpu_lists)
 
         # Update cpu assignments to new values
-        cpu_utils.update_core_allocations(ihost, cpu_counts)
+        cpu_utils.update_core_allocations(ihost, cpu_counts, cpu_lists)
 
         for cpu in ihost.cpus:
             function = cpu_utils.get_cpu_function(ihost, cpu)

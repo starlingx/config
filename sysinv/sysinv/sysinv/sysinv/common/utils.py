@@ -72,6 +72,8 @@ from oslo_log import log as logging
 
 from fm_api import constants as fm_constants
 
+from six.moves import range
+
 from sysinv._i18n import _
 from sysinv.common import exception
 from sysinv.common import constants
@@ -1729,6 +1731,20 @@ def get_disk_capacity_mib(device_node):
     size_mib = int_size / (1024 ** 2)
 
     return int(size_mib)
+
+
+def parse_range_set(range_string):
+    """ Return a non-sorted list specified by a range string."""
+    # TODO: add UTs for this.
+
+    # Parse a range string as specified by format_range_set() below
+    # Be generous dealing with duplicate entries in the specification.
+    if not range_string:
+        return []
+    ranges = [
+        (lambda sublist: range(sublist[0], sublist[-1] + 1))
+        (list(map(int, subrange.split('-')))) for subrange in range_string.split(',')]
+    return list(set([y for x in ranges for y in x]))
 
 
 def format_range_set(items):

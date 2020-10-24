@@ -90,6 +90,9 @@ def do_host_cpu_list(cc, args):
            choices=['vswitch', 'shared', 'platform', 'application-isolated'],
            required=True,
            help='The Core Function.')
+@utils.arg('-c', '--cpulist',
+           metavar='<cpulist>',
+           help="List of cpus, mutually exclusive with the -pX options")
 @utils.arg('-p0', '--num_cores_on_processor0',
            metavar='<num_cores_on_processor0>',
            type=int,
@@ -108,7 +111,7 @@ def do_host_cpu_list(cc, args):
            help='Number of cores on Processor 3.')
 def do_host_cpu_modify(cc, args):
     """Modify cpu core assignments."""
-    field_list = ['function', 'allocated_function',
+    field_list = ['function', 'allocated_function', 'cpulist',
                   'num_cores_on_processor0', 'num_cores_on_processor1',
                   'num_cores_on_processor2', 'num_cores_on_processor3']
 
@@ -119,18 +122,25 @@ def do_host_cpu_modify(cc, args):
                                  if k in field_list and not (v is None))
 
     cap = {'function': user_specified_fields.get('function')}
+    cpulist = user_specified_fields.get('cpulist')
+    if cpulist:
+        cap['cpulist'] = cpulist
 
     for k, v in user_specified_fields.items():
         if k.startswith('num_cores_on_processor'):
             sockets.append({k.lstrip('num_cores_on_processor'): v})
 
+    # can't specify both the -c option and any of the -pX options
+    if sockets and cpulist:
+        raise exc.CommandError('Not allowed to specify both -c and -pX options.')
+
     if sockets:
         cap.update({'sockets': sockets})
-        capabilities.append(cap)
-    else:
+    elif not cpulist:
         raise exc.CommandError('Number of cores on Processor (Socket) '
                                'not provided.')
 
+    capabilities.append(cap)
     icpus = cc.ihost.host_cpus_modify(ihost.uuid, capabilities)
 
     field_labels = ['uuid', 'log_core', 'processor', 'phy_core', 'thread',
