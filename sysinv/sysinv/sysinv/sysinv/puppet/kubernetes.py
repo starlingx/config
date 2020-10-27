@@ -322,9 +322,21 @@ class KubernetesPuppet(base.BasePuppet):
         # determine reserved sets of logical cpus in a string range set format
         # to pass as options to kubelet
         k8s_platform_cpuset = utils.format_range_set(platform_cpuset)
-        k8s_all_reserved_cpuset = utils.format_range_set(platform_cpuset |
-                                                         vswitch_cpuset |
-                                                         isol_cpuset)
+
+        # determine whether to reserve isolated CPUs
+        reserve_isolcpus = True
+        labels = self.dbapi.label_get_by_host(host.uuid)
+        for label in labels:
+            if label.label_key == constants.KUBE_IGNORE_ISOL_CPU_LABEL:
+                reserve_isolcpus = False
+                break
+        if reserve_isolcpus:
+            k8s_all_reserved_cpuset = utils.format_range_set(platform_cpuset |
+                                                             vswitch_cpuset |
+                                                             isol_cpuset)
+        else:
+            k8s_all_reserved_cpuset = utils.format_range_set(platform_cpuset |
+                                                             vswitch_cpuset)
 
         # determine platform reserved memory
         k8s_reserved_mem = 0
