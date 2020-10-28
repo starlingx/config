@@ -54,9 +54,11 @@ CONF.register_opts(cert_mon_opts, 'certmon')
 class CertificateMonManager(periodic_task.PeriodicTasks):
     def __init__(self):
         super(CertificateMonManager, self).__init__(CONF)
-        self.mon_thread = None
+        self.dc_mon_thread = None
+        self.platcert_mon_thread = None
         self.audit_thread = None
-        self.monitor = None
+        self.dc_monitor = None
+        self.platcert_monitor = None
         self.reattempt_tasks = []
         self.subclouds_to_audit = []
 
@@ -183,27 +185,48 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         self.audit_thread = greenthread.spawn(self.audit_cert)
         self.on_start_audit()
 
-    def init_monitor(self):
-        self.monitor = watcher.CertWatcher()
-        self.monitor.initialize(
+    def init_dc_monitor(self):
+        self.dc_monitor = watcher.DC_CertWatcher()
+        self.dc_monitor.initialize(
             audit_subcloud=lambda subcloud_name: self.requeue_audit(subcloud_name))
+
+    def init_platformcert_monitor(self):
+        self.platcert_monitor = watcher.PlatCert_CertWatcher()
+        self.platcert_monitor.initialize()
 
     def start_monitor(self):
         utils.init_keystone_auth_opts()
+        dc_role = utils.get_dc_role()
         while True:
             try:
-                self.init_monitor()
+                # init platformcert monitor
+                self.init_platformcert_monitor()
+
+                # init dc monitor only if running in DC role
+                if (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER or
+                        dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+                    self.init_dc_monitor()
             except Exception as e:
                 LOG.exception(e)
                 time.sleep(5)
             else:
                 break
-        self.mon_thread = greenthread.spawn(self.monitor_cert)
+
+        # spawn threads (DC thread spawned only if running in DC role)
+        self.platcert_mon_thread = greenthread.spawn(self.platcert_monitor_cert)
+
+        if (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER or
+                dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+            self.dc_mon_thread = greenthread.spawn(self.dc_monitor_cert)
 
     def stop_monitor(self):
-        if self.mon_thread:
-            self.mon_thread.kill()
-            self.mon_thread.wait()
+        if self.dc_mon_thread:
+            self.dc_mon_thread.kill()
+            self.dc_mon_thread.wait()
+
+        if self.platcert_mon_thread:
+            self.platcert_mon_thread.kill()
+            self.platcert_mon_thread.wait()
 
     def stop_audit(self):
         if self.audit_thread:
@@ -220,11 +243,26 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             except Exception as e:
                 LOG.exception(e)
 
-    def monitor_cert(self):
+    def dc_monitor_cert(self):
         while True:
             # never exit until exit signal received
             try:
-                self.monitor.start_watch(
+                self.dc_monitor.start_watch(
+                    on_success=lambda task_id: self._purge_reattempt_task(task_id),
+                    on_error=lambda task: self._add_reattempt_task(task),
+                )
+            except greenlet.GreenletExit:
+                break
+            except Exception as e:
+                # A bug somewhere?
+                # It shouldn't fall to here, but log and restart if it did
+                LOG.exception(e)
+
+    def platcert_monitor_cert(self):
+        while True:
+            # never exit until exit signal received
+            try:
+                self.platcert_monitor.start_watch(
                     on_success=lambda task_id: self._purge_reattempt_task(task_id),
                     on_error=lambda task: self._add_reattempt_task(task),
                 )

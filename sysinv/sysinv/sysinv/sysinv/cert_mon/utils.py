@@ -18,8 +18,11 @@
 # of an applicable Wind River license agreement.
 #
 import json
+import os
 import re
+import requests
 import ssl
+import tempfile
 import urlparse
 from keystoneclient.v3 import client as keystone_client
 from keystoneauth1 import session
@@ -53,6 +56,8 @@ AVAILABILITY_ONLINE = "online"
 CERT_NAMESPACE_SYS_CONTROLLER = 'dc-cert'
 CERT_NAMESPACE_SUBCLOUD_CONTROLLER = 'sc-cert'
 DC_ROLE_UNDETECTED = 'unknown'
+
+CERT_NAMESPACE_PLATFORM_CERTS = 'kube-system'
 
 LOG = log.getLogger(__name__)
 CONF = cfg.CONF
@@ -514,3 +519,98 @@ def get_dc_role():
             raise Exception('Failed to access system data')
 
     return dc_role
+
+
+def get_isystems_uuid(token):
+    uuid = ''
+    sysinv_url = token.get_service_internal_url(constants.SERVICE_TYPE_PLATFORM, constants.SYSINV_USERNAME)
+    api_cmd = sysinv_url + '/isystems'
+    res = rest_api_request(token, "GET", api_cmd)['isystems']
+    if len(res) == 1:
+        system = res[0]
+        uuid = system['uuid']
+    else:
+        raise Exception('Failed to access system data')
+
+    return uuid
+
+
+def enable_https(token):
+    ret = True
+    sysinv_url = token.get_service_internal_url(constants.SERVICE_TYPE_PLATFORM, constants.SYSINV_USERNAME)
+    api_cmd = sysinv_url + '/isystems/' + get_isystems_uuid(token)
+
+    patch = []
+    patch.append({'op': 'replace', 'path': '/https_enabled', 'value': 'true'})
+
+    resp = rest_api_request(token, "PATCH", api_cmd, json.dumps(patch))
+
+    if resp['capabilities']['https_enabled'] is True:
+        LOG.info('Enable https patch request succeeded')
+    else:
+        ret = False
+        LOG.exception('Enable https failed! resp=%s' % resp)
+
+    return ret
+
+
+def upload_request_with_data(token, url, **kwargs):
+    headers = {"X-Auth-Token": token.get_id()}
+    files = {'file': ("for_upload",
+                    kwargs['body'],)}
+    data = kwargs.get('data')
+    req = requests.post(url, headers=headers, files=files,
+                        data=data)
+    LOG.info('response from upload API = %s' % req.json())
+    return req.json()
+
+
+def rest_api_upload(token, filepath, url, data=None):
+    """
+    Make a rest-api upload call
+    """
+    LOG.info('rest_api_upload called. filepath=%s, url=%s, data=%s' % (filepath, url, data))
+    try:
+        file_to_upload = open(filepath, 'rb')
+    except Exception as e:
+        LOG.exception(e)
+
+    return upload_request_with_data(token, url, body=file_to_upload, data=data)
+
+
+def update_platformcert_pemfile(tls_crt, tls_key):
+    LOG.info('Updating platformcert temporary pemfile')
+    try:
+        fd, tmppath = tempfile.mkstemp(suffix='.pem')
+        with open(tmppath, 'w+') as f:
+            f.write(tls_crt)
+            f.write("\n")
+            f.write(tls_key)
+    except Exception as e:
+        LOG.exception(e)
+        raise
+    finally:
+        if fd is not None:
+            os.close(fd)
+    return tmppath
+
+
+def update_platform_cert(token, pem_file_path):
+    LOG.info('Updating platform certificate. pem_file_path=%s' % pem_file_path)
+    sysinv_url = token.get_service_internal_url(constants.SERVICE_TYPE_PLATFORM, constants.SYSINV_USERNAME)
+    api_cmd = sysinv_url + '/certificate/certificate_install'
+
+    data = {'mode': 'ssl'}
+
+    response = rest_api_upload(token, pem_file_path, api_cmd, data)
+    error = response.get('error')
+    if error:
+        LOG.info('Failed. Certificate not installed. Error=%s' % error)
+    else:
+        LOG.info('Certificate successfully installed')
+
+    # cleanup
+    try:
+        os.remove(pem_file_path)
+    except OSError:
+        LOG.exception('Failed to remove temp pem file %s' % pem_file_path)

@@ -232,22 +232,42 @@ class CertWatcher(object):
                         LOG.exception(e)
                     on_error(update_event)
 
+
+class DC_CertWatcher(CertWatcher):
+    def __init__(self):
+        super(DC_CertWatcher, self).__init__()
+
     def initialize(self, audit_subcloud):
         self.context.initialize()
-        role = self.context.dc_role
-        LOG.info('DC role: %s' % role)
-        if role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+        dc_role = self.context.dc_role
+        LOG.info('DC role: %s' % dc_role)
+
+        if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
             ns = utils.CERT_NAMESPACE_SUBCLOUD_CONTROLLER
-        elif role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+        elif dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
             ns = utils.CERT_NAMESPACE_SYS_CONTROLLER
         else:
             ns = ''
         self.namespace = ns
         self.context.kubernete_namespace = ns
         self.register_listener(AdminEndpointRenew(self.context))
-        if role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+        if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
             self.register_listener(DCIntermediateCertRenew(self.context, audit_subcloud))
             self.register_listener(RootCARenew(self.context))
+
+
+class PlatCert_CertWatcher(CertWatcher):
+    def __init__(self):
+        super(PlatCert_CertWatcher, self).__init__()
+
+    def initialize(self):
+        self.context.initialize()
+
+        platcert_ns = utils.CERT_NAMESPACE_PLATFORM_CERTS
+        LOG.info('setting ns : %s & registering listener' % platcert_ns)
+        self.namespace = platcert_ns
+        self.context.kubernete_namespace = platcert_ns
+        self.register_listener(PlatformCertRenew(self.context))
 
 
 class CertificateRenew(CertWatcherListener):
@@ -471,3 +491,25 @@ class RootCARenew(CertificateRenew):
         if len(self.secrets_to_recreate) > 0:
             # raise exception to keep reattempting
             raise Exception('Some secrets were not recreated successfully')
+
+
+class PlatformCertRenew(CertificateRenew):
+    def __init__(self, context):
+        super(PlatformCertRenew, self).__init__(context)
+        self.secret_name = constants.PLATFORM_CERT_SECRET_NAME
+        LOG.info('PlatformCertRenew init with secretname: %s' % self.secret_name)
+
+    def check_filter(self, event_data):
+        if self.secret_name == event_data.secret_name:
+            return self.certificate_is_ready(event_data)
+        else:
+            return False
+
+    def update_certificate(self, event_data):
+        LOG.info('PlatformCertRenew: Secret changes detected. Initiating certificate update')
+        token = self.context.get_token()
+        ret = utils.enable_https(token)
+        pem_file_path = utils.update_platformcert_pemfile(event_data.tls_crt,
+                                   event_data.tls_key)
+        if ret is True:
+            utils.update_platform_cert(token, pem_file_path)
