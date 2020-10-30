@@ -282,6 +282,60 @@ start()
         fi
     fi
 
+    if [ -e $CONFIG_DIR/etcd/etcd-server.crt ]
+    then
+        cp $CONFIG_DIR/etcd/etcd-server.crt /etc/etcd/etcd-server.crt
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy $CONFIG_DIR/etcd/etcd-server.crt"
+        fi
+    fi
+
+    if [ -e $CONFIG_DIR/etcd/etcd-server.key ]
+    then
+        cp $CONFIG_DIR/etcd/etcd-server.key /etc/etcd/etcd-server.key
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy $CONFIG_DIR/etcd/etcd-server.key"
+        fi
+    fi
+
+    if [ -e $CONFIG_DIR/etcd/etcd-client.crt ]
+    then
+        cp $CONFIG_DIR/etcd/etcd-client.crt /etc/etcd/etcd-client.crt
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy $CONFIG_DIR/etcd/etcd-client.crt"
+        fi
+    fi
+
+    if [ -e $CONFIG_DIR/etcd/etcd-client.key ]
+    then
+        cp $CONFIG_DIR/etcd/etcd-client.key /etc/etcd/etcd-client.key
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy $CONFIG_DIR/etcd/etcd-client.key"
+        fi
+    fi
+
+    if [ -e $CONFIG_DIR/etcd/ca.crt ]
+    then
+        cp $CONFIG_DIR/etcd/ca.crt /etc/etcd/ca.crt
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy $CONFIG_DIR/etcd/ca.crt"
+        fi
+    fi
+
+    if [ -e $CONFIG_DIR/etcd/ca.key ]
+    then
+        cp $CONFIG_DIR/etcd/ca.key /etc/etcd/ca.key
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy $CONFIG_DIR/etcd/ca.key"
+        fi
+    fi
+
     if [ -e $CONFIG_DIR/registry-cert.key ]
     then
         cp $CONFIG_DIR/registry-cert.key /etc/ssl/private/registry-cert.key

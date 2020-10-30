@@ -1025,6 +1025,42 @@ class ConductorManager(service.PeriodicService):
                     raise exception.SysinvException(_(
                         "Failed to create pxelinux.cfg file"))
 
+    def _enable_etcd_security_config(self, context, config_uuid):
+        """Update the manifests for etcd security
+           Note: this can be removed in the release after STX5.0
+        """
+
+        personalities = [constants.CONTROLLER]
+        hostname = socket.gethostname()
+        ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+        valid_ctrls = [ctrl for ctrl in ctrls if
+                       ctrl.administrative == constants.ADMIN_UNLOCKED and
+                       ctrl.availability in [constants.AVAILABILITY_AVAILABLE,
+                                             constants.AVAILABILITY_DEGRADED]]
+        active_ctrl_host = None
+        standby_ctrl_host = None
+
+        for controller_host in valid_ctrls:
+            if controller_host.hostname != hostname:
+                standby_ctrl_host = controller_host
+            else:
+                active_ctrl_host = controller_host
+
+        # Applied etcd security puppet manifest in migration script for active controller.
+        self._update_host_config_applied(context, active_ctrl_host, config_uuid)
+
+        # Just enable etcd security in standby controller, as it has already been
+        # enabled in active controller side in migration script.
+        if standby_ctrl_host:
+            config_dict = {"personalities": personalities,
+                           "host_uuids": [standby_ctrl_host.uuid],
+                           "classes": ['platform::etcd::upgrade::runtime'],
+                           }
+
+            self._config_apply_runtime_manifest(context,
+                                                config_uuid=config_uuid,
+                                                config_dict=config_dict)
+
     def _remove_pxe_config(self, host):
         """Delete the PXE config file for this host.
 
@@ -9533,10 +9569,14 @@ class ConductorManager(service.PeriodicService):
                 self.dbapi.software_upgrade_update(
                     upgrade.uuid,
                     {'state': constants.UPGRADE_ACTIVATION_FAILED})
-
-        hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
-        for host in hosts:
-            self._update_host_config_applied(context, host, config_uuid)
+        else:
+            if from_version == tsc.SW_VERSION_20_06:
+                # Apply etcd security puppet manifest here for standby controller.
+                self._enable_etcd_security_config(context, config_uuid)
+            else:
+                hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+                for host in hosts:
+                    self._update_host_config_applied(context, host, config_uuid)
 
     def complete_upgrade(self, context, upgrade, state):
         """ Complete the upgrade"""
