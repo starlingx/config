@@ -1464,6 +1464,7 @@ HELM_APP_CERT_MANAGER = 'cert-manager'
 HELM_APP_NGINX_IC = 'nginx-ingress-controller'
 HELM_APP_VAULT = 'vault'
 HELM_APP_ROOK_CEPH = 'rook-ceph-apps'
+HELM_APP_SNMP = 'snmp'
 
 # Apply mode for openstack app
 OPENSTACK_RESTORE_DB = 'restore_db'
