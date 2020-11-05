@@ -53,6 +53,7 @@ import shutil
 import signal
 import six
 import socket
+import string
 import tempfile
 import time
 import tsconfig.tsconfig as tsc
@@ -2410,3 +2411,51 @@ def run_playbook(playbook_command):
     out, _ = proc.communicate()
     LOG.info("ansible-playbook: %s." % out)
     return proc.returncode
+
+
+def generate_random_password(length=16):
+    """
+    Generate a random password with as least one uppercase, one lowercase,
+    one number and one of the special characters in [!*_-+=] (the square
+    brackets are not included).
+
+    :param length: the length of the password
+    :return: the password in unicode
+    :raises exception.SysinvException: if password length is less than minimum
+    """
+    if length < constants.MINIMUM_PASSWORD_LENGTH:
+        msg = _("Length %s is below required minimum %s") % \
+               (length, constants.MINIMUM_PASSWORD_LENGTH)
+        raise exception.SysinvException(msg)
+
+    randomer = random.SystemRandom()
+
+    # Possible password characters
+    norm_chars = string.ascii_uppercase \
+                  + string.ascii_lowercase \
+                  + string.digits
+    special_chars = "!*_-+="
+    password_chars = norm_chars + special_chars
+
+    # As least one uppercase, one lowercase, one digit and one special
+    # character.
+    at_least_chars = randomer.choice(string.ascii_uppercase) \
+                     + randomer.choice(string.ascii_lowercase) \
+                     + randomer.choice(string.digits) \
+                     + randomer.choice(special_chars)
+
+    password = at_least_chars \
+               + ''.join(randomer.choice(password_chars)
+                         for i in range(length - len(at_least_chars) - 1))
+
+    # Shuffle the password to mix the at least to have characters
+    password_list = list(password)
+    randomer.shuffle(password_list)
+
+    # The leading char is always an ascii char or a number.
+    password = randomer.choice(norm_chars) + ''.join(password_list)
+
+    # Return the password in unicode
+    if six.PY2:
+        password = password.decode()
+    return password

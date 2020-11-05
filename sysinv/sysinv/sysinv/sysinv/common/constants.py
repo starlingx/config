@@ -23,6 +23,9 @@ SYSINV_RESTORE_FLAG = os.path.join(SYSINV_CONFIG_PATH,
 HTTPS_CONFIG_REQUIRED = os.path.join(tsc.CONFIG_PATH, '.https_config_required')
 ADMIN_ENDPOINT_CONFIG_REQUIRED = os.path.join(tsc.CONFIG_PATH, '.admin_endpoint_config_required')
 
+# Minimum password length
+MINIMUM_PASSWORD_LENGTH = 8
+
 # IP families
 IPV4_FAMILY = 4
 IPV6_FAMILY = 6
