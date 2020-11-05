@@ -1,17 +1,17 @@
 """
 
-Copyright (c) 2015-2018 Wind River Systems, Inc.
+Copyright (c) 2015-2020 Wind River Systems, Inc.
 
 SPDX-License-Identifier: Apache-2.0
 
 """
 
-import numpy as np
 import os
 import subprocess
 import sys
 import textwrap
 import time
+import yaml
 
 from keystoneclient.auth.identity import v3
 from keystoneauth1 import session as ksc_session
@@ -39,8 +39,8 @@ class OpenStack(object):
         self.admin_token = None
         self.conf = {}
         self.cinder_client = None
-        self.glance_client_v1 = None
-        self.glance_client_v2 = None
+        self.glance_client = None
+        openstack_keystone_address = 'keystone.openstack.svc.cluster.local'
 
         try:
             self.conf['admin_user'] = os.environ['OS_USERNAME']
@@ -51,8 +51,43 @@ class OpenStack(object):
             self.conf['user_domain'] = os.environ['OS_USER_DOMAIN_NAME']
             self.conf['project_domain'] = os.environ['OS_PROJECT_DOMAIN_NAME']
         except KeyError:
-            LOG.error("Please source openstack service credentials file.")
-            raise TidyStorageFail("Please source openstack credentials file.")
+            openstack_config_file_path = \
+                os.path.join("/", "etc", "openstack", "clouds.yaml")
+            try:
+                with open(openstack_config_file_path) as f:
+                    openstack_config_data = \
+                        yaml.load(f)['clouds']['openstack_helm']
+                self.conf['admin_user'] = \
+                    openstack_config_data['auth']['username']
+                self.conf['admin_pwd'] = \
+                    openstack_config_data['auth']['password']
+                self.conf['admin_tenant'] = \
+                    openstack_config_data['auth']['project_name']
+                self.conf['auth_url'] = \
+                    openstack_config_data['auth']['auth_url']
+                self.conf['region_name'] = \
+                    openstack_config_data['region_name']
+                self.conf['user_domain'] = \
+                    openstack_config_data['auth']['user_domain_name']
+                self.conf['project_domain'] = \
+                    openstack_config_data['auth']['project_domain_name']
+            except KeyError:
+                msg = "Openstack config file has missing values"
+                LOG.error(msg)
+                raise TidyStorageFail(msg)
+            except IOError:
+                msg = "Openstack config file does not exist (%s)" \
+                      % openstack_config_file_path
+                LOG.error(msg)
+                raise TidyStorageFail(msg)
+
+        if openstack_keystone_address not in self.conf['auth_url']:
+            msg = 'The auth_url conf variable is expected to be using ' \
+                  'the %s service. ' \
+                  'Please confirm the provided access credentials.'\
+                  % openstack_keystone_address
+            LOG.error(msg)
+            raise TidyStorageFail(msg)
 
     def __enter__(self):
         if not self._connect():
@@ -109,7 +144,7 @@ class OpenStack(object):
 
     @property
     def get_glance_client(self):
-        if not self.glance_client_v1 or not self.glance_client_v2:
+        if not self.glance_client:
             auth = v3.Password(auth_url=self.conf['auth_url'],
                                username=self.conf['admin_user'],
                                password=self.conf['admin_pwd'],
@@ -117,12 +152,10 @@ class OpenStack(object):
                                project_name=self.conf['admin_tenant'],
                                project_domain_name=self.conf['project_domain'])
 
-            self.glance_client_v1 = Client(
-                '1', session=ksc_session.Session(auth=auth))
-            self.glance_client_v2 = Client(
+            self.glance_client = Client(
                 '2', session=ksc_session.Session(auth=auth))
 
-        return self.glance_client_v1, self.glance_client_v2
+        return self.glance_client
 
 
 def show_help():
@@ -163,8 +196,8 @@ def tidy_storage(result_file):
         # Check Glance images
         print("Scanning Glance images in DB and rbd images pool...\n")
         try:
-            g_client_v1, g_client_v2 = client.get_glance_client
-            image_l = g_client_v2.images.list()
+            g_client = client.get_glance_client
+            image_l = g_client.images.list()
             image_id_l = [image['id'].encode('utf-8') for image in image_l]
 
             output = subprocess.check_output(
@@ -185,13 +218,13 @@ def tidy_storage(result_file):
         print("Images in Glance images DB: %s \n" % image_id_l)
         print("Images in rbd images pool:  %s \n" % rbd_image_l)
 
-        in_glance_only = np.setdiff1d(image_id_l, rbd_image_l)
-        in_rbd_image_only = np.setdiff1d(rbd_image_l, image_id_l)
+        in_glance_only = list(set(image_id_l) - set(rbd_image_l))
+        in_rbd_image_only = list(set(rbd_image_l) - set(image_id_l))
 
         print("Images in Glance images DB only: %s \n" % in_glance_only)
         print("Images in rbd images pool only:  %s \n" % in_rbd_image_only)
 
-        if in_rbd_image_only.size != 0:
+        if in_rbd_image_only:
             output = subprocess.check_output(
                 ["grep",
                  "fsid",
@@ -217,12 +250,12 @@ def tidy_storage(result_file):
                 fields['name'] = 'found-image-%s' % image
                 fields['id'] = image
                 fields['container_format'] = 'bare'
-                fields['location'] = \
-                    'rbd://{}/images/{}/snap'.format(ceph_cluster[0],
-                                                     image)
+                url = 'rbd://{}/images/{}/snap'.format(ceph_cluster[0],
+                                                       image)
 
                 print("Creating a Glance image %s ...\n " % fields['name'])
-                g_client_v1.images.create(**fields)
+                g_client.images.create(**fields)
+                g_client.images.add_location(image, url, {})
             except subprocess.CalledProcessError:
                 LOG.error("Failed to access rbd image %s" % image)
                 raise TidyStorageFail("Failed to access rbd image")
@@ -261,7 +294,7 @@ def tidy_storage(result_file):
                     break
 
             if found_vol:
-                volume = 'cinder-volumes/volume-{}'.format(snap.volume_id)
+                volume = 'cinder-volumes/{}'.format(snap.volume_id)
                 try:
                     output = subprocess.check_output(
                         ["rbd", "snap", "list", volume],
@@ -330,14 +363,14 @@ def tidy_storage(result_file):
             LOG.error("Failed to access rbd cinder-volumes pool")
             raise TidyStorageFail("Failed to access rbd cinder-volumes pool")
 
-        rbd_volume_l = [i[7:] for i in output.split('\n') if i != ""]
+        rbd_volume_l = [i for i in output.split('\n') if i != ""]
 
         print("Volumes in Cinder volumes DB: %s \n" % cinder_volume_l)
         print("Volumes in rbd pool: %s \n" % rbd_volume_l)
 
-        in_cinder_only = np.setdiff1d(cinder_volume_l, rbd_volume_l)
-        in_rbd_volume_only = np.setdiff1d(rbd_volume_l, cinder_volume_l)
-        in_cinder_and_rbd = np.intersect1d(cinder_volume_l, rbd_volume_l)
+        in_cinder_only = list(set(cinder_volume_l) - set(rbd_volume_l))
+        in_rbd_volume_only = list(set(rbd_volume_l) - set(cinder_volume_l))
+        in_cinder_and_rbd = list(set(cinder_volume_l) & set(rbd_volume_l))
 
         print("Volumes in Cinder volumes DB only: %s \n" % in_cinder_only)
         print("Volumes in rbd pool only: %s \n" % in_rbd_volume_only)
@@ -345,7 +378,7 @@ def tidy_storage(result_file):
               % in_cinder_and_rbd)
 
         for vol_id in in_rbd_volume_only:
-            volume = 'cinder-volumes/volume-{}'.format(vol_id)
+            volume = 'cinder-volumes/{}'.format(vol_id)
             try:
                 # Find out if the volume is a bootable one
                 output = subprocess.check_output(
@@ -429,7 +462,7 @@ def tidy_storage(result_file):
             raise TidyStorageFail("Failed to get Cinder snapshots")
 
         for vol_id in in_cinder_and_rbd:
-            volume = 'cinder-volumes/volume-{}'.format(vol_id)
+            volume = 'cinder-volumes/{}'.format(vol_id)
             try:
                 # Find out if the volume has any snapshots.
                 print("Checking if volume %s has snapshots...\n" % vol_id)
@@ -469,7 +502,7 @@ def tidy_storage(result_file):
                     "\"glance image-delete <id>\" command.", 80))
                 f.write("\n\n")
                 f.write('{0[0]:<40}{0[1]:<50}\n'.format(['ID', 'NAME']))
-                image_l = g_client_v2.images.list()
+                image_l = g_client.images.list()
                 for image in image_l:
                     if image['name'].find("found-image") != -1:
                         f.write('{0[0]:<40}{0[1]:<50}\n'.format(
@@ -485,9 +518,9 @@ def tidy_storage(result_file):
                     "document to restore the image.", 80))
                 f.write("\n\n")
                 f.write('{0[0]:<40}{0[1]:<50}\n'.format(['ID', 'NAME']))
-                image_l = g_client_v2.images.list()
+                image_l = g_client.images.list()
                 for image in image_l:
-                    if (in_glance_only.size != 0 and
+                    if (in_glance_only and
                             image['id'].encode('utf-8') in in_glance_only):
                         f.write('{0[0]:<40}{0[1]:<50}\n'.format(
                             [image['id'].encode('utf-8'), image['name']]))
@@ -520,8 +553,7 @@ def tidy_storage(result_file):
                 f.write('{0[0]:<40}{0[1]:<50}\n'.format(['ID', 'NAME']))
                 volume_l = c_client.volumes.list(search_opts=search_opts)
                 for volume in volume_l:
-                    if (in_cinder_only.size != 0 and
-                            volume.id in in_cinder_only):
+                    if in_cinder_only and volume.id in in_cinder_only:
                         f.write('{0[0]:<40}{0[1]:<50}\n'.format(
                             [volume.id.encode('utf-8'), volume.name]))
 
