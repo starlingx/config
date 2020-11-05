@@ -2658,6 +2658,10 @@ class AppOperator(object):
         def recovery_attempts(self):
             return self._kube_app.get('recovery_attempts')
 
+        @property
+        def mode(self):
+            return self._kube_app.get('mode')
+
         def update_status(self, new_status, new_progress):
             self._kube_app.status = new_status
             if new_progress:

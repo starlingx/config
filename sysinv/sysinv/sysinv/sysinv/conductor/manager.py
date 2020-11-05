@@ -5581,7 +5581,7 @@ class ConductorManager(service.PeriodicService):
         app.status = constants.APP_APPLY_IN_PROGRESS
         app.save()
 
-        greenthread.spawn(self._app.perform_app_apply, app, None)
+        greenthread.spawn(self._app.perform_app_apply, app, app.mode)
 
     def _upgrade_downgrade_kube_components(self):
         self._upgrade_downgrade_static_images()
@@ -11277,7 +11277,7 @@ class ConductorManager(service.PeriodicService):
                 new_hash = {}
                 app.charts = self._app._get_list_of_charts(app.sync_armada_mfile)
                 self._helm.generate_helm_application_overrides(
-                    app.sync_overrides_dir, app.name, None, cnamespace=None,
+                    app.sync_overrides_dir, app.name, app.mode, cnamespace=None,
                     armada_format=True, armada_chart_info=app.charts, combined=True)
                 (helm_files, armada_files) = self._app._get_overrides_files(
                     app.sync_overrides_dir, app.charts, app.name, None)
