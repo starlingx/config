@@ -134,6 +134,7 @@ class ihost(Base):
                               'profile',
                               'reserve1',
                               'reserve2',
+                              'edgeworker',
                               name='invPersonalityEnum')
 
     adminEnum = Enum('locked',
