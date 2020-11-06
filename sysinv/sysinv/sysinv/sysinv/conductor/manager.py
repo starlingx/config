@@ -11017,8 +11017,10 @@ class ConductorManager(service.PeriodicService):
 
         tls_key = base64.b64encode(sc_ca_key)
         tls_crt = base64.b64encode(sc_ca_cert)
-        ca_crt = base64.b64encode(root_ca_crt)
-        secret.data['ca.crt'] = ca_crt
+        if tls_key == secret.data['tls.key'] and tls_crt == secret.data['tls.crt']:
+            LOG.info('Intermediate CA cert is not changed')
+            return
+
         secret.data['tls.key'] = tls_key
         secret.data['tls.crt'] = tls_crt
 
