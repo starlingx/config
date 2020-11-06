@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -1545,10 +1545,25 @@ APP_REMOVE_OP = 'remove'
 APP_DELETE_OP = 'delete'
 APP_UPDATE_OP = 'update'
 APP_ROLLBACK_OP = 'rollback'
+APP_ABORT_OP = 'abort'
 
 # Lifecycle constants
-APP_LIFECYCLE_PRE = 'pre'
-APP_LIFECYCLE_POST = 'post'
+APP_LIFECYCLE_TIMING_PRE = 'pre'
+APP_LIFECYCLE_TIMING_POST = 'post'
+
+APP_LIFECYCLE_TYPE_SEMANTIC_CHECK = 'check'
+APP_LIFECYCLE_TYPE_OPERATION = 'operation'
+APP_LIFECYCLE_TYPE_RBD = 'rbd'
+APP_LIFECYCLE_TYPE_RESOURCE = 'resource'
+# armada manifest
+# outside the function that has the retry decorator
+APP_LIFECYCLE_TYPE_MANIFEST = 'manifest'
+# inside the function that has a retry decorator
+APP_LIFECYCLE_TYPE_ARMADA_REQUEST = 'armada-request'
+
+APP_LIFECYCLE_MODE_MANUAL = 'manual'
+APP_LIFECYCLE_MODE_AUTO = 'auto'
+
 
 # Application metadata constants
 APP_METADATA_MAINTAIN_USER_OVERRIDES = 'maintain_user_overrides'
