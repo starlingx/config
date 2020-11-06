@@ -1488,7 +1488,6 @@ HELM_APPS_PLATFORM_MANAGED = [
     HELM_APP_PLATFORM,
     HELM_APP_OIDC_AUTH,
     HELM_APP_CERT_MANAGER,
-    HELM_APP_ROOK_CEPH,
 ]
 
 # The order in which apps are listed here is important.
