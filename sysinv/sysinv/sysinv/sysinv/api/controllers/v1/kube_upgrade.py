@@ -256,7 +256,7 @@ class KubeUpgradeController(rest.RestController):
             else:
                 raise wsme.exc.ClientSideError(_(
                     "System is not in a valid state for kubernetes upgrade. "
-                    "Run system health-query for more details."))
+                    "Run system health-query-kube-upgrade for more details."))
 
         # Create upgrade record.
         create_values = {'from_version': current_kube_version,
