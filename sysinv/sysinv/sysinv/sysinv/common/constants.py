@@ -1708,3 +1708,7 @@ DC_ROOT_CA_CERT_PATH = \
 DC_ROOT_CA_CONFIG_PATH = \
     os.path.join(tsc.CONFIG_PATH, DC_ROOT_CA_CERT_FILE)
 ADMIN_EP_CERT_FORMAT = '{tls_key}'
+
+# Platform certificates
+CERTIFICATE_TYPE_PLATFORM_CERT = "platform-cert"
+PLATFORM_CERT_SECRET_NAME = "system-restapi-gui-certificate"
