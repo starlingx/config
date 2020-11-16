@@ -263,7 +263,7 @@ class PlatCert_CertWatcher(CertWatcher):
     def initialize(self):
         self.context.initialize()
 
-        platcert_ns = utils.CERT_NAMESPACE_PLATFORM_CERTS
+        platcert_ns = constants.CERT_NAMESPACE_PLATFORM_CERTS
         LOG.info('setting ns : %s & registering listener' % platcert_ns)
         self.namespace = platcert_ns
         self.context.kubernete_namespace = platcert_ns
@@ -508,7 +508,8 @@ class PlatformCertRenew(CertificateRenew):
     def update_certificate(self, event_data):
         LOG.info('PlatformCertRenew: Secret changes detected. Initiating certificate update')
         token = self.context.get_token()
-        ret = utils.enable_https(token)
+        system_uuid = utils.get_isystems_uuid(token)
+        ret = utils.enable_https(token, system_uuid)
         pem_file_path = utils.update_platformcert_pemfile(event_data.tls_crt,
                                    event_data.tls_key)
         if ret is True:

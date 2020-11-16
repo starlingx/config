@@ -1,0 +1,38 @@
+{
+    "isystems": [
+        {
+            "system_mode": "simplex",
+            "region_name": "RegionOne",
+            "uuid": "fdc60cf3-3330-4438-859d-b0da19e9663d",
+            "links": [
+                {
+                    "href": "http://192.168.204.1:6385/v1/isystems/fdc60cf3-3330-4438-859d-b0da19e9663d",
+                    "rel": "self"
+                }, {
+                    "href": "http://192.168.204.1:6385/isystems/fdc60cf3-3330-4438-859d-b0da19e9663d",
+                    "rel": "bookmark"
+                }
+            ],
+            "software_version": "20.06",
+            "service_project_name": "services",
+            "system_type": "All-in-one",
+            "created_at": "2020-10-21T20:50:30.961283+00:00",
+            "location": null,
+            "updated_at": "2020-11-27T15:02:01.531935+00:00",
+            "capabilities": {
+                "sdn_enabled": false,
+                "vswitch_type": "none",
+                "bm_region": "External",
+                "shared_services": "[]",
+                "https_enabled": true,
+                "region_config": false
+            },
+            "name": "e8a961ae-30a5-44f8-9d84-a6be2479c9fc",
+            "contact": null,
+            "security_feature": "spectre_meltdown_v1",
+            "timezone": "UTC",
+            "distributed_cloud_role": null,
+            "description": null
+        }
+    ]
+}

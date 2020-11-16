@@ -40,6 +40,7 @@ from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import kubernetes as sys_kube
 from sysinv.common import utils as cutils
 from sysinv.openstack.common.rpc.common import RemoteError
 from wsme import types as wtypes
@@ -209,6 +210,7 @@ class CertificateController(rest.RestController):
 
     def __init__(self):
         self._api_token = None
+        self._kube_op = sys_kube.KubeOperator()
 
     @wsme_pecan.wsexpose(Certificate, types.uuid)
     def get_one(self, certificate_uuid):
@@ -304,6 +306,28 @@ class CertificateController(rest.RestController):
 
         system = pecan.request.dbapi.isystem_get_one()
         capabilities = system.capabilities
+
+        # platform-cert 'force' check for backward compatibility
+        if mode == constants.CERT_MODE_SSL:
+            # Call may not contain 'force' parameter
+            # Note: cert-mon will pass a HTTP POST 'force'='true' param
+            force = pecan.request.POST.get('force')
+            if force == 'true':
+                force = True
+            else:
+                force = False
+            # if PLATFORM_CERT_SECRET_NAME secret is present in k8s, we
+            # assume that SSL cert is managed by cert-manager/cert-mon
+            managed_by_cm = self._kube_op.kube_get_secret(
+                    constants.PLATFORM_CERT_SECRET_NAME,
+                    constants.CERT_NAMESPACE_PLATFORM_CERTS)
+
+            if force is False and managed_by_cm is not None:
+                msg = "Certificate is currently being managed by cert-manager. \n" \
+                        "To manage certificate with this command, first delete " \
+                        "the %s Certificate and Secret." % constants.PLATFORM_CERT_SECRET_NAME
+                LOG.info(msg)
+                return dict(success="", error=msg)
 
         standalone_certs = [constants.CERT_MODE_DOCKER_REGISTRY,
                             constants.CERT_MODE_SSL_CA]

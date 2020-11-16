@@ -23,7 +23,7 @@ import re
 import requests
 import ssl
 import tempfile
-import urlparse
+from six.moves.urllib.parse import urlparse
 from keystoneclient.v3 import client as keystone_client
 from keystoneauth1 import session
 from keystoneclient.auth.identity import v3
@@ -56,8 +56,6 @@ AVAILABILITY_ONLINE = "online"
 CERT_NAMESPACE_SYS_CONTROLLER = 'dc-cert'
 CERT_NAMESPACE_SUBCLOUD_CONTROLLER = 'sc-cert'
 DC_ROLE_UNDETECTED = 'unknown'
-
-CERT_NAMESPACE_PLATFORM_CERTS = 'kube-system'
 
 LOG = log.getLogger(__name__)
 CONF = cfg.CONF
@@ -535,10 +533,10 @@ def get_isystems_uuid(token):
     return uuid
 
 
-def enable_https(token):
+def enable_https(token, system_uuid):
     ret = True
     sysinv_url = token.get_service_internal_url(constants.SERVICE_TYPE_PLATFORM, constants.SYSINV_USERNAME)
-    api_cmd = sysinv_url + '/isystems/' + get_isystems_uuid(token)
+    api_cmd = sysinv_url + '/isystems/' + system_uuid
 
     patch = []
     patch.append({'op': 'replace', 'path': '/https_enabled', 'value': 'true'})
@@ -600,7 +598,8 @@ def update_platform_cert(token, pem_file_path):
     sysinv_url = token.get_service_internal_url(constants.SERVICE_TYPE_PLATFORM, constants.SYSINV_USERNAME)
     api_cmd = sysinv_url + '/certificate/certificate_install'
 
-    data = {'mode': 'ssl'}
+    data = {'mode': 'ssl',
+            'force': 'true'}
 
     response = rest_api_upload(token, pem_file_path, api_cmd, data)
     error = response.get('error')
