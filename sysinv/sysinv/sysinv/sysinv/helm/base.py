@@ -262,8 +262,12 @@ class BaseHelm(object):
         return self.dbapi.isystem_get_one().system_mode
 
     def _get_ceph_monitor_ips(self, name_filter=None):
-        if self._system_mode() == constants.SYSTEM_MODE_SIMPLEX:
-            monitors = [self._get_controller_0_management_address()]
+        system = self._get_system()
+        if system.system_type == constants.TIS_AIO_BUILD:
+            if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+                monitors = [self._get_controller_0_management_address()]
+            else:
+                monitors = [self._get_management_address()]
         elif name_filter:
             monitors = []
             for name, addr in StorageBackendConfig.get_ceph_mon_ip_addresses(
