@@ -1166,36 +1166,47 @@ def extract_postgres_data(archive):
         archive, ansible_path + "/postgres", postgres_data_dir)
 
 
+def read_config_file_kvp(config_file):
+    """ A Generic method to read the .conf file.
+
+    param config_file: Absolute path of the target file.
+    result: A dictionary with key value pairs retrieved from the target file.
+    """
+    result = dict()
+
+    with open(config_file, 'r') as temp_file:
+        for line in temp_file:
+            key, value = line.split('=', 1)
+            result.update({key: value})
+    return result
+
+
 def migrate_platform_conf(staging_dir):
     """ Migrate platform.conf """
-    temp_platform_conf_path = os.path.join(staging_dir, 'platform.conf')
-    options = []
-    with open(temp_platform_conf_path, 'r') as temp_file:
-        for line in temp_file:
-            option = line.split('=', 1)
-            skip_options = ['nodetype',
-                            'subfunction',
-                            'management_interface',
-                            'oam_interface',
-                            'sw_version',
-                            'INSTALL_UUID',
-                            'system_type',
-                            'UUID']
-            if option[0] not in skip_options:
-                options.append(line)
+    backup_platform_conf_path = os.path.join(staging_dir, 'platform.conf')
+    temp_platform_conf_file = os.path.join(staging_dir, 'platform-temp.conf')
+    backup_platform_conf_values = read_config_file_kvp(
+        backup_platform_conf_path)
+    new_platform_conf_values = read_config_file_kvp(PLATFORM_CONF_FILE)
 
-    with open(PLATFORM_CONF_FILE, 'a') as conf_file:
-        for option in options:
-            conf_file.write(option)
-    # Workaround to fix mismatched UUID. Long term we need to correctly merge
-    # the two platform.conf files. For now just strip out the UUID and let the
-    # sysinv-agent populate it with the correct value after the db is restored.
-    with open(PLATFORM_CONF_FILE, "r") as conf_file:
-        lines = conf_file.readlines()
-    with open(PLATFORM_CONF_FILE, "w") as conf_file:
-        for line in lines:
-            if not line.startswith("UUID="):
-                conf_file.write(line)
+    # The following values are expected to preserve in the newly
+    # generated platform.conf file
+    skip_options = ['nodetype',
+                    'subfunction',
+                    'management_interface',
+                    'oam_interface',
+                    'sw_version',
+                    'INSTALL_UUID',
+                    'system_type']
+    for key in skip_options:
+        if key in backup_platform_conf_values:
+            del backup_platform_conf_values[key]
+    new_platform_conf_values.update(backup_platform_conf_values)
+    with open(temp_platform_conf_file, 'w') as f:
+        for key, value in new_platform_conf_values.items():
+            line = key + "=" + value
+            f.write(line)
+    shutil.move(temp_platform_conf_file, PLATFORM_CONF_FILE)
 
 
 def get_simplex_metadata(archive, staging_dir):
