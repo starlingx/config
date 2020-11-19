@@ -609,6 +609,22 @@ class AgentManager(service.PeriodicService):
     def _get_ports_inventory(self):
         """Collect ports inventory for this host"""
 
+        port_list = []
+        pci_device_list = []
+        host_macs = []
+
+        initial_worker_config_completed = \
+            os.path.exists(tsc.INITIAL_WORKER_CONFIG_COMPLETE)
+        worker_config_completed = \
+            os.path.exists(tsc.VOLATILE_WORKER_CONFIG_COMPLETE)
+
+        # do not send report if the initial worker config is completed and
+        # worker config has not finished, i.e.during subsequent
+        # reboot before the manifest enables and binds any SR-IOV devices
+        if (initial_worker_config_completed and
+                not worker_config_completed):
+            return port_list, pci_device_list, host_macs
+
         # find list of network related inics for this host
         inics = self._ipci_operator.inics_get()
 
@@ -640,7 +656,6 @@ class AgentManager(service.PeriodicService):
         # inventoried host (one of the MACs should be the management MAC)
         host_macs = [port.mac for port in iports if port.mac]
 
-        port_list = []
         for port in iports:
             inic_dict = {'pciaddr': port.ipci.pciaddr,
                          'pclass': port.ipci.pclass,
@@ -668,7 +683,6 @@ class AgentManager(service.PeriodicService):
 
             port_list.append(inic_dict)
 
-        pci_device_list = []
         for dev in pci_devs:
             pci_dev_dict = {'name': dev.name,
                             'pciaddr': dev.pci.pciaddr,
@@ -717,23 +731,25 @@ class AgentManager(service.PeriodicService):
         if pci_device_list is None or port_list is None:
             port_list, pci_device_list, host_macs = self._get_ports_inventory()
 
-        try:
-            rpcapi.iport_update_by_ihost(context,
-                                         host_uuid,
-                                         port_list)
-            self._inventory_reported.add(self.PORT)
-        except RemoteError as e:
-            LOG.error("iport_update_by_ihost RemoteError exc_type=%s" %
-                      e.exc_type)
-
-        try:
-            rpcapi.pci_device_update_by_host(context,
+        if port_list:
+            try:
+                rpcapi.iport_update_by_ihost(context,
                                              host_uuid,
-                                             pci_device_list)
-            self._inventory_reported.add(self.PCI_DEVICE)
-        except exception.SysinvException:
-            LOG.exception("Sysinv Agent exception updating pci_device.")
-            pass
+                                             port_list)
+                self._inventory_reported.add(self.PORT)
+            except RemoteError as e:
+                LOG.error("iport_update_by_ihost RemoteError exc_type=%s" %
+                        e.exc_type)
+
+        if pci_device_list:
+            try:
+                rpcapi.pci_device_update_by_host(context,
+                                                host_uuid,
+                                                pci_device_list)
+                self._inventory_reported.add(self.PCI_DEVICE)
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating pci_device.")
+                pass
 
     def ihost_inv_get_and_report(self, icontext):
         """Collect data for an ihost.
