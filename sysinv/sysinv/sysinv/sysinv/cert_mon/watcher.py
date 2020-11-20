@@ -287,14 +287,16 @@ class CertificateRenew(CertWatcherListener):
         # certificate is created with new key. Given the fact that cert-manager
         # creates new certificate secret reasonably quickly, we assume the secret update
         # on a recently created secret has new key. (normal scenario certificate renew
-        # interval is far longer than 1 minute (in days or at least hours).
-        # In the very rare event if cert-manager creates new secret really slowly for a
-        # short period of time (takes more than 1 minutes to update the secret)
-        # the secret will be recreated again. This is going to be recovered when
-        # cert-manager normal behavior is restored.
-        reasonable_dalay = 60  # assuming recreating secret takes less then 60 seconds
+        # interval is far longer than 1 hour (in days). cert-manager typically completes
+        # processing certificate signing request far less than 1 sec (in ms) when process
+        # a single CSR. When DC root CA certificate is renewed, a large number of CSRs
+        # are triggered to renew all intermediate CA certificates, cert-manager is
+        # observed to have significiant delay of processing CSRs. Setting the delay
+        # threshold to 1 hour can support very large number (1000s) of concurrent CSR
+        # requests with proper hardware and software configuration.
+        reasonable_delay = 3600  # 1 hour
         delta = (event_data.last_operation_time - event_data.creation_time).total_seconds()
-        if event_data.action == SECRET_ACTION_TYPE_MODIFIED and delta > reasonable_dalay:
+        if event_data.action == SECRET_ACTION_TYPE_MODIFIED and delta > reasonable_delay:
             self.recreate_secret(event_data)
         else:
             self.update_certificate(event_data)
