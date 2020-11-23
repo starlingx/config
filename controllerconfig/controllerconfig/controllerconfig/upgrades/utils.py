@@ -27,6 +27,9 @@ from tsconfig.tsconfig import PLATFORM_PATH
 from controllerconfig import utils as cutils
 from controllerconfig.common import constants
 from sysinv.common import constants as sysinv_constants
+# sysinv common utils is needed for adding new service account and endpoints
+# during upgrade.
+# from sysinv.common import utils as sysinv_utils
 
 from oslo_log import log
 
@@ -188,6 +191,41 @@ def get_upgrade_token(from_release,
     })
 
 
+def get_upgrade_data(from_release,
+                     system_config,
+                     secure_config):
+    """ Retrieve required data from the from-release, update system_config
+        and secure_config with them.
+        This function is needed for adding new service account and endpoints
+        during upgrade.
+    """
+    # Get the system hiera data from the from release
+    from_hiera_path = os.path.join(PLATFORM_PATH, "puppet", from_release,
+                                   "hieradata")
+    system_file = os.path.join(from_hiera_path, "system.yaml")
+    with open(system_file, 'r') as file:
+        system_config_from_release = yaml.load(file)
+
+    # Get keystone region
+    keystone_region = system_config_from_release.get(
+        'keystone::endpoint::region')
+
+    system_config.update({
+        'platform::client::params::identity_region': keystone_region,
+        # Retrieve keystone::auth::region from the from-release for the new
+        # service.
+        # 'newservice::keystone::auth::region': keystone_region,
+    })
+
+    # Generate password for the new service
+    # password = sysinv_utils.generate_random_password(16)
+
+    secure_config.update({
+        # Generate and set the keystone::auth::password for the new service.
+        # 'newservice::keystone::auth::password': password,
+    })
+
+
 def add_upgrade_entries_to_hiera_data(from_release):
     """ Adds upgrade entries to the hiera data """
 
@@ -203,8 +241,21 @@ def add_upgrade_entries_to_hiera_data(from_release):
     with open(secure_filepath, 'r') as file:
         secure_config = yaml.load(file)
 
+    # File for system.yaml
+    # This is needed for adding new service account and endpoints
+    # during upgrade.
+    system_filename = 'system.yaml'
+    system_filepath = os.path.join(path, system_filename)
+
     # Get a token and update the config
     get_upgrade_token(from_release, config, secure_config)
+
+    # Get required data from the from-release and add them in system.yaml.
+    # We don't carry system.yaml from the from-release.
+    # This is needed for adding new service account and endpoints
+    # during upgrade.
+    system_config = {}
+    get_upgrade_data(from_release, system_config, secure_config)
 
     # Update the hiera data on disk
     try:
@@ -227,6 +278,20 @@ def add_upgrade_entries_to_hiera_data(from_release):
         os.rename(tmppath, secure_filepath)
     except Exception:
         LOG.exception("failed to write secure config: %s" % secure_filepath)
+        raise
+
+    # Add required hiera data into system.yaml.
+    # This is needed for adding new service account and endpoints
+    # during upgrade.
+    try:
+        fd, tmppath = tempfile.mkstemp(dir=path, prefix=system_filename,
+                                       text=True)
+        with open(tmppath, 'w') as f:
+            yaml.dump(system_config, f, default_flow_style=False)
+        os.close(fd)
+        os.rename(tmppath, system_filepath)
+    except Exception:
+        LOG.exception("failed to write system config: %s" % system_filepath)
         raise
 
 
