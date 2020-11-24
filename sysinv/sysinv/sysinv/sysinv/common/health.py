@@ -267,7 +267,7 @@ class Health(object):
         :param alarm_ignore_list: list of alarm ids to ignore when performing
                                   a health check
         """
-        hosts = self._dbapi.ihost_get_list()
+        hosts = utils.get_upgradable_hosts(self._dbapi)
         output = _('System Health:\n')
         health_ok = True
 

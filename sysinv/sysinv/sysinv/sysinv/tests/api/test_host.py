@@ -313,6 +313,30 @@ class TestPostWorkerMixin(object):
         self.assertEqual(ndict['serialid'], result['serialid'])
 
 
+class TestPostEdgeworkerMixin(object):
+
+    def setUp(self):
+        super(TestPostEdgeworkerMixin, self).setUp()
+
+    def test_create_host_worker(self):
+        # Test creation of worker
+        ndict = dbutils.post_get_test_ihost(hostname='edgeworker-0',
+                                            personality='edgeworker',
+                                            subfunctions=None,
+                                            mgmt_ip=None,
+                                            serialid='serial2',
+                                            bm_ip="128.224.150.195")
+        self.post_json('/ihosts', ndict,
+                       headers={'User-Agent': 'sysinv-test'})
+
+        # Verify that the host was configured
+        self.fake_conductor_api.configure_ihost.assert_called_once()
+        # Verify that the host was created and some basic attributes match
+        result = self.get_json('/ihosts/%s' % ndict['hostname'])
+        self.assertEqual(ndict['personality'], result['personality'])
+        self.assertEqual(ndict['serialid'], result['serialid'])
+
+
 class TestPostKubeUpgrades(TestHost):
 
     def setUp(self):
@@ -3038,6 +3062,11 @@ class PostControllerHostTestCase(TestPostControllerMixin, TestHost,
 
 
 class PostWorkerHostTestCase(TestPostWorkerMixin, TestHost,
+                             dbbase.ControllerHostTestCase):
+    pass
+
+
+class PostEdgeworkerHostTestCase(TestPostEdgeworkerMixin, TestHost,
                              dbbase.ControllerHostTestCase):
     pass
 

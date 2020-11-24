@@ -1674,6 +1674,18 @@ class ConductorManager(service.PeriodicService):
         # Set up the PXE config file for this host so it can run the installer
         self._update_pxe_config(host)
 
+    def _configure_edgeworker_host(self, context, host):
+        """Configure an edgeworker host with the supplied data.
+
+        Does the following tasks:
+        - Create or update entries in address table
+        - Allocates management address if none exists
+
+        :param context: request context
+        :param host: host object
+        """
+        self._allocate_addresses_for_host(context, host)
+
     def _configure_storage_host(self, context, host):
         """Configure a storage ihost with the supplied data.
 
@@ -1774,6 +1786,13 @@ class ConductorManager(service.PeriodicService):
         self._remove_pxe_config(host)
         self._remove_ceph_mon(host)
 
+    def _unconfigure_edgeworker_host(self, host):
+        """Unconfigure an edgeworker host.
+
+        :param host: a host object.
+        """
+        self._remove_addresses_for_host(host)
+
     def _unconfigure_storage_host(self, host):
         """Unconfigure a storage host.
 
@@ -1809,6 +1828,8 @@ class ConductorManager(service.PeriodicService):
             self._configure_controller_host(context, host)
         elif host.personality == constants.WORKER:
             self._configure_worker_host(context, host)
+        elif host.personality == constants.EDGEWORKER:
+            self._configure_edgeworker_host(context, host)
         elif host.personality == constants.STORAGE:
             self._configure_storage_host(context, host)
         else:
@@ -1844,6 +1865,8 @@ class ConductorManager(service.PeriodicService):
                 self._unconfigure_controller_host(ihost_obj)
             elif personality == constants.WORKER:
                 self._unconfigure_worker_host(ihost_obj, is_cpe)
+            elif personality == constants.EDGEWORKER:
+                self._unconfigure_edgeworker_host(ihost_obj)
             elif personality == constants.STORAGE:
                 self._unconfigure_storage_host(ihost_obj)
             else:
@@ -8135,7 +8158,9 @@ class ConductorManager(service.PeriodicService):
 
     def update_security_feature_config(self, context):
         """Update the kernel options configuration"""
-        personalities = constants.PERSONALITIES
+        # Move the edgeworker personality out since it is not configured by puppet
+        personalities = [i for i in constants.PERSONALITIES if i != constants.EDGEWORKER]
+
         config_uuid = self._config_update_hosts(context, personalities, reboot=True)
 
         config_dict = {
