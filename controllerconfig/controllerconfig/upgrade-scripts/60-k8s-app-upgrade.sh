@@ -23,6 +23,8 @@ TO_RELEASE=$2
 ACTION=$3
 
 PLATFORM_APPLICATION_PATH='/usr/local/share/applications/helm'
+RECOVER_RESULT_SLEEP=30
+RECOVER_RESULT_ATTEMPTS=30 # ~15 min to recover app
 DELETE_RESULT_SLEEP=10
 DELETE_RESULT_ATTEMPTS=6   # ~1 min to delete app
 UPLOAD_RESULT_SLEEP=10
@@ -45,20 +47,29 @@ function verify_apps_are_not_recovering {
         APP_STATUS=$(system application-show $a --column status --format value)
         if [[ "${APP_STATUS}" =~ ^(applying|restore-requested)$ ]]; then
             if [ ${system_type} == 'All-in-one' ] && [ ${system_mode} == 'simplex' ]; then
-                log "$NAME: $a is in a recovering state: ${APP_STATUS}. Execute upgrade-activate again when all applications are uploaded or applied."
+                log "$NAME: $a is in a recovering state: ${APP_STATUS}. Waiting for all applications to be uploaded or applied."
+                return 1
             else
                 log "$NAME: $a is in an unexpected state: ${APP_STATUS}. Exiting for manual intervention..."
             fi
             exit 1
         fi
     done
+    return 0
 }
 
 log "$NAME: Starting Kubernetes application updates from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 
-if [ "$TO_RELEASE" == "20.06" ] && [ "$ACTION" == "activate" ]; then
-
-    verify_apps_are_not_recovering
+if [ "$FROM_RELEASE" == "20.06" ] && [ "$ACTION" == "activate" ]; then
+    for tries in $(seq 1 $RECOVER_RESULT_ATTEMPTS); do
+        if verify_apps_are_not_recovering; then
+            break
+        elif [ $tries == $RECOVER_RESULT_ATTEMPTS ]; then
+            log "$NAME: Exceeded maximum application recovery time of $(date -u -d @"$((RECOVER_RESULT_ATTEMPTS*RECOVER_RESULT_SLEEP))" +"%Mm%Ss"). Execute upgrade-activate again when all applications are uploaded or applied."
+            exit 1
+        fi
+        sleep $RECOVER_RESULT_SLEEP
+    done
 
     # Get the list of applications installed in the new release
     for fqpn_app in $PLATFORM_APPLICATION_PATH/*; do
