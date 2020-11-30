@@ -2579,7 +2579,7 @@ This operation does not accept a request body.
 Creates an L2 interface on a specific host
 ******************************************
 
-.. rest_method:: POST /v1/ihosts/{host_id}/iinterfaces
+.. rest_method:: POST /v1/iinterfaces
 
 **Normal response codes**
 
