@@ -1710,5 +1710,5 @@ DC_ROOT_CA_CONFIG_PATH = \
 ADMIN_EP_CERT_FORMAT = '{tls_key}'
 
 # Platform certificates
-CERTIFICATE_TYPE_PLATFORM_CERT = "platform-cert"
 PLATFORM_CERT_SECRET_NAME = "system-restapi-gui-certificate"
+CERT_NAMESPACE_PLATFORM_CERTS = 'kube-system'

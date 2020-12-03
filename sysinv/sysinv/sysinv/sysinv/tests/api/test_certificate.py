@@ -30,6 +30,7 @@ class FakeConductorAPI(object):
         self.config_certificate = self.fake_config_certificate
         self.delete_certificate = mock.MagicMock()
         self.config_certificate_return = None
+        self.platcert_k8s_secret_value = False
 
     def fake_config_certificate(self, context, pem, config_dict):
         return self.config_certificate_return
@@ -234,6 +235,17 @@ class ApiCertificatePostTestSuite(ApiCertificateTestCaseMixin,
     def setUp(self):
         super(ApiCertificatePostTestSuite, self).setUp()
         self.create_test_isystem()
+
+        # Mock the KubeOperator
+        self.kube_get_secret_result = None
+
+        def mock_kube_get_secret(obj, name, namespace):
+            return self.kube_get_secret_result
+        self.mocked_kube_get_secret = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_get_secret',
+            mock_kube_get_secret)
+        self.mocked_kube_get_secret.start()
+        self.addCleanup(self.mocked_kube_get_secret.stop)
 
     def create_test_isystem(self):
         return dbutils.create_test_isystem(capabilities={'https_enabled': True})
@@ -513,6 +525,76 @@ class ApiCertificatePostTestSuite(ApiCertificateTestCaseMixin,
         fault_string_expected = 'The first cert in the file should not be a ' \
                                 'CA cert'
         self.assertIn(fault_string_expected, str(resp.get('error')))
+
+    # Test install ssl certificate signed by intermediate CA
+    def test_force_failure_install_ssl_certificate(self):
+        mode = 'ssl'
+        certfile = os.path.join(os.path.dirname(__file__), "data",
+                                'ssl-cert-2xcert-1xkey-with-key.pem')
+
+        in_certs = self.extract_certs_from_pem_file(certfile)
+        fake_config_certificate_return = []
+        for index, in_cert in enumerate(in_certs):
+            is_ca = False if index == 0 else True
+            fake_config_certificate_return.append(
+                        {'signature': self.get_cert_signature(mode, in_cert),
+                         'not_valid_before': in_cert.not_valid_before,
+                         'not_valid_after': in_cert.not_valid_after,
+                         'is_ca': is_ca})
+        self.fake_conductor_api.\
+            setup_config_certificate(fake_config_certificate_return)
+
+        # Set k8s_secret value to True (mark it as being managed by cert-manager)
+        self.kube_get_secret_result = 'true'
+
+        # Default behavior (force=false) should fail
+        data = {'mode': mode}
+        files = [('file', certfile)]
+        response = self.post_with_files('%s/%s' % (self.API_PREFIX, 'certificate_install'),
+                                  data,
+                                  upload_files=files,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        self.assertEqual(response.status_code, http_client.OK)
+        self.assertTrue(response.body)
+        resp = json.loads(response.body)
+        self.assertTrue(resp.get('error'))
+        fault_err_msg = "Certificate is currently being managed by cert-manager"
+        self.assertIn(fault_err_msg, str(resp.get('error')))
+
+    # Test install ssl certificate signed by intermediate CA
+    def test_force_success_install_ssl_certificate(self):
+        mode = 'ssl'
+        certfile = os.path.join(os.path.dirname(__file__), "data",
+                                'ssl-cert-2xcert-1xkey-with-key.pem')
+
+        in_certs = self.extract_certs_from_pem_file(certfile)
+        fake_config_certificate_return = []
+        for index, in_cert in enumerate(in_certs):
+            is_ca = False if index == 0 else True
+            fake_config_certificate_return.append(
+                        {'signature': self.get_cert_signature(mode, in_cert),
+                         'not_valid_before': in_cert.not_valid_before,
+                         'not_valid_after': in_cert.not_valid_after,
+                         'is_ca': is_ca})
+        self.fake_conductor_api.\
+            setup_config_certificate(fake_config_certificate_return)
+
+        # Set k8s_secret value to True (mark it as being managed by cert-manager)
+        self.kube_get_secret_result = 'true'
+
+        data = {'mode': mode, 'force': 'true'}
+        files = [('file', certfile)]
+        response = self.post_with_files('%s/%s' % (self.API_PREFIX, 'certificate_install'),
+                                  data,
+                                  upload_files=files,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        self.assertEqual(response.status_code, http_client.OK)
+        resp = json.loads(response.body)
+        self.assertIn('certificates', resp)
 
 
 class ApiCertificateDeleteTestSuite(ApiCertificateTestCaseMixin,
