@@ -1015,7 +1015,7 @@ class ConductorManager(service.PeriodicService):
                 pass
             with open(os.devnull, "w") as fnull:
                 try:
-                    subprocess.check_call(
+                    subprocess.check_call(  # pylint: disable=not-callable
                         [pxeboot_update, "-i", "/pxeboot/pxelinux.cfg.files/" +
                          pxe_config, "-o", "/pxeboot/pxelinux.cfg/01-" +
                          dashed_mac] + install_opts,
@@ -1165,10 +1165,10 @@ class ConductorManager(service.PeriodicService):
                 "--client-id", cid,
                 "--iaid", str(cutils.get_dhcp_client_iaid(mac_address))]
             LOG.warning("Invoking dhcp_release6 for {}".format(params))
-            subprocess.call(["dhcp_release6"] + params)
+            subprocess.call(["dhcp_release6"] + params)  # pylint: disable=not-callable
         else:
             LOG.warning("Invoking dhcp_release for {}".format(params))
-            subprocess.call(["dhcp_release"] + params)
+            subprocess.call(["dhcp_release"] + params)  # pylint: disable=not-callable
 
     def _find_networktype_for_address(self, ip_address):
         for network in self.dbapi.networks_get_all():
@@ -5908,17 +5908,17 @@ class ConductorManager(service.PeriodicService):
         """
         try:
             with open(os.devnull, "w") as fnull:
-                subprocess.check_call(["mv", "/etc/pmon.d/ceph.conf",
+                subprocess.check_call(["mv", "/etc/pmon.d/ceph.conf",  # pylint: disable=not-callable
                                       "/etc/pmond.ceph.conf.bak"],
                                       stdout=fnull, stderr=fnull)
 
-                subprocess.check_call(["systemctl", "restart", "pmon"],
+                subprocess.check_call(["systemctl", "restart", "pmon"],  # pylint: disable=not-callable
                                       stdout=fnull, stderr=fnull)
 
-                subprocess.check_call(["/etc/init.d/ceph", "stop", "mon"],
+                subprocess.check_call(["/etc/init.d/ceph", "stop", "mon"],  # pylint: disable=not-callable
                                       stdout=fnull, stderr=fnull)
 
-                subprocess.check_call(["mv", "/etc/services.d/controller/ceph.sh",
+                subprocess.check_call(["mv", "/etc/services.d/controller/ceph.sh",  # pylint: disable=not-callable
                                        "/etc/services.d.controller.ceph.sh"],
                                       stdout=fnull, stderr=fnull)
         except subprocess.CalledProcessError as e:
@@ -7991,7 +7991,7 @@ class ConductorManager(service.PeriodicService):
     def _drbd_connected(self):
         connected = False
 
-        output = subprocess.check_output("drbd-overview",
+        output = subprocess.check_output("drbd-overview",  # pylint: disable=not-callable
                                          stderr=subprocess.STDOUT)
         output = [_f for _f in output.split('\n') if _f]
 
@@ -8005,7 +8005,7 @@ class ConductorManager(service.PeriodicService):
         return connected
 
     def _drbd_fs_sync(self):
-        output = subprocess.check_output("drbd-overview",
+        output = subprocess.check_output("drbd-overview",  # pylint: disable=not-callable
                                          stderr=subprocess.STDOUT)
         output = [_f for _f in output.split('\n') if _f]
 
@@ -8027,7 +8027,7 @@ class ConductorManager(service.PeriodicService):
         return fs
 
     def _drbd_fs_updated(self, context):
-        drbd_dict = subprocess.check_output("drbd-overview",
+        drbd_dict = subprocess.check_output("drbd-overview",  # pylint: disable=not-callable
                                             stderr=subprocess.STDOUT)
         drbd_dict = [_f for _f in drbd_dict.split('\n') if _f]
 
@@ -9219,7 +9219,7 @@ class ConductorManager(service.PeriodicService):
         # Run the upgrade script
         with open(os.devnull, "w") as fnull:
             try:
-                subprocess.check_call(mntdir +
+                subprocess.check_call(mntdir +  # pylint: disable=not-callable
                                       '/upgrades/import.sh',
                                       stdout=fnull, stderr=fnull)
             except subprocess.CalledProcessError:
@@ -9245,7 +9245,7 @@ class ConductorManager(service.PeriodicService):
         # Run the sw-patch init-release commands
         with open(os.devnull, "w") as fnull:
             try:
-                subprocess.check_call(["/usr/sbin/sw-patch",
+                subprocess.check_call(["/usr/sbin/sw-patch",  # pylint: disable=not-callable
                                        "init-release",
                                        new_load['software_version']],
                                       stdout=fnull, stderr=fnull)
@@ -9300,7 +9300,7 @@ class ConductorManager(service.PeriodicService):
         # Run the sw-patch del-release commands
         with open(os.devnull, "w") as fnull:
             try:
-                subprocess.check_call(["/usr/sbin/sw-patch",
+                subprocess.check_call(["/usr/sbin/sw-patch",  # pylint: disable=not-callable
                                        "del-release",
                                        load.software_version],
                                       stdout=fnull, stderr=fnull)
@@ -9312,7 +9312,7 @@ class ConductorManager(service.PeriodicService):
         if os.path.isfile(cleanup_script):
             with open(os.devnull, "w") as fnull:
                 try:
-                    subprocess.check_call(
+                    subprocess.check_call(  # pylint: disable=not-callable
                         [cleanup_script, load.software_version],
                         stdout=fnull, stderr=fnull)
                 except subprocess.CalledProcessError:
@@ -9457,7 +9457,7 @@ class ConductorManager(service.PeriodicService):
             else:
                 # Extract N+1 packages necessary for installation of controller-1
                 # (ie. installer images, kickstarts)
-                subprocess.check_call(['/usr/sbin/upgrade-start-pkg-extract',
+                subprocess.check_call(['/usr/sbin/upgrade-start-pkg-extract',  # pylint: disable=not-callable
                                        '-r', to_version])
                 # get the floating management IP
                 mgmt_address = self.dbapi.address_get_by_name(
@@ -9570,7 +9570,7 @@ class ConductorManager(service.PeriodicService):
                 LOG.info("Calling nova cleanup")
                 with open(os.devnull, "w") as fnull:
                     try:
-                        subprocess.check_call(["systemctl", "start", "nova-cleanup"],
+                        subprocess.check_call(["systemctl", "start", "nova-cleanup"],  # pylint: disable=not-callable
                                               stdout=fnull,
                                               stderr=fnull)
                     except subprocess.CalledProcessError:
@@ -10286,7 +10286,7 @@ class ConductorManager(service.PeriodicService):
         os.rename(temp_license_file, license_file)
 
         try:
-            subprocess.check_output(["cp", license_file,
+            subprocess.check_output(["cp", license_file,  # pylint: disable=not-callable
                 os.path.join(tsc.CONFIG_PATH, constants.LICENSE_FILE)])
         except subprocess.CalledProcessError as e:
             LOG.error("Fail to install license to redundant "
@@ -10295,7 +10295,7 @@ class ConductorManager(service.PeriodicService):
             raise exception.SysinvException(_(
                 "ERROR: Failed to install license to redundant storage."))
 
-        hostname = subprocess.check_output(["hostname"]).rstrip()
+        hostname = subprocess.check_output(["hostname"]).rstrip()  # pylint: disable=not-callable
         validHostnames = [constants.CONTROLLER_0_HOSTNAME,
                             constants.CONTROLLER_1_HOSTNAME]
         if hostname == 'localhost':

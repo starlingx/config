@@ -245,12 +245,12 @@ class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
         return attrs
 
     def lldp_has_neighbour(self, name):
-        p = subprocess.check_output(["lldpcli", "-f", "keyvalue", "show",
+        p = subprocess.check_output(["lldpcli", "-f", "keyvalue", "show",  # pylint: disable=not-callable
                                      "neighbors", "summary", "ports", name])
         return len(p) > 0
 
     def lldp_update(self):
-        subprocess.call(['lldpcli', 'update'])
+        subprocess.call(['lldpcli', 'update'])  # pylint: disable=not-callable
 
     def lldp_agents_list(self):
         json_obj = json

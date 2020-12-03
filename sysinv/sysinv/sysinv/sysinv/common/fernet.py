@@ -166,7 +166,7 @@ class FernetOperator(object):
         with open(os.devnull, "w") as fnull:
             try:
                 LOG.info("Re-setup fernet repo")
-                subprocess.check_call(['/usr/bin/keystone-manage',
+                subprocess.check_call(['/usr/bin/keystone-manage',  # pylint: disable=not-callable
                                        'fernet_setup',
                                        '--keystone-user',
                                        KEYSTONE_USER,

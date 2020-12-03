@@ -71,7 +71,7 @@ def puppet_apply_manifest(ip_address, personality,
                                  shell=True)
         else:
             with open(os.devnull, "w") as fnull:
-                subprocess.check_call(cmd, stdout=fnull, stderr=fnull)
+                subprocess.check_call(cmd, stdout=fnull, stderr=fnull)  # pylint: disable=not-callable
     except subprocess.CalledProcessError:
         msg = "Failed to execute %s manifest for host %s" % \
               (manifest, ip_address)

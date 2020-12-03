@@ -415,7 +415,7 @@ def is_drbd_fs_resizing(fs_name=None):
 
 
 def is_drbd_fs_syncing():
-    output = subprocess.check_output("drbd-overview", stderr=subprocess.STDOUT)
+    output = subprocess.check_output("drbd-overview", stderr=subprocess.STDOUT)  # pylint: disable=not-callable
     LOG.info("is_drbd_fs_syncing returned '%s'" % output)
     if "sync\'ed" in output:
         return True

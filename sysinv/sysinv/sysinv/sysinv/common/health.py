@@ -146,7 +146,7 @@ class Health(object):
 
         with open(os.devnull, "w") as fnull:
             try:
-                subprocess.check_call([check_binary, license_file, version],
+                subprocess.check_call([check_binary, license_file, version],  # pylint: disable=not-callable
                                       stdout=fnull, stderr=fnull)
             except subprocess.CalledProcessError:
                 return False
@@ -238,7 +238,7 @@ class Health(object):
 
         args = ['/usr/bin/validate-platform-backup.sh']
         try:
-            subprocess.check_output(args, stderr=subprocess.STDOUT)
+            subprocess.check_output(args, stderr=subprocess.STDOUT)  # pylint: disable=not-callable
         except subprocess.CalledProcessError as exc:
             LOG.error("Call to %s returned %s and %s" % (args, exc.returncode, exc.output))
             return False

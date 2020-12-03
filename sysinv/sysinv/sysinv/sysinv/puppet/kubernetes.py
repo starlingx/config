@@ -165,7 +165,7 @@ class KubernetesPuppet(base.BasePuppet):
                     dir='/tmp', suffix='.yaml')
                 with os.fdopen(fd, 'w') as f:
                     cmd = ['kubeadm', KUBECONFIG, 'config', 'view']
-                    subprocess.check_call(cmd, stdout=f)
+                    subprocess.check_call(cmd, stdout=f)  # pylint: disable=not-callable
 
                 # We will use a custom key to encrypt kubeadm certificates
                 # to make sure all hosts decrypt using the same key
@@ -181,7 +181,7 @@ class KubernetesPuppet(base.BasePuppet):
                        '--upload-certs', '--config',
                        temp_kubeadm_config_view]
 
-                subprocess.check_call(cmd)
+                subprocess.check_call(cmd)  # pylint: disable=not-callable
                 join_cmd_additions = \
                     " --control-plane --certificate-key %s" % key
                 os.unlink(temp_kubeadm_config_view)
@@ -195,7 +195,7 @@ class KubernetesPuppet(base.BasePuppet):
 
             cmd = ['kubeadm', KUBECONFIG, 'token', 'create', '--print-join-command',
                    '--description', 'Bootstrap token for %s' % host.hostname]
-            join_cmd = subprocess.check_output(cmd)
+            join_cmd = subprocess.check_output(cmd)  # pylint: disable=not-callable
             join_cmd_additions += \
                 " --cri-socket /var/run/containerd/containerd.sock"
             join_cmd = join_cmd.strip() + join_cmd_additions

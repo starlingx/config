@@ -272,7 +272,7 @@ class PCIOperator(object):
 
     def get_lspci_output_by_addr(self, pciaddr):
         with open(os.devnull, "w") as fnull:
-            output = subprocess.check_output(
+            output = subprocess.check_output(  # pylint: disable=not-callable
                 ['lspci', '-vmmks', pciaddr], stderr=fnull)
         return output
 
@@ -568,7 +568,7 @@ class PCIOperator(object):
 
                 try:
                     with open(os.devnull, "w") as fnull:
-                        subprocess.check_call(["query_pci_id", "-v " + str(vendor),
+                        subprocess.check_call(["query_pci_id", "-v " + str(vendor),  # pylint: disable=not-callable
                                                "-d " + str(device)],
                                               stdout=fnull, stderr=fnull)
                         dpdksupport = True
