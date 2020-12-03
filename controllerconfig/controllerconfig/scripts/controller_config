@@ -30,8 +30,9 @@ COMPLETED="/etc/platform/.initial_config_complete"
 INITIAL_MANIFEST_APPLY_FAILED="/etc/platform/.initial_manifest_apply_failed"
 DELAY_SEC=70
 CONTROLLER_UPGRADE_STARTED_FILE="$(basename ${CONTROLLER_UPGRADE_STARTED_FLAG})"
-PUPPET_DOWNLOAD=/tmp/puppet.download
 IMA_POLICY=/etc/ima.policy
+PUPPET_CACHE=/etc/puppet/cache
+ACTIVE_CONTROLLER_NOT_FOUND_FLAG="/var/run/.active_controller_not_found"
 
 fatal_error()
 {
@@ -56,10 +57,6 @@ EOF
 
     echo "Pausing for 5 seconds..."
     sleep 5
-
-    if [ -d ${PUPPET_DOWNLOAD} ]; then
-        rm -rf ${PUPPET_DOWNLOAD}
-    fi
 
     exit 1
 }
@@ -115,6 +112,11 @@ get_ip()
 
 mount_platform_dir()
 {
+    if [ -e "${ACTIVE_CONTROLLER_NOT_FOUND_FLAG}" ]
+    then
+        return
+    fi
+
     if [ -e "${PLATFORM_SIMPLEX_FLAG}" ]
     then
         systemctl start drbd.service
@@ -154,6 +156,11 @@ mount_platform_dir()
 
 umount_platform_dir()
 {
+    if [ -e "${ACTIVE_CONTROLLER_NOT_FOUND_FLAG}" ]
+    then
+        return
+    fi
+
     if [ -e "${PLATFORM_SIMPLEX_FLAG}" ]
     then
         umount $PLATFORM_DIR
@@ -220,26 +227,34 @@ start()
 
     echo "Configuring controller node..."
 
+    # Remove the flag if it exists
+    rm -f ${ACTIVE_CONTROLLER_NOT_FOUND_FLAG}
+
     if [ ! -e "${PLATFORM_SIMPLEX_FLAG}" ]
     then
         # try for DELAY_SEC seconds to reach controller-platform-nfs
         /usr/local/bin/connectivity_test -t ${DELAY_SEC} -i ${IPADDR} controller-platform-nfs
         if [ $? -ne 0 ]
         then
-            # 'controller-platform-nfs' is not available, just exit
-            exit_error "Unable to contact active controller (controller-platform-nfs). Boot will continue."
+            # 'controller-platform-nfs' is not available, try to config using
+            # locally cached hieradata.
+            echo "No active controller found, will try to config using local cached hieradata."
+            touch ${ACTIVE_CONTROLLER_NOT_FOUND_FLAG}
         fi
 
-        # Check whether our installed load matches the active controller
-        CONTROLLER_UUID=`curl -sf http://controller:${http_port}/feed/rel-${SW_VERSION}/install_uuid`
-        if [ $? -ne 0 ]
+        if [ ! -e "${ACTIVE_CONTROLLER_NOT_FOUND_FLAG}" ]
         then
-            fatal_error "Unable to retrieve installation uuid from active controller"
-        fi
-        INSTALL_UUID=`cat /www/pages/feed/rel-${SW_VERSION}/install_uuid`
-        if [ "$INSTALL_UUID" != "$CONTROLLER_UUID" ]
-        then
-            fatal_error "This node is running a different load than the active controller and must be reinstalled"
+            # Check whether our installed load matches the active controller
+            CONTROLLER_UUID=`curl -sf http://controller:${http_port}/feed/rel-${SW_VERSION}/install_uuid`
+            if [ $? -ne 0 ]
+            then
+                fatal_error "Unable to retrieve installation uuid from active controller"
+            fi
+            INSTALL_UUID=`cat /www/pages/feed/rel-${SW_VERSION}/install_uuid`
+            if [ "$INSTALL_UUID" != "$CONTROLLER_UUID" ]
+            then
+                fatal_error "This node is running a different load than the active controller and must be reinstalled"
+            fi
         fi
     fi
 
@@ -380,17 +395,20 @@ start()
         fi
     fi
 
-    # Keep the /opt/branding directory to preserve any new files
-    rm -rf /opt/branding/*.tgz
-    cp $CONFIG_DIR/branding/*.tgz /opt/branding 2>/dev/null
-
-    # banner customization always returns 0, success:
-    /usr/sbin/install_banner_customization
-
-    cp $CONFIG_DIR/hosts /etc/hosts
-    if [ $? -ne 0 ]
+    if [ ! -e "${ACTIVE_CONTROLLER_NOT_FOUND_FLAG}" ]
     then
-        fatal_error "Unable to copy $CONFIG_DIR/hosts"
+        # Keep the /opt/branding directory to preserve any new files
+        rm -rf /opt/branding/*.tgz
+        cp $CONFIG_DIR/branding/*.tgz /opt/branding 2>/dev/null
+
+        # banner customization always returns 0, success:
+        /usr/sbin/install_banner_customization
+
+        cp $CONFIG_DIR/hosts /etc/hosts
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy $CONFIG_DIR/hosts"
+        fi
     fi
 
     hostname > /etc/hostname
@@ -407,7 +425,7 @@ start()
     fi
 
     # Upgrade related checks
-    if [ ! -e "${PLATFORM_SIMPLEX_FLAG}" ]
+    if [ ! -e "${PLATFORM_SIMPLEX_FLAG}" ] && [ ! -e "${ACTIVE_CONTROLLER_NOT_FOUND_FLAG}" ]
     then
         VOLATILE_ETC_PLATFORM_MOUNT=$VOLATILE_PATH/etc_platform
         mkdir $VOLATILE_ETC_PLATFORM_MOUNT
@@ -466,41 +484,46 @@ start()
         fi
     fi
 
-    mkdir -p /etc/postgresql/
-    cp -p $CONFIG_DIR/postgresql/*.conf /etc/postgresql/
-    if [ $? -ne 0 ]
+    if [ ! -e "${ACTIVE_CONTROLLER_NOT_FOUND_FLAG}" ]
     then
-        fatal_error "Unable to copy .conf files to /etc/postgresql"
-    fi
+        mkdir -p /etc/postgresql/
+        cp -p $CONFIG_DIR/postgresql/*.conf /etc/postgresql/
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy .conf files to /etc/postgresql"
+        fi
 
-    # Copy the hieradata and the staging secured vault
+        # Copy the hieradata to cache directory
+        rm -rf ${PUPPET_CACHE}
+        cp -R ${PUPPET_PATH} ${PUPPET_CACHE}
+        if [ $? -ne 0 ]
+        then
+            umount_platform_dir
+            fatal_error "Failed to copy puppet directory ${PUPPET_PATH} into cache dir ${PUPPET_CACHE}"
+        fi
 
-    rm -rf ${PUPPET_DOWNLOAD}
-    cp -R $PUPPET_PATH ${PUPPET_DOWNLOAD}
-    if [ $? -ne 0 ]
-    then
-        umount_platform_dir
-        fatal_error "Failed to copy puppet directory $PUPPET_PATH"
-    fi
-
-    cp -RL $VAULT_DIR /tmp
-    if [ $? -ne 0 ]
-    then
-        umount_platform_dir
-        fatal_error "Failed to copy vault directory $VAULT_DIR"
+        # Copy the staging secured vault
+        cp -RL $VAULT_DIR /tmp
+        if [ $? -ne 0 ]
+        then
+            umount_platform_dir
+            fatal_error "Failed to copy vault directory $VAULT_DIR"
+        fi
     fi
 
     # Unmount
     umount_platform_dir
 
     # Apply the puppet manifest
-    HOST_HIERA=${PUPPET_DOWNLOAD}/hieradata/${IPADDR}.yaml
+    HIERADATA_PATH=${PUPPET_CACHE}/hieradata
+    HOST_HIERA=${HIERADATA_PATH}/${IPADDR}.yaml
+
     if [ -f ${HOST_HIERA} ]; then
         echo "$0: Running puppet manifest apply"
-	puppet-manifest-apply.sh ${PUPPET_DOWNLOAD}/hieradata ${IPADDR} controller
-	RC=$?
-	if [ $RC -ne 0 ];
-	then
+        puppet-manifest-apply.sh ${HIERADATA_PATH} ${IPADDR} controller
+        RC=$?
+        if [ $RC -ne 0 ]
+        then
             fatal_error "Failed to run the puppet manifest (RC:$RC)"
             if [ ! -f ${COMPLETED} ]
             then
@@ -513,13 +536,12 @@ start()
             else
                 fatal_error "Failed to run the puppet manifest (RC:$RC)"
             fi
-	fi
+        fi
     else
         fatal_error "Host configuration not yet available for this node ($(hostname)=${IPADDR}); aborting configuration."
     fi
 
-    # Cleanup ${PUPPET_DOWNLOAD} and the secured vault
-    rm -rf ${PUPPET_DOWNLOAD}
+    # Cleanup the secured vault
     rm -rf /tmp/python_keyring
 
     if [ ! -e "${PLATFORM_SIMPLEX_FLAG}" ]
