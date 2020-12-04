@@ -9590,6 +9590,11 @@ class ConductorManager(service.PeriodicService):
                 raise exception.SysinvException(
                     _("Unable to complete upgrade: Upgrade not in %s state.")
                     % constants.UPGRADE_COMPLETING)
+
+            # Complete the restore procedure
+            if tsc.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+                self.complete_restore(context)
+
             # Force all host_upgrade entries to use the new load
             # In particular we may have host profiles created in the from load
             # that we need to update before we can delete the load.
