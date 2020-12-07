@@ -94,7 +94,6 @@ from sysinv.common.retrying import retry
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 from cephclient import wrapper as ceph
 from sysinv.conductor import ceph as iceph
-from sysinv.conductor import kube_app
 from sysinv.conductor import openstack
 from sysinv.conductor import docker_registry
 from sysinv.conductor import keystone_listener
@@ -211,7 +210,7 @@ class ConductorManager(service.PeriodicService):
 
         # Upgrade/Downgrade kubernetes components.
         # greenthread must be called after super.start for it to work properly.
-        greenthread.spawn(self._upgrade_downgrade_kube_components)
+#        greenthread.spawn(self._upgrade_downgrade_kube_components)
 
         # monitor keystone user update event to check whether admin password is
         # changed or not. If changed, then sync it to kubernetes's secret info.
@@ -244,11 +243,6 @@ class ConductorManager(service.PeriodicService):
         # brought up during bootstrap manifest apply and is not restarted
         # until host unlock and we need ceph-mon up in order to configure
         # ceph for the initial unlock.
-        self._helm = helm.HelmOperator(self.dbapi)
-        self._app = kube_app.AppOperator(self.dbapi, self._helm)
-        self._docker = kube_app.DockerHelper(self.dbapi)
-        self._kube = kubernetes.KubeOperator()
-        self._kube_app_helper = kube_api.KubeAppHelper(self.dbapi)
         self._fernet = fernet.FernetOperator()
 
         # Upgrade start tasks
@@ -5092,7 +5086,7 @@ class ConductorManager(service.PeriodicService):
                                          'install_state_info':
                                              host.install_state_info})
 
-    @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
+#    @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
     def _kubernetes_local_secrets_audit(self, context):
         # Audit kubernetes local registry secrets info
         LOG.debug("Sysinv Conductor running periodic audit task for k8s local registry secrets.")
@@ -5116,7 +5110,7 @@ class ConductorManager(service.PeriodicService):
         self._audit_install_states(hosts)
 
         # Audit kubernetes node labels
-        self._audit_kubernetes_labels(hosts)
+#        self._audit_kubernetes_labels(hosts)
 
         # Audit image conversion
         self._audit_image_conversion(hosts)
@@ -5469,8 +5463,8 @@ class ConductorManager(service.PeriodicService):
     def _verify_restore_in_progress():
         return os.path.isfile(constants.SYSINV_RESTORE_FLAG)
 
-    @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval,
-                                 run_immediately=True)
+#    @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval,
+#                                 run_immediately=True)
     def _k8s_application_audit(self, context):
         """Make sure that the required k8s applications are running"""
 

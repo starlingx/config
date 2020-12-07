@@ -49,13 +49,13 @@ class KubernetesPuppet(base.BasePuppet):
     def get_system_config(self):
         config = {}
         config.update(
-            {'platform::kubernetes::params::enabled': True,
-             'platform::kubernetes::params::service_domain':
-                 self._get_dns_service_domain(),
-             'platform::kubernetes::params::dns_service_ip':
-                 self._get_dns_service_ip(),
-             'platform::kubernetes::params::upgrade_to_version':
-                 self._get_kubernetes_upgrade_to_version(),
+            {'platform::kubernetes::params::enabled': False,
+#             'platform::kubernetes::params::service_domain':
+#                 self._get_dns_service_domain(),
+#             'platform::kubernetes::params::dns_service_ip':
+#                 self._get_dns_service_ip(),
+#             'platform::kubernetes::params::upgrade_to_version':
+#                 self._get_kubernetes_upgrade_to_version(),
              })
 
         return config
@@ -79,7 +79,7 @@ class KubernetesPuppet(base.BasePuppet):
         config.update(self._get_host_join_command(host))
 
         # Get the kubernetes version for this host
-        config.update(self._get_kubernetes_version(host))
+ #       config.update(self._get_kubernetes_version(host))
 
         return config
 
@@ -94,7 +94,7 @@ class KubernetesPuppet(base.BasePuppet):
         config.update(self._get_host_join_command(host))
 
         # Get the kubernetes version
-        config.update(self._get_active_kubernetes_version())
+   #     config.update(self._get_active_kubernetes_version())
 
         LOG.info("get_host_config_upgrade kubernetes config=%s" % config)
 
@@ -103,47 +103,47 @@ class KubernetesPuppet(base.BasePuppet):
     def get_secure_static_config(self):
         """Update the hiera configuration to add certificate-key"""
 
-        key = keyring.get_password(CERTIFICATE_KEY_SERVICE,
-                CERTIFICATE_KEY_USER)
-        if not key:
-            key = '{:064x}'.format(random.getrandbits(8 * 32))
-            keyring.set_password(CERTIFICATE_KEY_SERVICE,
-                    CERTIFICATE_KEY_USER, key)
-            LOG.info('storing kubernetes_kubeadm_certificate_key')
+#        key = keyring.get_password(CERTIFICATE_KEY_SERVICE,
+#                CERTIFICATE_KEY_USER)
+#        if not key:
+#            key = '{:064x}'.format(random.getrandbits(8 * 32))
+#            keyring.set_password(CERTIFICATE_KEY_SERVICE,
+#                    CERTIFICATE_KEY_USER, key)
+#            LOG.info('storing kubernetes_kubeadm_certificate_key')
 
         config = {}
 
-        config.update({
-                'kubernetes::kubeadm::certificate-key': key,
-        })
+ #       config.update({
+ #               'kubernetes::kubeadm::certificate-key': key,
+ #       })
 
         return config
 
-    @staticmethod
-    def _get_active_kubernetes_version():
-        """Get the active kubernetes version
-        """
+ #   @staticmethod
+ #   def _get_active_kubernetes_version():
+ #       """Get the active kubernetes version
+ #       """
         # During a platform upgrade, the version is still None
         # when N+1 controller-1 is creating hieradata.
         # The version is updated from the running kubernetes version.
-        config = {}
+ #       config = {}
 
-        kube_operator = kubernetes.KubeOperator()
-        kube_version = kube_operator.kube_get_kubernetes_version()
+  #      kube_operator = kubernetes.KubeOperator()
+  #      kube_version = kube_operator.kube_get_kubernetes_version()
 
-        config.update({
-            'platform::kubernetes::params::version': kube_version,
-        })
+  #      config.update({
+  #          'platform::kubernetes::params::version': kube_version,
+  #      })
 
-        return config
+   #     return config
 
     def _get_host_join_command(self, host):
         config = {}
         if not utils.is_initial_config_complete():
             return config
 
-        join_cmd = self._get_kubernetes_join_cmd(host)
-        config.update({'platform::kubernetes::params::join_cmd': join_cmd})
+    #    join_cmd = self._get_kubernetes_join_cmd(host)
+    #    config.update({'platform::kubernetes::params::join_cmd': join_cmd})
 
         return config
 
