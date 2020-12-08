@@ -5850,7 +5850,7 @@ This operation does not accept a request body.
 Shows the attributes of a specific PCI device
 ***********************************************
 
-.. rest_method:: GET /v1/devices/​{device_id}​
+.. rest_method:: GET /v1/pci_devices/​{device_id}​
 
 **Normal response codes**
 
@@ -5940,7 +5940,7 @@ This operation does not accept a request body.
 Modifies a specific PCI device
 ********************************
 
-.. rest_method:: PATCH /v1/devices/​{device_id}​
+.. rest_method:: PATCH /v1/pci_devices/​{device_id}​
 
 **Normal response codes**
 
