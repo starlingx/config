@@ -1029,6 +1029,10 @@ class AppOperator(object):
         app_ns = self._helm.get_helm_application_namespaces(app_name)
         namespaces = \
             list(set([ns for ns_list in app_ns.values() for ns in ns_list]))
+
+        sysinv_registry_secret = self._kube.kube_get_secret(DOCKER_REGISTRY_SECRET,
+                                                            common.HELM_NS_KUBE_SYSTEM)
+
         for ns in namespaces:
             if (ns == common.HELM_NS_HELM_TOOLKIT or
                  self._kube.kube_get_secret(DOCKER_REGISTRY_SECRET, ns) is not None):
@@ -1036,14 +1040,22 @@ class AppOperator(object):
                 continue
 
             try:
-                local_registry_auth = cutils.get_local_docker_registry_auth()
+                if sysinv_registry_secret is not None:
+                    # Use the sysinv token in default_registry_key secret in
+                    # kube-system namespace to create secret in another namespace.
+                    sysinv_registry_token = sysinv_registry_secret.data['.dockerconfigjson']
+                    body['data'].update({'.dockerconfigjson': sysinv_registry_token})
+                else:
+                    # This must be the first platform app in the kube-system
+                    # namespace (i.e. nginx-ingress-controller app)
+                    local_registry_auth = cutils.get_local_docker_registry_auth()
 
-                auth = '{0}:{1}'.format(local_registry_auth['username'],
-                                        local_registry_auth['password'])
-                token = '{{\"auths\": {{\"{0}\": {{\"auth\": \"{1}\"}}}}}}'.format(
-                    constants.DOCKER_REGISTRY_SERVER, base64.b64encode(auth))
+                    auth = '{0}:{1}'.format(local_registry_auth['username'],
+                                            local_registry_auth['password'])
+                    token = '{{\"auths\": {{\"{0}\": {{\"auth\": \"{1}\"}}}}}}'.format(
+                        constants.DOCKER_REGISTRY_SERVER, base64.b64encode(auth))
+                    body['data'].update({'.dockerconfigjson': base64.b64encode(token)})
 
-                body['data'].update({'.dockerconfigjson': base64.b64encode(token)})
                 body['metadata'].update({'name': DOCKER_REGISTRY_SECRET,
                                          'namespace': ns})
 
@@ -1056,19 +1068,13 @@ class AppOperator(object):
                 raise
 
     def _delete_local_registry_secrets(self, app_name):
-        # Temporary function to delete default registry secrets
-        # which created during stx-opesntack app apply.
-        # This should be removed after OSH supports the deployment
-        # with registry has authentication turned on.
-        # https://blueprints.launchpad.net/openstack-helm/+spec/
-        # support-docker-registry-with-authentication-turned-on
 
         app_ns = self._helm.get_helm_application_namespaces(app_name)
         namespaces = \
             list(set([ns for ns_list in app_ns.values() for ns in ns_list]))
 
         for ns in namespaces:
-            if ns == common.HELM_NS_HELM_TOOLKIT:
+            if ns in [common.HELM_NS_HELM_TOOLKIT, common.HELM_NS_KUBE_SYSTEM]:
                 continue
 
             try:
