@@ -784,7 +784,7 @@ class AppOperator(object):
             if app.system_app and '/charts/helm-toolkit' in r:
                 continue
             try:
-                output = subprocess.check_output(['helm', 'lint', r])
+                output = subprocess.check_output(['helm', 'lint', r])  # pylint: disable=not-callable
                 if "linted, 0 chart(s) failed" in output:
                     LOG.info("Helm chart %s validated" % os.path.basename(r))
                 else:
@@ -843,7 +843,7 @@ class AppOperator(object):
                      grp.getgrnam(constants.SYSINV_SYSADMIN_GRPNAME).gr_gid)
             with open(os.devnull, "w") as fnull:
                 for chart in charts:
-                    subprocess.check_call(['helm-upload', helm_repo, chart],
+                    subprocess.check_call(['helm-upload', helm_repo, chart],  # pylint: disable=not-callable
                                           env=env, stdout=fnull, stderr=fnull)
                     LOG.info("Helm chart %s uploaded" % os.path.basename(chart))
 
@@ -2847,7 +2847,7 @@ class DockerHelper(object):
                 local_registry_auth = cutils.get_local_docker_registry_auth()
                 auth = '{0}:{1}'.format(local_registry_auth['username'],
                                         local_registry_auth['password'])
-                subprocess.check_call(["crictl", "pull", "--creds", auth, img_tag])
+                subprocess.check_call(["crictl", "pull", "--creds", auth, img_tag])  # pylint: disable=not-callable
             except subprocess.CalledProcessError:
                 try:
                     # Pull the image from the public/private registry

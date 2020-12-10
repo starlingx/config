@@ -879,7 +879,7 @@ def symlink_force(source, link_name):
 def mounted(remote_dir, local_dir):
     local_dir = os.path.abspath(local_dir)
     try:
-        subprocess.check_output(
+        subprocess.check_output(  # pylint: disable=not-callable
             ["/bin/nfs-mount", remote_dir, local_dir],
             stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as e:
@@ -890,7 +890,7 @@ def mounted(remote_dir, local_dir):
         yield
     finally:
         try:
-            subprocess.check_output(
+            subprocess.check_output(  # pylint: disable=not-callable
                 ["/bin/umount", local_dir],
                 stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
@@ -1082,9 +1082,9 @@ class ISO(object):
 
     def _mount_iso(self):
         with open(os.devnull, "w") as fnull:
-            subprocess.check_call(['mkdir', '-p', self.mount_dir], stdout=fnull,
+            subprocess.check_call(['mkdir', '-p', self.mount_dir], stdout=fnull,  # pylint: disable=not-callable
                                   stderr=fnull)
-            subprocess.check_call(['mount', '-r', '-o', 'loop', self.iso_path,
+            subprocess.check_call(['mount', '-r', '-o', 'loop', self.iso_path,  # pylint: disable=not-callable
                                    self.mount_dir],
                                   stdout=fnull,
                                   stderr=fnull)
@@ -1094,7 +1094,7 @@ class ISO(object):
         try:
             # Do a lazy unmount to handle cases where a file in the mounted
             # directory is open when the umount is done.
-            subprocess.check_call(['umount', '-l', self.mount_dir])
+            subprocess.check_call(['umount', '-l', self.mount_dir])  # pylint: disable=not-callable
             self._iso_mounted = False
         except subprocess.CalledProcessError as e:
             # If this fails for some reason, there's not a lot we can do
@@ -1629,7 +1629,7 @@ def get_current_fs_size(fs_name):
 
     with open(os.devnull, "w") as fnull:
         try:
-            lvdisplay_output = subprocess.check_output(args, stderr=fnull)
+            lvdisplay_output = subprocess.check_output(args, stderr=fnull)  # pylint: disable=not-callable
         except subprocess.CalledProcessError:
             raise Exception("Failed to get filesystem %s size" % fs_name)
 
@@ -1646,7 +1646,7 @@ def get_cgts_vg_free_space():
 
     try:
         # Determine space in cgts-vg in GiB
-        vg_free_str = subprocess.check_output(
+        vg_free_str = subprocess.check_output(  # pylint: disable=not-callable
             ['vgdisplay', '-C', '--noheadings', '--nosuffix',
              '-o', 'vg_free', '--units', 'g', 'cgts-vg'],
             close_fds=True).rstrip()
@@ -1763,7 +1763,7 @@ def extract_tarfile(target_dir, tarfile, demote_user=False):
                 cmd = ['tar', '-xf', tarfile, '-m', '--no-same-owner',
                        '--no-same-permissions', '-C', target_dir]
 
-            subprocess.check_call(cmd, stdout=fnull, stderr=fnull)
+            subprocess.check_call(cmd, stdout=fnull, stderr=fnull)  # pylint: disable=not-callable
 
             return True
         except subprocess.CalledProcessError as e:
@@ -1853,7 +1853,7 @@ def verify_checksum(path):
             os.chdir(path)
             with open(os.devnull, "w") as fnull:
                 try:
-                    subprocess.check_call(['md5sum', '-c', f],
+                    subprocess.check_call(['md5sum', '-c', f],  # pylint: disable=not-callable
                                           stdout=fnull, stderr=fnull)
                     LOG.info("Checksum file is included and validated.")
                 except Exception as e:

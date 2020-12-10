@@ -364,7 +364,7 @@ class AgentManager(service.PeriodicService):
                 # restart serial-getty
                 restart_cmd = ('systemctl restart serial-getty@%s.service'
                                % active_device)
-                subprocess.check_call(restart_cmd, shell=True)
+                subprocess.check_call(restart_cmd, shell=True)  # pylint: disable=not-callable
             except subprocess.CalledProcessError as e:
                 LOG.error("subprocess error: (%d)", e.returncode)
 
@@ -496,7 +496,7 @@ class AgentManager(service.PeriodicService):
             try:
                 # Get lock to avoid conflict with apply_network_config.sh
                 lockfd = self._acquire_network_config_lock()
-                return func(self, *args, **kwargs)
+                return func(self, *args, **kwargs)  # pylint: disable=not-callable
             finally:
                 self._release_network_config_lock(lockfd)
         return wrap
@@ -514,7 +514,7 @@ class AgentManager(service.PeriodicService):
                 flag = self._ipci_operator.pci_get_net_flags(interface)
                 # If administrative state is down, bring it up momentarily
                 if not (flag & pci.IFF_UP):
-                    subprocess.call(['ip', 'link', 'set', interface, 'up'])
+                    subprocess.call(['ip', 'link', 'set', interface, 'up'])  # pylint: disable=not-callable
                     links_down.append(interface)
                     LOG.info('interface %s enabled to receive LLDP PDUs' % interface)
             self._lldp_operator.lldp_update()
@@ -538,7 +538,7 @@ class AgentManager(service.PeriodicService):
         finally:
             # restore interface administrative state
             for interface in links_down:
-                subprocess.call(['ip', 'link', 'set', interface, 'down'])
+                subprocess.call(['ip', 'link', 'set', interface, 'down'])  # pylint: disable=not-callable
                 LOG.info('interface %s disabled after querying LLDP neighbors' % interface)
 
     def platform_update_by_host(self, rpcapi, context, host_uuid, msg_dict):
@@ -1575,7 +1575,7 @@ class AgentManager(service.PeriodicService):
 
                     # Remove resolv.conf file. It may have been created as a
                     # symlink by the volatile configuration scripts.
-                    subprocess.call(["rm", "-f", file_name])
+                    subprocess.call(["rm", "-f", file_name])  # pylint: disable=not-callable
 
                 if isinstance(file_content, dict):
                     f_content = file_content.get(file_name)
@@ -1804,7 +1804,7 @@ class AgentManager(service.PeriodicService):
             if os.path.isfile(cleanup_script):
                 with open(os.devnull, "w") as fnull:
                     try:
-                        subprocess.check_call(
+                        subprocess.check_call(  # pylint: disable=not-callable
                             [cleanup_script, software_version],
                             stdout=fnull, stderr=fnull)
                     except subprocess.CalledProcessError:
@@ -2009,7 +2009,7 @@ class AgentManager(service.PeriodicService):
             LOG.info("AgentManager execute_command: (%s)" % (command))
             with open(os.devnull, "w") as fnull:
                 try:
-                    subprocess.check_call(command, stdout=fnull, stderr=fnull)
+                    subprocess.check_call(command, stdout=fnull, stderr=fnull)  # pylint: disable=not-callable
                 except subprocess.CalledProcessError as e:
                     LOG.error("Failed to execute (%s) (%d)",
                               command, e.returncode)
@@ -2075,7 +2075,7 @@ class AgentManager(service.PeriodicService):
             LOG.debug("AgentManager.refresh_helm_repo_information")
             with open(os.devnull, "w") as fnull:
                 try:
-                    subprocess.check_call(['sudo', '-u', 'sysadmin',
+                    subprocess.check_call(['sudo', '-u', 'sysadmin',  # pylint: disable=not-callable
                                            'helm', 'repo', 'update'],
                                           stdout=fnull, stderr=fnull)
                 except subprocess.CalledProcessError:

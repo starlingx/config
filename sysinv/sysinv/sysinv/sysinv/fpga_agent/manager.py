@@ -168,7 +168,7 @@ def write_device_image_n3000(filename, pci_addr):
                filename + " " + pci_addr)
 
         # Issue the command to perform the firmware update.
-        subprocess.check_output(shlex.split(cmd),
+        subprocess.check_output(shlex.split(cmd),  # pylint: disable=not-callable
                                          stderr=subprocess.STDOUT)
         # TODO: switch to subprocess.Popen, parse the output and send
         #       progress updates.
@@ -198,7 +198,7 @@ def reset_device_n3000(pci_addr):
                " rsu bmcimg " + pci_addr)
 
         # Issue the command to perform the firmware update.
-        subprocess.check_output(shlex.split(cmd),
+        subprocess.check_output(shlex.split(cmd),  # pylint: disable=not-callable
                                          stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as exc:
         # "docker run" return code will be:
@@ -324,7 +324,7 @@ def get_n3000_devices():
            constants.N3000_DEVICE]
 
     try:
-        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)  # pylint: disable=not-callable
     except subprocess.CalledProcessError as exc:
         msg = ("Failed to get pci devices with vendor %s and device %s, "
                "return code is %d, command output: %s." %
@@ -420,7 +420,7 @@ def watchdog_action(action):
         cmd = ["systemctl", action, "hostw"]
 
         # Issue the command to stop/start the watchdog
-        subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+        subprocess.check_output(cmd, stderr=subprocess.STDOUT)  # pylint: disable=not-callable
     except subprocess.CalledProcessError as exc:
         msg = ("Failed to %s hostw service, "
                  "return code is %d, command output: %s." %

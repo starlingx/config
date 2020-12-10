@@ -40,7 +40,7 @@ class LVGOperator(object):
                     global_filer = 'devices/global_filter=["a|' + \
                                    cinder_device + '|","r|.*|"]'
                     command = command + ['--config', global_filer]
-            output = subprocess.check_output(command)
+            output = subprocess.check_output(command)  # pylint: disable=not-callable
         except Exception as e:
             self.handle_exception("Could not retrieve vgdisplay "
                                   "information: %s" % e)
