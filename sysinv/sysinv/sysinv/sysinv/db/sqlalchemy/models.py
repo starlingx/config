@@ -391,7 +391,7 @@ class Interfaces(Base):
 
 class EthernetCommon(object):
     @declared_attr
-    def id(cls):
+    def id(cls):  # pylint: disable=no-self-argument
         return Column(Integer, ForeignKey('interfaces.id', ondelete="CASCADE"), primary_key=True, nullable=False)
 
     imac = Column(String(255))
@@ -1194,7 +1194,7 @@ class DataNetworks(Base):
 
 class DataNetworksCommon(object):
     @declared_attr
-    def id(cls):
+    def id(cls):  # pylint: disable=no-self-argument
         return Column(Integer,
                       ForeignKey('datanetworks.id', ondelete="CASCADE"),
                       primary_key=True, nullable=False)
@@ -1305,7 +1305,7 @@ class SensorGroups(Base):
 
 class SensorGroupsCommon(object):
     @declared_attr
-    def id(cls):
+    def id(cls):  # pylint: disable=no-self-argument
         return Column(Integer,
                       ForeignKey('i_sensorgroups.id', ondelete="CASCADE"),
                       primary_key=True, nullable=False)
@@ -1529,7 +1529,7 @@ class DeviceImage(Base):
 
 class DeviceImageCommon(object):
     @declared_attr
-    def id(cls):
+    def id(cls):  # pylint: disable=no-self-argument
         return Column(Integer,
                       ForeignKey('device_images.id', ondelete="CASCADE"),
                       primary_key=True, nullable=False)

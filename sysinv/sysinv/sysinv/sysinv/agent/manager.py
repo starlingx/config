@@ -488,7 +488,7 @@ class AgentManager(service.PeriodicService):
                 self._lldp_operator.lldp_agents_clear()
                 pass
 
-    def synchronized_network_config(func):
+    def synchronized_network_config(func):  # pylint: disable=no-self-argument
         """ Synchronization decorator to acquire and release
             network_config_lock.
         """
@@ -710,7 +710,7 @@ class AgentManager(service.PeriodicService):
 
         return port_list, pci_device_list, host_macs
 
-    def _retry_on_missing_host_uuid(ex):
+    def _retry_on_missing_host_uuid(ex):  # pylint: disable=no-self-argument
         LOG.info('Caught missing host_uuid exception. Retrying... '
                  'Exception: {}'.format(ex))
         return isinstance(ex, exception.LocalHostUUIDNotFound)
@@ -1517,7 +1517,7 @@ class AgentManager(service.PeriodicService):
             # Set the install_uuid to the value we just configured.
             tsc.install_uuid = install_uuid
 
-    def _retry_on_personality_is_none(ex):
+    def _retry_on_personality_is_none(ex):  # pylint: disable=no-self-argument
         LOG.info('Caught exception. Retrying... Exception: {}'.format(ex))
         return isinstance(ex, exception.LocalManagementPersonalityNotFound)
 
@@ -1599,7 +1599,7 @@ class AgentManager(service.PeriodicService):
         else:
             LOG.error("report_inventory unknown request=%s" % inventory_update)
 
-    def _retry_on_missing_inventory_info(ex):
+    def _retry_on_missing_inventory_info(ex):  # pylint: disable=no-self-argument
         LOG.info('Caught exception. Retrying... Exception: {}'.format(ex))
         return isinstance(ex, exception.AgentInventoryInfoNotFound)
 

@@ -128,7 +128,7 @@ class TestPciOperator(base.TestCase):
     def tearDown(self):
         super(TestPciOperator, self).tearDown()
 
-    def mock_get_lspci_output_by_addr(addr):
+    def mock_get_lspci_output_by_addr(addr):  # pylint: disable=no-self-argument
         return FAKE_LSPCI_OUTPUT[addr]
 
     @mock.patch.object(PCIOperator, 'get_lspci_output_by_addr',

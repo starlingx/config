@@ -5880,7 +5880,7 @@ class ConductorManager(service.PeriodicService):
 
     # @staticmethod can't be used with @retry decorator below because
     # it raises a "'staticmethod' object is not callable" exception
-    def _osd_must_be_down(result):
+    def _osd_must_be_down(result):  # pylint: disable=no-self-argument
         response, body = result
         if not response.ok:
             LOG.error("OSD remove failed: {}".format(body))
