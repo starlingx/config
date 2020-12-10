@@ -8772,6 +8772,34 @@ class ConductorManager(service.PeriodicService):
         """
         host_uuids = config_dict.get('host_uuids')
 
+        try:
+            self.dbapi.software_upgrade_get_one()
+        except exception.NotFound:
+            # No upgrade in progress
+            pass
+        else:
+            # Limit host_uuids to those matching the active software version
+            if not host_uuids:
+                hosts = self.dbapi.ihost_get_list()
+            else:
+                hosts = [self.dbapi.ihost_get(host_uuid) for host_uuid in host_uuids]
+
+            host_uuids = []
+            personalities = config_dict.get('personalities')
+            for host in hosts:
+                if host.personality in personalities:
+                    if host.software_load == tsc.SW_VERSION:
+                        host_uuids.append(host.uuid)
+                    else:
+                        LOG.info("Skip applying manifest for host: %s. Version %s mismatch." %
+                                 (host.hostname, host.software_load))
+                        self._update_host_config_applied(context, host, config_uuid)
+
+            if not host_uuids:
+                LOG.info("No hosts with matching software_version found, skipping apply_runtime_manifest")
+                return
+            config_dict.update({'host_uuids': host_uuids})
+
         if "classes" in config_dict:
             LOG.info("applying runtime manifest config_uuid=%s, classes: %s" % (
                 config_uuid, config_dict["classes"]))
