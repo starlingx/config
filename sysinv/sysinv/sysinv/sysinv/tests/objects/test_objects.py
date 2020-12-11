@@ -71,7 +71,7 @@ class MyObj(base.SysinvObject):
     @base.remotable
     def modify_save_modify(self, context):
         self.bar = 'meow'
-        self.save()
+        self.save()  # pylint: disable=no-value-for-parameter
         self.foo = 42
 
 
@@ -395,7 +395,7 @@ class _TestObjectMixin(object):
         ctxt = context.get_admin_context()
         obj = MyObj.get(ctxt)
         self.assertEqual(obj.bar, 'bar')
-        result = obj.marco()
+        result = obj.marco()  # pylint: disable=no-value-for-parameter
         self.assertEqual(result, 'polo')
         self.assertRemotes()
 
@@ -403,7 +403,7 @@ class _TestObjectMixin(object):
         ctxt = context.get_admin_context()
         obj = MyObj.get(ctxt)
         self.assertEqual(obj.foo, 1)
-        obj.update_test()
+        obj.update_test()  # pylint: disable=no-value-for-parameter
         self.assertEqual(obj.bar, 'updated')
         self.assertRemotes()
 

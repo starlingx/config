@@ -3,9 +3,9 @@ SQLAlchemy
 amqplib>=0.6.1
 argparse
 boto3
-botocore>=1.11.0
+botocore
 cryptography!=2.0  # BSD/Apache-2.0
-eventlet==0.20.0
+eventlet
 greenlet>=0.3.2 # MIT
 keyring
 kombu>=2.4.8
@@ -44,4 +44,4 @@ rpm
 ruamel.yaml>=0.13.14 # MIT
 docker  # Apache-2.0
 kubernetes  # Apache-2.0
-Django<2,>=1.11.20 # BSD
+Django

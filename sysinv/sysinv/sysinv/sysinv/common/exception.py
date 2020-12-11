@@ -113,7 +113,7 @@ class SysinvException(Exception):
 
     def format_message(self):
         if self.__class__.__name__.endswith('_Remote'):
-            return self.args[0]
+            return self.args[0]  # pylint: disable=unsubscriptable-object
         else:
             return six.text_type(self)
 
