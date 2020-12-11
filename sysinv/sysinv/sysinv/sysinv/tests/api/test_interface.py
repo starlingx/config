@@ -406,13 +406,6 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
 
         return port, interface
 
-    def _create_worker_sriov(self, ifname, networktype, ifclass, vlan_id,
-                             lower_iface=None, datanetworks=None,
-                             host=None, expect_errors=False):
-        return self._create_sriov(ifname, networktype, ifclass, vlan_id,
-                                 lower_iface,
-                                 datanetworks, self.worker, expect_errors)
-
     def _create_vf(self, ifname, ifclass=None,
                    lower_iface=None, sriov_numvfs=None,
                    sriov_vf_driver=None, datanetworks=None, host=None,

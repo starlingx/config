@@ -89,8 +89,8 @@ class FernetOperator(object):
                 f.flush()
                 create = True
         except IOError:
-            LOG.error(_('Failed to create new temporary key: %s',
-                        temp_key_file))
+            LOG.error('Failed to create new temporary key: %s' %
+                        temp_key_file)
             raise
         finally:
             # restore the umask, user and group identifiers

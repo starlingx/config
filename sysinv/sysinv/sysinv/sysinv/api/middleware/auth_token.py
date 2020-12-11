@@ -60,4 +60,4 @@ class AuthTokenMiddleware(auth_token.AuthProtocol):
             LOG.debug("Found match request")
             return self._sysinv_app(env, start_response)
 
-        return super(AuthTokenMiddleware, self).__call__(env, start_response)
+        return super(AuthTokenMiddleware, self).__call__(env, start_response)  # pylint: disable=too-many-function-args
