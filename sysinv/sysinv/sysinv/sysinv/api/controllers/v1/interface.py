@@ -402,9 +402,6 @@ class InterfaceController(rest.RestController):
         except exception.SysinvException as e:
             LOG.exception(e)
             raise wsme.exc.ClientSideError(str(e))
-        except exception.HTTPNotFound:
-            raise wsme.exc.ClientSideError(_("Interface create failed: interface %s"
-                                             % (interface['ifname'])))
         return Interface.convert_with_links(new_interface)
 
     @cutils.synchronized(LOCK_NAME)
