@@ -1,10 +1,12 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
 
+from sysinv.common import constants
+from sysinv.common import utils
 from sysinv.puppet import openstack
 
 
@@ -39,6 +41,10 @@ class FmPuppet(openstack.OpenstackBasePuppet):
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
         system = self.dbapi.isystem_get_one()
         trapdests = self.dbapi.itrapdest_get_list()
+        if utils.is_app_applied(self.dbapi, constants.HELM_APP_SNMP):
+            snmp_enabled_value = 1    # True
+        else:
+            snmp_enabled_value = 0    # False
 
         config = {
             'fm::keystone::auth::public_url': self.get_public_url(),
@@ -69,6 +75,7 @@ class FmPuppet(openstack.OpenstackBasePuppet):
                 self._get_service_tenant_name(),
 
             'platform::fm::params::region_name': self._region_name(),
+            'platform::fm::params::snmp_enabled': snmp_enabled_value,
             'platform::fm::params::system_name': system.name,
 
             'platform::fm::params::service_create':
