@@ -17,7 +17,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 
 
@@ -364,7 +364,7 @@ class AgentManager(service.PeriodicService):
                 # restart serial-getty
                 restart_cmd = ('systemctl restart serial-getty@%s.service'
                                % active_device)
-                subprocess.check_call(restart_cmd, shell=True)
+                subprocess.check_call(restart_cmd, shell=True)  # pylint: disable=not-callable
             except subprocess.CalledProcessError as e:
                 LOG.error("subprocess error: (%d)", e.returncode)
 
@@ -488,7 +488,7 @@ class AgentManager(service.PeriodicService):
                 self._lldp_operator.lldp_agents_clear()
                 pass
 
-    def synchronized_network_config(func):
+    def synchronized_network_config(func):  # pylint: disable=no-self-argument
         """ Synchronization decorator to acquire and release
             network_config_lock.
         """
@@ -496,7 +496,7 @@ class AgentManager(service.PeriodicService):
             try:
                 # Get lock to avoid conflict with apply_network_config.sh
                 lockfd = self._acquire_network_config_lock()
-                return func(self, *args, **kwargs)
+                return func(self, *args, **kwargs)  # pylint: disable=not-callable
             finally:
                 self._release_network_config_lock(lockfd)
         return wrap
@@ -514,7 +514,7 @@ class AgentManager(service.PeriodicService):
                 flag = self._ipci_operator.pci_get_net_flags(interface)
                 # If administrative state is down, bring it up momentarily
                 if not (flag & pci.IFF_UP):
-                    subprocess.call(['ip', 'link', 'set', interface, 'up'])
+                    subprocess.call(['ip', 'link', 'set', interface, 'up'])  # pylint: disable=not-callable
                     links_down.append(interface)
                     LOG.info('interface %s enabled to receive LLDP PDUs' % interface)
             self._lldp_operator.lldp_update()
@@ -538,7 +538,7 @@ class AgentManager(service.PeriodicService):
         finally:
             # restore interface administrative state
             for interface in links_down:
-                subprocess.call(['ip', 'link', 'set', interface, 'down'])
+                subprocess.call(['ip', 'link', 'set', interface, 'down'])  # pylint: disable=not-callable
                 LOG.info('interface %s disabled after querying LLDP neighbors' % interface)
 
     def platform_update_by_host(self, rpcapi, context, host_uuid, msg_dict):
@@ -609,6 +609,22 @@ class AgentManager(service.PeriodicService):
     def _get_ports_inventory(self):
         """Collect ports inventory for this host"""
 
+        port_list = []
+        pci_device_list = []
+        host_macs = []
+
+        initial_worker_config_completed = \
+            os.path.exists(tsc.INITIAL_WORKER_CONFIG_COMPLETE)
+        worker_config_completed = \
+            os.path.exists(tsc.VOLATILE_WORKER_CONFIG_COMPLETE)
+
+        # do not send report if the initial worker config is completed and
+        # worker config has not finished, i.e.during subsequent
+        # reboot before the manifest enables and binds any SR-IOV devices
+        if (initial_worker_config_completed and
+                not worker_config_completed):
+            return port_list, pci_device_list, host_macs
+
         # find list of network related inics for this host
         inics = self._ipci_operator.inics_get()
 
@@ -640,7 +656,6 @@ class AgentManager(service.PeriodicService):
         # inventoried host (one of the MACs should be the management MAC)
         host_macs = [port.mac for port in iports if port.mac]
 
-        port_list = []
         for port in iports:
             inic_dict = {'pciaddr': port.ipci.pciaddr,
                          'pclass': port.ipci.pclass,
@@ -668,7 +683,6 @@ class AgentManager(service.PeriodicService):
 
             port_list.append(inic_dict)
 
-        pci_device_list = []
         for dev in pci_devs:
             pci_dev_dict = {'name': dev.name,
                             'pciaddr': dev.pci.pciaddr,
@@ -685,6 +699,8 @@ class AgentManager(service.PeriodicService):
                             'sriov_totalvfs': dev.sriov_totalvfs,
                             'sriov_numvfs': dev.sriov_numvfs,
                             'sriov_vfs_pci_address': dev.sriov_vfs_pci_address,
+                            'sriov_vf_driver': dev.sriov_vf_driver,
+                            'sriov_vf_pdevice_id': dev.sriov_vf_pdevice_id,
                             'driver': dev.driver,
                             'enabled': dev.enabled,
                             'extra_info': dev.extra_info}
@@ -694,7 +710,7 @@ class AgentManager(service.PeriodicService):
 
         return port_list, pci_device_list, host_macs
 
-    def _retry_on_missing_host_uuid(ex):
+    def _retry_on_missing_host_uuid(ex):  # pylint: disable=no-self-argument
         LOG.info('Caught missing host_uuid exception. Retrying... '
                  'Exception: {}'.format(ex))
         return isinstance(ex, exception.LocalHostUUIDNotFound)
@@ -715,23 +731,25 @@ class AgentManager(service.PeriodicService):
         if pci_device_list is None or port_list is None:
             port_list, pci_device_list, host_macs = self._get_ports_inventory()
 
-        try:
-            rpcapi.iport_update_by_ihost(context,
-                                         host_uuid,
-                                         port_list)
-            self._inventory_reported.add(self.PORT)
-        except RemoteError as e:
-            LOG.error("iport_update_by_ihost RemoteError exc_type=%s" %
-                      e.exc_type)
-
-        try:
-            rpcapi.pci_device_update_by_host(context,
+        if port_list:
+            try:
+                rpcapi.iport_update_by_ihost(context,
                                              host_uuid,
-                                             pci_device_list)
-            self._inventory_reported.add(self.PCI_DEVICE)
-        except exception.SysinvException:
-            LOG.exception("Sysinv Agent exception updating pci_device.")
-            pass
+                                             port_list)
+                self._inventory_reported.add(self.PORT)
+            except RemoteError as e:
+                LOG.error("iport_update_by_ihost RemoteError exc_type=%s" %
+                        e.exc_type)
+
+        if pci_device_list:
+            try:
+                rpcapi.pci_device_update_by_host(context,
+                                                host_uuid,
+                                                pci_device_list)
+                self._inventory_reported.add(self.PCI_DEVICE)
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating pci_device.")
+                pass
 
     def ihost_inv_get_and_report(self, icontext):
         """Collect data for an ihost.
@@ -1093,6 +1111,119 @@ class AgentManager(service.PeriodicService):
                 return False
         return True
 
+    def _create_host_filesystems(self, rpcapi, icontext):
+        # Create the hosts filesystems for kubelet, docker, backup, scratch
+
+        filesystems = []
+
+        if self._prev_fs is not None:
+            # Skip if host filesystems already exists
+            return
+
+        try:
+            # Get the supported filesystems for this host with default
+            # sizes
+            kubelet_lv_size = constants.KUBELET_STOR_SIZE
+            docker_lv_size = constants.KUBERNETES_DOCKER_STOR_SIZE
+
+            disk_size = utils.get_disk_capacity_mib(self._ihost_rootfs_device)
+            disk_size = int(disk_size / 1024)
+
+            if disk_size > constants.DEFAULT_SMALL_DISK_SIZE:
+                LOG.info("Disk size for %s: %s ... large disk defaults" %
+                         (self._ihost_rootfs_device, disk_size))
+
+                backup_lv_size = \
+                    constants.DEFAULT_DATABASE_STOR_SIZE + \
+                    constants.DEFAULT_PLATFORM_STOR_SIZE + \
+                    constants.BACKUP_OVERHEAD
+
+            elif disk_size >= constants.MINIMUM_SMALL_DISK_SIZE:
+                LOG.info("Disk size for %s : %s ... small disk defaults" %
+                         (self._ihost_rootfs_device, disk_size))
+
+                # Due to the small size of the disk we can't provide the
+                # proper amount of backup space which is (database + platform_lv
+                # + BACKUP_OVERHEAD) so we are using a smaller default.
+                backup_lv_size = constants.DEFAULT_SMALL_BACKUP_STOR_SIZE
+
+            elif (disk_size >= constants.MINIMUM_TINY_DISK_SIZE and
+                  rpcapi.is_virtual_system_config(icontext) and
+                  tsc.system_type == constants.TIS_AIO_BUILD):
+                # Supports StarlingX running in QEMU/KVM VM with a tiny disk(AIO only)
+                LOG.info("Disk size for %s : %s ... tiny disk defaults "
+                         "for virtual system configuration" %
+                         (self._ihost_rootfs_device, disk_size))
+                kubelet_lv_size = constants.TINY_KUBELET_STOR_SIZE
+                docker_lv_size = constants.TINY_KUBERNETES_DOCKER_STOR_SIZE
+                backup_lv_size = constants.DEFAULT_TINY_BACKUP_STOR_SIZE
+
+            else:
+                LOG.info("Disk size for %s : %s ... disk too small" %
+                         (self._ihost_rootfs_device, disk_size))
+                raise exception.SysinvException("Disk size requirements not met.")
+
+            # check if the scratch fs is supported for current host
+            if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_SCRATCH,
+                                             self._ihost_personality):
+                scratch_lv_size = utils.get_current_fs_size("scratch")
+                data = {
+                    'name': constants.FILESYSTEM_NAME_SCRATCH,
+                    'size': scratch_lv_size,
+                    'logical_volume': constants.FILESYSTEM_LV_DICT[
+                        constants.FILESYSTEM_NAME_SCRATCH]
+                }
+                filesystems.append(data)
+
+            # check if the backup fs is supported for current host
+            if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_BACKUP,
+                                             self._ihost_personality):
+                data = {
+                    'name': constants.FILESYSTEM_NAME_BACKUP,
+                    'size': backup_lv_size,
+                    'logical_volume': constants.FILESYSTEM_LV_DICT[
+                        constants.FILESYSTEM_NAME_BACKUP]
+                }
+                filesystems.append(data)
+
+            # check if the docker fs is supported for current host
+            if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_DOCKER,
+                                             self._ihost_personality):
+                data = {
+                    'name': constants.FILESYSTEM_NAME_DOCKER,
+                    'size': docker_lv_size,
+                    'logical_volume': constants.FILESYSTEM_LV_DICT[
+                        constants.FILESYSTEM_NAME_DOCKER]
+                }
+                filesystems.append(data)
+
+            # check if the kubelet fs is supported for current host
+            if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_KUBELET,
+                                             self._ihost_personality):
+                data = {
+                    'name': constants.FILESYSTEM_NAME_KUBELET,
+                    'size': kubelet_lv_size,
+                    'logical_volume': constants.FILESYSTEM_LV_DICT[
+                        constants.FILESYSTEM_NAME_KUBELET]
+                }
+                filesystems.append(data)
+
+            if filesystems:
+                # Create the filesystems if they do not already exist.
+                # This audit does not check if the fs size has changed.
+                # Doing so would interfere with the resizes done via
+                # the HostFs API
+                rpcapi.create_host_filesystems(
+                    icontext, self._ihost_uuid, filesystems)
+                self._prev_fs = filesystems
+
+            self._inventory_reported.add(self.HOST_FILESYSTEMS)
+        except Exception as e:
+            LOG.exception(
+                "Sysinv Agent exception creating the host filesystems."
+                " %s" % e)
+            self._prev_fs = None
+
     @utils.synchronized(constants.PARTITION_MANAGE_LOCK)
     def _update_disk_partitions(self, rpcapi, icontext,
                                 host_uuid, force_update=False):
@@ -1306,76 +1437,7 @@ class AgentManager(service.PeriodicService):
                     self._prev_lvg = None
                     pass
 
-            # Create the filesystems
-            filesystems = []
-
-            if self._prev_fs is None:
-                try:
-                    # Get the supported filesystems for this host with default
-                    # sizes
-
-                    # check if the scratch fs is supported for current host
-                    if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_SCRATCH,
-                                                     self._ihost_personality):
-                        scratch_lv_size = utils.get_current_fs_size("scratch")
-                        data = {
-                            'name': constants.FILESYSTEM_NAME_SCRATCH,
-                            'size': scratch_lv_size,
-                            'logical_volume': constants.FILESYSTEM_LV_DICT[
-                                constants.FILESYSTEM_NAME_SCRATCH]
-                        }
-                        filesystems.append(data)
-
-                    # check if the backup fs is supported for current host
-                    if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_BACKUP,
-                                                     self._ihost_personality):
-                        backup_lv_size = utils.get_default_controller_fs_backup_size(self._ihost_rootfs_device)
-                        data = {
-                            'name': constants.FILESYSTEM_NAME_BACKUP,
-                            'size': backup_lv_size,
-                            'logical_volume': constants.FILESYSTEM_LV_DICT[
-                                constants.FILESYSTEM_NAME_BACKUP]
-                        }
-                        filesystems.append(data)
-
-                    # check if the docker fs is supported for current host
-                    if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_DOCKER,
-                                                     self._ihost_personality):
-                        data = {
-                            'name': constants.FILESYSTEM_NAME_DOCKER,
-                            'size': constants.KUBERNETES_DOCKER_STOR_SIZE,
-                            'logical_volume': constants.FILESYSTEM_LV_DICT[
-                                constants.FILESYSTEM_NAME_DOCKER]
-                        }
-                        filesystems.append(data)
-
-                    # check if the kubelet fs is supported for current host
-                    if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_KUBELET,
-                                                     self._ihost_personality):
-                        data = {
-                            'name': constants.FILESYSTEM_NAME_KUBELET,
-                            'size': constants.KUBELET_STOR_SIZE,
-                            'logical_volume': constants.FILESYSTEM_LV_DICT[
-                                constants.FILESYSTEM_NAME_KUBELET]
-                        }
-                        filesystems.append(data)
-
-                    if filesystems:
-                        # Create the filesystems if they do not already exist.
-                        # This audit does not check if the fs size has changed.
-                        # Doing so would interfere with the resizes done via
-                        # the HostFs API
-                        rpcapi.create_host_filesystems(icontext,
-                                                       self._ihost_uuid,
-                                                       filesystems)
-                        self._prev_fs = filesystems
-
-                    self._inventory_reported.add(self.HOST_FILESYSTEMS)
-                except Exception as e:
-                    LOG.exception(
-                        "Sysinv Agent exception creating the host filesystems."
-                        " %s" % e)
-                    self._prev_fs = None
+            self._create_host_filesystems(rpcapi, icontext)
 
             # Notify conductor of inventory completion after necessary
             # inventory reports have been sent to conductor.
@@ -1455,7 +1517,7 @@ class AgentManager(service.PeriodicService):
             # Set the install_uuid to the value we just configured.
             tsc.install_uuid = install_uuid
 
-    def _retry_on_personality_is_none(ex):
+    def _retry_on_personality_is_none(ex):  # pylint: disable=no-self-argument
         LOG.info('Caught exception. Retrying... Exception: {}'.format(ex))
         return isinstance(ex, exception.LocalManagementPersonalityNotFound)
 
@@ -1513,7 +1575,7 @@ class AgentManager(service.PeriodicService):
 
                     # Remove resolv.conf file. It may have been created as a
                     # symlink by the volatile configuration scripts.
-                    subprocess.call(["rm", "-f", file_name])
+                    subprocess.call(["rm", "-f", file_name])  # pylint: disable=not-callable
 
                 if isinstance(file_content, dict):
                     f_content = file_content.get(file_name)
@@ -1537,7 +1599,7 @@ class AgentManager(service.PeriodicService):
         else:
             LOG.error("report_inventory unknown request=%s" % inventory_update)
 
-    def _retry_on_missing_inventory_info(ex):
+    def _retry_on_missing_inventory_info(ex):  # pylint: disable=no-self-argument
         LOG.info('Caught exception. Retrying... Exception: {}'.format(ex))
         return isinstance(ex, exception.AgentInventoryInfoNotFound)
 
@@ -1742,7 +1804,7 @@ class AgentManager(service.PeriodicService):
             if os.path.isfile(cleanup_script):
                 with open(os.devnull, "w") as fnull:
                     try:
-                        subprocess.check_call(
+                        subprocess.check_call(  # pylint: disable=not-callable
                             [cleanup_script, software_version],
                             stdout=fnull, stderr=fnull)
                     except subprocess.CalledProcessError:
@@ -1750,7 +1812,7 @@ class AgentManager(service.PeriodicService):
                     else:
                         rpcapi = conductor_rpcapi.ConductorAPI(
                             topic=conductor_rpcapi.MANAGER_TOPIC)
-                        rpcapi.finalize_delete_load(context)
+                        rpcapi.finalize_delete_load(context, software_version)
             else:
                 LOG.error("Cleanup script %s does not exist." % cleanup_script)
 
@@ -1947,7 +2009,7 @@ class AgentManager(service.PeriodicService):
             LOG.info("AgentManager execute_command: (%s)" % (command))
             with open(os.devnull, "w") as fnull:
                 try:
-                    subprocess.check_call(command, stdout=fnull, stderr=fnull)
+                    subprocess.check_call(command, stdout=fnull, stderr=fnull)  # pylint: disable=not-callable
                 except subprocess.CalledProcessError as e:
                     LOG.error("Failed to execute (%s) (%d)",
                               command, e.returncode)
@@ -2013,7 +2075,7 @@ class AgentManager(service.PeriodicService):
             LOG.debug("AgentManager.refresh_helm_repo_information")
             with open(os.devnull, "w") as fnull:
                 try:
-                    subprocess.check_call(['sudo', '-u', 'sysadmin',
+                    subprocess.check_call(['sudo', '-u', 'sysadmin',  # pylint: disable=not-callable
                                            'helm', 'repo', 'update'],
                                           stdout=fnull, stderr=fnull)
                 except subprocess.CalledProcessError:

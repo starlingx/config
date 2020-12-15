@@ -1009,6 +1009,13 @@ def get_sriov_interface_port(context, iface):
     return interface.get_sriov_interface_port(context, iface)
 
 
+def get_sriov_interface_device_id(context, iface):
+    """
+    Determine the underlying PCI device id of the SR-IOV interface.
+    """
+    return interface.get_sriov_interface_device_id(context, iface)
+
+
 def get_sriov_interface_vf_addrs(context, iface, vf_addr_list):
     """
     Determine the virtual function addresses of SR-IOV interface,
@@ -1017,16 +1024,13 @@ def get_sriov_interface_vf_addrs(context, iface, vf_addr_list):
     return interface.get_sriov_interface_vf_addrs(context, iface, vf_addr_list)
 
 
-def get_sriov_config(context, iface):
+def get_sriov_vf_config(context, iface, port, vf_config):
     """
-    Returns an SR-IOV interface config dictionary.
+    Determine the virtual function config for an SR-IOV interface.
     """
-    vf_driver = iface['sriov_vf_driver']
 
-    port = interface.get_sriov_interface_port(context, iface)
-    if not port:
-        return {}
-
+    # Calculate the VF addresses to assign to a logical VF interface,
+    # taking into account any upper or lower interfaces.
     vf_addr_list = ''
     vf_addrs = port.get('sriov_vfs_pci_address', None)
     if vf_addrs:
@@ -1035,22 +1039,48 @@ def get_sriov_config(context, iface):
             context, iface, vf_addr_list)
         vf_addr_list = ",".join(vf_addr_list)
 
-    if vf_driver:
-        if constants.SRIOV_DRIVER_TYPE_VFIO in vf_driver:
-            vf_driver = constants.SRIOV_DRIVER_VFIO_PCI
-        elif constants.SRIOV_DRIVER_TYPE_NETDEVICE in vf_driver:
-            if port['sriov_vf_driver'] is not None:
-                vf_driver = port['sriov_vf_driver']
-            else:
-                # Should not happen, but in this case the vf driver
-                # will be determined by the kernel.  That is,
-                # no explicit bind will be performed by Puppet.
-                vf_driver = None
-
     # Format the vf addresses as quoted strings in order to prevent
     # puppet from treating the address as a time/date value
     vf_addrs = [quoted_str(addr.strip())
         for addr in vf_addr_list.split(",") if addr]
+
+    # Get the user specified VF driver, if any.  If the driver is
+    # None, the driver will be determined by the kernel.  That is,
+    # No explicit bind will be done.
+    vf_driver = iface.get('sriov_vf_driver', None)
+    if vf_driver:
+        if constants.SRIOV_DRIVER_TYPE_VFIO in vf_driver:
+            vf_driver = constants.SRIOV_DRIVER_VFIO_PCI
+        elif constants.SRIOV_DRIVER_TYPE_NETDEVICE in vf_driver:
+            vf_driver = port.get('sriov_vf_driver', None)
+
+    for addr in vf_addrs:
+        vf_config.update({
+            addr: {
+                'addr': addr,
+                'driver': vf_driver
+            }
+        })
+
+    if iface.get('used_by', None):
+        upper_ifaces = iface['used_by']
+        for upper_ifname in upper_ifaces:
+            upper_iface = context['interfaces'][upper_ifname]
+            get_sriov_vf_config(context, upper_iface, port, vf_config)
+
+
+def get_sriov_config(context, iface):
+    """
+    Returns an SR-IOV interface config dictionary.
+    """
+    vf_config = {}
+
+    if iface['iftype'] != constants.INTERFACE_TYPE_ETHERNET:
+        return {}
+
+    port = interface.get_sriov_interface_port(context, iface)
+    if not port:
+        return {}
 
     # Include the desired number of VFs if the device supports SR-IOV
     # config via sysfs and is not a sub-interface
@@ -1059,12 +1089,15 @@ def get_sriov_config(context, iface):
             and iface['iftype'] != constants.INTERFACE_TYPE_VF):
         num_vfs = iface['sriov_numvfs']
 
+    get_sriov_vf_config(context, iface, port, vf_config)
+
     config = {
         'ifname': iface['ifname'],
-        'pf_addr': quoted_str(port['pciaddr'].strip()),
+        'addr': quoted_str(port['pciaddr'].strip()),
         'num_vfs': num_vfs,
-        'vf_driver': vf_driver,
-        'vf_addrs': vf_addrs
+        'device_id': interface.get_sriov_interface_device_id(context, iface),
+        'port_name': port['name'],
+        'vf_config': vf_config
     }
     return config
 

@@ -12,7 +12,8 @@ def _print_device_image_show(obj):
     fields = ['uuid', 'bitstream_type',
               'pci_vendor', 'pci_device',
               'bitstream_id', 'key_signature', 'revoke_key_id',
-              'name', 'description', 'image_version', 'applied_labels']
+              'name', 'description', 'image_version',
+              'applied', 'applied_labels']
 
     if type(obj) is dict:
         data = [(f, obj.get(f, '')) for f in fields]
@@ -36,10 +37,12 @@ def do_device_image_list(cc, args):
 
     labels = ['uuid', 'bitstream_type', 'pci_vendor', 'pci_device',
               'bitstream_id', 'key_signature', 'revoke_key_id',
-              'name', 'description', 'image_version', 'applied_labels']
+              'name', 'description', 'image_version',
+              'applied', 'applied_labels']
     fields = ['uuid', 'bitstream_type', 'pci_vendor', 'pci_device',
               'bitstream_id', 'key_signature', 'revoke_key_id',
-              'name', 'description', 'image_version', 'applied_labels']
+              'name', 'description', 'image_version',
+              'applied', 'applied_labels']
     device_images = cc.device_image.list()
     utils.print_list(device_images, fields, labels, sortby=1)
 
@@ -78,8 +81,8 @@ def do_device_image_list(cc, args):
 @utils.arg('-u', '--uuid',
            metavar='<uuid>',
            help='UUID of the device image')
-def do_device_image_create(cc, args):
-    """Create a device image."""
+def do_device_image_upload(cc, args):
+    """Upload a device image."""
 
     if not os.path.isfile(args.bitstream_file):
         raise exc.CommandError('Bitstream file does not exist: %s' %
@@ -94,15 +97,15 @@ def do_device_image_create(cc, args):
                        if k in field_list and not (v is None))
 
     try:
-        response = cc.device_image.create(args.bitstream_file, **user_fields)
+        response = cc.device_image.upload(args.bitstream_file, **user_fields)
         error = response.get('error')
         if error:
             raise exc.CommandError("%s" % error)
     except exc.HTTPNotFound:
         raise exc.CommandError(
-            'Device image not created for %s. No response.' % args.bitstream_file)
+            'Device image not uploaded for %s. No response.' % args.bitstream_file)
     except Exception as e:
-        raise exc.CommandError('Device image not created for %s: %s' %
+        raise exc.CommandError('Device image not uploaded for %s: %s' %
                                (args.bitstream_file, e))
     else:
         device_image = response.get('device_image')
@@ -119,7 +122,7 @@ def do_device_image_create(cc, args):
            help="List of device labels")
 def do_device_image_apply(cc, args):
     """Apply the device image"""
-    attributes = utils.extract_keypairs(args)
+    attributes = utils.args_array_to_list_dict(args.attributes[0])
     try:
         response = cc.device_image.apply(args.device_image_uuid,
                                          attributes)
@@ -138,7 +141,7 @@ def do_device_image_apply(cc, args):
            help="List of device labels")
 def do_device_image_remove(cc, args):
     """Remove the device image"""
-    attributes = utils.extract_keypairs(args)
+    attributes = utils.args_array_to_list_dict(args.attributes[0])
     try:
         response = cc.device_image.remove(args.device_image_uuid,
                                           attributes)

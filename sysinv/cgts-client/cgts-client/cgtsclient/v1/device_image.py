@@ -36,14 +36,14 @@ class DeviceImageManager(base.Manager):
         except IndexError:
             return None
 
-    def create(self, file, **kwargs):
+    def upload(self, file, **kwargs):
         data = {}
         for (key, value) in kwargs.items():
             if key in CREATION_ATTRIBUTES:
                 data[key] = value
             else:
                 raise exc.InvalidAttribute('%s' % key)
-        return self._upload_multipart(self._path(), file, data=data)
+        return self._upload_multipart(self._path(), dict(file=file), data=data)
 
     def apply(self, device_image_id, labels=None):
         return self._update(self._path(device_image_id) + '?action=apply',

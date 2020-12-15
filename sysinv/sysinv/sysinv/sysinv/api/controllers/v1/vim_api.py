@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015 Wind River Systems, Inc.
+# Copyright (c) 2015-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -10,6 +10,28 @@ from sysinv.api.controllers.v1.rest_api import rest_api_request
 from sysinv.common import constants
 
 LOG = log.getLogger(__name__)
+
+
+def vim_get_sw_update_strategy(token, timeout):
+    """
+    Returns software update type and strategy progress
+    """
+
+    api_cmd = None
+    if token:
+        api_cmd = token.get_service_url("nfvi", "nfv")
+
+    if not api_cmd:
+        api_cmd = "http://localhost:30001"
+
+    api_cmd += "/nfvi-plugins/v1/sw-update"
+    api_cmd_headers = dict()
+    api_cmd_headers['Content-type'] = "application/json"
+    api_cmd_headers['User-Agent'] = "sysinv/1.0"
+
+    response = rest_api_request(token, "GET", api_cmd, api_cmd_headers,
+                                timeout=timeout)
+    return response
 
 
 def vim_get_host_services_state(token, hostname, timeout):

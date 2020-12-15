@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2019 Wind River Systems, Inc.
+# Copyright (c) 2018-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -25,7 +25,6 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv.common import kubernetes
-from sysinv.helm import common as helm_common
 
 import cgcs_patch.constants as patch_constants
 
@@ -195,177 +194,11 @@ class KubeAppController(rest.RestController):
         """Retrieve a single application."""
         return self._get_one(app_name)
 
-    @staticmethod
-    def _check_monitor_labels(hosts):
-
-        logstash_active = cutils.is_chart_enabled(
-            pecan.request.dbapi,
-            constants.HELM_APP_MONITOR,
-            helm_common.HELM_CHART_LOGSTASH,
-            helm_common.HELM_NS_MONITOR)
-
-        elasticsearch_client_active = cutils.is_chart_enabled(
-            pecan.request.dbapi,
-            constants.HELM_APP_MONITOR,
-            helm_common.HELM_CHART_ELASTICSEARCH_CLIENT,
-            helm_common.HELM_NS_MONITOR)
-
-        elasticsearch_data_active = cutils.is_chart_enabled(
-            pecan.request.dbapi,
-            constants.HELM_APP_MONITOR,
-            helm_common.HELM_CHART_ELASTICSEARCH_DATA,
-            helm_common.HELM_NS_MONITOR)
-
-        elasticsearch_master_active = cutils.is_chart_enabled(
-            pecan.request.dbapi,
-            constants.HELM_APP_MONITOR,
-            helm_common.HELM_CHART_ELASTICSEARCH_MASTER,
-            helm_common.HELM_NS_MONITOR)
-
-        elasticsearch_active = (elasticsearch_client_active and
-            elasticsearch_data_active and elasticsearch_master_active)
-
-        # elasticsearch charts must either all be active or
-        # all inactive
-        if (not elasticsearch_active and (elasticsearch_client_active or
-                elasticsearch_data_active or elasticsearch_master_active)):
-            raise wsme.exc.ClientSideError(
-                _("Operation rejected: application stx-monitor "
-                  "requires charts: elasticsearch-master, "
-                  "elasticsearch-client and elasticsearch-data either all "
-                  "enabled, or all disabled"))
-
-        curator_active = cutils.is_chart_enabled(
-            pecan.request.dbapi,
-            constants.HELM_APP_MONITOR,
-            helm_common.HELM_CHART_ELASTICSEARCH_CURATOR,
-            helm_common.HELM_NS_MONITOR)
-
-        if (not elasticsearch_active) and curator_active:
-            raise wsme.exc.ClientSideError(
-                _("Operation rejected: application stx-monitor "
-                  "does not allow elasticsearch-curator chart enabled "
-                  "without the elasticsearch charts also enabled"))
-
-        if not elasticsearch_active and not logstash_active:
-            # Nothing to check, exit
-            return
-
-        # The required counts of labelled
-        # and unlocked-enabled hosts.
-        required_label_counts = dict()
-
-        # The counts of labelled hosts.
-        label_counts = dict()
-
-        # The counts of labelled hosts
-        # that are also unlocked and enabled.
-        good_label_counts = dict()
-
-        is_aio_simplex = cutils.is_aio_simplex_system(pecan.request.dbapi)
-
-        if elasticsearch_active:
-            label_counts = {
-                helm_common.LABEL_MONITOR_MASTER: 0,
-                helm_common.LABEL_MONITOR_DATA: 0,
-                helm_common.LABEL_MONITOR_CLIENT: 0}
-
-            good_label_counts = {
-                helm_common.LABEL_MONITOR_MASTER: 0,
-                helm_common.LABEL_MONITOR_DATA: 0,
-                helm_common.LABEL_MONITOR_CLIENT: 0}
-
-            if is_aio_simplex:
-                # AIO simplex means one of every label.
-                required_label_counts = {
-                    helm_common.LABEL_MONITOR_MASTER: 1,
-                    helm_common.LABEL_MONITOR_DATA: 1,
-                    helm_common.LABEL_MONITOR_CLIENT: 1}
-            else:
-                # Dual controller configs
-                required_label_counts = {
-                    helm_common.LABEL_MONITOR_DATA: 2,
-                    helm_common.LABEL_MONITOR_CLIENT: 2,
-                    helm_common.LABEL_MONITOR_MASTER: 3}
-
-                # For AIO-DX without worker nodes, we only need 2
-                # hosts labelled as master.
-                if (cutils.is_aio_duplex_system(pecan.request.dbapi) and
-                        (pecan.request.dbapi.count_hosts_by_label(
-                            helm_common.LABEL_MONITOR_MASTER) < 3)):
-                    required_label_counts[
-                        helm_common.LABEL_MONITOR_MASTER] = 2
-
-        if logstash_active:
-            good_label_counts[
-                helm_common.LABEL_MONITOR_CONTROLLER] = 0
-            label_counts[
-                helm_common.LABEL_MONITOR_CONTROLLER] = 0
-
-            if is_aio_simplex:
-                required_label_counts[
-                    helm_common.LABEL_MONITOR_CONTROLLER] = 1
-            else:
-                required_label_counts[
-                    helm_common.LABEL_MONITOR_CONTROLLER] = 2
-
-        # Examine all the required labels on the given hosts
-        # and build up our actual and good label counts.
-        host_info = {}
-        for host in hosts:
-            labels = pecan.request.dbapi.label_get_by_host(host.uuid)
-
-            host_good = (host.administrative == constants.ADMIN_UNLOCKED
-                and host.operational == constants.OPERATIONAL_ENABLED)
-
-            host_labels_dict = {}
-            for label in labels:
-                if label.label_key in required_label_counts:
-                    if label.label_value == helm_common.LABEL_VALUE_ENABLED:
-                        label_counts[label.label_key] += 1
-                        if host_good:
-                            good_label_counts[label.label_key] += 1
-
-                    host_labels_dict[label.label_key] = label.label_value
-
-            host_info[host.hostname] = {"personality": host.personality, "labels": host_labels_dict}
-
-        # If we are short of labels on unlocked and enabled hosts
-        # inform the user with a detailed message.
-        msg = ""
-        for k, v in required_label_counts.items():
-            if good_label_counts[k] < required_label_counts[k]:
-                msg += (", label:%s=%s, required=%d, labelled=%d,"
-                        " labelled and unlocked-enabled=%d" %
-                        (k, helm_common.LABEL_VALUE_ENABLED, v,
-                         label_counts[k], good_label_counts[k]))
-
-        if msg:
-            app_helper = KubeAppHelper(pecan.request.dbapi)
-            msg += "\n"
-            msg += app_helper._extract_missing_labels_message(host_info, required_label_counts)
-
-        if msg:
-            raise wsme.exc.ClientSideError(
-                _("Operation rejected: application stx-monitor "
-                  "does not have required unlocked-enabled and "
-                  "labelled hosts{}".format(msg)))
-
-    def _semantic_check(self, db_app):
-        """Semantic check for application deployment
+    def _app_lifecycle_actions(self, db_app, operation, relative_timing):
+        """Perform lifecycle actions for application
         """
-
-        if db_app.name == constants.HELM_APP_MONITOR:
-
-            hosts_to_label_check = pecan.request.dbapi.ihost_get_by_personality(
-                constants.CONTROLLER)
-
-            if not cutils.is_aio_simplex_system(pecan.request.dbapi):
-                whosts = pecan.request.dbapi.ihost_get_by_personality(
-                    constants.WORKER)
-                hosts_to_label_check.extend(whosts)
-
-            self._check_monitor_labels(hosts_to_label_check)
+        pecan.request.rpcapi.app_lifecycle_actions(
+            pecan.request.context, db_app, operation, relative_timing)
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(KubeApp, body=types.apidict)
@@ -446,7 +279,13 @@ class KubeAppController(rest.RestController):
                 raise wsme.exc.ClientSideError(_(
                     "Application-apply rejected: " + str(e)))
 
-            self._semantic_check(db_app)
+            try:
+                self._app_lifecycle_actions(db_app,
+                                            constants.APP_APPLY_OP,
+                                            constants.APP_LIFECYCLE_PRE)
+            except Exception as e:
+                raise wsme.exc.ClientSideError(_(
+                    "Application-apply rejected: " + str(e.message)))
 
             if db_app.status == constants.APP_APPLY_IN_PROGRESS:
                 raise wsme.exc.ClientSideError(_(
@@ -461,6 +300,7 @@ class KubeAppController(rest.RestController):
             db_app.status = constants.APP_APPLY_IN_PROGRESS
             db_app.progress = None
             db_app.recovery_attempts = 0
+            db_app.mode = mode
             db_app.save()
             pecan.request.rpcapi.perform_app_apply(pecan.request.context,
                                                    db_app, mode=mode)
@@ -774,45 +614,3 @@ class KubeAppHelper(object):
                         p, os.path.join(p, f), demote_user):
                     raise exception.SysinvException(_(
                         "failed to extract tar file {}.".format(os.path.basename(f))))
-
-    def _extract_missing_labels_message(self, host_info_dict, required_label_counts):
-        msg = ""
-        have_workers = False
-        one_worker_have_required_label = False
-        for host_name, host_info in host_info_dict.items():
-            host_personality = host_info.get("personality")
-            labels = host_info.get("labels")
-            host_msg = ("%s " % host_name)
-            missing_labels = False
-            invalid_labels = False
-            if (host_personality == constants.CONTROLLER):
-                for required_label_name, required_label_value in required_label_counts.items():
-                    if required_label_name not in labels:
-                        missing_labels = True
-                        host_msg += ("%s=%s " % (required_label_name, helm_common.LABEL_VALUE_ENABLED))
-                    elif labels.get(required_label_name) != helm_common.LABEL_VALUE_ENABLED:
-                        invalid_labels = True
-                        host_msg += (" %s=%s " % (required_label_name, labels.get(required_label_name)))
-
-                if missing_labels:
-                    msg += (", Please use [system host-label-assign %s] "
-                            "to set the missing label\n" %
-                            host_msg)
-                if invalid_labels:
-                    msg += (", Please correct host labels values to be enabled [%s]\n" %
-                            host_msg)
-            elif (host_personality == constants.WORKER):
-                have_workers = True
-                if (labels.get(helm_common.LABEL_MONITOR_MASTER) == helm_common.LABEL_VALUE_ENABLED):
-                    one_worker_have_required_label = True
-                elif (labels.get(helm_common.LABEL_MONITOR_MASTER) != helm_common.LABEL_VALUE_ENABLED):
-                    msg += (", Please correct host labels values to be enabled [%s %s=%s]\n" %
-                        (host_name, helm_common.LABEL_MONITOR_MASTER,
-                        labels.get(helm_common.LABEL_MONITOR_MASTER)))
-
-        if (have_workers and not one_worker_have_required_label):
-                msg += (", Please use [system host-label-assign <worker hostname> %s=%s] to"
-                " set the missing label on one of the worker(s)" %
-                (helm_common.LABEL_MONITOR_MASTER, helm_common.LABEL_VALUE_ENABLED))
-
-        return msg

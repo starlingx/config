@@ -30,23 +30,23 @@ from sysinv.common import constants as sysinv_constants
 # have been applied, so only the static entries from tsconfig can be used
 # (the platform.conf file will not have been updated with dynamic values).
 from tsconfig.tsconfig import SW_VERSION
+from tsconfig.tsconfig import SW_VERSION_20_06
 from tsconfig.tsconfig import PLATFORM_PATH
 from tsconfig.tsconfig import KEYRING_PATH
 from tsconfig.tsconfig import PLATFORM_CONF_FILE
-from tsconfig.tsconfig import CONFIG_PATH
 from tsconfig.tsconfig import CONTROLLER_UPGRADE_FLAG
 from tsconfig.tsconfig import CONTROLLER_UPGRADE_COMPLETE_FLAG
 from tsconfig.tsconfig import CONTROLLER_UPGRADE_FAIL_FLAG
 from tsconfig.tsconfig import CONTROLLER_UPGRADE_STARTED_FLAG
-from tsconfig.tsconfig import RESTORE_IN_PROGRESS_FLAG
 
 from controllerconfig.common import constants
 from controllerconfig import utils as cutils
 from controllerconfig.upgrades import utils
 
-from oslo_log import log
+from controllerconfig.common import oslolog as log
+from oslo_log import log as logging
 
-LOG = log.getLogger(__name__)
+LOG = logging.getLogger(__name__)
 
 POSTGRES_MOUNT_PATH = '/mnt/postgresql'
 POSTGRES_DUMP_MOUNT_PATH = '/mnt/db_dump'
@@ -65,9 +65,10 @@ def gethostaddress(hostname):
     return socket.getaddrinfo(hostname, None)[0][4][0]
 
 
-def get_db_credentials(shared_services, from_release):
+def get_db_credentials(shared_services, from_release, role=None):
     """
-    Returns the database credentials using the provided shared services.
+    Returns the database credentials using the provided shared services,
+    from_release and role.
     """
     db_credential_keys = \
         {'barbican': {'hiera_user_key': 'barbican::db::postgresql::user',
@@ -76,6 +77,9 @@ def get_db_credentials(shared_services, from_release):
          'sysinv': {'hiera_user_key': 'sysinv::db::postgresql::user',
                     'keyring_password_key': 'sysinv',
                     },
+         'fm': {'hiera_user_key': 'fm::db::postgresql::user',
+                'keyring_password_key': 'fm',
+                },
          }
 
     if sysinv_constants.SERVICE_TYPE_IDENTITY not in shared_services:
@@ -84,6 +88,16 @@ def get_db_credentials(shared_services, from_release):
                           'keystone::db::postgresql::user',
                           'keyring_password_key': 'keystone',
                           }})
+
+    if role == sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+        db_credential_keys.update(
+            {'dcmanager': {'hiera_user_key': 'dcmanager::db::postgresql::user',
+                           'keyring_password_key': 'dcmanager',
+                           },
+             'dcorch': {'hiera_user_key': 'dcorch::db::postgresql::user',
+                        'keyring_password_key': 'dcorch',
+                        },
+             })
 
     # Get the hiera data for the from release
     hiera_path = os.path.join(PLATFORM_PATH, "puppet", from_release,
@@ -100,6 +114,22 @@ def get_db_credentials(shared_services, from_release):
         db_credentials[database] = {'username': username, 'password': password}
 
     return db_credentials
+
+
+def get_system_role():
+    """ Get the system role from the sysinv database"""
+
+    conn = psycopg2.connect("dbname=sysinv user=postgres")
+    cur = conn.cursor()
+    cur.execute("select distributed_cloud_role from i_system;")
+    row = cur.fetchone()
+    if row is None:
+        LOG.error("Failed to fetch i_system data")
+        raise psycopg2.ProgrammingError("Failed to fetch i_system data")
+
+    role = row[0]
+
+    return role
 
 
 def get_shared_services():
@@ -249,13 +279,12 @@ def migrate_pxeboot_config(from_release, to_release):
     # Copy the entire pxelinux.cfg directory to pick up any changes made
     # after the data was migrated (i.e. updates to the controller-1 load).
     source_pxelinux = os.path.join(PLATFORM_PATH, "config", from_release,
-                                   "pxelinux.cfg")
+                                   "pxelinux.cfg", "")
     dest_pxelinux = os.path.join(PLATFORM_PATH, "config", to_release,
                                  "pxelinux.cfg")
-    shutil.rmtree(dest_pxelinux)
     try:
         subprocess.check_call(
-            ["cp",
+            ["rsync",
              "-a",
              os.path.join(source_pxelinux),
              os.path.join(dest_pxelinux)],
@@ -273,11 +302,11 @@ def migrate_armada_config(from_release, to_release):
 
     # Copy the entire armada.cfg directory to pick up any changes made
     # after the data was migrated (i.e. updates to the controller-1 load).
-    source_armada = os.path.join(PLATFORM_PATH, "armada", from_release)
+    source_armada = os.path.join(PLATFORM_PATH, "armada", from_release, "")
     dest_armada = os.path.join(PLATFORM_PATH, "armada", to_release)
     try:
         subprocess.check_call(
-            ["cp",
+            ["rsync",
              "-a",
              os.path.join(source_armada),
              os.path.join(dest_armada)],
@@ -295,11 +324,11 @@ def migrate_helm_config(from_release, to_release):
 
     # Copy the entire helm.cfg directory to pick up any changes made
     # after the data was migrated (i.e. updates to the controller-1 load).
-    source_helm = os.path.join(PLATFORM_PATH, "helm", from_release)
+    source_helm = os.path.join(PLATFORM_PATH, "helm", from_release, "")
     dest_helm = os.path.join(PLATFORM_PATH, "helm", to_release)
     try:
         subprocess.check_call(
-            ["cp",
+            ["rsync",
              "-a",
              os.path.join(source_helm),
              os.path.join(dest_helm)],
@@ -319,10 +348,9 @@ def migrate_sysinv_data(from_release, to_release):
     # changed between releases it must be modified at this point.
     try:
         subprocess.check_call(
-            ["cp",
-             "-R",
-             "--preserve",
-             os.path.join(PLATFORM_PATH, "sysinv", from_release),
+            ["rsync",
+             "-a",
+             os.path.join(PLATFORM_PATH, "sysinv", from_release, ""),
              os.path.join(PLATFORM_PATH, "sysinv", to_release)],
             stdout=devnull)
 
@@ -426,11 +454,14 @@ def import_databases(from_release, to_release, from_path=None, simplex=False):
     from_dir = os.path.join(from_path, "upgrade")
 
     LOG.info("Importing databases")
-
     try:
+        # Backups and upgrade use different names during pg_dump
+        # This code is only needed for 20.06 and can be removed in the StX5
+        postgres_config_path = \
+            glob.glob(from_dir + '/postgres.*[Ss]ql.config')[0]
         # Do postgres schema import (suppress stderr due to noise)
-        subprocess.check_call(['sudo -u postgres psql -f ' + from_dir +
-                               '/postgres.sql.config postgres'],
+        subprocess.check_call(['sudo -u postgres psql -f ' +
+                               postgres_config_path + ' postgres'],
                               shell=True,
                               stdout=devnull,
                               stderr=devnull)
@@ -441,7 +472,7 @@ def import_databases(from_release, to_release, from_path=None, simplex=False):
     import_commands = []
 
     # Do postgres data import
-    for data in glob.glob(from_dir + '/*.sql.data'):
+    for data in glob.glob(from_dir + '/*.*[Ss]ql.data'):
         db_elem = data.split('/')[-1].split('.')[0]
         import_commands.append((db_elem,
                                 "sudo -u postgres psql -f " + data +
@@ -522,7 +553,7 @@ def migrate_sysinv_database():
     try:
         print("Migrating sysinv")
         LOG.info("Executing migrate command: %s" % sysinv_cmd)
-        subprocess.check_call([sysinv_cmd],
+        subprocess.check_call(sysinv_cmd,
                               shell=True, stdout=devnull, stderr=devnull)
 
     except subprocess.CalledProcessError as ex:
@@ -533,7 +564,7 @@ def migrate_sysinv_database():
 
 
 def migrate_databases(from_release, shared_services, db_credentials,
-                      simplex=False):
+                      simplex=False, role=None):
     """ Migrates databases. """
 
     devnull = open(os.devnull, 'w')
@@ -550,6 +581,17 @@ def migrate_databases(from_release, shared_services, db_credentials,
         ('barbican',
          'barbican-manage db upgrade ' +
          '--db-url %s' % get_connection_string(db_credentials, 'barbican')),
+    ]
+
+    # Migrate fm
+    # append the migrate command for dcmanager db
+    with open("/etc/fm/fm.conf", "w") as f:
+        f.write("[database]\n")
+        f.write(get_connection_string(db_credentials, 'fm'))
+
+    migrate_commands += [
+        ('fm',
+         'fm-dbsync')
     ]
 
     if sysinv_constants.SERVICE_TYPE_IDENTITY not in shared_services:
@@ -582,6 +624,27 @@ def migrate_databases(from_release, shared_services, db_credentials,
                  'keystone-manage --config-file ' +
                  '/etc/keystone/keystone-dbsync.conf db_sync')
             ]
+
+    if role == sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+        # append the migrate command for dcmanager db
+        with open("/etc/dcmanager/dcmanager.conf", "w") as f:
+            f.write("[database]\n")
+            f.write(get_connection_string(db_credentials, 'dcmanager'))
+
+        migrate_commands += [
+            ('dcmanager',
+             'dcmanager-manage db_sync')
+        ]
+
+        # append the migrate command for dcorch db
+        with open("/etc/dcorch/dcorch.conf", "w") as f:
+            f.write("[database]\n")
+            f.write(get_connection_string(db_credentials, 'dcorch'))
+
+        migrate_commands += [
+            ('dcorch',
+             'dcorch-manage db_sync')
+        ]
 
     # Execute migrate commands
     for cmd in migrate_commands:
@@ -645,13 +708,14 @@ def update_platform_conf_file(uuid):
             fd.write("UUID=" + uuid + "\n")
 
 
-def migrate_hiera_data(from_release, to_release):
+def migrate_hiera_data(from_release, to_release, role=None):
     """ Migrate hiera data. """
 
     LOG.info("Migrating hiera data")
     from_hiera_path = os.path.join(PLATFORM_PATH, "puppet", from_release,
                                    "hieradata")
     to_hiera_path = constants.HIERADATA_PERMDIR
+    shutil.rmtree(to_hiera_path, ignore_errors=True)
     os.makedirs(to_hiera_path)
 
     # Copy only the static yaml files. The other yaml files will be generated
@@ -671,6 +735,29 @@ def migrate_hiera_data(from_release, to_release):
         'platform::client::credentials::params::keyring_file':
             os.path.join(KEYRING_PATH, '.CREDENTIAL'),
     })
+    # Add dcmanager and sysinv user id as well as service project id to
+    # the static.yaml on subclouds
+    if (to_release == SW_VERSION_20_06 and
+            role == sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+        dm_user_id = utils.get_keystone_user_id('dcmanager')
+        sysinv_user_id = utils.get_keystone_user_id('sysinv')
+        service_project_id = utils.get_keystone_project_id('services')
+        if dm_user_id:
+            static_config.update({
+                'platform::dcmanager::bootstrap::dc_dcmanager_user_id':
+                    dm_user_id
+            })
+        if sysinv_user_id:
+            static_config.update({
+                'platform::sysinv::bootstrap::dc_sysinv_user_id':
+                    sysinv_user_id
+            })
+        if service_project_id:
+            static_config.update({
+                'openstack::keystone::bootstrap::dc_services_project_id':
+                    service_project_id
+            })
+
     with open(static_file, 'w') as yaml_file:
         yaml.dump(static_config, yaml_file, default_flow_style=False)
 
@@ -751,6 +838,7 @@ def upgrade_controller(from_release, to_release):
     print("Importing databases...")
     import_databases(from_release, to_release)
 
+    role = get_system_role()
     shared_services = get_shared_services()
 
     # Create /tmp/python_keyring - used by keystone manifest.
@@ -758,12 +846,29 @@ def upgrade_controller(from_release, to_release):
                                  "python_keyring"),
                     "/tmp/python_keyring")
 
+    # Copy admin.conf file from /opt/platform to /etc/kubernetes/admin.conf
+    # during upgrade
+    try:
+        subprocess.check_call(
+            ["cp",
+             os.path.join(PLATFORM_PATH, "config", to_release,
+                          "kubernetes", utils.KUBERNETES_ADMIN_CONF_FILE),
+             os.path.join(utils.KUBERNETES_CONF_PATH,
+                          utils.KUBERNETES_ADMIN_CONF_FILE)],
+            stdout=devnull)
+    except subprocess.CalledProcessError:
+        LOG.exception("Failed to copy %s" %
+                      os.path.join(utils.KUBERNETES_CONF_PATH,
+                                   utils.KUBERNETES_ADMIN_CONF_FILE))
+        raise
+
     # Migrate hiera data
-    migrate_hiera_data(from_release, to_release)
+    migrate_hiera_data(from_release, to_release, role=role)
     utils.add_upgrade_entries_to_hiera_data(from_release)
 
     # Get database credentials
-    db_credentials = get_db_credentials(shared_services, from_release)
+    db_credentials = get_db_credentials(
+        shared_services, from_release, role=role)
 
     # Create any new databases
     print("Creating new databases...")
@@ -774,7 +879,7 @@ def upgrade_controller(from_release, to_release):
     migrate_sysinv_database()
 
     # Migrate databases
-    migrate_databases(from_release, shared_services, db_credentials)
+    migrate_databases(from_release, shared_services, db_credentials, role=role)
 
     print("Applying configuration...")
 
@@ -818,6 +923,16 @@ def upgrade_controller(from_release, to_release):
         LOG.exception(e)
         LOG.info("Failed to update hiera configuration")
         raise
+
+    # Remove /etc/kubernetes/admin.conf after it is used to generate
+    # the hiera data
+    admin_conf = os.path.join(utils.KUBERNETES_CONF_PATH,
+                              utils.KUBERNETES_ADMIN_CONF_FILE)
+    try:
+        subprocess.check_call(["rm -f %s" % admin_conf], shell=True,
+                              stdout=devnull)
+    except subprocess.CalledProcessError:
+        LOG.exception("Failed to remove file %s" % admin_conf)
 
     # Prepare for swact
     LOG.info("Prepare for swact to controller-1")
@@ -899,6 +1014,14 @@ def upgrade_controller(from_release, to_release):
     unmount_filesystem("/tmp/etc_platform")
     os.rmdir("/tmp/etc_platform")
 
+    # Restart the sysinv agent to report the inventory status
+    # The sysinv.conf contains temporary parameters that are used for
+    # data-migration. By removing that sysinv.conf we trigger the sysinv-agent
+    # to load the correct conf from the drbd filesystem
+    os.remove("/etc/sysinv/sysinv.conf")
+    LOG.info("Starting sysinv-agent")
+    cutils.start_service("sysinv-agent")
+
     print("Controller-1 upgrade complete")
     LOG.info("Controller-1 upgrade complete!!!")
 
@@ -926,6 +1049,8 @@ def main():
                   sys.argv[arg])
             exit(1)
         arg += 1
+
+    log.configure()
 
     if not from_release or not to_release:
         print("Both the FROM_RELEASE and TO_RELEASE must be specified")
@@ -959,6 +1084,10 @@ def extract_relative_directory(archive, member_path, dest_dir):
     if not member_path.endswith('/'):
         member_path += '/'
 
+    # Remove leading /. Allows us to pass filesystem constants if needed
+    if member_path.startswith('/'):
+        member_path = member_path[1:]
+
     offset = len(member_path)
     filtered_members = [copy.copy(member) for member in archive.getmembers()
                         if member.name.startswith(member_path)]
@@ -972,6 +1101,10 @@ def extract_relative_file(archive, member_name, dest_dir):
     """ Extracts the specified member to destination using only the filename
         with no preceding paths
     """
+    # Remove leading /. Allows us to pass filesystem constants if needed
+    if member_name.startswith('/'):
+        member_name = member_name[1:]
+
     member = archive.getmember(member_name)
     temp_member = copy.copy(member)
     temp_member.name = os.path.basename(temp_member.name)
@@ -980,135 +1113,113 @@ def extract_relative_file(archive, member_name, dest_dir):
 
 def extract_data_from_archive(archive, staging_dir, from_release, to_release):
     """Extracts the data from the archive to the staging directory"""
-    tmp_platform_path = os.path.join(staging_dir, "opt", "platform")
-    tmp_puppet_path = os.path.join(tmp_platform_path, "puppet",
-                                   from_release, "hieradata")
-    tmp_sysinv_path = os.path.join(tmp_platform_path, "sysinv", from_release)
-    tmp_keyring_path = os.path.join(tmp_platform_path, ".keyring",
-                                    from_release)
-    tmp_pxelinux_path = os.path.join(tmp_platform_path, "config",
-                                     from_release, "pxelinux.cfg")
-    # We don't modify the config files so copy them to the to_release folder
-    tmp_config_path = os.path.join(tmp_platform_path, "config", to_release)
+    from_puppet_path = os.path.join(PLATFORM_PATH, "puppet",
+                                    from_release, "hieradata")
+    from_sysinv_path = os.path.join(PLATFORM_PATH, "sysinv", from_release)
+    from_keyring_path = os.path.join(PLATFORM_PATH, ".keyring",
+                                     from_release)
+    from_pxelinux_path = os.path.join(PLATFORM_PATH, "config",
+                                      from_release, "pxelinux.cfg")
 
     # 0755 permissions
     dir_options = stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | \
         stat.S_IROTH | stat.S_IXOTH
 
-    os.makedirs(tmp_puppet_path, dir_options)
-    os.makedirs(tmp_config_path, dir_options)
-    os.makedirs(tmp_sysinv_path, dir_options)
-    os.makedirs(tmp_keyring_path, dir_options)
+    shutil.rmtree(from_puppet_path, ignore_errors=True)
+    shutil.rmtree(from_sysinv_path, ignore_errors=True)
+    shutil.rmtree(from_keyring_path, ignore_errors=True)
+    shutil.rmtree(
+        os.path.join(PLATFORM_PATH, "config", to_release, "pxelinux.cfg"),
+        ignore_errors=True)
 
-    os.symlink(tmp_platform_path, PLATFORM_PATH)
+    os.makedirs(from_puppet_path, dir_options)
+    os.makedirs(from_sysinv_path, dir_options)
+    os.makedirs(from_keyring_path, dir_options)
 
-    extract_relative_directory(archive, "hieradata", tmp_puppet_path)
-    extract_relative_directory(archive, ".keyring", tmp_keyring_path)
-    extract_relative_directory(archive, "config/pxelinux.cfg",
-                               tmp_pxelinux_path)
+    extract_relative_directory(archive, from_puppet_path, from_puppet_path)
+    extract_relative_directory(archive, from_keyring_path, from_keyring_path)
+    extract_relative_directory(archive, from_pxelinux_path, from_pxelinux_path)
 
     os.makedirs(
         os.path.join(PLATFORM_PATH, "config", to_release, "pxelinux.cfg"),
         dir_options)
 
-    # Restore ssh configuration
-    extract_relative_directory(archive, 'config/ssh_config',
-                               tmp_config_path + '/ssh_config')
-
-    # TODO: Switch this over to use Ansible
-    # Restore certificate files if they are in the archive
-    # backup_restore.restore_etc_ssl_dir(archive,
-    #                                    configpath=tmp_config_path)
-
     # Extract etc files
     archive.extract('etc/hostname', '/')
-    archive.extract('etc/hosts', '/')
-    extract_relative_file(archive, 'etc/hosts', tmp_config_path)
-    extract_relative_file(archive, 'etc/platform/platform.conf', staging_dir)
+    extract_relative_file(archive, PLATFORM_CONF_FILE, staging_dir)
 
-    extract_relative_file(archive, 'etc/sysinv/sysinv.conf', tmp_sysinv_path)
-
-    # Restore permanent config files
-    perm_files = ['cgcs_config', 'hosts', 'resolv.conf',
-                  'dnsmasq.hosts', 'dnsmasq.leases',
-                  'dnsmasq.addn_hosts']
-    for file in perm_files:
-        path = 'config/' + file
-        extract_relative_file(archive, path, tmp_config_path)
-
-    # TODO: Switch this over to use Ansible
-    # Extract distributed cloud addn_hosts file if present in archive.
-    # if backup_restore.file_exists_in_archive(
-    #         archive, 'config/dnsmasq.addn_hosts_dc'):
-    #     extract_relative_file(
-    #         archive, 'config/dnsmasq.addn_hosts_dc', tmp_config_path)
+    extract_relative_file(
+        archive, sysinv_constants.SYSINV_CONFIG_FILE_LOCAL, from_sysinv_path)
 
 
 def extract_postgres_data(archive):
     """ Extract postgres data to temp directory """
     postgres_data_dir = os.path.join(utils.POSTGRES_PATH, "upgrade")
+    ansible_start_path = 'opt/platform-backup/ansible'
+    ansible_path = ''
+    offset = len(ansible_start_path)
+    for member in archive.getmembers():
+        if member.name.startswith(ansible_start_path):
+            ansible_path = member.name[:member.name.index('/', offset)]
+            break
+    extract_relative_directory(
+        archive, ansible_path + "/postgres", postgres_data_dir)
 
-    extract_relative_directory(archive, "postgres", postgres_data_dir)
+
+def read_config_file_kvp(config_file):
+    """ A Generic method to read the .conf file.
+
+    param config_file: Absolute path of the target file.
+    result: A dictionary with key value pairs retrieved from the target file.
+    """
+    result = dict()
+
+    with open(config_file, 'r') as temp_file:
+        for line in temp_file:
+            key, value = line.split('=', 1)
+            result.update({key: value})
+    return result
 
 
 def migrate_platform_conf(staging_dir):
     """ Migrate platform.conf """
-    temp_platform_conf_path = os.path.join(staging_dir, 'platform.conf')
-    options = []
-    with open(temp_platform_conf_path, 'r') as temp_file:
-        for line in temp_file:
-            option = line.split('=', 1)
-            skip_options = ['nodetype',
-                            'subfunction',
-                            'management_interface',
-                            'oam_interface',
-                            'sw_version',
-                            'INSTALL_UUID',
-                            'system_type',
-                            'UUID']
-            if option[0] not in skip_options:
-                options.append(line)
+    backup_platform_conf_path = os.path.join(staging_dir, 'platform.conf')
+    temp_platform_conf_file = os.path.join(staging_dir, 'platform-temp.conf')
+    backup_platform_conf_values = read_config_file_kvp(
+        backup_platform_conf_path)
+    new_platform_conf_values = read_config_file_kvp(PLATFORM_CONF_FILE)
 
-    with open(PLATFORM_CONF_FILE, 'aw') as conf_file:
-        for option in options:
-            conf_file.write(option)
-
-
-def get_backup_fs_size():
-    """ Get the backup fs size from the sysinv database """
-    conn = psycopg2.connect("dbname=sysinv user=postgres")
-    cur = conn.cursor()
-    cur.execute("select size from controller_fs where name='backup';")
-    row = cur.fetchone()
-    if row is None:
-        LOG.error("Failed to fetch controller_fs data")
-        raise psycopg2.ProgrammingError("Failed to fetch controller_fs data")
-
-    return row[0]
-
-
-def persist_platform_data(staging_dir):
-    """ Copies the tmp platform data to the drbd filesystem"""
-    devnull = open(os.devnull, 'w')
-
-    tmp_platform_path = staging_dir + PLATFORM_PATH + "/"
-
-    try:
-        subprocess.check_call(
-            ["rsync",
-             "-a",
-             tmp_platform_path,
-             PLATFORM_PATH],
-            stdout=devnull)
-    except subprocess.CalledProcessError:
-        LOG.exception("Failed to copy tmp platform dir to %s" % PLATFORM_PATH)
-        raise
+    # The following values are expected to preserve in the newly
+    # generated platform.conf file
+    skip_options = ['nodetype',
+                    'subfunction',
+                    'management_interface',
+                    'oam_interface',
+                    'sw_version',
+                    'INSTALL_UUID',
+                    'system_type']
+    for key in skip_options:
+        if key in backup_platform_conf_values:
+            del backup_platform_conf_values[key]
+    new_platform_conf_values.update(backup_platform_conf_values)
+    with open(temp_platform_conf_file, 'w') as f:
+        for key, value in new_platform_conf_values.items():
+            line = key + "=" + value
+            f.write(line)
+    shutil.move(temp_platform_conf_file, PLATFORM_CONF_FILE)
 
 
 def get_simplex_metadata(archive, staging_dir):
     """Gets the metadata from the archive"""
+    # Get the metadate path from the archive
+    metadata_filename = 'upgrades/metadata'
+    metadata_path = ''
+    for member in archive.getmembers():
+        if member.name.endswith(metadata_filename):
+            metadata_path = member.name
+            break
 
-    extract_relative_file(archive, 'config/upgrades/metadata', staging_dir)
+    extract_relative_file(archive, metadata_path, staging_dir)
     metadata_filename = os.path.join(staging_dir, 'metadata')
     with open(metadata_filename, 'r') as metadata_file:
         metadata_contents = metadata_file.read()
@@ -1125,35 +1236,18 @@ def check_load_version(to_release):
 
 
 def upgrade_controller_simplex(backup_file):
-    """ Performs the upgrade on controller-0.
-        Broadly this is system restore combined with the upgrade data migration
-        We extract the data from the archive, restore the database to a
-        temporary filesystem, migrate the data and generate the N+1 manifests.
-        The migrated database is dumped to /opt/backups.
-        We apply the N+1 manifests as INITIAL_CONFIG_PRIMARY and then restore
-        the migrated database. Finally we apply any necessary upgrade manifests
-        and restore the rest of the system data.
+    """ Performs the data migration on controller-0.
+        We extract the data from the archive, restore the database, migrate
+        the databases and restore/migrate the rest of the platform data.
+        The ansible playbook takes care of bootstrapping the system and
+        restoring other data (eg ceph/etcd).
     """
-
-    if (os.path.exists(constants.CGCS_CONFIG_FILE) or
-            os.path.exists(CONFIG_PATH) or
-            os.path.exists(constants.INITIAL_CONFIG_COMPLETE_FILE)):
-        print_log_info("Configuration has already been done. "
-                       "An upgrade operation can only be done "
-                       "immediately after the load has been installed.")
-
-        raise Exception("System configuration already completed")
 
     if not os.path.isfile(backup_file):
         raise Exception("Backup file (%s) not found." % backup_file)
 
     if not os.path.isabs(backup_file):
         backup_file = os.path.abspath(backup_file)
-
-    if os.path.isfile(RESTORE_IN_PROGRESS_FLAG):
-        raise Exception("Upgrade already in progress.")
-    else:
-        open(RESTORE_IN_PROGRESS_FLAG, 'w')
 
     devnull = open(os.devnull, 'w')
 
@@ -1176,98 +1270,32 @@ def upgrade_controller_simplex(backup_file):
     to_release = metadata['upgrade']['to_release']
 
     check_load_version(to_release)
-    # TODO: Switch this over to use Ansible
-    # backup_restore.check_load_subfunctions(archive, staging_dir)
-
-    # Patching is potentially a multi-phase step.
-    # If the controller is impacted by patches from the backup,
-    # it must be rebooted before continuing the restore.
-    # If this is the second pass through, we can skip over this.
-    if not os.path.isfile(restore_patching_complete):
-        print("Restoring Patches")
-        extract_relative_directory(archive, "patching", patching_permdir)
-        extract_relative_directory(archive, "updates", patching_repo_permdir)
-
-        print("Applying Patches")
-        try:
-            subprocess.check_output(["sw-patch", "install-local"])
-        except subprocess.CalledProcessError:
-            LOG.error("Failed to install patches")
-            raise Exception("Failed to install patches")
-
-        open(restore_patching_complete, 'w')
-
-        # If the controller was impacted by patches, we need to reboot.
-        if os.path.isfile(node_is_patched):
-            LOG.info("This controller has been patched. Rebooting now")
-            print("\nThis controller has been patched. Rebooting now\n\n")
-            time.sleep(5)
-            os.remove(RESTORE_IN_PROGRESS_FLAG)
-            if staging_dir:
-                shutil.rmtree(staging_dir, ignore_errors=True)
-            subprocess.call("reboot")
-
-        else:
-            # We need to restart the patch controller and agent, since
-            # we setup the repo and patch store outside its control
-            subprocess.call(
-                ["systemctl",
-                 "restart",
-                 "sw-patch-controller-daemon.service"],
-                stdout=devnull, stderr=devnull)
-            subprocess.call(
-                ["systemctl",
-                 "restart",
-                 "sw-patch-agent.service"],
-                stdout=devnull, stderr=devnull)
-
-    if os.path.isfile(node_is_patched):
-        # If we get here, it means the node was patched by the user
-        # AFTER the restore applied patches and rebooted, but didn't
-        # reboot.
-        # This means the patch lineup no longer matches what's in the
-        # backup, but we can't (and probably shouldn't) prevent that.
-        # However, since this will ultimately cause the node to fail
-        # the goenabled step, we can fail immediately and force the
-        # user to reboot.
-        print_log_info("\nThis controller has been patched, but not rebooted.")
-        print_log_info("Please reboot before continuing the restore process.")
-        raise Exception("Controller node patched without rebooting")
-
-    # Flag can now be cleared
-    os.remove(restore_patching_complete)
 
     if from_release == to_release:
         raise Exception("Cannot upgrade from release %s to the same "
                         "release %s." % (from_release, to_release))
 
-    # TODO Use db_fs_size from yaml data and add to runtime parameters
-    # during the bootstrap manifest
-    # db_size = metadata['filesystem']['database_gib']
-    # db_bytes = db_size * 1024 * 1024 * 1024
-    # db_filesystem_size = str(db_bytes) + "B"
-
-    # Stop sysinv-agent so it doesn't interfere
-    LOG.info("Stopping sysinv-agent")
-    try:
-        subprocess.check_call(["systemctl", "stop", "sysinv-agent"],
-                              stdout=devnull)
-    except subprocess.CalledProcessError:
-        LOG.error("Failed to stop %s service" % "sysinv-agent")
-        raise
-
     print_log_info("Extracting data from archive")
     extract_data_from_archive(archive, staging_dir, from_release, to_release)
 
-    migrate_platform_conf(staging_dir)
+    # Backup sysinv.conf
+    shutil.move("/etc/sysinv/sysinv.conf", "/etc/sysinv/sysinv-temp.conf")
+    # Backup fm.conf
+    shutil.move("/etc/fm/fm.conf", "/etc/fm/fm-temp.conf")
 
-    # Migrate keyring data
-    print_log_info("Migrating keyring data...")
-    migrate_keyring_data(from_release, to_release)
+    migrate_platform_conf(staging_dir)
 
     # Migrate pxeboot config
     print_log_info("Migrating pxeboot configuration...")
     migrate_pxeboot_config(from_release, to_release)
+
+    # Migrate armada config
+    print("Migrating armada configuration...")
+    migrate_armada_config(from_release, to_release)
+
+    # Migrate helm config
+    print("Migrating helm configuration...")
+    migrate_helm_config(from_release, to_release)
 
     # Migrate sysinv data.
     print_log_info("Migrating sysinv configuration...")
@@ -1276,34 +1304,10 @@ def upgrade_controller_simplex(backup_file):
     # Simplex configurations can not have shared services
     shared_services = []
 
+    role = get_system_role()
     # Migrate hiera data
-    migrate_hiera_data(from_release, to_release)
+    migrate_hiera_data(from_release, to_release, role=role)
     db_credentials = get_db_credentials(shared_services, from_release)
-
-    os.unlink(PLATFORM_PATH)
-
-    # Write the simplex flag
-    cutils.write_simplex_flag()
-
-    cutils.configure_hostname('controller-0')
-
-    controller_0_address = cutils.get_address_from_hosts_file(
-        'controller-0')
-
-    hieradata_tmpdir = os.path.join(staging_dir,
-                                    constants.HIERADATA_PERMDIR.strip('/'))
-    print_log_info("Applying Bootstrap manifest...")
-    cutils.apply_manifest(controller_0_address,
-                          sysinv_constants.CONTROLLER,
-                          'bootstrap',
-                          hieradata_tmpdir)
-
-    persist_platform_data(staging_dir)
-
-    cutils.stop_service("sysinv-agent")
-    cutils.stop_service("sysinv-api")
-    cutils.stop_service("sysinv-conductor")
-    cutils.stop_service("openstack-keystone")
 
     extract_postgres_data(archive)
 
@@ -1330,63 +1334,13 @@ def upgrade_controller_simplex(backup_file):
     utils.execute_migration_scripts(
         from_release, to_release, utils.ACTION_MIGRATE)
 
-    # Generate "regular" manifests
-    LOG.info("Generating manifests for %s" %
-             sysinv_constants.CONTROLLER_0_HOSTNAME)
-
-    # TODO: Switch this over to use Ansible
-    # backup_restore.configure_loopback_interface(archive)
-
-    print_log_info("Creating configs...")
-    cutils.create_system_config()
-    cutils.create_host_config()
-
-    print_log_info("Persisting Data")
-
-    cutils.start_service("openstack-keystone")
-    cutils.start_service("sysinv-conductor")
-    cutils.start_service("sysinv-api")
-    cutils.start_service("sysinv-agent")
-
-    runtime_filename = os.path.join(staging_dir, 'runtime.yaml')
-    utils.create_simplex_runtime_config(runtime_filename)
-    if not os.path.isfile(runtime_filename):
-        # There is no runtime yaml file to apply
-        runtime_filename = None
-
-    print_log_info("Applying manifest...")
-    cutils.apply_manifest(controller_0_address,
-                          sysinv_constants.CONTROLLER,
-                          'controller',
-                          constants.HIERADATA_PERMDIR,
-                          runtime_filename=runtime_filename)
-
-    cutils.persist_config()
-
-    cutils.apply_banner_customization()
-
-    # TODO: Switch this over to use Ansible
-    # backup_restore.restore_ldap(archive, backup_restore.ldap_permdir,
-    #                             staging_dir)
-    # backup_restore.restore_std_dir(archive, backup_restore.home_permdir)
-
     archive.close()
     shutil.rmtree(staging_dir, ignore_errors=True)
 
-    cutils.mtce_restart()
-    cutils.mark_config_complete()
-
-    print_log_info("Waiting for services to start")
-
-    for service in ['sysinv-conductor', 'sysinv-inv']:
-        if not cutils.wait_sm_service(service):
-            raise Exception("Services have failed to initialize.")
-
-    os.remove(RESTORE_IN_PROGRESS_FLAG)
-
-    # Create the flag file that permits the
-    # restore_compute command option.
-    cutils.touch(restore_compute_ready)
+    # Restore sysinv.conf
+    shutil.move("/etc/sysinv/sysinv-temp.conf", "/etc/sysinv/sysinv.conf")
+    # Restore fm.conf
+    shutil.move("/etc/fm/fm-temp.conf", "/etc/fm/fm.conf")
 
     print_log_info("Data restore complete")
 
@@ -1406,7 +1360,7 @@ def simplex_main():
     arg = 1
     while arg < len(sys.argv):
         if sys.argv[arg] in ['--help', '-h', '-?']:
-            show_help()
+            show_help_simplex()
             exit(1)
         elif arg == 1:
             backup_file = sys.argv[arg]
@@ -1416,12 +1370,7 @@ def simplex_main():
             exit(1)
         arg += 1
 
-    # Enforce that the command is being run from the console
-    if cutils.is_ssh_parent():
-        print (
-            "Error attempting upgrade. Ensure this command is run from the"
-            " console.")
-        exit(1)
+    log.configure()
 
     if not backup_file:
         print("The BACKUP_FILE must be specified")

@@ -146,7 +146,7 @@ class Health(object):
 
         with open(os.devnull, "w") as fnull:
             try:
-                subprocess.check_call([check_binary, license_file, version],
+                subprocess.check_call([check_binary, license_file, version],  # pylint: disable=not-callable
                                       stdout=fnull, stderr=fnull)
             except subprocess.CalledProcessError:
                 return False
@@ -232,6 +232,18 @@ class Health(object):
 
         success = not fail_app_list
         return success, fail_app_list
+
+    def _check_platform_backup_partition(self):
+        """Check that the platform-backup partition is the correct size/type"""
+
+        args = ['/usr/bin/validate-platform-backup.sh']
+        try:
+            subprocess.check_output(args, stderr=subprocess.STDOUT)  # pylint: disable=not-callable
+        except subprocess.CalledProcessError as exc:
+            LOG.error("Call to %s returned %s and %s" % (args, exc.returncode, exc.output))
+            return False
+
+        return True
 
     def get_system_health(self, context, force=False):
         """Returns the general health of the system
@@ -389,6 +401,12 @@ class Health(object):
                 if not success:
                     output += _('Number of instances on controller-1: %s\n') \
                               % (running_instances)
+
+            health_ok = health_ok and success
+        else:
+            success = self._check_platform_backup_partition()
+            output += _('Valid platform-backup partition: [%s]\n') \
+                % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
 
             health_ok = health_ok and success
 

@@ -18,3 +18,4 @@ KEYRING_WORKDIR = '/tmp/python_keyring'
 KEYRING_PERMDIR = tsconfig.KEYRING_PATH
 
 INITIAL_CONFIG_COMPLETE_FILE = '/etc/platform/.initial_config_complete'
+LOG_LOCAL1 = 'local1'

@@ -29,6 +29,7 @@ collection of inventory data for each host.
 
 """
 
+import base64
 import errno
 import filecmp
 import fnmatch
@@ -37,6 +38,7 @@ import hashlib
 import math
 import os
 import re
+import requests
 import shutil
 import socket
 import tempfile
@@ -45,7 +47,6 @@ import uuid
 import xml.etree.ElementTree as ElementTree
 from contextlib import contextmanager
 from datetime import datetime
-from datetime import timedelta
 
 import tsconfig.tsconfig as tsc
 from collections import namedtuple
@@ -68,7 +69,6 @@ from oslo_utils import excutils
 from oslo_utils import timeutils
 from oslo_utils import uuidutils
 from platform_util.license import license
-from ruamel import yaml
 from sqlalchemy.orm import exc
 from six.moves import http_client as httplib
 from sysinv._i18n import _
@@ -83,7 +83,6 @@ from sysinv.common import constants
 from sysinv.common import ceph as cceph
 from sysinv.common import device as dconstants
 from sysinv.common import exception
-from sysinv.common import image_versions
 from sysinv.common import fm
 from sysinv.common import fernet
 from sysinv.common import health
@@ -96,11 +95,12 @@ from sysinv.common.storage_backend_conf import StorageBackendConfig
 from cephclient import wrapper as ceph
 from sysinv.conductor import ceph as iceph
 from sysinv.conductor import kube_app
-from sysinv.conductor import kube_pod_helper as kube_pod
 from sysinv.conductor import openstack
 from sysinv.conductor import docker_registry
 from sysinv.conductor import keystone_listener
 from sysinv.db import api as dbapi
+from sysinv.fpga_agent import rpcapi as fpga_agent_rpcapi
+from sysinv.fpga_agent import constants as fpga_constants
 from sysinv import objects
 from sysinv.objects import base as objects_base
 from sysinv.objects import kube_app as kubeapp_obj
@@ -108,9 +108,7 @@ from sysinv.openstack.common import context as ctx
 from sysinv.openstack.common import periodic_task
 from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
-from sysinv.helm import common as helm_common
 from sysinv.helm import helm
-from sysinv.helm import utils as helm_utils
 
 MANAGER_TOPIC = 'sysinv.conductor_manager'
 
@@ -137,6 +135,12 @@ conductor_opts = [
        cfg.IntOpt('kube_upgrade_downgrade_retry_interval',
                   default=3600,
                   help='Interval in seconds between retries to upgrade/downgrade kubernetes components'),
+       cfg.IntOpt('fw_update_large_timeout',
+                  default=3600,
+                  help='Timeout interval in seconds for a large device image'),
+       cfg.IntOpt('fw_update_small_timeout',
+                  default=300,
+                  help='Timeout interval in seconds for a small device image'),
                   ]
 
 CONF = cfg.CONF
@@ -151,8 +155,6 @@ CFS_DRBDADM_RECONFIGURED = os.path.join(
     tsc.PLATFORM_CONF_PATH, ".cfs_drbdadm_reconfigured")
 
 # volatile flags
-CONFIG_CONTROLLER_ACTIVATE_FLAG = os.path.join(tsc.VOLATILE_PATH,
-                                               ".config_controller_activate")
 CONFIG_CONTROLLER_FINI_FLAG = os.path.join(tsc.VOLATILE_PATH,
                                            ".config_controller_fini")
 CONFIG_FAIL_FLAG = os.path.join(tsc.VOLATILE_PATH, ".config_fail")
@@ -161,6 +163,7 @@ CONFIG_FAIL_FLAG = os.path.join(tsc.VOLATILE_PATH, ".config_fail")
 CONFIG_REBOOT_REQUIRED = (1 << 127)
 
 LOCK_NAME_UPDATE_CONFIG = 'update_config_'
+LOCK_AUTO_APPLY = 'AutoApplyLock'
 
 
 AppTarBall = namedtuple(
@@ -186,7 +189,6 @@ class ConductorManager(service.PeriodicService):
         self._ceph_api = ceph.CephWrapper(
             endpoint='http://localhost:{}'.format(constants.CEPH_MGR_PORT))
         self._kube = None
-        self._kube_pod = None
         self._fernet = None
 
         self._openstack = None
@@ -242,11 +244,10 @@ class ConductorManager(service.PeriodicService):
         # brought up during bootstrap manifest apply and is not restarted
         # until host unlock and we need ceph-mon up in order to configure
         # ceph for the initial unlock.
-        self._app = kube_app.AppOperator(self.dbapi)
-        self._docker = kube_app.DockerHelper(self.dbapi)
         self._helm = helm.HelmOperator(self.dbapi)
+        self._app = kube_app.AppOperator(self.dbapi, self._helm)
+        self._docker = kube_app.DockerHelper(self.dbapi)
         self._kube = kubernetes.KubeOperator()
-        self._kube_pod = kube_pod.K8sPodOperator(self._kube)
         self._kube_app_helper = kube_api.KubeAppHelper(self.dbapi)
         self._fernet = fernet.FernetOperator()
 
@@ -1014,7 +1015,7 @@ class ConductorManager(service.PeriodicService):
                 pass
             with open(os.devnull, "w") as fnull:
                 try:
-                    subprocess.check_call(
+                    subprocess.check_call(  # pylint: disable=not-callable
                         [pxeboot_update, "-i", "/pxeboot/pxelinux.cfg.files/" +
                          pxe_config, "-o", "/pxeboot/pxelinux.cfg/01-" +
                          dashed_mac] + install_opts,
@@ -1164,10 +1165,10 @@ class ConductorManager(service.PeriodicService):
                 "--client-id", cid,
                 "--iaid", str(cutils.get_dhcp_client_iaid(mac_address))]
             LOG.warning("Invoking dhcp_release6 for {}".format(params))
-            subprocess.call(["dhcp_release6"] + params)
+            subprocess.call(["dhcp_release6"] + params)  # pylint: disable=not-callable
         else:
             LOG.warning("Invoking dhcp_release for {}".format(params))
-            subprocess.call(["dhcp_release"] + params)
+            subprocess.call(["dhcp_release"] + params)  # pylint: disable=not-callable
 
     def _find_networktype_for_address(self, ip_address):
         for network in self.dbapi.networks_get_all():
@@ -1443,7 +1444,15 @@ class ConductorManager(service.PeriodicService):
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
     def docker_registry_image_list(self, context):
-        image_list_response = docker_registry.docker_registry_get("_catalog")
+        try:
+            image_list_response = docker_registry.docker_registry_get("_catalog")
+        except requests.exceptions.SSLError:
+            LOG.exception("Failed to get docker registry catalog")
+            raise exception.DockerRegistrySSLException()
+        except Exception:
+            LOG.exception("Failed to get docker registry catalog")
+            raise exception.DockerRegistryAPIException()
+
         if image_list_response.status_code != 200:
             LOG.error("Bad response from docker registry: %s"
                 % image_list_response.status_code)
@@ -1465,8 +1474,15 @@ class ConductorManager(service.PeriodicService):
         return images
 
     def docker_registry_image_tags(self, context, image_name):
-        image_tags_response = docker_registry.docker_registry_get(
-            "%s/tags/list" % image_name)
+        try:
+            image_tags_response = docker_registry.docker_registry_get(
+                "%s/tags/list" % image_name)
+        except requests.exceptions.SSLError:
+            LOG.exception("Failed to get docker registry image tags")
+            raise exception.DockerRegistrySSLException()
+        except Exception:
+            LOG.exception("Failed to get docker registry image tags")
+            raise exception.DockerRegistryAPIException()
 
         if image_tags_response.status_code != 200:
             LOG.error("Bad response from docker registry: %s"
@@ -1494,8 +1510,17 @@ class ConductorManager(service.PeriodicService):
         image_name_and_tag = image_name_and_tag.split(":")
 
         # first get the image digest for the image name and tag provided
-        digest_resp = docker_registry.docker_registry_get("%s/manifests/%s"
-            % (image_name_and_tag[0], image_name_and_tag[1]))
+        try:
+            digest_resp = docker_registry.docker_registry_get("%s/manifests/%s"
+                % (image_name_and_tag[0], image_name_and_tag[1]))
+        except requests.exceptions.SSLError:
+            LOG.exception("Failed to delete docker registry image %s" %
+                          image_name_and_tag)
+            raise exception.DockerRegistrySSLException()
+        except Exception:
+            LOG.exception("Failed to delete docker registry image %s" %
+                          image_name_and_tag)
+            raise exception.DockerRegistryAPIException()
 
         if digest_resp.status_code != 200:
             LOG.error("Bad response from docker registry: %s"
@@ -1505,8 +1530,17 @@ class ConductorManager(service.PeriodicService):
         image_digest = digest_resp.headers['Docker-Content-Digest']
 
         # now delete the image
-        image_delete_response = docker_registry.docker_registry_delete(
-            "%s/manifests/%s" % (image_name_and_tag[0], image_digest))
+        try:
+            image_delete_response = docker_registry.docker_registry_delete(
+                "%s/manifests/%s" % (image_name_and_tag[0], image_digest))
+        except requests.exceptions.SSLError:
+            LOG.exception("Failed to delete docker registry image %s" %
+                          image_name_and_tag)
+            raise exception.DockerRegistrySSLException()
+        except Exception:
+            LOG.exception("Failed to delete docker registry image %s" %
+                          image_name_and_tag)
+            raise exception.DockerRegistryAPIException()
 
         if image_delete_response.status_code != 202:
             LOG.error("Bad response from docker registry: %s"
@@ -1526,6 +1560,29 @@ class ConductorManager(service.PeriodicService):
             "classes": ['platform::dockerdistribution::garbagecollect']
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+    def docker_get_apps_images(self, context):
+        """
+        Return a dictionary of all apps and associated images from local registry.
+        """
+
+        images = {}
+        try:
+            for kapp in self.dbapi.kube_app_get_all():
+                app = self._app.Application(kapp)
+                images_to_download = self._app.get_image_tags_by_charts(
+                    app.sync_imgfile, app.sync_armada_mfile, app.sync_overrides_dir)
+                stripped_images = [x.replace(constants.DOCKER_REGISTRY_HOST + ':' +
+                                             constants.DOCKER_REGISTRY_PORT + '/', '')
+                                   for x in images_to_download]
+                images[kapp.name] = stripped_images
+                LOG.info("Application images for %s are: %s" % (kapp.name,
+                                                                str(stripped_images)))
+        except Exception as e:
+            LOG.info("Get images for all apps error.")
+            LOG.exception(e)
+
+        return images
 
     def _configure_worker_host(self, context, host):
         """Configure a worker host with the supplied data.
@@ -2087,6 +2144,8 @@ class ConductorManager(service.PeriodicService):
                     pass
 
         if ihost.invprovision not in [constants.PROVISIONED, constants.PROVISIONING]:
+            LOG.info("Updating %s host invprovision from %s to %s" %
+                     (ihost.hostname, ihost.invprovision, constants.UNPROVISIONED))
             value = {'invprovision': constants.UNPROVISIONED}
             self.dbapi.ihost_update(ihost_uuid, value)
 
@@ -2446,7 +2505,8 @@ class ConductorManager(service.PeriodicService):
                     "Couldn't update LLDP neighbour: %s") % e)
 
     def pci_device_update_by_host(self, context,
-                                  host_uuid, pci_device_dict_array):
+                                  host_uuid, pci_device_dict_array,
+                                  cleanup_stale=False):
         """Create devices for an ihost with the supplied data.
 
         This method allows records for devices for ihost to be created.
@@ -2454,6 +2514,7 @@ class ConductorManager(service.PeriodicService):
         :param context: an admin context
         :param host_uuid: host uuid unique id
         :param pci_device_dict_array: initial values for device objects
+        :param cleanup_stale: Do we want to clean up stale device entries?
         :returns: pass or fail
         """
         LOG.debug("Entering device_update_by_host %s %s" %
@@ -2500,8 +2561,23 @@ class ConductorManager(service.PeriodicService):
                             'sriov_numvfs': pci_dev['sriov_numvfs'],
                             'sriov_vfs_pci_address':
                                 pci_dev['sriov_vfs_pci_address'],
+                            'sriov_vf_driver': pci_dev.get('sriov_vf_driver', None),
+                            'sriov_vf_pdevice_id':
+                                pci_dev.get('sriov_vf_pdevice_id', None),
                             'driver': pci_dev['driver']}
                         LOG.info("attr: %s" % attr)
+                        if (host['administrative'] == constants.ADMIN_LOCKED and
+                                pci_dev['pdevice_id'] == dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF):
+                            # For the FPGA FEC device, the actual VF driver
+                            # is only updated on an unlocked host. The set
+                            # of VF PCI addresses may not be known when the
+                            # value of sriov_numvfs changes and is applied
+                            # to create the VFs on a puppet runtime manifest
+                            # apply.  This prevents the intended VF driver
+                            # from being reported as None (reset) when the
+                            # binding of the intended driver has not had a
+                            # chance to be applied.
+                            del attr['sriov_vf_driver']
                         dev = self.dbapi.pci_device_update(dev['uuid'], attr)
                     except Exception:
                         LOG.exception("Failed to update port %s" %
@@ -2514,6 +2590,30 @@ class ConductorManager(service.PeriodicService):
                     host_uuid)
             except Exception:
                 pass
+
+        if cleanup_stale:
+            # Now clean up N3000 devices that have changed addresses.
+            self.cleanup_stale_n3000_devices(host, pci_device_dict_array)
+
+    def cleanup_stale_n3000_devices(self, host, pci_device_dict_array):
+        # Special-case the N3000 FPGA because we know it might change
+        # PCI addresses.  We want to delete any N3000 devices for this host
+        # in the DB which are not listed in pci_device_dict_array.
+        update_addrs = [dev['pciaddr'] for dev in pci_device_dict_array]
+        LOG.debug("update_addrs: %s" % update_addrs)
+        devices = self.dbapi.pci_device_get_all(hostid=host.id)
+        LOG.debug("db_addrs: %s" % [dev.pciaddr for dev in devices])
+        for device in devices:
+            LOG.debug("looking at device %s, %s, %s" %
+                      (device.pciaddr, device.pvendor_id, device.pdevice_id))
+            if (device.pvendor_id != fpga_constants.N3000_VENDOR or
+                    device.pdevice_id not in fpga_constants.N3000_DEVICES):
+                continue
+            if device.pciaddr not in update_addrs:
+                LOG.info("Deleting stale device at address %s" % device.pciaddr)
+                self.dbapi.pci_device_destroy(device.id)
+            else:
+                LOG.debug("Found device at address %s in DB" % device.pciaddr)
 
     def inumas_update_by_ihost(self, context,
                                ihost_uuid, inuma_dict_array):
@@ -2861,7 +2961,8 @@ class ConductorManager(service.PeriodicService):
 
     def _get_platform_reserved_memory(self, ihost, node):
         low_core = cutils.is_low_core_system(ihost, self.dbapi)
-        reserved = cutils.get_required_platform_reserved_memory(ihost, node, low_core)
+        reserved = cutils.get_required_platform_reserved_memory(
+            self.dbapi, ihost, node, low_core)
         return {'platform_reserved_mib': reserved} if reserved else {}
 
     def imemory_update_by_ihost(self, context,
@@ -2926,12 +3027,6 @@ class ConductorManager(service.PeriodicService):
             # numa_node is not stored against imemory table
             mem_dict.pop('numa_node', None)
 
-            # clear the pending hugepage number for unlocked nodes
-            if ihost.administrative == constants.ADMIN_UNLOCKED:
-                mem_dict['vm_hugepages_nr_2M_pending'] = None
-                mem_dict['vm_hugepages_nr_1G_pending'] = None
-                mem_dict['vswitch_hugepages_reqd'] = None
-
             try:
                 imems = self.dbapi.imemory_get_by_ihost_inode(ihost_uuid,
                                                               inode_uuid)
@@ -2949,6 +3044,20 @@ class ConductorManager(service.PeriodicService):
                                  constants.NUM_4K_PER_MiB)
                             mem_dict['memtotal_mib'] += vm_4K_mib
                             mem_dict['memavail_mib'] += vm_4K_mib
+
+                        if imem.vswitch_hugepages_reqd is not None \
+                                and imem.vswitch_hugepages_reqd == mem_dict.get('vswitch_hugepages_nr'):
+                            # vswitch_hugepages_reqd matches the current config, so clear it
+                            mem_dict['vswitch_hugepages_reqd'] = None
+                        if imem.vm_hugepages_nr_2M_pending is not None \
+                                and imem.vm_hugepages_nr_2M_pending == mem_dict.get('vm_hugepages_nr_2M'):
+                            # vm_hugepages_nr_2M_pending matches the current config, so clear it
+                            mem_dict['vm_hugepages_nr_2M_pending'] = None
+                        if imem.vm_hugepages_nr_1G_pending is not None \
+                                and imem.vm_hugepages_nr_1G_pending == mem_dict.get('vm_hugepages_nr_1G'):
+                            # vm_hugepages_nr_1G_pending matches the current config, so clear it
+                            mem_dict['vm_hugepages_nr_1G_pending'] = None
+
                         self.dbapi.imemory_update(imem['uuid'],
                                                          mem_dict)
             except Exception:
@@ -4508,6 +4617,17 @@ class ConductorManager(service.PeriodicService):
                 if cutils.is_app_applied(self.dbapi, app_name):
                     self.evaluate_app_reapply(context, app_name)
 
+        # Clear any "reboot needed" DB entry for the host if it is set.
+        # If there are no more pending device image update entries in the DB
+        # for any host, and if no host has the "reboot needed" DB entry set,
+        # then the "device image update in progress" alarm is cleared.
+        if availability == constants.AVAILABILITY_AVAILABLE:
+            if imsg_dict.get(constants.SYSINV_AGENT_FIRST_REPORT):
+                if ihost.reboot_needed:
+                    ihost.reboot_needed = False
+                    ihost.save(context)
+                self._clear_device_image_alarm(context)
+
     def iconfig_update_by_ihost(self, context,
                                 ihost_uuid, imsg_dict):
         """Update applied iconfig for an ihost with the supplied data.
@@ -4648,22 +4768,37 @@ class ConductorManager(service.PeriodicService):
 
         if (active_host and active_host.config_target and
            active_host.config_applied == active_host.config_target):
-            # active controller has applied target, apply pending config
+            # active controller has applied target, apply pending config if
+            # required
+            oam_config_runtime_apply_file = self._get_oam_runtime_apply_file()
 
-            if not os.path.isfile(CONFIG_CONTROLLER_ACTIVATE_FLAG):
-                cutils.touch(CONFIG_CONTROLLER_ACTIVATE_FLAG)
-                # apply keystone changes to current active controller
-                personalities = [constants.CONTROLLER]
-                config_uuid = self._config_update_hosts(context, personalities,
-                                                        host_uuids=[active_host.uuid])
-                config_dict = {
-                    "personalities": personalities,
-                    "host_uuids": [active_host.uuid],
-                    "classes": ['openstack::keystone::endpoint::runtime',
-                                'platform::firewall::runtime']
-                }
-                self._config_apply_runtime_manifest(
-                    context, config_uuid, config_dict)
+            if (os.path.isfile(oam_config_runtime_apply_file) or
+               os.path.isfile(constants.HTTPS_CONFIG_REQUIRED) or
+               os.path.isfile(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED)):
+
+                if cutils.is_initial_config_complete():
+                    # apply keystone changes to current active controller
+                    personalities = [constants.CONTROLLER]
+                    config_uuid = self._config_update_hosts(context, personalities,
+                                                            host_uuids=[active_host.uuid])
+                    config_dict = {
+                        "personalities": personalities,
+                        "host_uuids": [active_host.uuid],
+                        "classes": ['openstack::keystone::endpoint::runtime',
+                                    'platform::firewall::runtime']
+                    }
+                    self._config_apply_runtime_manifest(
+                        context, config_uuid, config_dict)
+
+                    if os.path.isfile(oam_config_runtime_apply_file):
+                        LOG.info("oam config applied %s" % config_dict)
+                        os.remove(oam_config_runtime_apply_file)
+                    if os.path.isfile(constants.HTTPS_CONFIG_REQUIRED):
+                        LOG.info("https config applied %s" % config_dict)
+                        os.remove(constants.HTTPS_CONFIG_REQUIRED)
+                    if os.path.isfile(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED):
+                        LOG.info("admin endpoint config applied %s" % config_dict)
+                        os.remove(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED)
 
             # apply filesystem config changes if all controllers at target
             standby_config_target_flipped = None
@@ -5110,25 +5245,13 @@ class ConductorManager(service.PeriodicService):
                         "not met." % app_name)
             return
 
+        LOG.info("Platform managed application %s: Prerequisites "
+                 "met." % app_name)
+
         if self._patching_operation_is_occurring():
             return
 
-        try:
-            app = kubeapp_obj.get_by_name(context, app_name)
-        except exception.KubeAppNotFound as e:
-            LOG.exception(e)
-            return
-
-        app.status = constants.APP_APPLY_IN_PROGRESS
-        app.save()
-
-        # Action: Apply the application
-        # Do not block this audit task or any other periodic task. This
-        # could be long running. The next audit cycle will pick up the
-        # latest status.
-        LOG.info("Platform managed application %s: "
-                    "Applying..." % app_name)
-        greenthread.spawn(self._app.perform_app_apply, app, None)
+        self._inner_sync_auto_apply(context, app_name)
 
     def _check_tarfile(self, app_name):
         tarfiles = []
@@ -5246,6 +5369,70 @@ class ConductorManager(service.PeriodicService):
         app.save()
         self._auto_apply_managed_app(context, app_name)
 
+    def _k8s_application_images_audit(self, context):
+        """
+        Make sure that the required images for k8s applications are present
+        """
+
+        LOG.debug("Helper Task: _k8s_application_images_audit: Starting")
+
+        try:
+            for kapp in self.dbapi.kube_app_get_all():
+                if kapp.status == constants.APP_RESTORE_REQUESTED:
+                    app = kubeapp_obj.get_by_name(context, kapp.name)
+
+                    LOG.info("Request downloading images for %s: " % kapp.name)
+                    app.status = constants.APP_APPLY_IN_PROGRESS
+                    app.progress = constants.APP_PROGRESS_DOWNLOAD_IMAGES
+                    app.save()
+
+                    greenthread.spawn(self._restore_download_images, app)
+
+        except Exception as e:
+            LOG.info("Helper Task: _k8s_application_images_audit: Will retry")
+            LOG.exception(e)
+
+        LOG.debug("Helper Task: _k8s_application_images_audit: Finished")
+
+    def _restore_download_images(self, app):
+        try:
+            rapp = self._app.Application(app)
+            self._app.download_images(rapp)
+
+            app.status = constants.APP_APPLY_SUCCESS
+            app.progress = constants.APP_PROGRESS_COMPLETED
+            app.save()
+        except Exception as e:
+            LOG.exception(e)
+            app.status = constants.APP_RESTORE_REQUESTED
+            app.progress = constants.APP_PROGRESS_IMAGES_DOWNLOAD_FAILED
+            app.save()
+
+    @staticmethod
+    def _check_software_orchestration_in_progress():
+        """Returns the progress of upgrades, patches and firmware updates."""
+
+        try:
+            vim_resp = vim_api.vim_get_sw_update_strategy(
+                None,
+                constants.VIM_DEFAULT_TIMEOUT_IN_SECS)
+            # A timeout will return None for vim_resp
+            if vim_resp is None:
+                LOG.info("vim_api get_sw_update_strategy timed out")
+                return False
+            if vim_resp.get('sw-update-type') is not None and \
+               vim_resp.get('in-progress') is not None:
+                return vim_resp['in-progress']
+        except Exception as e:
+            LOG.warn("Failed vim_api get_sw_update_strategy. (%s)" % str(e))
+            return False
+
+        return False
+
+    @staticmethod
+    def _verify_restore_in_progress():
+        return os.path.isfile(constants.SYSINV_RESTORE_FLAG)
+
     @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval,
                                  run_immediately=True)
     def _k8s_application_audit(self, context):
@@ -5261,26 +5448,36 @@ class ConductorManager(service.PeriodicService):
                  (active_ctrl.operational != constants.OPERATIONAL_ENABLED))):
             return
 
-        # WORKAROUND: For k8s NodeAffinity issue. Call this for a limited time
-        #             (5 times over ~5 minutes). As of k8s upgrade to v1.18.1,
-        #             this condition is occurring on simplex and duplex
-        #             controller scenarios and has been observed with initial
-        #             unlocks and uncontrolled system reboots
-        #
-        #             Upstream reports of this:
-        #             - https://github.com/kubernetes/kubernetes/issues/80745
-        #             - https://github.com/kubernetes/kubernetes/issues/85334
-        #
-        #             Outstanding PR that was tested and fixed this issue:
-        #             - https://github.com/kubernetes/kubernetes/pull/80976
-        if (self._start_time + timedelta(minutes=5) >
-                datetime.now(self._start_time.tzinfo)):
-            LOG.info("Periodic Task: _k8s_application_audit: Checking for "
-                     "NodeAffinity issue for %s" % str(
-                         (self._start_time + timedelta(minutes=5)) -
-                         datetime.now(self._start_time.tzinfo)))
-            self._kube_pod.delete_failed_pods_by_reason(
-                reason='NodeAffinity')
+        if not self.check_nodes_stable():
+            LOG.info("Node(s) are in an unstable state. Defer audit.")
+            return
+
+        # Defer platform managed application activity during update orchestration.
+        if self._check_software_orchestration_in_progress():
+            LOG.debug("Software update orchestration in progress. Defer audit.")
+            return
+
+        if self._verify_restore_in_progress():
+            self._k8s_application_images_audit(context)
+            LOG.info("Restore in progress - defer platform managed application "
+                     "activity")
+            return
+
+        # Ensure that armada pod is running.
+        pods = self._kube.kube_get_pods_by_selector("armada",
+                                                    "application=armada",
+                                                    "status.phase=Running")
+        if not pods:
+            LOG.warning("armada pod not present")
+            return
+
+        # Defer platform managed application activity while an upgrade is active
+        try:
+            self.verify_upgrade_not_in_progress()
+        except Exception:
+            LOG.info("Upgrade in progress - defer platform managed application "
+                     "activity")
+            return
 
         # Check the application state and take the approprate action
         for app_name in constants.HELM_APPS_PLATFORM_MANAGED:
@@ -5321,6 +5518,23 @@ class ConductorManager(service.PeriodicService):
         LOG.debug("Periodic Task: _k8s_application_audit: Finished")
 
     def check_pending_app_reapply(self, context):
+        if self._verify_restore_in_progress():
+            LOG.info("Restore in progress - Ignore app reapply checks.")
+            return
+
+        # Defer application reapply while an upgrade is active
+        try:
+            self.verify_upgrade_not_in_progress()
+        except Exception:
+            LOG.info("Upgrade in progress - Ignore app reapply checks")
+            return
+
+        # Defer application reapply during update orchestration
+        if self._check_software_orchestration_in_progress():
+            LOG.info("Software update orchestration in progress. "
+                     "Ignore app reapply checks.")
+            return
+
         # Pick first app that needs to be re-applied
         for index, app_name in enumerate(
                 constants.HELM_APPS_WITH_REAPPLY_SUPPORT):
@@ -5334,6 +5548,12 @@ class ConductorManager(service.PeriodicService):
                      "currently node(s) in an unstable state. Will "
                      "retry on next audit", app_name)
             return
+
+        self._inner_sync_auto_apply(context, app_name, status_constraints=[constants.APP_APPLY_SUCCESS])
+
+    @cutils.synchronized(LOCK_AUTO_APPLY)
+    def _inner_sync_auto_apply(self, context, app_name, status_constraints=None):
+
         # Check no other app apply is in progress
         for other_app in self.dbapi.kube_app_get_all():
             if other_app.status == constants.APP_APPLY_IN_PROGRESS:
@@ -5342,168 +5562,30 @@ class ConductorManager(service.PeriodicService):
                             "Will retry on next audit",
                          app_name, other_app.name)
                 return
-        self.reapply_app(context, app_name)
 
-    def _patch_tiller_deployment(self):
-        """ Ensure tiller is patched with restart logic."""
-        LOG.info("Attempt to patch tiller deployment")
+        # Check app is present
         try:
-            # We have a race condition that may cause the tiller pod to not have
-            # its environment set up correctly. This will patch the tiller
-            # deployment to ensure that tiller can recover if that occurs. The
-            # deployment is patched during the initial ansible run. This will
-            # re-patch the deployment in the case when tiller has been removed
-            # and reinstalled in the cluster after the system has been
-            # installed. If tiller is already patched then the patch execution
-            # is successful causing no change to the deployment. Specify the
-            # update strategy to allow tiller deployment patching in a simplex
-            # controller configuration.
-            patch = {
-                'spec': {
-                    'strategy': {
-                        'type': 'RollingUpdate',
-                        'rollingUpdate': {
-                            'maxUnavailable': 1,
-                            'maxSurge': 1,
-                        }
-                    },
-                    'template': {
-                        'spec': {
-                            'containers': [{
-                                'name': 'tiller',
-                                'command': [
-                                    '/bin/sh',
-                                    '-cex',
-                                    '#!/bin/sh\n'
-                                    'env | grep -q -e ^TILLER_DEPLOY || exit\n'
-                                    'env | grep -q -e ^KUBE_DNS || exit\n'
-                                    'env | grep -q -e ^KUBERNETES_PORT || exit\n'
-                                    'env | grep -q -e ^KUBERNETES_SERVICE || exit\n'
-                                    '/tiller\n'
-                                ]
-                            }]
-                        }
-                    }
-                }
-            }
-            cmd = ['kubectl',
-                   '--kubeconfig={}'.format(kubernetes.KUBERNETES_ADMIN_CONF),
-                   'patch', 'deployment', '-n', 'kube-system', 'tiller-deploy',
-                   '-p', yaml.dump(patch)]
-            stdout, stderr = cutils.execute(*cmd, run_as_root=False)
+            app = kubeapp_obj.get_by_name(context, app_name)
+        except exception.KubeAppNotFound:
+            LOG.info("%s app not present, skipping re-apply" % app_name)
+            return
 
-        except exception.ProcessExecutionError as e:
-            raise exception.SysinvException(
-                _("Error patching the tiller deployment, "
-                  "Details: %s") % str(e))
+        # Check status conditions list
+        if status_constraints and app.status not in status_constraints:
+            LOG.info("{} app is present but status {} isn't any of the desired {}, "
+                     "skipping re-apply"
+                     .format(app_name, app.status, status_constraints))
+            return
 
-        LOG.info("Tiller deployment has been patched")
+        LOG.info("Auto reapplying %s app" % app_name)
+        app.status = constants.APP_APPLY_IN_PROGRESS
+        app.save()
+
+        greenthread.spawn(self._app.perform_app_apply, app, app.mode)
 
     def _upgrade_downgrade_kube_components(self):
         self._upgrade_downgrade_static_images()
-        self._upgrade_downgrade_tiller()
         self._upgrade_downgrade_kube_networking()
-
-    @retry(retry_on_result=lambda x: x is False,
-           wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
-    def _upgrade_downgrade_tiller(self):
-        """Check if tiller needs to be upgraded or downgraded"""
-        LOG.info("_upgrade_downgrade_tiller")
-
-        FIVE_MIN_IN_SECS = 300
-        in_progress_statuses = [constants.APP_APPLY_IN_PROGRESS,
-                                constants.APP_UPLOAD_IN_PROGRESS,
-                                constants.APP_REMOVE_IN_PROGRESS,
-                                constants.APP_UPDATE_IN_PROGRESS,
-                                constants.APP_RECOVER_IN_PROGRESS]
-
-        # Check if we are in the middle of an application apply. If so wait
-        # 5 minutes and retry.
-        while True:
-            try:
-                in_progress = False
-                for app in self.dbapi.kube_app_get_all():
-                    if app.status in in_progress_statuses:
-                        LOG.info("_upgrade_downgrade_tiller kubernetes application "
-                                 "'%s' in progress, status is '%s'" %
-                                 (app.name, app.status))
-                        in_progress = True
-                        break
-                if in_progress:
-                    greenthread.sleep(FIVE_MIN_IN_SECS)
-                    continue
-
-            except Exception as e:
-                LOG.error("{}. Failed to get kubernetes application list.".format(e))
-            break
-
-        # Upgrade or downgrade the tiller image
-        try:
-            running_image = self._kube.kube_get_image_by_selector(
-                image_versions.TILLER_SELECTOR_NAME,
-                helm_common.HELM_NS_KUBE_SYSTEM,
-                image_versions.TILLER_CONTAINER_NAME)
-
-            if running_image is None:
-                LOG.warning("Failed to get tiller image")
-                return False
-
-            LOG.info("Running tiller image: %s" % running_image)
-            LOG.info("Requested tiller version: %s" % image_versions.TILLER_IMAGE_VERSION)
-
-            # Grab the version from the image name. Version is preceded
-            # by a ":" e.g.
-            #    registry.local:9001/gcr.io/kubernetes-helm/tiller:v2.13.0
-            running_image_name, running_version = running_image.rsplit(":", 1)
-            if not running_version:
-                LOG.warning("Failed to get version from tiller image")
-                return False
-
-            # Verify the tiller version running
-            if running_version != image_versions.TILLER_IMAGE_VERSION:
-
-                LOG.info("Running version of tiller does not match patching version of %s. "
-                         "Upgrade in progress."
-                         % image_versions.TILLER_IMAGE_VERSION)
-                download_image = running_image_name + ":" + image_versions.TILLER_IMAGE_VERSION
-                self._docker._retrieve_specified_registries()
-
-                # download the image
-                try:
-                    img_tag, ret = self._docker.download_an_image("helm",
-                                                                  download_image)
-                    if not ret:
-                        raise Exception
-                except Exception as e:
-                    LOG.warning("Failed to download image '%s'. %s" % (download_image, e))
-                    return False
-
-                # reset the cached registries
-                self._docker._reset_registries_info()
-
-                # Update the new image
-                try:
-                    helm_utils.helm_upgrade_tiller(download_image)
-
-                except Exception as e:
-                    LOG.warning("Failed to update the new image: %s" % e)
-                    return False
-
-        except Exception as e:
-            LOG.error("{}. Failed to upgrade/downgrade tiller.".format(e))
-            return False
-
-        # Patch tiller to allow restarts if the environment is incomplete
-        #
-        # NOTE: This patch along with this upgrade functionality can be removed
-        # once StarlingX moves to Helm v3
-        try:
-            self._patch_tiller_deployment()
-        except Exception as e:
-            LOG.error("{}. Failed to patch tiller deployment.".format(e))
-            return False
-
-        return True
 
     @retry(retry_on_result=lambda x: x is False,
            wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
@@ -5528,16 +5610,12 @@ class ConductorManager(service.PeriodicService):
                      " playbook: %s for version %s" %
                      (constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK, kube_version))
 
-            proc = subprocess.Popen(
-                ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
-                 constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK],
-                stdout=subprocess.PIPE)
-            out, _ = proc.communicate()
+            playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
+                            constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK]
+            returncode = cutils.run_playbook(playbook_cmd)
 
-            LOG.info("ansible-playbook: %s." % out)
-
-            if proc.returncode:
-                raise Exception("ansible-playbook returned an error: %s" % proc.returncode)
+            if returncode:
+                raise Exception("ansible-playbook returned an error: %s" % returncode)
         except Exception as e:
             LOG.error("Failed to upgrade/downgrade kubernetes "
                       "networking images: {}".format(e))
@@ -5568,16 +5646,12 @@ class ConductorManager(service.PeriodicService):
                      " playbook: %s for version %s" %
                      (constants.ANSIBLE_KUBE_STATIC_IMAGES_PLAYBOOK, kube_version))
 
-            proc = subprocess.Popen(
-                ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
-                 constants.ANSIBLE_KUBE_STATIC_IMAGES_PLAYBOOK],
-                stdout=subprocess.PIPE)
-            out, _ = proc.communicate()
+            playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
+                            constants.ANSIBLE_KUBE_STATIC_IMAGES_PLAYBOOK]
+            returncode = cutils.run_playbook(playbook_cmd)
 
-            LOG.info("ansible-playbook: %s." % out)
-
-            if proc.returncode:
-                raise Exception("ansible-playbook returned an error: %s" % proc.returncode)
+            if returncode:
+                raise Exception("ansible-playbook returned an error: %s" % returncode)
         except Exception as e:
             LOG.error("Failed to upgrade/downgrade kubernetes "
                       "static images: {}".format(e))
@@ -5586,35 +5660,26 @@ class ConductorManager(service.PeriodicService):
         return True
 
     def check_nodes_stable(self):
-        hosts = self.dbapi.ihost_get_list()
-        if (utils.is_host_simplex_controller(hosts[0]) and
-                not hosts[0].vim_progress_status.startswith(
-                constants.VIM_SERVICES_ENABLED)):
-            # If the apply is triggered too early on AIO-SX, tiller will not
-            # be up and cause the re-apply to fail, so wait for services
-            # to enable
-            return False
-        for host in hosts:
-            if host.availability == constants.AVAILABILITY_INTEST:
-                return False
-            if host.task:
-                return False
-        return True
-
-    def reapply_app(self, context, app_name):
         try:
-            app = kubeapp_obj.get_by_name(context, app_name)
-            if app.status == constants.APP_APPLY_SUCCESS:
-                LOG.info("Reapplying %s app" % app_name)
-                app.status = constants.APP_APPLY_IN_PROGRESS
-                app.save()
+            hosts = self.dbapi.ihost_get_list()
+            if (utils.is_host_simplex_controller(hosts[0]) and
+                    (not hosts[0].vim_progress_status or
+                    not hosts[0].vim_progress_status.startswith(
+                    constants.VIM_SERVICES_ENABLED))):
+                # If the apply is triggered too early on AIO-SX, tiller will not
+                # be up and cause the re-apply to fail, so wait for services
+                # to enable
+                return False
+            for host in hosts:
+                if host.availability == constants.AVAILABILITY_INTEST:
+                    return False
+                if host.task:
+                    return False
+        except Exception as e:
+            LOG.warn("Failed check_nodes_stable. (%s)" % str(e))
+            return False
 
-                greenthread.spawn(self._app.perform_app_apply, app, None)
-            else:
-                LOG.info("%s app is present but not applied, "
-                         "skipping re-apply" % app_name)
-        except exception.KubeAppNotFound:
-            LOG.info("%s app not present, skipping re-apply" % app_name)
+        return True
 
     def get_k8s_namespaces(self, context):
         """ Get Kubernetes namespaces
@@ -5815,7 +5880,7 @@ class ConductorManager(service.PeriodicService):
 
     # @staticmethod can't be used with @retry decorator below because
     # it raises a "'staticmethod' object is not callable" exception
-    def _osd_must_be_down(result):
+    def _osd_must_be_down(result):  # pylint: disable=no-self-argument
         response, body = result
         if not response.ok:
             LOG.error("OSD remove failed: {}".format(body))
@@ -5843,17 +5908,17 @@ class ConductorManager(service.PeriodicService):
         """
         try:
             with open(os.devnull, "w") as fnull:
-                subprocess.check_call(["mv", "/etc/pmon.d/ceph.conf",
+                subprocess.check_call(["mv", "/etc/pmon.d/ceph.conf",  # pylint: disable=not-callable
                                       "/etc/pmond.ceph.conf.bak"],
                                       stdout=fnull, stderr=fnull)
 
-                subprocess.check_call(["systemctl", "restart", "pmon"],
+                subprocess.check_call(["systemctl", "restart", "pmon"],  # pylint: disable=not-callable
                                       stdout=fnull, stderr=fnull)
 
-                subprocess.check_call(["/etc/init.d/ceph", "stop", "mon"],
+                subprocess.check_call(["/etc/init.d/ceph", "stop", "mon"],  # pylint: disable=not-callable
                                       stdout=fnull, stderr=fnull)
 
-                subprocess.check_call(["mv", "/etc/services.d/controller/ceph.sh",
+                subprocess.check_call(["mv", "/etc/services.d/controller/ceph.sh",  # pylint: disable=not-callable
                                        "/etc/services.d.controller.ceph.sh"],
                                       stdout=fnull, stderr=fnull)
         except subprocess.CalledProcessError as e:
@@ -5997,7 +6062,8 @@ class ConductorManager(service.PeriodicService):
         config_dict = {
             "personalities": personalities,
             'host_uuids': [host_uuid],
-            "classes": 'platform::interfaces::sriov::runtime',
+            "classes": ['platform::interfaces::sriov::runtime',
+                        'platform::devices::fpga::fec::runtime'],
             puppet_common.REPORT_INVENTORY_UPDATE:
                 puppet_common.REPORT_PCI_SRIOV_CONFIG,
         }
@@ -6031,15 +6097,46 @@ class ConductorManager(service.PeriodicService):
             self._destroy_tpm_config(context)
             self._destroy_certificates(context)
 
+        cutils.touch(constants.HTTPS_CONFIG_REQUIRED)
+
+    @staticmethod
+    def _get_oam_runtime_apply_file(standby_controller=False):
+        """Get the file which indicates a runtime oam manifest apply is
+        required for a controller.
+        """
+        if standby_controller:
+            hostname = cutils.get_mate_controller_hostname()
+        else:
+            hostname = cutils.get_local_controller_hostname()
+
+        oam_config_required_flag = os.path.join(
+            tsc.CONFIG_PATH, '.oam_config_required_') + hostname
+
+        return oam_config_required_flag
+
     def update_oam_config(self, context):
         """Update the OAM network configuration"""
 
+        # update kube-apiserver cert's SANs at runtime
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::kubernetes::certsans::runtime']
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+        # there is still pending reboot required config to apply
         self._config_update_hosts(context, [constants.CONTROLLER], reboot=True)
 
         extoam = self.dbapi.iextoam_get_one()
 
         self._update_hosts_file('oamcontroller', extoam.oam_floating_ip,
                                 active=False)
+
+        if utils.get_system_mode(self.dbapi) != constants.SYSTEM_MODE_SIMPLEX:
+            cutils.touch(
+                self._get_oam_runtime_apply_file(standby_controller=True))
 
     def update_user_config(self, context):
         """Update the user configuration"""
@@ -6089,12 +6186,6 @@ class ConductorManager(service.PeriodicService):
 
             if not reboot_required and filesystem_list:
                 # apply the manifest at runtime, otherwise a reboot is required
-                if os.path.isfile(CONFIG_CONTROLLER_FINI_FLAG):
-                    os.remove(CONFIG_CONTROLLER_FINI_FLAG)
-
-                if os.path.isfile(CFS_DRBDADM_RECONFIGURED):
-                    os.remove(CFS_DRBDADM_RECONFIGURED)
-
                 # map the updated file system to the runtime puppet class
                 classmap = {
                     constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION:
@@ -6721,6 +6812,25 @@ class ConductorManager(service.PeriodicService):
         if success:
             self.check_pending_app_reapply(context)
 
+    def verify_upgrade_not_in_progress(self):
+        """ Check if there is an upgrade in progress.
+
+        Raise an exception if one is found.
+        """
+        try:
+            self.dbapi.software_upgrade_get_one()
+        except exception.NotFound:
+            pass
+        else:
+            raise exception.SysinvException(_("Platform upgrade in progress."))
+
+        try:
+            self.dbapi.kube_upgrade_get_one()
+        except exception.NotFound:
+            pass
+        else:
+            raise exception.SysinvException(_("Kubernetes upgrade in progress."))
+
     def report_partition_mgmt_success(self, host_uuid, idisk_uuid,
                                       partition_uuid):
         """ Disk partition management success callback for Sysinv Agent
@@ -6826,20 +6936,6 @@ class ConductorManager(service.PeriodicService):
         elif partition_status >= constants.PARTITION_ERROR_STATUS:
             LOG.error("PART Unexpected Error.")
             self.dbapi.partition_update(partition_data['uuid'], part_updates)
-
-    def _update_config_for_stx_monitor(self, context):
-        """ Update config applicable to stx-monitor app. """
-        personalities = [constants.CONTROLLER, constants.WORKER]
-
-        config_uuid = self._config_update_hosts(context, personalities)
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::collectd::restart']
-        }
-
-        self._config_apply_runtime_manifest(context,
-                                            config_uuid,
-                                            config_dict)
 
     def _update_vim_config(self, context):
         """ Update the VIM's configuration. """
@@ -7400,16 +7496,20 @@ class ConductorManager(service.PeriodicService):
         self.dbapi.istor_update(stor_uuid, values)
 
     def create_controller_filesystems(self, context, rootfs_device):
-        """ Create the storage config based on disk size for
-            database, image, backup, img-conversion
+        """ Create the storage config based on disk size for database, platform,
+            extension, rabbit, etcd, docker-distribution, dc-vault(SC)
 
             :param context: an admin context.
             :param rootfs_device: the root disk device
         """
         database_storage = 0
 
-        # Add the extension storage
+        # Set default filesystem sizes
+        platform_storage = constants.DEFAULT_PLATFORM_STOR_SIZE
         extension_lv_size = constants.DEFAULT_EXTENSION_STOR_SIZE
+        etcd_lv_size = constants.ETCD_STOR_SIZE
+        docker_distribution_lv_size = \
+            constants.DOCKER_DISTRIBUTION_STOR_SIZE
 
         system = self.dbapi.isystem_get_one()
         system_dc_role = system.get('distributed_cloud_role', None)
@@ -7426,92 +7526,146 @@ class ConductorManager(service.PeriodicService):
             # Defaults: 500G root disk
             #
             #          8 G - /var/log (reserved in kickstart)
-            #          8 G - /scratch (reserved in kickstart)
+            #         16 G - /scratch (reserved in kickstart)
             #          2 G - pgsql_lv (DRBD bootstrap manifest)
             #          2 G - rabbit_lv (DRBD bootstrap manifest)
             #         10 G - platform_lv (DRBD bootstrap manifest)
             #          1 G - extension_lv (DRBD bootstrap manifest)
             #        -----
-            #         31 G - cgts-vg contents when we get to these checks
+            #         39 G - cgts-vg contents when we get to these checks
             #
             #
             #       Final defaults view after controller manifests
             #          8 G - /var/log (reserved in kickstart)
-            #          8 G - /scratch (reserved in kickstart)
+            #         16 G - /scratch (reserved in kickstart)
             #         20 G - /var/lib/postgresql
             #          2 G - /var/lib/rabbitmq
             #         10 G - /opt/platform
             #          1 G - /opt/extension
             #         25 G - /opt/backup
-            #         30 G - /var/lib/docker (--kubernetes)
-            #         16 G - /var/lib/docker-distribution (--kubernetes)
-            #          5 G - /opt/etcd (--kubernetes)
-            #         20 G - /var/lib/ceph/mon (--kubernetes)
-            #         15 G - /opt/dc-vault (DRBD ctlr manifest for
-            #                   Distributed Cloud System Controller)
+            #         30 G - /var/lib/docker
+            #         16 G - /var/lib/docker-distribution
+            #          5 G - /opt/etcd
+            #         10 G - /var/lib/kubelet
+            #         20 G - /var/lib/ceph/mon
+            #         15 G - /opt/dc-vault (DRBD ctlr manifest for DCSC)
             #        -----
-            #        160 G
+            #        163 G / 178 G(DCSC)
             #
             #  The absolute minimum disk size for these default settings:
+            #      2.0 G - buffer
             #      0.5 G - /boot
             #     10.0 G - /opt/platform-backup
             #     20.0 G - /
-            #    160.0 G - cgts-vg PV
+            #    163.0 G / 178.0 G - cgts-vg PV
             #   -------
-            #    190.5 G min size disk
+            #    ~ 196 G / 210 G(DCSC) min size disk
             #
             database_storage = constants.DEFAULT_DATABASE_STOR_SIZE
 
-        elif disk_size >= constants.MINIMUM_DISK_SIZE:
+        elif disk_size >= constants.MINIMUM_SMALL_DISK_SIZE:
 
             LOG.info("Disk size : %s ... small disk defaults" % disk_size)
 
-            # Small disk: under 240G root disk
+            # Small disk: under 240G and over 181G root disk
             #
             #          8 G - /var/log (reserved in kickstart)
-            #          8 G - /scratch (reserved in kickstart)
+            #         16 G - /scratch (reserved in kickstart)
             #          2 G - pgsql_lv (DRBD bootstrap manifest)
             #          2 G - rabbit_lv (DRBD bootstrap manifest)
             #         10 G - platform_lv (DRBD bootstrap manifest)
             #          1 G - extension_lv (DRBD bootstrap manifest)
             #        -----
-            #         31 G - cgts-vg contents when we get to these checks
+            #         39 G - cgts-vg contents when we get to these checks
             #
             #
             #       Final defaults view after controller manifests
             #          8 G - /var/log (reserved in kickstart)
-            #          8 G - /scratch (reserved in kickstart)
+            #         16 G - /scratch (reserved in kickstart)
             #         10 G - /var/lib/postgresql
             #          2 G - /var/lib/rabbitmq
             #         10 G - /opt/platform
             #          1 G - /opt/extension
             #         20 G - /opt/backup
-            #         30 G - /var/lib/docker (--kubernetes)
-            #         16 G - /var/lib/docker-distribution (--kubernetes)
-            #         20 G - /var/lib/ceph/mon (--kubernetes)
-            #          5 G - /opt/etcd (--kubernetes)
+            #         30 G - /var/lib/docker
+            #         16 G - /var/lib/docker-distribution
+            #         20 G - /var/lib/ceph/mon
+            #          5 G - /opt/etcd
+            #         10 G - /var/lib/kubelet
             #         15 G - /opt/dc-vault (DRBD ctlr manifest for DCSC)
             #        -----
-            #        145 G
+            #        148 G / 163 G(DCSC)
             #
             #  The absolute minimum disk size for these default settings:
+            #     2.0 G - buffer
             #     0.5 G - /boot
             #    10.0 G - /opt/platform-backup
             #    20.0 G - /
-            #   145.0 G - cgts-vg PV
+            #   148.0 G / 163.0 G - cgts-vg PV
             #   -------
-            #   175.5 G min size disk
+            #   ~ 181 G / 196 G(DCSC) min size disk
             #
             database_storage = \
                 constants.DEFAULT_SMALL_DATABASE_STOR_SIZE
+
+        elif (disk_size >= constants.MINIMUM_TINY_DISK_SIZE and
+              cutils.is_virtual_system_config(self.dbapi) and
+              cutils.is_aio_system(self.dbapi)):
+
+            LOG.info("Disk size : %s ... tiny disk defaults for virtual system configruation" % disk_size)
+
+            # Tiny disk(StarlingX running in VM, AIO only): under 154G and over 60G root disk
+            #
+            #          3 G - /var/log (reserved in kickstart)
+            #          2 G - /scratch (reserved in kickstart)
+            #          2 G - pgsql_lv (DRBD bootstrap manifest)
+            #          2 G - rabbit_lv (DRBD bootstrap manifest)
+            #          1 G - platform_lv (DRBD bootstrap manifest)
+            #          1 G - extension_lv (DRBD bootstrap manifest)
+            #        -----
+            #         11 G - cgts-vg contents when we get to these checks
+            #
+            #
+            #       Final defaults view after controller manifests
+            #          3 G - /var/log (reserved in kickstart)
+            #          2 G - /scratch (reserved in kickstart)
+            #          2 G - /var/lib/postgresql
+            #          2 G - /var/lib/rabbitmq
+            #          1 G - /opt/platform
+            #          1 G - /opt/extension
+            #          1 G - /opt/backup
+            #         20 G - /var/lib/docker
+            #          8 G - /var/lib/docker-distribution
+            #          2 G - /var/lib/kubelet
+            #          1 G - /opt/etcd
+            #        -----
+            #         43 G
+            #
+            #  The absolute minimum disk size for these default settings:
+            #     0.5 G - /boot
+            #     1.0 G - /opt/platform-backup
+            #    15.0 G - /
+            #    43.0 G - cgts-vg PV
+            #   -------
+            #    ~ 60 G min size disk
+            #
+
+            database_storage = \
+                constants.DEFAULT_TINY_DATABASE_STOR_SIZE
+            platform_storage = \
+                constants.DEFAULT_TINY_PLATFORM_STOR_SIZE
+            docker_distribution_lv_size = \
+                constants.TINY_DOCKER_DISTRIBUTION_STOR_SIZE
+            etcd_lv_size = constants.TINY_ETCD_STOR_SIZE
 
         else:
             LOG.info("Disk size : %s ... disk too small" % disk_size)
             raise exception.SysinvException("Disk size requirements not met.")
 
+        # platform fs added to platform-lv
         data = {
             'name': constants.FILESYSTEM_NAME_PLATFORM,
-            'size': constants.DEFAULT_PLATFORM_STOR_SIZE,
+            'size': platform_storage,
             'logical_volume': constants.FILESYSTEM_LV_DICT[
                 constants.FILESYSTEM_NAME_PLATFORM],
             'replicated': True,
@@ -7520,6 +7674,7 @@ class ConductorManager(service.PeriodicService):
             data['name'], data['logical_volume'], data['size']))
         self.dbapi.controller_fs_create(data)
 
+        # pgsql fs added to pgsql-lv
         data = {
             'name': constants.FILESYSTEM_NAME_DATABASE,
             'size': database_storage,
@@ -7531,6 +7686,7 @@ class ConductorManager(service.PeriodicService):
             data['name'], data['logical_volume'], data['size']))
         self.dbapi.controller_fs_create(data)
 
+        # extension fs added to extension-lv
         data = {
             'name': constants.FILESYSTEM_NAME_EXTENSION,
             'size': extension_lv_size,
@@ -7543,8 +7699,6 @@ class ConductorManager(service.PeriodicService):
         self.dbapi.controller_fs_create(data)
 
         # ETCD fs added to etcd-lv
-        etcd_lv_size = constants.ETCD_STOR_SIZE
-
         data_etcd = {
                 'name': constants.FILESYSTEM_NAME_ETCD,
                 'size': etcd_lv_size,
@@ -7556,9 +7710,10 @@ class ConductorManager(service.PeriodicService):
             data_etcd['name'], data_etcd['logical_volume'], data_etcd['size']))
         self.dbapi.controller_fs_create(data_etcd)
 
+        # docker-distribution fs added to dockerdistribution-lv
         data = {
             'name': constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION,
-            'size': constants.DOCKER_DISTRIBUTION_STOR_SIZE,
+            'size': docker_distribution_lv_size,
             'logical_volume': constants.FILESYSTEM_LV_DICT[
                 constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION],
             'replicated': True,
@@ -7567,6 +7722,7 @@ class ConductorManager(service.PeriodicService):
             data['name'], data['logical_volume'], data['size']))
         self.dbapi.controller_fs_create(data)
 
+        # dc-vault fs added to dc-vault-lv
         if system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
             data = {
                 'name': constants.FILESYSTEM_NAME_DC_VAULT,
@@ -7835,7 +7991,7 @@ class ConductorManager(service.PeriodicService):
     def _drbd_connected(self):
         connected = False
 
-        output = subprocess.check_output("drbd-overview",
+        output = subprocess.check_output("drbd-overview",  # pylint: disable=not-callable
                                          stderr=subprocess.STDOUT)
         output = [_f for _f in output.split('\n') if _f]
 
@@ -7849,7 +8005,7 @@ class ConductorManager(service.PeriodicService):
         return connected
 
     def _drbd_fs_sync(self):
-        output = subprocess.check_output("drbd-overview",
+        output = subprocess.check_output("drbd-overview",  # pylint: disable=not-callable
                                          stderr=subprocess.STDOUT)
         output = [_f for _f in output.split('\n') if _f]
 
@@ -7871,7 +8027,7 @@ class ConductorManager(service.PeriodicService):
         return fs
 
     def _drbd_fs_updated(self, context):
-        drbd_dict = subprocess.check_output("drbd-overview",
+        drbd_dict = subprocess.check_output("drbd-overview",  # pylint: disable=not-callable
                                             stderr=subprocess.STDOUT)
         drbd_dict = [_f for _f in drbd_dict.split('\n') if _f]
 
@@ -8545,7 +8701,11 @@ class ConductorManager(service.PeriodicService):
             if host.personality in personalities:
                 # Never generate hieradata for uninventoried hosts, as their
                 # interface config will be incomplete.
-                if host.inv_state != constants.INV_STATE_INITIAL_INVENTORIED:
+                valid_inventory_states = [
+                    constants.INV_STATE_INITIAL_INVENTORIED,
+                    constants.INV_STATE_REINSTALLING
+                ]
+                if host.inv_state not in valid_inventory_states:
                     LOG.info(
                         "Cannot generate the configuration for %s, "
                         "the host is not inventoried yet." % host.hostname)
@@ -8612,6 +8772,34 @@ class ConductorManager(service.PeriodicService):
         """
         host_uuids = config_dict.get('host_uuids')
 
+        try:
+            self.dbapi.software_upgrade_get_one()
+        except exception.NotFound:
+            # No upgrade in progress
+            pass
+        else:
+            # Limit host_uuids to those matching the active software version
+            if not host_uuids:
+                hosts = self.dbapi.ihost_get_list()
+            else:
+                hosts = [self.dbapi.ihost_get(host_uuid) for host_uuid in host_uuids]
+
+            host_uuids = []
+            personalities = config_dict.get('personalities')
+            for host in hosts:
+                if host.personality in personalities:
+                    if host.software_load == tsc.SW_VERSION:
+                        host_uuids.append(host.uuid)
+                    else:
+                        LOG.info("Skip applying manifest for host: %s. Version %s mismatch." %
+                                 (host.hostname, host.software_load))
+                        self._update_host_config_applied(context, host, config_uuid)
+
+            if not host_uuids:
+                LOG.info("No hosts with matching software_version found, skipping apply_runtime_manifest")
+                return
+            config_dict.update({'host_uuids': host_uuids})
+
         if "classes" in config_dict:
             LOG.info("applying runtime manifest config_uuid=%s, classes: %s" % (
                 config_uuid, config_dict["classes"]))
@@ -8626,7 +8814,8 @@ class ConductorManager(service.PeriodicService):
                                    force=force)
 
         for app_name in constants.HELM_APPS_WITH_REAPPLY_SUPPORT:
-            self.evaluate_app_reapply(context, app_name)
+            if cutils.is_app_applied(self.dbapi, app_name):
+                self.evaluate_app_reapply(context, app_name)
 
         # Remove reboot required flag in case it's present. Runtime manifests
         # are no supposed to clear this flag. A host lock/unlock cycle (or similar)
@@ -8761,6 +8950,13 @@ class ConductorManager(service.PeriodicService):
 
         return
 
+    def is_virtual_system_config(self, context):
+        """
+        Gets the virtual system config from service parameter
+        """
+        virtual_system = cutils.is_virtual_system_config(self.dbapi)
+        return virtual_system
+
     def ilvg_get_nova_ilvg_by_ihost(self,
                                     context,
                                     ihost_uuid):
@@ -8890,7 +9086,19 @@ class ConductorManager(service.PeriodicService):
                                               "database for load id: %s")
                                             % new_load['id'])
 
-    def start_import_load(self, context, path_to_iso, path_to_sig):
+    @staticmethod
+    def _unmount_iso(mounted_iso, mntdir):
+        # We need to sleep here because the mount/umount is happening too
+        # fast and cause the following kernel logs
+        #   Buffer I/O error on device loopxxx, logical block x
+        # We sleep 1 sec to give time for the mount to finish processing
+        # properly.
+        time.sleep(1)
+        mounted_iso._umount_iso()
+        shutil.rmtree(mntdir)
+
+    def start_import_load(self, context, path_to_iso, path_to_sig,
+                          import_active=False):
         """
         Mount the ISO and validate the load for import
         """
@@ -8898,7 +9106,8 @@ class ConductorManager(service.PeriodicService):
 
         active_load = cutils.get_active_load(loads)
 
-        cutils.validate_loads_for_import(loads)
+        if not import_active:
+            cutils.validate_loads_for_import(loads)
 
         current_version = active_load.software_version
 
@@ -8926,6 +9135,7 @@ class ConductorManager(service.PeriodicService):
 
         metadata_file_path = mntdir + '/upgrades/metadata.xml'
         if not os.path.exists(metadata_file_path):
+            self._unmount_iso(mounted_iso, mntdir)
             raise exception.SysinvException(_("Metadata file not found"))
 
         # Read in the metadata file
@@ -8935,21 +9145,31 @@ class ConductorManager(service.PeriodicService):
             metadata_file.close()
 
         except Exception:
+            self._unmount_iso(mounted_iso, mntdir)
             raise exception.SysinvException(_(
                 "Unable to read metadata file"))
 
         # unmount iso
-
-        # We need to sleep here because the mount/umount is happening too
-        # fast and cause the following kernel logs
-        #   Buffer I/O error on device loopxxx, logical block x
-        # We sleep 1 sec to give time for the mount to finish processing
-        # properly.
-        time.sleep(1)
-        mounted_iso._umount_iso()
-        shutil.rmtree(mntdir)
+        self._unmount_iso(mounted_iso, mntdir)
 
         new_version = root.findtext('version')
+
+        if import_active:
+            if new_version != current_version:
+                raise exception.SysinvException(
+                    _("Active version and import version must match (%s)")
+                    % current_version)
+
+            # return the matching (active) load in the database
+            loads = self.dbapi.load_get_list()
+            for load in loads:
+                if load.software_version == new_version:
+                    break
+            else:
+                raise exception.SysinvException(
+                    _("Active load not found (%s)") % current_version)
+
+            return load
 
         if new_version == current_version:
             raise exception.SysinvException(
@@ -9027,7 +9247,7 @@ class ConductorManager(service.PeriodicService):
         # Run the upgrade script
         with open(os.devnull, "w") as fnull:
             try:
-                subprocess.check_call(mntdir +
+                subprocess.check_call(mntdir +  # pylint: disable=not-callable
                                       '/upgrades/import.sh',
                                       stdout=fnull, stderr=fnull)
             except subprocess.CalledProcessError:
@@ -9053,7 +9273,7 @@ class ConductorManager(service.PeriodicService):
         # Run the sw-patch init-release commands
         with open(os.devnull, "w") as fnull:
             try:
-                subprocess.check_call(["/usr/sbin/sw-patch",
+                subprocess.check_call(["/usr/sbin/sw-patch",  # pylint: disable=not-callable
                                        "init-release",
                                        new_load['software_version']],
                                       stdout=fnull, stderr=fnull)
@@ -9062,6 +9282,16 @@ class ConductorManager(service.PeriodicService):
                 raise exception.SysinvException(_(
                     "Failure during sw-patch init-release"))
 
+        # TODO(tngo): a less efficient but cleaner solution is to let sysinv
+        # api proxy copy the load files directly from the request as opposed
+        # to relying on load files in sysinv staging directory being there.
+        system = self.dbapi.isystem_get_one()
+        if system.distributed_cloud_role == \
+                constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+            greenthread.sleep(constants.STAGING_LOAD_FILES_REMOVAL_WAIT_TIME)
+        shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
+
+        LOG.info("Load import completed.")
         return True
 
     def delete_load(self, context, load_id):
@@ -9090,13 +9320,15 @@ class ConductorManager(service.PeriodicService):
         except exception.NodeNotFound:
             # The mate controller has not been configured so complete the
             # deletion of the load now.
-            self.finalize_delete_load(context)
+            self.finalize_delete_load(context, load.software_version)
+
+        LOG.info("Load (%s) deleted." % load.software_version)
 
     def _cleanup_load(self, load):
         # Run the sw-patch del-release commands
         with open(os.devnull, "w") as fnull:
             try:
-                subprocess.check_call(["/usr/sbin/sw-patch",
+                subprocess.check_call(["/usr/sbin/sw-patch",  # pylint: disable=not-callable
                                        "del-release",
                                        load.software_version],
                                       stdout=fnull, stderr=fnull)
@@ -9104,16 +9336,11 @@ class ConductorManager(service.PeriodicService):
                 raise exception.SysinvException(_(
                     "Failure during sw-patch del-release"))
 
-        # delete the central patch vault if it exists
-        dc_vault = '/opt/dc-vault/' + load.software_version
-        if os.path.exists(dc_vault):
-            shutil.rmtree(dc_vault)
-
         cleanup_script = constants.DELETE_LOAD_SCRIPT
         if os.path.isfile(cleanup_script):
             with open(os.devnull, "w") as fnull:
                 try:
-                    subprocess.check_call(
+                    subprocess.check_call(  # pylint: disable=not-callable
                         [cleanup_script, load.software_version],
                         stdout=fnull, stderr=fnull)
                 except subprocess.CalledProcessError:
@@ -9123,10 +9350,15 @@ class ConductorManager(service.PeriodicService):
             raise exception.SysinvException(_(
                 "Cleanup script %s does not exist.") % cleanup_script)
 
-    def finalize_delete_load(self, context):
+    def finalize_delete_load(self, context, sw_version):
+        # Clean up the staging directory in case an error occur during the
+        # import and this directory did not get cleaned up.
+        if os.path.exists(constants.LOAD_FILES_STAGING_DIR):
+            shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
+
         loads = self.dbapi.load_get_list()
         for load in loads:
-            if load.state == constants.DELETING_LOAD_STATE:
+            if load.software_version == sw_version:
                 self.dbapi.load_destroy(load.id)
 
     def upgrade_ihost_pxe_config(self, context, host, load):
@@ -9243,11 +9475,6 @@ class ConductorManager(service.PeriodicService):
                  (from_version, to_version))
 
         try:
-            # Extract N+1 packages necessary for installation of controller-1
-            # (ie. installer images, kickstarts)
-            subprocess.check_call(['/usr/sbin/upgrade-start-pkg-extract',
-                                   '-r', to_version])
-
             if tsc.system_mode == constants.SYSTEM_MODE_SIMPLEX:
                 LOG.info("Generating agent request to create simplex upgrade "
                          "data")
@@ -9256,9 +9483,18 @@ class ConductorManager(service.PeriodicService):
                 rpcapi.create_simplex_backup(context, software_upgrade)
                 return
             else:
+                # Extract N+1 packages necessary for installation of controller-1
+                # (ie. installer images, kickstarts)
+                subprocess.check_call(['/usr/sbin/upgrade-start-pkg-extract',  # pylint: disable=not-callable
+                                       '-r', to_version])
+                # get the floating management IP
+                mgmt_address = self.dbapi.address_get_by_name(
+                    cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
+                                              constants.NETWORK_TYPE_MGMT)
+                )
                 i_system = self.dbapi.isystem_get_one()
                 upgrades_management.prepare_upgrade(
-                    from_version, to_version, i_system)
+                    from_version, to_version, i_system, mgmt_address.address)
 
             LOG.info("Finished upgrade preparation")
         except Exception:
@@ -9302,6 +9538,11 @@ class ConductorManager(service.PeriodicService):
         to_load = self.dbapi.load_get(upgrade.to_load)
         to_version = to_load.software_version
 
+        # Update the config target of the controllers. This prevents the audit
+        # from changing the upgrade state before we're ready.
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities)
+
         self.dbapi.software_upgrade_update(
             upgrade.uuid, {'state': constants.UPGRADE_ACTIVATING})
 
@@ -9320,6 +9561,10 @@ class ConductorManager(service.PeriodicService):
                 self.dbapi.software_upgrade_update(
                     upgrade.uuid,
                     {'state': constants.UPGRADE_ACTIVATION_FAILED})
+
+        hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+        for host in hosts:
+            self._update_host_config_applied(context, host, config_uuid)
 
     def complete_upgrade(self, context, upgrade, state):
         """ Complete the upgrade"""
@@ -9353,7 +9598,7 @@ class ConductorManager(service.PeriodicService):
                 LOG.info("Calling nova cleanup")
                 with open(os.devnull, "w") as fnull:
                     try:
-                        subprocess.check_call(["systemctl", "start", "nova-cleanup"],
+                        subprocess.check_call(["systemctl", "start", "nova-cleanup"],  # pylint: disable=not-callable
                                               stdout=fnull,
                                               stderr=fnull)
                     except subprocess.CalledProcessError:
@@ -9390,7 +9635,7 @@ class ConductorManager(service.PeriodicService):
             # Complete the upgrade
             LOG.info("Completing upgrade from release: %s to release: %s" %
                      (from_version, to_version))
-            upgrades_management.complete_upgrade(from_version, to_version)
+            upgrades_management.complete_upgrade(from_version, to_version, upgrade)
             LOG.info("Finished completing upgrade")
 
         # Delete upgrade record
@@ -10069,7 +10314,7 @@ class ConductorManager(service.PeriodicService):
         os.rename(temp_license_file, license_file)
 
         try:
-            subprocess.check_output(["cp", license_file,
+            subprocess.check_output(["cp", license_file,  # pylint: disable=not-callable
                 os.path.join(tsc.CONFIG_PATH, constants.LICENSE_FILE)])
         except subprocess.CalledProcessError as e:
             LOG.error("Fail to install license to redundant "
@@ -10078,7 +10323,7 @@ class ConductorManager(service.PeriodicService):
             raise exception.SysinvException(_(
                 "ERROR: Failed to install license to redundant storage."))
 
-        hostname = subprocess.check_output(["hostname"]).rstrip()
+        hostname = subprocess.check_output(["hostname"]).rstrip()  # pylint: disable=not-callable
         validHostnames = [constants.CONTROLLER_0_HOSTNAME,
                             constants.CONTROLLER_1_HOSTNAME]
         if hostname == 'localhost':
@@ -10176,7 +10421,7 @@ class ConductorManager(service.PeriodicService):
         :param cert_format: serialization.PrivateFormat
         :param passphrase: passphrase for PEM file
 
-        :returns: A list of {cert, private_bytes, public_bytes, signature}
+        :returns: A list of {cert, public_bytes, signature}, and private key.
         """
 
         if passphrase:
@@ -10218,7 +10463,7 @@ class ConductorManager(service.PeriodicService):
                                                   % e))
 
         certs = cutils.extract_certs_from_pem(temp_pem_contents)
-        key_list = []
+        cert_list = []
         for cert in certs:
             # format=serialization.PrivateFormat.TraditionalOpenSSL,
             try:
@@ -10229,40 +10474,49 @@ class ConductorManager(service.PeriodicService):
                                                   "bytes from PEM data: %s"
                                                   % e))
 
+            # check if the cert is a CA cert
+            is_ca = cutils.is_ca_cert(cert)
+
             signature = mode + '_' + str(cert.serial_number)
             if len(signature) > 255:
                 LOG.info("Truncating certificate serial no %s" % signature)
                 signature = signature[:255]
             LOG.info("config_certificate signature=%s" % signature)
 
-            key_list.append({'cert': cert,
-                             'private_bytes': private_bytes,
+            cert_list.append({'cert': cert,
+                             'is_ca': is_ca,
                              'public_bytes': public_bytes,
                              'signature': signature})
 
-        return key_list
+        return cert_list, private_bytes
 
     @staticmethod
-    def _get_public_bytes_one(key_list):
-        """Get exactly one public bytes entry from key list"""
+    def _get_public_bytes(cert_list):
+        """Get all public bytes from cert list"""
 
-        if len(key_list) != 1:
-            msg = "There should be exactly one certificate " \
-                  "(ie, public_bytes) in the pem contents."
+        if len(cert_list) < 1:
+            msg = "There should be at least one certificate " \
+                  "in the pem contents."
             LOG.error(msg)
             raise exception.SysinvException(_(msg))
-        return key_list[0].get('public_bytes')
+
+        # Concatenate all the public bytes together, as the pem contents
+        # may contain intermediate CA certs in it.
+        public_bytes = ''
+        for cert in cert_list:
+            public_bytes += cert.get('public_bytes', '')
+
+        return public_bytes
 
     @staticmethod
-    def _get_private_bytes_one(key_list):
-        """Get exactly one private bytes entry from key list"""
+    def _get_private_bytes_one(private_key):
+        """Get exactly one private bytes entry from private key"""
 
-        if len(key_list) != 1:
-            msg = "There should be exactly one private key " \
-                  "(ie, private_bytes) in the pem contents."
+        if not private_key:
+            msg = "No private key found in the pem contents."
             LOG.error(msg)
             raise exception.SysinvException(_(msg))
-        return key_list[0].get('private_bytes')
+        return private_key
 
     @staticmethod
     def _consolidate_cert_files():
@@ -10351,7 +10605,7 @@ class ConductorManager(service.PeriodicService):
 
         LOG.info("config_certificate mode=%s" % mode)
 
-        key_list = \
+        cert_list, private_key = \
             self._extract_keys_from_pem(mode, pem_contents,
                                         serialization.PrivateFormat.PKCS8,
                                         passphrase)
@@ -10364,8 +10618,8 @@ class ConductorManager(service.PeriodicService):
             pass
 
         if mode == constants.CERT_MODE_TPM:
-            private_bytes = self._get_private_bytes_one(key_list)
-            public_bytes = self._get_public_bytes_one(key_list)
+            private_bytes = self._get_private_bytes_one(private_key)
+            public_bytes = self._get_public_bytes(cert_list)
             self._perform_config_certificate_tpm_mode(
                 context, tpm, private_bytes, public_bytes)
 
@@ -10379,8 +10633,8 @@ class ConductorManager(service.PeriodicService):
 
         elif mode == constants.CERT_MODE_SSL:
             config_uuid = self._config_update_hosts(context, personalities)
-            private_bytes = self._get_private_bytes_one(key_list)
-            public_bytes = self._get_public_bytes_one(key_list)
+            private_bytes = self._get_private_bytes_one(private_key)
+            public_bytes = self._get_public_bytes(cert_list)
             file_content = private_bytes + public_bytes
             config_dict = {
                 'personalities': personalities,
@@ -10422,23 +10676,23 @@ class ConductorManager(service.PeriodicService):
             # The list of the actual CA certs as files in FS
             certs_file = os.listdir(constants.SSL_CERT_CA_LIST_SHARED_DIR)
 
-            # Remove these already installed from the key list
-            key_list_c = key_list[:]
-            for key in key_list_c:
-                if key.get('signature') in certs_inv \
-                        and key.get('signature') in certs_file:
-                    key_list.remove(key)
+            # Remove these already installed from the cert list
+            cert_list_c = cert_list[:]
+            for cert in cert_list_c:
+                if cert.get('signature') in certs_inv \
+                        and cert.get('signature') in certs_file:
+                    cert_list.remove(cert)
 
             # Save certs in files and cat them into ca-cert.pem to apply to the
             # system.
-            if key_list:
+            if cert_list:
                 # Save each cert in a separate file with signature as its name
                 try:
-                    for key in key_list:
-                        file_content = key.get('public_bytes')
+                    for cert in cert_list:
+                        file_content = cert.get('public_bytes')
                         file_name = \
                             os.path.join(constants.SSL_CERT_CA_LIST_SHARED_DIR,
-                                         key.get('signature'))
+                                         cert.get('signature'))
                         with os.fdopen(
                                 os.open(file_name,
                                         os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
@@ -10448,7 +10702,7 @@ class ConductorManager(service.PeriodicService):
                 except Exception as e:
                     msg = "Failed to save cert file: %s" % str(e)
                     LOG.warn(msg)
-                    raise exception.SysinvException(_(msg))
+                    raise exception.SysinvException(msg)
 
                 # consolidate the CA cert files into ca-cert.pem to update
                 # system CA certs.
@@ -10469,11 +10723,12 @@ class ConductorManager(service.PeriodicService):
         elif mode == constants.CERT_MODE_DOCKER_REGISTRY:
             LOG.info("Docker registry certificate install")
             # docker registry requires a PKCS1 key for the token server
-            key_list_pkcs1 = \
+            _, private_key_pkcs1 = \
                 self._extract_keys_from_pem(mode, pem_contents,
                                             serialization.PrivateFormat
                                             .TraditionalOpenSSL, passphrase)
-            pkcs1_private_bytes = self._get_private_bytes_one(key_list_pkcs1)
+            pkcs1_private_bytes = \
+                self._get_private_bytes_one(private_key_pkcs1)
 
             # install certificate, key, and pkcs1 key to controllers
             config_uuid = self._config_update_hosts(context, personalities)
@@ -10481,8 +10736,8 @@ class ConductorManager(service.PeriodicService):
             cert_path = constants.DOCKER_REGISTRY_CERT_FILE
             pkcs1_key_path = constants.DOCKER_REGISTRY_PKCS1_KEY_FILE
 
-            private_bytes = self._get_private_bytes_one(key_list)
-            public_bytes = self._get_public_bytes_one(key_list)
+            private_bytes = self._get_private_bytes_one(private_key)
+            public_bytes = self._get_public_bytes(cert_list)
 
             config_dict = {
                 'personalities': personalities,
@@ -10542,8 +10797,8 @@ class ConductorManager(service.PeriodicService):
             config_uuid = self._config_update_hosts(context, personalities)
             key_path = constants.OPENSTACK_CERT_KEY_FILE
             cert_path = constants.OPENSTACK_CERT_FILE
-            private_bytes = self._get_private_bytes_one(key_list)
-            public_bytes = self._get_public_bytes_one(key_list)
+            private_bytes = self._get_private_bytes_one(private_key)
+            public_bytes = self._get_public_bytes(cert_list)
 
             config_dict = {
                 'personalities': personalities,
@@ -10581,9 +10836,7 @@ class ConductorManager(service.PeriodicService):
 
         elif mode == constants.CERT_MODE_OPENSTACK_CA:
             config_uuid = self._config_update_hosts(context, personalities)
-            file_content = ''
-            for key in key_list:
-                file_content += key.get('public_bytes', '')
+            file_content = self._get_public_bytes(cert_list)
             config_dict = {
                 'personalities': personalities,
                 'file_names': [constants.OPENSTACK_CERT_CA_FILE],
@@ -10614,10 +10867,11 @@ class ConductorManager(service.PeriodicService):
             raise exception.SysinvException(_(msg))
 
         inv_certs = []
-        for key in key_list:
-            inv_cert = {'signature': key.get('signature'),
-                        'not_valid_before': key.get('cert').not_valid_before,
-                        'not_valid_after': key.get('cert').not_valid_after}
+        for cert in cert_list:
+            inv_cert = {'signature': cert.get('signature'),
+                        'is_ca': cert.get('is_ca'),
+                        'not_valid_before': cert.get('cert').not_valid_before,
+                        'not_valid_after': cert.get('cert').not_valid_after}
             inv_certs.append(inv_cert)
 
         return inv_certs
@@ -10640,7 +10894,7 @@ class ConductorManager(service.PeriodicService):
 
         LOG.info("_config_selfsigned_certificate mode=%s file=%s" % (mode, certificate_file))
 
-        key_list = \
+        cert_list, private_key = \
             self._extract_keys_from_pem(mode, pem_contents,
                                         serialization.PrivateFormat.PKCS8,
                                         passphrase)
@@ -10648,8 +10902,8 @@ class ConductorManager(service.PeriodicService):
         personalities = [constants.CONTROLLER]
 
         config_uuid = self._config_update_hosts(context, personalities)
-        private_bytes = self._get_private_bytes_one(key_list)
-        public_bytes = self._get_public_bytes_one(key_list)
+        private_bytes = self._get_private_bytes_one(private_key)
+        public_bytes = self._get_public_bytes(cert_list)
         file_content = private_bytes + public_bytes
         config_dict = {
             'personalities': personalities,
@@ -10667,7 +10921,7 @@ class ConductorManager(service.PeriodicService):
                                'wb') as f:
             f.write(file_content)
 
-        return key_list[0].get('signature')
+        return cert_list[0].get('signature')
 
     def delete_certificate(self, context, mode, signature):
         """Delete a certificate by its mode and signature.
@@ -10711,6 +10965,111 @@ class ConductorManager(service.PeriodicService):
             LOG.error(msg)
             raise exception.SysinvException(_(msg))
 
+    def update_admin_ep_certificate(self, context):
+        """
+        Update admin endpoint certificate
+        :param context: an admin context.
+        :return: true if certificate is renewed
+        """
+        update_required = False
+        system = self.dbapi.isystem_get_one()
+        system_dc_role = system.get('distributed_cloud_role', None)
+        cert_data = cutils.get_admin_ep_cert(system_dc_role)
+
+        if cert_data is None:
+            return False
+
+        ca_crt = cert_data['dc_root_ca_crt']
+        admin_ep_cert = cert_data['admin_ep_crt']
+        if os.path.isfile(constants.ADMIN_EP_CERT_FILENAME):
+            with open(constants.ADMIN_EP_CERT_FILENAME, mode='r') as f:
+                endpoint_cert = f.read()
+            if admin_ep_cert not in endpoint_cert:
+                update_required = True
+        else:
+            update_required = True
+
+        if ca_crt is not None:
+            if os.path.isfile(constants.DC_ROOT_CA_CERT_PATH):
+                with open(constants.DC_ROOT_CA_CERT_PATH, mode='r') as f:
+                    dc_root_ca_cert = f.read()
+                if ca_crt not in dc_root_ca_cert:
+                    update_required = True
+            else:
+                update_required = True
+
+        if update_required:
+            m = hashlib.md5()
+            if ca_crt is not None:
+                m.update(ca_crt)
+            m.update(admin_ep_cert)
+            md5sum = m.hexdigest()
+
+            LOG.info('Updating admin endpoint cert, md5sum %s' % md5sum)
+
+            personalities = [constants.CONTROLLER]
+            config_uuid = self._config_update_hosts(context, personalities)
+            config_dict = {
+                "personalities": personalities,
+                "classes": ['platform::config::dc_root_ca::runtime',
+                            'platform::haproxy::restart::runtime']
+            }
+
+            self._config_apply_runtime_manifest(context,
+                                                config_uuid,
+                                                config_dict,
+                                                force=True)
+
+        return update_required
+
+    def update_intermediate_ca_certificate(self, context,
+                                    root_ca_crt, sc_ca_cert, sc_ca_key):
+        """
+        Update intermediate CA certificate
+        """
+        sc_endpoint_cert_secret_ns = 'sc-cert'
+        sc_intermediate_ca_secret_name = 'sc-adminep-ca-certificate'
+        sc_admin_endpoint_secret_name = constants.SC_ADMIN_ENDPOINT_SECRET_NAME
+        if root_ca_crt is None:
+            LOG.error('Root CA cert is not provided')
+            raise exception.SysinvException(_(
+                "Root CA certificate is not provided"))
+
+        kube_operator = kubernetes.KubeOperator()
+        secret = kube_operator.kube_get_secret(sc_intermediate_ca_secret_name,
+                                               sc_endpoint_cert_secret_ns)
+        if not hasattr(secret, 'data'):
+            raise Exception('Invalid secret %s\\%s' % (
+                sc_endpoint_cert_secret_ns, sc_intermediate_ca_secret_name
+            ))
+
+        tls_key = base64.b64encode(sc_ca_key)
+        tls_crt = base64.b64encode(sc_ca_cert)
+        if tls_key == secret.data['tls.key'] and tls_crt == secret.data['tls.crt']:
+            LOG.info('Intermediate CA cert is not changed')
+            return
+
+        secret.data['tls.key'] = tls_key
+        secret.data['tls.crt'] = tls_crt
+
+        new = kube_operator.kube_patch_secret(sc_intermediate_ca_secret_name,
+                                              sc_endpoint_cert_secret_ns,
+                                              secret)
+        if new.data['tls.key'] == tls_key and new.data['tls.crt'] == tls_crt:
+            with open(constants.DC_ROOT_CA_CONFIG_PATH, 'w') as f:
+                f.write(root_ca_crt)
+            res = kube_operator.kube_delete_secret(sc_admin_endpoint_secret_name,
+                                             sc_endpoint_cert_secret_ns)
+
+            LOG.info('Deleting %s:%s, result %s, msg %s' %
+                     (sc_endpoint_cert_secret_ns,
+                      sc_admin_endpoint_secret_name,
+                      res.status, res.message))
+        else:
+            raise Exception("Unexpected result updating %s\\%s. tls.crt "
+                            "and/or tls.key don't match"
+                            % (sc_endpoint_cert_secret_ns, sc_endpoint_cert_secret_ns))
+
     def get_helm_chart_namespaces(self, context, chart_name):
         """Get supported chart namespaces.
 
@@ -10723,7 +11082,8 @@ class ConductorManager(service.PeriodicService):
         """
         return self._helm.get_helm_chart_namespaces(chart_name)
 
-    def get_helm_chart_overrides(self, context, chart_name, cnamespace=None):
+    def get_helm_chart_overrides(self, context, app_name, chart_name,
+                                 cnamespace=None):
         """Get the overrides for a supported chart.
 
         This method retrieves overrides for a supported chart. Overrides for
@@ -10731,6 +11091,7 @@ class ConductorManager(service.PeriodicService):
         is requested.
 
         :param context: request context.
+        :param app_name: name of a supported application
         :param chart_name: name of a supported chart
         :param cnamespace: (optional) namespace
         :returns: dict of overrides.
@@ -10760,16 +11121,30 @@ class ConductorManager(service.PeriodicService):
             }
         }
         """
-        return self._helm.get_helm_chart_overrides(chart_name,
-                                                   cnamespace)
 
-    def get_helm_applications(self, context):
-        """Get supported applications.
+        app = kubeapp_obj.get_by_name(context, app_name)
+        if app.status in [constants.APP_APPLY_IN_PROGRESS,
+                          constants.APP_APPLY_SUCCESS,
+                          constants.APP_APPLY_FAILURE]:
+            overrides = self._helm.get_helm_chart_overrides(chart_name,
+                                                            cnamespace)
+        else:
+            self._app.activate_app_plugins(app)
+            overrides = self._helm.get_helm_chart_overrides(chart_name,
+                                                            cnamespace)
+            self._app.deactivate_app_plugins(app)
 
-        :returns: a list of suppotred applications that associated overrides may
-            be provided.
+        return overrides
+
+    def app_has_system_plugins(self, context, app_name):
+
+        """Determine if the application has system plugin support.
+
+        :returns: True if the application has system plugins and can generate
+                  system overrides.
         """
-        return self._helm.get_helm_applications()
+        app = kubeapp_obj.get_by_name(context, app_name)
+        return self._app.app_has_system_plugins(app)
 
     def get_helm_application_namespaces(self, context, app_name):
         """Get supported application namespaces.
@@ -10913,7 +11288,9 @@ class ConductorManager(service.PeriodicService):
 
         except exception.KubeAppNotFound:
             return
-        if app.status == constants.APP_APPLY_SUCCESS:
+
+        LOG.info("Evaluating app reapply of %s" % app.name)
+        if app.active and app.status == constants.APP_APPLY_SUCCESS:
             # Hash the existing overrides
             # TODO these hashes can be stored in the db to reduce overhead,
             # as well as removing the writing to disk of the new overrides
@@ -10926,26 +11303,55 @@ class ConductorManager(service.PeriodicService):
                     old_hash[f] = hashlib.md5(file.read()).hexdigest()
 
             # Regenerate overrides and compute new hash
-            new_hash = {}
-            app.charts = self._app._get_list_of_charts(app.sync_armada_mfile)
-            self._helm.generate_helm_application_overrides(
-                app.sync_overrides_dir, app.name, None, cnamespace=None,
-                armada_format=True, armada_chart_info=app.charts, combined=True)
-            (helm_files, armada_files) = self._app._get_overrides_files(
-                app.sync_overrides_dir, app.charts, app.name, None)
-            for f in helm_files + armada_files:
-                with open(f, 'rb') as file:
-                    new_hash[f] = hashlib.md5(file.read()).hexdigest()
+            try:
+                new_hash = {}
+                app.charts = self._app._get_list_of_charts(app.sync_armada_mfile)
+                self._helm.generate_helm_application_overrides(
+                    app.sync_overrides_dir, app.name, app.mode, cnamespace=None,
+                    armada_format=True, armada_chart_info=app.charts, combined=True)
+                (helm_files, armada_files) = self._app._get_overrides_files(
+                    app.sync_overrides_dir, app.charts, app.name, None)
+                for f in helm_files + armada_files:
+                    with open(f, 'rb') as file:
+                        new_hash[f] = hashlib.md5(file.read()).hexdigest()
 
-            if old_hash != new_hash:
-                LOG.info("There has been an overrides change, setting up "
-                         "reapply of %s", app.name)
-                self._app.set_reapply(app.name)
-            else:
-                LOG.info("No override change after configuration action, "
-                         "skipping re-apply of %s", app.name)
+                if old_hash != new_hash:
+                    LOG.info("There has been an overrides change, setting up "
+                             "reapply of %s", app.name)
+                    self._app.set_reapply(app.name)
+                else:
+                    LOG.info("No override change after configuration action, "
+                             "skipping re-apply of %s", app.name)
+            except Exception as e:
+                LOG.exception("Failed to regenerate the overrides for app %s. %s" %
+                              (app.name, e))
         else:
             LOG.info("%s app status does not warrant re-apply", app.name)
+
+    def app_lifecycle_actions(self, context, rpc_app, operation, relative_timing):
+        """Perform any lifecycle actions for the operation and timing supplied.
+
+        :param context: request context.
+        :param rpc_app: application to be checked
+        :param operation: operation being performed
+        :param relative_timing: timing of operation
+        """
+
+        LOG.info("app_lifecycle_actions for app "
+                 "%s, opp %s %s %s" % (rpc_app.name, operation, relative_timing, rpc_app.status))
+
+        if rpc_app.status in [constants.APP_APPLY_IN_PROGRESS,
+                              constants.APP_APPLY_SUCCESS,
+                              constants.APP_APPLY_FAILURE]:
+            self._app.app_lifecycle_actions(context, self, rpc_app, operation, relative_timing)
+        else:
+            self._app.activate_app_plugins(rpc_app)
+            try:
+                self._app.app_lifecycle_actions(context, self, rpc_app, operation, relative_timing)
+            except Exception:
+                raise
+            finally:
+                self._app.deactivate_app_plugins(rpc_app)
 
     def perform_app_upload(self, context, rpc_app, tarfile):
         """Handling of application upload request (via AppOperator)
@@ -10978,13 +11384,14 @@ class ConductorManager(service.PeriodicService):
             # the prior apply state, update the ceph config
             self._update_radosgw_config(context)
 
-        if constants.HELM_APP_MONITOR == appname and app_applied:
-            logstash_active = cutils.is_chart_enabled(self.dbapi, constants.HELM_APP_MONITOR,
-                                                      helm_common.HELM_CHART_LOGSTASH,
-                                                      helm_common.HELM_NS_MONITOR)
-
-            if logstash_active:
-                self._update_config_for_stx_monitor(context)
+        if app_applied:
+            try:
+                # perform any post apply lifecycle actions
+                self.app_lifecycle_actions(context, rpc_app,
+                                           constants.APP_APPLY_OP,
+                                           constants.APP_LIFECYCLE_POST)
+            except Exception as e:
+                LOG.error("Error performing app_lifecycle_actions %s" % str(e))
 
         return app_applied
 
@@ -11015,26 +11422,54 @@ class ConductorManager(service.PeriodicService):
         # deactivate the app
         self._app.deactivate(rpc_app)
         appname = self._app.get_appname(rpc_app)
-        # need to update sm stx_openstack runtime manifest first
-        # to deprovision dbmon service prior to removing the
-        # stx-openstack application
-        if constants.HELM_APP_OPENSTACK == appname:
-            self._config_sm_stx_openstack(context)
 
-        app_removed = self._app.perform_app_remove(rpc_app)
-        if constants.HELM_APP_OPENSTACK == appname and app_removed:
-            # Update the VIM and PciIrqAffinity configuration.
-            self._update_vim_config(context)
-            self._update_pciirqaffinity_config(context)
-            self._update_radosgw_config(context)
+        # TODO(rchurch): Decouple this. No specific app names should be
+        # specified. Needs to be generalized as some apps may require more
+        # complex application integration with the platform.
+        if appname in [constants.HELM_APP_OPENSTACK]:
 
-        if constants.HELM_APP_MONITOR == appname and app_removed:
-            logstash_active = cutils.is_chart_enabled(self.dbapi, constants.HELM_APP_MONITOR,
-                                                      helm_common.HELM_CHART_LOGSTASH,
-                                                      helm_common.HELM_NS_MONITOR)
+            # Pre-removal actions:
+            if constants.HELM_APP_OPENSTACK == appname:
+                # Need to update sm stx_openstack runtime manifest first
+                # to deprovision dbmon service prior to removing the
+                # stx-openstack application
+                self._config_sm_stx_openstack(context)
 
-            if logstash_active:
-                self._update_config_for_stx_monitor(context)
+            # Remove the application but defer disabling the application plugins
+            # for access by post-removal actions
+            app_removed = self._app.perform_app_remove(
+                rpc_app, deactivate_plugins=False)
+
+            # Post-removal actions:
+            if app_removed:
+                if constants.HELM_APP_OPENSTACK == appname:
+                    # Update the VIM and PciIrqAffinity configuration.
+                    self._update_vim_config(context)
+                    self._update_pciirqaffinity_config(context)
+                    self._update_radosgw_config(context)
+
+                # Now that post removal actions are complete, deactivate the
+                # plugins
+                self._app.deactivate_app_plugins(rpc_app)
+
+        else:
+
+            # Remove the application but defer disabling the application plugins
+            # for access by post-removal actions
+            app_removed = self._app.perform_app_remove(
+                rpc_app, deactivate_plugins=False)
+
+            if app_removed:
+                # Perform for any post remove lifecycle actions and
+                # deactivate the plugins.
+                try:
+                    self.app_lifecycle_actions(context, rpc_app,
+                                               constants.APP_REMOVE_OP,
+                                               constants.APP_LIFECYCLE_POST)
+                except Exception as e:
+                    LOG.error("Error performing app_lifecycle_actions %s" % str(e))
+                finally:
+                    self._app.deactivate_app_plugins(rpc_app)
 
         return app_removed
 
@@ -11235,17 +11670,13 @@ class ConductorManager(service.PeriodicService):
 
         # Execute the playbook to download the images from the external
         # registry to registry.local.
-        proc = subprocess.Popen(
-            ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
-             constants.ANSIBLE_KUBE_PUSH_IMAGES_PLAYBOOK],
-            stdout=subprocess.PIPE)
-        out, _ = proc.communicate()
+        playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
+                        constants.ANSIBLE_KUBE_PUSH_IMAGES_PLAYBOOK]
+        returncode = cutils.run_playbook(playbook_cmd)
 
-        LOG.info("ansible-playbook: %s." % out)
-
-        if proc.returncode:
+        if returncode:
             LOG.warning("ansible-playbook returned an error: %s" %
-                        proc.returncode)
+                        returncode)
             # Update the upgrade state
             kube_upgrade_obj = objects.kube_upgrade.get_one(context)
             kube_upgrade_obj.state = \
@@ -11467,17 +11898,13 @@ class ConductorManager(service.PeriodicService):
         LOG.info("executing playbook: %s for version %s" %
                  (constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK, kube_version))
 
-        proc = subprocess.Popen(
-            ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
-             constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK],
-            stdout=subprocess.PIPE)
-        out, _ = proc.communicate()
+        playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
+                        constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK]
+        returncode = cutils.run_playbook(playbook_cmd)
 
-        LOG.info("ansible-playbook: %s." % out)
-
-        if proc.returncode:
+        if returncode:
             LOG.warning("ansible-playbook returned an error: %s" %
-                        proc.returncode)
+                        returncode)
             # Update the upgrade state
             kube_upgrade_obj = objects.kube_upgrade.get_one(context)
             kube_upgrade_obj.state = \
@@ -11503,6 +11930,7 @@ class ConductorManager(service.PeriodicService):
                 raise
         shutil.copyfile(image_tmp_path, image_file_path)
         LOG.info("copied %s to %s" % (image_tmp_path, image_file_path))
+        os.remove(image_tmp_path)
 
     def delete_bitstream_file(self, context, filename):
         """Delete FPGA bitstream file"""
@@ -11511,15 +11939,361 @@ class ConductorManager(service.PeriodicService):
             os.remove(image_file_path)
         except OSError:
             LOG.exception("Failed to delete bitstream file %s" % image_file_path)
+        # If no device image is uploaded, clear the in-progress alarm.
+        images = self.dbapi.deviceimages_get_all()
+        if not images:
+            system_uuid = self.dbapi.isystem_get_one().uuid
+            entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_SYSTEM, system_uuid)
+            self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_DEVICE_IMAGE_UPDATE_IN_PROGRESS,
+                                    entity_instance_id)
+
+    def apply_device_image(self, context):
+        """Apply device image"""
+        # Raise device image update alarm if not already exists
+        alarm_id = fm_constants.FM_ALARM_ID_DEVICE_IMAGE_UPDATE_IN_PROGRESS
+        system_uuid = self.dbapi.isystem_get_one().uuid
+        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_SYSTEM, system_uuid)
+        if not self.fm_api.get_fault(alarm_id, entity_instance_id):
+            fault = fm_api.Fault(
+                alarm_id=alarm_id,
+                alarm_state=fm_constants.FM_ALARM_STATE_SET,
+                entity_type_id=fm_constants.FM_ENTITY_TYPE_SYSTEM,
+                entity_instance_id=entity_instance_id,
+                severity=fm_constants.FM_ALARM_SEVERITY_MINOR,
+                reason_text="Device image update operation in progress ",
+                alarm_type=fm_constants.FM_ALARM_TYPE_5,
+                probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_65,
+                proposed_repair_action="Complete reboots of affected hosts",
+                suppression=False,
+                service_affecting=False)
+            self.fm_api.set_fault(fault)
+
+    def clear_device_image_alarm(self, context):
+        self._clear_device_image_alarm(context)
+
+    def host_device_image_update_next(self, context, host_uuid):
+        # Find the first device on this host that needs updating,
+        # and trigger an update of it.
+        try:
+            host = self.dbapi.ihost_get(host_uuid)
+        except exception.ServerNotFound:
+            # This really shouldn't happen.
+            LOG.exception("Unable to update device images, invalid host_uuid %s" % host_uuid)
+            return
+
+        device_image_states = self.dbapi.device_image_state_get_all(
+            host_id=host.id,
+            status=dconstants.DEVICE_IMAGE_UPDATE_PENDING)
+
+        # At this point we expect host.device_image_update to be either
+        # "in-progress" or "in-progress-aborted".
+        # If we've aborted the device update operation and there are device
+        # image updates left to do on this host, then set the host status
+        # back to "pending" and return.  If there are no device image updates
+        # left, then fall through to setting the host status to null below.
+        if (host.device_image_update == dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS_ABORTED and
+                device_image_states):
+            host.device_image_update = dconstants.DEVICE_IMAGE_UPDATE_PENDING
+            host.save(context)
+            return
+
+        # TODO: the code below needs to be updated to order the device images
+        # for a given device to handle simultaneous update of multiple devices.
+        # For the N3000 we want to apply any root-key image first, then
+        # any key-revocation images, then any functional images.
+
+        for device_image_state in sorted(device_image_states,
+                                         key=device_image_state_sort_key):
+            # get the PCI device for the pending device image update
+            pci_device = objects.pci_device.get_by_uuid(context, device_image_state.pcidevice_id)
+            # figure out the filename for the device image
+            device_image = objects.device_image.get_by_uuid(context, device_image_state.image_id)
+            filename = cutils.format_image_filename(device_image)
+            LOG.info("sending rpc req to update image for host %s, pciaddr: %s, filename: %s, id: %s" %
+                     (host.hostname, pci_device.pciaddr, filename, device_image_state.id))
+            fpga_rpcapi = fpga_agent_rpcapi.AgentAPI()
+            fpga_rpcapi.host_device_update_image(
+                context, host.hostname, pci_device.pciaddr, filename, device_image_state.id)
+            # We've kicked off a device image update, so exit the function.
+            return
+        LOG.info("no more device images to process")
+
+        # If one or more of the device image updates failed, set
+        # host.device_image_update to pending because we are going to retry
+        # writing them next time we run host_device_image_update().
+        failed_device_image_states = self.dbapi.device_image_state_get_all(
+            host_id=host.id,
+            status=dconstants.DEVICE_IMAGE_UPDATE_FAILED)
+        if len(failed_device_image_states) >= 1:
+            host.device_image_update = dconstants.DEVICE_IMAGE_UPDATE_PENDING
+        else:
+            # Getting here should mean that we're done processing so we can
+            # clear the "this host is currently updating device images" flag.
+            host.device_image_update = dconstants.DEVICE_IMAGE_UPDATE_NULL
+        host.save(context)
 
     def host_device_image_update(self, context, host_uuid):
-        """Update the device image on this host"""
+        """Update any applied device images for devices on this host"""
 
-        host_obj = objects.host.get_by_uuid(context, host_uuid)
-        LOG.info("Updating device image on %s" % host_obj.hostname)
+        host = objects.host.get_by_uuid(context, host_uuid)
+        LOG.info("Updating device image on %s" % host.hostname)
+
+        # Set any previously "failed" updates back to "pending" to retry them.
+        device_image_states = self.dbapi.device_image_state_get_all(
+            host_id=host.id,
+            status=dconstants.DEVICE_IMAGE_UPDATE_FAILED)
+        for device_image_state in device_image_states:
+            device_image_state.status = dconstants.DEVICE_IMAGE_UPDATE_PENDING
+            device_image_state.update_start_time = None
+            device_image_state.save(context)
+
+        # Update the host status.
+        host.device_image_update = dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS
+        host.save()
+
+        # Find the first device on this host that needs updating,
+        # and trigger an update of it.
+        self.host_device_image_update_next(context, host_uuid)
 
     def host_device_image_update_abort(self, context, host_uuid):
         """Abort device image update on this host"""
 
-        host_obj = objects.host.get_by_uuid(context, host_uuid)
-        LOG.info("Aborting device image update on %s" % host_obj.hostname)
+        host = objects.host.get_by_uuid(context, host_uuid)
+        LOG.info("Aborting device image update on %s" % host.hostname)
+
+        # If the host status is currently pending or blank or already aborted
+        # then just leave it as-is.
+        if host.device_image_update == dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS:
+            host.device_image_update = dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS_ABORTED
+            host.save(context)
+
+    @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
+    def _audit_device_image_update(self, context):
+        """Check if device image update is stuck in 'in-progress'"""
+        dev_img_list = self.dbapi.device_image_state_get_all(
+            status=dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS)
+        for img in dev_img_list:
+            if img['bitstream_type'] == dconstants.BITSTREAM_TYPE_FUNCTIONAL:
+                timeout = CONF.conductor.fw_update_large_timeout
+            else:
+                timeout = CONF.conductor.fw_update_small_timeout
+            tz = img.update_start_time.tzinfo
+            if ((datetime.now(tz) - img.update_start_time).total_seconds() >=
+                    timeout):
+                # Mark the status as failed
+                img.status = dconstants.DEVICE_IMAGE_UPDATE_FAILED
+                img.save(context)
+                host = objects.host.get_by_uuid(context, img.host_uuid)
+                pci = objects.pci_device.get_by_uuid(context, img.pcidevice_uuid)
+                LOG.error("Device image update timed out host={} "
+                            "device={} image={}".format(host.hostname,
+                                                        pci.pciaddr,
+                                                        img.image_uuid))
+
+    def _clear_device_image_alarm(self, context):
+        # If there are no more pending, failed or in-progress device image
+        # update in the DB for any host, and if no host has the "reboot needed"
+        # DB entry set, then the "Device image update in progress" alarm is cleared.
+        dev_img_list = self.dbapi.device_image_state_get_all(
+            status=[dconstants.DEVICE_IMAGE_UPDATE_PENDING,
+                    dconstants.DEVICE_IMAGE_UPDATE_FAILED,
+                    dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS])
+        if not dev_img_list:
+            if self.dbapi.count_hosts_matching_criteria(reboot_needed=True) > 0:
+                return
+            system_uuid = self.dbapi.isystem_get_one().uuid
+            entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_SYSTEM, system_uuid)
+            self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_DEVICE_IMAGE_UPDATE_IN_PROGRESS,
+                                    entity_instance_id)
+
+    def fpga_device_update_by_host(self, context,
+                                  host_uuid, fpga_device_dict_array):
+        """Create FPGA devices for an ihost with the supplied data.
+
+        This method allows records for FPGA devices for ihost to be created.
+
+        :param context: an admin context
+        :param host_uuid: host uuid
+        :param fpga_device_dict_array: initial values for device objects
+        :returns: either returns nothing or raises exception
+        """
+        LOG.info("Entering device_update_by_host %s %s" %
+                  (host_uuid, fpga_device_dict_array))
+        host_uuid.strip()
+        try:
+            host = self.dbapi.ihost_get(host_uuid)
+        except exception.ServerNotFound:
+            # This really shouldn't happen.
+            LOG.exception("Invalid host_uuid %s" % host_uuid)
+            return
+
+        for fpga_dev in fpga_device_dict_array:
+            LOG.info("Processing dev %s" % fpga_dev)
+            try:
+                dev_found = None
+                try:
+                    dev = self.dbapi.fpga_device_get(fpga_dev['pciaddr'],
+                                                    hostid=host['id'])
+                    dev_found = dev
+                except Exception:
+                    LOG.info("Attempting to create new device "
+                             "%s on host %s" % (fpga_dev, host['id']))
+
+                    # Look up the PCI device in the DB, we need the id.
+                    try:
+                        pci_dev = self.dbapi.pci_device_get(
+                            fpga_dev['pciaddr'], hostid=host['id'])
+                        fpga_dev['pci_id'] = pci_dev.id
+                    except Exception as ex:
+                        LOG.info("Unable to find pci device entry for "
+                                 "address %s on host id %s, can't create "
+                                 "fpga_device entry, ex: %s" %
+                                 (fpga_dev['pciaddr'], host['id'], str(ex)))
+                        return
+
+                    # Save the FPGA device to the DB.
+                    try:
+                        dev = self.dbapi.fpga_device_create(host['id'],
+                                                            fpga_dev)
+                    except Exception as ex:
+                        LOG.info("Unable to create fpga_device entry for "
+                                 "address %s on host id %s, ex: %s" %
+                                 (fpga_dev['pciaddr'], host['id'], str(ex)))
+                        return
+
+                # If the device existed already, update some of the fields
+                if dev_found:
+                    try:
+                        attr = {
+                            'bmc_build_version': fpga_dev['bmc_build_version'],
+                            'bmc_fw_version': fpga_dev['bmc_fw_version'],
+                            'root_key': fpga_dev['root_key'],
+                            'revoked_key_ids': fpga_dev['revoked_key_ids'],
+                            'boot_page': fpga_dev['boot_page'],
+                            'bitstream_id': fpga_dev['bitstream_id'],
+                        }
+                        LOG.info("attr: %s" % attr)
+                        dev = self.dbapi.fpga_device_update(dev['uuid'], attr)
+                    except Exception as ex:
+                        LOG.exception("Failed to update fpga fields for "
+                                      "address %s on host id %s, ex: %s" %
+                                      (dev['pciaddr'], host['id'], str(ex)))
+                        pass
+
+            except exception.NodeNotFound:
+                raise exception.SysinvException(_(
+                    "Invalid host_uuid: host not found: %s") %
+                    host_uuid)
+            except Exception:
+                pass
+
+    def device_update_image_status(self, context, host_uuid, transaction_id,
+                                   status, progress=None, err=None):
+        """Update the status of an image-update operation.
+
+        This is a status update from the agent on the node regarding a
+        previously-triggered firmware update operation.
+
+        :param context: an admin context
+        :param host_uuid: the uuid of the host calling this function
+        :param transaction_id: uuid to allow us to find the transaction
+        :param status: status of the operation
+        :param progress: optional progress value if status is in-progress
+        :param err: error string (only set if status is failure)
+        :returns: either returns nothing or raises exception
+        """
+
+        LOG.info("device_update_image_status: transaction_id: %s, status: %s, "
+                 "progress: %s, err: %s" %
+                 (transaction_id, status, progress, err))
+
+        # Save the status of the completed device image update in the db.
+        # The status should be one of dconstants.DEVICE_IMAGE_UPDATE_*
+        device_image_state = objects.device_image_state.get_by_uuid(
+            context, transaction_id)
+        device_image_state.status = status
+        if status == dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS:
+            device_image_state.update_start_time = timeutils.utcnow()
+        device_image_state.save()
+
+        # If the device image update completed, someone will need to reboot
+        # the host for it to take effect.
+        if status == dconstants.DEVICE_IMAGE_UPDATE_COMPLETED:
+            host = objects.host.get_by_uuid(context, host_uuid)
+            host.reboot_needed = True
+            host.save()
+
+        if status in [dconstants.DEVICE_IMAGE_UPDATE_COMPLETED,
+                      dconstants.DEVICE_IMAGE_UPDATE_FAILED]:
+            # Find the next device on the same host that needs updating,
+            # and trigger an update of it.
+            self.host_device_image_update_next(context, host_uuid)
+
+    def start_restore(self, context):
+        """Start the restore
+
+        :param context: request context.
+        """
+
+        LOG.info("Preparing for restore procedure. Creating flag file.")
+
+        cutils.touch(constants.SYSINV_RESTORE_FLAG)
+
+        return "Restore procedure started"
+
+    def complete_restore(self, context):
+        """Complete the restore
+
+        :param context: request context.
+        """
+
+        try:
+            controllers = self.dbapi.ihost_get_by_personality(
+                constants.CONTROLLER)
+            invalid_controllers = [
+                controller for controller in controllers if
+                controller.administrative != constants.ADMIN_UNLOCKED or
+                controller.operational != constants.OPERATIONAL_ENABLED or
+                (controller.availability != constants.AVAILABILITY_AVAILABLE and
+                 controller.availability != constants.AVAILABILITY_DEGRADED)]
+
+            if invalid_controllers:
+                message = "Cannot complete the restore procedure. " \
+                          "One of the controllers is not unlocked enabled available/degraded"
+                LOG.info(message)
+                return message
+        except Exception as e:
+            message = "Cannot complete the restore procedure. " \
+                      "Cannot query controllers state."
+            LOG.info(message)
+            LOG.error(e)
+            return message
+
+        LOG.info("Complete the restore procedure. Remove flag file.")
+
+        cutils.delete_if_exists(constants.SYSINV_RESTORE_FLAG)
+
+        return "Restore procedure completed"
+
+    def get_restore_state(self, context):
+        """Get the restore state
+
+        :param context: request context.
+        """
+
+        if self._verify_restore_in_progress():
+            output = "Restore procedure is in progress"
+        else:
+            output = "Restore procedure is not in progress"
+
+        LOG.info(output)
+        return output
+
+
+def device_image_state_sort_key(dev_img_state):
+    if dev_img_state.bitstream_type == dconstants.BITSTREAM_TYPE_ROOT_KEY:
+        return 0
+    elif dev_img_state.bitstream_type == dconstants.BITSTREAM_TYPE_KEY_REVOCATION:
+        return 1
+    else:  # if dev_img_state.bitstream_type == dconstants.BITSTREAM_TYPE_FUNCTIONAL:
+        return 2

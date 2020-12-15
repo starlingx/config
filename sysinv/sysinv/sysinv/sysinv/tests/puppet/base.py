@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import keyring
 import mock
 
 from sysinv.puppet import puppet
@@ -15,6 +16,7 @@ class PuppetTestCaseMixin(object):
         super(PuppetTestCaseMixin, self).setUp()
         self.operator = puppet.PuppetOperator(self.dbapi)
         self.useFixture(keyring_fixture.KeyringBackend())
+        keyring.set_password('sysinv', 'services', 'FakePassword1*')
         self.mock_write_config = mock.patch.object(puppet.PuppetOperator, '_write_config').start()
         mock.patch('sysinv.common.utils.is_virtual', return_value=False).start()
         mock.patch('sysinv.puppet.kubernetes.KubernetesPuppet._get_host_join_command',

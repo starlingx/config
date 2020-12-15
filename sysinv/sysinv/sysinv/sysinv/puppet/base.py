@@ -5,8 +5,6 @@
 #
 
 import abc
-import binascii
-import os
 import six
 
 from sqlalchemy.orm.exc import NoResultFound
@@ -75,9 +73,7 @@ class BasePuppet(object):
 
     @staticmethod
     def _generate_random_password(length=16):
-        suffix = "Ti0*"
-        num = int((length / 2) - len(suffix) / 2)
-        return binascii.hexlify(os.urandom(num)).decode() + suffix
+        return utils.generate_random_password(length=length)
 
     def _get_system(self):
         system = self.context.get('_system', None)

@@ -11,6 +11,7 @@ import fixtures
 from sysinv.common import constants
 from sysinv.conductor import kube_app
 from sysinv.db import api as dbapi
+from sysinv.helm import helm
 from sysinv.openstack.common import context
 from sysinv.objects import kube_app as obj_app
 
@@ -24,7 +25,9 @@ class AppOperatorTestCase(base.DbTestCase):
         super(AppOperatorTestCase, self).setUp()
 
         # Set up objects for testing
-        self.app_operator = kube_app.AppOperator(dbapi.get_instance())
+        self.helm_operator = helm.HelmOperator(dbapi.get_instance())
+        self.app_operator = kube_app.AppOperator(dbapi.get_instance(),
+                                                 self.helm_operator)
         self.context = context.get_admin_context()
         self.dbapi = dbapi.get_instance()
         self.temp_dir = self.useFixture(fixtures.TempDir())

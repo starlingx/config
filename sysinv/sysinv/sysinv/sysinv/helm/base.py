@@ -5,8 +5,6 @@
 #
 
 import abc
-import binascii
-import os
 import six
 
 from oslo_log import log as logging
@@ -28,9 +26,6 @@ class BaseHelm(object):
     CEPH_MON_SERVICE_PORT = 6789
     SUPPORTED_NAMESPACES = []
     SUPPORTED_APP_NAMESPACES = {}
-    SYSTEM_CONTROLLER_SERVICES = [
-        common.HELM_CHART_KEYSTONE_API_PROXY,
-    ]
 
     def __init__(self, operator):
         self._operator = operator
@@ -49,9 +44,7 @@ class BaseHelm(object):
 
     @staticmethod
     def _generate_random_password(length=16):
-        suffix = "Ti0*"
-        num = int((length / 2) - len(suffix) / 2)
-        return binascii.hexlify(os.urandom(num)).decode() + suffix
+        return utils.generate_random_password(length=length)
 
     def _get_system(self):
         system = self.context.get('_system', None)
@@ -269,8 +262,12 @@ class BaseHelm(object):
         return self.dbapi.isystem_get_one().system_mode
 
     def _get_ceph_monitor_ips(self, name_filter=None):
-        if self._system_mode() == constants.SYSTEM_MODE_SIMPLEX:
-            monitors = [self._get_controller_0_management_address()]
+        system = self._get_system()
+        if system.system_type == constants.TIS_AIO_BUILD:
+            if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+                monitors = [self._get_controller_0_management_address()]
+            else:
+                monitors = [self._get_management_address()]
         elif name_filter:
             monitors = []
             for name, addr in StorageBackendConfig.get_ceph_mon_ip_addresses(

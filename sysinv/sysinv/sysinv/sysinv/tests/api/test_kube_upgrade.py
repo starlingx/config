@@ -12,7 +12,9 @@ import mock
 from six.moves import http_client
 
 from sysinv.common import constants
+from sysinv.common import health
 from sysinv.common import kubernetes
+from sysinv.conductor.manager import ConductorManager
 
 from sysinv.tests.api import base
 from sysinv.tests.db import base as dbbase
@@ -57,23 +59,23 @@ class FakeConductorAPI(object):
     def __init__(self):
         self.kube_download_images = mock.MagicMock()
         self.kube_upgrade_networking = mock.MagicMock()
-        self.get_system_health_return = (
-            True, "System is super healthy")
+        self.service = ConductorManager('test-host', 'test-topic')
 
-    def get_system_health(self, context, force=False, kube_upgrade=False):
-        if force:
-            return True, "System is healthy because I was forced to say that"
-        else:
-            return self.get_system_health_return
+    def get_system_health(self, context, force=False, upgrade=False,
+                          kube_upgrade=False):
+        return self.service.get_system_health(context, force, upgrade,
+                                              kube_upgrade)
 
 
-class TestKubeUpgrade(base.FunctionalTest, dbbase.BaseHostTestCase):
+class TestKubeUpgrade(base.FunctionalTest):
 
     def setUp(self):
         super(TestKubeUpgrade, self).setUp()
 
         # Mock the Conductor API
         self.fake_conductor_api = FakeConductorAPI()
+        # rather than start the fake_conductor_api.service, we stage its dbapi
+        self.fake_conductor_api.service.dbapi = self.dbapi
         p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI')
         self.mock_conductor_api = p.start()
         self.mock_conductor_api.return_value = self.fake_conductor_api
@@ -150,13 +152,50 @@ class TestKubeUpgrade(base.FunctionalTest, dbbase.BaseHostTestCase):
         self.addCleanup(self.mocked_kube_min_version.stop)
         self.addCleanup(self.mocked_kube_max_version.stop)
 
-    def _create_controller_0(self, subfunction=None, numa_nodes=1, **kw):
-        return self._create_test_host(
-            personality=constants.CONTROLLER,
-            subfunction=subfunction,
-            numa_nodes=numa_nodes,
-            unit=0,
-            **kw)
+        self.setup_health_mocked_calls()
+
+    def setup_health_mocked_calls(self):
+        """Mock away the API calls invoked from the health check.
+
+        These calls can be altered by unit tests to test the behaviour
+        of systems in different states of health.
+        """
+
+        # patch_query_hosts
+        p = mock.patch('sysinv.api.controllers.v1.patch_api.patch_query_hosts')
+        self.mock_patch_query_hosts = p.start()
+        self.mock_patch_query_hosts.return_value = self._patch_current()
+        self.addCleanup(p.stop)
+
+        # _check_alarms
+        # _check_alarms returns (Success Boolean, Allow Int, Affecting Int)
+        p = mock.patch.object(health.Health, '_check_alarms')
+        self.mock_check_alarms = p.start()
+        self.mock_check_alarms.return_value = (True, 0, 0)
+        self.addCleanup(p.stop)
+
+        # _check_kube_nodes_ready
+        # returns (Success Boolean, List of failed nodes [])
+        p = mock.patch.object(health.Health, '_check_kube_nodes_ready')
+        self.mock_check_kube_nodes_ready = p.start()
+        self.mock_check_kube_nodes_ready.return_value = (True, [])
+        self.addCleanup(p.stop)
+
+        # _check_kube_control_plane_pods
+        # returns (Success Boolean, List of failed pods [])
+        p = mock.patch.object(health.Health, '_check_kube_control_plane_pods')
+        self.mock_check_kube_control_plane_pods = p.start()
+        self.mock_check_kube_control_plane_pods.return_value = (True, [])
+        self.addCleanup(p.stop)
+
+    def _patch_current(self, bool_val=True):
+        return {
+            'data': [
+                {'hostname': 'controller-0',
+                 'patch_current': bool_val,
+                 },
+            ]
+        }
 
 
 class TestListKubeUpgrade(TestKubeUpgrade):
@@ -191,7 +230,8 @@ class TestListKubeUpgrade(TestKubeUpgrade):
                          kubernetes.KUBE_UPGRADING_FIRST_MASTER)
 
 
-class TestPostKubeUpgrade(TestKubeUpgrade, dbbase.ControllerHostTestCase):
+class TestPostKubeUpgrade(TestKubeUpgrade,
+                          dbbase.ProvisionedControllerHostTestCase):
 
     def test_create(self):
         # Test creation of upgrade
@@ -313,10 +353,12 @@ class TestPostKubeUpgrade(TestKubeUpgrade, dbbase.ControllerHostTestCase):
         self.assertIn("incompatible with the new Kubernetes version v1.43.2",
                       result.json['error_message'])
 
-    def test_create_system_unhealthy(self):
+    def test_create_system_unhealthy_from_alarms(self):
+        """Test creation of a kube upgrade while there are alarms"""
         # Test creation of upgrade when system health check fails
-        self.fake_conductor_api.get_system_health_return = (
-            False, "System is very very unhealthy")
+        # 1 alarm, when force is not specified will return False
+        self.mock_check_alarms.return_value = (False, 1, 0)
+
         create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.2')
         result = self.post_json('/kube_upgrade', create_dict,
                                 headers={'User-Agent': 'sysinv-test'},
@@ -328,11 +370,12 @@ class TestPostKubeUpgrade(TestKubeUpgrade, dbbase.ControllerHostTestCase):
         self.assertIn("System is not in a valid state",
                       result.json['error_message'])
 
-    def test_create_system_unhealthy_force(self):
+    def test_force_create_system_unhealthy_from_alarms(self):
         # Test creation of upgrade when system health check fails but
         # overridden with force
-        self.fake_conductor_api.get_system_health_return = (
-            False, "System is very very unhealthy")
+
+        # mock a 'non' mgmt_affecting alarm, upgrade can be forced
+        self.mock_check_alarms.return_value = (True, 1, 0)
         create_dict = dbutils.post_get_test_kube_upgrade(
             to_version='v1.43.2')
         create_dict['force'] = True
@@ -344,6 +387,48 @@ class TestPostKubeUpgrade(TestKubeUpgrade, dbbase.ControllerHostTestCase):
         self.assertEqual(result.json['to_version'], 'v1.43.2')
         self.assertEqual(result.json['state'],
                          kubernetes.KUBE_UPGRADE_STARTED)
+
+    def test_force_create_system_unhealthy_from_mgmt_affecting_alarms(self):
+        """ Test kube upgrade create fails when mgmt affecting alarms found"""
+
+        # mock a mgmt_affecting alarm, upgrade cannot be forced
+        self.mock_check_alarms.return_value = (False, 0, 1)
+        create_dict = dbutils.post_get_test_kube_upgrade(
+            to_version='v1.43.2')
+        create_dict['force'] = True
+        result = self.post_json('/kube_upgrade', create_dict,
+                                headers={'User-Agent': 'sysinv-test'},
+                                expect_errors=True)
+
+        # Verify that the upgrade has the expected attributes
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertIn("System is not in a valid state",
+                      result.json['error_message'])
+
+    def test_create_system_unhealthy_from_bad_apps(self):
+        """ Test kube upgrade create fails when invalid kube app found"""
+
+        # The app is not fully setup, health query should fail
+        dbutils.create_test_app(name='broken-app',
+                                status=constants.APP_APPLY_IN_PROGRESS)
+
+        # Test creation of upgrade when system health check fails from bad app
+        create_dict = dbutils.post_get_test_kube_upgrade(
+            to_version='v1.43.2')
+        create_dict['force'] = True
+        result = self.post_json('/kube_upgrade', create_dict,
+                                headers={'User-Agent': 'sysinv-test'},
+                                expect_errors=True)
+
+        # Verify that the upgrade has the expected attributes
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        # The error should contain the following:
+        #   System is not in a valid state for kubernetes upgrade.
+        #   Run system health-query-kube-upgrade for more details.
+        self.assertIn("Run system health-query-kube-upgrade for more details.",
+                      result.json['error_message'])
 
     def test_create_no_patches_required(self):
         # Test creation of upgrade when no applied patches are required
@@ -394,7 +479,8 @@ class TestPostKubeUpgrade(TestKubeUpgrade, dbbase.ControllerHostTestCase):
                       result.json['error_message'])
 
 
-class TestPatch(TestKubeUpgrade):
+class TestPatch(TestKubeUpgrade,
+                dbbase.ProvisionedControllerHostTestCase):
 
     def test_update_state_download_images(self):
         # Test updating the state of an upgrade to download images
@@ -623,9 +709,6 @@ class TestPatch(TestKubeUpgrade):
                                                'v1.43.2': 'active',
                                                'v1.43.3': 'available'}
 
-        # Create host
-        self._create_controller_0()
-
         # Create the upgrade
         dbutils.create_test_kube_upgrade(
             from_version='v1.43.1',
@@ -633,7 +716,9 @@ class TestPatch(TestKubeUpgrade):
             state=kubernetes.KUBE_UPGRADING_KUBELETS)
 
         # Mark the kube host upgrade as failed
-        values = {'status': kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED}
+        values = {
+            'status': kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
+        }
         self.dbapi.kube_host_upgrade_update(1, values)
 
         # Update state

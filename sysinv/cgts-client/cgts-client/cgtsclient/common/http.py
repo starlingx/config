@@ -116,7 +116,7 @@ class HTTPClient(httplib2.Http):
                  endpoint_type='publicURL',
                  auth_strategy='keystone', ca_cert=None, log_credentials=False,
                  **kwargs):
-        if 'ca_file' in kwargs:
+        if 'ca_file' in kwargs and kwargs['ca_file']:
             ca_cert = kwargs['ca_file']
 
         super(HTTPClient, self).__init__(timeout=timeout, ca_certs=ca_cert)
@@ -297,14 +297,27 @@ class HTTPClient(httplib2.Http):
         self.authenticate_and_fetch_endpoint_url()
         connection_url = self._get_connection_url(url)
         fields = kwargs.get('data')
-        fields['file'] = (kwargs['body'], open(kwargs['body'], 'rb'))
+        files = kwargs['body']
+
+        if fields is None:
+            fields = dict()
+        for k, v in files.items():
+            fields[k] = (v, open(v, 'rb'),)
+
         enc = MultipartEncoder(fields)
         headers = {'Content-Type': enc.content_type,
                    "X-Auth-Token": self.auth_token}
-        req = requests.post(connection_url,
-                            data=enc,
-                            headers=headers)
-        return req.json()
+        response = requests.post(connection_url,
+                                 data=enc,
+                                 headers=headers)
+
+        if kwargs.get('check_exceptions'):
+            if response.status_code != 200:
+                err_message = self._extract_error_json(response.text)
+                fault_text = err_message.get('faultstring') or "Unknown Error"
+                raise exceptions.HTTPBadRequest(fault_text)
+
+        return response.json()
 
     #################
     # AUTHENTICATE
@@ -319,6 +332,12 @@ class HTTPClient(httplib2.Http):
     def authenticate(self):
         if self.auth_strategy != 'keystone':
             raise exceptions.HTTPUnauthorized('Unknown auth strategy')
+
+        if self.auth_url is None:
+            raise exceptions.HTTPUnauthorized("No auth_url provided")
+
+        token_url = self.auth_url + "/tokens"
+
         if self.tenant_id:
             body = {'auth': {'passwordCredentials':
                              {'username': self.username,
@@ -329,8 +348,6 @@ class HTTPClient(httplib2.Http):
                              {'username': self.username,
                               'password': self.password, },
                              'tenantName': self.tenant_name, }, }
-
-        token_url = self.auth_url + "/tokens"
 
         # Make sure we follow redirects when trying to reach Keystone
         tmp_follow_all_redirects = self.follow_all_redirects

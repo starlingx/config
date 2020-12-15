@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -9,7 +9,6 @@
 from __future__ import absolute_import
 
 import eventlet
-from eventlet.green import subprocess
 import os
 import re
 import tempfile
@@ -19,13 +18,17 @@ from six import iteritems
 from stevedore import extension
 
 from oslo_log import log as logging
+from sysinv.common import constants
 from sysinv.common import exception
-from sysinv.common import kubernetes
 from sysinv.common import utils
 from sysinv.helm import common
+from sysinv.helm import utils as helm_utils
 
 
 LOG = logging.getLogger(__name__)
+
+# Disable yaml feature 'alias' for clean and readable output
+yaml.Dumper.ignore_aliases = lambda *data: True
 
 # Number of characters to strip off from helm plugin name defined in setup.cfg,
 # in order to allow controlling the order of the helm plugins, without changing
@@ -60,36 +63,106 @@ def suppress_stevedore_errors(manager, entrypoint, exception):
     pass
 
 
+LOCK_NAME = 'HelmOperator'
+
+
 class HelmOperator(object):
     """Class to encapsulate helm override operations for System Inventory"""
 
+    # Define the stevedore namespaces that will need to be managed for plugins
+    STEVEDORE_APPS = 'systemconfig.helm_applications'
+    STEVEDORE_ARMADA = 'systemconfig.armada.manifest_ops'
+
     def __init__(self, dbapi=None):
         self.dbapi = dbapi
+
+        # Find all plugins for apps, charts per app, and armada manifest
+        # operators
+        self.discover_plugins()
+
+    @utils.synchronized(LOCK_NAME)
+    def discover_plugins(self):
+        """ Scan for all available plugins """
+
+        LOG.debug("HelmOperator: Loading available helm and armada plugins.")
 
         # Initialize the plugins
         self.helm_system_applications = {}
         self.chart_operators = {}
         self.armada_manifest_operators = {}
 
-        # Find all plugins for apps, charts per app, and armada manifest
-        # operators
-        self.discover_plugins()
+        # Need to purge the stevedore plugin cache so that when we discover the
+        # plugins, new plugin resources are found. If the cache exists, then no
+        # new plugins are discoverable.
+        self.purge_cache()
 
-    def discover_plugins(self):
-        """ Scan for all available plugins """
         # dict containing sequence of helm charts per app
         self.helm_system_applications = self._load_helm_applications()
 
         # dict containing Armada manifest operators per app
         self.armada_manifest_operators = self._load_armada_manifest_operators()
 
+    @utils.synchronized(LOCK_NAME)
+    def purge_cache_by_location(self, install_location):
+        """Purge the stevedore entry point cache."""
+        for armada_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_ARMADA]:
+            if armada_ep.dist.location == install_location:
+                extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_ARMADA].remove(armada_ep)
+                break
+        else:
+            LOG.info("Couldn't find endpoint distribution located at %s for "
+                     "%s" % (install_location, armada_ep.dist))
+
+        for app_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS]:
+            if app_ep.dist.location == install_location:
+                namespace = app_ep.module_name
+
+                purged_list = []
+                for helm_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]:
+                    if helm_ep.dist.location != install_location:
+                        purged_list.append(helm_ep)
+
+                if purged_list:
+                    extension.ExtensionManager.ENTRY_POINT_CACHE[namespace] = purged_list
+                else:
+                    del extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]
+                    extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS].remove(app_ep)
+                    LOG.info("Removed stevedore namespace: %s" % namespace)
+
+    def purge_cache(self):
+        """Purge the stevedore entry point cache."""
+        if self.STEVEDORE_APPS in extension.ExtensionManager.ENTRY_POINT_CACHE:
+            for entry_point in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS]:
+                namespace = entry_point.module_name
+                try:
+                    del extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]
+                    LOG.debug("Deleted entry points for %s." % namespace)
+                except KeyError:
+                    LOG.info("No entry points for %s found." % namespace)
+
+            try:
+                del extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS]
+                LOG.debug("Deleted entry points for %s." % self.STEVEDORE_APPS)
+            except KeyError:
+                LOG.info("No entry points for %s found." % self.STEVEDORE_APPS)
+
+        else:
+            LOG.info("No entry points for %s found." % self.STEVEDORE_APPS)
+
+        try:
+            del extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_ARMADA]
+            LOG.debug("Deleted entry points for %s." % self.STEVEDORE_ARMADA)
+        except KeyError:
+            LOG.info("No entry points for %s found." % self.STEVEDORE_ARMADA)
+
     def _load_armada_manifest_operators(self):
         """Build a dictionary of armada manifest operators"""
 
         operators_dict = {}
+        dist_info_dict = {}
 
         armada_manifest_operators = extension.ExtensionManager(
-            namespace='systemconfig.armada.manifest_ops',
+            namespace=self.STEVEDORE_ARMADA,
             invoke_on_load=True, invoke_args=())
 
         sorted_armada_manifest_operators = sorted(
@@ -99,12 +172,20 @@ class HelmOperator(object):
             if (op.name[-(ARMADA_PLUGIN_SUFFIX_LENGTH - 1):].isdigit() and
                     op.name[-ARMADA_PLUGIN_SUFFIX_LENGTH:-3] == '_'):
                 op_name = op.name[0:-ARMADA_PLUGIN_SUFFIX_LENGTH]
-                LOG.info("_load_armada_manifest_operators op.name=%s "
-                         "adjust to op_name=%s" % (op.name, op_name))
             else:
                 op_name = op.name
-
             operators_dict[op_name] = op.obj
+
+            # Extract distribution information for logging
+            dist_info_dict[op_name] = {
+                'name': op.entry_point.dist.project_name,
+                'location': op.entry_point.dist.location,
+            }
+
+        # Provide some log feedback on plugins being used
+        for (app_name, info) in iteritems(dist_info_dict):
+            LOG.debug("Plugins for %-20s: loaded from %-20s - %s." % (app_name,
+                info['name'], info['location']))
 
         return operators_dict
 
@@ -122,7 +203,7 @@ class HelmOperator(object):
 
         helm_application_dict = {}
         helm_applications = extension.ExtensionManager(
-            namespace='systemconfig.helm_applications',
+            namespace=self.STEVEDORE_APPS,
             on_load_failure_callback=suppress_stevedore_errors
         )
         for entry_point in helm_applications.list_entry_points():
@@ -135,6 +216,11 @@ class HelmOperator(object):
                 namespace=namespace, invoke_on_load=True, invoke_args=(self,))
             sorted_helm_plugins = sorted(helm_plugins.extensions, key=lambda x: x.name)
             for plugin in sorted_helm_plugins:
+                LOG.debug("%s: helm plugin %s loaded from %s - %s." % (name,
+                    plugin.name,
+                    plugin.entry_point.dist.project_name,
+                    plugin.entry_point.dist.location))
+
                 plugin_name = plugin.name[HELM_PLUGIN_PREFIX_LENGTH:]
                 self.chart_operators.update({plugin_name: plugin.obj})
                 # Remove duplicates, keeping last occurrence only
@@ -144,8 +230,8 @@ class HelmOperator(object):
 
         return supported_helm_applications
 
-    def get_helm_applications(self):
-        """ Get the system applications and charts """
+    def get_active_helm_applications(self):
+        """ Get the active system applications and charts """
         return self.helm_system_applications
 
     @property
@@ -345,7 +431,15 @@ class HelmOperator(object):
         if chart_tarfile is None:
             # TODO: Clean up the assumption
             chart_tarfile = chart_name + '-0.1.0'
-        return 'http://controller:{}/helm_charts/{}/{}.tgz'.format(
+        # Set the location based on ip address since
+        # http://controller does not resolve in armada container.
+        sys_controller_network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_CLUSTER_HOST)
+        sys_controller_network_addr_pool = self.dbapi.address_pool_get(sys_controller_network.pool_uuid)
+        sc_float_ip = sys_controller_network_addr_pool.floating_address
+        if utils.is_valid_ipv6(sc_float_ip):
+            sc_float_ip = '[' + sc_float_ip + ']'
+        return 'http://{}:{}/helm_charts/{}/{}.tgz'.format(
+            sc_float_ip,
             utils.get_http_port(self.dbapi), repo_name, chart_tarfile)
 
     def _add_armada_override_header(self, chart_name, chart_metadata_name, repo_name,
@@ -425,7 +519,7 @@ class HelmOperator(object):
         # specified by system or user, values from files and values passed in
         # via --set .  We need to ensure that we call helm using the same
         # mechanisms to ensure the same behaviour.
-        cmd = ['helm', 'install', '--dry-run', '--debug']
+        args = []
 
         # Process the newly-passed-in override values
         tmpfiles = []
@@ -437,7 +531,7 @@ class HelmOperator(object):
             tmpfile.write(value_file)
             tmpfile.close()
             tmpfiles.append(tmpfile.name)
-            cmd.extend(['--values', tmpfile.name])
+            args.extend(['--values', tmpfile.name])
 
         for value_set in set_overrides:
             keypair = list(value_set.split("="))
@@ -447,36 +541,20 @@ class HelmOperator(object):
             # skip setting like "--set =value", "--set xxxx"
             if len(keypair) == 2 and keypair[0]:
                 if keypair[1] and keypair[1].isdigit():
-                    cmd.extend(['--set-string', value_set])
+                    args.extend(['--set-string', value_set])
                 else:
-                    cmd.extend(['--set', value_set])
+                    args.extend(['--set', value_set])
 
-        env = os.environ.copy()
-        env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
-
-        # Make a temporary directory with a fake chart in it
         try:
-            tmpdir = tempfile.mkdtemp()
-            chartfile = tmpdir + '/Chart.yaml'
-            with open(chartfile, 'w') as tmpchart:
-                tmpchart.write('name: mychart\napiVersion: v1\n'
-                               'version: 0.1.0\n')
-            cmd.append(tmpdir)
-
             # Apply changes by calling out to helm to do values merge
             # using a dummy chart.
-            output = subprocess.check_output(cmd, env=env)
-
-            # Check output for failure
-
+            output = helm_utils.install_helm_chart_with_dry_run(args)
             # Extract the info we want.
             values = output.split('USER-SUPPLIED VALUES:\n')[1].split(
-                                  '\nCOMPUTED VALUES:')[0]
-        except Exception:
+                '\nCOMPUTED VALUES:')[0]
+        except Exception as e:
+            LOG.error("Failed to merge overrides %s" % e)
             raise
-        finally:
-            os.remove(chartfile)
-            os.rmdir(tmpdir)
 
         for tmpfile in tmpfiles:
             os.remove(tmpfile)
@@ -519,6 +597,7 @@ class HelmOperator(object):
             LOG.exception("chart name is required")
 
     @helm_context
+    @utils.synchronized(LOCK_NAME)
     def generate_helm_application_overrides(self, path, app_name,
                                             mode=None,
                                             cnamespace=None,
@@ -609,10 +688,14 @@ class HelmOperator(object):
                         overrides[key] = new_overrides
                 self._write_chart_overrides(path, chart_name, cnamespace, overrides)
 
-                # Update manifest docs based on the plugin directives
-                if chart_name in self.chart_operators:
-                    self.chart_operators[chart_name].execute_manifest_updates(
-                        manifest_op)
+                # Update manifest docs based on the plugin directives. If the
+                # application does not provide a manifest operator, the
+                # GenericArmadaManifestOperator is used and chart specific
+                # operations can be skipped.
+                if manifest_op.APP:
+                    if chart_name in self.chart_operators:
+                        self.chart_operators[chart_name].execute_manifest_updates(
+                            manifest_op)
 
             # Update the manifest based on platform conditions
             manifest_op.platform_mode_manifest_updates(self.dbapi, mode)
@@ -751,28 +834,51 @@ class HelmOperator(object):
 class HelmOperatorData(HelmOperator):
     """Class to allow retrieval of helm managed data"""
 
+    # TODO (rchurch): decouple. Plugin chart names. This class needs to be
+    # delivered as a plugin.
+    HELM_CHART_KEYSTONE = 'keystone'
+    HELM_CHART_NOVA = 'nova'
+    HELM_CHART_CINDER = 'cinder'
+    HELM_CHART_GLANCE = 'glance'
+    HELM_CHART_NEUTRON = 'neutron'
+    HELM_CHART_HEAT = 'heat'
+    HELM_CHART_CEILOMETER = 'ceilometer'
+    HELM_CHART_DCDBSYNC = 'dcdbsync'
+
     @helm_context
     def get_keystone_auth_data(self):
-        keystone_operator = self.chart_operators[common.HELM_CHART_KEYSTONE]
+        keystone_operator = self.chart_operators[self.HELM_CHART_KEYSTONE]
+
+        # use stx_admin account to communicate with openstack app
+        username = common.USER_STX_ADMIN
+        try:
+            password = keystone_operator.get_stx_admin_password()
+        except Exception:
+            # old version app doesn't support stx_admin account yet.
+            # fallback to admin account
+            username = keystone_operator.get_admin_user_name()
+            password = keystone_operator.get_admin_password()
+
         auth_data = {
             'admin_user_name':
-                keystone_operator.get_admin_user_name(),
+                username,
             'admin_project_name':
                 keystone_operator.get_admin_project_name(),
             'auth_host':
-                'keystone-api.openstack.svc.cluster.local',
+                'keystone.openstack.svc.cluster.local',
+            'auth_port': 80,
             'admin_user_domain':
                 keystone_operator.get_admin_user_domain(),
             'admin_project_domain':
                 keystone_operator.get_admin_project_domain(),
             'admin_password':
-                keystone_operator.get_admin_password(),
+                password,
         }
         return auth_data
 
     @helm_context
     def get_keystone_endpoint_data(self):
-        keystone_operator = self.chart_operators[common.HELM_CHART_KEYSTONE]
+        keystone_operator = self.chart_operators[self.HELM_CHART_KEYSTONE]
         endpoint_data = {
             'endpoint_override':
                 'http://keystone.openstack.svc.cluster.local:80',
@@ -783,9 +889,9 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_keystone_oslo_db_data(self):
-        keystone_operator = self.chart_operators[common.HELM_CHART_KEYSTONE]
+        keystone_operator = self.chart_operators[self.HELM_CHART_KEYSTONE]
         endpoints_overrides = keystone_operator.\
-            _get_endpoints_oslo_db_overrides(common.HELM_CHART_KEYSTONE,
+            _get_endpoints_oslo_db_overrides(self.HELM_CHART_KEYSTONE,
                                              ['keystone'])
 
         password = endpoints_overrides['keystone']['password']
@@ -801,10 +907,10 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_nova_endpoint_data(self):
-        nova_operator = self.chart_operators[common.HELM_CHART_NOVA]
+        nova_operator = self.chart_operators[self.HELM_CHART_NOVA]
         endpoint_data = {
             'endpoint_override':
-                'http://nova-api.openstack.svc.cluster.local:8774',
+                'http://nova-api-internal.openstack.svc.cluster.local:80',
             'region_name':
                 nova_operator.get_region_name(),
         }
@@ -812,7 +918,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_nova_oslo_messaging_data(self):
-        nova_operator = self.chart_operators[common.HELM_CHART_NOVA]
+        nova_operator = self.chart_operators[self.HELM_CHART_NOVA]
         endpoints_overrides = nova_operator._get_endpoints_overrides()
         auth_data = {
             'host':
@@ -832,7 +938,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_cinder_endpoint_data(self):
-        cinder_operator = self.chart_operators[common.HELM_CHART_CINDER]
+        cinder_operator = self.chart_operators[self.HELM_CHART_CINDER]
         endpoint_data = {
             'region_name':
                 cinder_operator.get_region_name(),
@@ -845,7 +951,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_glance_endpoint_data(self):
-        glance_operator = self.chart_operators[common.HELM_CHART_GLANCE]
+        glance_operator = self.chart_operators[self.HELM_CHART_GLANCE]
         endpoint_data = {
             'region_name':
                 glance_operator.get_region_name(),
@@ -858,7 +964,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_neutron_endpoint_data(self):
-        neutron_operator = self.chart_operators[common.HELM_CHART_NEUTRON]
+        neutron_operator = self.chart_operators[self.HELM_CHART_NEUTRON]
         endpoint_data = {
             'region_name':
                 neutron_operator.get_region_name(),
@@ -867,7 +973,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_heat_endpoint_data(self):
-        heat_operator = self.chart_operators[common.HELM_CHART_HEAT]
+        heat_operator = self.chart_operators[self.HELM_CHART_HEAT]
         endpoint_data = {
             'region_name':
                 heat_operator.get_region_name(),
@@ -877,7 +983,7 @@ class HelmOperatorData(HelmOperator):
     @helm_context
     def get_ceilometer_endpoint_data(self):
         ceilometer_operator = \
-            self.chart_operators[common.HELM_CHART_CEILOMETER]
+            self.chart_operators[self.HELM_CHART_CEILOMETER]
         endpoint_data = {
             'region_name':
                 ceilometer_operator.get_region_name(),
@@ -886,7 +992,7 @@ class HelmOperatorData(HelmOperator):
 
     @helm_context
     def get_dcdbsync_endpoint_data(self):
-        dcdbsync_operator = self.chart_operators[common.HELM_CHART_DCDBSYNC]
+        dcdbsync_operator = self.chart_operators[self.HELM_CHART_DCDBSYNC]
         endpoints_overrides = dcdbsync_operator._get_endpoints_overrides()
         endpoint_data = {
             'keystone_password':

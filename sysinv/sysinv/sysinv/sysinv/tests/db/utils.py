@@ -149,8 +149,8 @@ def get_test_ihost(**kw):
             'vim_progress_status': kw.get('vim_progress_status', "vimprogressstatus"),
             'uptime': kw.get('uptime', 0),
             'config_status': kw.get('config_status', "configstatus"),
-            'config_applied': kw.get('config_applied', "configapplied"),
-            'config_target': kw.get('config_target', "configtarget"),
+            'config_applied': kw.get('config_applied', "config_value"),
+            'config_target': kw.get('config_target', "config_value"),
             'location': kw.get('location', {}),
             'boot_device': kw.get('boot_device', 'sda'),
             'rootfs_device': kw.get('rootfs_device', 'sda'),
@@ -961,12 +961,14 @@ def get_test_ethernet_port(**kw):
         'interface_id': kw.get('interface_id'),
         'interface_uuid': kw.get('interface_uuid'),
         'pciaddr': kw.get('pciaddr'),
+        'pdevice': kw.get('pdevice'),
         'dpdksupport': kw.get('dpdksupport'),
         'dev_id': kw.get('dev_id'),
         'sriov_totalvfs': kw.get('sriov_totalvfs'),
         'sriov_numvfs': kw.get('sriov_numvfs'),
         'sriov_vf_driver': kw.get('sriov_vf_driver'),
         'sriov_vf_pdevice_id': kw.get('sriov_vf_pdevice_id'),
+        'sriov_vfs_pci_address': kw.get('sriov_vfs_pci_address'),
         'driver': kw.get('driver'),
         'numa_node': kw.get('numa_node', -1)
     }
@@ -1177,8 +1179,8 @@ def get_test_interface_datanetwork(**kw):
     inv = {
         'id': kw.get('id'),
         'uuid': kw.get('uuid'),
-        'interface_uuid': kw.get('interface_uuid'),
-        'datanetwork_uuid': kw.get('datanetwork_uuid'),
+        'interface_id': kw.get('interface_id'),
+        'datanetwork_id': kw.get('datanetwork_id'),
     }
     return inv
 
@@ -1294,8 +1296,8 @@ def create_test_app(**kw):
     return dbapi.kube_app_create(app_data)
 
 
-def get_test_pci_devices(**kw):
-    pci_devices = {
+def get_test_pci_device(**kw):
+    pci_device = {
         'id': kw.get('id', 2345),
         'host_id': kw.get('host_id', 2),
         'name': kw.get('name', 'pci_0000_00_02_0 '),
@@ -1308,23 +1310,28 @@ def get_test_pci_devices(**kw):
         'pdevice': kw.get('pdevice', 'Iris Plus Graphics 655'),
         'numa_node': kw.get('numa_node', -1),
         'enabled': kw.get('enabled', True),
-        'driver': kw.get('driver', '')
+        'driver': kw.get('driver', None),
+        'sriov_totalvfs': kw.get('sriov_totalvfs', None),
+        'sriov_numvfs': kw.get('sriov_numvfs', 0),
+        'sriov_vfs_pci_address': kw.get('sriov_vfs_pci_address', ''),
+        'sriov_vf_driver': kw.get('sriov_vf_driver', None),
+        'sriov_vf_pdevice_id': kw.get('sriov_vf_pdevice_id', None)
     }
-    return pci_devices
+    return pci_device
 
 
-def create_test_pci_devices(**kw):
+def create_test_pci_device(**kw):
     """Create test pci devices entry in DB and return PciDevice DB object.
     Function to be used to create test pci device objects in the database.
     :param kw: kwargs with overriding values for pci device attributes.
     :returns: Test PciDevice DB object.
     """
-    pci_devices = get_test_pci_devices(**kw)
+    pci_device = get_test_pci_device(**kw)
     # Let DB generate ID if it isn't specified explicitly
     if 'id' not in kw:
-        del pci_devices['id']
+        del pci_device['id']
     dbapi = db_api.get_instance()
-    return dbapi.pci_device_create(pci_devices['host_id'], pci_devices)
+    return dbapi.pci_device_create(pci_device['host_id'], pci_device)
 
 
 def get_test_fpga_device(**kw):
@@ -1339,8 +1346,6 @@ def get_test_fpga_device(**kw):
         'revoked_key_ids': kw.get('revoked_key_ids'),
         'boot_page': kw.get('boot_page'),
         'bitstream_id': kw.get('bitstream_id'),
-        'needs_firmware_update': kw.get('needs_firmware_update', False),
-        'status': kw.get('status'),
     }
     return fpga_device
 

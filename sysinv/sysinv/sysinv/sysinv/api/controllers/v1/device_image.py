@@ -22,6 +22,7 @@ from sysinv.common import constants
 from sysinv.common import device as dconstants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
+from sysinv.fpga_agent import constants as fpga_constants
 from sysinv import objects
 
 LOG = log.getLogger(__name__)
@@ -83,7 +84,7 @@ class DeviceImage(base.APIBase):
     applied = bool
     "Represent current status: created or applied"
 
-    applied_labels = types.MultiType({dict})
+    applied_labels = types.MultiType([list])
     "Represent a list of key-value pair of labels"
 
     def __init__(self, **kwargs):
@@ -107,7 +108,8 @@ class DeviceImage(base.APIBase):
             device_image.unset_fields_except(
                 ['id', 'uuid', 'bitstream_type', 'pci_vendor', 'pci_device',
                  'bitstream_id', 'key_signature', 'revoke_key_id',
-                 'name', 'description', 'image_version', 'applied_labels'])
+                 'name', 'description', 'image_version',
+                 'applied', 'applied_labels'])
 
         # insert applied labels for this device image if they exist
         device_image = _get_applied_labels(device_image)
@@ -154,13 +156,26 @@ def _get_applied_labels(device_image):
     image_labels = pecan.request.dbapi.device_image_label_get_by_image(
         device_image.id)
 
+    applied_labels = []
     if image_labels:
-        applied_labels = {}
         for image_label in image_labels:
             label = pecan.request.dbapi.device_label_get(image_label.label_uuid)
-            applied_labels[label.label_key] = label.label_value
+            label_dict = {label.label_key: label.label_value}
+            if label_dict not in applied_labels:
+                applied_labels.append({label.label_key: label.label_value})
         device_image.applied_labels = applied_labels
 
+    # In the database, 'applied' field is True if the image is applied without
+    # labels and False if the image is not applied without labels.
+    # In the api response, 'applied' field is True if the image is applied with
+    # or without labels and False if the image is not applied
+    if device_image.applied:
+        # image is applied without labels, insert a null dict to applied-labels
+        applied_labels.append({})
+        device_image.applied_labels = applied_labels
+    elif device_image.applied_labels is not None:
+        # image is applied with labels, set the applied attribute to True
+        device_image.applied = True
     return device_image
 
 
@@ -237,6 +252,9 @@ class DeviceImageController(rest.RestController):
         msg = _validate_syntax(data)
         if msg:
             return dict(success="", error=msg)
+        msg = _validate_pci_device(data)
+        if msg:
+            return dict(error=msg)
 
         device_image = pecan.request.dbapi.deviceimage_create(data)
         device_image_dict = device_image.as_dict()
@@ -256,17 +274,36 @@ class DeviceImageController(rest.RestController):
         return dict(success="", error="", device_image=device_image_dict)
 
     @cutils.synchronized(LOCK_NAME)
-    @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
+    @wsme_pecan.wsexpose(DeviceImage, types.uuid, status_code=202)
     def delete(self, deviceimage_uuid):
         """Delete a device image."""
-
-        # TODO Only allow delete if there are no devices using the image
         device_image = objects.device_image.get_by_uuid(
             pecan.request.context, deviceimage_uuid)
+
+        # Check if the image has been written or is being written to any of the devices
+        if pecan.request.dbapi.device_image_state_get_all(
+                image_id=device_image.id,
+                status=[dconstants.DEVICE_IMAGE_UPDATE_COMPLETED,
+                        dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS]):
+            raise wsme.exc.ClientSideError(_(
+                "Delete failed: device image is being written to or has "
+                "already been written to devices"))
+
+        image_labels = pecan.request.dbapi.device_image_label_get_by_image(
+            device_image.id)
+        for lbl in image_labels:
+            rec = pecan.request.dbapi.device_image_label_get_by_label(lbl.label_id)
+            if len(rec) == 1:
+                # Delete the device label that is not associated with a physical device
+                label = pecan.request.dbapi.device_label_get(lbl.label_uuid)
+                if label.pcidevice_id is None:
+                    pecan.request.dbapi.device_label_destroy(lbl.label_id)
+
+        pecan.request.dbapi.deviceimage_destroy(deviceimage_uuid)
         filename = cutils.format_image_filename(device_image)
         pecan.request.rpcapi.delete_bitstream_file(pecan.request.context,
                                                    filename)
-        pecan.request.dbapi.deviceimage_destroy(deviceimage_uuid)
+        return DeviceImage.convert_with_links(device_image)
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(DeviceImage, types.uuid, wtypes.text, body=types.apidict)
@@ -283,12 +320,21 @@ class DeviceImageController(rest.RestController):
             raise wsme.exc.ClientSideError(_(
                 "Device image {} failed: image does not exist".format(action)))
 
-        # For now, update status in fpga_device
         # find device label with matching label key and value
-        for key, value in body.items():
+        for lbl_dict in body:
+            key, value = list(lbl_dict.items())[0]
             device_labels = pecan.request.dbapi.device_label_get_by_label(
-                key, value)
-            if not device_labels:
+                key, value, sort_key='host_id', sort_dir='asc')
+            if not device_labels and action == dconstants.APPLY_ACTION:
+                # Create device label without a local host device
+                values = {
+                    'host_id': None, 'pcidevice_id': None,
+                    'label_key': key, 'label_value': value
+                }
+                pecan.request.dbapi.device_label_create(None, values)
+                device_labels = pecan.request.dbapi.device_label_get_by_label(
+                    key, value)
+            elif not device_labels and action == dconstants.REMOVE_ACTION:
                 raise wsme.exc.ClientSideError(_(
                     "Device image {} failed: label {}={} does not exist".format(
                         action, key, value)))
@@ -296,18 +342,23 @@ class DeviceImageController(rest.RestController):
 
             for device_label in device_labels:
                 if action == dconstants.APPLY_ACTION:
-                    process_device_image_apply(device_label.pcidevice_id,
-                                               device_image, device_label.id)
-                    # Create an entry of image to label mapping
-                    pecan.request.dbapi.device_image_label_create({
-                        'image_id': device_image.id,
-                        'label_id': device_label.id,
-                    })
-                    update_device_image_state(device_label.host_id,
-                        device_label.pcidevice_id,
-                        device_image.id, dconstants.DEVICE_IMAGE_UPDATE_PENDING)
-                    # Update flags in pci_device and host
-                    modify_flags(device_label.pcidevice_id, device_label.host_id)
+                    if device_label.pcidevice_id is not None:
+                        if process_device_image_apply(device_label.pcidevice_id,
+                                device_image, device_label.id):
+                            update_device_image_state(device_label.host_id,
+                                device_label.pcidevice_id,
+                                device_image.id, dconstants.DEVICE_IMAGE_UPDATE_PENDING)
+                            set_host_device_image_update_pending(device_label.host_uuid)
+                    try:
+                        pecan.request.dbapi.device_image_label_get_by_image_label(
+                            device_image.id, device_label.id)
+                    except exception.DeviceImageLabelNotFoundByKey:
+                        # Create an entry of image to label mapping
+                        pecan.request.dbapi.device_image_label_create({
+                            'image_id': device_image.id,
+                            'label_id': device_label.id,
+                        })
+
                 elif action == dconstants.REMOVE_ACTION:
                     try:
                         img_lbl = pecan.request.dbapi.device_image_label_get_by_image_label(
@@ -315,12 +366,17 @@ class DeviceImageController(rest.RestController):
                         if img_lbl:
                             pecan.request.dbapi.device_image_label_destroy(img_lbl.id)
                     except exception.DeviceImageLabelNotFoundByKey:
-                        raise wsme.exc.ClientSideError(_(
-                            "Device image {} not associated with label {}={}".format(
-                                device_image.uuid, device_label.label_key,
-                                device_label.label_value
-                            )))
-                    delete_device_image_state(device_label.pcidevice_id, device_image)
+                        # device image was applied with either the host device
+                        # specific label or the non-hardware device label
+                        pass
+                    # If the label is not associated with a local device and
+                    # no other image is applied with the label, then
+                    # delete the device label.
+                    if (not pecan.request.dbapi.device_image_label_get_by_label(device_label.id) and
+                            device_label.pcidevice_id is None):
+                        pecan.request.dbapi.device_label_destroy(device_label.uuid)
+                    if device_label.pcidevice_id is not None:
+                        delete_device_image_state(device_label.pcidevice_id, device_image)
 
         if not body:
             # No host device labels specified, apply to all hosts
@@ -330,15 +386,35 @@ class DeviceImageController(rest.RestController):
                 fpga_devices = pecan.request.dbapi.fpga_device_get_by_host(host.id)
                 for dev in fpga_devices:
                     if action == dconstants.APPLY_ACTION:
-                        process_device_image_apply(dev.pci_id, device_image)
-                        update_device_image_state(host.id,
-                            dev.pci_id, device_image.id,
-                            dconstants.DEVICE_IMAGE_UPDATE_PENDING)
-                        # Update flags in pci_device and host
-                        modify_flags(dev.pci_id, dev.host_id)
+                        if process_device_image_apply(dev.pci_id, device_image):
+                            update_device_image_state(host.id,
+                                dev.pci_id, device_image.id,
+                                dconstants.DEVICE_IMAGE_UPDATE_PENDING)
+                            set_host_device_image_update_pending(host.uuid)
                     elif action == dconstants.REMOVE_ACTION:
                         delete_device_image_state(dev.pci_id, device_image)
 
+            if action == dconstants.APPLY_ACTION:
+                # set applied flag to True to indicate the image is applied
+                # without label
+                pecan.request.dbapi.deviceimage_update(device_image.uuid,
+                                                       {'applied': True})
+            elif action == dconstants.REMOVE_ACTION:
+                # set applied flag to False to indicate the image is not applied
+                pecan.request.dbapi.deviceimage_update(device_image.uuid,
+                                                       {'applied': False})
+
+        if action == dconstants.APPLY_ACTION:
+            # If any of the devices needs updating, call rpc to raise alarm
+            if pecan.request.dbapi.device_image_state_get_all(
+                    image_id=device_image.id,
+                    status=[dconstants.DEVICE_IMAGE_UPDATE_PENDING,
+                            dconstants.DEVICE_IMAGE_UPDATE_FAILED,
+                            dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS]):
+                pecan.request.rpcapi.apply_device_image(pecan.request.context)
+        elif action == dconstants.REMOVE_ACTION:
+            pecan.request.rpcapi.clear_device_image_alarm(pecan.request.context)
+        device_image = objects.device_image.get_by_uuid(pecan.request.context, uuid)
         return DeviceImage.convert_with_links(device_image)
 
 
@@ -397,12 +473,34 @@ def _validate_syntax(device_image):
     """
     Validates the syntax of each field.
     """
+    if ('uuid' in device_image.keys() and
+            not cutils.is_uuid_like(device_image['uuid'])):
+        msg = _("uuid must be a valid UUID")
+        return msg
     msg = _validate_hexadecimal_fields(device_image)
     if not msg:
         msg = _validate_bitstream_type(device_image)
         if not msg:
             msg = _check_revoke_key(device_image)
     return msg
+
+
+def _validate_pci_device(device_image):
+    msg = None
+    if (device_image['pci_vendor'] != fpga_constants.N3000_VENDOR or
+           device_image['pci_device'] != fpga_constants.N3000_DEVICE):
+        msg = _("Invalid PCI vendor/device ID: %s %s. "
+                "Supported vendor ID: %s and supported device ID: %s" %
+                (device_image['pci_vendor'], device_image['pci_device'],
+                 fpga_constants.N3000_VENDOR, fpga_constants.N3000_DEVICE))
+    return msg
+
+
+def set_host_device_image_update_pending(host_uuid):
+    host = objects.host.get_by_uuid(pecan.request.context, host_uuid)
+    if host.device_image_update != dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS:
+        host.device_image_update = dconstants.DEVICE_IMAGE_UPDATE_PENDING
+        host.save()
 
 
 def update_device_image_state(host_id, pcidevice_id, image_id, status):
@@ -425,7 +523,7 @@ def update_device_image_state(host_id, pcidevice_id, image_id, status):
 def process_device_image_apply(pcidevice_id, device_image, label_id=None):
     pci_device = pecan.request.dbapi.pci_device_get(pcidevice_id)
     host = pecan.request.dbapi.ihost_get(pci_device.host_uuid)
-
+    response = True
     # check if device image with type functional or root-key already applied
     # to the device
     records = pecan.request.dbapi.device_image_state_get_all(
@@ -434,26 +532,48 @@ def process_device_image_apply(pcidevice_id, device_image, label_id=None):
         img = pecan.request.dbapi.deviceimage_get(r.image_id)
         if img.bitstream_type == device_image.bitstream_type:
             if img.bitstream_type == dconstants.BITSTREAM_TYPE_ROOT_KEY:
-                # Block applying root-key image if another one is already applied
-                msg = _("Root-key image {} is already applied to host {} device"
-                        " {}".format(img.uuid, host.hostname, pci_device.pciaddr))
-                raise wsme.exc.ClientSideError(msg)
+                if img.id != device_image.id:
+                    # Block applying root-key image if another one is already applied
+                    msg = _("Root-key image {} is already applied to host {} device"
+                            " {}".format(img.uuid, host.hostname, pci_device.pciaddr))
+                    raise wsme.exc.ClientSideError(msg)
+                else:
+                    # reapplying the same image
+                    if r.status in [dconstants.DEVICE_IMAGE_UPDATE_COMPLETED,
+                                    dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS,
+                                    dconstants.DEVICE_IMAGE_UPDATE_PENDING]:
+                        # return False for nothing to do
+                        response = False
             elif img.bitstream_type == dconstants.BITSTREAM_TYPE_FUNCTIONAL:
                 if r.status == dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS:
                     msg = _("Applying image {} for host {} device {} not allowed "
                             "while device image update is in progress".format(
                                 device_image.uuid, host.hostname, pci_device.pciaddr))
                     raise wsme.exc.ClientSideError(msg)
-                # Remove the existing device_image_state record
-                pecan.request.dbapi.device_image_state_destroy(r.uuid)
-                # Remove the existing device image label if any
-                if label_id:
-                    try:
-                        img_lbl = pecan.request.dbapi.device_image_label_get_by_image_label(
-                            img.id, label_id)
-                        pecan.request.dbapi.device_image_label_destroy(img_lbl.uuid)
-                    except exception.DeviceImageLabelNotFoundByKey:
-                        pass
+                if img.id == device_image.id:
+                    if r.status in [dconstants.DEVICE_IMAGE_UPDATE_COMPLETED,
+                                    dconstants.DEVICE_IMAGE_UPDATE_PENDING]:
+                        # return False for nothing to do
+                        response = False
+                else:
+                    # Remove the existing device_image_state record
+                    pecan.request.dbapi.device_image_state_destroy(r.uuid)
+                    # Remove the existing device image label if any
+                    if label_id:
+                        try:
+                            img_lbl = pecan.request.dbapi.device_image_label_get_by_image_label(
+                                img.id, label_id)
+                            pecan.request.dbapi.device_image_label_destroy(img_lbl.uuid)
+                        except exception.DeviceImageLabelNotFoundByKey:
+                            pass
+            elif img.bitstream_type == dconstants.BITSTREAM_TYPE_KEY_REVOCATION:
+                if img.id == device_image.id:
+                    if r.status in [dconstants.DEVICE_IMAGE_UPDATE_COMPLETED,
+                                    dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS,
+                                    dconstants.DEVICE_IMAGE_UPDATE_PENDING]:
+                        # return False for nothing to do
+                        response = False
+    return response
 
 
 def delete_device_image_state(pcidevice_id, device_image):
@@ -463,16 +583,3 @@ def delete_device_image_state(pcidevice_id, device_image):
         pecan.request.dbapi.device_image_state_destroy(dev_img.uuid)
     except exception.DeviceImageStateNotFoundByKey:
         pass
-
-
-def modify_flags(pcidevice_id, host_id):
-    # Set flag for pci_device indicating device requires image update
-    pecan.request.dbapi.pci_device_update(pcidevice_id,
-                                          {'needs_firmware_update': True},
-                                          host_id)
-    # Set flag for host indicating device image update is pending if it is
-    # not already in progress
-    host = pecan.request.dbapi.ihost_get(host_id)
-    if host.device_image_update != dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS:
-        pecan.request.dbapi.ihost_update(host_id,
-            {'device_image_update': dconstants.DEVICE_IMAGE_UPDATE_PENDING})

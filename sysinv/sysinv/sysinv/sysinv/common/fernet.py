@@ -89,8 +89,8 @@ class FernetOperator(object):
                 f.flush()
                 create = True
         except IOError:
-            LOG.error(_('Failed to create new temporary key: %s',
-                        temp_key_file))
+            LOG.error('Failed to create new temporary key: %s' %
+                        temp_key_file)
             raise
         finally:
             # restore the umask, user and group identifiers
@@ -166,7 +166,7 @@ class FernetOperator(object):
         with open(os.devnull, "w") as fnull:
             try:
                 LOG.info("Re-setup fernet repo")
-                subprocess.check_call(['/usr/bin/keystone-manage',
+                subprocess.check_call(['/usr/bin/keystone-manage',  # pylint: disable=not-callable
                                        'fernet_setup',
                                        '--keystone-user',
                                        KEYSTONE_USER,

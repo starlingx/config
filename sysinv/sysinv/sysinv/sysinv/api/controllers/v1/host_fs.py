@@ -481,7 +481,7 @@ def _delete(host_fs):
                                                   (host_fs['name'], app.status)))
         except exception.KubeAppNotFound:
             LOG.info("Application %s not found, deleting %s fs" %
-                    constants.HELM_APP_OPENSTACK, host_fs['name'])
+                    (constants.HELM_APP_OPENSTACK, host_fs['name']))
 
     ihost = pecan.request.dbapi.ihost_get(host_fs['forihostid'])
     try:

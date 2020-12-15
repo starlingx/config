@@ -134,6 +134,7 @@ class ihost(Base):
                               'profile',
                               'reserve1',
                               'reserve2',
+                              'edgeworker',
                               name='invPersonalityEnum')
 
     adminEnum = Enum('locked',
@@ -390,7 +391,7 @@ class Interfaces(Base):
 
 class EthernetCommon(object):
     @declared_attr
-    def id(cls):
+    def id(cls):  # pylint: disable=no-self-argument
         return Column(Integer, ForeignKey('interfaces.id', ondelete="CASCADE"), primary_key=True, nullable=False)
 
     imac = Column(String(255))
@@ -1193,7 +1194,7 @@ class DataNetworks(Base):
 
 class DataNetworksCommon(object):
     @declared_attr
-    def id(cls):
+    def id(cls):  # pylint: disable=no-self-argument
         return Column(Integer,
                       ForeignKey('datanetworks.id', ondelete="CASCADE"),
                       primary_key=True, nullable=False)
@@ -1304,7 +1305,7 @@ class SensorGroups(Base):
 
 class SensorGroupsCommon(object):
     @declared_attr
-    def id(cls):
+    def id(cls):  # pylint: disable=no-self-argument
         return Column(Integer,
                       ForeignKey('i_sensorgroups.id', ondelete="CASCADE"),
                       primary_key=True, nullable=False)
@@ -1458,12 +1459,11 @@ class PciDevice(Base):
     sriov_totalvfs = Column(Integer)
     sriov_numvfs = Column(Integer)
     sriov_vfs_pci_address = Column(String(1020))
+    sriov_vf_driver = Column(String(255))
+    sriov_vf_pdevice_id = Column(String(4))
     driver = Column(String(255))
     enabled = Column(Boolean)
     extra_info = Column(Text)
-
-    status = Column(String(128))
-    needs_firmware_update = Column(Boolean, nullable=False, default=False)
 
     host = relationship("ihost", lazy="joined", join_depth=1)
     fpga = relationship("FpgaDevice", lazy="joined", uselist=False, join_depth=1)
@@ -1529,7 +1529,7 @@ class DeviceImage(Base):
 
 class DeviceImageCommon(object):
     @declared_attr
-    def id(cls):
+    def id(cls):  # pylint: disable=no-self-argument
         return Column(Integer,
                       ForeignKey('device_images.id', ondelete="CASCADE"),
                       primary_key=True, nullable=False)
@@ -1572,16 +1572,12 @@ class DeviceLabel(Base):
     host_id = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
     pcidevice_id = Column(Integer, ForeignKey('pci_devices.id',
                                               ondelete='CASCADE'))
-    fpgadevice_id = Column(Integer, ForeignKey('fpga_devices.id',
-                                               ondelete='CASCADE'))
     capabilities = Column(JSONEncodedDict)
 
     host = relationship("ihost", lazy="joined", join_depth=1)
     pcidevice = relationship("PciDevice", lazy="joined", join_depth=1)
-    fpgadevice = relationship("FpgaDevice", lazy="joined", join_depth=1)
     label_key = Column(String(384))
     label_value = Column(String(128))
-    UniqueConstraint('pcidevice_id', 'label_key', name='u_pcidevice_id@label_key')
 
 
 class DeviceImageLabel(Base):
@@ -1886,6 +1882,7 @@ class KubeApp(Base):
     progress = Column(String(255), nullable=True)
     active = Column(Boolean, nullable=False, default=False)
     recovery_attempts = Column(Integer, nullable=False, default=0)
+    mode = Column(String(255), nullable=True)
     UniqueConstraint('name', 'app_version', name='u_app_name_version')
 
 

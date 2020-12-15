@@ -14,11 +14,17 @@ controllerconfig
 # storageconfig
 storageconfig
 
+# cert-mon
+cert-mon
+
 # cgts-client
 cgts-client
 
 # sysinv-agent
 sysinv-agent
+
+# sysinv-fpga-agent
+sysinv-fpga-agent
 
 # sysinv
 sysinv

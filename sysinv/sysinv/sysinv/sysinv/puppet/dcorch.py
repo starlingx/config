@@ -48,6 +48,8 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
         kspass = self._get_service_password(self.SERVICE_NAME)
         admin_password = self._get_keyring_password(self.ADMIN_SERVICE,
                                                     self.ADMIN_USER)
+        dm_kspass = self._operator.dcmanager.get_ks_user_password()
+
         # initial bootstrap is bound to localhost
         dburl = self._format_database_connection(self.SERVICE_NAME,
                                                  constants.LOCALHOST_HOSTNAME)
@@ -62,10 +64,13 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
             'dcorch::api_proxy::keystone_password': kspass,
 
             'dcorch::api_proxy::keystone_admin_password': admin_password,
+
+            'dcorch::api_proxy::dcmanager_keystone_password': dm_kspass,
         }
 
     def get_system_config(self):
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
+        dm_ksuser = self._operator.dcmanager.get_ks_user_name()
 
         config = {
             # The region in which the identity server can be found
@@ -138,6 +143,7 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
             'dcorch::api_proxy::keystone_project_domain':
                 self._get_service_project_domain_name(),
             'dcorch::api_proxy::keystone_user': ksuser,
+            'dcorch::api_proxy::dcmanager_keystone_user': dm_ksuser,
             'dcorch::api_proxy::keystone_admin_user': self.ADMIN_USER,
             'dcorch::api_proxy::keystone_admin_tenant': self.ADMIN_TENANT,
             'openstack::dcorch::params::region_name': self.get_region_name(),
@@ -170,6 +176,8 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
         kspass = self._get_service_password(self.SERVICE_NAME)
         admin_password = self._get_keyring_password(self.ADMIN_SERVICE,
                                                     self.ADMIN_USER)
+        dm_kspass = self._operator.dcmanager.get_ks_user_password()
+
         config = {
             'dcorch::database_connection':
                 self._format_database_connection(self.SERVICE_NAME),
@@ -180,6 +188,8 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
             'dcorch::api_proxy::keystone_password': kspass,
 
             'dcorch::api_proxy::keystone_admin_password': admin_password,
+
+            'dcorch::api_proxy::dcmanager_keystone_password': dm_kspass,
         }
 
         if utils.is_openstack_applied(self.dbapi):

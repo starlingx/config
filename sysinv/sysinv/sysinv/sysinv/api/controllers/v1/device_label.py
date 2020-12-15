@@ -17,6 +17,7 @@ from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.common import exception
+from sysinv.common import device as dconstants
 from sysinv.common import utils as cutils
 from sysinv import objects
 
@@ -178,48 +179,58 @@ class DeviceLabelController(rest.RestController):
     def post(self, overwrite=False, body=None):
         """Assign a new device label."""
 
-        pcidevice_uuid = body['pcidevice_uuid']
-        del body['pcidevice_uuid']
+        label_dict = []
+        for d in body:
+            k, v = d.popitem()
+            if k == 'pcidevice_uuid':
+                pcidevice_uuid = v
+            else:
+                label_dict.append({k: v})
+
         pcidevice = objects.pci_device.get_by_uuid(pecan.request.context,
                                                    pcidevice_uuid)
-        fpgadevice = pecan.request.dbapi.fpga_device_get(pcidevice.pciaddr,
-                                                         pcidevice.host_id)
 
         existing_labels = {}
-        for label_key in body.keys():
-            label = None
-            try:
-                label = pecan.request.dbapi.device_label_query(
-                    pcidevice.id, label_key)
-            except exception.DeviceLabelNotFoundByKey:
-                pass
-            if label:
-                if overwrite:
-                    existing_labels.update({label_key: label.uuid})
+        for lbl in label_dict:
+            label_key, label_value = list(lbl.items())[0]
+            labels = pecan.request.dbapi.device_label_query(
+                pcidevice.id, label_key)
+            if len(labels) == 0:
+                continue
+            if overwrite:
+                if len(labels) == 1:
+                    existing_labels.update({label_key: labels[0].uuid})
                 else:
                     raise wsme.exc.ClientSideError(_(
-                        "Label %s exists for device %s. Use overwrite option"
-                        " to assign a new value." %
-                        (label_key, pcidevice.name)))
+                        "Cannot overwrite label value as multiple device "
+                        "labels exist with label key %s for this device") % label_key)
+            elif (len(labels) == 1 and labels[0].label_value == label_value):
+                raise wsme.exc.ClientSideError(_(
+                    "Device label (%s, %s) already exists for this device") %
+                    (label_key, label_value))
 
         new_records = []
-        for key, value in body.items():
+        for lbl in label_dict:
+            key, value = list(lbl.items())[0]
             values = {
                 'host_id': pcidevice.host_id,
                 'pcidevice_id': pcidevice.id,
-                'fpgadevice_id': fpgadevice.id,
                 'label_key': key,
                 'label_value': value
             }
             try:
                 if existing_labels.get(key, None):
-                    # Update the value
+                    # Label exists, need to remove the existing
+                    # device_image_state entries for the old label and
+                    # create new entries for the updated label if needed
                     label_uuid = existing_labels.get(key)
+                    remove_device_image_state(label_uuid)
                     new_label = pecan.request.dbapi.device_label_update(
                         label_uuid, {'label_value': value})
                 else:
                     new_label = pecan.request.dbapi.device_label_create(
                         pcidevice_uuid, values)
+                add_device_image_state(pcidevice, key, value)
                 new_records.append(new_label)
             except exception.DeviceLabelAlreadyExists:
                 # We should not be here
@@ -234,7 +245,7 @@ class DeviceLabelController(rest.RestController):
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, device_label_uuid):
         """Delete a device label."""
-
+        remove_device_image_state(device_label_uuid)
         pecan.request.dbapi.device_label_destroy(device_label_uuid)
 
     @cutils.synchronized(LOCK_NAME)
@@ -242,3 +253,38 @@ class DeviceLabelController(rest.RestController):
     def patch(self, device_label):
         """Modify a new device label."""
         raise exception.OperationNotPermitted
+
+
+def remove_device_image_state(device_label_uuid):
+    """Cleanup device image state based on device label"""
+    device_label = pecan.request.dbapi.device_label_get(device_label_uuid)
+    host = pecan.request.dbapi.ihost_get(device_label.host_uuid)
+    if host.device_image_update == dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS:
+        raise wsme.exc.ClientSideError(_(
+            "Command rejected: Device image update is in progress for host %s" %
+            host.hostname))
+
+    dev_img_states = pecan.request.dbapi.device_image_state_get_all(
+        host_id=device_label.host_id,
+        pcidevice_id=device_label.pcidevice_id)
+    for state in dev_img_states:
+        pecan.request.dbapi.device_image_state_destroy(state.id)
+
+
+def add_device_image_state(pcidevice, key, value):
+    """Add device image state based on device label"""
+    # If the image has been applied to any devices,
+    # create device_image_state entry for this device
+    dev_labels = pecan.request.dbapi.device_label_get_by_label(key, value)
+    if dev_labels:
+        dev_img_lbls = pecan.request.dbapi.device_image_label_get_by_label(
+            dev_labels[0].id)
+        for img in dev_img_lbls:
+            # Create an entry of image to device mapping
+            state_values = {
+                'host_id': pcidevice.host_id,
+                'pcidevice_id': pcidevice.id,
+                'image_id': img.image_id,
+                'status': dconstants.DEVICE_IMAGE_UPDATE_PENDING,
+            }
+            pecan.request.dbapi.device_image_state_create(state_values)

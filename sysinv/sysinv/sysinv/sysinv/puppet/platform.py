@@ -3,13 +3,11 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import base64
 import keyring
 import os
 
 from sysinv.common import constants
 from sysinv.common import exception
-from sysinv.common import kubernetes
 from sysinv.common import utils
 
 from tsconfig import tsconfig
@@ -326,6 +324,12 @@ class PlatformPuppet(base.BasePuppet):
                 system.system_mode,
             'platform::params::system_type':
                 system.system_type,
+        })
+
+        virtual_system = utils.is_virtual_system_config(self.dbapi)
+        config.update({
+            'platform::params::virtual_system':
+                virtual_system
         })
 
         cpu_count = self._get_platform_cpu_count(host)
@@ -884,37 +888,21 @@ class PlatformPuppet(base.BasePuppet):
     def _get_dc_root_ca_config(self):
         config = {}
         system = self._get_system()
-        if system.distributed_cloud_role == \
-                constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and \
-                os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG):
+        if os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG):
+            cert_data = utils.get_admin_ep_cert(
+                system.distributed_cloud_role)
 
-            kube = kubernetes.KubeOperator()
-            try:
-                secret = kube.kube_get_secret('dc-adminep-root-ca-certificate', 'dc-cert')
-            except exception.KubeNotConfigured:
-                # kubernetes admin config file does not exist, skip
+            if cert_data is None:
                 return config
 
-            if not hasattr(secret, 'data'):
-                raise Exception('Invalid secret dc-adminep-root-ca-certificate')
-
-            data = secret.data
-            if 'ca.crt' not in data or \
-                    'tls.crt' not in data or 'tls.key' not in data:
-
-                raise Exception("Invalid admin endpoint certificate data.")
-
-            try:
-                ca_crt = base64.b64decode(data['ca.crt'])
-                tls_crt = base64.b64decode(data['tls.crt'])
-                tls_key = base64.b64decode(data['tls.key'])
-            except TypeError:
-                raise Exception('admin endpoint root ca certification is invalid')
+            dc_root_ca_crt = cert_data['dc_root_ca_crt']
+            admin_ep_crt = cert_data['admin_ep_crt']
 
             config.update({
-                'platform::config::dccert::params::dc_root_ca_crt': ca_crt,
+                'platform::config::dccert::params::dc_root_ca_crt':
+                    dc_root_ca_crt,
                 'platform::config::dccert::params::dc_adminep_crt':
-                    "%s%s" % (tls_key, tls_crt)
+                    admin_ep_crt,
             })
 
         return config
@@ -939,6 +927,11 @@ class PlatformPuppet(base.BasePuppet):
         config = {}
         if self._distributed_cloud_role() == \
                 constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+            # For regular DC, central-cloud's local registry is exposed on the OAM
+            # interface (to provide the ability to push images externally to central
+            # registry), so "registry.central" domain in dnsmasq.conf is set to system
+            # controller's OAM IP on subcloud to allow subcloud to pull images from
+            # central registry via the OAM interface.
             sc_network = self.dbapi.network_get_by_type(
                 constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM)
             sc_network_addr_pool = self.dbapi.address_pool_get(
@@ -946,4 +939,19 @@ class PlatformPuppet(base.BasePuppet):
             sc_addr = sc_network_addr_pool.floating_address
             config.update({'platform::params::system_controller_addr':
                           sc_addr})
+
+            # For virtual subcloud (StarlingX running in Openstack Nova VM - QEMU/KVM),
+            # there is no physical OAM interface (no external network access) to connect
+            # to central-cloud's local registry, so central registry is exposed on the
+            # MGMT interface and "registry.central" domain needs to be set to system
+            # controller's MGMT IP to allow subcloud to pull images from central registry
+            # via the MGMT interface.
+            if utils.is_virtual_system_config(self.dbapi):
+                sc_mgmt_network = self.dbapi.network_get_by_type(
+                    constants.NETWORK_TYPE_SYSTEM_CONTROLLER)
+                sc_mgmt_network_addr_pool = self.dbapi.address_pool_get(
+                    sc_mgmt_network.pool_uuid)
+                sc_mgmt_addr = sc_mgmt_network_addr_pool.floating_address
+                config.update({'platform::params::system_controller_mgmt_addr':
+                              sc_mgmt_addr})
         return config

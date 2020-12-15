@@ -24,9 +24,11 @@ from requests.exceptions import ReadTimeout
 from contextlib import contextmanager
 
 from oslo_log import log as logging
+from sysinv.common import kubernetes
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
+from sysinv.helm import common
 
 LOG = logging.getLogger(__name__)
 
@@ -520,7 +522,7 @@ class CephApiOperator(object):
         with open(os.devnull, 'w') as fnull, tempfile.TemporaryFile() as backup:
             LOG.info("Saving crushmap for safe update")
             try:
-                subprocess.check_call(
+                subprocess.check_call(  # pylint: disable=not-callable
                     "ceph osd getcrushmap",
                     stdin=fnull, stdout=backup, stderr=fnull,
                     shell=True)
@@ -532,7 +534,7 @@ class CephApiOperator(object):
             except exception.CephFailure:
                 backup.seek(0, os.SEEK_SET)
                 LOG.warn("Crushmap update failed. Restoring from backup")
-                subprocess.call(
+                subprocess.call(  # pylint: disable=not-callable
                     "ceph osd setcrushmap",
                     stdin=backup, stdout=fnull, stderr=fnull,
                     shell=True)
@@ -945,11 +947,11 @@ def fix_crushmap(dbapi=None):
                 LOG.info("Updating crushmap with: %s" % crushmap_txt)
 
                 # Compile crushmap
-                subprocess.check_output("crushtool -c %s "
+                subprocess.check_output("crushtool -c %s "  # pylint: disable=not-callable
                                         "-o %s" % (crushmap_txt, crushmap_bin),
                                     stderr=subprocess.STDOUT, shell=True)
             # Set crushmap
-            subprocess.check_output("ceph osd setcrushmap -i %s" % crushmap_bin,
+            subprocess.check_output("ceph osd setcrushmap -i %s" % crushmap_bin,  # pylint: disable=not-callable
                                     stderr=subprocess.STDOUT, shell=True)
 
             if os.path.exists(backup):
@@ -1021,3 +1023,17 @@ def get_ceph_storage_model(dbapi=None):
         # clear (before adding a monitor on a compute or before
         # configuring the first storage node)
         return constants.CEPH_UNDEFINED_MODEL
+
+
+def is_rook_ceph():
+    try:
+        # check function getLabels in rook/pkg/operator/ceph/cluster/mon/spec.go
+        # rook will assign label "mon_cluster=kube-system" to monitor pods
+        label = "mon_cluster=" + common.HELM_NS_STORAGE_PROVISIONER
+        kube = kubernetes.KubeOperator()
+        pods = kube.kube_get_pods_by_selector(common.HELM_NS_STORAGE_PROVISIONER, label, "")
+        if len(pods) > 0:
+            return True
+    except Exception:
+        pass
+    return False

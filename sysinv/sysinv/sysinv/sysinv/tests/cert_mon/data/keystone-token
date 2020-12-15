@@ -1,0 +1,242 @@
+{
+  "token": {
+    "is_domain": false,
+    "methods": [
+      "password"
+    ],
+    "roles": [
+      {
+        "id": "d405d27f323a4bcc830dd16795c67828",
+        "name": "reader"
+      },
+      {
+        "id": "9569dc5e96c34314b0aaf05daa111162",
+        "name": "member"
+      },
+      {
+        "id": "2c36c273c1aa41c3a47f2782d9b401d6",
+        "name": "admin"
+      }
+    ],
+    "expires_at": "2030-11-24T15:31:47.000000Z",
+    "project": {
+      "domain": {
+        "id": "default",
+        "name": "Default"
+      },
+      "id": "1a33d82c45064484b402b928d33dd441",
+      "name": "services"
+    },
+    "catalog": [
+      {
+        "endpoints": [
+          {
+            "url": "https://10.10.10.3:18002",
+            "interface": "public",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "2dc91878b5fa44e28c564c82215506ff"
+          },
+          {
+            "url": "http://192.168.204.1:18002",
+            "interface": "internal",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "cc1f859caea644de834714692263fcfd"
+          },
+          {
+            "url": "http://192.168.204.1:18002",
+            "interface": "admin",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "ec4c5c307b3d43319f84380f4468a9e2"
+          }
+        ],
+        "type": "faultmanagement",
+        "id": "2a70c2be1d2a4cd79c36e7b163310826",
+        "name": "fm"
+      },
+      {
+        "endpoints": [
+          {
+            "url": "https://10.10.10.3:9311",
+            "interface": "public",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "4eb95046b2d04ef0ad1682e1d9aecaf1"
+          },
+          {
+            "url": "http://192.168.204.1:9311",
+            "interface": "internal",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "e4343dedeab94f37a639bccff1cfddc2"
+          },
+          {
+            "url": "http://192.168.204.1:9311",
+            "interface": "admin",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "6ef5c5f3cc444f3fa2f7d89020a31595"
+          }
+        ],
+        "type": "key-manager",
+        "id": "64f1b190202c44a982d2bd7d5bad6083",
+        "name": "barbican"
+      },
+      {
+        "endpoints": [
+          {
+            "url": "https://10.10.10.3:5000/v3",
+            "interface": "public",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "e5dc1d3b8c4c4886a208ad46786a80b3"
+          },
+          {
+            "url": "http://192.168.204.1:5000/v3",
+            "interface": "internal",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "8bb08f116e7444b6806d90cd98d1b84b"
+          },
+          {
+            "url": "http://192.168.204.1:5000/v3",
+            "interface": "admin",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "5f09aa9cbabd41d08e5284cde441a70c"
+          }
+        ],
+        "type": "identity",
+        "id": "1306cfc55d8f45038c0cafabd8d985be",
+        "name": "keystone"
+      },
+      {
+        "endpoints": [
+          {
+            "url": "https://10.10.10.3:6385/v1",
+            "interface": "public",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "40546224ac1b4c9380da9f25c2d8de0b"
+          },
+          {
+            "url": "http://192.168.204.1:6385/v1",
+            "interface": "internal",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "bb2f13e4b8c14e56bc8d8573a337977d"
+          },
+          {
+            "url": "http://192.168.204.1:6385/v1",
+            "interface": "admin",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "1da73856e30143cd8b329892a88a77bf"
+          }
+        ],
+        "type": "platform",
+        "id": "03531a98e9cb4e29a1559dfb466cfffb",
+        "name": "sysinv"
+      },
+      {
+        "endpoints": [
+          {
+            "url": "https://10.10.10.3:15491",
+            "interface": "public",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "cab08b81169042c3998a014f648fde60"
+          },
+          {
+            "url": "http://192.168.204.1:5491",
+            "interface": "internal",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "1dd82515456642a8945d4099996aa7b3"
+          },
+          {
+            "url": "http://192.168.204.1:5491",
+            "interface": "admin",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "ebdfb998d9d44f6fb781ec70a4a42664"
+          }
+        ],
+        "type": "patching",
+        "id": "eefeb9577cdd421984ed1710502568b9",
+        "name": "patching"
+      },
+      {
+        "endpoints": [
+          {
+            "url": "https://10.10.10.3:4545",
+            "interface": "public",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "a7e7d9e632e6476ea6c37cfe77dcea70"
+          },
+          {
+            "url": "http://192.168.204.1:4545",
+            "interface": "internal",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "867294f815cf488b9f1632d751ad26c6"
+          },
+          {
+            "url": "http://192.168.204.1:4545",
+            "interface": "admin",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "7c30668394e24028938c43063bd36097"
+          }
+        ],
+        "type": "nfv",
+        "id": "5025051f8a7c4a23a7fa7f7eea35a14b",
+        "name": "vim"
+      },
+      {
+        "endpoints": [
+          {
+            "url": "https://10.10.10.3:7777",
+            "interface": "public",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "5a601ec08ea94349a3f91f32f9a812ab"
+          },
+          {
+            "url": "http://192.168.204.1:7777",
+            "interface": "internal",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "6ed7ed3423c941c58a8c522fc8730e76"
+          },
+          {
+            "url": "http://192.168.204.1:7777",
+            "interface": "admin",
+            "region": "RegionOne",
+            "region_id": "RegionOne",
+            "id": "b51cab1768a4486fa4ba43076878c73b"
+          }
+        ],
+        "type": "smapi",
+        "id": "302ec231577048118ed1c4d6c515b1b0",
+        "name": "smapi"
+      }
+    ],
+    "user": {
+      "domain": {
+        "id": "default",
+        "name": "Default"
+      },
+      "password_expires_at": null,
+      "name": "sysinv",
+      "id": "c4b71b64ffc147a4a9e7c02a87b3ea60"
+    },
+    "audit_ids": [
+      "1Y77TazlQnWAaCgV4UKwcg"
+    ],
+    "issued_at": "2020-11-24T14:31:47.000000Z"
+  }
+}

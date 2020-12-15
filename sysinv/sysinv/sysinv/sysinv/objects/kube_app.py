@@ -1,7 +1,7 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 # coding=utf-8
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -26,6 +26,7 @@ class KubeApp(base.SysinvObject):
               'progress': utils.str_or_none,
               'active': utils.bool_or_none,
               'recovery_attempts': utils.int_or_zero,
+              'mode': utils.str_or_none
               }
 
     @base.remotable_classmethod

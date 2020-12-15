@@ -4,6 +4,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+# vim: tabstop=4 shiftwidth=4 softtabstop=4
+# coding=utf-8
+#
+
 from sysinv.db import api as db_api
 from sysinv.objects import base
 from sysinv.objects import utils

@@ -1,0 +1,67 @@
+#!/bin/bash
+#
+# Copyright (c) 2020 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+DOCKER_USERNAME=$1
+DOCKER_PASSWORD=$2
+
+LNAME=$(readlink -n -f $0)
+NAME=$(basename $LNAME)
+
+# Log info message to /var/log/daemon.log
+function LOG {
+    logger -p daemon.info -t "${NAME}($$): " "$@"
+}
+
+
+# Wait around for the "registry.local" name to resolve
+LOG "Waiting for registry.local to resolve"
+while true
+do
+    # We can't easily ask for both A and AAAA records in the same request
+    # because if the customer mis-configures things with a "good" nameserver
+    # and a non-existant nameserver dig will return "9" even though it finds
+    # an AAAA record on the "good" server.  So we need to ask for A and AAAA
+    # records separately.  Once we have either type of record we can proceed.
+
+    # First check for A records for IPv4
+    ADDR=`dig +short registry.local A`
+    if [ $? -eq 0 ]
+    then
+        # We got a response back from the server, but we need to check
+        # if we got an address or not.  If there is no address, ADDR will
+        # be an empty string.
+        if [ -n "$ADDR" ]
+        then
+            echo LOG "registry.local resolved IPv4, continuing with docker login"
+            break
+        fi
+    fi
+
+    # Then check for AAAA records for IPv6
+    ADDR=`dig +short registry.local AAAA`
+    if [ $? -eq 0 ]
+    then
+        # We got a response back from the server, but we need to check
+        # if we got an address or not.  If there is no address, ADDR will
+        # be an empty string.
+        if [ -n "$ADDR" ]
+        then
+            echo LOG "registry.local resolved IPv6, continuing with docker login"
+            break
+        fi
+    fi
+
+    sleep 1
+done
+
+
+docker login --password-stdin -u ${DOCKER_USERNAME} registry.local:9001 <<< ${DOCKER_PASSWORD}
+if [ $? -eq 0 ]
+then
+    LOG "docker login to registry.local completed successfully"
+    touch /var/run/docker_login_done
+fi

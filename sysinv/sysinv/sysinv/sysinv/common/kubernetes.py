@@ -21,6 +21,8 @@ from kubernetes import config
 from kubernetes import client
 from kubernetes.client import Configuration
 from kubernetes.client.rest import ApiException
+from kubernetes.client.models.v1_container_image import V1ContainerImage
+from kubernetes.stream import stream
 from six.moves import http_client as httplib
 
 from oslo_log import log as logging
@@ -122,6 +124,34 @@ def is_k8s_configured():
     if os.path.isfile(KUBERNETES_ADMIN_CONF):
         return True
     return False
+
+
+# https://github.com/kubernetes-client/python/issues/895
+# If a container image contains no tag or digest, patch/list
+# node requests sent via python Kubernetes client will be
+# returned with exception because python Kubernetes client
+# deserializes the ContainerImage response from kube-apiserver
+# and it fails the validation due to the empty image name.
+#
+# Implement this workaround to replace the V1ContainerImage.names
+# in the python Kubernetes client to bypass the "none image"
+# check because the error is not from kubernetes. If patching
+# a node with a new host label, we can see the label is
+# created successfully in Kubernetes.
+#
+# This workaround should be removed if the proposed solutions
+# can be made in kubernetes or a workaround can be implemented
+# in containerd.
+# https://github.com/kubernetes/kubernetes/pull/79018
+# https://github.com/containerd/containerd/issues/4771
+def names(self, names):
+    """Monkey patch V1ContainerImage with this to set the names."""
+    self._names = names
+
+
+# Replacing address of "names" in V1ContainerImage
+# with the "names" defined above
+V1ContainerImage.names = V1ContainerImage.names.setter(names)
 
 
 class KubeOperator(object):
@@ -287,6 +317,22 @@ class KubeOperator(object):
             LOG.error("Failed to get Namespace list: %s" % e)
             raise
 
+    def kube_list_secret(self, namespace):
+        c = self._get_kubernetesclient_core()
+        try:
+            secret_list = c.list_namespaced_secret(namespace)
+            return secret_list.items
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                return None
+            else:
+                LOG.error("Failed to list secret under "
+                          "Namespace %s: %s" % (namespace, e.body))
+                raise
+        except Exception as e:
+            LOG.exception(e)
+            raise
+
     def kube_get_secret(self, name, namespace):
         c = self._get_kubernetesclient_core()
         try:
@@ -325,7 +371,7 @@ class KubeOperator(object):
     def kube_patch_secret(self, name, namespace, body):
         c = self._get_kubernetesclient_core()
         try:
-            c.patch_namespaced_secret(name, namespace, body)
+            return c.patch_namespaced_secret(name, namespace, body)
         except Exception as e:
             LOG.error("Failed to patch Secret %s under Namespace %s: "
                       "%s" % (name, namespace, e))
@@ -349,7 +395,7 @@ class KubeOperator(object):
 
         c = self._get_kubernetesclient_core()
         try:
-            c.delete_namespaced_secret(name, namespace, body)
+            return c.delete_namespaced_secret(name, namespace, body)
         except ApiException as e:
             if e.status == httplib.NOT_FOUND:
                 LOG.warn("Secret %s under Namespace %s "
@@ -397,6 +443,24 @@ class KubeOperator(object):
         except Exception as e:
             LOG.error("Kubernetes exception in kube_get_config_map: %s" % e)
             raise
+
+    def kube_read_config_map(self, name, namespace):
+        c = self._get_kubernetesclient_core()
+        try:
+            configmap = c.read_namespaced_config_map(name, namespace)
+            return configmap
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                LOG.error("Failed to read Configmap")
+                return None
+            else:
+                LOG.error("Failed to get ConfigMap %s under "
+                          "Namespace %s: %s" % (name, namespace, e.body))
+                raise
+        except Exception as e:
+            LOG.error("Kubernetes exception in kube_read_config_map: %s" % e)
+            raise
+        return None
 
     def kube_create_config_map(self, namespace, body):
         c = self._get_kubernetesclient_core()
@@ -652,3 +716,48 @@ class KubeOperator(object):
         except Exception as e:
             LOG.error("Kubernetes exception in "
                       "kube_get_pod %s/%s: %s" % (namespace, name, e))
+
+    def kube_get_pods_by_selector(self, namespace, label_selector,
+                                  field_selector):
+        c = self._get_kubernetesclient_core()
+        try:
+            api_response = c.list_namespaced_pod(namespace,
+                label_selector="%s" % label_selector,
+                field_selector="%s" % field_selector)
+            LOG.debug("Response: %s" % api_response)
+            return api_response.items
+        except ApiException as e:
+            LOG.error("Kubernetes exception in "
+                      "kube_get_pods_by_selector %s/%s/%s: %s",
+                      namespace, label_selector, field_selector, e)
+            raise
+
+    # NOTE: This is desired method to exec commands in a container.
+    # The minimal usage example indicates this can get separate streams for
+    # stdout and stderr. The code below produces a string of merged output,
+    # so we cannot deduce whether the provided exec_command is failing.
+    # This API can replace Popen/poll/kubectl exec calls if we peek at
+    # api_response. We require ability to poll, read and flush output from
+    # long running commands, wait for command completion, and timeout.
+    # See the following documentation:
+    # https://github.com/kubernetes-client/python/blob/master/examples/pod_exec.py
+    # https://github.com/kubernetes-client/python/blob/master/kubernetes/docs/CoreV1Api.md
+    def kube_exec_container_stream(self, name, namespace, exec_command, container=None):
+        c = self._get_kubernetesclient_core()
+        try:
+            api_response = stream(c.connect_get_namespaced_pod_exec,
+                name,
+                namespace,
+                container=container,
+                command=exec_command,
+                stderr=True, stdin=False,
+                stdout=True, tty=False)
+            return api_response
+        except ApiException as e:
+            LOG.error("Failed to exec Pod %s/%s: %s" % (namespace, name,
+                                                        e.body))
+            raise
+        except Exception as e:
+            LOG.error("Kubernetes exception in "
+                      "kube_exec_container %s/%s: %s" % (namespace, name, e))
+            raise

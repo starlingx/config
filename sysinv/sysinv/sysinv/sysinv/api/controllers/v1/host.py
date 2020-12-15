@@ -552,6 +552,7 @@ class Host(base.APIBase):
                           'software_load', 'target_load', 'peers', 'peer_id',
                           'install_state', 'install_state_info',
                           'iscsi_initiator_name',
+                          'device_image_update', 'reboot_needed',
                           'inv_state', 'clock_synchronization']
 
         fields = minimum_fields if not expand else None
@@ -2887,6 +2888,9 @@ class HostController(rest.RestController):
             fm_constants.FM_ALARM_ID_HOST_VERSION_MISMATCH,
             entity_instance_id)
 
+        pecan.request.dbapi.ihost_update(
+            rpc_ihost.uuid, {'inv_state': constants.INV_STATE_REINSTALLING})
+
         if rpc_ihost.availability == "online":
             new_ihost_mtc = rpc_ihost.as_dict()
             new_ihost_mtc.update({'operation': 'modify'})
@@ -3353,6 +3357,52 @@ class HostController(rest.RestController):
 
         self._check_sriovdp_interface_datanets(interface)
 
+    def _semantic_check_fpga_fec_device(self, host, dev, force_unlock=False):
+        """
+        Perform semantic checks on an FPGA FEC device.
+        """
+        if (force_unlock or
+                dev.pdevice_id != device.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF):
+            return
+
+        sriov_numvfs = dev.sriov_numvfs
+        if not sriov_numvfs:
+            return
+        if (dev.sriov_vfs_pci_address and
+                sriov_numvfs == len(dev.sriov_vfs_pci_address.split(','))):
+                LOG.info("check sriov_numvfs=%s sriov_vfs_pci_address=%s" %
+                         (sriov_numvfs, dev.sriov_vfs_pci_address))
+        else:
+            msg = (_("Expecting number of FPGA device sriov_numvfs=%s. "
+                     "Please wait a few minutes for inventory update and "
+                     "retry host-unlock." %
+                     sriov_numvfs))
+            LOG.info(msg)
+            pecan.request.rpcapi.update_sriov_config(
+                pecan.request.context,
+                host['uuid'])
+            raise wsme.exc.ClientSideError(msg)
+
+    def _semantic_check_fpga_device(self, host, dev, force_unlock=False):
+        """
+        Perform semantic checks on an FPGA device.
+        """
+        if dev.pclass_id != device.PCI_DEVICE_CLASS_FPGA:
+            return
+
+        if dev.pdevice_id == device.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF:
+            self._semantic_check_fpga_fec_device(host, dev, force_unlock)
+
+    def _semantic_check_devices(self, host, force_unlock=False):
+        """
+        Perform semantic checks on pci devices.
+        """
+        devices = (
+            pecan.request.dbapi.pci_device_get_by_host(host['uuid']))
+        for dev in devices:
+            if dev.pclass_id == device.PCI_DEVICE_CLASS_FPGA:
+                self._semantic_check_fpga_device(host, dev, force_unlock)
+
     def _semantic_check_unlock_kube_upgrade(self, ihost, force_unlock=False):
         """
         Perform semantic checks related to kubernetes upgrades prior to unlocking host.
@@ -3518,7 +3568,8 @@ class HostController(rest.RestController):
         # Determine required platform reserved memory for this numa node
         low_core = cutils.is_low_core_system(ihost, pecan.request.dbapi)
         reserved = cutils. \
-            get_required_platform_reserved_memory(ihost, node['numa_node'], low_core)
+            get_required_platform_reserved_memory(
+                pecan.request.dbapi, ihost, node['numa_node'], low_core)
 
         # Determine configured memory for this numa node
         mems = pecan.request.dbapi.imemory_get_by_inode(node['id'])
@@ -4592,7 +4643,8 @@ class HostController(rest.RestController):
         if 'operational' in hostupdate.delta and \
                 hostupdate.ihost_patch['operational'] == \
                 constants.OPERATIONAL_ENABLED:
-            if hostupdate.ihost_orig['invprovision'] == constants.PROVISIONING:
+            if hostupdate.ihost_orig['invprovision'] == constants.PROVISIONING or \
+                    hostupdate.ihost_orig['invprovision'] == constants.UNPROVISIONED:
                 # first time unlocked successfully
                 local_hostname = cutils.get_local_controller_hostname()
                 if (hostupdate.ihost_patch['hostname'] ==
@@ -5477,6 +5529,9 @@ class HostController(rest.RestController):
         self._semantic_check_data_interfaces(ihost,
                                              force_unlock)
 
+        # Check whether a device has completed configuration
+        self._semantic_check_devices(ihost, force_unlock)
+
         # Check if cpu assignments are valid
         self._semantic_check_worker_cpu_assignments(ihost)
 
@@ -5798,6 +5853,22 @@ class HostController(rest.RestController):
         # Check for new hardware since upgrade-start
         self._semantic_check_upgrade_refresh(upgrade, to_host, force_swact)
 
+    def _check_swact_device_image_update(self, from_host, to_host, force=False):
+        if force:
+            LOG.info("device image update swact check bypassed with force option")
+            return
+        if (from_host['device_image_update'] ==
+                device.DEVICE_IMAGE_UPDATE_IN_PROGRESS):
+            raise wsme.exc.ClientSideError(_(
+                "Rejected: Cannot swact %s while %s is updating device "
+                "images.") % (from_host['hostname'], from_host['hostname']))
+
+        if (to_host['device_image_update'] ==
+                device.DEVICE_IMAGE_UPDATE_IN_PROGRESS):
+            raise wsme.exc.ClientSideError(_(
+                "Rejected: Cannot swact %s while %s is updating device "
+                "images.") % (from_host['hostname'], to_host.hostname))
+
     def check_swact(self, hostupdate, force_swact=False):
         """Pre swact semantic checks for controller"""
 
@@ -5861,6 +5932,10 @@ class HostController(rest.RestController):
 
                 # deny swact if storage backend not ready
                 self._semantic_check_storage_backend(ihost_ctr)
+
+                # deny swact if one of the controllers is updating device image
+                self._check_swact_device_image_update(hostupdate.ihost_orig,
+                                                      ihost_ctr, force_swact)
 
                 if ihost_ctr.config_target:
                     if ihost_ctr.config_target != ihost_ctr.config_applied:
@@ -6022,6 +6097,13 @@ class HostController(rest.RestController):
         system = pecan.request.dbapi.isystem_get_one()
         system_mode = system.system_mode
         system_type = system.system_type
+
+        # Check if host is in the process of updating device image
+        if (hostupdate.ihost_orig['device_image_update'] ==
+                device.DEVICE_IMAGE_UPDATE_IN_PROGRESS):
+            raise wsme.exc.ClientSideError(_(
+                "Rejected: Cannot lock %s while device image update is in "
+                "progress.") % hostupdate.displayid)
 
         if system_mode == constants.SYSTEM_MODE_SIMPLEX:
             return
@@ -6353,8 +6435,11 @@ class HostController(rest.RestController):
                                     pecan.request.context, stor.uuid)
                 self._ceph.remove_osd_key(istor_obj['osdid'])
 
-        hostupdate.ihost_val_update({constants.HOST_ACTION_STATE:
-                                     constants.HAS_REINSTALLING})
+        hostupdate.ihost_val_update(
+            {
+                constants.HOST_ACTION_STATE: constants.HAS_REINSTALLING,
+                'inv_state': constants.INV_STATE_REINSTALLING
+            })
 
     @staticmethod
     def _stage_poweron(hostupdate):
@@ -6861,10 +6946,18 @@ class HostController(rest.RestController):
         LOG.info("device_image_update host_uuid=%s " % host_uuid)
         host_obj = objects.host.get_by_uuid(pecan.request.context, host_uuid)
 
-        # Set the flag indicating the host is in progress of
-        # updating device image
-        host_obj = pecan.request.dbapi.ihost_update(host_uuid,
-            {'device_image_update': device.DEVICE_IMAGE_UPDATE_IN_PROGRESS})
+        if host_obj.device_image_update == device.DEVICE_IMAGE_UPDATE_IN_PROGRESS:
+            raise wsme.exc.ClientSideError(_(
+                "The host %s is already in the process of updating the "
+                "device images." % host_obj.hostname))
+
+        # The host must be unlocked/enabled to update device images
+        if (host_obj.administrative != constants.ADMIN_UNLOCKED or
+                host_obj.operational != constants.OPERATIONAL_ENABLED):
+            raise wsme.exc.ClientSideError(_(
+                "The host %s must be unlocked and enabled to update the "
+                "device images." % host_obj.hostname))
+
         # Call rpcapi to tell conductor to begin device image update
         pecan.request.rpcapi.host_device_image_update(
             pecan.request.context, host_uuid)
@@ -6881,10 +6974,11 @@ class HostController(rest.RestController):
         LOG.info("device_image_update_abort host_uuid=%s " % host_uuid)
         host_obj = objects.host.get_by_uuid(pecan.request.context, host_uuid)
 
-        # Set the flag indicating the host is no longer updating the device
-        # image
-        pecan.request.dbapi.ihost_update(host_uuid,
-            {'device_image_update': device.DEVICE_IMAGE_UPDATE_PENDING})
+        if host_obj.device_image_update != device.DEVICE_IMAGE_UPDATE_IN_PROGRESS:
+            raise wsme.exc.ClientSideError(_(
+                "Abort rejected. The host %s is not in the process of "
+                "updating the device images." % host_obj.hostname))
+
         # Call rpcapi to tell conductor to abort device image update
         pecan.request.rpcapi.host_device_image_update_abort(
             pecan.request.context, host_uuid)

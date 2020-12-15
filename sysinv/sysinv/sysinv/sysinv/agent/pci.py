@@ -19,6 +19,7 @@ import shlex
 from oslo_log import log as logging
 from sysinv._i18n import _
 from sysinv.common import constants
+from sysinv.common import device as dconstants
 from sysinv.common import utils
 
 LOG = logging.getLogger(__name__)
@@ -34,7 +35,8 @@ KNOWN_PCI_DEVICES = [{"vendor_id": constants.NOVA_PCI_ALIAS_QAT_PF_VENDOR,
                       {"vendor_id": constants.NOVA_PCI_ALIAS_QAT_PF_VENDOR,
                       "device_id": constants.NOVA_PCI_ALIAS_QAT_C62X_PF_DEVICE,
                       "class_id": constants.NOVA_PCI_ALIAS_QAT_CLASS},
-                     {"class_id": constants.NOVA_PCI_ALIAS_GPU_CLASS}]
+                     {"class_id": constants.NOVA_PCI_ALIAS_GPU_CLASS},
+                     {"class_id": dconstants.PCI_DEVICE_CLASS_FPGA}]
 
 # PCI-SIG 0x06 bridge devices to not inventory.
 IGNORE_BRIDGE_PCI_CLASSES = ['bridge', 'isa bridge', 'host bridge']
@@ -156,6 +158,8 @@ class PCIDevice(object):
         self.sriov_totalvfs = kwargs.get('sriov_totalvfs')
         self.sriov_numvfs = kwargs.get('sriov_numvfs')
         self.sriov_vfs_pci_address = kwargs.get('sriov_vfs_pci_address')
+        self.sriov_vf_driver = kwargs.get('sriov_vf_driver')
+        self.sriov_vf_pdevice_id = kwargs.get('sriov_vf_pdevice_id')
         self.driver = kwargs.get('driver')
         self.enabled = kwargs.get('enabled')
         self.extra_info = kwargs.get('extra_info')
@@ -173,8 +177,12 @@ class PCIOperator(object):
 
     def format_lspci_output(self, device):
         # hack for now
+        # NOTE: this does not properly handle the case where we have both
+        # "-r" and "-p" optional info in the lspci output.
         if device[prevision].strip() == device[pvendor].strip():
-            # no revision info
+            # no revision info reported, device[prevision] now stores the
+            # psvendor, and device[psvendor] now stores the psdevice.  We
+            # need to put things where they should be.
             device.append(device[psvendor])
             device[psvendor] = device[prevision]
             device[prevision] = "0"
@@ -246,8 +254,8 @@ class PCIOperator(object):
                 with open(fdevice, 'r') as f:
                     # Device id is a 16 bit hex value.  Strip off the hex
                     # identifier and trailing whitespace
-                    vf_device_id = hex(int(f.readline().rstrip(), 16))[2:]
-                    if len(vf_device_id) <= 4:
+                    vf_device_id = f.readline().rstrip()[2:]
+                    if len(vf_device_id) < 4:
                         # Should never happen
                         raise ValueError(_(
                             "Device Id must be a 16 bit hex value"))
@@ -262,14 +270,17 @@ class PCIOperator(object):
 
         return vf_device_id
 
+    def get_lspci_output_by_addr(self, pciaddr):
+        with open(os.devnull, "w") as fnull:
+            output = subprocess.check_output(  # pylint: disable=not-callable
+                ['lspci', '-vmmks', pciaddr], stderr=fnull)
+        return output
+
     def get_pci_sriov_vf_driver_name(self, pciaddr, sriov_vfs_pci_address):
         vf_driver = None
         for addr in sriov_vfs_pci_address:
-
             try:
-                with open(os.devnull, "w") as fnull:
-                    output = subprocess.check_output(['lspci', '-vmmks', addr],
-                                                    stderr=fnull)
+                output = self.get_lspci_output_by_addr(addr)
             except Exception as e:
                 LOG.error("Error getting PCI data for SR-IOV "
                           "VF address %s: %s", addr, e)
@@ -277,7 +288,7 @@ class PCIOperator(object):
 
             for line in output.split('\n'):
                 pci_attr = shlex.split(line.strip())
-                if (pci_attr and len(pci_attr) == 2 and 'Module' in pci_attr[0]):
+                if (pci_attr and len(pci_attr) == 2 and 'Driver' in pci_attr[0]):
                     vf_driver = pci_attr[1]
                     break
 
@@ -286,6 +297,29 @@ class PCIOperator(object):
                 break
 
         return vf_driver
+
+    def get_pci_sriov_vf_module_name(self, pciaddr, sriov_vfs_pci_address):
+        vf_module = None
+        for addr in sriov_vfs_pci_address:
+
+            try:
+                output = self.get_lspci_output_by_addr(addr)
+            except Exception as e:
+                LOG.error("Error getting PCI data for SR-IOV "
+                          "VF address %s: %s", addr, e)
+                continue
+
+            for line in output.split('\n'):
+                pci_attr = shlex.split(line.strip())
+                if (pci_attr and len(pci_attr) == 2 and 'Module' in pci_attr[0]):
+                    vf_module = pci_attr[1]
+                    break
+
+            # All VFs have the same module per device.
+            if vf_module:
+                break
+
+        return vf_module
 
     def get_pci_driver_name(self, pciaddr):
         ddriver = '/sys/bus/pci/devices/' + pciaddr + '/driver/module/drivers'
@@ -302,9 +336,13 @@ class PCIOperator(object):
         LOG.debug("driver: %s" % driver)
         return driver
 
-    def pci_devices_get(self):
-
-        p = subprocess.Popen(["lspci", "-Dm"], stdout=subprocess.PIPE)
+    def pci_devices_get(self, vendor=None, device=None):
+        cmd = ["lspci", "-Dm"]
+        # See if the caller wants to limit us to a specific vendor/device.
+        if vendor and device:
+            option = "-d " + vendor + ":" + device
+            cmd.append(option)
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 
         pci_devices = []
         for line in p.stdout:
@@ -388,6 +426,7 @@ class PCIOperator(object):
                 sriov_totalvfs = self.get_pci_sriov_totalvfs(a)
                 sriov_numvfs = self.get_pci_sriov_numvfs(a)
                 sriov_vfs_pci_address = self.get_pci_sriov_vfs_pci_address(a, sriov_numvfs)
+                sriov_vf_driver = self.get_pci_sriov_vf_driver_name(a, sriov_vfs_pci_address)
                 driver = self.get_pci_driver_name(a)
 
                 fclass = dirpcideva + '/class'
@@ -415,6 +454,8 @@ class PCIOperator(object):
                     pclass_id = None
 
                 name = "pci_" + a.replace(':', '_').replace('.', '_')
+                sriov_vf_pdevice_id = self.get_pci_sriov_vf_device_id(
+                    a, sriov_vfs_pci_address)
 
                 attrs = {
                     "name": name,
@@ -427,6 +468,8 @@ class PCIOperator(object):
                     "sriov_numvfs": sriov_numvfs,
                     "sriov_vfs_pci_address":
                         ','.join(str(x) for x in sriov_vfs_pci_address),
+                    "sriov_vf_driver": sriov_vf_driver,
+                    "sriov_vf_pdevice_id": sriov_vf_pdevice_id,
                     "driver": driver,
                     "enabled": self.pci_get_enabled_attr(pclass_id,
                         pvendor_id, pdevice_id),
@@ -496,7 +539,12 @@ class PCIOperator(object):
                 sriov_totalvfs = self.get_pci_sriov_totalvfs(a)
                 sriov_numvfs = self.get_pci_sriov_numvfs(a)
                 sriov_vfs_pci_address = self.get_pci_sriov_vfs_pci_address(a, sriov_numvfs)
-                sriov_vf_driver = self.get_pci_sriov_vf_driver_name(a, sriov_vfs_pci_address)
+
+                # For network devices, return the supported kernel module
+                # as the sriov_vf_driver. This is used to determine the driver
+                # to use if an interface has an SR-IOV VF driver of 'netdevice'
+                sriov_vf_driver = self.get_pci_sriov_vf_module_name(a, sriov_vfs_pci_address)
+
                 sriov_vf_pdevice_id = self.get_pci_sriov_vf_device_id(a, sriov_vfs_pci_address)
                 driver = self.get_pci_driver_name(a)
 
@@ -520,7 +568,7 @@ class PCIOperator(object):
 
                 try:
                     with open(os.devnull, "w") as fnull:
-                        subprocess.check_call(["query_pci_id", "-v " + str(vendor),
+                        subprocess.check_call(["query_pci_id", "-v " + str(vendor),  # pylint: disable=not-callable
                                                "-d " + str(device)],
                                               stdout=fnull, stderr=fnull)
                         dpdksupport = True

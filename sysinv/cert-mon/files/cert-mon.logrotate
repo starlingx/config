@@ -1,0 +1,14 @@
+/var/log/cert-mon.log
+{
+  nodateext
+  size 10M
+  start 1
+  rotate 20
+  missingok
+  notifempty
+  compress
+  sharedscripts
+  postrotate
+    systemctl reload syslog-ng > /dev/null 2>&1 || true
+  endscript
+}

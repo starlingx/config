@@ -346,16 +346,6 @@ itemNotFound (404)
                "rel": "bookmark"
            }
        ],
-       "iinfra": [
-           {
-               "href": "http://10.10.10.2:6385/v1/iinfra/",
-               "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/iinfra/",
-               "rel": "bookmark"
-           }
-       ],
        "storage_backend": [
            {
                "href": "http://10.10.10.2:6385/v1/storage_backend/",
@@ -2589,7 +2579,7 @@ This operation does not accept a request body.
 Creates an L2 interface on a specific host
 ******************************************
 
-.. rest_method:: POST /v1/ihosts/{host_id}/iinterfaces
+.. rest_method:: POST /v1/iinterfaces
 
 **Normal response codes**
 
@@ -3598,7 +3588,7 @@ profiles.
 Lists all profiles
 ********************
 
-.. rest_method:: GET /v1/iprofiles
+.. rest_method:: GET /v1/iprofile
 
 **Normal response codes**
 
@@ -3703,7 +3693,7 @@ This operation does not accept a request body.
 Shows information about a specific profile
 ********************************************
 
-.. rest_method:: GET /v1/iprofiles/​{profile_id}​
+.. rest_method:: GET /v1/iprofile/​{profile_id}​
 
 **Normal response codes**
 
@@ -3858,7 +3848,7 @@ This operation does not accept a request body.
 Creates a profile
 *******************
 
-.. rest_method:: POST /v1/iprofiles
+.. rest_method:: POST /v1/iprofile
 
 **Normal response codes**
 
@@ -4020,7 +4010,7 @@ badMediaType (415)
 Deletes a specific profile
 ****************************
 
-.. rest_method:: DELETE /v1/iprofiles/​{profile_id}​
+.. rest_method:: DELETE /v1/iprofile/​{profile_id}​
 
 **Normal response codes**
 
@@ -4647,313 +4637,6 @@ badMediaType (415)
       ]
    }
 
-----------------------
-Infrastructure Subnet
-----------------------
-
-The infra is the Infrastructure subnet entity for the system.
-
-*****************************************************************
-Shows attributes of the infrastructure network IP subnet object
-*****************************************************************
-
-.. rest_method:: GET /v1/iinfra
-
-**Normal response codes**
-
-200
-
-**Error response codes**
-
-computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
-unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
-itemNotFound (404)
-
-**Response parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "infra_subnet (Optional)", "plain", "xsd:string", "The infrastructure network IP subnet."
-   "infra_start (Optional)", "plain", "xsd:string", "The infrastructure network start IP address."
-   "infra_end (Optional)", "plain", "xsd:string", "The infrastructure network end IP address."
-   "infra_mtu (Optional)", "plain", "xsd:string", "The MTU of the infrastructure interface."
-   "infra_vlan (Optional)", "plain", "xsd:string", "The VLAN id of the infrastructure interface."
-   "isystem_uuid (Optional)", "plain", "csapi:UUID", "The System UUID which the infrastructure network IP subnet belongs to."
-   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
-   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
-   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
-   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
-
-::
-
-   {
-      "iinfras":[
-         {
-            "infra_subnet": "192.168.205.0/24",
-            "infra_start": "192.168.205.2",
-            "infra_end": "192.168.205.254",
-            "infra_mtu": "9216",
-            "infra_vlan_id": "137",
-            "links":[
-               {
-                  "href": "http://10.10.10.2:6385/v1/iinfras/15ba72aa-442f-4b57-a8a1-e3f3cdd5b04c",
-                  "rel": "self"
-               },
-               {
-                  "href": "http://10.10.10.2:6385/iinfras/15ba72aa-442f-4b57-a8a1-e3f3cdd5b04c",
-                  "rel": "bookmark"
-               }
-            ],
-            "created_at": "2014-12-01T19:35:36.965657+00:00",
-            "updated_at": "2014-12-02T20:38:51.646902+00:00",
-            "isystem_uuid": "b7fdc4dd-333d-471b-b21d-ba664ea87714",
-            "uuid": "15ba72aa-442f-4b57-a8a1-e3f3cdd5b04c"
-         }
-      ]
-   }
-
-This operation does not accept a request body.
-
-***************************************************************
-Add attributes of the infrastructure network IP subnet object
-***************************************************************
-
-.. rest_method:: POST /v1/iinfra
-
-The attributes of the infrastructure network IP subnet object that are
-configurable are:
-
--  infra_subnet
-
--  infra_start
-
--  infra_end
-
--  infra_mtu
-
--  infra_vlan_id
-
-**Normal response codes**
-
-200
-
-**Error response codes**
-
-badMediaType (415)
-
-**Request parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "infra_subnet (Optional)", "plain", "xsd:string", "This parameter specifies the infrastructure network IP subnet."
-   "infra_start (Optional)", "plain", "xsd:string", "This parameter specifies the infrastructure network start IP address."
-   "infra_end (Optional)", "plain", "xsd:string", "This parameter specifies the infrastructure network end IP address."
-   "infra_mtu (Optional)", "plain", "xsd:string", "This parameter specifies the MTU of the infrastructure interface."
-   "infra_vlan_id (Optional)", "plain", "xsd:string", "This parameter specifies the VLAN ID of the infrastructure interface."
-
-**Response parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "infra_subnet (Optional)", "plain", "xsd:string", "The infrastructure network IP subnet."
-   "infra_start (Optional)", "plain", "xsd:string", "The infrastructure network start IP address."
-   "infra_end (Optional)", "plain", "xsd:string", "The infrastructure network end IP address."
-   "infra_mtu (Optional)", "plain", "xsd:string", "The MTU of the infrastructure interface."
-   "infra_vlan (Optional)", "plain", "xsd:string", "The VLAN id of the infrastructure interface."
-   "isystem_uuid (Optional)", "plain", "csapi:UUID", "The System UUID which the infrastructure network IP subnet belongs to."
-   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
-   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
-   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
-   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
-
-::
-
-   {
-      "infra_subnet": "192.168.205.0/24"
-      "infra_start": "192.168.205.2",
-      "infra_end": "192.168.205.254",
-      "infra_mtu": "9216",
-      "infra_vlan_id": "137",
-   }
-
-::
-
-   {
-      "iinfras":[
-         {
-            "infra_subnet":"192.168.205.0/24",
-            "infra_start":"192.168.205.2",
-            "infra_end":"192.168.205.254",
-            "infra_mtu": "9216",
-            "infra_vlan_id": "137",
-            "links":[
-               {
-                  "href":"http://10.10.10.2:6385/v1/iinfras/15ba72aa-442f-4b57-a8a1-e3f3cdd5b04c",
-                  "rel":"self"
-               },
-               {
-                  "href":"http://10.10.10.2:6385/iinfras/15ba72aa-442f-4b57-a8a1-e3f3cdd5b04c",
-                  "rel":"bookmark"
-               }
-            ],
-            "created_at": "2014-12-01T19:35:36.965657+00:00",
-            "updated_at": "2014-12-02T20:38:51.646902+00:00",
-            "isystem_uuid": "b7fdc4dd-333d-471b-b21d-ba664ea87714",
-            "uuid": "15ba72aa-442f-4b57-a8a1-e3f3cdd5b04c"
-         }
-      ]
-   }
-
-********************************************************************
-Modifies attributes of the infrastructure network IP subnet object
-********************************************************************
-
-.. rest_method:: PATCH /v1/iinfra/​{infra_id}​
-
-The attributes of the infrastructure network IP subnet object that are
-configurable are:
-
--  infra_start
-
--  infra_end
-
--  infra_mtu
-
--  infra_vlan_id
-
-**Normal response codes**
-
-200
-
-**Error response codes**
-
-badMediaType (415)
-
-**Request parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "infra_id", "URI", "csapi:UUID", "The unique identifier of the infrastructure network subnet configuration for this system."
-   "infra_subnet (Optional)", "plain", "xsd:string", "This parameter specifies the infrastructure network IP subnet."
-
-**Response parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "infra_subnet (Optional)", "plain", "xsd:string", "The infrastructure network IP subnet."
-   "infra_start (Optional)", "plain", "xsd:string", "The infrastructure network start IP address."
-   "infra_end (Optional)", "plain", "xsd:string", "The infrastructure network end IP address."
-   "infra_mtu (Optional)", "plain", "xsd:string", "The MTU of the infrastructure interface."
-   "infra_vlan (Optional)", "plain", "xsd:string", "The VLAN id of the infrastructure interface."
-   "isystem_uuid (Optional)", "plain", "csapi:UUID", "The System UUID which the infrastructure network IP subnet belongs to."
-   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
-   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
-   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
-   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
-
-::
-
-   [
-      {
-         "path":"/infra_subnet",
-         "value":"192.168.205.0/24",
-         "op":"replace"
-      }
-   ]
-
-::
-
-   {
-      "iinfras":[
-         {
-            "infra_subnet":"192.168.205.0/24",
-            "infra_start":"192.168.205.2",
-            "infra_end":"192.168.205.254",
-            "infra_mtu": "9216",
-            "infra_vlan_id": "137",
-            "links":[
-               {
-                  "href":"http://10.10.10.2:6385/v1/iinfras/15ba72aa-442f-4b57-a8a1-e3f3cdd5b04c",
-                  "rel":"self"
-               },
-               {
-                  "href":"http://10.10.10.2:6385/iinfras/15ba72aa-442f-4b57-a8a1-e3f3cdd5b04c",
-                  "rel":"bookmark"
-               }
-            ],
-            "created_at": "2014-12-01T19:35:36.965657+00:00",
-            "updated_at": "2014-12-02T20:38:51.646902+00:00",
-            "isystem_uuid": "b7fdc4dd-333d-471b-b21d-ba664ea87714",
-            "uuid": "15ba72aa-442f-4b57-a8a1-e3f3cdd5b04c"
-         }
-      ]
-   }
-
-*******************************************************************
-Applies attributes of the infrastructure network IP subnet object
-*******************************************************************
-
-.. rest_method:: PATCH /v1/iinfra/​{infra_id}​
-
-**Normal response codes**
-
-204
-
-**Request parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "infra_id", "URI", "csapi:UUID", "The unique identifier of the infrastructure network subnet configuration for this system."
-
-::
-
-   [
-      {
-         "path":"/action",
-         "value":"apply",
-         "op":"replace"
-      }
-   ]
-
-::
-
-   {
-      "iinfras":[
-         {
-            "infra_subnet":"192.168.205.0/24",
-            "infra_start":"192.168.205.2",
-            "infra_end":"192.168.205.254",
-            "infra_mtu": "9216",
-            "infra_vlan_id": "137",
-            "links":[
-               {
-                  "href":"http://10.10.10.2:6385/v1/iinfras/15ba72aa-442f-4b57-a8a1-e3f3cdd5b04c",
-                  "rel":"self"
-               },
-               {
-                  "href":"http://10.10.10.2:6385/iinfras/15ba72aa-442f-4b57-a8a1-e3f3cdd5b04c",
-                  "rel":"bookmark"
-               }
-            ],
-            "created_at": "2014-12-01T19:35:36.965657+00:00",
-            "updated_at": "2014-12-02T20:38:51.646902+00:00",
-            "isystem_uuid": "b7fdc4dd-333d-471b-b21d-ba664ea87714",
-            "uuid": "15ba72aa-442f-4b57-a8a1-e3f3cdd5b04c"
-         }
-      ]
-   }
 
 -------------------
 DRBD Configuration
@@ -5435,7 +5118,7 @@ This operation does not accept a request body.
 Shows information about a specific SNMP Trap Destination
 **********************************************************
 
-.. rest_method:: GET /v1/itrapdest/​{trapdest_id}​
+.. rest_method:: GET /v1/itrapdest/​{ip_address}​
 
 **Normal response codes**
 
@@ -5453,7 +5136,7 @@ itemNotFound (404)
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
-   "trapdest_id", "URI", "csapi:UUID", "The unique identifier of an existing SNMP Trap Destination."
+   "ip_address", "plain", "xsd:string", "The IP address of a specific trap destination."
 
 **Response parameters**
 
@@ -8721,55 +8404,6 @@ itemNotFound (404)
 
 This operation does not accept a request body.
 
-*********************************
-List the storage backends usage
-*********************************
-
-.. rest_method:: GET /v1/storage_backend/usage
-
-**Normal response codes**
-
-200
-
-**Error response codes**
-
-computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
-unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
-itemNotFound (404)
-
-**Response parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "service_name (Optional)", "plain", "xsd:string", "The name of the storage service."
-   "name (Optional)", "plain", "xsd:string", "The name of the storage backend."
-   "backend (Optional)", "plain", "xsd:string", "The type of the storage backend."
-   "free_capacity (Optional)", "plain", "xsd:decimal", "The free storage capacity in GiB."
-   "total_capacity (Optional)", "plain", "xsd:decimal", "The total capacity in GiB."
-
-::
-
-   [
-       {
-           "free_capacity": 7.48,
-           "service_name": "glance",
-           "total_capacity": 7.84,
-           "name": "file-store",
-           "backend": "file"
-       },
-       {
-           "free_capacity": 6.9,
-           "service_name": "cinder",
-           "total_capacity": 6.9,
-           "name": "lvm-store",
-           "backend": "lvm"
-       }
-   ]
-
-This operation does not accept a request body.
-
 ***************************
 List LVM storage backends
 ***************************
@@ -10377,7 +10011,7 @@ badMediaType (415)
 Deletes an external storage backend
 *************************************
 
-.. rest_method:: Delete /v1/storage_external/​{storage_external_id}​
+.. rest_method:: DELETE /v1/storage_external/​{storage_external_id}​
 
 **Normal response codes**
 
@@ -11650,6 +11284,47 @@ forbidden (403), badMethod (405), overLimit (413), itemNotFound (404)
    }
 
 This operation does not accept a request body.
+
+****************************
+Renew System Certificate
+****************************
+
+.. rest_method:: POST /v1/certificate/certificate_renew
+
+Accepts a JSON data structure for renewing a specified certificate.
+
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+badMediaType (415)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "Content-Type multipart/form-data", "JSON", "xsd:string", "{'certtype':'', 'root_ca_crt': '', 'sc_ca_cert': '', 'sc_ca_key':''}. certtype: type of certificate to renew, options are admin-endpoint-cert or intermediate-ca-cert. 'root_ca_crt', required if certtype is intermediate-ca-cert, base64 endcoded root CA certificate. sc_ca_cert: required if certtype is intermediate-ca-cert, base64 endcoded subcloud intermediate CA certificate. sc_ca_key required if certtype is intermediate-ca-cert, base64 endcoded private key of subcloud intermediate CA."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "response", "JSON", "xsd:string", "A json object to return the result of the operation. {'result': '<operation result>'}"
+
+::
+
+   {
+      "result": "OK"
+   }
 
 ---------------
 Docker Registry

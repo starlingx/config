@@ -16,7 +16,7 @@ from six.moves import http_client
 
 from sysinv.common import constants
 from sysinv.common import device as dconstants
-
+from sysinv.fpga_agent import constants as fpga_constants
 from sysinv.tests.api import base
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
@@ -27,6 +27,8 @@ class FakeConductorAPI(object):
     def __init__(self):
         self.store_bitstream_file = mock.MagicMock()
         self.delete_bitstream_file = mock.MagicMock()
+        self.apply_device_image = mock.MagicMock()
+        self.clear_device_image_alarm = mock.MagicMock()
 
 
 class TestDeviceImage(base.FunctionalTest, dbbase.BaseHostTestCase):
@@ -113,8 +115,8 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
                                 'bitstream.bit')
         data = {
             'bitstream_type': dconstants.BITSTREAM_TYPE_FUNCTIONAL,
-            'pci_vendor': '80ee',
-            'pci_device': 'beef',
+            'pci_vendor': fpga_constants.N3000_VENDOR,
+            'pci_device': fpga_constants.N3000_DEVICE,
             'bitstream_id': '12345',
         }
         upload_file = [('file', bitstream_file)]
@@ -135,8 +137,8 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
         # Verify that the device image has the expected attributes
         self.assertEqual(resp_dict['bitstream_type'],
                          dconstants.BITSTREAM_TYPE_FUNCTIONAL)
-        self.assertEqual(resp_dict['pci_vendor'], '80ee')
-        self.assertEqual(resp_dict['pci_device'], 'beef')
+        self.assertEqual(resp_dict['pci_vendor'], fpga_constants.N3000_VENDOR)
+        self.assertEqual(resp_dict['pci_device'], fpga_constants.N3000_DEVICE)
         self.assertEqual(resp_dict['bitstream_id'], '12345')
 
     def test_create_root_key_image(self):
@@ -145,8 +147,8 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
                                 'bitstream.bit')
         data = {
             'bitstream_type': dconstants.BITSTREAM_TYPE_ROOT_KEY,
-            'pci_vendor': '80ee',
-            'pci_device': 'beef',
+            'pci_vendor': fpga_constants.N3000_VENDOR,
+            'pci_device': fpga_constants.N3000_DEVICE,
             'key_signature': '12345',
         }
         upload_file = [('file', bitstream_file)]
@@ -167,8 +169,8 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
         # Verify that the device image has the expected attributes
         self.assertEqual(resp_dict['bitstream_type'],
                          dconstants.BITSTREAM_TYPE_ROOT_KEY)
-        self.assertEqual(resp_dict['pci_vendor'], '80ee')
-        self.assertEqual(resp_dict['pci_device'], 'beef')
+        self.assertEqual(resp_dict['pci_vendor'], fpga_constants.N3000_VENDOR)
+        self.assertEqual(resp_dict['pci_device'], fpga_constants.N3000_DEVICE)
         self.assertEqual(resp_dict['key_signature'], '12345')
 
     def test_create_revoke_key_image(self):
@@ -177,8 +179,8 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
                                 'bitstream.bit')
         data = {
             'bitstream_type': dconstants.BITSTREAM_TYPE_KEY_REVOCATION,
-            'pci_vendor': '80ee',
-            'pci_device': 'beef',
+            'pci_vendor': fpga_constants.N3000_VENDOR,
+            'pci_device': fpga_constants.N3000_DEVICE,
             'revoke_key_id': 12345,
         }
         upload_file = [('file', bitstream_file)]
@@ -199,8 +201,8 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
         # Verify that the device image has the expected attributes
         self.assertEqual(resp_dict['bitstream_type'],
                          dconstants.BITSTREAM_TYPE_KEY_REVOCATION)
-        self.assertEqual(resp_dict['pci_vendor'], '80ee')
-        self.assertEqual(resp_dict['pci_device'], 'beef')
+        self.assertEqual(resp_dict['pci_vendor'], fpga_constants.N3000_VENDOR)
+        self.assertEqual(resp_dict['pci_device'], fpga_constants.N3000_DEVICE)
         self.assertEqual(resp_dict['revoke_key_id'], 12345)
 
     def test_create_functional_image_failure(self):
@@ -209,8 +211,8 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
                                 'bitstream.bit')
         data = {
             'bitstream_type': dconstants.BITSTREAM_TYPE_FUNCTIONAL,
-            'pci_vendor': '80ee',
-            'pci_device': 'beef',
+            'pci_vendor': fpga_constants.N3000_VENDOR,
+            'pci_device': fpga_constants.N3000_DEVICE,
             'revoke_key_id': '12345',
         }
         upload_file = [('file', bitstream_file)]
@@ -227,8 +229,8 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
                                 'bitstream.bit')
         data = {
             'bitstream_type': dconstants.BITSTREAM_TYPE_ROOT_KEY,
-            'pci_vendor': '80ee',
-            'pci_device': 'beef',
+            'pci_vendor': fpga_constants.N3000_VENDOR,
+            'pci_device': fpga_constants.N3000_DEVICE,
             'revoke_key_id': '12345',
         }
         upload_file = [('file', bitstream_file)]
@@ -245,8 +247,8 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
                                 'bitstream.bit')
         data = {
             'bitstream_type': dconstants.BITSTREAM_TYPE_KEY_REVOCATION,
-            'pci_vendor': '80ee',
-            'pci_device': 'beef',
+            'pci_vendor': fpga_constants.N3000_VENDOR,
+            'pci_device': fpga_constants.N3000_DEVICE,
             'bitstream_id': '12345',
         }
         upload_file = [('file', bitstream_file)]
@@ -263,6 +265,23 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
                                 'bitstream.bit')
         data = {
             'bitstream_type': 'wrong_type',
+            'pci_vendor': fpga_constants.N3000_VENDOR,
+            'pci_device': fpga_constants.N3000_DEVICE,
+            'bitstream_id': '12345',
+        }
+        upload_file = [('file', bitstream_file)]
+        result = self.post_with_files('/device_images', data,
+                                      upload_files=upload_file,
+                                      headers=self.API_HEADERS,
+                                      expect_errors=True)
+        self.assertIn("Bitstream type wrong_type not supported", str(result))
+
+    def test_create_pci_vendor_device_invalid(self):
+        # Test creation of device image
+        bitstream_file = os.path.join(os.path.dirname(__file__), "data",
+                                'bitstream.bit')
+        data = {
+            'bitstream_type': dconstants.BITSTREAM_TYPE_FUNCTIONAL,
             'pci_vendor': '80ee',
             'pci_device': 'beef',
             'bitstream_id': '12345',
@@ -272,7 +291,7 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
                                       upload_files=upload_file,
                                       headers=self.API_HEADERS,
                                       expect_errors=True)
-        self.assertIn("Bitstream type wrong_type not supported", str(result))
+        self.assertIn("Supported vendor ID", str(result))
 
 
 class TestPatch(TestDeviceImage):
@@ -288,7 +307,7 @@ class TestPatch(TestDeviceImage):
             invprovision=constants.PROVISIONED
         )
         # Create a pci_device and fpga_device object
-        self.pci_device = dbutils.create_test_pci_devices(
+        self.pci_device = dbutils.create_test_pci_device(
             host_id=self.controller.id,
             pclass='Processing accelerators',
             pclass_id='120000',)
@@ -329,10 +348,6 @@ class TestPatch(TestDeviceImage):
         self.assertEqual(dconstants.DEVICE_IMAGE_UPDATE_PENDING,
                          dev_img_state.status)
 
-        # Verify that needs_firmware_update flag is updated in pci_device
-        pci_dev = self.dbapi.pci_device_get(self.pci_device.id)
-        self.assertEqual(pci_dev['needs_firmware_update'], True)
-
     def test_device_image_apply_invalid_image(self):
         # Test applying device image with non-existing image
 
@@ -351,13 +366,13 @@ class TestPatch(TestDeviceImage):
 
         # Assign label to a device
         self.post_json('/device_labels',
-                       {'pcidevice_uuid': self.pci_device.uuid,
-                        'key1': 'value1'},
+                       [{'pcidevice_uuid': self.pci_device.uuid},
+                        {'key1': 'value1'}],
                        headers=self.API_HEADERS)
 
         # Apply the device image with label
         path = '/device_images/%s?action=apply' % self.device_image.uuid
-        response = self.patch_json(path, {'key1': 'value1'},
+        response = self.patch_json(path, [{'key1': 'value1'}],
                                    headers=self.API_HEADERS)
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
@@ -366,7 +381,7 @@ class TestPatch(TestDeviceImage):
         self.assertEqual(response.json['pci_vendor'], '80ee')
         self.assertEqual(response.json['pci_device'], 'beef')
         self.assertEqual(response.json['bitstream_id'], '12345')
-        self.assertEqual(response.json['applied_labels'], {'key1': 'value1'})
+        self.assertEqual(response.json['applied_labels'], [{'key1': 'value1'}])
 
         # Verify that the image to device mapping is updated
         dev_img_state = self.dbapi.device_image_state_get_by_image_device(
@@ -374,42 +389,35 @@ class TestPatch(TestDeviceImage):
         self.assertEqual(dconstants.DEVICE_IMAGE_UPDATE_PENDING,
                          dev_img_state.status)
 
-        # Verify that needs_firmware_update flag is updated in pci_device
-        pci_dev = self.dbapi.pci_device_get(self.pci_device.id)
-        self.assertEqual(pci_dev['needs_firmware_update'], True)
-
-    def test_device_image_apply_invalid_label(self):
-        # Test applying device image with non-existing device label
+    def test_device_image_apply_with_label_without_device(self):
+        # Test applying device image with label with non-existing device
 
         # Apply the device image
         path = '/device_images/%s?action=apply' % self.device_image.uuid
-        response = self.patch_json(path, {'key1': 'value1'},
-                                   headers=self.API_HEADERS,
-                                   expect_errors=True)
-        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        response = self.patch_json(path, [{'key1': 'value1'}],
+                                   headers=self.API_HEADERS)
         self.assertEqual('application/json', response.content_type)
-        self.assertIn("Device image apply failed: label key1=value1 does not"
-                      " exist", response.json['error_message'])
+        self.assertEqual(response.status_code, http_client.OK)
 
     def test_device_image_apply_overwrite_functional(self):
         # Test applying second device image with label
 
         # Assign label to a device
         self.post_json('/device_labels',
-                       {'pcidevice_uuid': self.pci_device.uuid,
-                        'key1': 'value1'},
+                       [{'pcidevice_uuid': self.pci_device.uuid},
+                        {'key1': 'value1'}],
                        headers=self.API_HEADERS)
 
         # Apply the device image with label
         path = '/device_images/%s?action=apply' % self.device_image.uuid
-        response = self.patch_json(path, {'key1': 'value1'},
+        response = self.patch_json(path, [{'key1': 'value1'}],
                                    headers=self.API_HEADERS)
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
 
         # Apply a second functional device image with label
         path = '/device_images/%s?action=apply' % self.device_image2.uuid
-        response = self.patch_json(path, {'key1': 'value1'},
+        response = self.patch_json(path, [{'key1': 'value1'}],
                                    headers=self.API_HEADERS,
                                    expect_errors=True)
         self.assertEqual(response.content_type, 'application/json')
@@ -429,29 +437,25 @@ class TestPatch(TestDeviceImage):
         self.assertEqual(response.json['pci_device'], 'beef')
         self.assertEqual(response.json['bitstream_id'], '12345')
 
-        # Verify that needs_firmware_update flag is updated in pci_device
-        pci_dev = self.dbapi.pci_device_get(self.pci_device.id)
-        self.assertEqual(pci_dev['needs_firmware_update'], False)
-
     def test_device_image_remove_by_label(self):
         # Test removing device image by device label
 
         # Assign label to a device
         self.post_json('/device_labels',
-                       {'pcidevice_uuid': self.pci_device.uuid,
-                       'key1': 'value1'},
+                       [{'pcidevice_uuid': self.pci_device.uuid},
+                        {'key1': 'value1'}],
                        headers=self.API_HEADERS)
 
         # Apply the device image with label
         path = '/device_images/%s?action=apply' % self.device_image.uuid
-        response = self.patch_json(path, {'key1': 'value1'},
+        response = self.patch_json(path, [{'key1': 'value1'}],
                                    headers=self.API_HEADERS)
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
 
         # Remove the device image with label
         path = '/device_images/%s?action=remove' % self.device_image.uuid
-        response = self.patch_json(path, {'key1': 'value1'},
+        response = self.patch_json(path, [{'key1': 'value1'}],
                                    headers=self.API_HEADERS)
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
@@ -461,24 +465,22 @@ class TestPatch(TestDeviceImage):
         self.assertEqual(response.json['pci_device'], 'beef')
         self.assertEqual(response.json['bitstream_id'], '12345')
 
-    def test_device_image_remove_by_label_not_applied(self):
-        # Test removing device image by label where device label is not applied
+    def test_device_image_remove_by_label_without_device(self):
+        # Test removing device image by label without device
 
-        # Assign label to a device
-        self.post_json('/device_labels',
-                       {'pcidevice_uuid': self.pci_device.uuid,
-                       'key1': 'value1'},
-                       headers=self.API_HEADERS)
+        # Apply the device image with label
+        path = '/device_images/%s?action=apply' % self.device_image.uuid
+        response = self.patch_json(path, [{'key1': 'value1'}],
+                                   headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
 
         # Remove the device image with label
         path = '/device_images/%s?action=remove' % self.device_image.uuid
-        response = self.patch_json(path, {'key1': 'value1'},
-                                   headers=self.API_HEADERS,
-                                   expect_errors=True)
-        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        response = self.patch_json(path, [{'key1': 'value1'}],
+                                   headers=self.API_HEADERS)
         self.assertEqual('application/json', response.content_type)
-        self.assertIn("Device image %s not associated with label key1=value1" %
-                      self.device_image.uuid, response.json['error_message'])
+        self.assertEqual(response.status_code, http_client.OK)
 
 
 class TestDelete(TestDeviceImage):

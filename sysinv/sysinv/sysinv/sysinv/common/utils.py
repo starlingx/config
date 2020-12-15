@@ -24,12 +24,16 @@
 
 """Utilities and helper functions."""
 
+import ast
+import base64
 import boto3
 from botocore.config import Config
 import collections
 import contextlib
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
+from OpenSSL import crypto
 import datetime
 import errno
 import functools
@@ -49,6 +53,7 @@ import shutil
 import signal
 import six
 import socket
+import string
 import tempfile
 import time
 import tsconfig.tsconfig as tsc
@@ -71,6 +76,7 @@ from sysinv._i18n import _
 from sysinv.common import exception
 from sysinv.common import constants
 from sysinv.helm import common as helm_common
+from sysinv.common import kubernetes
 
 
 try:
@@ -873,7 +879,7 @@ def symlink_force(source, link_name):
 def mounted(remote_dir, local_dir):
     local_dir = os.path.abspath(local_dir)
     try:
-        subprocess.check_output(
+        subprocess.check_output(  # pylint: disable=not-callable
             ["/bin/nfs-mount", remote_dir, local_dir],
             stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as e:
@@ -884,7 +890,7 @@ def mounted(remote_dir, local_dir):
         yield
     finally:
         try:
-            subprocess.check_output(
+            subprocess.check_output(  # pylint: disable=not-callable
                 ["/bin/umount", local_dir],
                 stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
@@ -951,16 +957,19 @@ def is_low_core_system(ihost, dba):
     return number_physical_cores <= constants.NUMBER_CORES_XEOND
 
 
-def get_minimum_platform_reserved_memory(ihost, numa_node):
+def get_minimum_platform_reserved_memory(dbapi, ihost, numa_node):
     """Returns the minimum amount of memory to be reserved by the platform for a
-        given NUMA node.  Compute nodes require reserved memory because the
-        balance of the memory is allocated to VM instances.  Other node types
-        have exclusive use of the memory so no explicit reservation is
-        required. Memory required by platform core is not included here.
-        """
+    given NUMA node. Standard controller, system controller and compute nodes
+    all require reserved memory because the balance of the memory is allocated
+    to pods or VM instances. Storage nodes have exclusive use of the memory
+    so no explicit reservation is required.
+    """
     reserved = 0
-    if numa_node is None:
-        return reserved
+
+    system = dbapi.isystem_get_one()
+    ihost_inodes = dbapi.inode_get_by_ihost(ihost['uuid'])
+    numa_node_count = len(ihost_inodes)
+
     if is_virtual() or is_virtual_worker(ihost):
         # minimal memory requirements for VirtualBox
         if host_has_function(ihost, constants.WORKER):
@@ -970,23 +979,34 @@ def get_minimum_platform_reserved_memory(ihost, numa_node):
                     reserved += 5000
             else:
                 reserved += 500
-    else:
-        if host_has_function(ihost, constants.WORKER):
+    elif (system.distributed_cloud_role ==
+              constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and
+          ihost['personality'] == constants.CONTROLLER):
+        reserved += \
+            constants.DISTRIBUTED_CLOUD_CONTROLLER_MEMORY_RESERVED_MIB // numa_node_count
+    elif host_has_function(ihost, constants.WORKER):
             # Engineer 1G per numa node for disk IO RSS overhead
             reserved += constants.DISK_IO_RESIDENT_SET_SIZE_MIB
+    elif ihost['personality'] == constants.CONTROLLER:
+        # Standard controller
+        reserved += constants.STANDARD_CONTROLLER_MEMORY_RESERVED_MIB // numa_node_count
+
     return reserved
 
 
-def get_required_platform_reserved_memory(ihost, numa_node, low_core=False):
+def get_required_platform_reserved_memory(dbapi, ihost, numa_node, low_core=False):
     """Returns the amount of memory to be reserved by the platform for a
-    given NUMA node.  Compute nodes require reserved memory because the
-    balance of the memory is allocated to VM instances.  Other node types
-    have exclusive use of the memory so no explicit reservation is
-    required.
+    given NUMA node. Standard controller, system controller and compute nodes
+    all require reserved memory because the balance of the memory is allocated
+    to pods or VM instances. Storage nodes have exclusive use of the memory
+    so no explicit reservation is required.
     """
     required_reserved = 0
-    if numa_node is None:
-        return required_reserved
+
+    system = dbapi.isystem_get_one()
+    ihost_inodes = dbapi.inode_get_by_ihost(ihost['uuid'])
+    numa_node_count = len(ihost_inodes)
+
     if is_virtual() or is_virtual_worker(ihost):
         # minimal memory requirements for VirtualBox
         required_reserved += constants.DISK_IO_RESIDENT_SET_SIZE_MIB_VBOX
@@ -1008,30 +1028,39 @@ def get_required_platform_reserved_memory(ihost, numa_node, low_core=False):
             else:
                 required_reserved += \
                     constants.DISK_IO_RESIDENT_SET_SIZE_MIB_VBOX
-    else:
-        if host_has_function(ihost, constants.WORKER):
-            # Engineer 2G per numa node for disk IO RSS overhead
-            required_reserved += constants.DISK_IO_RESIDENT_SET_SIZE_MIB
-            if numa_node == 0:
-                # Engineer 2G for worker to give some headroom;
-                # typically requires 650 MB PSS
-                required_reserved += \
-                    constants.PLATFORM_CORE_MEMORY_RESERVED_MIB
-                if host_has_function(ihost, constants.CONTROLLER):
-                    # Over-engineer controller memory.
-                    # Typically require 5GB PSS; accommodate 2GB headroom.
-                    # Controller memory usage depends on number of workers.
-                    if low_core:
-                        required_reserved += \
-                            constants.COMBINED_NODE_CONTROLLER_MEMORY_RESERVED_MIB_XEOND
-                    else:
-                        required_reserved += \
-                            constants.COMBINED_NODE_CONTROLLER_MEMORY_RESERVED_MIB
-                else:
-                    # If not a controller,
-                    # add overhead for metadata and vrouters
+    elif (system.distributed_cloud_role ==
+             constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and
+          ihost['personality'] == constants.CONTROLLER):
+        required_reserved += \
+            constants.DISTRIBUTED_CLOUD_CONTROLLER_MEMORY_RESERVED_MIB // numa_node_count
+    elif host_has_function(ihost, constants.WORKER):
+        # Engineer 2G per numa node for disk IO RSS overhead
+        required_reserved += constants.DISK_IO_RESIDENT_SET_SIZE_MIB
+        if numa_node == 0:
+            # Engineer 2G for worker to give some headroom;
+            # typically requires 650 MB PSS
+            required_reserved += \
+                constants.PLATFORM_CORE_MEMORY_RESERVED_MIB
+            if host_has_function(ihost, constants.CONTROLLER):
+                # Over-engineer controller memory.
+                # Typically require 5GB PSS; accommodate 2GB headroom.
+                # Controller memory usage depends on number of workers.
+                if low_core:
                     required_reserved += \
-                        constants.NETWORK_METADATA_OVERHEAD_MIB
+                        constants.COMBINED_NODE_CONTROLLER_MEMORY_RESERVED_MIB_XEOND
+                else:
+                    required_reserved += \
+                        constants.COMBINED_NODE_CONTROLLER_MEMORY_RESERVED_MIB
+            else:
+                # If not a controller,
+                # add overhead for metadata and vrouters
+                required_reserved += \
+                    constants.NETWORK_METADATA_OVERHEAD_MIB
+    elif ihost['personality'] == constants.CONTROLLER:
+        # Standard controller
+        required_reserved += \
+            constants.STANDARD_CONTROLLER_MEMORY_RESERVED_MIB // numa_node_count
+
     return required_reserved
 
 
@@ -1053,9 +1082,9 @@ class ISO(object):
 
     def _mount_iso(self):
         with open(os.devnull, "w") as fnull:
-            subprocess.check_call(['mkdir', '-p', self.mount_dir], stdout=fnull,
+            subprocess.check_call(['mkdir', '-p', self.mount_dir], stdout=fnull,  # pylint: disable=not-callable
                                   stderr=fnull)
-            subprocess.check_call(['mount', '-r', '-o', 'loop', self.iso_path,
+            subprocess.check_call(['mount', '-r', '-o', 'loop', self.iso_path,  # pylint: disable=not-callable
                                    self.mount_dir],
                                   stdout=fnull,
                                   stderr=fnull)
@@ -1065,7 +1094,7 @@ class ISO(object):
         try:
             # Do a lazy unmount to handle cases where a file in the mounted
             # directory is open when the umount is done.
-            subprocess.check_call(['umount', '-l', self.mount_dir])
+            subprocess.check_call(['umount', '-l', self.mount_dir])  # pylint: disable=not-callable
             self._iso_mounted = False
         except subprocess.CalledProcessError as e:
             # If this fails for some reason, there's not a lot we can do
@@ -1074,33 +1103,28 @@ class ISO(object):
 
 
 def get_active_load(loads):
-    active_load = None
-    for db_load in loads:
-        if db_load.state == constants.ACTIVE_LOAD_STATE:
-            active_load = db_load
-
-    if active_load is None:
+    active_state = constants.ACTIVE_LOAD_STATE
+    matches = [load for load in loads if load.state == active_state]
+    if matches:
+        return matches[0]
+    else:
         raise exception.SysinvException(_("No active load found"))
-
-    return active_load
 
 
 def get_imported_load(loads):
-    imported_load = None
-    for db_load in loads:
-        if db_load.state == constants.IMPORTED_LOAD_STATE:
-            imported_load = db_load
-
-    if imported_load is None:
+    imported_states = constants.IMPORTED_LOAD_STATES
+    matches = [load for load in loads if load.state in imported_states]
+    if matches:
+        return matches[0]
+    else:
         raise exception.SysinvException(_("No imported load found"))
-
-    return imported_load
 
 
 def validate_loads_for_import(loads):
-    for db_load in loads:
-        if db_load.state == constants.IMPORTED_LOAD_STATE:
-            raise exception.SysinvException(_("Imported load exists."))
+    imported_states = constants.IMPORTED_LOAD_STATES
+    matches = [load for load in loads if load.state in imported_states]
+    if matches:
+        raise exception.SysinvException(_("Imported load exists."))
 
 
 def validate_load_for_delete(load):
@@ -1109,6 +1133,7 @@ def validate_load_for_delete(load):
 
     valid_delete_states = [
         constants.IMPORTED_LOAD_STATE,
+        constants.IMPORTED_METADATA_LOAD_STATE,
         constants.ERROR_LOAD_STATE,
         constants.DELETING_LOAD_STATE
     ]
@@ -1604,7 +1629,7 @@ def get_current_fs_size(fs_name):
 
     with open(os.devnull, "w") as fnull:
         try:
-            lvdisplay_output = subprocess.check_output(args, stderr=fnull)
+            lvdisplay_output = subprocess.check_output(args, stderr=fnull)  # pylint: disable=not-callable
         except subprocess.CalledProcessError:
             raise Exception("Failed to get filesystem %s size" % fs_name)
 
@@ -1616,47 +1641,12 @@ def get_current_fs_size(fs_name):
     return size_gib
 
 
-def get_default_controller_fs_backup_size(rootfs_device):
-    """ Get the filesystem backup size.
-    """
-
-    disk_size = get_disk_capacity_mib(rootfs_device)
-    disk_size = int(disk_size / 1024)
-
-    if disk_size > constants.DEFAULT_SMALL_DISK_SIZE:
-        LOG.info("Disk size for %s: %s ... large disk defaults" %
-                 (rootfs_device, disk_size))
-
-        database_storage = constants.DEFAULT_DATABASE_STOR_SIZE
-
-        platform_lv_size = constants.DEFAULT_PLATFORM_STOR_SIZE
-        backup_lv_size = database_storage + platform_lv_size + \
-            constants.BACKUP_OVERHEAD
-
-    elif disk_size >= constants.MINIMUM_DISK_SIZE:
-
-        LOG.info("Disk size for %s : %s ... small disk defaults" %
-                 (rootfs_device, disk_size))
-
-        # Due to the small size of the disk we can't provide the
-        # proper amount of backup space which is (database + platform_lv
-        # + BACKUP_OVERHEAD) so we are using a smaller default.
-        backup_lv_size = constants.DEFAULT_SMALL_BACKUP_STOR_SIZE
-
-    else:
-        LOG.info("Disk size for %s : %s ... disk too small" %
-                 (rootfs_device, disk_size))
-        raise exception.SysinvException("Disk size requirements not met.")
-
-    return backup_lv_size
-
-
 def get_cgts_vg_free_space():
     """Determine free space in cgts-vg"""
 
     try:
         # Determine space in cgts-vg in GiB
-        vg_free_str = subprocess.check_output(
+        vg_free_str = subprocess.check_output(  # pylint: disable=not-callable
             ['vgdisplay', '-C', '--noheadings', '--nosuffix',
              '-o', 'vg_free', '--units', 'g', 'cgts-vg'],
             close_fds=True).rstrip()
@@ -1773,7 +1763,7 @@ def extract_tarfile(target_dir, tarfile, demote_user=False):
                 cmd = ['tar', '-xf', tarfile, '-m', '--no-same-owner',
                        '--no-same-permissions', '-C', target_dir]
 
-            subprocess.check_call(cmd, stdout=fnull, stderr=fnull)
+            subprocess.check_call(cmd, stdout=fnull, stderr=fnull)  # pylint: disable=not-callable
 
             return True
         except subprocess.CalledProcessError as e:
@@ -1786,15 +1776,6 @@ def is_app_applied(dbapi, app_name):
     """
     try:
         return dbapi.kube_app_get(app_name).active
-    except exception.KubeAppNotFound:
-        return False
-
-
-def is_monitor_applied(dbapi):
-    """ Checks whether the Monitor application is applied successfully. """
-    try:
-        monitor_app = dbapi.kube_app_get(constants.HELM_APP_MONITOR)
-        return monitor_app.active
     except exception.KubeAppNotFound:
         return False
 
@@ -1816,8 +1797,7 @@ def is_valid_domain(url_str):
     r = re.compile(
         r'^(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)'  # domain...
         r'+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'
-        r'[A-Za-z0-9-_]*)'  # localhost, hostname
-        r'(?::\d+)?'  # optional port
+        r'[A-Z0-9-_]*)'  # localhost, hostname
         r'(?:/?|[/?]\S+)$', re.IGNORECASE)
 
     url = r.match(url_str)
@@ -1829,23 +1809,24 @@ def is_valid_domain(url_str):
 
 def is_valid_domain_or_ip(url_str):
     if url_str:
-        if is_valid_domain(url_str):
-            return True
-        ip_with_port = url_str.split(':')
-        if len(ip_with_port) <= 2:
+        url_without_path = url_str.split('/')[0]
+        url_with_port = url_without_path.split(':')
+        if len(url_with_port) <= 2:
+            if is_valid_domain(url_with_port[0]):
+                return True
             # check ipv4 or ipv4 with port
-            return is_valid_ipv4(ip_with_port[0])
+            return is_valid_ipv4(url_with_port[0])
         else:
             # check ipv6
-            if '[' in url_str:
+            if '[' in url_without_path:
                 try:
-                    bkt_idx = url_str.index(']')
-                    return is_valid_ipv6(url_str[1:bkt_idx])
+                    bkt_idx = url_without_path.index(']')
+                    return is_valid_ipv6(url_without_path[1:bkt_idx])
                 except Exception:
                     return False
             else:
                 # check ipv6 without port
-                return is_valid_ipv6(url_str)
+                return is_valid_ipv6(url_without_path)
 
 
 def is_valid_domain_name(value):
@@ -1872,7 +1853,7 @@ def verify_checksum(path):
             os.chdir(path)
             with open(os.devnull, "w") as fnull:
                 try:
-                    subprocess.check_call(['md5sum', '-c', f],
+                    subprocess.check_call(['md5sum', '-c', f],  # pylint: disable=not-callable
                                           stdout=fnull, stderr=fnull)
                     LOG.info("Checksum file is included and validated.")
                 except Exception as e:
@@ -1901,6 +1882,9 @@ def find_metadata_file(path, metadata_file):
     - <chart name>
     - <chart name>
     ...
+    maintain_user_overrides: <true|false>
+      - optional: defaults to false. Over an app update any user overrides are
+        preserved for the new version of the application
     """
     app_name = ''
     app_version = ''
@@ -1974,6 +1958,19 @@ def get_http_port(dbapi):
             constants.SERVICE_PARAM_SECTION_HTTP_CONFIG,
             constants.SERVICE_PARAM_HTTP_PORT_HTTP))
     return http_port
+
+
+def is_virtual_system_config(dbapi):
+    try:
+        virtual_system = ast.literal_eval(
+            dbapi.service_parameter_get_one(
+                constants.SERVICE_TYPE_PLATFORM,
+                constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+                constants.SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL).value)
+    except exception.NotFound:
+        # Not virtual system
+        virtual_system = False
+    return virtual_system
 
 
 def has_openstack_compute(labels):
@@ -2123,7 +2120,7 @@ def app_reapply_pending_fault_entity(app_name):
 
 def get_local_docker_registry_auth():
     registry_password = keyring.get_password(
-        constants.DOCKER_REGISTRY_SERVICE, constants.DOCKER_REGISTRY_USER)
+        constants.DOCKER_REGISTRY_USER, "services")
 
     if not registry_password:
         raise exception.DockerRegistryCredentialNotFound(
@@ -2214,8 +2211,68 @@ def extract_certs_from_pem(pem_contents):
                 "Failed to load pem x509 certificate"))
 
         certs.append(cert)
-        start = start + index + len(marker)
+        start = index + len(marker)
     return certs
+
+
+def is_ca_cert(cert):
+    """
+    Check if the certificate is a CA certficate
+
+    :param cert: the certificate to be checked
+    :return: True is the certificate is a CA certificate, otherwise
+             False
+    """
+    # extract "ca" value from cert extensions
+    is_ca = False
+    try:
+        basic_constraints = cert.extensions.get_extension_for_oid(
+            x509.ExtensionOID.BASIC_CONSTRAINTS)
+        value = getattr(basic_constraints, 'value', None)
+        if value:
+            is_ca = getattr(value, 'ca', False)
+    except x509.ExtensionNotFound:
+        LOG.debug("The cert doesn't have BASIC_CONSTRAINTS extension")
+        pass
+    return is_ca
+
+
+def get_cert_issuer_hash(cert):
+    """
+    Get the hash value of the cert's issuer DN
+
+    :param cert: the certificate to get issuer from
+    :return: The hash value of the cert's issuer DN
+    """
+    try:
+        public_bytes = cert.public_bytes(encoding=serialization.Encoding.PEM)
+        cert_c = crypto.load_certificate(crypto.FILETYPE_PEM, public_bytes)
+        hash_issuer = cert_c.get_issuer().hash()
+    except Exception:
+        LOG.exception()
+        raise exception.SysinvException(_(
+            "Failed to get certificate issuer hash."))
+
+    return hash_issuer
+
+
+def get_cert_subject_hash(cert):
+    """
+    Get the hash value of the cert's subject DN
+
+    :param cert: the certificate to get subject from
+    :return: The hash value of the cert's subject DN
+    """
+    try:
+        public_bytes = cert.public_bytes(encoding=serialization.Encoding.PEM)
+        cert_c = crypto.load_certificate(crypto.FILETYPE_PEM, public_bytes)
+        hash_subject = cert_c.get_subject().hash()
+    except Exception:
+        LOG.exception()
+        raise exception.SysinvException(_(
+            "Failed to get certificate subject hash."))
+
+    return hash_subject
 
 
 def format_image_filename(device_image):
@@ -2224,3 +2281,181 @@ def format_image_filename(device_image):
                                     device_image.pci_vendor,
                                     device_image.pci_device,
                                     device_image.uuid)
+
+
+def format_admin_endpoint_cert(tls_key, tls_cert):
+    return '%s\n%s' % (tls_key.strip('\n'), tls_cert.strip('\n'))
+
+
+def get_admin_ep_cert(dc_role):
+    """
+    Get endpoint certificate data from kubernetes
+    :param dc_role:
+    :return: data dict {'dc_root_ca_crt': '<dc root ca crt>,
+                        'admin_ep_crt': '<admin endpoint crt> }
+             or None if the node is not a DC controller
+    raise KubeNotConfigured exception when kubernetes is not configured
+    raise Exception for kubernetes data errors
+    """
+    if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+        endpoint_cert_secret_name = constants.DC_ADMIN_ENDPOINT_SECRET_NAME
+        endpoint_cert_secret_ns = 'dc-cert'
+    elif dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+        endpoint_cert_secret_name = constants.SC_ADMIN_ENDPOINT_SECRET_NAME
+        endpoint_cert_secret_ns = 'sc-cert'
+    else:
+        return None
+
+    secret_data = {'ca_crt': None, 'admin_ep_crt': None}
+    kube = kubernetes.KubeOperator()
+    secret = kube.kube_get_secret(
+        endpoint_cert_secret_name, endpoint_cert_secret_ns)
+
+    if not hasattr(secret, 'data'):
+        raise Exception('Invalid secret %s\\%s' % (
+            endpoint_cert_secret_ns, endpoint_cert_secret_name
+        ))
+
+    data = secret.data
+    if 'tls.crt' not in data or 'tls.key' not in data:
+        raise Exception("Invalid admin endpoint certificate data.")
+
+    try:
+        tls_crt = base64.b64decode(data['tls.crt'])
+        tls_key = base64.b64decode(data['tls.key'])
+    except TypeError:
+        raise Exception('admin endpoint secret is invalid %s' %
+                        endpoint_cert_secret_name)
+
+    if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+        try:
+            with open(constants.DC_ROOT_CA_CONFIG_PATH, 'r') as f:
+                ca_crt = f.read()
+        except Exception as e:
+            # this is an error condition, but would be likely to be repaired
+            # when intermediate or root ca is renewed.
+            # but the operation should not stop here, b/c if admin endpoint
+            # certificate is not updated, system controller may lost
+            # access to the subcloud admin endpoints which will make the
+            # situation impossible to recover.
+            LOG.error('Cannot read DC root CA certificate %s' % e)
+    elif dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+        try:
+            ca_crt = base64.b64decode(data['ca.crt'])
+        except TypeError:
+            raise Exception('admin endpoint secret is invalid %s' %
+                            endpoint_cert_secret_name)
+
+    secret_data['dc_root_ca_crt'] = ca_crt
+    secret_data['admin_ep_crt'] = "%s%s" % (tls_key, tls_crt)
+    return secret_data
+
+
+def verify_ca_crt(crt):
+    cmd = ['openssl', 'verify']
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc.stdin.write(crt)
+    stdout, stderr = proc.communicate()
+    if 0 == proc.returncode:
+        return True
+    else:
+        LOG.info('Provided ca cert is invalid \n%s\n%s\n%s' % (
+            crt, stdout, stderr
+        ))
+        return False
+
+
+def verify_intermediate_ca_cert(ca_crt, tls_crt):
+    with tempfile.NamedTemporaryFile() as tmpfile:
+        tmpfile.write(ca_crt)
+        tmpfile.flush()
+        cmd = ['openssl', 'verify', '-CAfile', tmpfile.name]
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        stdout, stderr = proc.communicate(input=tls_crt)
+        proc.wait()
+        if 0 == proc.returncode:
+            return True
+        else:
+            LOG.info('Provided intermediate CA cert is invalid\n%s\n%s\n%s' %
+                     (tls_crt, stdout, stderr))
+
+            return False
+
+
+def get_root_ca_cert():
+    secret_name = constants.DC_ADMIN_ROOT_CA_SECRET_NAME
+    dc_ns = constants.DC_ADMIN_ENDPOINT_NAMESPACE
+    kube = kubernetes.KubeOperator()
+    secret = kube.kube_get_secret(secret_name, dc_ns)
+
+    if not hasattr(secret, 'data'):
+        raise Exception('Invalid secret %s\\%s' % (dc_ns, secret_name))
+
+    data = secret.data
+    try:
+        ca_crt = base64.b64decode(data['ca.crt'])
+    except TypeError:
+        raise Exception('Secret is invalid %s' % secret_name)
+
+    secret_data = {'dc_root_ca_crt': ca_crt}
+    return secret_data
+
+
+def run_playbook(playbook_command):
+    exec_env = os.environ.copy()
+    exec_env["ANSIBLE_LOG_PATH"] = "/dev/null"
+    proc = subprocess.Popen(playbook_command, stdout=subprocess.PIPE, env=exec_env)
+    out, _ = proc.communicate()
+    LOG.info("ansible-playbook: %s." % out)
+    return proc.returncode
+
+
+def generate_random_password(length=16):
+    """
+    Generate a random password with as least one uppercase, one lowercase,
+    one number and one of the special characters in [!*_-+=] (the square
+    brackets are not included).
+
+    :param length: the length of the password
+    :return: the password in unicode
+    :raises exception.SysinvException: if password length is less than minimum
+    """
+    if length < constants.MINIMUM_PASSWORD_LENGTH:
+        msg = _("Length %s is below required minimum %s") % \
+               (length, constants.MINIMUM_PASSWORD_LENGTH)
+        raise exception.SysinvException(msg)
+
+    randomer = random.SystemRandom()
+
+    # Possible password characters
+    norm_chars = string.ascii_uppercase \
+                  + string.ascii_lowercase \
+                  + string.digits
+    special_chars = "!*_-+="
+    password_chars = norm_chars + special_chars
+
+    # As least one uppercase, one lowercase, one digit and one special
+    # character.
+    at_least_chars = randomer.choice(string.ascii_uppercase) \
+                     + randomer.choice(string.ascii_lowercase) \
+                     + randomer.choice(string.digits) \
+                     + randomer.choice(special_chars)
+
+    password = at_least_chars \
+               + ''.join(randomer.choice(password_chars)
+                         for i in range(length - len(at_least_chars) - 1))
+
+    # Shuffle the password to mix the at least to have characters
+    password_list = list(password)
+    randomer.shuffle(password_list)
+
+    # The leading char is always an ascii char or a number.
+    password = randomer.choice(norm_chars) + ''.join(password_list)
+
+    # Return the password in unicode
+    if six.PY2:
+        password = password.decode()
+    return password

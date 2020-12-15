@@ -646,7 +646,7 @@ def _check_cpu(cpu, ihost):
         cpu_counts = _update_isolated_cpu_counts(ihost, cpu, cpu_counts)
 
     # Semantic check to ensure the minimum/maximum values are enforced
-    cpu_utils.check_core_allocations(ihost, cpu_counts, func)
+    cpu_utils.check_core_allocations(ihost, cpu_counts)
 
     # Update cpu assignments to new values
     cpu_utils.update_core_allocations(ihost, cpu_counts)

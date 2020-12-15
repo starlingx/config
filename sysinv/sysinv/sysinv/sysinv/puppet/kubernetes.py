@@ -19,6 +19,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils
+from sysinv.common import device as dconstants
 from sysinv import objects
 from sysinv.puppet import base
 from sysinv.puppet import interface
@@ -32,6 +33,9 @@ CLUSTER_SERVICE_DNS_IP_OFFSET = 10
 # certificate keyring params
 CERTIFICATE_KEY_SERVICE = "kubernetes"
 CERTIFICATE_KEY_USER = "certificate-key"
+
+# kubeadm configuration option
+KUBECONFIG = "--kubeconfig=%s" % kubernetes.KUBERNETES_ADMIN_CONF
 
 
 class KubernetesPuppet(base.BasePuppet):
@@ -143,8 +147,7 @@ class KubernetesPuppet(base.BasePuppet):
 
         return config
 
-    @staticmethod
-    def _get_kubernetes_join_cmd(host):
+    def _get_kubernetes_join_cmd(self, host):
         # The token expires after 24 hours and is needed for a reinstall.
         # The puppet manifest handles the case where the node already exists.
         try:
@@ -161,8 +164,8 @@ class KubernetesPuppet(base.BasePuppet):
                 fd, temp_kubeadm_config_view = tempfile.mkstemp(
                     dir='/tmp', suffix='.yaml')
                 with os.fdopen(fd, 'w') as f:
-                    cmd = ['kubeadm', 'config', 'view']
-                    subprocess.check_call(cmd, stdout=f)
+                    cmd = ['kubeadm', KUBECONFIG, 'config', 'view']
+                    subprocess.check_call(cmd, stdout=f)  # pylint: disable=not-callable
 
                 # We will use a custom key to encrypt kubeadm certificates
                 # to make sure all hosts decrypt using the same key
@@ -178,14 +181,21 @@ class KubernetesPuppet(base.BasePuppet):
                        '--upload-certs', '--config',
                        temp_kubeadm_config_view]
 
-                subprocess.check_call(cmd)
+                subprocess.check_call(cmd)  # pylint: disable=not-callable
                 join_cmd_additions = \
                     " --control-plane --certificate-key %s" % key
                 os.unlink(temp_kubeadm_config_view)
 
-            cmd = ['kubeadm', 'token', 'create', '--print-join-command',
+                # Configure the IP address of the API Server for the controller host.
+                # If not set the default network interface will be used, which does not
+                # ensure it will be the Cluster IP address of this host.
+                host_cluster_ip = self._get_host_cluster_address(host)
+                join_cmd_additions += \
+                    " --apiserver-advertise-address %s" % host_cluster_ip
+
+            cmd = ['kubeadm', KUBECONFIG, 'token', 'create', '--print-join-command',
                    '--description', 'Bootstrap token for %s' % host.hostname]
-            join_cmd = subprocess.check_output(cmd)
+            join_cmd = subprocess.check_output(cmd)  # pylint: disable=not-callable
             join_cmd_additions += \
                 " --cri-socket /var/run/containerd/containerd.sock"
             join_cmd = join_cmd.strip() + join_cmd_additions
@@ -262,6 +272,12 @@ class KubernetesPuppet(base.BasePuppet):
 
         config.update({'platform::kubernetes::params::version': version})
         return config
+
+    def _get_host_cluster_address(self, host):
+        """Retrieve the named host address for the cluster host network"""
+        address = self._get_address_by_name(
+            host.hostname, constants.NETWORK_TYPE_CLUSTER_HOST)
+        return address.address
 
     def _get_host_node_config(self, host):
         node_ip = self._get_address_by_name(
@@ -361,9 +377,9 @@ class KubernetesPuppet(base.BasePuppet):
              'platform::kubernetes::params::k8s_nodeset':
              "\"%s\"" % k8s_nodeset,
              'platform::kubernetes::params::k8s_platform_cpuset':
-             k8s_platform_cpuset,
+             "\"%s\"" % k8s_platform_cpuset,
              'platform::kubernetes::params::k8s_all_reserved_cpuset':
-             k8s_all_reserved_cpuset,
+             "\"%s\"" % k8s_all_reserved_cpuset,
              'platform::kubernetes::params::k8s_reserved_mem':
              k8s_reserved_mem,
              })
@@ -385,8 +401,8 @@ class KubernetesPuppet(base.BasePuppet):
 
         if (sriovdp_worker is True):
             config.update({
-                'platform::kubernetes::worker::pci::pcidp_network_resources':
-                    self._get_pcidp_network_resources(),
+                'platform::kubernetes::worker::pci::pcidp_resources':
+                    self._get_pcidp_resources(host),
             })
         return config
 
@@ -431,6 +447,15 @@ class KubernetesPuppet(base.BasePuppet):
             driver = port['driver']
         return driver
 
+    def _get_pcidp_fpga_driver(self, device):
+        sriov_vf_driver = device.get('sriov_vf_driver', None)
+        if (sriov_vf_driver and
+                constants.SRIOV_DRIVER_TYPE_VFIO in sriov_vf_driver):
+            driver = constants.SRIOV_DRIVER_VFIO_PCI
+        else:
+            driver = device['sriov_vf_driver']
+        return driver
+
     def _get_pcidp_network_resources_by_ifclass(self, ifclass):
         resources = {}
 
@@ -471,7 +496,7 @@ class KubernetesPuppet(base.BasePuppet):
                     continue
 
                 driver = self._get_pcidp_driver(port, iface, ifclass)
-                if not device:
+                if not driver:
                     LOG.error("Failed to get driver for pci device %s", port['pciaddr'])
                     continue
 
@@ -492,17 +517,68 @@ class KubernetesPuppet(base.BasePuppet):
                     pf_name_list.append(port['name'])
 
                 if interface.is_a_mellanox_device(self.context, iface):
-                    resource['isRdma'] = True
+                    resource['selectors']['isRdma'] = True
 
                 resources[dn_name] = resource
 
         return list(resources.values())
 
-    def _get_pcidp_network_resources(self):
+    def _get_pcidp_fpga_resources(self, host):
+        resources = {}
+        fec_name = "intel_fpga_fec"
+
+        for d in self.dbapi.pci_device_get_by_host(host.id):
+            if (d['pclass_id'] == dconstants.PCI_DEVICE_CLASS_FPGA
+                    and d['pdevice_id'] == dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF):
+                resource = resources.get(fec_name, None)
+                if not resource:
+                    resource = {
+                        "resourceName": fec_name,
+                        "deviceType": "accelerator",
+                        "selectors": {
+                            "vendors": [],
+                            "devices": [],
+                            "drivers": []
+                        }
+                    }
+
+                vendor = d.get('pvendor_id', None)
+                if not vendor:
+                    LOG.error("Failed to get vendor id for pci device %s", d['pciaddr'])
+                    continue
+
+                device = d.get('sriov_vf_pdevice_id', None)
+                if not device:
+                    LOG.error("Failed to get device id for pci device %s", d['pciaddr'])
+                    continue
+
+                driver = self._get_pcidp_fpga_driver(d)
+                if not driver:
+                    LOG.error("Failed to get driver for pci device %s", d['pciaddr'])
+                    continue
+
+                vendor_list = resource['selectors']['vendors']
+                if vendor not in vendor_list:
+                    vendor_list.append(vendor)
+
+                device_list = resource['selectors']['devices']
+                if device not in device_list:
+                    device_list.append(device)
+
+                driver_list = resource['selectors']['drivers']
+                if driver not in driver_list:
+                    driver_list.append(driver)
+
+                resources[fec_name] = resource
+
+        return list(resources.values())
+
+    def _get_pcidp_resources(self, host):
         # Construct a list of all PCI passthrough and SRIOV resources
         # for use with the SRIOV device plugin
         sriov_resources = self._get_pcidp_network_resources_by_ifclass(
             constants.INTERFACE_CLASS_PCI_SRIOV)
         pcipt_resources = self._get_pcidp_network_resources_by_ifclass(
             constants.INTERFACE_CLASS_PCI_PASSTHROUGH)
-        return json.dumps({'resourceList': sriov_resources + pcipt_resources})
+        fpga_resources = self._get_pcidp_fpga_resources(host)
+        return json.dumps({'resourceList': sriov_resources + pcipt_resources + fpga_resources})

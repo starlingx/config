@@ -1331,7 +1331,8 @@ class Connection(api.Connection):
 
     def count_hosts_matching_criteria(
             self, personality=None, administrative=None,
-            operational=None, availability=None, vim_progress_status=None):
+            operational=None, availability=None, vim_progress_status=None,
+            reboot_needed=None):
         query = model_query(models.ihost)
         query = add_host_options(query)
         query = query.filter_by(recordtype="standard")
@@ -1361,6 +1362,12 @@ class Connection(api.Connection):
                     models.ihost.vim_progress_status.in_(vim_progress_status))
             else:
                 query = query.filter_by(vim_progress_status=vim_progress_status)
+        if reboot_needed:
+            if isinstance(reboot_needed, list):
+                query = query.filter(
+                    models.ihost.reboot_needed.in_(reboot_needed))
+            else:
+                query = query.filter_by(reboot_needed=reboot_needed)
         return query.count()
 
     @objects.objectify(objects.host)
@@ -8556,7 +8563,8 @@ class Connection(api.Connection):
         query = model_query(models.DeviceLabel)
         query = query.filter_by(label_key=label_key,
                                 label_value=label_value)
-        return query.all()
+        return _paginate_query(models.DeviceLabel, limit, marker,
+                               sort_key, sort_dir, query)
 
     @objects.objectify(objects.device_label)
     def device_label_update(self, uuid, values):
@@ -8572,7 +8580,7 @@ class Connection(api.Connection):
     def device_label_destroy(self, uuid):
         with _session_for_write() as session:
             query = model_query(models.DeviceLabel, session=session)
-            query = query.filter_by(uuid=uuid)
+            query = add_identity_filter(query, uuid)
             try:
                 query.one()
             except NoResultFound:
@@ -8592,11 +8600,7 @@ class Connection(api.Connection):
         query = model_query(models.DeviceLabel, session=session)
         query = query.filter(models.DeviceLabel.pcidevice_id == device_id)
         query = query.filter(models.DeviceLabel.label_key == label_key)
-        try:
-            result = query.one()
-        except NoResultFound:
-            raise exception.DeviceLabelNotFoundByKey(label=label_key)
-        return result
+        return query.all()
 
     @objects.objectify(objects.device_label)
     def device_label_query(self, device_id, label_key):
@@ -8661,6 +8665,14 @@ class Connection(api.Connection):
                                   sort_key=None, sort_dir=None):
         query = model_query(models.DeviceImageLabel)
         query = query.filter_by(image_id=image_id)
+        return query.all()
+
+    @objects.objectify(objects.device_image_label)
+    def device_image_label_get_by_label(self, label_id,
+                                  limit=None, marker=None,
+                                  sort_key=None, sort_dir=None):
+        query = model_query(models.DeviceImageLabel)
+        query = query.filter_by(label_id=label_id)
         return query.all()
 
     @objects.objectify(objects.device_image_label)
@@ -8779,5 +8791,8 @@ class Connection(api.Connection):
         if image_id:
             query = query.filter_by(image_id=image_id)
         if status:
-            query = query.filter_by(status=status)
+            if isinstance(status, list):
+                query = query.filter(models.DeviceImageState.status.in_(status))
+            else:
+                query = query.filter_by(status=status)
         return query.all()

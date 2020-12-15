@@ -1,6 +1,4 @@
-# -*- encoding: utf-8 -*-
-#
-# Copyright (c) 2015-2016 Wind River Systems, Inc.
+# Copyright (c) 2015-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -12,7 +10,8 @@ from cgtsclient import exc
 
 CREATION_ATTRIBUTES = ['software_version', 'compatible_version',
                        'required_patches']
-IMPORT_ATTRIBUTES = ['path_to_iso', 'path_to_sig']
+
+IMPORT_ATTRIBUTES = ['path_to_iso', 'path_to_sig', 'active']
 
 
 class Load(base.Resource):
@@ -33,26 +32,37 @@ class LoadManager(base.Manager):
         except IndexError:
             return None
 
-    def create(self, **kwargs):
+    def _create_load(self, load, path):
+        if set(load.keys()) != set(CREATION_ATTRIBUTES):
+            raise exc.InvalidAttribute()
+
+        return self._create(path, load)
+
+    def create(self, load):
         path = '/v1/loads/'
-        new = {}
-        for (key, value) in kwargs.items():
-            if key in CREATION_ATTRIBUTES:
-                new[key] = value
-            else:
-                raise exc.InvalidAttribute(key)
-        return self._create(path, new)
+        self._create_load(load, path)
+
+    def import_load_metadata(self, load):
+        path = '/v1/loads/import_load_metadata'
+        return self._create_load(load, path)
 
     def import_load(self, **kwargs):
         path = '/v1/loads/import_load'
-        new = {}
+
+        active = None
+        load_info = {}
         for (key, value) in kwargs.items():
             if key in IMPORT_ATTRIBUTES:
-                new[key] = value
+                if key == 'active':
+                    active = value
+                else:
+                    load_info[key] = value
             else:
                 raise exc.InvalidAttribute(key)
-        res, body = self.api.json_request('POST', path, body=new)
-        return body
+
+        json_data = self._upload_multipart(
+            path, body=load_info, data={'active': active}, check_exceptions=True)
+        return self.resource_class(self, json_data)
 
     def delete(self, load_id):
         path = '/v1/loads/%s' % load_id

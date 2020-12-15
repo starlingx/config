@@ -16,22 +16,24 @@ def _print_device_show(device):
     fields = ['name', 'pciaddr', 'pclass_id', 'pvendor_id', 'pdevice_id',
               'pclass', 'pvendor', 'pdevice', 'numa_node', 'enabled',
               'sriov_totalvfs', 'sriov_numvfs', 'sriov_vfs_pci_address',
-              'extra_info', 'created_at', 'updated_at']
+              'sriov_vf_pdevice_id', 'extra_info', 'created_at', 'updated_at']
 
     labels = ['name', 'address', 'class id', 'vendor id', 'device id',
               'class name', 'vendor name', 'device name', 'numa_node',
               'enabled', 'sriov_totalvfs', 'sriov_numvfs',
-              'sriov_vfs_pci_address', 'extra_info', 'created_at',
-              'updated_at']
+              'sriov_vfs_pci_address', 'sriov_vf_pdevice_id',
+              'extra_info', 'created_at', 'updated_at']
 
     pclass_id = getattr(device, 'pclass_id')
     if pclass_id == PCI_DEVICE_CLASS_FPGA:
-        fields += ['needs_firmware_update', 'status', 'root_key',
-                   'revoked_key_ids', 'boot_page', 'bitstream_id',
-                   'bmc_build_version', 'bmc_fw_version']
-        labels += ['needs_firmware_update', 'status', 'root_key',
-                   'revoked_key_ids', 'boot_page', 'bitstream_id',
-                   'bmc_build_version', 'bmc_fw_version']
+        fields += ['root_key', 'revoked_key_ids',
+                   'boot_page', 'bitstream_id',
+                   'bmc_build_version', 'bmc_fw_version',
+                   'driver', 'sriov_vf_driver']
+        labels += ['root_key', 'revoked_key_ids',
+                   'boot_page', 'bitstream_id',
+                   'bmc_build_version', 'bmc_fw_version',
+                   'driver', 'sriov_vf_driver']
 
     data = [(f, getattr(device, f, '')) for f in fields]
     utils.print_tuple_list(data, labels)
@@ -99,11 +101,25 @@ def do_host_device_list(cc, args):
 @utils.arg('-e', '--enabled',
            metavar='<enabled status>',
            help='The enabled status of the device')
+@utils.arg('-d', '--driver',
+           metavar='<new driver>',
+           help='The new driver of the device')
+@utils.arg('-v', '--vf-driver',
+           dest='sriov_vf_driver',
+           metavar='<new VF driver>',
+           help='The new VF driver of the device')
+@utils.arg('-N', '--num-vfs',
+           dest='sriov_numvfs',
+           metavar='<sriov numvfs>',
+           help='The number of SR-IOV VFs of the device')
 def do_host_device_modify(cc, args):
     """Modify device availability for worker nodes."""
 
     rwfields = ['enabled',
-                'name']
+                'name',
+                'driver',
+                'sriov_numvfs',
+                'sriov_vf_driver']
 
     host = ihost_utils._find_ihost(cc, args.hostnameorid)
 

@@ -12,6 +12,7 @@ import glob
 import os
 import shutil
 import subprocess
+import yaml
 
 import tsconfig.tsconfig as tsc
 
@@ -26,17 +27,18 @@ LOG = log.getLogger(__name__)
 def get_upgrade_databases(system_role, shared_services):
 
     UPGRADE_DATABASES = ('postgres', 'template1', 'sysinv',
-                         'barbican')
+                         'barbican', 'fm')
 
     UPGRADE_DATABASE_SKIP_TABLES = {'postgres': (), 'template1': (),
-                                    'sysinv': ('i_alarm',),
-                                    'barbican': ()}
+                                    'sysinv': (),
+                                    'barbican': (),
+                                    'fm': ('alarm',)}
 
     if system_role == sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
         UPGRADE_DATABASES += ('dcmanager', 'dcorch',)
         UPGRADE_DATABASE_SKIP_TABLES.update({
-            'dcmanager': ('subcloud_alarms',),
-            'dcorch': ()
+            'dcmanager': (),
+            'dcorch': ('service', 'orch_job', 'orch_request',)
         })
 
     if sysinv_constants.SERVICE_TYPE_IDENTITY not in shared_services:
@@ -55,7 +57,7 @@ def export_postgres(dest_dir, system_role, shared_services):
         # Dump roles, table spaces and schemas for databases.
         subprocess.check_call([('sudo -u postgres pg_dumpall --clean ' +
                                 '--schema-only > %s/%s' %
-                                (dest_dir, 'postgres.sql.config'))],
+                                (dest_dir, 'postgres.postgreSql.config'))],
                               shell=True, stderr=devnull)
 
         # Dump data for databases.
@@ -68,7 +70,7 @@ def export_postgres(dest_dir, system_role, shared_services):
                     enumerate(upgrade_database_skip_tables[db_elem]):
                 db_cmd += '--exclude-table=%s ' % table_elem
 
-            db_cmd += '> %s/%s.sql.data' % (dest_dir, db_elem)
+            db_cmd += '> %s/%s.postgreSql.data' % (dest_dir, db_elem)
 
             subprocess.check_call([db_cmd], shell=True, stderr=devnull)
 
@@ -91,7 +93,7 @@ def export_vim(dest_dir):
         raise
 
 
-def prepare_upgrade(from_load, to_load, i_system):
+def prepare_upgrade(from_load, to_load, i_system, mgmt_address):
     """ Executed on the release N side to prepare for an upgrade. """
     devnull = open(os.devnull, 'w')
 
@@ -146,6 +148,43 @@ def prepare_upgrade(from_load, to_load, i_system):
                                                             "config"))
         raise
 
+    # Copy /etc/kubernetes/admin.conf so controller-1 can access
+    # during its upgrade
+    try:
+        subprocess.check_call(
+            ["cp",
+             os.path.join(utils.KUBERNETES_CONF_PATH,
+                          utils.KUBERNETES_ADMIN_CONF_FILE),
+             os.path.join(tsc.PLATFORM_PATH, "config", to_load,
+                          "kubernetes", utils.KUBERNETES_ADMIN_CONF_FILE)],
+            stdout=devnull)
+    except subprocess.CalledProcessError:
+        LOG.exception("Failed to copy %s" %
+                      os.path.join(utils.KUBERNETES_CONF_PATH,
+                                   utils.KUBERNETES_ADMIN_CONF_FILE))
+        raise
+
+    # Update admin.conf file to replace the cluster address with
+    # the floating management address
+    # This is a temporary change used in upgrade of N+1 node
+    admin_conf = os.path.join(tsc.PLATFORM_PATH, "config", to_load,
+                              "kubernetes", utils.KUBERNETES_ADMIN_CONF_FILE)
+    with open(admin_conf, 'r') as yaml_file:
+        config = yaml.load(yaml_file)
+
+    for item, values in config.items():
+        # update server address in cluster
+        if item == 'clusters':
+            if 'cluster' in values[0] and 'server' in values[0]['cluster']:
+                formatted_address = utils.format_url_address(mgmt_address)
+                # TODO use urlparse() to get url components and update
+                values[0]['cluster']['server'] = \
+                    "https://" + formatted_address + ":6443"
+            break  # no need to iterate further
+
+    with open(admin_conf, 'w') as yaml_file:
+        yaml.dump(config, yaml_file, default_flow_style=False)
+
     # Remove branding tar files from the release N+1 directory as branding
     # files are not compatible between releases.
     branding_files = os.path.join(
@@ -183,12 +222,16 @@ def create_simplex_backup(software_upgrade):
     with open(metadata_filename, 'w') as metadata_file:
         metadata_file.write(json_data)
 
-    backup_filename = get_upgrade_backup_filename(software_upgrade)
-    backup_vars = "platform_backup_file=%s.tgz backup_dir=%s" % (
-        backup_filename, tsc.PLATFORM_BACKUP_PATH)
+    upgrade_data, upgrade_images_data = get_upgrade_backup_filenames(
+        software_upgrade)
+    backup_vars = [
+        "platform_backup_file=%s.tgz" % upgrade_data,
+        "docker_local_registry_backup_file=%s.tgz" % upgrade_images_data,
+        "backup_user_local_registry=true",
+        "backup_dir=%s" % tsc.PLATFORM_BACKUP_PATH]
     args = [
         'ansible-playbook',
-        '-e', backup_vars,
+        '-e', ' '.join(backup_vars),
         sysinv_constants.ANSIBLE_PLATFORM_BACKUP_PLAYBOOK]
     proc = subprocess.Popen(args, stdout=subprocess.PIPE)
     out, _ = proc.communicate()
@@ -198,13 +241,15 @@ def create_simplex_backup(software_upgrade):
     LOG.info("Create simplex backup complete")
 
 
-def get_upgrade_backup_filename(software_upgrade):
+def get_upgrade_backup_filenames(software_upgrade):
     """Generates the simplex upgrade backup filename"""
     created_at_date = software_upgrade.created_at.replace(
         microsecond=0).replace(tzinfo=None)
     date_time = created_at_date.isoformat().replace(':', '')
-    filename = 'upgrade_data_' + date_time + '_' + software_upgrade.uuid
-    return filename
+    suffix = date_time + '_' + software_upgrade.uuid
+    upgrade_data = 'upgrade_data_' + suffix
+    upgrade_images_data = 'upgrade_images_data_' + suffix
+    return upgrade_data, upgrade_images_data
 
 
 def abort_upgrade(from_load, to_load, upgrade):
@@ -268,16 +313,7 @@ def abort_upgrade(from_load, to_load, upgrade):
         except OSError:
             LOG.exception("Failed to remove upgrade directory %s" % directory)
 
-    simplex_backup_filename = get_upgrade_backup_filename(upgrade) + "*"
-    simplex_backup_files = glob.glob(os.path.join(
-        tsc.PLATFORM_BACKUP_PATH, simplex_backup_filename))
-
-    for file in simplex_backup_files:
-        try:
-            LOG.info("Removing simplex upgrade file %s" % file)
-            os.remove(file)
-        except OSError:
-            LOG.exception("Failed to remove %s" % file)
+    remove_simplex_upgrade_data(upgrade)
 
     LOG.info("Finished upgrade abort")
 
@@ -313,7 +349,22 @@ def activate_upgrade(from_load, to_load, i_system):
     LOG.info("Finished upgrade activation")
 
 
-def complete_upgrade(from_load, to_load):
+def remove_simplex_upgrade_data(upgrade):
+    upgrade_data, upgrade_images_data = get_upgrade_backup_filenames(upgrade)
+    simplex_backup_files = glob.glob(
+        os.path.join(tsc.PLATFORM_BACKUP_PATH, upgrade_data + "*"))
+    simplex_backup_files += glob.glob(
+        os.path.join(tsc.PLATFORM_BACKUP_PATH, upgrade_images_data + "*"))
+
+    for file in simplex_backup_files:
+        try:
+            LOG.info("Removing simplex upgrade file %s" % file)
+            os.remove(file)
+        except OSError:
+            LOG.exception("Failed to remove %s" % file)
+
+
+def complete_upgrade(from_load, to_load, upgrade):
     """ Executed on release N+1, cleans up data created for upgrade. """
     LOG.info("Starting upgrade complete - from: %s, to: %s" %
              (from_load, to_load))
@@ -335,5 +386,7 @@ def complete_upgrade(from_load, to_load):
             shutil.rmtree(directory)
         except OSError:
             LOG.exception("Failed to remove upgrade directory %s" % directory)
+
+    remove_simplex_upgrade_data(upgrade)
 
     LOG.info("Finished upgrade complete")

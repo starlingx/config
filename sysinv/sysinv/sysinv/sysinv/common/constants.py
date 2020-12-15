@@ -17,6 +17,14 @@ SYSINV_CONFIG_FILE_LOCAL = '/etc/sysinv/sysinv.conf'
 SYSINV_CONF_DEFAULT_FILE = 'sysinv.conf.default'
 SYSINV_CONF_DEFAULT_PATH = os.path.join(SYSINV_CONFIG_PATH,
                                         SYSINV_CONF_DEFAULT_FILE)
+SYSINV_RESTORE_FLAG = os.path.join(SYSINV_CONFIG_PATH,
+                                   ".restore_in_progress")
+
+HTTPS_CONFIG_REQUIRED = os.path.join(tsc.CONFIG_PATH, '.https_config_required')
+ADMIN_ENDPOINT_CONFIG_REQUIRED = os.path.join(tsc.CONFIG_PATH, '.admin_endpoint_config_required')
+
+# Minimum password length
+MINIMUM_PASSWORD_LENGTH = 8
 
 # IP families
 IPV4_FAMILY = 4
@@ -207,6 +215,7 @@ HAS_REINSTALLING = "reinstalling"
 HAS_REINSTALLED = "reinstalled"
 
 INV_STATE_INITIAL_INVENTORIED = "inventoried"
+INV_STATE_REINSTALLING = "reinstalling"
 
 # Board Management Region Info
 REGION_PRIMARY = "Internal"
@@ -230,10 +239,15 @@ PLATFORM_CORE_MEMORY_RESERVED_MIB = 2000
 PLATFORM_CORE_MEMORY_RESERVED_MIB_VBOX = 1100
 PLATFORM_CORE_MEMORY_RESERVED_MIB_VBOX_WORKER = 2000
 
-# For combined node, memory reserved for controller in MiB
+# For AIO config, memory reserved for controller in MiB
 COMBINED_NODE_CONTROLLER_MEMORY_RESERVED_MIB = 4000
 COMBINED_NODE_CONTROLLER_MEMORY_RESERVED_MIB_VBOX = 3000
 COMBINED_NODE_CONTROLLER_MEMORY_RESERVED_MIB_XEOND = 3000
+
+# For standard/distributed cloud config, memory reserved for controller in MiB
+STANDARD_CONTROLLER_MEMORY_RESERVED_MIB = 16500
+DISTRIBUTED_CLOUD_CONTROLLER_MEMORY_RESERVED_MIB = \
+    STANDARD_CONTROLLER_MEMORY_RESERVED_MIB + 8000
 
 # Max number of physical cores in a xeon-d cpu
 NUMBER_CORES_XEOND = 8
@@ -300,43 +314,68 @@ DEFAULT_DOCKER_DISTRIBUTION_STOR_SIZE = 1
 DEFAULT_DATABASE_STOR_SIZE = 10
 DEFAULT_SMALL_DATABASE_STOR_SIZE = 5
 DEFAULT_SMALL_BACKUP_STOR_SIZE = 20
-DEFAULT_VIRTUAL_DATABASE_STOR_SIZE = 5
-DEFAULT_VIRTUAL_BACKUP_STOR_SIZE = 5
+DEFAULT_TINY_DATABASE_STOR_SIZE = 1
+DEFAULT_TINY_BACKUP_STOR_SIZE = 1
+DEFAULT_TINY_PLATFORM_STOR_SIZE = 1
 DEFAULT_EXTENSION_STOR_SIZE = 1
 DEFAULT_DC_VAULT_STOR_SIZE = 15
-DEFAULT_ETCD_STORE_SIZE = 1
 
 BACKUP_OVERHEAD = 5
+IMAGE_CONVERSION_SIZE = 1
+KUBERNETES_DOCKER_STOR_SIZE = 30
+DOCKER_DISTRIBUTION_STOR_SIZE = 16
+ETCD_STOR_SIZE = 5
+KUBELET_STOR_SIZE = 10
+TINY_KUBERNETES_DOCKER_STOR_SIZE = 20
+TINY_DOCKER_DISTRIBUTION_STOR_SIZE = 8
+TINY_ETCD_STOR_SIZE = 1
+TINY_KUBELET_STOR_SIZE = 2
 
 # The threshold between small and large disks is 240GiB
 DEFAULT_SMALL_DISK_SIZE = 240
-# The minimum disk size needed to create all partitions
+
+# The minimum small disk size needed to create all partitions
 # Value based on the following calculation:
 # 2*DEFAULT_SMALL_DATABASE_STOR_SIZE                   10 (2*5)
 # DEFAULT_SMALL_BACKUP_STOR_SIZE                       20
 # LOG_VOL_SIZE (reserved in kickstarts)                 8
-# SCRATCH_VOL_SIZE (reserved in kickstarts)             8
-# RABBIT_LV                                             2
-# PLATFORM_LV                                          10
-# ANCHOR_LV                                             1
+# SCRATCH_VOL_SIZE (reserved in kickstarts)            16
+# DEFAULT_PLATFORM_STOR_SIZE                           10
 # DEFAULT_EXTENSION_STOR_SIZE                           1
-# KUBERNETES_DOCKER_STOR_SIZE (--kubernetes)           30
-# DOCKER_DISTRIBUTION_STOR_SIZE (--kubernetes)         16
-# ETCD_STOR_SIZE (--kubernetes)                         5
-# CEPH_MON_SIZE (--kubernetes)                         20
+# DEFAULT_RABBIT_STOR_SIZE                              2
+# KUBERNETES_DOCKER_STOR_SIZE                          30
+# DOCKER_DISTRIBUTION_STOR_SIZE                        16
+# ETCD_STOR_SIZE                                        5
+# CEPH_MON_SIZE                                        20
+# KUBELET_STOR_SIZE                                    10
 # buffer inside VG for LV creation                      1
+# platform backup partition (created in kickstarts)    10
 # root partition (created in kickstarts)               20
-# boot partition (created in kickstarts)                1
+# boot/EFI partition (created in kickstarts)            1
 # buffer for partition creation                         1
 # -------------------------------------------------------
-#                                                     154
-MINIMUM_DISK_SIZE = 154
+#                                                     181
+MINIMUM_SMALL_DISK_SIZE = 181
 
-KUBERNETES_DOCKER_STOR_SIZE = 30
-IMAGE_CONVERSION_SIZE = 1
-DOCKER_DISTRIBUTION_STOR_SIZE = 16
-ETCD_STOR_SIZE = 5
-KUBELET_STOR_SIZE = 10
+# The minimum tiny disk size needed to create all partitions
+# Value based on the following calculation:
+# 2*DEFAULT_TINY_DATABASE_STOR_SIZE                     2 (2*1)
+# DEFAULT_TINY_BACKUP_STOR_SIZE                         1
+# LOG_VOL_SIZE (reserved in kickstarts)                 3
+# SCRATCH_VOL_SIZE (reserved in kickstarts)             2
+# DEFAULT_TINY_PLATFORM_STOR_SIZE                       1
+# DEFAULT_EXTENSION_STOR_SIZE                           1
+# DEFAULT_RABBIT_STOR_SIZE                              2
+# TINY_KUBERNETES_DOCKER_STOR_SIZE                     20
+# TINY_DOCKER_DISTRIBUTION_STOR_SIZE                    8
+# TINY_ETCD_STOR_SIZE                                   1
+# TINY_KUBELET_STOR_SIZE                                2
+# platform backup partition (created in kickstarts)     1
+# root partition (created in kickstarts)               15
+# boot/EFI partition (created in kickstarts)            1
+# -------------------------------------------------------
+#                                                      60
+MINIMUM_TINY_DISK_SIZE = 60
 
 # Openstack Interface names
 OS_INTERFACE_PUBLIC = 'public'
@@ -748,10 +787,21 @@ MNT_DIR = '/tmp/mnt'
 ACTIVE_LOAD_STATE = 'active'
 IMPORTING_LOAD_STATE = 'importing'
 IMPORTED_LOAD_STATE = 'imported'
+IMPORTED_METADATA_LOAD_STATE = 'imported-metadata'
 ERROR_LOAD_STATE = 'error'
 DELETING_LOAD_STATE = 'deleting'
+IMPORTED_LOAD_STATES = [
+    IMPORTED_LOAD_STATE,
+    IMPORTED_METADATA_LOAD_STATE
+]
 
 DELETE_LOAD_SCRIPT = '/etc/sysinv/upgrades/delete_load.sh'
+IMPORTED_LOAD_MAX_COUNT = 1
+LOAD_ISO = 'path_to_iso'
+LOAD_SIGNATURE = 'path_to_sig'
+IMPORT_LOAD_FILES = [LOAD_ISO, LOAD_SIGNATURE]
+LOAD_FILES_STAGING_DIR = '/scratch/tmp_load'
+STAGING_LOAD_FILES_REMOVAL_WAIT_TIME = 30
 
 # Ceph
 CEPH_HEALTH_OK = 'HEALTH_OK'
@@ -964,6 +1014,7 @@ SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_RETRIES_DEFAULT = 3
 # Platform Service Parameters
 SERVICE_PARAM_SECTION_PLATFORM_MAINTENANCE = 'maintenance'
 SERVICE_PARAM_SECTION_PLATFORM_SYSINV = 'sysinv'
+SERVICE_PARAM_SECTION_PLATFORM_CONFIG = 'config'
 
 SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT = 'worker_boot_timeout'
 SERVICE_PARAM_PLAT_MTCE_CONTROLLER_BOOT_TIMEOUT = 'controller_boot_timeout'
@@ -982,6 +1033,8 @@ SERVICE_PARAM_PLAT_MTCE_HBS_FAILURE_THRESHOLD_DEFAULT = 10
 SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD_DEFAULT = 6
 SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD_DEFAULT = 2
 SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT_DEFAULT = 0
+
+SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL = 'virtual_system'
 
 # default time to live seconds
 PM_TTL_DEFAULT = 86400
@@ -1290,8 +1343,7 @@ SSL_PEM_FILE = os.path.join(SSL_CERT_DIR, SSL_CERT_FILE)
 SSL_PEM_SS_FILE = os.path.join(SSL_CERT_DIR, SSL_CERT_SS_FILE)
 SSL_PEM_FILE_SHARED = os.path.join(tsc.CONFIG_PATH, SSL_CERT_FILE)
 
-DOCKER_REGISTRY_USER = 'admin'
-DOCKER_REGISTRY_SERVICE = 'CGCS'
+DOCKER_REGISTRY_USER = 'sysinv'
 DOCKER_REGISTRY_HOST = 'registry.local'
 DOCKER_REGISTRY_PORT = '9001'
 DOCKER_REGISTRY_SERVER = '%s:%s' % (DOCKER_REGISTRY_HOST, DOCKER_REGISTRY_PORT)
@@ -1410,8 +1462,11 @@ SYSTEM_SECURITY_FEATURE_SPECTRE_MELTDOWN_DEFAULT_OPTS = SYSTEM_SECURITY_FEATURE_
 # Helm: Supported application (aka chart bundles)
 HELM_APP_OPENSTACK = 'stx-openstack'
 HELM_APP_PLATFORM = 'platform-integ-apps'
-HELM_APP_MONITOR = 'stx-monitor'
 HELM_APP_OIDC_AUTH = 'oidc-auth-apps'
+HELM_APP_CERT_MANAGER = 'cert-manager'
+HELM_APP_NGINX_IC = 'nginx-ingress-controller'
+HELM_APP_VAULT = 'vault'
+HELM_APP_ROOK_CEPH = 'rook-ceph-apps'
 
 # Apply mode for openstack app
 OPENSTACK_RESTORE_DB = 'restore_db'
@@ -1432,6 +1487,8 @@ HELM_APP_APPLY_MODES = {
 HELM_APPS_PLATFORM_MANAGED = [
     HELM_APP_PLATFORM,
     HELM_APP_OIDC_AUTH,
+    HELM_APP_CERT_MANAGER,
+    HELM_APP_ROOK_CEPH,
 ]
 
 # The order in which apps are listed here is important.
@@ -1479,6 +1536,7 @@ APP_REMOVE_FAILURE = 'remove-failed'
 APP_INACTIVE_STATE = 'inactive'
 APP_UPDATE_IN_PROGRESS = 'updating'
 APP_RECOVER_IN_PROGRESS = 'recovering'
+APP_RESTORE_REQUESTED = 'restore-requested'
 
 # Operation constants
 APP_UPLOAD_OP = 'upload'
@@ -1487,6 +1545,14 @@ APP_REMOVE_OP = 'remove'
 APP_DELETE_OP = 'delete'
 APP_UPDATE_OP = 'update'
 APP_ROLLBACK_OP = 'rollback'
+
+# Lifecycle constants
+APP_LIFECYCLE_PRE = 'pre'
+APP_LIFECYCLE_POST = 'post'
+
+# Application metadata constants
+APP_METADATA_MAINTAIN_USER_OVERRIDES = 'maintain_user_overrides'
+APP_METADATA_HELM_TOOLKIT_REQUIRED = 'helm_toolkit_required'
 
 # Progress constants
 APP_PROGRESS_ABORTED = 'operation aborted, check logs for detail'
@@ -1617,3 +1683,32 @@ KUBE_INTEL_GPU_DEVICE_PLUGIN_LABEL = "intelgpu=enabled"
 
 # Port on which ceph manager and ceph-mgr listens
 CEPH_MGR_PORT = 7999
+
+# Tempdir for temporary storage of large post data
+SYSINV_TMPDIR = '/scratch/sysinv-tmpdir'
+
+# Unique name of certificate
+CERTIFICATE_TYPE_ADMIN_ENDPOINT = 'admin-endpoint-cert'
+CERTIFICATE_TYPE_ADMIN_ENDPOINT_INTERMEDIATE_CA = 'intermediate-ca-cert'
+
+DC_ADMIN_ENDPOINT_SECRET_NAME = 'dc-adminep-certificate'
+SC_ADMIN_ENDPOINT_SECRET_NAME = 'sc-adminep-certificate'
+
+DC_ADMIN_ROOT_CA_SECRET_NAME = 'dc-adminep-root-ca-certificate'
+
+DC_ADMIN_ENDPOINT_NAMESPACE = 'dc-cert'
+SC_ADMIN_ENDPOINT_NAMESPACE = 'sc-cert'
+
+ADMIN_EP_CERT_FILENAME = os.path.join(SSL_CERT_DIR, 'admin-ep-cert.pem')
+
+DC_ROOT_CA_CERT_FILE = 'dc-adminep-root-ca.crt'
+DC_ROOT_CA_CERT_PATH = \
+    os.path.join(SSL_CERT_CA_DIR, DC_ROOT_CA_CERT_FILE)
+
+DC_ROOT_CA_CONFIG_PATH = \
+    os.path.join(tsc.CONFIG_PATH, DC_ROOT_CA_CERT_FILE)
+ADMIN_EP_CERT_FORMAT = '{tls_key}'
+
+# Platform certificates
+PLATFORM_CERT_SECRET_NAME = "system-restapi-gui-certificate"
+CERT_NAMESPACE_PLATFORM_CERTS = 'kube-system'

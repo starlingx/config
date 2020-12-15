@@ -261,7 +261,8 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                           neighbour_dict_array=neighbour_dict_array))
 
     def pci_device_update_by_host(self, context,
-                                  host_uuid, pci_device_dict_array):
+                                  host_uuid, pci_device_dict_array,
+                                  cleanup_stale=False):
         """Create pci_devices for an ihost with the supplied data.
 
         This method allows records for pci_devices for ihost to be created.
@@ -269,12 +270,29 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param context: an admin context
         :param host_uuid: ihost uuid unique id
         :param pci_device_dict_array: initial values for device objects
+        :param cleanup_stale: Do we want to clean up stale device entries
         :returns: pass or fail
         """
-        return self.call(context,
-                         self.make_msg('pci_device_update_by_host',
-                                       host_uuid=host_uuid,
-                                       pci_device_dict_array=pci_device_dict_array))
+        try:
+            return self.call(
+                context,
+                self.make_msg('pci_device_update_by_host',
+                              host_uuid=host_uuid,
+                              pci_device_dict_array=pci_device_dict_array,
+                              cleanup_stale=cleanup_stale))
+        except TypeError as exc:
+            # Handle talking to sysinv-conductor that doesn't understand
+            # the cleanup_stale parameter.
+            exc = repr(exc)
+            if "unexpected keyword argument" in exc and "cleanup_stale" in exc:
+                LOG.info("retrying without cleanup_stale")
+                return self.call(
+                    context,
+                    self.make_msg('pci_device_update_by_host',
+                                  host_uuid=host_uuid,
+                                  pci_device_dict_array=pci_device_dict_array))
+            else:
+                raise
 
     def inumas_update_by_ihost(self, context,
                                ihost_uuid, inuma_dict_array):
@@ -919,6 +937,14 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.cast(context,
                          self.make_msg('docker_registry_garbage_collect'))
 
+    def docker_get_apps_images(self, context):
+        """Synchronously, request a dictionary of all apps and associated images for all apps.
+
+        :param context: request context.
+        """
+        return self.call(context,
+                         self.make_msg('docker_get_apps_images'))
+
     def update_lvm_cinder_config(self, context):
         """Synchronously, have the conductor update Cinder LVM on a controller.
 
@@ -1103,6 +1129,13 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        mtc_port=mtc_port,
                                        ihost_mtc_dict=ihost_mtc_dict))
 
+    def is_virtual_system_config(self, context):
+        """
+        Gets the virtual system config from service parameter
+        """
+        return self.call(context,
+                         self.make_msg('is_virtual_system_config'))
+
     def ilvg_get_nova_ilvg_by_ihost(self,
                                     context,
                                     ihost_uuid):
@@ -1182,19 +1215,22 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('get_host_ttys_dcd',
                                        ihost_id=ihost_id))
 
-    def start_import_load(self, context, path_to_iso, path_to_sig):
+    def start_import_load(self, context, path_to_iso, path_to_sig,
+                          import_active=False):
         """Synchronously, mount the ISO and validate the load for import
 
         :param context: request context.
         :param path_to_iso: the file path of the iso on this host
         :param path_to_sig: the file path of the iso's detached signature on
                             this host
+        :param import_active: boolean allow import of active load
         :returns: the newly create load object.
         """
         return self.call(context,
                          self.make_msg('start_import_load',
                                        path_to_iso=path_to_iso,
-                                       path_to_sig=path_to_sig))
+                                       path_to_sig=path_to_sig,
+                                       import_active=import_active))
 
     def import_load(self, context, path_to_iso, new_load):
         """Asynchronously, import a load and add it to the database
@@ -1220,14 +1256,16 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('delete_load',
                                        load_id=load_id))
 
-    def finalize_delete_load(self, context):
+    def finalize_delete_load(self, context, sw_version):
         """Asynchronously, delete the load from the database
 
         :param context: request context.
+        :param sw_version: software version of load to be deleted
         :returns: none.
         """
         return self.cast(context,
-                         self.make_msg('finalize_delete_load'))
+                         self.make_msg('finalize_delete_load',
+                                       sw_version=sw_version))
 
     def load_update_by_host(self, context, ihost_id, version):
         """Update the host_upgrade table with the running SW_VERSION
@@ -1594,6 +1632,29 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        signature=signature,
                                        ))
 
+    def update_admin_ep_certificate(self, context):
+        """Synchronously, have the conductor update the admin endpoint
+        certificate and dc root ca cert
+
+        :param context: request context.
+        """
+        return self.call(context,
+                         self.make_msg('update_admin_ep_certificate'))
+
+    def update_intermediate_ca_certificate(self, context,
+                                    root_ca_crt, sc_ca_cert, sc_ca_key):
+        """Update intermediate CA certificate
+        :param context: request context
+        :param root_ca_crt:  root CA certificate
+        :param sc_ca_cert:   intermediate CA certificate
+        :param sc_ca_key:    private key
+        """
+        return self.call(context,
+                         self.make_msg('update_intermediate_ca_certificate',
+                                       root_ca_crt=root_ca_crt,
+                                       sc_ca_cert=sc_ca_cert,
+                                       sc_ca_key=sc_ca_key))
+
     def get_helm_chart_namespaces(self, context, chart_name):
         """Get supported chart namespaces.
 
@@ -1608,10 +1669,12 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('get_helm_chart_namespaces',
                                        chart_name=chart_name))
 
-    def get_helm_chart_overrides(self, context, chart_name, cnamespace=None):
+    def get_helm_chart_overrides(self, context, app_name, chart_name,
+                                 cnamespace=None):
         """Get the overrides for a supported chart.
 
         :param context: request context.
+        :param app_name: name of a supported application
         :param chart_name: name of a supported chart
         :param cnamespace: (optional) namespace
         :returns: dict of overrides.
@@ -1619,18 +1682,20 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context,
                          self.make_msg('get_helm_chart_overrides',
+                                       app_name=app_name,
                                        chart_name=chart_name,
                                        cnamespace=cnamespace))
 
-    def get_helm_applications(self, context):
+    def app_has_system_plugins(self, context, app_name):
 
-        """Get supported applications.
+        """Determine if the application has system plugin support.
 
-        :returns: a list of suppotred applications that associated overrides may
-            be provided.
+        :returns: True if the application has system plugins and can generate
+                  system overrides.
         """
         return self.call(context,
-                         self.make_msg('get_helm_applications'))
+                         self.make_msg('app_has_system_plugins',
+                                       app_name=app_name))
 
     def get_helm_application_namespaces(self, context, app_name):
         """Get supported application namespaces.
@@ -1727,6 +1792,20 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('evaluate_app_reapply',
                                                 app_name=app_name))
+
+    def app_lifecycle_actions(self, context, rpc_app, operation, relative_timing):
+        """Synchronously, perform any lifecycle actions required
+        for the operation
+
+        :param context: request context.
+        :param rpc_app: data object provided in the rpc request
+        :param operation: operation being performed
+        :param relative_timing: relative timing of operation
+        """
+        return self.call(context, self.make_msg('app_lifecycle_actions',
+                                                rpc_app=rpc_app,
+                                                operation=operation,
+                                                relative_timing=relative_timing))
 
     def perform_app_upload(self, context, rpc_app, tarfile):
         """Handle application upload request
@@ -1912,6 +1991,20 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.cast(context, self.make_msg('delete_bitstream_file',
                                                 filename=filename))
 
+    def apply_device_image(self, context):
+        """Asynchronously, have the conductor apply the device image
+
+        :param context: request context
+        """
+        return self.cast(context, self.make_msg('apply_device_image'))
+
+    def clear_device_image_alarm(self, context):
+        """Asynchronously, have the conductor  clear device image alarm
+
+        :param context: request context
+        """
+        return self.cast(context, self.make_msg('clear_device_image_alarm'))
+
     def host_device_image_update(self, context, host_uuid):
         """Asynchronously, have the conductor update the device image
         on this host.
@@ -1931,3 +2024,65 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.cast(context, self.make_msg('host_device_image_update_abort',
                                                 host_uuid=host_uuid))
+
+    def fpga_device_update_by_host(self, context, host_uuid,
+                                   fpga_device_dict_array):
+        """
+        Asynchronously, update information on FPGA device.
+
+        This will check whether the current state of the device matches the
+        expected state, and if it doesn't then an alarm will be raised.
+        :param context:
+        :param host_uuid:  The host_uuid for the caller.
+        :param fpga_device_dict_array:  An array of device information.
+        :return:
+        """
+        return self.cast(context,
+                         self.make_msg('fpga_device_update_by_host',
+                                       host_uuid=host_uuid,
+                                       fpga_device_dict_array=fpga_device_dict_array))
+
+    def device_update_image_status(self, context, host_uuid, transaction_id,
+                                   status, progress=None, err=None):
+        """
+        Asynchronously, update status of firmware update operation
+
+        This is used to report progress and final success/failure of an FPGA image write
+        operation.  The transaction ID maps to a unique identifier in the sysinv DB so
+        we don't need to report host_uuid or device PCI address.
+        :param context:
+        :param host_uuid:       The host_uuid for the host that is reporting the status.
+        :param transaction_id:  The transaction ID representing this image-update operation.
+        :param status:          The status of the image-update operation.
+        :param progress:        Optional progress indicator.
+        :param err:             Optional error message.
+        :return:
+        """
+        return self.cast(context,
+                         self.make_msg('device_update_image_status',
+                                       host_uuid=host_uuid,
+                                       transaction_id=transaction_id,
+                                       status=status,
+                                       progress=progress,
+                                       err=err))
+
+    def start_restore(self, context):
+        """Synchronously, have the conductor start the restore
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('start_restore'))
+
+    def complete_restore(self, context):
+        """Synchronously, have the conductor complete the restore
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('complete_restore'))
+
+    def get_restore_state(self, context):
+        """Get the restore state
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('get_restore_state'))

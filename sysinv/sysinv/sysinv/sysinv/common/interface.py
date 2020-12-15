@@ -8,6 +8,7 @@
 
 import collections
 import copy
+import re
 
 from oslo_log import log
 from sysinv.common import constants
@@ -15,6 +16,14 @@ from sysinv.common import constants
 LOG = log.getLogger(__name__)
 
 
+# NOTE: updates in the following functions should also be reflected in
+#       its corresponding duplicate in openstack-armada-app nova plugin
+#       - openstack-armada-app/python-k8sapp-openstack/k8sapp_openstack/k8sapp_openstack/helm/nova.py
+#
+#       _get_port_interface_id_index()
+#       _get_interface_name_index()
+#       _get_interface_name_datanets()
+#       _get_address_interface_name_index()
 def _get_port_interface_id_index(dbapi, host):
     """
     Builds a dictionary of ports indexed by interface id.
@@ -122,6 +131,21 @@ def get_sriov_interface_port(context, iface):
     else:
         assert iface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV
         return get_interface_port(context, iface)
+
+
+def get_sriov_interface_device_id(context, iface):
+    """
+    Determine the underlying PCI device id of the SR-IOV interface.
+    """
+    # The device id can be found by inspecting the '[xxxx]' at the
+    # end of the port's pdevice field
+    device_id = None
+    port = get_sriov_interface_port(context, iface)
+    if port:
+        device_id = re.search(r'\[([0-9a-fA-F]{1,4})\]$', port['pdevice'])
+        if device_id:
+            device_id = device_id.group(1)
+    return device_id
 
 
 def get_sriov_interface_vf_addrs(context, iface, vf_addr_list):

@@ -6,42 +6,11 @@
 import keyring
 import mock
 
-from sysinv.common import constants
-from sysinv.helm import common
 from sysinv.helm.helm import HelmOperator
 from sysinv.helm.manifest_base import ArmadaManifestOperator
 
-from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
 from sysinv.tests.helm import base as helm_base
-
-
-class StxOpenstackAppMixin(object):
-    path_name = 'stx-openstack.tgz'
-    app_name = 'stx-openstack'
-
-    def setUp(self):
-        super(StxOpenstackAppMixin, self).setUp()
-        # Label hosts with appropriate labels
-        for host in self.hosts:
-            if host.personality == constants.CONTROLLER:
-                dbutils.create_test_label(
-                    host_id=host.id,
-                    label_key=common.LABEL_CONTROLLER,
-                    label_value=common.LABEL_VALUE_ENABLED)
-            elif host.personality == constants.WORKER:
-                dbutils.create_test_label(
-                    host_id=host.id,
-                    label_key=common.LABEL_COMPUTE_LABEL,
-                    label_value=common.LABEL_VALUE_ENABLED)
-
-
-class StxPlatformAppMixin(object):
-    path_name = 'stx-platform.tgz'
-    app_name = 'oidc-auth-apps'
-
-    def setUp(self):
-        super(StxPlatformAppMixin, self).setUp()
 
 
 class HelmOperatorTestSuiteMixin(helm_base.HelmTestCaseMixin):
@@ -87,43 +56,3 @@ class HelmOperatorTestSuiteMixin(helm_base.HelmTestCaseMixin):
         self.operator.generate_helm_application_overrides(self.path_name,
                                                           self.app_name)
         assert self.mock_save_overrides.called
-
-
-# ============ Tests ======
-
-# Test Configuration:
-# - Controller
-# - IPv6
-# - Ceph Storage
-# - stx-openstack app
-class HelmSTXOpenstackControllerTestCase(StxOpenstackAppMixin,
-                                         dbbase.BaseIPv6Mixin,
-                                         dbbase.BaseCephStorageBackendMixin,
-                                         HelmOperatorTestSuiteMixin,
-                                         dbbase.ControllerHostTestCase):
-    pass
-
-
-# Test Configuration:
-# - AIO
-# - IPv4
-# - Ceph Storage
-# - stx-openstack app
-class HelmSTXOpenstackAIOTestCase(StxOpenstackAppMixin,
-                                  dbbase.BaseCephStorageBackendMixin,
-                                  HelmOperatorTestSuiteMixin,
-                                  dbbase.AIOSimplexHostTestCase):
-    pass
-
-
-# Test Configuration:
-# - Controller
-# - IPv6
-# - Ceph Storage
-# - stx-platform app
-class HelmSTXPlatformControllerTestCase(StxPlatformAppMixin,
-                                         dbbase.BaseIPv6Mixin,
-                                         dbbase.BaseCephStorageBackendMixin,
-                                         HelmOperatorTestSuiteMixin,
-                                         dbbase.ControllerHostTestCase):
-    pass

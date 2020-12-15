@@ -444,6 +444,7 @@ class ProvisionedControllerHostTestCase(BaseHostTestCase):
                                            administrative=constants.ADMIN_UNLOCKED,
                                            operational=constants.OPERATIONAL_ENABLED,
                                            availability=constants.AVAILABILITY_AVAILABLE,
+                                           invprovision=constants.PROVISIONED,
                                            vim_progress_status=constants.VIM_SERVICES_ENABLED)
         self._create_test_host_cpus(self.host, platform=16)
 

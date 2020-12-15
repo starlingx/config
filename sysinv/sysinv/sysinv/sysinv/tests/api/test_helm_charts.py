@@ -18,8 +18,9 @@ from sysinv.tests.db import utils as dbutils
 class FakeConductorAPI(object):
 
     def __init__(self):
+        self.app_has_system_plugins = mock.MagicMock()
         self.get_helm_application_namespaces = mock.MagicMock()
-        self.get_helm_applications = mock.MagicMock()
+        self.get_active_helm_applications = mock.MagicMock()
         self.get_helm_chart_overrides = mock.MagicMock()
         self.merge_overrides = mock.MagicMock()
 
@@ -72,10 +73,11 @@ class ApiHelmChartTestCaseMixin(base.FunctionalTest,
                                 chart_namespace='kube-system',
                                 system_override_attr={"enabled": False},
                                 user_override="global:\n  replicas: \"3\"\n")
-        self.fake_helm_apps = self.fake_conductor_api.get_helm_applications
+        self.fake_helm_apps = self.fake_conductor_api.get_active_helm_applications
         self.fake_ns = self.fake_conductor_api.get_helm_application_namespaces
         self.fake_override = self.fake_conductor_api.get_helm_chart_overrides
         self.fake_merge_overrides = self.fake_conductor_api.merge_overrides
+        self.fake_system_app = self.fake_conductor_api.app_has_system_plugins
 
     def exception_helm_override(self):
         print('Raised a fake exception')
@@ -169,6 +171,7 @@ class ApiHelmChartShowTestSuiteMixin(ApiHelmChartTestCaseMixin):
         super(ApiHelmChartShowTestSuiteMixin, self).setUp()
 
     def test_no_system_override(self):
+        self.fake_system_app.return_value = False
         url = self.get_single_url_helm_override('platform-integ-apps',
                                     'ceph-pools-audit', 'kube-system')
         response = self.get_json(url)
@@ -190,6 +193,8 @@ class ApiHelmChartShowTestSuiteMixin(ApiHelmChartTestCaseMixin):
                       response.json['error_message'])
 
     def test_fetch_helm_override_show_invalid_helm_chart(self):
+        self.fake_system_app.return_value = False
+
         url = self.get_single_url_helm_override('platform-integ-apps',
                         'invalid_value', 'kube-system')
         response = self.get_json(url, expect_errors=True)
@@ -202,6 +207,7 @@ class ApiHelmChartShowTestSuiteMixin(ApiHelmChartTestCaseMixin):
                       response.json['error_message'])
 
     def test_fetch_helm_override_show_invalid_namespace(self):
+        self.fake_system_app.return_value = False
         url = self.get_single_url_helm_override('platform-integ-apps',
                                                 'ceph-pools-audit',
                                                 'invalid_value')
@@ -287,6 +293,7 @@ class ApiHelmChartDeleteTestSuiteMixin(ApiHelmChartTestCaseMixin):
 
     # Test that a valid DELETE operation is successful
     def test_delete_helm_override_success(self):
+        self.fake_system_app.return_value = False
 
         # Verify that user override exists initially
         url = self.get_single_url_helm_override('platform-integ-apps',
@@ -494,6 +501,7 @@ class ApiHelmChartPatchTestSuiteMixin(ApiHelmChartTestCaseMixin):
                                     'set': ['global.replicas=2']}},
                                     headers=self.API_HEADERS,
                                     expect_errors=True)
+        self.fake_system_app.return_value = False
         response = self.get_json(url, expect_errors=True)
         self.assertEqual(response.status_code, http_client.OK)
         # Verify the values of the response with the values in database

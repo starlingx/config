@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -10,7 +10,9 @@ import yaml
 
 from sysinv.common import constants
 from sysinv.common import service
+from sysinv.conductor import rpcapi as conductor_rpcapi
 from sysinv.db import api
+from sysinv.openstack.common import context
 
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -20,6 +22,62 @@ from oslo_log import log as logging
 LOG = logging.getLogger(__name__)
 
 CONF = cfg.CONF
+
+
+def local_registry_list(filename, included_apps, include_all_apps=False):
+    """ Save the list of images present in the local registry
+    to a file in yaml format.
+
+    :param filename: name of the file to save to.
+    :param include_apps: list of applications for which images are saved in yaml format.
+    :param include_all_apps: if True then the list of apps images will include all apps
+                             regardless of include_apps list.
+    """
+
+    ctxt = context.get_admin_context()
+    rpcapi = conductor_rpcapi.ConductorAPI(
+        topic=conductor_rpcapi.MANAGER_TOPIC)
+
+    # Save local registry images tags
+    image_name_tag_list = []
+    temp_image_name_list = rpcapi.docker_registry_image_list(ctxt)
+    if not temp_image_name_list:
+        raise Exception("Image list could not be retrieved "
+                        "from local registry")
+
+    for temp_image_name in temp_image_name_list:
+        image_name = temp_image_name.get('name', None)
+        if image_name:
+            temp_image_tags = rpcapi.docker_registry_image_tags(ctxt,
+                                                                image_name)
+
+            for image_name_tag in temp_image_tags:
+                image_tag = image_name_tag.get('tag', None)
+                if image_tag:
+                    image_name_tag_list.append("%s:%s" % (image_name, image_tag))
+
+    # Retrieve the images used by apps that should be excluded from yaml file
+    excluded_images = []
+    if not include_all_apps:
+        apps_images = rpcapi.docker_get_apps_images(ctxt).items()
+        if not apps_images:
+            raise Exception("Apps image list could not be retrieved")
+        for app, images in apps_images:
+            if included_apps is None or app not in included_apps:
+                excluded_images.extend(images)
+
+    # Exclude apps images
+    image_name_tag_list = list(set(image_name_tag_list) - set(excluded_images))
+
+    data = {}
+    data.update({'images': image_name_tag_list})
+
+    try:
+        with open(filename, 'w') as outfile:
+            yaml.safe_dump(data, outfile, default_flow_style=False)
+    except Exception as e:
+        LOG.error("Error with local_registry_list: %s", e)
+        sys.exit(1)
 
 
 def create_host_overrides(filename):
@@ -170,6 +228,12 @@ def add_action_parsers(subparsers):
     parser.set_defaults(func=create_host_overrides)
     parser.add_argument('filename', nargs='?')
 
+    parser = subparsers.add_parser('local-registry-list')
+    parser.set_defaults(func=local_registry_list)
+    parser.add_argument('filename', nargs='?')
+    parser.add_argument('--all-apps', action='store_true', default=False)
+    parser.add_argument('--apps', nargs='*', required=False, default=None)
+
 
 CONF.register_cli_opt(
     cfg.SubCommandOpt('action',
@@ -186,5 +250,10 @@ def main():
             LOG.error("filename is required")
         else:
             CONF.action.func(CONF.action.filename)
+    elif CONF.action.name == 'local-registry-list':
+        if not CONF.action.filename:
+            LOG.error("filename is required")
+        else:
+            CONF.action.func(CONF.action.filename, CONF.action.apps, CONF.action.all_apps)
     else:
         CONF.action.func()

@@ -108,17 +108,19 @@ install -m 644 -p -D scripts/sysinv-conductor.service %{buildroot}%{_unitdir}/sy
 
 #install -p -D -m 755 %{buildroot}/usr/bin/sysinv-api %{buildroot}/usr/bin/sysinv-api
 #install -p -D -m 755 %{buildroot}/usr/bin/sysinv-agent %{buildroot}/usr/bin/sysinv-agent
+#install -p -D -m 755 %{buildroot}/usr/bin/sysinv-fpga-agent %{buildroot}/usr/bin/sysinv-fpga-agent
 #install -p -D -m 755 %{buildroot}/usr/bin/sysinv-conductor %{buildroot}/usr/bin/sysinv-conductor
 
 install -d -m 755 %{buildroot}%{local_bindir}
 install -p -D -m 755 scripts/partition_info.sh %{buildroot}%{local_bindir}/partition_info.sh
+install -p -D -m 755 scripts/validate-platform-backup.sh %{buildroot}%{local_bindir}/validate-platform-backup.sh
 install -p -D -m 755 scripts/manage-partitions %{buildroot}%{local_bindir}/manage-partitions
 install -p -D -m 755 scripts/query_pci_id %{buildroot}%{local_bindir}/query_pci_id
 install -p -D -m 700 scripts/kube-cert-rotation.sh %{buildroot}%{local_bindir}/kube-cert-rotation.sh
 
 %clean
 echo "CLEAN CALLED"
-rm -rf $RPM_BUILD_ROOT 
+rm -rf $RPM_BUILD_ROOT
 
 %files
 %defattr(-,root,root,-)
@@ -145,6 +147,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_unitdir}/sysinv-conductor.service
 
 %{_bindir}/sysinv-agent
+%{_bindir}/sysinv-fpga-agent
 %{_bindir}/sysinv-api
 %{_bindir}/sysinv-conductor
 %{_bindir}/sysinv-dbsync
@@ -154,6 +157,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/sysinv-puppet
 %{_bindir}/sysinv-helm
 %{_bindir}/sysinv-utils
+%{_bindir}/cert-mon
 
 %package wheels
 Summary: %{name} wheels

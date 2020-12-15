@@ -40,6 +40,7 @@ from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import kubernetes as sys_kube
 from sysinv.common import utils as cutils
 from sysinv.openstack.common.rpc.common import RemoteError
 from wsme import types as wtypes
@@ -51,6 +52,18 @@ class CertificatePatchType(types.JsonPatchType):
     @staticmethod
     def mandatory_attrs():
         return []
+
+
+class RequestResult(base.APIBase):
+    result = wtypes.text
+    message = wtypes.text
+
+
+class RenewCertificate(base.APIBase):
+    certtype = wtypes.text
+    root_ca_crt = wtypes.text
+    sc_ca_cert = wtypes.text
+    sc_ca_key = wtypes.text
 
 
 class Certificate(base.APIBase):
@@ -192,10 +205,12 @@ LOCK_NAME = 'CertificateController'
 class CertificateController(rest.RestController):
     """REST controller for certificates."""
 
-    _custom_actions = {'certificate_install': ['POST']}
+    _custom_actions = {'certificate_install': ['POST'],
+                       'certificate_renew': ['POST']}
 
     def __init__(self):
         self._api_token = None
+        self._kube_op = sys_kube.KubeOperator()
 
     @wsme_pecan.wsexpose(Certificate, types.uuid)
     def get_one(self, certificate_uuid):
@@ -292,6 +307,28 @@ class CertificateController(rest.RestController):
         system = pecan.request.dbapi.isystem_get_one()
         capabilities = system.capabilities
 
+        # platform-cert 'force' check for backward compatibility
+        if mode == constants.CERT_MODE_SSL:
+            # Call may not contain 'force' parameter
+            # Note: cert-mon will pass a HTTP POST 'force'='true' param
+            force = pecan.request.POST.get('force')
+            if force == 'true':
+                force = True
+            else:
+                force = False
+            # if PLATFORM_CERT_SECRET_NAME secret is present in k8s, we
+            # assume that SSL cert is managed by cert-manager/cert-mon
+            managed_by_cm = self._kube_op.kube_get_secret(
+                    constants.PLATFORM_CERT_SECRET_NAME,
+                    constants.CERT_NAMESPACE_PLATFORM_CERTS)
+
+            if force is False and managed_by_cm is not None:
+                msg = "Certificate is currently being managed by cert-manager. \n" \
+                        "To manage certificate with this command, first delete " \
+                        "the %s Certificate and Secret." % constants.PLATFORM_CERT_SECRET_NAME
+                LOG.info(msg)
+                return dict(success="", error=msg)
+
         standalone_certs = [constants.CERT_MODE_DOCKER_REGISTRY,
                             constants.CERT_MODE_SSL_CA]
         if mode not in standalone_certs:
@@ -306,10 +343,14 @@ class CertificateController(rest.RestController):
                 pecan.request.dbapi.certificate_get_by_certtype(
                     constants.CERT_MODE_SSL)
             except exception.CertificateTypeNotFound:
-                msg = "No openstack certificates have been added, " \
-                      "platform SSL certificate is not installed."
-                LOG.info(msg)
-                return dict(success="", error=msg)
+                try:
+                    pecan.request.dbapi.certificate_get_by_certtype(
+                        constants.CERT_MODE_TPM)
+                except exception.CertificateTypeNotFound:
+                    msg = "No openstack certificates have been added, " \
+                          "platform SSL certificate is not installed."
+                    LOG.info(msg)
+                    return dict(success="", error=msg)
 
         if not fileitem.filename:
             return dict(success="", error="Error: No file uploaded")
@@ -335,12 +376,43 @@ class CertificateController(rest.RestController):
             LOG.info(msg)
             return dict(success="", error=msg)
 
-        for cert in certs:
+        hash_issuers = []
+        for index, cert in enumerate(certs):
             msg = self._check_cert_validity(cert)
             if msg is not True:
                 return dict(success="", error=msg)
 
-            if mode == constants.CERT_MODE_OPENSTACK:
+            # validation checking for ssl, tpm_mode, docker_registry
+            # and openstack certficcates
+            if mode in [constants.CERT_MODE_SSL,
+                        constants.CERT_MODE_TPM,
+                        constants.CERT_MODE_DOCKER_REGISTRY,
+                        constants.CERT_MODE_OPENSTACK,
+                        ]:
+                try:
+                    hash_issuers.append(cutils.get_cert_issuer_hash(cert))
+                    if index == 0:
+                        if cutils.is_ca_cert(cert):
+                            msg = "The first cert in the file should not be " \
+                                  "a CA cert"
+                            return dict(success="", error=msg)
+                    else:
+                        if not cutils.is_ca_cert(cert):
+                            msg = "Number %s cert in the file should be a " \
+                                  "CA cert" % (index + 1)
+                            return dict(success="", error=msg)
+                        hash_subject = cutils.get_cert_subject_hash(cert)
+                        if hash_subject != hash_issuers[index - 1]:
+                            msg = "Number %s cert in the file is not " \
+                                  "signing cert of the preceding one. Check " \
+                                  "certs order in the file." % (index + 1)
+                            return dict(success="", error=msg)
+                except Exception as e:
+                    msg = "No certificates have been added, exception " \
+                          "occured on cert %s: %s" % (index, e)
+                    return dict(success="", error=msg)
+
+            if mode == constants.CERT_MODE_OPENSTACK and index == 0:
                 domain, msg = _check_endpoint_domain_exists()
                 if domain:
                     msg = _check_cert_dns_name(cert, domain)
@@ -399,6 +471,16 @@ class CertificateController(rest.RestController):
         # information returned from conductor manager.
         certificate_dicts = []
         for inv_cert in inv_certs:
+            # for ssl, tmp_mode, docker_registry and openstack certs, if the
+            # cert is ICA signed cert (ie, the pem_contents contains
+            # intermediate CA certs), skip these intermediate CA certs.
+            if mode in [constants.CERT_MODE_SSL,
+                        constants.CERT_MODE_TPM,
+                        constants.CERT_MODE_DOCKER_REGISTRY,
+                        constants.CERT_MODE_OPENSTACK] \
+                    and inv_cert.get('is_ca', None):
+                continue
+
             values = {
                 'certtype': mode,
                 'signature': inv_cert.get('signature'),
@@ -433,6 +515,62 @@ class CertificateController(rest.RestController):
 
         return dict(success="", error="", body="",
                     certificates=certificate_dicts)
+
+    @wsme_pecan.wsexpose(RequestResult, body=RenewCertificate)
+    def certificate_renew(self, data):
+        LOG.info('refresh_admin_endpoint_certificate %s' % data.certtype)
+        if data.certtype == constants.CERTIFICATE_TYPE_ADMIN_ENDPOINT:
+            return self._update_admin_endpoint_cert(data)
+        elif data.certtype == constants.CERTIFICATE_TYPE_ADMIN_ENDPOINT_INTERMEDIATE_CA:
+            return self._update_inter_ca_cert(data)
+        else:
+            raise wsme.exc.ClientSideError(_("Not implemented"))
+
+    @staticmethod
+    def _update_admin_endpoint_cert(data):
+        role = utils.get_distributed_cloud_role()
+        if role not in [constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD,
+                        constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER]:
+            raise wsme.exc.ClientSideError(
+                _("Update admin endpoint certificate is supported "
+                  "in Distributed Cloud only"))
+
+        pecan.request.rpcapi.update_admin_ep_certificate(
+            pecan.request.context)
+
+        res = RequestResult()
+        res.result = 'OK'
+
+        return res
+
+    @staticmethod
+    def _update_inter_ca_cert(data):
+        role = utils.get_distributed_cloud_role()
+        if role != constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+            raise wsme.exc.ClientSideError(
+                _("Update admin endpoint intermediate CA certificate is "
+                  "supported on subclouds only"))
+
+        if not cutils.verify_ca_crt(data.root_ca_crt):
+            raise wsme.exc.ClientSideError(
+                _("Provided CA cert is invalid")
+            )
+
+        if not cutils.verify_intermediate_ca_cert(
+                data.root_ca_crt, data.sc_ca_cert):
+            raise wsme.exc.ClientSideError(
+                _("Provided intermediate CA cert is invalid")
+            )
+
+        pecan.request.rpcapi.update_intermediate_ca_certificate(
+            pecan.request.context,
+            data.root_ca_crt, data.sc_ca_cert, data.sc_ca_key)
+
+        LOG.info('Update admin endpoint intermediate CA certificate succeed')
+        res = RequestResult()
+        res.result = 'OK'
+
+        return res
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(Certificate, types.uuid, status_code=200)

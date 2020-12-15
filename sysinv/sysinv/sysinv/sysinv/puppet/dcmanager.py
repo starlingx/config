@@ -102,6 +102,12 @@ class DCManagerPuppet(openstack.OpenstackBasePuppet):
             'dcmanager::api::keystone_admin_password': admin_password,
         }
 
+    def get_ks_user_name(self):
+        return self._get_service_user_name(self.SERVICE_NAME)
+
+    def get_ks_user_password(self):
+        return self._get_service_password(self.SERVICE_NAME)
+
     def get_public_url(self):
         return self._format_public_endpoint(self.SERVICE_PORT,
                                             path=self.SERVICE_PATH)

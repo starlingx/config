@@ -40,6 +40,7 @@ OCF_RESKEY_config_default="/etc/sysinv/sysinv.conf"
 : ${OCF_RESKEY_config=${OCF_RESKEY_config_default}}
 
 mydaemon="/usr/bin/${OCF_RESKEY_binary}"
+TMP_DIR="/var/run/sysinv_tmp"
 
 #######################################################################
 
@@ -111,6 +112,21 @@ END
    return ${OCF_SUCCESS}
 }
 
+sysinv_conductor_tmpdir () {
+    local rc
+    if [ ! -d "$TMP_DIR" ]; then
+        mkdir -p "$TMP_DIR"
+        rc=$?
+        if [ $rc -ne 0 ]; then
+            ocf_log err "Inventory Service (${OCF_RESKEY_binary}) failed to create temp dir (rc=${rc})"
+            return ${OCF_NOT_RUNNING}
+        fi
+        chown sysinv:sysinv "$TMP_DIR"
+    fi
+    export TMPDIR="$TMP_DIR"
+    return ${OCF_SUCCESS}
+}
+
 sysinv_conductor_validate() {
 
     local rc
@@ -167,6 +183,13 @@ sysinv_conductor_monitor () {
         ocf_log info "${proc}"
     fi
 
+    # A workaround for monitoring the owner of /home/sysadmin/.kube
+    # This should be removed as soon as Helm v3 and Armada containerization work is complete.
+    if [ -d /home/sysadmin/.kube -a "$(stat -c %U /home/sysadmin/.kube)" != "sysadmin" ]; then
+        chown -R sysadmin:sys_protected /home/sysadmin/.kube
+        ocf_log info "Fixing /home/sysadmin/.kube ownership"
+    fi
+
     sysinv_conductor_status
     rc=$?
     return ${rc}
@@ -191,6 +214,11 @@ sysinv_conductor_start () {
             return ${OCF_SUCCESS}
         fi
     fi
+
+    # Remove any existing application containers in case they were not shut
+    # down cleanly. sysinv-conductor will start these on demand with first use.
+    ocf_log info "${proc} Cleaning up any stale application containers before start. (sysinv-conductor)"
+    sysinv_remove_application_containers
 
     if [ ${OCF_RESKEY_dbg} = "true" ] ; then
         RUN_OPT_DEBUG="--debug"
@@ -247,17 +275,21 @@ sysinv_remove_application_containers() {
         # does the container exist
         id=$(docker container ls -qf name=${c} 2>/dev/null)
         if [ ! -n "$id" ]; then
-            ocf_log info "${proc} Container $c is not present, skipping container actions. (sysinv-conductor)"
-            continue
+            ocf_log info "${proc} Container $c is not started, skipping stop action. (sysinv-conductor)"
+        else
+            # Graceful shutdown (default is 10 sec, then kill)
+            ocf_log info "${proc} About to stop container $c... (sysinv-conductor)"
+            docker stop $c 2>&1 >> /dev/null
         fi
 
-        # Graceful shutdown (default is 10 sec, then kill)
-        ocf_log info "${proc} About to stop container $c... (sysinv-conductor)"
-        docker stop $c 2>&1 >> /dev/null
-
-        # Cleanup the container. Use force just in case.
-        ocf_log info "${proc} About to remove container $c... (sysinv-conductor)"
-        docker rm -f $c 2>&1 >> /dev/null
+        id=$(docker container ls -aqf name=${c} 2>/dev/null)
+        if [ ! -n "$id" ]; then
+            ocf_log info "${proc} Container $c is not present, skipping remove action. (sysinv-conductor)"
+        else
+            # Cleanup the container. Use force just in case.
+            ocf_log info "${proc} About to remove container $c... (sysinv-conductor)"
+            docker rm -f $c 2>&1 >> /dev/null
+        fi
     done
 }
 
@@ -380,9 +412,14 @@ esac
 # Anything except meta-data and help must pass validation
 sysinv_conductor_validate || exit $?
 
+# Set up tmpfiles directory to avoid temp files being
+# cleaned up by systemd tmpfiles clean service.
+sysinv_conductor_tmpdir || exit $?
+
 if [ ${OCF_RESKEY_dbg} = "true" ] ; then
     ocf_log info "${binname}:${__OCF_ACTION} action"
 fi
+
 
 case ${__OCF_ACTION} in
 
