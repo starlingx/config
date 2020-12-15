@@ -35,7 +35,7 @@ def upgrade(migrate_engine):
 
         json_dict['https_enabled'] = new_https_enabled_value
 
-        systems.update().where(
+        systems.update().where(  # pylint: disable=no-value-for-parameter
             systems.c.uuid == sys[0].uuid).values(
                 {'capabilities': json.dumps(json_dict)}).execute()
 

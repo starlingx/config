@@ -58,7 +58,7 @@ def upgrade(migrate_engine):
                      mysql_engine=ENGINE,
                      mysql_charset=CHARSET,
                      autoload=True)
-        panko_event_time_to_live_insert = sp_t.insert()
+        panko_event_time_to_live_insert = sp_t.insert()  # pylint: disable=no-value-for-parameter
         values = {'created_at': datetime.now(),
                   'uuid': str(uuid.uuid4()),
                   'service': 'panko',
@@ -68,7 +68,7 @@ def upgrade(migrate_engine):
                   }
         panko_event_time_to_live_insert.execute(values)
 
-        ceilometer_metering_time_to_live_insert = sp_t.insert()
+        ceilometer_metering_time_to_live_insert = sp_t.insert()  # pylint: disable=no-value-for-parameter
         values = {'created_at': datetime.now(),
                   'uuid': str(uuid.uuid4()),
                   'service': 'ceilometer',
@@ -78,7 +78,7 @@ def upgrade(migrate_engine):
                   }
         ceilometer_metering_time_to_live_insert.execute(values)
 
-        aodh_alarm_history_time_to_live_insert = sp_t.insert()
+        aodh_alarm_history_time_to_live_insert = sp_t.insert()  # pylint: disable=no-value-for-parameter
         values = {'created_at': datetime.now(),
                   'uuid': str(uuid.uuid4()),
                   'service': 'aodh',

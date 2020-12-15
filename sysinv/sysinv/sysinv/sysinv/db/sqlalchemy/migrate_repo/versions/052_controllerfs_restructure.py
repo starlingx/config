@@ -59,7 +59,7 @@ def upgrade(migrate_engine):
 
         # Add the new rows
         if backup_gib > 0:
-            controller_fs_insert = controller_fs.insert()
+            controller_fs_insert = controller_fs.insert()  # pylint: disable=no-value-for-parameter
             controller_fs_uuid = str(uuid.uuid4())
             values = {'created_at': datetime.now(),
                       'updated_at': None,
@@ -74,7 +74,7 @@ def upgrade(migrate_engine):
             controller_fs_insert.execute(values)
 
         if cgcs_gib > 0:
-            controller_fs_insert = controller_fs.insert()
+            controller_fs_insert = controller_fs.insert()  # pylint: disable=no-value-for-parameter
             controller_fs_uuid = str(uuid.uuid4())
             values = {'created_at': datetime.now(),
                       'updated_at': None,
@@ -89,7 +89,7 @@ def upgrade(migrate_engine):
             controller_fs_insert.execute(values)
 
         if database_gib > 0:
-            controller_fs_insert = controller_fs.insert()
+            controller_fs_insert = controller_fs.insert()  # pylint: disable=no-value-for-parameter
             controller_fs_uuid = str(uuid.uuid4())
             values = {'created_at': datetime.now(),
                       'updated_at': None,
@@ -104,7 +104,7 @@ def upgrade(migrate_engine):
             controller_fs_insert.execute(values)
 
         if scratch_gib > 0:
-            controller_fs_insert = controller_fs.insert()
+            controller_fs_insert = controller_fs.insert()  # pylint: disable=no-value-for-parameter
             controller_fs_uuid = str(uuid.uuid4())
             values = {'created_at': datetime.now(),
                       'updated_at': None,
@@ -119,7 +119,7 @@ def upgrade(migrate_engine):
             controller_fs_insert.execute(values)
 
         if img_conversions_gib > 0:
-            controller_fs_insert = controller_fs.insert()
+            controller_fs_insert = controller_fs.insert()  # pylint: disable=no-value-for-parameter
             controller_fs_uuid = str(uuid.uuid4())
             values = {'created_at': datetime.now(),
                       'updated_at': None,
