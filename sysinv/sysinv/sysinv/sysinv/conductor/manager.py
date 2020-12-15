@@ -6080,7 +6080,13 @@ class ConductorManager(service.PeriodicService):
         system = self.dbapi.isystem_get_one()
 
         if system.capabilities.get('https_enabled', False):
-            self._config_selfsigned_certificate(context)
+            certificates = self.dbapi.certificate_get_list()
+            for certificate in certificates:
+                if certificate.certtype in [constants.CERT_MODE_SSL,
+                                            constants.CERT_MODE_TPM]:
+                    break
+            else:
+                self._config_selfsigned_certificate(context)
 
         config_dict = {
             "personalities": personalities,
@@ -6092,10 +6098,6 @@ class ConductorManager(service.PeriodicService):
 
         config_uuid = self._config_update_hosts(context, personalities)
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-        if not system.capabilities.get('https_enabled', False):
-            self._destroy_tpm_config(context)
-            self._destroy_certificates(context)
 
         cutils.touch(constants.HTTPS_CONFIG_REQUIRED)
 
@@ -10362,29 +10364,6 @@ class ConductorManager(service.PeriodicService):
 
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-    def _destroy_certificates(self, context):
-        """Delete certificates."""
-        LOG.info("_destroy_certificates clear ssl/tpm certificates")
-
-        certificates = self.dbapi.certificate_get_list()
-        for certificate in certificates:
-            if certificate.certtype in [constants.CERT_MODE_SSL,
-                                        constants.CERT_MODE_TPM,
-                                        constants.CERT_MODE_OPENSTACK]:
-                self.dbapi.certificate_destroy(certificate.uuid)
-
-        personalities = [constants.CONTROLLER]
-
-        config_uuid = self._config_update_hosts(context, personalities)
-        config_dict = {
-            'personalities': personalities,
-            'file_names': [constants.SSL_PEM_FILE],
-            'file_content': None,
-            'permissions': constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY,
-            'nobackup': True,
-        }
-        self._config_update_file(context, config_uuid, config_dict)
-
     def _destroy_tpm_config(self, context, tpm_obj=None):
         """Delete a tpmconfig."""
 
@@ -10921,7 +10900,23 @@ class ConductorManager(service.PeriodicService):
                                'wb') as f:
             f.write(file_content)
 
-        return cert_list[0].get('signature')
+        # Inventory the self signed certificate.
+        # In case the self signed cert is ICA signed,
+        # skip these intermediate CA certs.
+        for cert in cert_list:
+            if not cert.get('is_ca', False):
+                values = {
+                    'certtype': mode,
+                    'signature': cert.get('signature'),
+                    'start_date': cert.get('cert').not_valid_before,
+                    'expiry_date': cert.get('cert').not_valid_after,
+                }
+                self.dbapi.certificate_create(values)
+                break
+        else:
+            msg = "Fail to inventory the self signed certificate, \
+                   no leaf cert found."
+            raise exception.SysinvException(_(msg))
 
     def delete_certificate(self, context, mode, signature):
         """Delete a certificate by its mode and signature.
