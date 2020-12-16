@@ -464,7 +464,7 @@ class OAMNetworkController(rest.RestController):
                 if rpc_extoam[field] != extoam[field]:
                     rpc_extoam[field] = extoam[field]
 
-            rpc_extoam.save()
+            rpc_extoam.save()  # pylint: disable=no-value-for-parameter
 
             pecan.request.rpcapi.update_oam_config(pecan.request.context)
 

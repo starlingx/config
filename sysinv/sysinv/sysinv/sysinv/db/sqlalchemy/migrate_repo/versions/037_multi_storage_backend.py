@@ -25,7 +25,7 @@ def upgrade(migrate_engine):
     # When upgrading from 15.12, we will show 20GiB for virtual box
     # - this shouldn't cause any issues and can be corrected by resizing
     # this filesystem to anything other than 20Gib after the upgrade.
-    i_storconfig.update().values(
+    i_storconfig.update().values(  # pylint: disable=no-value-for-parameter
         {'state': 'configured',
          'ceph_mon_gib': 20}).execute()
 
