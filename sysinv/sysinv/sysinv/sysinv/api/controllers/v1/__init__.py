@@ -25,7 +25,6 @@ from sysinv.api.controllers.v1 import address_pool
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import ceph_mon
 from sysinv.api.controllers.v1 import cluster
-from sysinv.api.controllers.v1 import community
 from sysinv.api.controllers.v1 import controller_fs
 from sysinv.api.controllers.v1 import cpu
 from sysinv.api.controllers.v1 import device_image
@@ -86,7 +85,6 @@ from sysinv.api.controllers.v1 import storage_external
 from sysinv.api.controllers.v1 import storage_tier
 from sysinv.api.controllers.v1 import storage_ceph_external
 from sysinv.api.controllers.v1 import system
-from sysinv.api.controllers.v1 import trapdest
 from sysinv.api.controllers.v1 import upgrade
 from sysinv.api.controllers.v1 import user
 from sysinv.api.controllers.v1 import host_fs
@@ -135,12 +133,6 @@ class V1(base.APIBase):
 
     iprofile = [link.Link]
     "Links to the iprofile resource"
-
-    itrapdest = [link.Link]
-    "Links to the itrapdest node cluster resource"
-
-    icommunity = [link.Link]
-    "Links to the icommunity node cluster resource"
 
     iuser = [link.Link]
     "Links to the iuser resource"
@@ -417,22 +409,6 @@ class V1(base.APIBase):
                                        'ipvs', '',
                                        bookmark=True)
                    ]
-
-        v1.itrapdest = [link.Link.make_link('self', pecan.request.host_url,
-                                            'itrapdest', ''),
-                       link.Link.make_link('bookmark',
-                                           pecan.request.host_url,
-                                           'itrapdest', '',
-                                           bookmark=True)
-                        ]
-
-        v1.icommunity = [link.Link.make_link('self', pecan.request.host_url,
-                                             'icommunity', ''),
-                       link.Link.make_link('bookmark',
-                                           pecan.request.host_url,
-                                           'icommunity', '',
-                                           bookmark=True)
-                         ]
 
         v1.iuser = [link.Link.make_link('self', pecan.request.host_url,
                                         'iuser', ''),
@@ -874,8 +850,6 @@ class Controller(rest.RestController):
     idisks = disk.DiskController()
     partitions = partition.PartitionController()
     iprofile = profile.ProfileController()
-    itrapdest = trapdest.TrapDestController()
-    icommunity = community.CommunityController()
     iuser = user.UserController()
     idns = dns.DNSController()
     intp = ntp.NTPController()
