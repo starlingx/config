@@ -1439,8 +1439,8 @@ badMediaType (415)
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
-   "lvm_vg_name (Optional)", "plain", "xsd:string", "This parameter specifies the volume group name. Valid values are (is): ``nova-local``"
-   "ihost_uuid (Optional)", "plain", "csapi:UUID", "This parameter specifies the compute host uuid."
+   "lvm_vg_name", "plain", "xsd:string", "This parameter specifies the volume group name. Valid values are (is): ``nova-local``"
+   "ihost_uuid", "plain", "csapi:UUID", "This parameter specifies the worker host uuid."
 
 **Response parameters**
 
