@@ -9539,9 +9539,9 @@ badMediaType (415)
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
-   "backend (Optional)", "plain", "xsd:string", "This parameter specifies the type of the backend. Valid values are (is): ``file``"
+   "backend", "plain", "xsd:string", "This parameter specifies the type of the backend. Valid values are (is): ``file``"
    "name (Optional)", "plain", "xsd:string", "This parameter specifies the name of the backend."
-   "services (Optional)", "plain", "xsd:string", "The name of the storage service."
+   "services", "plain", "xsd:string", "The name of the storage service."
    "capabilities (Optional)", "plain", "xsd:string", "A dictionary of storage backend capabilities."
    "confirmed (Optional)", "plain", "xsd:boolean", "When ""false"" it will run in test mode without applying any modification. This allow checking a request for validity before performing non-reversible changes. When set to ""true"" the modifications are immediately applied."
 
