@@ -1044,7 +1044,7 @@ This operation does not accept a request body.
 Creates a partition on a specific disk of a host
 **************************************************
 
-.. rest_method:: POST /v1/ihosts/​{host_id}​/partitions
+.. rest_method:: POST /v1/partitions
 
 **Normal response codes**
 
@@ -1060,8 +1060,8 @@ badMediaType (415)
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
-   "host_id", "URI", "csapi:UUID", "The unique identifier of an existing host."
    "ihost_uuid (Optional)", "plain", "csapi:UUID", "This parameter specifies the partition host uuid."
+   "forihostid (Optional)", "plain", "xsd:string", "The ID of the host of this interface."
    "type_guid (Optional)", "plain", "csapi:UUID", "This parameter specifies the partition type guid."
    "idisk_uuid (Optional)", "plain", "csapi:UUID", "This parameter specifies the partition disk uuid."
    "size_mib (Optional)", "plain", "xsd:integer", "This parameter specifies the size of the partition."
