@@ -1,8 +1,5 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-# -*- encoding: utf-8 -*-
 #
-#
-# Copyright (c) 2017-2019 Wind River Systems, Inc.
+# Copyright (c) 2017-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
