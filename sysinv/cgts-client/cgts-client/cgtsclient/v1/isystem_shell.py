@@ -152,6 +152,20 @@ def do_modify(cc, args):
         if k == "https_enabled" and v == "true":
             print_https_warning = True
 
+    # If there is an existing ssl or tpm certificate in system, it will
+    # be used instead of installing the default self signed certificate.
+    if print_https_warning:
+        certificates = cc.certificate.list()
+        for certificate in certificates:
+            if certificate.certtype in ['ssl', 'tpm_mode']:
+                warning = ("Existing certificate %s is used for https."
+                           % certificate.uuid)
+                break
+        else:
+            warning = "HTTPS enabled with a self-signed certificate.\nThis " \
+                      "should be changed to a CA-signed certificate with " \
+                      "'system certificate-install'. "
+
     try:
         isystem = cc.isystem.update(isystem.uuid, patch)
     except exc.HTTPNotFound:
@@ -159,5 +173,4 @@ def do_modify(cc, args):
     _print_isystem_show(isystem)
 
     if print_https_warning:
-        print("HTTPS enabled with a self-signed certificate.\nThis should be "
-              "changed to a CA-signed certificate with 'system certificate-install'. ")
+        print(warning)
