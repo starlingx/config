@@ -104,6 +104,7 @@ FIRST_BOOT_FLAG = os.path.join(
     tsc.PLATFORM_CONF_PATH, ".first_boot")
 
 PUPPET_HIERADATA_PATH = os.path.join(tsc.PUPPET_PATH, 'hieradata')
+PUPPET_HIERADATA_CACHE_PATH = '/etc/puppet/cache/hieradata'
 
 LOCK_AGENT_ACTION = 'agent-exclusive-action'
 
@@ -1603,6 +1604,23 @@ class AgentManager(service.PeriodicService):
         LOG.info('Caught exception. Retrying... Exception: {}'.format(ex))
         return isinstance(ex, exception.AgentInventoryInfoNotFound)
 
+    @staticmethod
+    def _update_local_puppet_cache(hieradata_path):
+        cache_dir = PUPPET_HIERADATA_CACHE_PATH
+        cache_dir_temp = cache_dir + '.temp'
+        try:
+            if os.path.isdir(cache_dir_temp):
+                shutil.rmtree(cache_dir_temp)
+            shutil.copytree(hieradata_path, cache_dir_temp)
+            subprocess.check_call(['sync'])  # pylint: disable=not-callable
+
+            if os.path.isdir(cache_dir):
+                shutil.rmtree(cache_dir)
+            os.rename(cache_dir_temp, cache_dir)
+        except Exception:
+            LOG.exception("Failed to update local puppet cache.")
+            raise
+
     @retrying.retry(wait_fixed=15 * 1000, stop_max_delay=300 * 1000,
                     retry_on_exception=_retry_on_missing_inventory_info)
     @utils.synchronized(LOCK_AGENT_ACTION, external=False)
@@ -1773,6 +1791,8 @@ class AgentManager(service.PeriodicService):
         finally:
             os.close(fd)
             os.remove(tmpfile)
+            # Update local puppet cache anyway to be consistent.
+            self._update_local_puppet_cache(hieradata_path)
 
     def configure_ttys_dcd(self, context, uuid, ttys_dcd):
         """Configure the getty on the serial device.
