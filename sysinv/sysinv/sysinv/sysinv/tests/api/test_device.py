@@ -160,8 +160,18 @@ class TestPostDevice(TestDevice, dbbase.ControllerHostTestCase):
 
 class TestPatchDevice(TestDevice):
 
-    def setUp(self):
+    def setUp(self,
+              pclass_id=dconstants.PCI_DEVICE_CLASS_FPGA.__str__().split(' '),
+              pdev_id='0d8f'
+              ):
         super(TestPatchDevice, self).setUp()
+
+        # PCI_DEVICE_CLASS_FPGA is now a class that overloads euqality conditional.
+        # This was needed to account for PCI devices with ProgIF other than 0x0.
+        # First element in pclass_id is the default 0x120000 Classid + ProgIF.
+
+        self.pclass_id = pclass_id[0]
+        self.pdevice = 'Device [' + pdev_id + ']'
 
         # Create a pci_device
         self.pci_device = dbutils.create_test_pci_device(
@@ -169,7 +179,7 @@ class TestPatchDevice(TestDevice):
             pciaddr='0000:b7:00.0',
             name='pci_0000_b7_00_0',
             pclass='Processing accelerators',
-            pclass_id=dconstants.PCI_DEVICE_CLASS_FPGA,
+            pclass_id=self.pclass_id,
             pvendor='Intel Corporation',
             pvendor_id='8086',
             pdevice='Device [0d8f]',
@@ -184,10 +194,10 @@ class TestPatchDevice(TestDevice):
         self.assertEqual('0000:b7:00.0', response['pciaddr'])
         self.assertEqual('pci_0000_b7_00_0', response['name'])
         self.assertEqual('Processing accelerators', response['pclass'])
-        self.assertEqual(dconstants.PCI_DEVICE_CLASS_FPGA, response['pclass_id'])
+        self.assertEqual(self.pclass_id, response['pclass_id'])
         self.assertEqual('Intel Corporation', response['pvendor'])
         self.assertEqual('8086', response['pvendor_id'])
-        self.assertEqual('Device [0d8f]', response['pdevice'])
+        self.assertEqual(self.pdevice, response['pdevice'])
         self.assertEqual(dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF, response['pdevice_id'])
         self.assertEqual(None, response['driver'])
         self.assertEqual(False, response['enabled'])
@@ -306,7 +316,7 @@ class TestPatchDevice(TestDevice):
     def test_device_modify_sriov_numvfs_unsupported_hw_device(self):
         self.pci_device = dbutils.create_test_pci_device(
             host_id=self.worker.id,
-            pclass_id=dconstants.PCI_DEVICE_CLASS_FPGA,
+            pclass_id=self.pclass_id,
             pdevice_id=dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF,
             sriov_totalvfs=None)
         response = self.patch_dict_json(
@@ -322,7 +332,7 @@ class TestPatchDevice(TestDevice):
     def test_device_modify_sriov_vf_driver_igb_uio(self):
         self.pci_device = dbutils.create_test_pci_device(
             host_id=self.worker.id,
-            pclass_id=dconstants.PCI_DEVICE_CLASS_FPGA,
+            pclass_id=self.pclass_id,
             pdevice_id=dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF,
             sriov_totalvfs=8,
             sriov_numvfs=2)
@@ -337,7 +347,7 @@ class TestPatchDevice(TestDevice):
     def test_device_modify_sriov_vf_driver_vfio(self):
         self.pci_device = dbutils.create_test_pci_device(
             host_id=self.worker.id,
-            pclass_id=dconstants.PCI_DEVICE_CLASS_FPGA,
+            pclass_id=self.pclass_id,
             pdevice_id=dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF,
             sriov_totalvfs=8,
             sriov_numvfs=2)
@@ -402,7 +412,7 @@ class TestPatchDevice(TestDevice):
                                  invprovision="provisioning")
         self.pci_device = dbutils.create_test_pci_device(
             host_id=host.id,
-            pclass_id=dconstants.PCI_DEVICE_CLASS_FPGA,
+            pclass_id=self.pclass_id,
             pdevice_id=dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF,
             sriov_totalvfs=8,
             sriov_numvfs=2)

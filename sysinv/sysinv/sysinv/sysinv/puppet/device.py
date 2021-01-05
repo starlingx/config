@@ -58,67 +58,83 @@ class DevicePuppet(base.BasePuppet):
             'platform::devices::qat::service_enabled': True,
         }
 
-    def _get_host_fpga_fec_device_config(self, fpga_fec_devices):
+    def _get_host_acclr_fec_device_config(self, pci_device_list):
         """
-        Builds a config dictionary for FPGA FEC devices to be used by the
+        Builds a config dictionary for FEC devices to be used by the
         platform devices (worker) puppet resource.
         """
-        device_config = {}
         vf_config = {}
-        for device in fpga_fec_devices:
-            if not device.get('driver', None) or not device.get('sriov_numvfs', None):
-                continue
+        device_config = {}
+        acclr_config = {}
+        puppet_dflt = 'platform::devices::fpga::fec::params::device_config'
 
-            name = 'pci-%s' % device.pciaddr
+        for dv in dconstants.ACCLR_FEC_RESOURCES:
+            for device in pci_device_list[dv]:
+                if (not device.get('driver', None) or
+                   not device.get('sriov_numvfs', None)):
+                        continue
 
-            # Format the vf addresses as quoted strings in order to prevent
-            # puppet from treating the address as a time/date value
-            vf_addrs = device.get('sriov_vfs_pci_address', [])
-            if vf_addrs:
-                vf_addrs = [quoted_str(addr.strip())
-                    for addr in vf_addrs.split(",") if addr]
-                if len(vf_addrs) == device.get('sriov_numvfs', 0):
-                    vf_driver = device.get('sriov_vf_driver', None)
-                    if vf_driver:
-                        if constants.SRIOV_DRIVER_TYPE_VFIO in vf_driver:
-                            vf_driver = constants.SRIOV_DRIVER_VFIO_PCI
-                    for addr in vf_addrs:
-                        vf_config.update({
-                            addr: {
-                                'addr': addr,
-                                'driver': vf_driver
-                            }
-                        })
+                # Pass extra parameters to puppet
+                if 'dvconf' in dconstants.ACCLR_FEC_RESOURCES[dv]:
+                    acclr_config.update(
+                         dconstants.ACCLR_FEC_RESOURCES[dv]['dvconf'])
 
-            pf_config = {
-                device.pciaddr: {
-                    'num_vfs': device['sriov_numvfs'],
-                    'addr': quoted_str(device['pciaddr'].strip()),
-                    'driver': device['driver'],
-                    'device_id': device['pdevice_id']
+                name = 'pci-%s' % device.pciaddr
+
+                # Format the vf addresses as quoted strings in order to prevent
+                # puppet from treating the address as a time/date value
+                vf_addrs = device.get('sriov_vfs_pci_address', [])
+                if vf_addrs:
+                    vf_addrs = [quoted_str(addr.strip())
+                                for addr in vf_addrs.split(",") if addr]
+                    if len(vf_addrs) == device.get('sriov_numvfs', 0):
+                        vf_driver = device.get('sriov_vf_driver', None)
+                        if vf_driver:
+                            if constants.SRIOV_DRIVER_TYPE_VFIO in vf_driver:
+                                vf_driver = constants.SRIOV_DRIVER_VFIO_PCI
+                        for addr in vf_addrs:
+                            vf_config.update({
+                                addr: {
+                                    'addr': addr,
+                                    'driver': vf_driver
+                                }
+                            })
+
+                pf_config = {
+                    device.pciaddr: {
+                        'num_vfs': device['sriov_numvfs'],
+                        'addr': quoted_str(device['pciaddr'].strip()),
+                        'driver': device['driver'],
+                        'device_id': device['pdevice_id']
+                    }
                 }
-            }
-            device_config = {
-                name: {
-                    'pf_config': pf_config,
-                    'vf_config': vf_config
+                device_config = {
+                    name: {
+                        'pf_config': pf_config,
+                        'vf_config': vf_config
+                    }
                 }
-            }
-        return {
-            'platform::devices::fpga::fec::params::device_config': device_config
-        }
 
-    def _get_host_fpga_device_config(self, pci_device_list):
+            acclr_config.update({puppet_dflt: device_config})
+
+        return acclr_config
+
+    def _get_host_acclr_device_config(self, pci_device_list):
         """
-        Builds a config dictionary for FPGA devices to be used by the platform
+        Builds a config dictionary for FEC devices to be used by the platform
         devices (worker) puppet resource.
         """
-        fpga_config = {}
-        fpga_fec_devices = pci_device_list[dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF]
-        if fpga_fec_devices:
-            fec_config = self._get_host_fpga_fec_device_config(fpga_fec_devices)
-            fpga_config.update(fec_config)
-        return fpga_config
+        acclr_config = {}
+        for acclr_devid in dconstants.SRIOV_ENABLED_FEC_DEVICE_IDS:
+            if acclr_devid not in pci_device_list:
+                continue
+
+            acclr_device = pci_device_list[acclr_devid]
+            if acclr_device:
+                acclr_config.update(self._get_host_acclr_fec_device_config(
+                    acclr_device))
+
+        return acclr_config
 
     def get_host_config(self, host):
         if constants.WORKER not in host.subfunctions:
@@ -136,8 +152,8 @@ class DevicePuppet(base.BasePuppet):
         if qat_devices:
             device_config.update(qat_devices)
 
-        fpga_devices = self._get_host_fpga_device_config(devices)
-        if fpga_devices:
-            device_config.update(fpga_devices)
+        acclr_devices = self._get_host_acclr_fec_device_config(devices)
+        if acclr_devices:
+            device_config.update(acclr_devices)
 
         return device_config

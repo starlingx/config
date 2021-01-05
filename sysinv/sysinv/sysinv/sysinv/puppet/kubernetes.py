@@ -447,7 +447,7 @@ class KubernetesPuppet(base.BasePuppet):
             driver = port['driver']
         return driver
 
-    def _get_pcidp_fpga_driver(self, device):
+    def _get_pcidp_fec_driver(self, device):
         sriov_vf_driver = device.get('sriov_vf_driver', None)
         if (sriov_vf_driver and
                 constants.SRIOV_DRIVER_TYPE_VFIO in sriov_vf_driver):
@@ -547,13 +547,17 @@ class KubernetesPuppet(base.BasePuppet):
 
         return list(resources.values())
 
-    def _get_pcidp_fpga_resources(self, host):
+    def _get_pcidp_fec_resources(self, host):
         resources = {}
-        fec_name = "intel_fpga_fec"
 
-        for d in self.dbapi.pci_device_get_by_host(host.id):
-            if (d['pclass_id'] == dconstants.PCI_DEVICE_CLASS_FPGA
-                    and d['pdevice_id'] == dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF):
+        for ddevid in dconstants.ACCLR_FEC_RESOURCES:
+
+            fec_name = dconstants.ACCLR_FEC_RESOURCES[ddevid]['fec_name']
+
+            for d in self.dbapi.pci_device_get_by_host(host.id):
+                if d['pdevice_id'] != ddevid:
+                    continue
+
                 resource = resources.get(fec_name, None)
                 if not resource:
                     resource = {
@@ -568,17 +572,20 @@ class KubernetesPuppet(base.BasePuppet):
 
                 vendor = d.get('pvendor_id', None)
                 if not vendor:
-                    LOG.error("Failed to get vendor id for pci device %s", d['pciaddr'])
+                    LOG.error("Failed to get vendor id for pci device %s",
+                              d['pciaddr'])
                     continue
 
                 device = d.get('sriov_vf_pdevice_id', None)
                 if not device:
-                    LOG.error("Failed to get device id for pci device %s", d['pciaddr'])
+                    LOG.error("Failed to get device id for pci device %s",
+                              d['pciaddr'])
                     continue
 
-                driver = self._get_pcidp_fpga_driver(d)
+                driver = self._get_pcidp_fec_driver(d)
                 if not driver:
-                    LOG.error("Failed to get driver for pci device %s", d['pciaddr'])
+                    LOG.error("Failed to get driver for pci device %s",
+                              d['pciaddr'])
                     continue
 
                 vendor_list = resource['selectors']['vendors']
@@ -604,5 +611,5 @@ class KubernetesPuppet(base.BasePuppet):
             constants.INTERFACE_CLASS_PCI_SRIOV)
         pcipt_resources = self._get_pcidp_network_resources_by_ifclass(
             constants.INTERFACE_CLASS_PCI_PASSTHROUGH)
-        fpga_resources = self._get_pcidp_fpga_resources(host)
-        return json.dumps({'resourceList': sriov_resources + pcipt_resources + fpga_resources})
+        fec_resources = self._get_pcidp_fec_resources(host)
+        return json.dumps({'resourceList': sriov_resources + pcipt_resources + fec_resources})

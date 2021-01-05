@@ -354,23 +354,23 @@ def _check_field(field):
 
 def _check_device_sriov(device, host):
     sriov_update = False
-    if (device['pdevice_id'] == dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF and
+    if (device['pdevice_id'] in dconstants.SRIOV_ENABLED_FEC_DEVICE_IDS and
             host.invprovision != constants.PROVISIONED):
         raise wsme.exc.ClientSideError(_("Cannot configure device %s "
                     "until host %s is unlocked for the first time." %
                     (device['uuid'], host.hostname)))
 
-    if (device['pdevice_id'] not in dconstants.SRIOV_ENABLED_DEVICE_IDS and
+    if (device['pdevice_id'] not in dconstants.SRIOV_ENABLED_FEC_DEVICE_IDS and
             'sriov_numvfs' in device.keys() and device['sriov_numvfs']):
         raise wsme.exc.ClientSideError(_("The number of SR-IOV VFs is specified "
                                          "but the device is not supported for SR-IOV"))
 
-    if (device['pdevice_id'] not in dconstants.SRIOV_ENABLED_DEVICE_IDS and
+    if (device['pdevice_id'] not in dconstants.SRIOV_ENABLED_FEC_DEVICE_IDS and
             'sriov_vf_driver' in device.keys() and device['sriov_vf_driver']):
         raise wsme.exc.ClientSideError(_("The SR-IOV VF driver is specified "
                                          "but the device is not supported for SR-IOV"))
 
-    if device['pdevice_id'] not in dconstants.SRIOV_ENABLED_DEVICE_IDS:
+    if device['pdevice_id'] not in dconstants.SRIOV_ENABLED_FEC_DEVICE_IDS:
         return sriov_update
 
     if 'sriov_numvfs' not in device.keys():
@@ -400,15 +400,18 @@ def _check_device_sriov(device, host):
         raise wsme.exc.ClientSideError(_("The SR-IOV VF driver must be specified"))
     else:
         if (device['sriov_vf_driver'] is not None and
-                device['pdevice_id'] == dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF and
-                device['sriov_vf_driver'] not in dconstants.FPGA_INTEL_5GNR_FEC_VF_VALID_DRIVERS):
+                device['pdevice_id'] in
+                dconstants.SRIOV_ENABLED_FEC_DEVICE_IDS and
+                device['sriov_vf_driver'] not in
+                dconstants.FPGA_INTEL_5GNR_FEC_VF_VALID_DRIVERS):
             msg = (_("Value for SR-IOV VF driver must be one of "
                 "{}").format(', '.join(dconstants.FPGA_INTEL_5GNR_FEC_VF_VALID_DRIVERS)))
             raise wsme.exc.ClientSideError(msg)
 
     if ('driver' in device.keys() and device['driver'] and
-            device['pdevice_id'] == dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF and
-            device['driver'] not in dconstants.FPGA_INTEL_5GNR_FEC_PF_VALID_DRIVERS):
+            device['pdevice_id'] in dconstants.SRIOV_ENABLED_FEC_DEVICE_IDS and
+            device['driver'] not in
+            dconstants.FPGA_INTEL_5GNR_FEC_PF_VALID_DRIVERS):
         msg = (_("Value for SR-IOV PF driver must be one of "
                  "{}").format(', '.join(dconstants.FPGA_INTEL_5GNR_FEC_PF_VALID_DRIVERS)))
         raise wsme.exc.ClientSideError(msg)
