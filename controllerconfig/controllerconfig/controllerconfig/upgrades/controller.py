@@ -715,6 +715,23 @@ def migrate_hiera_data(from_release, to_release, role=None):
     from_hiera_path = os.path.join(PLATFORM_PATH, "puppet", from_release,
                                    "hieradata")
     to_hiera_path = constants.HIERADATA_PERMDIR
+
+    # For simplex upgrade, we already set etcd security config during
+    # apply-bootstrap-manifest. Need to get it and update to target
+    # static.yaml.
+    static_file = os.path.join(to_hiera_path, "static.yaml")
+    with open(static_file, 'r') as yaml_file:
+        static_config = yaml.load(yaml_file)
+
+    etcd_security_config = {}
+    if 'platform::etcd::params::security_enabled' in static_config.keys():
+        etcd_security_config['platform::etcd::params::security_enabled'] = \
+            static_config['platform::etcd::params::security_enabled']
+        etcd_security_config['platform::etcd::params::bind_address'] = \
+            static_config['platform::etcd::params::bind_address']
+        etcd_security_config['platform::etcd::params::bind_address_version'] = \
+            static_config['platform::etcd::params::bind_address_version']
+
     shutil.rmtree(to_hiera_path, ignore_errors=True)
     os.makedirs(to_hiera_path)
 
@@ -757,6 +774,9 @@ def migrate_hiera_data(from_release, to_release, role=None):
                 'openstack::keystone::bootstrap::dc_services_project_id':
                     service_project_id
             })
+    # Just for upgrade from STX4.0 to STX5.0
+    if (from_release == SW_VERSION_20_06 and etcd_security_config):
+        static_config.update(etcd_security_config)
 
     with open(static_file, 'w') as yaml_file:
         yaml.dump(static_config, yaml_file, default_flow_style=False)
