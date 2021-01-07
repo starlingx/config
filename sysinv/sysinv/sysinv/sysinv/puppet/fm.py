@@ -1,9 +1,11 @@
 #
-# Copyright (c) 2018-2020 Wind River Systems, Inc.
+# Copyright (c) 2018-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
+
+import yaml
 
 from sysinv.common import constants
 from sysinv.common import utils
@@ -16,6 +18,10 @@ class FmPuppet(openstack.OpenstackBasePuppet):
     SERVICE_NAME = 'fm'
     SERVICE_PORT = 18002
     BOOTSTRAP_MGMT_IP = '127.0.0.1'
+    TRAP_SERVER_DEFAULT_PORT = 162
+    TRAP_SERVER_PORT_CONFIG_KEY = 'trap-server-port'
+    SNMP_CHART_NAME = 'snmp'
+    SNMP_NAME_SPACE = 'kube-system'
 
     def get_static_config(self):
         dbuser = self._get_database_username(self.SERVICE_NAME)
@@ -43,8 +49,10 @@ class FmPuppet(openstack.OpenstackBasePuppet):
         trapdests = self.dbapi.itrapdest_get_list()
         if utils.is_app_applied(self.dbapi, constants.HELM_APP_SNMP):
             snmp_enabled_value = 1    # True
+            snmp_trap_server_port = self.get_snmp_trap_port()
         else:
             snmp_enabled_value = 0    # False
+            snmp_trap_server_port = self.TRAP_SERVER_DEFAULT_PORT
 
         config = {
             'fm::keystone::auth::public_url': self.get_public_url(),
@@ -76,6 +84,8 @@ class FmPuppet(openstack.OpenstackBasePuppet):
 
             'platform::fm::params::region_name': self._region_name(),
             'platform::fm::params::snmp_enabled': snmp_enabled_value,
+            'platform::fm::params::snmp_trap_server_port':
+                snmp_trap_server_port,
             'platform::fm::params::system_name': system.name,
 
             'platform::fm::params::service_create':
@@ -116,3 +126,20 @@ class FmPuppet(openstack.OpenstackBasePuppet):
 
     def get_region_name(self):
         return self._get_service_region_name(self.SERVICE_NAME)
+
+    def get_snmp_trap_port(self):
+        """Obtain snmp trap server port from user helm override.
+           If it is not configured, use the default port 162.
+        """
+        snmp_trap_port = self.TRAP_SERVER_DEFAULT_PORT
+
+        db_app = self.dbapi.kube_app_get(constants.HELM_APP_SNMP)
+        db_chart = self.dbapi.helm_override_get(db_app.id,
+                                                self.SNMP_CHART_NAME,
+                                                self.SNMP_NAME_SPACE)
+        if db_chart is not None and db_chart.user_overrides is not None:
+            user_overrides = yaml.load(db_chart.user_overrides)
+            if self.TRAP_SERVER_PORT_CONFIG_KEY in user_overrides:
+                snmp_trap_port = user_overrides[
+                    self.TRAP_SERVER_PORT_CONFIG_KEY]
+        return snmp_trap_port
