@@ -1066,7 +1066,8 @@ def get_sriov_vf_config(context, iface, port, vf_config):
         upper_ifaces = iface['used_by']
         for upper_ifname in upper_ifaces:
             upper_iface = context['interfaces'][upper_ifname]
-            get_sriov_vf_config(context, upper_iface, port, vf_config)
+            if upper_iface['iftype'] == constants.INTERFACE_TYPE_VF:
+                get_sriov_vf_config(context, upper_iface, port, vf_config)
 
 
 def get_sriov_config(context, iface):

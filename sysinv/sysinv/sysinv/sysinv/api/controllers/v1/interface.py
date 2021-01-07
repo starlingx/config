@@ -1774,6 +1774,22 @@ def _check(op, interface, ports=None, ifaces=None, from_profile=False,
                 # Can only have one interface associated to vlan interface type
                 raise wsme.exc.ClientSideError(
                     _("Can only have one interface for vlan type. (%s)" % ifaces))
+            if interface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
+                if len(ifaces) > 1:
+                    raise wsme.exc.ClientSideError(
+                        _("Can only have one lower interface for ethernet type."
+                            "(%s)" % ifaces))
+                lower = pecan.request.dbapi.iinterface_get(ifaces[0],
+                        interface['ihost_uuid'])
+                if not (lower['iftype'] == constants.INTERFACE_TYPE_ETHERNET
+                        and lower['ifclass'] ==
+                                        constants.INTERFACE_CLASS_PCI_SRIOV):
+                    # Can only have pci_sriov ethernet type lower interface
+                    # associated to ethernet interface type
+                    raise wsme.exc.ClientSideError(
+                        _("Can only use pci-sriov ethernet interface for "
+                            "ethernet type. (%s)" % ifaces))
+
             for i in ifaces:
                 for iface in interfaces:
                     if iface['uuid'] == i or iface['ifname'] == i:
@@ -1856,8 +1872,8 @@ def _delete(interface, from_profile=False):
         # Semantic checks
         _check_host(ihost)
 
-    if not from_profile and interface['iftype'] == 'ethernet':
-        msg = _("Cannot delete an ethernet interface type.")
+    if not from_profile and interface['iftype'] == 'ethernet' and not interface['uses']:
+        msg = _("Cannot delete a system created ethernet interface")
         raise wsme.exc.ClientSideError(msg)
 
     # Allow the removal of the virtual management interface during bootstrap.
