@@ -187,6 +187,7 @@ class KubeUpgradeController(rest.RestController):
         """Create a new Kubernetes Upgrade and start upgrade."""
 
         force = body.get('force', False) is True
+        alarm_ignore_list = body.get('alarm_ignore_list')
 
         # There must not be a platform upgrade in progress
         try:
@@ -247,7 +248,10 @@ class KubeUpgradeController(rest.RestController):
 
         # The system must be healthy
         success, output = pecan.request.rpcapi.get_system_health(
-            pecan.request.context, force=force, kube_upgrade=True)
+            pecan.request.context,
+            force=force,
+            kube_upgrade=True,
+            alarm_ignore_list=alarm_ignore_list)
         if not success:
             LOG.info("Health query failure during kubernetes upgrade start: %s"
                      % output)

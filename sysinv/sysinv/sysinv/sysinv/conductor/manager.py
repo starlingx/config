@@ -9792,7 +9792,8 @@ class ConductorManager(service.PeriodicService):
         return
 
     def get_system_health(self, context, force=False, upgrade=False,
-                          kube_upgrade=False):
+                          kube_upgrade=False,
+                          alarm_ignore_list=None):
         """
         Performs a system health check.
 
@@ -9801,18 +9802,26 @@ class ConductorManager(service.PeriodicService):
         :param upgrade: set to true to perform an upgrade health check
         :param kube_upgrade: set to true to perform a kubernetes upgrade health
                              check
+        :param alarm_ignore_list: list of alarm ids to ignore when performing
+                                  a health check
         """
         health_util = health.Health(self.dbapi)
 
         if upgrade is True:
-            return health_util.get_system_health_upgrade(context=context,
-                                                         force=force)
+            return health_util.get_system_health_upgrade(
+                context=context,
+                force=force,
+                alarm_ignore_list=alarm_ignore_list)
         elif kube_upgrade is True:
-            return health_util.get_system_health_kube_upgrade(context=context,
-                                                              force=force)
+            return health_util.get_system_health_kube_upgrade(
+                context=context,
+                force=force,
+                alarm_ignore_list=alarm_ignore_list)
         else:
-            return health_util.get_system_health(context=context,
-                                                 force=force)
+            return health_util.get_system_health(
+                context=context,
+                force=force,
+                alarm_ignore_list=alarm_ignore_list)
 
     def _get_cinder_address_name(self, network_type):
         ADDRESS_FORMAT_ARGS = (constants.CONTROLLER_HOSTNAME,

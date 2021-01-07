@@ -54,6 +54,21 @@ FAKE_KUBE_VERSIONS = [
 ]
 
 
+class FakeAlarm(object):
+    def __init__(self, alarm_id, mgmt_affecting):
+        self.alarm_id = alarm_id
+        self.mgmt_affecting = mgmt_affecting
+
+
+FAKE_MGMT_AFFECTING_ALARM = FakeAlarm('900.401', "True")
+FAKE_NON_MGMT_AFFECTING_ALARM = FakeAlarm('900.400', "False")
+
+
+class FakeFmClient(object):
+    def __init__(self):
+        self.alarm = mock.MagicMock()
+
+
 class FakeConductorAPI(object):
 
     def __init__(self):
@@ -62,9 +77,13 @@ class FakeConductorAPI(object):
         self.service = ConductorManager('test-host', 'test-topic')
 
     def get_system_health(self, context, force=False, upgrade=False,
-                          kube_upgrade=False):
-        return self.service.get_system_health(context, force, upgrade,
-                                              kube_upgrade)
+                          kube_upgrade=False, alarm_ignore_list=None):
+        return self.service.get_system_health(
+            context,
+            force=force,
+            upgrade=upgrade,
+            kube_upgrade=kube_upgrade,
+            alarm_ignore_list=alarm_ignore_list)
 
 
 class TestKubeUpgrade(base.FunctionalTest):
@@ -167,11 +186,11 @@ class TestKubeUpgrade(base.FunctionalTest):
         self.mock_patch_query_hosts.return_value = self._patch_current()
         self.addCleanup(p.stop)
 
-        # _check_alarms
-        # _check_alarms returns (Success Boolean, Allow Int, Affecting Int)
-        p = mock.patch.object(health.Health, '_check_alarms')
-        self.mock_check_alarms = p.start()
-        self.mock_check_alarms.return_value = (True, 0, 0)
+        # _check_alarms calls fmclient alarms.list
+        self.fake_fm_client = FakeFmClient()
+        p = mock.patch('sysinv.common.health.fmclient')
+        self.mock_fm_client = p.start()
+        self.mock_fm_client.return_value = self.fake_fm_client
         self.addCleanup(p.stop)
 
         # _check_kube_nodes_ready
@@ -357,7 +376,8 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         """Test creation of a kube upgrade while there are alarms"""
         # Test creation of upgrade when system health check fails
         # 1 alarm, when force is not specified will return False
-        self.mock_check_alarms.return_value = (False, 1, 0)
+        self.fake_fm_client.alarm.list.return_value = \
+            [FAKE_NON_MGMT_AFFECTING_ALARM, ]
 
         create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.2')
         result = self.post_json('/kube_upgrade', create_dict,
@@ -375,7 +395,8 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         # overridden with force
 
         # mock a 'non' mgmt_affecting alarm, upgrade can be forced
-        self.mock_check_alarms.return_value = (True, 1, 0)
+        self.fake_fm_client.alarm.list.return_value = \
+            [FAKE_NON_MGMT_AFFECTING_ALARM, ]
         create_dict = dbutils.post_get_test_kube_upgrade(
             to_version='v1.43.2')
         create_dict['force'] = True
@@ -392,7 +413,8 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         """ Test kube upgrade create fails when mgmt affecting alarms found"""
 
         # mock a mgmt_affecting alarm, upgrade cannot be forced
-        self.mock_check_alarms.return_value = (False, 0, 1)
+        self.fake_fm_client.alarm.list.return_value = \
+            [FAKE_MGMT_AFFECTING_ALARM, ]
         create_dict = dbutils.post_get_test_kube_upgrade(
             to_version='v1.43.2')
         create_dict['force'] = True
@@ -405,6 +427,26 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
         self.assertIn("System is not in a valid state",
                       result.json['error_message'])
+
+    def test_create_system_can_ignore_alarms(self):
+        # Test creation of upgrade when system health check fails but
+        # overridden with force
+
+        # mock a 'non' mgmt_affecting alarm, upgrade can be forced
+        self.fake_fm_client.alarm.list.return_value = \
+            [FAKE_MGMT_AFFECTING_ALARM, ]
+        create_dict = dbutils.post_get_test_kube_upgrade(
+            to_version='v1.43.2')
+        # ignore the alarm_id for the mgmt affecting alarm
+        create_dict['alarm_ignore_list'] = "['900.401',]"
+        result = self.post_json('/kube_upgrade', create_dict,
+                                headers={'User-Agent': 'sysinv-test'})
+
+        # Verify that the upgrade has the expected attributes
+        self.assertEqual(result.json['from_version'], 'v1.43.1')
+        self.assertEqual(result.json['to_version'], 'v1.43.2')
+        self.assertEqual(result.json['state'],
+                         kubernetes.KUBE_UPGRADE_STARTED)
 
     def test_create_system_unhealthy_from_bad_apps(self):
         """ Test kube upgrade create fails when invalid kube app found"""
