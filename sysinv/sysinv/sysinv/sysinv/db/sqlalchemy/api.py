@@ -2328,6 +2328,7 @@ class Connection(api.Connection):
 
     @objects.objectify(objects.interface)
     def iinterface_update(self, iinterface_id, values):
+        self._interface_ratelimit_encode(values)
         with _session_for_write() as session:
             query = model_query(models.Interfaces, read_deleted="no",
                                 session=session)
@@ -2353,10 +2354,21 @@ class Connection(api.Connection):
     def iinterface_destroy(self, iinterface_id):
         return self._interface_destroy(models.Interfaces, iinterface_id)
 
+    def _interface_ratelimit_encode(self, values):
+        # we need to use 'ifcapabilities' dict to save ratelimit info
+        if values.get('max_tx_rate') is not None:
+            capabilities = {'max_tx_rate': values['max_tx_rate']}
+            if values.get('ifcapabilities') is not None:
+                values['ifcapabilities'].update(capabilities)
+            else:
+                values['ifcapabilities'] = capabilities
+
     def _interface_create(self, obj, forihostid, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
         values['forihostid'] = int(forihostid)
+
+        self._interface_ratelimit_encode(values)
 
         is_profile = values.get('interface_profile', False)
         with _session_for_write() as session:

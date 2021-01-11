@@ -8,7 +8,9 @@ from __future__ import print_function
 import os
 import uuid
 import yaml
+import mock
 
+from sysinv.common import utils
 from sysinv.common import constants
 from sysinv.puppet import interface
 from sysinv.puppet import puppet
@@ -250,7 +252,7 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
         return db_interface
 
     def _create_vf_test(self, ifname, num_vfs, vf_driver=None,
-                        lower_iface=None):
+                        lower_iface=None, max_tx_rate=None):
         if not lower_iface:
             lower_port, lower_iface = self._create_ethernet_test(
                 'sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
@@ -277,7 +279,8 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                      'networktype': constants.NETWORK_TYPE_PCI_SRIOV,
                      'imtu': 1500,
                      'sriov_numvfs': num_vfs,
-                     'sriov_vf_driver': vf_driver}
+                     'sriov_vf_driver': vf_driver,
+                     'max_tx_rate': max_tx_rate}
         lower_iface['used_by'].append(interface['ifname'])
         db_interface = dbutils.create_test_interface(**interface)
         self.interfaces.append(db_interface)
@@ -1417,11 +1420,12 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.assertEqual(expected, config)
 
     def _create_sriov_vf_config(self, iface_vf_driver, port_vf_driver,
-                                vf_addr_list, num_vfs):
+                                vf_addr_list, num_vfs, max_tx_rate=None):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
         self.iface['sriov_vf_driver'] = iface_vf_driver
         self.iface['sriov_numvfs'] = num_vfs
+        self.iface['max_tx_rate'] = max_tx_rate
         self.port['sriov_vf_driver'] = port_vf_driver
         self.port['sriov_vfs_pci_address'] = vf_addr_list
         self._update_context()
@@ -1567,6 +1571,59 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         expected_vf_config = {
             '0000:b1:02.0': {'addr': '0000:b1:02.0', 'driver': None},
             '0000:b1:02.1': {'addr': '0000:b1:02.1', 'driver': 'iavf'},
+            '0000:b1:02.2': {'addr': '0000:b1:02.2', 'driver': 'vfio-pci'},
+            '0000:b1:02.3': {'addr': '0000:b1:02.3', 'driver': 'vfio-pci'}
+        }
+        expected = self._get_sriov_config(
+            iface['ifname'], None,
+            num_vfs=4, pf_addr=port['pciaddr'],
+            port_name="eth1",
+            vf_config=expected_vf_config)
+        self.assertEqual(expected, config)
+
+    @mock.patch.object(utils, 'get_sriov_vf_index')
+    def test_get_sriov_config_with_ratelimit(self, mock_get_sriov_vf_index):
+        vf_addr1 = "0000:81:00.0"
+        vf_addr2 = "0000:81:01.0"
+        device_id = '1572'
+        port_name = 'eth0'
+        vf_addr_list = "{},{}".format(vf_addr1, vf_addr2)
+        num_vfs = 4
+        max_tx_rate = 1000
+
+        mock_get_sriov_vf_index.side_effect = [0, 1]
+        config = self._create_sriov_vf_config(
+            constants.SRIOV_DRIVER_TYPE_VFIO, 'i40evf', vf_addr_list,
+            num_vfs, max_tx_rate)
+        expected_vf_config = {
+            '0000:81:00.0': {'addr': '0000:81:00.0', 'driver': 'vfio-pci', 'max_tx_rate': 1000, 'vfnumber': 0},
+            '0000:81:01.0': {'addr': '0000:81:01.0', 'driver': 'vfio-pci', 'max_tx_rate': 1000, 'vfnumber': 1}
+        }
+        expected = self._get_sriov_config(
+            ifname=self.iface['ifname'],
+            vf_driver='vfio-pci',
+            num_vfs=num_vfs,
+            device_id=device_id,
+            port_name=port_name,
+            vf_config=expected_vf_config)
+        self.assertEqual(expected, config)
+
+    def test_get_sriov_config_vf_sibling_with_ratelimit(self):
+        port, iface = self._create_ethernet_test(
+            'sriov1', constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=4,
+            iface_sriov_vf_driver=None,
+            port_sriov_vf_driver="iavf",
+            sriov_vfs_pci_address="0000:b1:02.0,0000:b1:02.1,0000:b1:02.2,0000:b1:02.3")
+        self._create_vf_test("vf1", 2, 'vfio', lower_iface=iface)
+        self._create_vf_test("vf2", 1, 'netdevice', lower_iface=iface, max_tx_rate=1000)
+        self._update_context()
+
+        config = interface.get_sriov_config(self.context, iface)
+
+        expected_vf_config = {
+            '0000:b1:02.0': {'addr': '0000:b1:02.0', 'driver': None},
+            '0000:b1:02.1': {'addr': '0000:b1:02.1', 'driver': 'iavf', 'max_tx_rate': 1000, 'vfnumber': 1},
             '0000:b1:02.2': {'addr': '0000:b1:02.2', 'driver': 'vfio-pci'},
             '0000:b1:02.3': {'addr': '0000:b1:02.3', 'driver': 'vfio-pci'}
         }

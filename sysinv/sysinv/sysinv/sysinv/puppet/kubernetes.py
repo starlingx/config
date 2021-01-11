@@ -513,8 +513,32 @@ class KubernetesPuppet(base.BasePuppet):
                     driver_list.append(driver)
 
                 pf_name_list = resource['selectors']['pfNames']
-                if port['name'] not in pf_name_list:
-                    pf_name_list.append(port['name'])
+                if ifclass == constants.INTERFACE_CLASS_PCI_SRIOV:
+                    # In sriov case, we need specify each VF for resource pool
+                    # Get VF addresses assigned to this logical VF interface
+                    vf_addr_list = []
+                    all_vf_addr_list = []
+                    vf_addrs = port.get('sriov_vfs_pci_address', None)
+                    if vf_addrs:
+                        all_vf_addr_list = vf_addrs.split(',')
+                        vf_addr_list = interface.get_sriov_interface_vf_addrs(
+                            self.context, iface, all_vf_addr_list)
+
+                    vfnolst = [utils.get_sriov_vf_index(addr, all_vf_addr_list)
+                                   for addr in vf_addr_list]
+                    vfnolst = [str(vfno) for vfno in vfnolst]
+                    vfnolist_str = ",".join(vfnolst)
+                    if vfnolist_str:
+                        # concat into the form of 'ens785f0#0,2,7,9'
+                        pfname_with_vfs = "%s#%s" % (port['name'], vfnolist_str)
+                        pf_name_list.append(pfname_with_vfs)
+                    else:
+                        # error case, cannot find the vf numbers in sriov case
+                        LOG.error("Failed to get vf numbers for pci device %s", port['name'])
+                        continue
+                else:
+                    if port['name'] not in pf_name_list:
+                        pf_name_list.append(port['name'])
 
                 if interface.is_a_mellanox_device(self.context, iface):
                     resource['selectors']['isRdma'] = True

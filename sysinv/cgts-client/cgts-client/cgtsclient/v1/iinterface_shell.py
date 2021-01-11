@@ -20,7 +20,8 @@ def _print_iinterface_show(cc, iinterface):
               'aemode', 'schedpolicy', 'txhashpolicy',
               'uuid', 'ihost_uuid',
               'vlan_id', 'uses', 'used_by',
-              'created_at', 'updated_at', 'sriov_numvfs', 'sriov_vf_driver']
+              'created_at', 'updated_at', 'sriov_numvfs',
+              'sriov_vf_driver', 'max_tx_rate']
     optional_fields = ['ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool']
     rename_fields = [{'field': 'dpdksupport', 'label': 'accelerated'}]
     data = [(f, getattr(iinterface, f, '')) for f in fields]
@@ -84,6 +85,8 @@ def do_host_if_list(cc, args):
                 attr_str = "%s,accelerated=False" % attr_str
             else:
                 attr_str = "%s,accelerated=True" % attr_str
+        if i.max_tx_rate:
+            attr_str = "%s,max_tx_rate=%s" % (attr_str, i.max_tx_rate)
         setattr(i, 'attrs', attr_str)
 
     field_labels = ['uuid', 'name', 'class', 'type', 'vlan id', 'ports',
@@ -169,13 +172,17 @@ def do_host_if_delete(cc, args):
            metavar='<ptp role>',
            choices=['master', 'slave', 'none'],
            help='The PTP role for this interface')
+@utils.arg('-r', '--max-tx-rate',
+           dest='max_tx_rate',
+           metavar='<max_tx_rate>',
+           help='The max tx rate (Mb/s) of the SR-IOV VF interface')
 def do_host_if_add(cc, args):
     """Add an interface."""
 
     field_list = ['ifname', 'iftype', 'imtu', 'ifclass', 'aemode',
                   'txhashpolicy', 'vlan_id', 'ptp_role',
                   'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
-                  'sriov_numvfs', 'sriov_vf_driver']
+                  'sriov_numvfs', 'sriov_vf_driver', 'max_tx_rate']
 
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
 
@@ -267,13 +274,17 @@ def do_host_if_add(cc, args):
            metavar='<ptp role>',
            choices=['master', 'slave', 'none'],
            help='The PTP role for this interface')
+@utils.arg('-r', '--max-tx-rate',
+           dest='max_tx_rate',
+           metavar='<max_tx_rate>',
+           help='The max tx rate (Mb/s) of the VF interface')
 def do_host_if_modify(cc, args):
     """Modify interface attributes."""
 
     rwfields = ['iftype', 'ifname', 'imtu', 'aemode', 'txhashpolicy',
                 'ports', 'ifclass', 'ptp_role',
                 'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
-                'sriov_numvfs', 'sriov_vf_driver']
+                'sriov_numvfs', 'sriov_vf_driver', 'max_tx_rate']
 
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
 

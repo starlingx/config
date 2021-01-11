@@ -1046,7 +1046,8 @@ def get_test_interface(**kw):
         'sriov_numvfs': kw.get('sriov_numvfs', None),
         'sriov_vf_driver': kw.get('sriov_vf_driver', None),
         'sriov_vf_pdevice_id': kw.get('sriov_vf_pdevice_id', None),
-        'ptp_role': kw.get('ptp_role', None)
+        'ptp_role': kw.get('ptp_role', None),
+        'max_tx_rate': kw.get('max_tx_rate', None)
     }
     return interface
 

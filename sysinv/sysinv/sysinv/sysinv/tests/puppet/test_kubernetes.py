@@ -4,9 +4,11 @@
 #
 
 import json
+import mock
 import re
 import uuid
 
+from sysinv.common import utils
 from sysinv.common import constants
 from sysinv.common import device as dconstants
 from sysinv.puppet import interface
@@ -39,7 +41,8 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
         self.port, self.iface = self._create_ethernet_test(
             'sriov1', constants.INTERFACE_CLASS_PCI_SRIOV,
             constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=2,
-            sriov_vf_driver='ixgbevf')
+            sriov_vf_driver='ixgbevf',
+            sriov_vfs_pci_address="0000:b1:02.0,0000:b1:02.1")
 
         # Create a datanetwork and assign the interface to it
         dn_values = {
@@ -154,8 +157,9 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
         }
         return config
 
-    def test_generate_sriovdp_config_8086(self):
-
+    @mock.patch.object(utils, 'get_sriov_vf_index')
+    def test_generate_sriovdp_config_8086(self, mock_get_sriov_vf_index):
+        mock_get_sriov_vf_index.side_effect = [1, 2]
         self._setup_iface_configuration()
         test_config = {
             'pf_vendor': 'Intel Corporation [8086]',
@@ -171,13 +175,15 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
             self._get_pcidp_vendor_id(self.port),
             test_config['vf_device'],
             test_config['vf_driver'],
-            pfName=self.port['name'],
+            pfName="%s#1,2" % self.port['name'],
             datanetwork=self.datanetwork['name']
         )
+        mock_get_sriov_vf_index.assert_called()
         self.assertEqual(expected, actual)
 
-    def test_generate_sriovdp_config_mlx(self):
-
+    @mock.patch.object(utils, 'get_sriov_vf_index')
+    def test_generate_sriovdp_config_mlx(self, mock_get_sriov_vf_index):
+        mock_get_sriov_vf_index.side_effect = [1, 2]
         self._setup_iface_configuration()
         test_config = {
             'pf_vendor': 'Mellanox Technologies [15b3]',
@@ -193,7 +199,7 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
             self._get_pcidp_vendor_id(self.port),
             test_config['vf_device'],
             test_config['vf_driver'],
-            pfName=self.port['name'],
+            pfName="%s#1,2" % self.port['name'],
             datanetwork=self.datanetwork['name']
         )
         self.assertEqual(expected, actual)
