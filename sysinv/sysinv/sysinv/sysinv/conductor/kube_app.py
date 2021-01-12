@@ -78,7 +78,7 @@ ARMADA_CONTAINER_LOG_LOCATION = '/logs'
 ARMADA_CONTAINER_TMP = '/tmp'
 ARMADA_LOCK_GROUP = 'armada.process'
 ARMADA_LOCK_VERSION = 'v1'
-ARMADA_LOCK_NAMESPACE = 'armada'
+ARMADA_LOCK_NAMESPACE = 'kube-system'
 ARMADA_LOCK_PLURAL = 'locks'
 ARMADA_LOCK_NAME = 'lock'
 
@@ -172,21 +172,6 @@ class AppOperator(object):
         app = AppOperator.Application(rpc_app)
         return app.system_app
 
-    def _clear_armada_locks(self):
-        lock_name = "{}.{}.{}".format(ARMADA_LOCK_PLURAL,
-                                      ARMADA_LOCK_GROUP,
-                                      ARMADA_LOCK_NAME)
-        try:
-            self._kube.delete_custom_resource(ARMADA_LOCK_GROUP,
-                                              ARMADA_LOCK_VERSION,
-                                              ARMADA_LOCK_NAMESPACE,
-                                              ARMADA_LOCK_PLURAL,
-                                              lock_name)
-        except Exception:
-            # Best effort delete
-            LOG.warning("Failed to clear Armada locks.")
-            pass
-
     def _clear_stuck_applications(self):
         apps = self._dbapi.kube_app_get_all()
         for app in apps:
@@ -203,7 +188,7 @@ class AppOperator(object):
         # for a fresh start. This guarantees that a re-apply, re-update or
         # a re-remove attempt following a status reset will not fail due
         # to a lock related issue.
-        self._clear_armada_locks()
+        self._armada.clear_armada_locks()
 
     def _raise_app_alarm(self, app_name, app_action, alarm_id, severity,
                          reason_text, alarm_type, repair_action,
@@ -2535,7 +2520,7 @@ class AppOperator(object):
             # Subsequent reapply fails since it we cannot get lock.
             with self._lock:
                 self._armada.stop_armada_request()
-                self._clear_armada_locks()
+                self._armada.clear_armada_locks()
         else:
             # Either the previous operation has completed or already failed
             LOG.info("Abort request ignored. The previous operation for app %s "
@@ -3031,6 +3016,21 @@ class ArmadaHelper(object):
                 return pod
         return pods[0]
 
+    def clear_armada_locks(self):
+        lock_name = "{}.{}.{}".format(ARMADA_LOCK_PLURAL,
+                                      ARMADA_LOCK_GROUP,
+                                      ARMADA_LOCK_NAME)
+        try:
+            self._kube.delete_custom_resource(ARMADA_LOCK_GROUP,
+                                              ARMADA_LOCK_VERSION,
+                                              ARMADA_LOCK_NAMESPACE,
+                                              ARMADA_LOCK_PLURAL,
+                                              lock_name)
+        except Exception:
+            # Best effort delete
+            LOG.warning("Failed to clear Armada locks.")
+            pass
+
     def _start_armada_service(self):
         """Armada pod is managed by Kubernetes / Helm.
            This routine checks and waits for armada to be providing service.
@@ -3214,6 +3214,8 @@ class ArmadaHelper(object):
                         LOG.error("Failed to apply application manifest %s "
                                   "with exit code %s. See %s for details." %
                                   (manifest_file, p.returncode, logfile))
+                        if p.returncode == CONTAINER_ABNORMAL_EXIT_CODE:
+                            self.clear_armada_locks()
                     else:
                         LOG.info("Application manifest %s was successfully "
                                  "applied/re-applied." % manifest_file)
@@ -3255,6 +3257,8 @@ class ArmadaHelper(object):
                             LOG.error("Failed to rollback release %s "
                                       "with exit code %s. See %s for details." %
                                       (release, p.returncode, logfile))
+                            if p.returncode == CONTAINER_ABNORMAL_EXIT_CODE:
+                                self.clear_armada_locks()
                             break
                     if rc:
                         LOG.info("Application releases %s were successfully "
@@ -3290,6 +3294,8 @@ class ArmadaHelper(object):
                         LOG.error("Failed to delete application manifest %s "
                                   "with exit code %s. See %s for details." %
                                   (manifest_file, p.returncode, logfile))
+                        if p.returncode == CONTAINER_ABNORMAL_EXIT_CODE:
+                            self.clear_armada_locks()
                     else:
                         LOG.info("Application charts were successfully "
                                  "deleted with manifest %s." % manifest_delete_file)
@@ -3303,6 +3309,7 @@ class ArmadaHelper(object):
                 LOG.error("Armada service failed to start/restart")
         except Exception as e:
             rc = False
+            self.clear_armada_locks()
             LOG.error("Armada request %s for manifest %s failed: %s " %
                       (request, manifest_file, e))
         return rc

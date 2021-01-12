@@ -522,6 +522,8 @@ class KubeOperator(object):
                 plural, name, body)
         except ApiException as ex:
             if ex.reason == "Not Found":
+                LOG.warn("Failed to delete custom object, Namespace %s: %s"
+                         % (namespace, str(ex.body).replace('\n', ' ')))
                 pass
         except Exception as e:
             LOG.error("Failed to delete custom object, Namespace %s: %s"
