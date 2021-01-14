@@ -8761,8 +8761,14 @@ class ConductorManager(service.PeriodicService):
                     host.invprovision == constants.PROVISIONED or
                     (host.invprovision == constants.PROVISIONING and
                      host.personality == constants.CONTROLLER)):
-                    self._puppet.update_host_config(host, config_uuid)
-                    host_updated = True
+                    if host.software_load == tsc.SW_VERSION:
+                        # We will not generate the hieradata in runtime here if the
+                        # software load of the host is different from the active
+                        # controller. The Hieradata of a host during an upgrade/rollback
+                        # will be saved by update_host_config_upgrade() to the
+                        # directory of the host's software load.
+                        self._puppet.update_host_config(host, config_uuid)
+                        host_updated = True
                 else:
                     LOG.info(
                         "Cannot regenerate the configuration for %s, "
