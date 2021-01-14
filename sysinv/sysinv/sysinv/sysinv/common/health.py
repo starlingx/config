@@ -94,8 +94,11 @@ class Health(object):
         success = not not_patch_current_hosts and not hostnames
         return success, not_patch_current_hosts, hostnames
 
-    def _check_alarms(self, context, force=False):
+    def _check_alarms(self, context, force=False, alarm_ignore_list=None):
         """Checks that no alarms are active"""
+        if alarm_ignore_list is None:
+            alarm_ignore_list = []
+
         alarms = fmclient(context).alarm.list(include_suppress=True)
 
         success = True
@@ -103,14 +106,15 @@ class Health(object):
         affecting = 0
         # Separate alarms that are mgmt affecting
         for alarm in alarms:
-            mgmt_affecting = alarm.mgmt_affecting == "True"
-            if not mgmt_affecting:
-                allowed += 1
-                if not force:
+            if alarm.alarm_id not in alarm_ignore_list:
+                mgmt_affecting = alarm.mgmt_affecting == "True"
+                if not mgmt_affecting:
+                    allowed += 1
+                    if not force:
+                        success = False
+                else:
+                    affecting += 1
                     success = False
-            else:
-                affecting += 1
-                success = False
 
         return success, allowed, affecting
 
@@ -245,7 +249,7 @@ class Health(object):
 
         return True
 
-    def get_system_health(self, context, force=False):
+    def get_system_health(self, context, force=False, alarm_ignore_list=None):
         """Returns the general health of the system
 
         Checks the following:
@@ -257,8 +261,12 @@ class Health(object):
         - For ceph systems: The storage cluster is healthy
         - All kubernetes nodes are ready
         - All kubernetes control plane pods are ready
-        """
 
+        :param context: request context.
+        :param force: set to true to ignore minor and warning alarms
+        :param alarm_ignore_list: list of alarm ids to ignore when performing
+                                  a health check
+        """
         hosts = self._dbapi.ihost_get_list()
         output = _('System Health:\n')
         health_ok = True
@@ -316,7 +324,10 @@ class Health(object):
 
         health_ok = health_ok and success
 
-        success, allowed, affecting = self._check_alarms(context, force)
+        success, allowed, affecting = self._check_alarms(
+            context,
+            force=force,
+            alarm_ignore_list=alarm_ignore_list)
         output += _('No alarms: [%s]\n') \
             % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
         if not success:
@@ -345,17 +356,29 @@ class Health(object):
 
         return health_ok, output
 
-    def get_system_health_upgrade(self, context, force=False):
-        """Ensures the system is in a valid state for an upgrade"""
+    def get_system_health_upgrade(self,
+                                  context,
+                                  force=False,
+                                  alarm_ignore_list=None):
+        """
+        Ensures the system is in a valid state for an upgrade
+
+        :param context: request context.
+        :param force: set to true to ignore minor and warning alarms
+        :param alarm_ignore_list: list of alarm ids to ignore when performing
+                                  a health check
+        """
         # Does a general health check then does the following:
         # A load is imported
         # The load patch requirements are met
         # The license is valid for the N+1 load
-
         system_mode = self._dbapi.isystem_get_one().system_mode
         simplex = (system_mode == constants.SYSTEM_MODE_SIMPLEX)
 
-        health_ok, output = self.get_system_health(context, force)
+        health_ok, output = self.get_system_health(
+            context,
+            force=force,
+            alarm_ignore_list=alarm_ignore_list)
         loads = self._dbapi.load_get_list()
         try:
             imported_load = utils.get_imported_load(loads)
@@ -412,14 +435,25 @@ class Health(object):
 
         return health_ok, output
 
-    def get_system_health_kube_upgrade(self, context, force=False):
-        """Ensures the system is in a valid state for a kubernetes upgrade
+    def get_system_health_kube_upgrade(self,
+                                       context,
+                                       force=False,
+                                       alarm_ignore_list=None):
+        """
+        Ensures the system is in a valid state for a kubernetes upgrade
 
         Does a general health check then does the following:
         - All kubernetes applications are in a stable state
-       """
 
-        health_ok, output = self.get_system_health(context, force)
+        :param context: request context.
+        :param force: set to true to ignore minor and warning alarms
+        :param alarm_ignore_list: list of alarm ids to ignore when performing
+                                  a health check
+        """
+        health_ok, output = self.get_system_health(
+            context,
+            force=force,
+            alarm_ignore_list=alarm_ignore_list)
 
         success, apps_not_valid = self._check_kube_applications()
         output += _(

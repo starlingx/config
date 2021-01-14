@@ -1336,7 +1336,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                                 success=success))
 
     def get_system_health(self, context, force=False, upgrade=False,
-                          kube_upgrade=False):
+                          kube_upgrade=False, alarm_ignore_list=None):
         """
         Performs a system health check.
 
@@ -1345,11 +1345,14 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param upgrade: set to true to perform an upgrade health check
         :param kube_upgrade: set to true to perform a kubernetes upgrade health
                              check
+        :param alarm_ignore_list: list of alarm ids to ignore when performing
+                                  a health check
         """
         return self.call(context,
                          self.make_msg('get_system_health',
                                        force=force, upgrade=upgrade,
-                                       kube_upgrade=kube_upgrade))
+                                       kube_upgrade=kube_upgrade,
+                                       alarm_ignore_list=alarm_ignore_list))
 
     def reserve_ip_for_first_storage_node(self, context):
         """
