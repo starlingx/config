@@ -45,7 +45,7 @@ class CertMonTestCase(base.DbTestCase):
     def test_platformcert_secret_and_ns_check(self):
         self.assertEqual("system-restapi-gui-certificate",
                             constants.PLATFORM_CERT_SECRET_NAME)
-        self.assertEqual("kube-system",
+        self.assertEqual("deployment",
                             constants.CERT_NAMESPACE_PLATFORM_CERTS)
 
     def test_update_pemfile(self):
