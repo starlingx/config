@@ -800,6 +800,23 @@ def migrate_hiera_data(from_release, to_release, role=None):
         secure_static_config.update({
             'platform::helm::v2::db::postgresql::password': helmv2_db_pw
         })
+
+        # update below static secure config
+        #   sysinv::certmon::local_keystone_password
+        #   sysinv::certmon::dc_keystone_password
+        sysinv_pass = utils.get_password_from_keyring('sysinv', 'services')
+        secure_static_config.update({
+            'sysinv::certmon::local_keystone_password': sysinv_pass
+        })
+
+        dc_pass = ''
+        if role == sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+            dc_pass = utils.get_password_from_keyring('dcmanager', 'services')
+
+        secure_static_config.update({
+            'sysinv::certmon::dc_keystone_password': dc_pass
+        })
+
         with open(secure_static_file, 'w') as yaml_file:
             yaml.dump(secure_static_config, yaml_file,
                       default_flow_style=False)
