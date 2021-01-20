@@ -380,6 +380,8 @@ def complete_upgrade(from_load, to_load, upgrade):
         os.path.join(tsc.PLATFORM_PATH, ".keyring", from_load),
         os.path.join(tsc.PLATFORM_PATH, "puppet", from_load),
         os.path.join(tsc.PLATFORM_PATH, "sysinv", from_load),
+        os.path.join(tsc.PLATFORM_PATH, "armada", from_load),
+        os.path.join(tsc.PLATFORM_PATH, "helm", from_load),
     ]
 
     for directory in upgrade_dirs:
