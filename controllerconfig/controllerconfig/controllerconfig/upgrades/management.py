@@ -149,6 +149,14 @@ def prepare_upgrade(from_load, to_load, i_system, mgmt_address):
                                                             "config"))
         raise
 
+    # Point N+1 etcd to N for now. We will migrate when both controllers are
+    # running N+1, during the swact back to controller-0. This solution will
+    # present some problems when we do upgrade etcd, so further development
+    # will be required at that time.
+    etcd_to_dir = os.path.join(tsc.ETCD_PATH, to_load)
+    etcd_from_dir = os.path.join(tsc.ETCD_PATH, from_load)
+    os.symlink(etcd_from_dir, etcd_to_dir)
+
     # Copy /etc/kubernetes/admin.conf so controller-1 can access
     # during its upgrade
     try:
@@ -292,6 +300,13 @@ def abort_upgrade(from_load, to_load, upgrade):
     except Exception:
         LOG.exception("Failed to unexport filesystems")
 
+    # Depending on where we are in the upgrade we may need to remove the
+    # symlink to the etcd directory
+    etcd_to_dir = os.path.join(tsc.ETCD_PATH, to_load)
+    if os.path.islink(etcd_to_dir):
+        LOG.info("Unlinking destination etcd directory: %s " % etcd_to_dir)
+        os.unlink(etcd_to_dir)
+
     # Remove upgrade directories
     upgrade_dirs = [
         os.path.join(tsc.PLATFORM_PATH, "config", to_load),
@@ -382,6 +397,7 @@ def complete_upgrade(from_load, to_load, upgrade):
         os.path.join(tsc.PLATFORM_PATH, "sysinv", from_load),
         os.path.join(tsc.PLATFORM_PATH, "armada", from_load),
         os.path.join(tsc.PLATFORM_PATH, "helm", from_load),
+        os.path.join(tsc.ETCD_PATH, from_load)
     ]
 
     for directory in upgrade_dirs:
