@@ -9725,6 +9725,27 @@ class ConductorManager(service.PeriodicService):
         self._puppet.update_system_config()
         self._puppet.update_secure_system_config()
 
+        # There are upgrade flags that are written to controller-0 that need to
+        # be removed before downgrading controller-1. As these flags reside on
+        # controller-0, we restrict this to abort actions started on that
+        # controller. When the abort is run on controller-1 the data-migration
+        # must be complete, and only the CONTROLLER_UPGRADE_COMPLETE_FLAG would
+        # remain. The CONTROLLER_UPGRADE_COMPLETE_FLAG does not interfere with
+        # the host-downgrade. Any remaining flags will be removed during
+        # upgrade-complete.
+        if utils.is_host_active_controller(controller_0):
+            upgrade_flag_files = [
+                tsc.CONTROLLER_UPGRADE_FLAG,
+                tsc.CONTROLLER_UPGRADE_COMPLETE_FLAG,
+                tsc.CONTROLLER_UPGRADE_FAIL_FLAG,
+                tsc.CONTROLLER_UPGRADE_STARTED_FLAG
+            ]
+            for file in upgrade_flag_files:
+                try:
+                    os.remove(file)
+                except OSError:
+                    LOG.exception("Failed to remove upgrade flag: %s" % file)
+
         # When we abort from controller-1 while controller-0 is running
         # the previous release, controller-0 will not be aware of the abort.
         # We set the following flag so controller-0 will know we're
