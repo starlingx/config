@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 """
@@ -1796,47 +1796,52 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('evaluate_app_reapply',
                                                 app_name=app_name))
 
-    def app_lifecycle_actions(self, context, rpc_app, operation, relative_timing):
+    def app_lifecycle_actions(self, context, rpc_app, hook_info):
         """Synchronously, perform any lifecycle actions required
         for the operation
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
-        :param operation: operation being performed
-        :param relative_timing: relative timing of operation
+        :param hook_info: LifecycleHookInfo object
+
         """
         return self.call(context, self.make_msg('app_lifecycle_actions',
                                                 rpc_app=rpc_app,
-                                                operation=operation,
-                                                relative_timing=relative_timing))
+                                                hook_info=hook_info))
 
-    def perform_app_upload(self, context, rpc_app, tarfile):
+    def perform_app_upload(self, context, rpc_app, tarfile, lifecycle_hook_info):
         """Handle application upload request
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
-        :param tafile: location of application tarfile to be extracted
+        :param tarfile: location of application tarfile to be extracted
+        :param lifecycle_hook_info: LifecycleHookInfo object
+
         """
         return self.cast(context,
                          self.make_msg('perform_app_upload',
                                        rpc_app=rpc_app,
-                                       tarfile=tarfile))
+                                       tarfile=tarfile,
+                                       lifecycle_hook_info_app_upload=lifecycle_hook_info))
 
-    def perform_app_apply(self, context, rpc_app, mode):
+    def perform_app_apply(self, context, rpc_app, mode, lifecycle_hook_info):
         """Handle application apply request
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
         :param mode: mode to control how to apply application manifest
+        :param lifecycle_hook_info: LifecycleHookInfo object
+
         """
         return self.cast(context,
                          self.make_msg(
                              'perform_app_apply',
                              rpc_app=rpc_app,
-                             mode=mode))
+                             mode=mode,
+                             lifecycle_hook_info_app_apply=lifecycle_hook_info))
 
     def perform_app_update(self, context, from_rpc_app, to_rpc_app, tarfile,
-                           operation, reuse_user_overrides=None):
+                           operation, lifecycle_hook_info, reuse_user_overrides=None):
         """Handle application update request
 
         :param context: request context.
@@ -1846,6 +1851,8 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                            application update to
         :param tarfile: location of application tarfile to be extracted
         :param operation: apply or rollback
+        :param lifecycle_hook_info: LifecycleHookInfo object
+
         :param reuse_user_overrides: (optional) True or False
         """
         return self.cast(context,
@@ -1854,40 +1861,47 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        to_rpc_app=to_rpc_app,
                                        tarfile=tarfile,
                                        operation=operation,
+                                       lifecycle_hook_info_app_update=lifecycle_hook_info,
                                        reuse_user_overrides=reuse_user_overrides))
 
-    def perform_app_remove(self, context, rpc_app):
+    def perform_app_remove(self, context, rpc_app, lifecycle_hook_info):
         """Handle application remove request
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
+        :param lifecycle_hook_info: LifecycleHookInfo object
 
         """
         return self.cast(context,
                          self.make_msg('perform_app_remove',
-                                       rpc_app=rpc_app))
+                                       rpc_app=rpc_app,
+                                       lifecycle_hook_info_app_remove=lifecycle_hook_info))
 
-    def perform_app_abort(self, context, rpc_app):
+    def perform_app_abort(self, context, rpc_app, lifecycle_hook_info):
         """Handle application abort request
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
+        :param lifecycle_hook_info: LifecycleHookInfo object
 
         """
         return self.call(context,
                          self.make_msg('perform_app_abort',
-                                       rpc_app=rpc_app))
+                                       rpc_app=rpc_app,
+                                       lifecycle_hook_info_app_abort=lifecycle_hook_info))
 
-    def perform_app_delete(self, context, rpc_app):
+    def perform_app_delete(self, context, rpc_app, lifecycle_hook_info):
         """Handle application delete request
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
+        :param lifecycle_hook_info: LifecycleHookInfo object
 
         """
         return self.call(context,
                          self.make_msg('perform_app_delete',
-                                       rpc_app=rpc_app))
+                                       rpc_app=rpc_app,
+                                       lifecycle_hook_info_app_delete=lifecycle_hook_info))
 
     def reconfigure_service_endpoints(self, context, host):
         """Synchronously, reconfigure service endpoints upon the creation of

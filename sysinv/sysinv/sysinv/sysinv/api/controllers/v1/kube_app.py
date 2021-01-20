@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2020 Wind River Systems, Inc.
+# Copyright (c) 2018-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -25,6 +25,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv.common import kubernetes
+from sysinv.helm.lifecycle_hook import LifecycleHookInfo
 
 import cgcs_patch.constants as patch_constants
 
@@ -194,11 +195,11 @@ class KubeAppController(rest.RestController):
         """Retrieve a single application."""
         return self._get_one(app_name)
 
-    def _app_lifecycle_actions(self, db_app, operation, relative_timing):
+    def _app_lifecycle_actions(self, db_app, hook_info):
         """Perform lifecycle actions for application
         """
         pecan.request.rpcapi.app_lifecycle_actions(
-            pecan.request.context, db_app, operation, relative_timing)
+            pecan.request.context, db_app, hook_info)
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(KubeApp, body=types.apidict)
@@ -231,8 +232,12 @@ class KubeAppController(rest.RestController):
             LOG.exception(e)
             raise
 
+        lifecycle_hook_info = LifecycleHookInfo()
+        lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_MANUAL
+
         pecan.request.rpcapi.perform_app_upload(pecan.request.context,
-                                                new_app, tarfile)
+                                                new_app, tarfile,
+                                                lifecycle_hook_info=lifecycle_hook_info)
         return KubeApp.convert_with_links(new_app)
 
     @cutils.synchronized(LOCK_NAME)
@@ -279,14 +284,6 @@ class KubeAppController(rest.RestController):
                 raise wsme.exc.ClientSideError(_(
                     "Application-apply rejected: " + str(e)))
 
-            try:
-                self._app_lifecycle_actions(db_app,
-                                            constants.APP_APPLY_OP,
-                                            constants.APP_LIFECYCLE_PRE)
-            except Exception as e:
-                raise wsme.exc.ClientSideError(_(
-                    "Application-apply rejected: " + str(e.message)))
-
             if db_app.status == constants.APP_APPLY_IN_PROGRESS:
                 raise wsme.exc.ClientSideError(_(
                     "Application-apply rejected: install/update is already "
@@ -297,13 +294,30 @@ class KubeAppController(rest.RestController):
                 raise wsme.exc.ClientSideError(_(
                     "Application-apply rejected: operation is not allowed "
                     "while the current status is {}.".format(db_app.status)))
+
+            try:
+                lifecycle_hook_info = LifecycleHookInfo()
+                lifecycle_hook_info.init(constants.APP_LIFECYCLE_MODE_MANUAL,
+                                         constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                                         constants.APP_LIFECYCLE_TIMING_PRE,
+                                         constants.APP_APPLY_OP)
+                self._app_lifecycle_actions(db_app,
+                                            lifecycle_hook_info)
+            except Exception as e:
+                raise wsme.exc.ClientSideError(_(
+                    "Application-apply rejected: " + str(e.message)))
+
             db_app.status = constants.APP_APPLY_IN_PROGRESS
             db_app.progress = None
             db_app.recovery_attempts = 0
             db_app.mode = mode
             db_app.save()
-            pecan.request.rpcapi.perform_app_apply(pecan.request.context,
-                                                   db_app, mode=mode)
+
+            lifecycle_hook_info = LifecycleHookInfo()
+            lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_MANUAL
+
+            pecan.request.rpcapi.perform_app_apply(pecan.request.context, db_app,
+                                                   mode=mode, lifecycle_hook_info=lifecycle_hook_info)
         elif directive == 'remove':
             if db_app.status not in [constants.APP_APPLY_SUCCESS,
                                      constants.APP_APPLY_FAILURE,
@@ -311,11 +325,28 @@ class KubeAppController(rest.RestController):
                 raise wsme.exc.ClientSideError(_(
                     "Application-remove rejected: operation is not allowed while "
                     "the current status is {}.".format(db_app.status)))
+
+            try:
+                lifecycle_hook_info = LifecycleHookInfo()
+                lifecycle_hook_info.init(constants.APP_LIFECYCLE_MODE_MANUAL,
+                                         constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                                         constants.APP_LIFECYCLE_TIMING_PRE,
+                                         constants.APP_REMOVE_OP)
+                self._app_lifecycle_actions(db_app,
+                                            lifecycle_hook_info)
+            except Exception as e:
+                raise wsme.exc.ClientSideError(_(
+                    "Application-remove rejected: " + str(e.message)))
+
             db_app.status = constants.APP_REMOVE_IN_PROGRESS
             db_app.progress = None
             db_app.save()
+
+            lifecycle_hook_info = LifecycleHookInfo()
+            lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_MANUAL
+
             pecan.request.rpcapi.perform_app_remove(pecan.request.context,
-                                                    db_app)
+                                                    db_app, lifecycle_hook_info=lifecycle_hook_info)
         else:
             if db_app.status not in [constants.APP_APPLY_IN_PROGRESS,
                                      constants.APP_UPDATE_IN_PROGRESS,
@@ -323,8 +354,24 @@ class KubeAppController(rest.RestController):
                 raise wsme.exc.ClientSideError(_(
                     "Application-abort rejected: operation is not allowed while "
                     "the current status is {}.".format(db_app.status)))
+
+            try:
+                lifecycle_hook_info = LifecycleHookInfo()
+                lifecycle_hook_info.init(constants.APP_LIFECYCLE_MODE_MANUAL,
+                                         constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                                         constants.APP_LIFECYCLE_TIMING_PRE,
+                                         constants.APP_ABORT_OP)
+                self._app_lifecycle_actions(db_app,
+                                            lifecycle_hook_info)
+            except Exception as e:
+                raise wsme.exc.ClientSideError(_(
+                    "Application-abort rejected: " + str(e.message)))
+
+            lifecycle_hook_info = LifecycleHookInfo()
+            lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_MANUAL
+
             pecan.request.rpcapi.perform_app_abort(pecan.request.context,
-                                                    db_app)
+                                                   db_app, lifecycle_hook_info=lifecycle_hook_info)
         return KubeApp.convert_with_links(db_app)
 
     @cutils.synchronized(LOCK_NAME)
@@ -357,6 +404,18 @@ class KubeAppController(rest.RestController):
                       name)
             raise wsme.exc.ClientSideError(_(
                 "Application-update rejected: application not found."))
+
+        try:
+            lifecycle_hook_info = LifecycleHookInfo()
+            lifecycle_hook_info.init(constants.APP_LIFECYCLE_MODE_MANUAL,
+                                     constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                                     constants.APP_LIFECYCLE_TIMING_PRE,
+                                     constants.APP_UPDATE_OP)
+            self._app_lifecycle_actions(applied_app,
+                                        lifecycle_hook_info)
+        except Exception as e:
+            raise wsme.exc.ClientSideError(_(
+                "Application-update rejected: " + str(e.message)))
 
         if applied_app.status == constants.APP_UPDATE_IN_PROGRESS:
             raise wsme.exc.ClientSideError(_(
@@ -417,9 +476,13 @@ class KubeAppController(rest.RestController):
                     "Application-update failed: Unable to start application update, "
                     "application info update failed."))
 
+        lifecycle_hook_info = LifecycleHookInfo()
+        lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_MANUAL
+
         pecan.request.rpcapi.perform_app_update(pecan.request.context,
                                                 applied_app, target_app,
-                                                tarfile, operation, reuse_overrides)
+                                                tarfile, operation,
+                                                lifecycle_hook_info, reuse_overrides)
 
         return KubeApp.convert_with_links(target_app)
 
@@ -444,8 +507,23 @@ class KubeAppController(rest.RestController):
                 "Application-delete rejected: operation is not allowed "
                 "while the current status is {}.".format(db_app.status)))
 
+        try:
+            lifecycle_hook_info = LifecycleHookInfo()
+            lifecycle_hook_info.init(constants.APP_LIFECYCLE_MODE_MANUAL,
+                                     constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                                     constants.APP_LIFECYCLE_TIMING_PRE,
+                                     constants.APP_DELETE_OP)
+            self._app_lifecycle_actions(db_app,
+                                        lifecycle_hook_info)
+        except Exception as e:
+            raise wsme.exc.ClientSideError(_(
+                "Application-delete rejected: " + str(e.message)))
+
+        lifecycle_hook_info = LifecycleHookInfo()
+        lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_MANUAL
+
         response = pecan.request.rpcapi.perform_app_delete(
-            pecan.request.context, db_app)
+            pecan.request.context, db_app, lifecycle_hook_info=lifecycle_hook_info)
         if response:
             raise wsme.exc.ClientSideError(_(
                 "%s." % response))

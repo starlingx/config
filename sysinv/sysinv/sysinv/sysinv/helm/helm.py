@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2020 Wind River Systems, Inc.
+# Copyright (c) 2018-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -42,6 +42,12 @@ HELM_PLUGIN_PREFIX_LENGTH = 4
 # optional suffix, as in PLUGINNAME_###.
 ARMADA_PLUGIN_SUFFIX_LENGTH = 4
 
+# Number of optional characters appended to AppLifecycle operator name,
+# to allow overriding with a newer version of the AppLifecycle operator.
+# The convention here is for the AppLifecycle operator plugins to allow an
+# optional suffix, as in PLUGINNAME_###.
+LIFECYCLE_PLUGIN_SUFFIX_LENGTH = 4
+
 
 def helm_context(func):
     """Decorate to initialize the local threading context"""
@@ -72,6 +78,7 @@ class HelmOperator(object):
     # Define the stevedore namespaces that will need to be managed for plugins
     STEVEDORE_APPS = 'systemconfig.helm_applications'
     STEVEDORE_ARMADA = 'systemconfig.armada.manifest_ops'
+    STEVEDORE_LIFECYCLE = 'systemconfig.app_lifecycle'
 
     def __init__(self, dbapi=None):
         self.dbapi = dbapi
@@ -84,12 +91,13 @@ class HelmOperator(object):
     def discover_plugins(self):
         """ Scan for all available plugins """
 
-        LOG.debug("HelmOperator: Loading available helm and armada plugins.")
+        LOG.debug("HelmOperator: Loading available helm, armada and lifecycle plugins.")
 
         # Initialize the plugins
         self.helm_system_applications = {}
         self.chart_operators = {}
         self.armada_manifest_operators = {}
+        self.app_lifecycle_operators = {}
 
         # Need to purge the stevedore plugin cache so that when we discover the
         # plugins, new plugin resources are found. If the cache exists, then no
@@ -102,9 +110,20 @@ class HelmOperator(object):
         # dict containing Armada manifest operators per app
         self.armada_manifest_operators = self._load_armada_manifest_operators()
 
+        # dict containing app lifecycle operators per app
+        self.app_lifecycle_operators = self._load_app_lifecycle_operators()
+
     @utils.synchronized(LOCK_NAME)
     def purge_cache_by_location(self, install_location):
         """Purge the stevedore entry point cache."""
+        for lifecycle_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_LIFECYCLE]:
+            if lifecycle_ep.dist.location == install_location:
+                extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_LIFECYCLE].remove(lifecycle_ep)
+                break
+        else:
+            LOG.info("Couldn't find endpoint distribution located at %s for "
+                     "%s" % (install_location, lifecycle_ep.dist))
+
         for armada_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_ARMADA]:
             if armada_ep.dist.location == install_location:
                 extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_ARMADA].remove(armada_ep)
@@ -154,6 +173,51 @@ class HelmOperator(object):
             LOG.debug("Deleted entry points for %s." % self.STEVEDORE_ARMADA)
         except KeyError:
             LOG.info("No entry points for %s found." % self.STEVEDORE_ARMADA)
+
+        try:
+            del extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_LIFECYCLE]
+            LOG.debug("Deleted entry points for %s." % self.STEVEDORE_LIFECYCLE)
+        except KeyError:
+            LOG.info("No entry points for %s found." % self.STEVEDORE_LIFECYCLE)
+
+    def _load_app_lifecycle_operators(self):
+        """Build a dictionary of AppLifecycle operators"""
+
+        operators_dict = {}
+        dist_info_dict = {}
+
+        app_lifecycle_operators = extension.ExtensionManager(
+            namespace=self.STEVEDORE_LIFECYCLE,
+            invoke_on_load=True, invoke_args=())
+
+        sorted_app_lifecycle_operators = sorted(
+            app_lifecycle_operators.extensions, key=lambda x: x.name)
+
+        for operator in sorted_app_lifecycle_operators:
+            if (operator.name[-(LIFECYCLE_PLUGIN_SUFFIX_LENGTH - 1):].isdigit() and
+                    operator.name[-LIFECYCLE_PLUGIN_SUFFIX_LENGTH:-3] == '_'):
+                operator_name = operator.name[0:-LIFECYCLE_PLUGIN_SUFFIX_LENGTH]
+            else:
+                operator_name = operator.name
+            operators_dict[operator_name] = operator.obj
+
+            # Extract distribution information for logging
+            dist_info_dict[operator_name] = {
+                'name': operator.entry_point.dist.project_name,
+                'location': operator.entry_point.dist.location,
+            }
+
+        return operators_dict
+
+    def get_app_lifecycle_operator(self, app_name):
+        """Return an AppLifecycle operator based on app name"""
+
+        if app_name in self.app_lifecycle_operators:
+            operator = self.app_lifecycle_operators[app_name]
+        else:
+            operator = self.app_lifecycle_operators['generic']
+
+        return operator
 
     def _load_armada_manifest_operators(self):
         """Build a dictionary of armada manifest operators"""

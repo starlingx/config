@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # All Rights Reserved.
@@ -1497,7 +1497,7 @@ class InvalidHelmDockerImageSource(Invalid):
     message = _("Invalid docker image source: %(source)s. Must be one of %(valid_srcs)s")
 
 
-class PlatformApplicationApplyFailure(SysinvException):
+class ApplicationApplyFailure(SysinvException):
     message = _("Failed to apply %(name)s application.")
 
 
@@ -1538,3 +1538,11 @@ class KubeVersionNotFound(NotFound):
 class KubeNotConfigured(SysinvException):
     message = _("Kubernetes is not configured. API operations "
                 "will not be available.")
+
+
+class LifecycleSemanticCheckException(SysinvException):
+    message = _("Semantic check hook for app failed.")
+
+
+class LifecycleMissingInfo(SysinvException):
+    message = _("Lifecycle hook missing information.")

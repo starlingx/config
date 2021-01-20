@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 """Conduct all activity related system inventory.
@@ -109,6 +109,9 @@ from sysinv.openstack.common import periodic_task
 from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
 from sysinv.helm import helm
+from sysinv.helm.lifecycle_constants import LifecycleConstants
+from sysinv.helm.lifecycle_hook import LifecycleHookInfo
+
 
 MANAGER_TOPIC = 'sysinv.conductor_manager'
 
@@ -5272,17 +5275,36 @@ class ConductorManager(service.PeriodicService):
         # latest status.
         LOG.info("Platform managed application %s: "
                     "Uploading..." % app_name)
-        greenthread.spawn(self._app.perform_app_upload, app,
-                            tarball.tarball_name)
+
+        hook_info = LifecycleHookInfo()
+        hook_info.mode = constants.APP_LIFECYCLE_MODE_AUTO
+
+        greenthread.spawn(self.perform_app_upload, context,
+                          app, tarball.tarball_name, hook_info)
 
     def _auto_apply_managed_app(self, context, app_name):
-        if not self._met_app_apply_prerequisites(app_name):
-            LOG.info("Platform managed application %s: Prerequisites "
-                        "not met." % app_name)
+        try:
+            app = kubeapp_obj.get_by_name(context, app_name)
+        except exception.KubeAppNotFound as e:
+            LOG.exception(e)
             return
 
-        LOG.info("Platform managed application %s: Prerequisites "
-                 "met." % app_name)
+        hook_info = LifecycleHookInfo()
+        hook_info.init(constants.APP_LIFECYCLE_MODE_AUTO,
+                       constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                       constants.APP_LIFECYCLE_TIMING_PRE,
+                       constants.APP_APPLY_OP)
+        try:
+            self.app_lifecycle_actions(context, app, hook_info)
+        except exception.LifecycleSemanticCheckException as e:
+            LOG.info("Auto-apply failed prerequisites for {}: {}".format(app.name, e))
+            return
+        except Exception as e:
+            LOG.exception("Automatic operation:{} "
+                          "for app {} failed with: {}".format(hook_info,
+                                                              app.name,
+                                                              e))
+            return
 
         if self._patching_operation_is_occurring():
             return
@@ -5351,31 +5373,6 @@ class ConductorManager(service.PeriodicService):
             LOG.error("{}. Communication Error with patching subsystem. "
                         "Preventing managed application actions.".format(e))
         return True
-
-    def _met_app_apply_prerequisites(self, app_name):
-        prereqs_met = False
-        if app_name == constants.HELM_APP_PLATFORM:
-            # For the application to apply, make sure:
-            # - for the ceph related apps that we have ceph access and the
-            #   crushmap is applied to correctly set up related k8s
-            #   resources.
-            # - the replica count will be non-zero so that manifest apply will
-            #   not timeout
-            crushmap_flag_file = os.path.join(constants.SYSINV_CONFIG_PATH,
-                constants.CEPH_CRUSH_MAP_APPLIED)
-            if (os.path.isfile(crushmap_flag_file) and
-                    self._ceph.have_ceph_monitor_access() and
-                    self._ceph.ceph_status_ok() and
-                    (self.dbapi.count_hosts_matching_criteria(
-                        personality=constants.CONTROLLER,
-                        administrative=constants.ADMIN_UNLOCKED,
-                        operational=constants.OPERATIONAL_ENABLED,
-                        availability=[constants.AVAILABILITY_AVAILABLE,
-                                      constants.AVAILABILITY_DEGRADED],
-                        vim_progress_status=constants.VIM_SERVICES_ENABLED) > 0)):
-
-                prereqs_met = True
-        return prereqs_met
 
     def _auto_recover_managed_app(self, context, app_name):
         try:
@@ -5617,7 +5614,10 @@ class ConductorManager(service.PeriodicService):
         app.status = constants.APP_APPLY_IN_PROGRESS
         app.save()
 
-        greenthread.spawn(self._app.perform_app_apply, app, app.mode)
+        lifecycle_hook_info = LifecycleHookInfo()
+        lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_AUTO
+        greenthread.spawn(self.perform_app_apply, context,
+                          app, app.mode, lifecycle_hook_info)
 
     def _upgrade_downgrade_kube_components(self):
         self._upgrade_downgrade_static_images()
@@ -11377,75 +11377,79 @@ class ConductorManager(service.PeriodicService):
         else:
             LOG.info("%s app status does not warrant re-apply", app.name)
 
-    def app_lifecycle_actions(self, context, rpc_app, operation, relative_timing):
+    def app_lifecycle_actions(self, context, rpc_app, hook_info):
         """Perform any lifecycle actions for the operation and timing supplied.
 
         :param context: request context.
         :param rpc_app: application to be checked
-        :param operation: operation being performed
-        :param relative_timing: timing of operation
+        :param hook_info: LifecycleHookInfo object
+
         """
 
-        LOG.info("app_lifecycle_actions for app "
-                 "%s, opp %s %s %s" % (rpc_app.name, operation, relative_timing, rpc_app.status))
+        LOG.debug("app_lifecycle_actions for app "
+                  "{}, {}".format(rpc_app.name, hook_info))
 
-        if rpc_app.status in [constants.APP_APPLY_IN_PROGRESS,
-                              constants.APP_APPLY_SUCCESS,
-                              constants.APP_APPLY_FAILURE]:
-            self._app.app_lifecycle_actions(context, self, rpc_app, operation, relative_timing)
-        else:
-            self._app.activate_app_plugins(rpc_app)
-            try:
-                self._app.app_lifecycle_actions(context, self, rpc_app, operation, relative_timing)
-            except Exception:
-                raise
-            finally:
-                self._app.deactivate_app_plugins(rpc_app)
+        self._app.app_lifecycle_actions(context, self, rpc_app, hook_info)
 
-    def perform_app_upload(self, context, rpc_app, tarfile):
+    def perform_app_upload(self, context, rpc_app, tarfile, lifecycle_hook_info_app_upload):
         """Handling of application upload request (via AppOperator)
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
         :param tarfile: location of the application tarfile to be exracted
+        :param lifecycle_hook_info_app_upload: LifecycleHookInfo object
 
         """
-        self._app.perform_app_upload(rpc_app, tarfile)
+        lifecycle_hook_info_app_upload.operation = constants.APP_UPLOAD_OP
 
-    def perform_app_apply(self, context, rpc_app, mode):
+        self._app.perform_app_upload(rpc_app, tarfile, lifecycle_hook_info_app_upload)
+
+        # Perform post upload operation actions
+        try:
+            lifecycle_hook_info_app_upload.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
+            lifecycle_hook_info_app_upload.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+            self.app_lifecycle_actions(context, rpc_app,
+                                       lifecycle_hook_info_app_upload)
+        except Exception as e:
+            LOG.error("Error performing app_lifecycle_actions %s" % str(e))
+
+    def perform_app_apply(self, context, rpc_app, mode, lifecycle_hook_info_app_apply):
         """Handling of application install request (via AppOperator)
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
         :param mode: mode to control how to apply application manifest
+        :param lifecycle_hook_info_app_apply: LifecycleHookInfo object
+
         """
-        was_applied = self._app.is_app_active(rpc_app)
-        app_applied = self._app.perform_app_apply(rpc_app, mode)
-        appname = self._app.get_appname(rpc_app)
-        if constants.HELM_APP_OPENSTACK == appname and app_applied \
-                and not was_applied:
-            # apply any runtime configurations that are needed for
-            # stx_openstack application
-            self._update_config_for_stx_openstack(context)
-            self._update_pciirqaffinity_config(context)
+        lifecycle_hook_info_app_apply.operation = constants.APP_APPLY_OP
 
-            # The radosgw chart may have been enabled/disabled. Regardless of
-            # the prior apply state, update the ceph config
-            self._update_radosgw_config(context)
+        # Perform pre apply operation actions
+        try:
+            lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
+            lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+            self.app_lifecycle_actions(context, rpc_app,
+                                       lifecycle_hook_info_app_apply)
+        except Exception as e:
+            LOG.error("Error performing app_lifecycle_actions %s" % str(e))
 
-        if app_applied:
-            try:
-                # perform any post apply lifecycle actions
-                self.app_lifecycle_actions(context, rpc_app,
-                                           constants.APP_APPLY_OP,
-                                           constants.APP_LIFECYCLE_POST)
-            except Exception as e:
-                LOG.error("Error performing app_lifecycle_actions %s" % str(e))
+        # TODO pass context and move hooks inside?
+        app_applied = self._app.perform_app_apply(rpc_app, mode, lifecycle_hook_info_app_apply)
+        lifecycle_hook_info_app_apply[LifecycleConstants.EXTRA][LifecycleConstants.APP_APPLIED] = app_applied
+
+        # Perform post apply operation actions
+        try:
+            lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
+            lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+            self.app_lifecycle_actions(context, rpc_app,
+                                       lifecycle_hook_info_app_apply)
+        except Exception as e:
+            LOG.error("Error performing app_lifecycle_actions %s" % str(e))
 
         return app_applied
 
     def perform_app_update(self, context, from_rpc_app, to_rpc_app, tarfile,
-                           operation, reuse_user_overrides=None):
+                           operation, lifecycle_hook_info_app_update, reuse_user_overrides=None):
         """Handling of application update request (via AppOperator)
 
         :param context: request context.
@@ -11455,90 +11459,84 @@ class ConductorManager(service.PeriodicService):
                            application update to
         :param tarfile: location of the application tarfile to be extracted
         :param operation: apply or rollback
+        :param lifecycle_hook_info_app_update: LifecycleHookInfo object
         :param reuse_user_overrides: (optional) True or False
 
         """
-        self._app.perform_app_update(from_rpc_app, to_rpc_app, tarfile,
-                                     operation, reuse_user_overrides)
+        lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
 
-    def perform_app_remove(self, context, rpc_app):
+        self._app.perform_app_update(from_rpc_app, to_rpc_app, tarfile,
+                                     operation, lifecycle_hook_info_app_update, reuse_user_overrides)
+
+    def perform_app_remove(self, context, rpc_app, lifecycle_hook_info_app_remove):
         """Handling of application removal request (via AppOperator)
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
+        :param lifecycle_hook_info_app_remove: LifecycleHookInfo object
 
         """
+        lifecycle_hook_info_app_remove.operation = constants.APP_REMOVE_OP
+
         # deactivate the app
         self._app.deactivate(rpc_app)
-        appname = self._app.get_appname(rpc_app)
 
-        # TODO(rchurch): Decouple this. No specific app names should be
-        # specified. Needs to be generalized as some apps may require more
-        # complex application integration with the platform.
-        if appname in [constants.HELM_APP_OPENSTACK]:
+        # Perform pre remove operation actions
+        try:
+            lifecycle_hook_info_app_remove.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info_app_remove.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
+            self.app_lifecycle_actions(context, rpc_app,
+                                       lifecycle_hook_info_app_remove)
+        except Exception as e:
+            LOG.error("Error performing app_lifecycle_actions %s" % str(e))
 
-            # Pre-removal actions:
-            if constants.HELM_APP_OPENSTACK == appname:
-                # Need to update sm stx_openstack runtime manifest first
-                # to deprovision dbmon service prior to removing the
-                # stx-openstack application
-                self._config_sm_stx_openstack(context)
+        app_removed = self._app.perform_app_remove(
+            rpc_app, lifecycle_hook_info_app_remove)
+        lifecycle_hook_info_app_remove[LifecycleConstants.EXTRA][LifecycleConstants.APP_REMOVED] = app_removed
 
-            # Remove the application but defer disabling the application plugins
-            # for access by post-removal actions
-            app_removed = self._app.perform_app_remove(
-                rpc_app, deactivate_plugins=False)
-
-            # Post-removal actions:
-            if app_removed:
-                if constants.HELM_APP_OPENSTACK == appname:
-                    # Update the VIM and PciIrqAffinity configuration.
-                    self._update_vim_config(context)
-                    self._update_pciirqaffinity_config(context)
-                    self._update_radosgw_config(context)
-
-                # Now that post removal actions are complete, deactivate the
-                # plugins
-                self._app.deactivate_app_plugins(rpc_app)
-
-        else:
-
-            # Remove the application but defer disabling the application plugins
-            # for access by post-removal actions
-            app_removed = self._app.perform_app_remove(
-                rpc_app, deactivate_plugins=False)
-
-            if app_removed:
-                # Perform for any post remove lifecycle actions and
-                # deactivate the plugins.
-                try:
-                    self.app_lifecycle_actions(context, rpc_app,
-                                               constants.APP_REMOVE_OP,
-                                               constants.APP_LIFECYCLE_POST)
-                except Exception as e:
-                    LOG.error("Error performing app_lifecycle_actions %s" % str(e))
-                finally:
-                    self._app.deactivate_app_plugins(rpc_app)
+        # Perform post remove operation actions
+        try:
+            lifecycle_hook_info_app_remove.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+            lifecycle_hook_info_app_remove.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
+            self.app_lifecycle_actions(context, rpc_app,
+                                       lifecycle_hook_info_app_remove)
+        except Exception as e:
+            LOG.error("Error performing app_lifecycle_actions %s" % str(e))
 
         return app_removed
 
-    def perform_app_abort(self, context, rpc_app):
+    def perform_app_abort(self, context, rpc_app, lifecycle_hook_info_app_abort):
         """Handling of application abort request (via AppOperator)
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
+        :param lifecycle_hook_info_app_abort: LifecycleHookInfo object
 
         """
-        return self._app.perform_app_abort(rpc_app)
+        lifecycle_hook_info_app_abort.operation = constants.APP_ABORT_OP
 
-    def perform_app_delete(self, context, rpc_app):
+        return self._app.perform_app_abort(rpc_app, lifecycle_hook_info_app_abort)
+
+    def perform_app_delete(self, context, rpc_app, lifecycle_hook_info_app_delete):
         """Handling of application delete request (via AppOperator)
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
+        :param lifecycle_hook_info_app_delete: LifecycleHookInfo object
 
         """
-        return self._app.perform_app_delete(rpc_app)
+        lifecycle_hook_info_app_delete.operation = constants.APP_DELETE_OP
+
+        # Perform pre delete operation actions
+        try:
+            lifecycle_hook_info_app_delete.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info_app_delete.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
+            self.app_lifecycle_actions(context, rpc_app,
+                                       lifecycle_hook_info_app_delete)
+        except Exception as e:
+            LOG.error("Error performing app_lifecycle_actions %s" % str(e))
+
+        return self._app.perform_app_delete(rpc_app, lifecycle_hook_info_app_delete)
 
     def reconfigure_service_endpoints(self, context, host):
         """Reconfigure the service endpoints upon the creation of initial

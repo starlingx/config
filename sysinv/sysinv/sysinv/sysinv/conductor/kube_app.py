@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2018-2020 Wind River Systems, Inc.
+# Copyright (c) 2018-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -44,10 +44,11 @@ from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common.retrying import retry
 from sysinv.common import utils as cutils
-from sysinv.common.storage_backend_conf import K8RbdProvisioner
 from sysinv.conductor import openstack
 from sysinv.helm import common
 from sysinv.helm import utils as helm_utils
+from sysinv.helm.lifecycle_constants import LifecycleConstants
+from sysinv.helm.lifecycle_hook import LifecycleHookInfo
 
 
 # Log and config
@@ -69,8 +70,6 @@ MAX_DOWNLOAD_ATTEMPTS = 3
 DOWNLOAD_WAIT_BEFORE_RETRY = 30
 TARFILE_DOWNLOAD_CONNECTION_TIMEOUT = 60
 TARFILE_TRANSFER_CHUNK_SIZE = 1024 * 512
-DOCKER_REGISTRY_SECRET = 'default-registry-key'
-CHARTS_PENDING_INSTALL_ITERATIONS = 60
 
 ARMADA_LOG_MAX = 10
 ARMADA_HOST_LOG_LOCATION = '/var/log/armada'
@@ -135,8 +134,8 @@ Chart = namedtuple('Chart', 'metadata_name name namespace location release label
 
 class AppOperator(object):
     """Class to encapsulate Kubernetes App operations for System Inventory"""
+    DOCKER_REGISTRY_SECRET = 'default-registry-key'
 
-    APP_OPENSTACK_RESOURCE_CONFIG_MAP = 'ceph-etc'
     # List of in progress apps and their abort status
     abort_requested = {}
 
@@ -930,149 +929,6 @@ class AppOperator(object):
             if null_labels:
                 self._update_kubernetes_labels(host.hostname, null_labels)
 
-    def _create_rbd_provisioner_secrets(self, app_name):
-        """ Provide access to the system persistent RBD provisioner.
-
-        The rbd-provsioner is installed as part of system provisioning and has
-        created secrets for all common default namespaces. Copy the secret to
-        this application's namespace(s) to provide resolution for PVCs
-
-        :param app_name: Name of the application
-        """
-
-        # Only set up a secret for the default storage pool (i.e. ignore
-        # additional storage tiers)
-        pool_secret = K8RbdProvisioner.get_user_secret_name({
-            'name': constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH]})
-        app_ns = self._helm.get_helm_application_namespaces(app_name)
-        namespaces = \
-            list(set([ns for ns_list in app_ns.values() for ns in ns_list]))
-        for ns in namespaces:
-            if (ns in [common.HELM_NS_HELM_TOOLKIT,
-                       common.HELM_NS_RBD_PROVISIONER] or
-                    self._kube.kube_get_secret(pool_secret, ns) is not None):
-                # Secret already exist
-                continue
-
-            try:
-                if not self._kube.kube_get_namespace(ns):
-                    self._kube.kube_create_namespace(ns)
-                self._kube.kube_copy_secret(
-                    pool_secret, common.HELM_NS_RBD_PROVISIONER, ns)
-            except Exception as e:
-                LOG.error(e)
-                raise
-
-    def _delete_rbd_provisioner_secrets(self, app_name):
-        """ Remove access to the system persistent RBD provisioner.
-
-        As part of launching a supported application, secrets were created to
-        allow access to the provisioner from the application namespaces. This
-        will remove those created secrets.
-
-        :param app_name: Name of the application
-        """
-
-        # Only set up a secret for the default storage pool (i.e. ignore
-        # additional storage tiers)
-        pool_secret = K8RbdProvisioner.get_user_secret_name({
-            'name': constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH]})
-        app_ns = self._helm.get_helm_application_namespaces(app_name)
-        namespaces = \
-            list(set([ns for ns_list in app_ns.values() for ns in ns_list]))
-
-        for ns in namespaces:
-            if (ns == common.HELM_NS_HELM_TOOLKIT or
-                    ns == common.HELM_NS_RBD_PROVISIONER):
-                continue
-
-            try:
-                LOG.info("Deleting Secret %s under Namespace "
-                         "%s ..." % (pool_secret, ns))
-                self._kube.kube_delete_secret(
-                    pool_secret, ns, grace_period_seconds=0)
-                LOG.info("Secret %s under Namespace %s delete "
-                         "completed." % (pool_secret, ns))
-            except Exception as e:
-                LOG.error(e)
-                raise
-
-    def _create_local_registry_secrets(self, app_name):
-        # Temporary function to create default registry secret
-        # which would be used by kubernetes to pull images from
-        # local registry.
-        # This should be removed after OSH supports the deployment
-        # with registry has authentication turned on.
-        # https://blueprints.launchpad.net/openstack-helm/+spec/
-        # support-docker-registry-with-authentication-turned-on
-        body = {
-            'type': 'kubernetes.io/dockerconfigjson',
-            'metadata': {},
-            'data': {}
-        }
-
-        app_ns = self._helm.get_helm_application_namespaces(app_name)
-        namespaces = \
-            list(set([ns for ns_list in app_ns.values() for ns in ns_list]))
-
-        sysinv_registry_secret = self._kube.kube_get_secret(DOCKER_REGISTRY_SECRET,
-                                                            common.HELM_NS_KUBE_SYSTEM)
-
-        for ns in namespaces:
-            if (ns == common.HELM_NS_HELM_TOOLKIT or
-                 self._kube.kube_get_secret(DOCKER_REGISTRY_SECRET, ns) is not None):
-                # Secret already exist
-                continue
-
-            try:
-                if sysinv_registry_secret is not None:
-                    # Use the sysinv token in default_registry_key secret in
-                    # kube-system namespace to create secret in another namespace.
-                    sysinv_registry_token = sysinv_registry_secret.data['.dockerconfigjson']
-                    body['data'].update({'.dockerconfigjson': sysinv_registry_token})
-                else:
-                    # This must be the first platform app in the kube-system
-                    # namespace (i.e. nginx-ingress-controller app)
-                    local_registry_auth = cutils.get_local_docker_registry_auth()
-
-                    auth = '{0}:{1}'.format(local_registry_auth['username'],
-                                            local_registry_auth['password'])
-                    token = '{{\"auths\": {{\"{0}\": {{\"auth\": \"{1}\"}}}}}}'.format(
-                        constants.DOCKER_REGISTRY_SERVER, base64.b64encode(auth))
-                    body['data'].update({'.dockerconfigjson': base64.b64encode(token)})
-
-                body['metadata'].update({'name': DOCKER_REGISTRY_SECRET,
-                                         'namespace': ns})
-
-                if not self._kube.kube_get_namespace(ns):
-                    self._kube.kube_create_namespace(ns)
-                self._kube.kube_create_secret(ns, body)
-                LOG.info("Secret %s created under Namespace %s." % (DOCKER_REGISTRY_SECRET, ns))
-            except Exception as e:
-                LOG.error(e)
-                raise
-
-    def _delete_local_registry_secrets(self, app_name):
-
-        app_ns = self._helm.get_helm_application_namespaces(app_name)
-        namespaces = \
-            list(set([ns for ns_list in app_ns.values() for ns in ns_list]))
-
-        for ns in namespaces:
-            if ns in [common.HELM_NS_HELM_TOOLKIT, common.HELM_NS_KUBE_SYSTEM]:
-                continue
-
-            try:
-                LOG.info("Deleting Secret %s under Namespace "
-                         "%s ..." % (DOCKER_REGISTRY_SECRET, ns))
-                self._kube.kube_delete_secret(
-                    DOCKER_REGISTRY_SECRET, ns, grace_period_seconds=0)
-                LOG.info("Secret %s under Namespace %s delete "
-                         "completed." % (DOCKER_REGISTRY_SECRET, ns))
-            except Exception as e:
-                LOG.error(e)
-                raise
-
     def audit_local_registry_secrets(self):
         """
         local registry uses admin's username&password for authentication.
@@ -1127,7 +983,7 @@ class AppOperator(object):
             try:
                 ns_list = self._kube.kube_get_namespace_name_list()
                 for ns in ns_list:
-                    secret = self._kube.kube_get_secret(DOCKER_REGISTRY_SECRET, ns)
+                    secret = self._kube.kube_get_secret(AppOperator.DOCKER_REGISTRY_SECRET, ns)
                     if secret is None:
                         continue
 
@@ -1135,41 +991,18 @@ class AppOperator(object):
                         secret_auth_body = base64.b64decode(secret.data['.dockerconfigjson'])
                         if constants.DOCKER_REGISTRY_SERVER in secret_auth_body:
                             secret.data['.dockerconfigjson'] = base64.b64encode(token)
-                            self._kube.kube_patch_secret(DOCKER_REGISTRY_SECRET, ns, secret)
+                            self._kube.kube_patch_secret(AppOperator.DOCKER_REGISTRY_SECRET, ns, secret)
                             LOG.info("Secret %s under Namespace %s is updated"
-                                     % (DOCKER_REGISTRY_SECRET, ns))
+                                     % (AppOperator.DOCKER_REGISTRY_SECRET, ns))
                     except Exception as e:
                         LOG.error("Failed to update Secret %s under Namespace %s: %s"
-                                  % (DOCKER_REGISTRY_SECRET, ns, e))
+                                  % (AppOperator.DOCKER_REGISTRY_SECRET, ns, e))
                         continue
             except Exception as e:
                 LOG.error(e)
                 return
 
         _sync_audit_local_registry_secrets(self)
-
-    def _delete_namespace(self, namespace):
-        loop_timeout = 1
-        timeout = 300
-        try:
-            LOG.info("Deleting Namespace %s ..." % namespace)
-            self._kube.kube_delete_namespace(namespace,
-                                             grace_periods_seconds=0)
-
-            # Namespace termination timeout 5mins
-            while(loop_timeout <= timeout):
-                if not self._kube.kube_get_namespace(namespace):
-                    # Namepace has been terminated
-                    break
-                loop_timeout += 1
-                time.sleep(1)
-
-            if loop_timeout > timeout:
-                raise exception.KubeNamespaceDeleteTimeout(name=namespace)
-            LOG.info("Namespace %s delete completed." % namespace)
-        except Exception as e:
-            LOG.error(e)
-            raise
 
     def _wait_for_pod_termination(self, namespace):
         loop_timeout = 0
@@ -1189,17 +1022,6 @@ class AppOperator(object):
             if loop_timeout > timeout:
                 raise exception.KubePodTerminateTimeout(name=namespace)
             LOG.info("Pod termination in Namespace %s completed." % namespace)
-        except Exception as e:
-            LOG.error(e)
-            raise
-
-    def _delete_persistent_volume_claim(self, namespace):
-        try:
-            LOG.info("Deleting Persistent Volume Claim "
-                     "under Namespace %s ..." % namespace)
-            self._kube.kube_delete_persistent_volume_claim(namespace,
-                                                           timeout_seconds=10)
-            LOG.info("Persistent Volume Claim delete completed.")
         except Exception as e:
             LOG.error(e)
             raise
@@ -1484,7 +1306,7 @@ class AppOperator(object):
                          "Chart %s from version %s" % (to_app.name, to_app.version,
                                                        chart.name, from_app.version))
 
-    @retry(retry_on_exception=lambda x: isinstance(x, exception.PlatformApplicationApplyFailure),
+    @retry(retry_on_exception=lambda x: isinstance(x, exception.ApplicationApplyFailure),
            stop_max_attempt_number=5, wait_fixed=30 * 1000)
     def _make_armada_request_with_monitor(self, app, request, overrides_str=None):
         """Initiate armada request with monitoring
@@ -1600,6 +1422,18 @@ class AppOperator(object):
         if AppOperator.is_app_aborted(app.name):
             return False
 
+        # TODO(dvoicule): Maybe pass a hook from outside to this function
+        # need to change perform_app_recover/rollback/update to support this.
+        # All the other hooks store the operation of the app itself (apply,
+        # remove, delete, upload, update) yet this hook stores the armada
+        # operation in the operation field. This is inconsistent behavior and
+        # should be changed the moment a hook from outside is passed here.
+        lifecycle_hook_info = LifecycleHookInfo()
+        lifecycle_hook_info.operation = request
+        lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+        lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_ARMADA_REQUEST
+        self.app_lifecycle_actions(None, None, app._kube_app, lifecycle_hook_info)
+
         mqueue = queue.Queue()
         rc = True
         logname = time.strftime(app.name + '-' + request + '_%Y-%m-%d-%H-%M-%S.log')
@@ -1621,60 +1455,13 @@ class AppOperator(object):
         mqueue.put('done')
         monitor.kill()
 
-        # In case platform-integ-apps apply fails, we raise a specific exception
-        # to be caught by the retry decorator and attempt a re-apply
-        if (not rc and request == constants.APP_APPLY_OP and
-                app.name == constants.HELM_APP_PLATFORM and
-                not AppOperator.is_app_aborted(app.name)):
-            LOG.info("%s app failed applying. Retrying." % str(app.name))
-            raise exception.PlatformApplicationApplyFailure(name=app.name)
+        # Here a manifest retry can be performed by throwing ApplicationApplyFailure
+        lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+        lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_ARMADA_REQUEST
+        lifecycle_hook_info[LifecycleConstants.EXTRA][LifecycleConstants.RETURN_CODE] = rc
+        self.app_lifecycle_actions(None, None, app._kube_app, lifecycle_hook_info)
 
         return rc
-
-    def _create_app_specific_resources(self, app_name):
-        """Add application specific k8s resources.
-
-        Some applications may need resources created outside of the existing
-        charts to properly integrate with the current capabilities of the
-        system. Create these resources here.
-
-        :param app_name: Name of the application.
-        """
-
-        if app_name == constants.HELM_APP_OPENSTACK:
-            try:
-                # Copy the latest configmap with the ceph monitor information
-                # required by the application into the application namespace
-                if self._kube.kube_get_config_map(
-                        self.APP_OPENSTACK_RESOURCE_CONFIG_MAP,
-                        common.HELM_NS_OPENSTACK):
-
-                    # Already have one. Delete it, in case it changed
-                    self._kube.kube_delete_config_map(
-                        self.APP_OPENSTACK_RESOURCE_CONFIG_MAP,
-                        common.HELM_NS_OPENSTACK)
-
-                # Copy the latest config map
-                self._kube.kube_copy_config_map(
-                    self.APP_OPENSTACK_RESOURCE_CONFIG_MAP,
-                    common.HELM_NS_RBD_PROVISIONER,
-                    common.HELM_NS_OPENSTACK)
-            except Exception as e:
-                LOG.error(e)
-                raise
-
-    def _delete_ceph_persistent_volume_claim(self, namespace):
-        self._delete_persistent_volume_claim(namespace)
-
-        try:
-            # Remove the configmap with the ceph monitor information
-            # required by the application into the application namespace
-            self._kube.kube_delete_config_map(
-                self.APP_OPENSTACK_RESOURCE_CONFIG_MAP,
-                namespace)
-        except Exception as e:
-            LOG.error(e)
-            raise
 
     def _in_upgrade_old_app_is_non_decoupled(self, old_app):
         """Special case application upgrade check for STX 4.0
@@ -1781,7 +1568,7 @@ class AppOperator(object):
                 else:
                     rc = False
 
-        except exception.PlatformApplicationApplyFailure:
+        except exception.ApplicationApplyFailure:
             rc = False
         except Exception as e:
             # ie. patch report error, cleanup application files error
@@ -1891,7 +1678,7 @@ class AppOperator(object):
         LOG.error("Application rollback aborted!")
         return False
 
-    def perform_app_upload(self, rpc_app, tarfile):
+    def perform_app_upload(self, rpc_app, tarfile, lifecycle_hook_info_app_upload):
         """Process application upload request
 
         This method validates the application manifest. If Helm charts are
@@ -1901,6 +1688,8 @@ class AppOperator(object):
 
         :param rpc_app: application object in the RPC request
         :param tarfile: location of application tarfile
+        :param lifecycle_hook_info_app_upload: LifecycleHookInfo object
+
         """
 
         app = AppOperator.Application(rpc_app)
@@ -2070,7 +1859,7 @@ class AppOperator(object):
                                              alarm.entity_instance_id)
         return flag_exists
 
-    def app_lifecycle_actions(self, context, conductor_obj, rpc_app, operation, relative_timing):
+    def app_lifecycle_actions(self, context, conductor_obj, rpc_app, hook_info):
         """Perform application specific lifecycle actions
 
         This method will perform any lifecycle actions necessary for the
@@ -2079,19 +1868,23 @@ class AppOperator(object):
         :param context: request context
         :param conductor_obj: conductor object
         :param rpc_app: application object in the RPC request
-        :param operation: application operation
-        :param relative_timing: relative timing of the operation
+        :param hook_info: LifecycleHookInfo object
+
         """
 
         app = AppOperator.Application(rpc_app)
 
-        LOG.info("kube_app.py lifecycle action for application %s (%s) operation %s (%s) started." %
-                  (app.name, app.version, operation, relative_timing))
+        # TODO(dvoicule): activate plugins once on upload, deactivate once during delete
+        # create another commit for this
+        self.activate_app_plugins(rpc_app)
 
-        manifest_op = self._helm.get_armada_manifest_operator(app.name)
-        manifest_op.app_lifecycle_actions(context, conductor_obj, self._dbapi, operation, relative_timing)
+        LOG.info("lifecycle hook for application {} ({}) started {}."
+                 .format(app.name, app.version, hook_info))
 
-    def perform_app_apply(self, rpc_app, mode, caller=None):
+        lifecycle_op = self._helm.get_app_lifecycle_operator(app.name)
+        lifecycle_op.app_lifecycle_actions(context, conductor_obj, self, app, hook_info)
+
+    def perform_app_apply(self, rpc_app, mode, lifecycle_hook_info_app_apply, caller=None):
         """Process application install request
 
         This method processes node labels per configuration and invokes
@@ -2109,8 +1902,10 @@ class AppOperator(object):
 
         :param rpc_app: application object in the RPC request
         :param mode: mode to control how to apply application manifest
+        :param lifecycle_hook_info_app_apply: LifecycleHookInfo object
         :param caller: internal caller, None if it is an RPC call,
                        otherwise apply is invoked from update method
+
         :return boolean: whether application apply was successful
         """
 
@@ -2136,18 +1931,19 @@ class AppOperator(object):
         ready = True
         try:
             app.charts = self._get_list_of_charts(app.sync_armada_mfile)
-            self._create_local_registry_secrets(app.name)
-            if app.system_app:
-                if AppOperator.is_app_aborted(app.name):
-                    raise exception.KubeAppAbort()
 
-                self._plugins.activate_plugins(app)
+            if AppOperator.is_app_aborted(app.name):
+                raise exception.KubeAppAbort()
 
-                manifest_op = self._helm.get_armada_manifest_operator(app.name)
-                manifest_op.app_rbd_actions(self, self._dbapi, app.name,
-                                            constants.APP_APPLY_OP)
+            # Perform app resources actions
+            lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RESOURCE
+            self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
 
-                self._create_app_specific_resources(app.name)
+            # Perform rbd actions
+            lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RBD
+            self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
 
             self._update_app_status(
                 app, new_progress=constants.APP_PROGRESS_GENERATE_OVERRIDES)
@@ -2200,32 +1996,10 @@ class AppOperator(object):
 
         try:
             if ready:
-                if app.name == constants.HELM_APP_OPENSTACK:
-                    # For stx-openstack app, if the apply operation was terminated
-                    # (e.g. user aborted, controller swacted, sysinv conductor
-                    # restarted) while compute-kit charts group was being deployed,
-                    # Tiller may still be processing these charts. Issuing another
-                    # manifest apply request while there are pending install of libvirt,
-                    # neutron and/or nova charts will result in reapply failure.
-                    #
-                    # Wait up to 10 minutes for Tiller to finish its transaction
-                    # from previous apply before making a new manifest apply request.
-                    LOG.info("Wait if there are openstack charts in pending install...")
-                    for i in range(CHARTS_PENDING_INSTALL_ITERATIONS):
-                        result = helm_utils.get_openstack_pending_install_charts()
-                        if not result:
-                            break
-
-                        if AppOperator.is_app_aborted(app.name):
-                            raise exception.KubeAppAbort()
-                        greenthread.sleep(10)
-                    if result:
-                        self._abort_operation(app, constants.APP_APPLY_OP)
-                        raise exception.KubeAppApplyFailure(
-                            name=app.name, version=app.version,
-                            reason="Timed out while waiting for some charts that "
-                                   "are still in pending install in previous application "
-                                   "apply to clear. Please try again later.")
+                # Perform pre apply manifest actions
+                lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+                lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_MANIFEST
+                self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
 
                 self._update_app_status(
                     app, new_progress=constants.APP_PROGRESS_APPLY_MANIFEST)
@@ -2243,10 +2017,33 @@ class AppOperator(object):
                     if not caller:
                         self._clear_app_alarm(app.name)
                     LOG.info("Application %s (%s) apply completed." % (app.name, app.version))
+
+                    # Perform post apply manifest actions
+                    lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+                    lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_MANIFEST
+                    lifecycle_hook_info_app_apply[LifecycleConstants.EXTRA][LifecycleConstants.MANIFEST_APPLIED] = True
+                    self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
+
                     return True
         except Exception as e:
             # ex: update release version failure, user abort
             LOG.exception(e)
+
+            # Perform post apply manifest actions
+            lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+            lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_MANIFEST
+            lifecycle_hook_info_app_apply[LifecycleConstants.EXTRA][LifecycleConstants.MANIFEST_APPLIED] = False
+            self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
+
+        # Perform rbd actions
+        lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+        lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RBD
+        self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
+
+        # Perform app resources actions
+        lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+        lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RESOURCE
+        self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
 
         # If it gets here, something went wrong
         if AppOperator.is_app_aborted(app.name):
@@ -2262,7 +2059,7 @@ class AppOperator(object):
         return False
 
     def perform_app_update(self, from_rpc_app, to_rpc_app, tarfile,
-                           operation, reuse_user_overrides=None):
+                           operation, lifecycle_hook_info_app_update, reuse_user_overrides=None):
         """Process application update request
 
         This method leverages the existing application upload workflow to
@@ -2288,7 +2085,9 @@ class AppOperator(object):
                            application updating to
         :param tarfile: location of application tarfile
         :param operation: apply or rollback
+        :param lifecycle_hook_info_app_update: LifecycleHookInfo object
         :param reuse_user_overrides: (optional) True or False
+
         """
 
         from_app = AppOperator.Application(from_rpc_app)
@@ -2311,7 +2110,16 @@ class AppOperator(object):
             # application as the new plugin module will have the same name. Only
             # one version of the module can be enabled at any given moment
             self._plugins.deactivate_plugins(from_app)
-            to_app = self.perform_app_upload(to_rpc_app, tarfile)
+
+            # Note: this will not trigger the upload hooks present in conductor/manager:perform_app_upload
+            # Note: here we lose the information that this is an upload triggered by an update
+            # TODO(dvoicule): we may want to also trigger the upload hooks
+            # TODO(dvoicule): we may want to track the fact that this is called during an update
+            lifecycle_hook_info_app_update.operation = constants.APP_UPLOAD_OP
+            to_app = self.perform_app_upload(to_rpc_app, tarfile,
+                                             lifecycle_hook_info_app_upload=lifecycle_hook_info_app_update)
+            lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
+
             # Check whether the new application is compatible with the current k8s version
             self._utils._check_app_compatibility(to_app.name, to_app.version)
 
@@ -2332,18 +2140,31 @@ class AppOperator(object):
 
                 # The app_apply will generate new versioned overrides for the
                 # app upgrade and will enable the new plugins for that version.
-                result = self.perform_app_apply(to_rpc_app, mode=None, caller='update')
+
+                # Note: this will not trigger the apply hooks present in conductor/manager:perform_app_apply
+                # Note: here we lose the information that this is an apply triggered by an update
+                # TODO(dvoicule): we may want to also trigger the apply hooks
+                # TODO(dvoicule): we may want to track the fact that this is called during an update
+                lifecycle_hook_info_app_update.operation = constants.APP_APPLY_OP
+                result = self.perform_app_apply(to_rpc_app, mode=None,
+                                                lifecycle_hook_info_app_apply=lifecycle_hook_info_app_update,
+                                                caller='update')
+                lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
             elif operation == constants.APP_ROLLBACK_OP:
                 # The app_rollback will use the previous helm releases known to
                 # the k8s cluster. Overrides are not generated from any plugins
                 # in the case. Make sure that the enabled plugins correspond to
                 # the version expected to be activated
                 self._plugins.activate_plugins(to_app)
+
+                # lifecycle hooks not used in perform_app_rollback
                 result = self._perform_app_rollback(from_app, to_app)
 
             if not result:
                 LOG.error("Application %s update from version %s to version "
                           "%s aborted." % (to_app.name, from_app.version, to_app.version))
+
+                # lifecycle hooks not used in perform_app_recover
                 return self._perform_app_recover(from_app, to_app)
 
             self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS,
@@ -2382,6 +2203,7 @@ class AppOperator(object):
             # ie.images download/k8s resource creation failure
             # Start recovering without trigger armada process
             LOG.exception(e)
+            # lifecycle hooks not used in perform_app_recover
             return self._perform_app_recover(from_app, to_app,
                                              armada_process_required=False)
         except Exception as e:
@@ -2401,14 +2223,15 @@ class AppOperator(object):
         self._clear_app_alarm(to_app.name)
         return True
 
-    def perform_app_remove(self, rpc_app, deactivate_plugins=True):
+    def perform_app_remove(self, rpc_app, lifecycle_hook_info_app_remove):
         """Process application remove request
 
         This method invokes Armada to delete the application manifest.
         For system app, it also cleans up old test pods.
 
         :param rpc_app: application object in the RPC request
-        :param deactivate_plugins: Deactive plugins on removal
+        :param lifecycle_hook_info_app_remove: LifecycleHookInfo object
+
         :return boolean: whether application remove was successful
         """
 
@@ -2439,14 +2262,16 @@ class AppOperator(object):
                 self._dbapi.kube_app_destroy(app.name, inactive=True)
 
             try:
-                self._delete_local_registry_secrets(app.name)
-                if app.system_app:
-                    self._plugins.activate_plugins(app)
-                    manifest_op = self._helm.get_armada_manifest_operator(app.name)
-                    manifest_op.app_rbd_actions(self, self._dbapi, app.name,
-                                                constants.APP_REMOVE_OP)
-                    if deactivate_plugins:
-                        self._plugins.deactivate_plugins(app)
+                # Perform rbd actions
+                lifecycle_hook_info_app_remove.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+                lifecycle_hook_info_app_remove.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RBD
+                self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_remove)
+
+                # Perform app resources actions
+                lifecycle_hook_info_app_remove.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+                lifecycle_hook_info_app_remove.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RESOURCE
+                self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_remove)
+
             except Exception as e:
                 self._abort_operation(app, constants.APP_REMOVE_OP)
                 LOG.exception(e)
@@ -2487,7 +2312,7 @@ class AppOperator(object):
         app = AppOperator.Application(rpc_app)
         return app.active
 
-    def perform_app_abort(self, rpc_app):
+    def perform_app_abort(self, rpc_app, lifecycle_hook_info_app_abort):
         """Process application abort request
 
         This method retrieves the latest application status from the
@@ -2499,6 +2324,8 @@ class AppOperator(object):
         request to Armada.
 
         :param rpc_app: application object in the RPC request
+        :param lifecycle_hook_info_app_abort: LifecycleHookInfo object
+
         """
 
         app = AppOperator.Application(rpc_app)
@@ -2526,7 +2353,7 @@ class AppOperator(object):
             LOG.info("Abort request ignored. The previous operation for app %s "
                      "has either completed or failed." % app.name)
 
-    def perform_app_delete(self, rpc_app):
+    def perform_app_delete(self, rpc_app, lifecycle_hook_info_app_delete):
         """Process application remove request
 
         This method removes the application entry from the database and
@@ -2534,18 +2361,24 @@ class AppOperator(object):
         and purge all application files from the system.
 
         :param rpc_app: application object in the RPC request
+        :param lifecycle_hook_info_app_delete: LifecycleHookInfo object
+
         """
 
         app = AppOperator.Application(rpc_app)
         try:
-            if app.system_app:
-                self._plugins.activate_plugins(app)
+            # Perform rbd actions
+            lifecycle_hook_info_app_delete.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info_app_delete.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RBD
+            self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_delete)
 
-                manifest_op = self._helm.get_armada_manifest_operator(app.name)
-                manifest_op.app_rbd_actions(self, self._dbapi, app.name,
-                                            constants.APP_DELETE_OP)
+            # Perform app resources actions
+            lifecycle_hook_info_app_delete.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info_app_delete.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RESOURCE
+            self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_delete)
 
-                self._plugins.deactivate_plugins(app)
+            self._plugins.deactivate_plugins(app)
+
             self._dbapi.kube_app_destroy(app.name)
             self._cleanup(app)
             self._utils._patch_report_app_dependencies(app.name + '-' + app.version)
