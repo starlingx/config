@@ -251,6 +251,7 @@ class ConductorManager(service.PeriodicService):
         self._app = kube_app.AppOperator(self.dbapi, self._helm)
         self._docker = kube_app.DockerHelper(self.dbapi)
         self._kube = kubernetes.KubeOperator()
+        self._armada = kube_app.ArmadaHelper(self._kube)
         self._kube_app_helper = kube_api.KubeAppHelper(self.dbapi)
         self._fernet = fernet.FernetOperator()
 
@@ -5496,12 +5497,16 @@ class ConductorManager(service.PeriodicService):
                      "activity")
             return
 
-        # Ensure that armada pod is running.
+        # Ensure that armada pod is running and ready.
         pods = self._kube.kube_get_pods_by_selector("armada",
                                                     "application=armada",
                                                     "status.phase=Running")
-        if not pods:
-            LOG.warning("armada pod not present")
+        for pod in pods:
+            if (pod.metadata.deletion_timestamp is None and
+                 self._armada.check_pod_ready_probe(pod)):
+                break
+        else:
+            LOG.warning("Armada pod is not running and ready. Defer audit.")
             return
 
         # Defer platform managed application activity while an upgrade is active

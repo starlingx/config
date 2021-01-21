@@ -2829,7 +2829,7 @@ class ArmadaHelper(object):
                 return False
         return True
 
-    def _check_pod_ready_probe(self, pod):
+    def check_pod_ready_probe(self, pod):
         """Pod is of the form returned by self._kube.kube_get_pods_by_selector.
         Returns true if last probe shows the container is in 'Ready' state.
         """
@@ -2845,7 +2845,7 @@ class ArmadaHelper(object):
         for pod in pods:
             if pod.status.phase == 'Running' and \
                     pod.metadata.deletion_timestamp is None and \
-                    self._check_pod_ready_probe(pod):
+                    self.check_pod_ready_probe(pod):
                 return pod
         return pods[0]
 
@@ -2905,7 +2905,7 @@ class ArmadaHelper(object):
                             ARMADA_NAMESPACE, pod.metadata.name)
 
                 if pod and pod.status.phase == 'Running' and \
-                        self._check_pod_ready_probe(pod):
+                        self.check_pod_ready_probe(pod):
                     # Test that we can copy files into armada-api container
                     src = '/etc/build.info'
                     dest_dir = '{}:{}'.format(pod.metadata.name, '/tmp')
