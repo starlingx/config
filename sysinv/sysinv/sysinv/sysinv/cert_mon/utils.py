@@ -493,7 +493,7 @@ def get_sc_intermediate_ca_secret(sc):
 
 
 def get_endpoint_certificate(endpoint):
-    url = urlparse.urlparse(endpoint)
+    url = urlparse(endpoint)
     host = url.hostname
     port = url.port
     return ssl.get_server_certificate((host, port))
