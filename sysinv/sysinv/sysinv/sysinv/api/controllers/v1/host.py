@@ -2792,6 +2792,11 @@ class HostController(rest.RestController):
             pecan.request.rpcapi.kill_ceph_storage_monitor(
                     pecan.request.context)
 
+        # Remove the host manifest. This is similar to the process taken
+        # during host-reinstall. The manifest needs to be removed to prevent
+        # the host from running kubeadm prematurely.
+        pecan.request.rpcapi.remove_host_config(pecan.request.context, uuid)
+
         self._update_load(uuid, body, new_target_load)
 
         return Host.convert_with_links(rpc_ihost)
