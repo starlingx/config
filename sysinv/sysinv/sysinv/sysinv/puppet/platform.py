@@ -42,7 +42,6 @@ class PlatformPuppet(base.BasePuppet):
         config.update(self._get_sm_config())
         config.update(self._get_drbd_sync_config())
         config.update(self._get_remotelogging_config())
-        config.update(self._get_snmp_config())
         config.update(self._get_certificate_config())
         config.update(self._get_systemcontroller_config())
         return config
@@ -843,36 +842,6 @@ class PlatformPuppet(base.BasePuppet):
             'platform::remotelogging::params::transport':
                 remotelogging.transport,
         }
-
-    def _get_snmp_config(self):
-        system = self.dbapi.isystem_get_one()
-        comm_strs = self.dbapi.icommunity_get_list()
-        trapdests = self.dbapi.itrapdest_get_list()
-
-        config = {
-            'platform::snmp::params::system_name':
-                system.name,
-            'platform::snmp::params::system_location':
-                system.location,
-            'platform::snmp::params::system_contact':
-                system.contact,
-        }
-
-        if comm_strs is not None:
-            comm_list = []
-            for i in comm_strs:
-                comm_list.append(i.community)
-            config.update({'platform::snmp::params::community_strings':
-                           comm_list})
-
-        if trapdests is not None:
-            trap_list = []
-            for e in trapdests:
-                trap_list.append(e.ip_address + ' ' + e.community)
-            config.update({'platform::snmp::params::trap_destinations':
-                           trap_list})
-
-        return config
 
     def _get_certificate_config(self):
         config = {}

@@ -46,7 +46,6 @@ class FmPuppet(openstack.OpenstackBasePuppet):
     def get_system_config(self):
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
         system = self.dbapi.isystem_get_one()
-        trapdests = self.dbapi.itrapdest_get_list()
         if utils.is_app_applied(self.dbapi, constants.HELM_APP_SNMP):
             snmp_enabled_value = 1    # True
             snmp_trap_server_port = self.get_snmp_trap_port()
@@ -91,13 +90,6 @@ class FmPuppet(openstack.OpenstackBasePuppet):
             'platform::fm::params::service_create':
                 self._to_create_services(),
         }
-
-        if trapdests is not None:
-            trap_list = []
-            for e in trapdests:
-                trap_list.append(e.ip_address + ' ' + e.community)
-                config.update(
-                    {'platform::fm::params::trap_destinations': trap_list})
 
         return config
 
