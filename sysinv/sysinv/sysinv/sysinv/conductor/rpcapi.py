@@ -1419,17 +1419,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('delete_barbican_secret',
                                        name=name))
 
-    def update_snmp_config(self, context):
-        """Synchronously, have a conductor configure the SNMP configuration.
-
-        Does the following tasks:
-        - Update puppet hiera configuration file and apply run time manifest
-
-        :param context: request context.
-        """
-        return self.call(context,
-                         self.make_msg('update_snmp_config'))
-
     def ceph_manager_config_complete(self, context, applied_config):
         self.call(context,
                   self.make_msg('ceph_service_config_complete',

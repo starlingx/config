@@ -24,7 +24,6 @@ from sysinv.objects import address_pool
 from sysinv.objects import ceph_mon
 from sysinv.objects import certificate
 from sysinv.objects import cluster
-from sysinv.objects import community
 from sysinv.objects import controller_fs
 from sysinv.objects import cpu
 from sysinv.objects import datanetwork
@@ -88,7 +87,6 @@ from sysinv.objects import storage_backend
 from sysinv.objects import storage_ceph
 from sysinv.objects import storage_lvm
 from sysinv.objects import system
-from sysinv.objects import trapdest
 from sysinv.objects import user
 from sysinv.objects import service
 from sysinv.objects import tpmconfig
@@ -149,8 +147,6 @@ storage = storage.Storage
 journal = journal.Journal
 lvg = lvg.LVG
 pv = pv.PV
-trapdest = trapdest.TrapDest
-community = community.Community
 user = user.User
 dns = dns.DNS
 ntp = ntp.NTP
@@ -226,8 +222,6 @@ __all__ = ("system",
            "journal",
            "lvg",
            "pv",
-           "trapdest",
-           "community",
            "user",
            "dns",
            "ntp",

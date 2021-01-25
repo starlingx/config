@@ -479,16 +479,8 @@ class StorageExternalAlreadyExists(Conflict):
     message = _("A StorageExternal with UUID %(uuid)s already exists.")
 
 
-class TrapDestAlreadyExists(Conflict):
-    message = _("A TrapDest with UUID %(uuid)s already exists.")
-
-
 class UserAlreadyExists(Conflict):
     message = _("A User with UUID %(uuid)s already exists.")
-
-
-class CommunityAlreadyExists(Conflict):
-    message = _("A Community with UUID %(uuid)s already exists.")
 
 
 class ServiceAlreadyExists(Conflict):

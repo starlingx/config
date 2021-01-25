@@ -1,6 +1,4 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
-# Copyright (c) 2016 Wind River Systems, Inc.
+# Copyright (c) 2016-2020 Wind River Systems, Inc.
 # Copyright 2010-2011 OpenStack Foundation
 # Copyright 2012-2013 IBM Corp.
 # All Rights Reserved.
@@ -840,37 +838,6 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         for col, coltype in services_col.items():
             self.assertTrue(isinstance(services.c[col].type,
                                        getattr(sqlalchemy.types, coltype)))
-
-        traps = db_utils.get_table(engine, 'i_trap_destination')
-        traps_col = {
-            'id': 'Integer', 'uuid': 'String', 'deleted_at': 'DateTime',
-            'created_at': 'DateTime', 'updated_at': 'DateTime',  # 'type': 'typeEnum',
-            'ip_address': 'String', 'community': 'String', 'port': 'Integer',
-            # 'transport': 'transportEnum',
-        }
-        for col, coltype in traps_col.items():
-            self.assertTrue(isinstance(traps.c[col].type,
-                                       getattr(sqlalchemy.types, coltype)))
-        traps_enums_col = [
-            'type', 'transport'
-        ]
-        for col in traps_enums_col:
-            self.assertColumnExists(engine, 'i_trap_destination', col)
-
-        communities = db_utils.get_table(engine, 'i_community')
-        communities_col = {
-            'id': 'Integer', 'uuid': 'String', 'deleted_at': 'DateTime',
-            'created_at': 'DateTime', 'updated_at': 'DateTime',  # 'access': 'accessEnum',
-            'community': 'String', 'view': 'String',
-        }
-        for col, coltype in communities_col.items():
-            self.assertTrue(isinstance(communities.c[col].type,
-                                       getattr(sqlalchemy.types, coltype)))
-        communities_enums_col = [
-            'access'
-        ]
-        for col in communities_enums_col:
-            self.assertColumnExists(engine, 'i_community', col)
 
         users = db_utils.get_table(engine, 'i_user')
         users_col = {

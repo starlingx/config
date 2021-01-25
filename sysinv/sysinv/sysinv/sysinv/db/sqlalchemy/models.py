@@ -718,46 +718,6 @@ class journal(Base):
     foristorid = Column(Integer, ForeignKey('i_istor.id', ondelete='CASCADE'))
 
 
-class itrapdest(Base):
-
-    snmpEnum = Enum('snmpv2c_trap',
-                    'reserve1',
-                    'reserve2',
-                    name='snmpVersionEnum')
-
-    transportEnum = Enum('udp',
-                         'reserve1',
-                         'reserve2',
-                         name='snmpTransportType')
-
-    __tablename__ = 'i_trap_destination'
-    id = Column(Integer, primary_key=True)
-    uuid = Column(String(36), unique=True)
-
-    ip_address = Column(String(255), unique=True, index=True)
-    community = Column(String(255))
-    port = Column(Integer, default=162)
-    type = Column(snmpEnum, default='snmpv2c_trap')
-    transport = Column(transportEnum, default='udp')
-
-
-class icommunity(Base):
-
-    accessEnum = Enum('ro',
-                      'rw',
-                      'reserve1',
-                      'reserve2',
-                      name='accessEnum')
-
-    __tablename__ = 'i_community'
-    id = Column(Integer, primary_key=True)
-    uuid = Column(String(36), unique=True)
-
-    community = Column(String(255), unique=True, index=True)
-    view = Column(String(255), default='.1')
-    access = Column(accessEnum, default='ro')
-
-
 class iuser(Base):
     __tablename__ = 'i_user'
 

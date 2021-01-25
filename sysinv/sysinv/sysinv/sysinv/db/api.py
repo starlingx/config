@@ -16,7 +16,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 
 
@@ -1614,100 +1614,6 @@ class Connection(object):
         """Destroy an ipv leaf.
 
         :param ipv_id: The id or uuid of an ipv.
-        """
-
-    @abc.abstractmethod
-    def itrapdest_create(self, values):
-        """Create a trap destination entry.
-
-        param values: A dict containing several items used to identify
-                      a trap destination
-        :returns: An itrapdest.
-       """
-
-    @abc.abstractmethod
-    def itrapdest_get(self, iid):
-        """Return an itrapdest.
-
-        :param iid: The id of an itrapdest.
-        :returns: An itrapdest.
-        """
-
-    @abc.abstractmethod
-    def itrapdest_get_list(self, limit=None, marker=None,
-                         sort_key=None, sort_dir=None):
-        """Return a list of itrapdest.
-        """
-
-    @abc.abstractmethod
-    def itrapdest_get_by_ip(self, ip):
-        """Return an itrapdest.
-         :param ip: The ip address of an itrapdest.
-        :returns: An itrapdest.
-        """
-
-    @abc.abstractmethod
-    def itrapdest_update(self, iid, values):
-        """Update properties of an itrapdest.
-
-        :param node: The id of an itrapdest.
-        :param values: Dict of values to update.
-
-        :returns: An itrapdest.
-        """
-
-    @abc.abstractmethod
-    def itrapdest_destroy(self, ip):
-        """Destroy an itrapdest.
-
-        :param ip: The ip address of an itrapdest.
-        """
-
-    @abc.abstractmethod
-    def icommunity_create(self, values):
-        """Create a community entry.
-
-        param values: A dict containing several items used to identify
-                      a community entry
-        :returns: An icommunity.
-       """
-
-    @abc.abstractmethod
-    def icommunity_get(self, uuid):
-        """Return an icommunity.
-
-        :param uuid: The id of an icommunity.
-        :returns: An icommunity.
-        """
-
-    @abc.abstractmethod
-    def icommunity_get_list(self, limit=None, marker=None,
-                            sort_key=None, sort_dir=None):
-        """Return a list of icommunity.
-        """
-
-    @abc.abstractmethod
-    def icommunity_get_by_name(self, name):
-        """Return an icommunity.
-         :param name: The community name of an icommunity.
-        :returns: An icommunity.
-        """
-
-    @abc.abstractmethod
-    def icommunity_update(self, iid, values):
-        """Update properties of an icommunity.
-
-        :param node: The id of an icommunity.
-        :param values: Dict of values to update.
-
-        :returns: An icommunity.
-        """
-
-    @abc.abstractmethod
-    def icommunity_destroy(self, name):
-        """Destroy an icommunity.
-
-        :param name: The name of an icommunity.
         """
 
     @abc.abstractmethod
