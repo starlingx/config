@@ -163,6 +163,7 @@
     </xs:sequence>
     <xs:attribute name="virtualFunctions" type="xs:nonNegativeInteger" use="required" />
     <xs:attribute name="virtualFunctionDriver" type="xs:string" />
+    <xs:attribute name="maxTxRate" type="xs:nonNegativeInteger" />
   </xs:complexType>
 
   <xs:complexType name="route">
