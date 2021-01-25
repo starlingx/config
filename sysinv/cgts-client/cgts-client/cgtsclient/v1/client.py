@@ -1,4 +1,4 @@
-# Copyright 2012 OpenStack LLC.
+# Copyright 2012-2020 OpenStack LLC.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -35,7 +35,6 @@ from cgtsclient.v1 import fernet
 from cgtsclient.v1 import health
 from cgtsclient.v1 import helm
 from cgtsclient.v1 import host_fs
-from cgtsclient.v1 import icommunity
 from cgtsclient.v1 import icpu
 from cgtsclient.v1 import idisk
 from cgtsclient.v1 import idns
@@ -54,7 +53,6 @@ from cgtsclient.v1 import isensor
 from cgtsclient.v1 import isensorgroup
 from cgtsclient.v1 import istor
 from cgtsclient.v1 import isystem
-from cgtsclient.v1 import itrapdest
 from cgtsclient.v1 import iuser
 from cgtsclient.v1 import kube_host_upgrade
 from cgtsclient.v1 import kube_upgrade
@@ -127,8 +125,6 @@ class Client(http.HTTPClient):
         self.ceph_mon = ceph_mon.CephMonManager(self)
         self.drbdconfig = drbdconfig.drbdconfigManager(self)
         self.iprofile = iprofile.iprofileManager(self)
-        self.icommunity = icommunity.iCommunityManager(self)
-        self.itrapdest = itrapdest.iTrapdestManager(self)
         self.port = port.PortManager(self)
         self.ethernet_port = ethernetport.EthernetPortManager(self)
         self.address = address.AddressManager(self)

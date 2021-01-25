@@ -23,7 +23,6 @@ from cgtsclient.v1 import health_shell
 from cgtsclient.v1 import helm_shell
 from cgtsclient.v1 import host_fs_shell
 
-from cgtsclient.v1 import icommunity_shell
 from cgtsclient.v1 import icpu_shell
 from cgtsclient.v1 import idisk_shell
 from cgtsclient.v1 import idns_shell
@@ -41,7 +40,6 @@ from cgtsclient.v1 import isensor_shell
 from cgtsclient.v1 import isensorgroup_shell
 from cgtsclient.v1 import istor_shell
 from cgtsclient.v1 import isystem_shell
-from cgtsclient.v1 import itrapdest_shell
 from cgtsclient.v1 import iuser_shell
 
 from cgtsclient.v1 import kube_upgrade_shell
@@ -93,8 +91,6 @@ COMMAND_MODULES = [
     sm_service_nodes_shell,
     sm_servicegroup_shell,
     sm_service_shell,
-    icommunity_shell,
-    itrapdest_shell,
     ethernetport_shell,
     port_shell,
     address_shell,
