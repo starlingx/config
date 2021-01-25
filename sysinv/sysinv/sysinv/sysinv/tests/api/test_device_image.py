@@ -120,11 +120,16 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
             'bitstream_id': '12345',
         }
         upload_file = [('file', bitstream_file)]
-        result = self.post_with_files('/device_images',
-                                      data,
-                                      upload_files=upload_file,
-                                      headers=self.API_HEADERS,
-                                      expect_errors=False)
+        result = None
+        open_mock = mock.Mock()
+        fd_mock = mock.mock_open()
+        with mock.patch('os.open', open_mock), mock.patch.object(
+                os, 'fdopen', fd_mock):
+            result = self.post_with_files('/device_images',
+                                          data,
+                                          upload_files=upload_file,
+                                          headers=self.API_HEADERS,
+                                          expect_errors=False)
         self.assertEqual(result.status_code, http_client.OK)
 
         # Verify that the images were downloaded
@@ -152,11 +157,16 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
             'key_signature': '12345',
         }
         upload_file = [('file', bitstream_file)]
-        result = self.post_with_files('/device_images',
-                                      data,
-                                      upload_files=upload_file,
-                                      headers=self.API_HEADERS,
-                                      expect_errors=False)
+        result = None
+        open_mock = mock.Mock()
+        fd_mock = mock.mock_open()
+        with mock.patch('os.open', open_mock), mock.patch.object(
+                os, 'fdopen', fd_mock):
+            result = self.post_with_files('/device_images',
+                                          data,
+                                          upload_files=upload_file,
+                                          headers=self.API_HEADERS,
+                                          expect_errors=False)
         self.assertEqual(result.status_code, http_client.OK)
 
         # Verify that the images were downloaded
@@ -184,11 +194,18 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
             'revoke_key_id': 12345,
         }
         upload_file = [('file', bitstream_file)]
-        result = self.post_with_files('/device_images',
-                                      data,
-                                      upload_files=upload_file,
-                                      headers=self.API_HEADERS,
-                                      expect_errors=False)
+        # mocking the os.open and os.fdopen calls
+        # these mock entries must be scoped to the POST operaion
+        result = None
+        open_mock = mock.Mock()
+        fd_mock = mock.mock_open()
+        with mock.patch('os.open', open_mock), mock.patch.object(
+                os, 'fdopen', fd_mock):
+            result = self.post_with_files('/device_images',
+                                          data,
+                                          upload_files=upload_file,
+                                          headers=self.API_HEADERS,
+                                          expect_errors=False)
         self.assertEqual(result.status_code, http_client.OK)
 
         # Verify that the images were downloaded
