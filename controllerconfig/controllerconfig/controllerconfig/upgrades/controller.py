@@ -980,18 +980,6 @@ def upgrade_controller(from_release, to_release):
     except subprocess.CalledProcessError:
         LOG.exception("Failed to remove file %s" % admin_conf)
 
-    # Prepare for swact
-    LOG.info("Prepare for swact to controller-1")
-    try:
-        subprocess.check_call(['/usr/bin/upgrade_swact_migration.py',
-                               'prepare_swact',
-                               from_release,
-                               to_release],
-                              stdout=devnull)
-    except subprocess.CalledProcessError:
-        LOG.exception("Failed upgrade_swact_migration prepare_swact")
-        raise
-
     print("Shutting down upgrade processes...")
 
     # Stop postgres service

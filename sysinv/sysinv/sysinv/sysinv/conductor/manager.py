@@ -9505,6 +9505,25 @@ class ConductorManager(service.PeriodicService):
                     self.dbapi.software_upgrade_update(upgrade.uuid,
                                                        upgrade_update)
 
+                    LOG.info("Prepare for swact to controller-0")
+                    # As a temporary solution we only migrate the etcd database
+                    # when we swact to controller-0. This solution will present
+                    # some problems when we do upgrade etcd, so further
+                    # development will be required at that time.
+                    try:
+                        with open(os.devnull, "w") as devnull:
+                            call_args = [
+                                '/usr/bin/upgrade_swact_migration.py',
+                                'prepare_swact',
+                                upgrade.from_release,
+                                upgrade.to_release
+                            ]
+                            subprocess.check_call(call_args, stdout=devnull)  # pylint: disable=not-callable
+                    except subprocess.CalledProcessError as e:
+                        LOG.exception(e)
+                        raise exception.SysinvException(
+                            "Failed upgrade_swact_migration prepare_swact")
+
     def start_upgrade(self, context, upgrade):
         """ Start the upgrade"""
 
