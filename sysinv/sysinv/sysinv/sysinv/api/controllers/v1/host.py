@@ -2761,24 +2761,6 @@ class HostController(rest.RestController):
                         "host-downgrade rejected: Upgrade not in %s state." %
                         constants.UPGRADE_ABORTING))
 
-                if rpc_ihost.hostname == constants.CONTROLLER_1_HOSTNAME:
-                    # Clear upgrade flags so controller-1 will not upgrade
-                    # after install. This flag is guaranteed to be written on
-                    # controller-0, since controller-1 must be locked to run
-                    # the host-downgrade command.
-                    try:
-                        os.remove(tsc.CONTROLLER_UPGRADE_FLAG)
-                    except OSError:
-                        LOG.exception("Failed to remove upgrade flag")
-                    try:
-                        os.remove(tsc.CONTROLLER_UPGRADE_COMPLETE_FLAG)
-                    except OSError:
-                        LOG.exception("Failed to remove upgrade complete flag")
-                    try:
-                        os.remove(tsc.CONTROLLER_UPGRADE_FAIL_FLAG)
-                    except OSError:
-                        LOG.exception("Failed to remove upgrade fail flag")
-
         # Check for new hardware since upgrade-start
         force = body.get('force', False) is True
         self._semantic_check_downgrade_refresh(upgrade, rpc_ihost, force)
