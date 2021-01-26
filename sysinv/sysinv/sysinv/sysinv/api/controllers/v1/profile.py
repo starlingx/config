@@ -79,7 +79,7 @@ INTERFACE_PROFILE_FIELDS = ['ifname', 'iftype', 'imtu', 'networktype',
                             'txhashpolicy', 'forihostid', 'datanetworks',
                             'vlan_id', 'ipv4_mode', 'ipv6_mode',
                             'ipv4_pool', 'ipv6_pool',
-                            'sriov_numvfs', 'sriov_vf_driver']
+                            'sriov_numvfs', 'sriov_vf_driver', 'max_tx_rate']
 
 
 class Profile(base.APIBase):
@@ -1355,6 +1355,7 @@ def _create_if_profile(profile_name, profile_node):
                      'ipv6_pool': ipv6_mode['pool'],
                      'sriov_numvfs': ethIf.virtualFunctions,
                      'sriov_vf_driver': ethIf.virtualFunctionDriver,
+                     'max_tx_rate': ethIf.maxTxRate,
                      'interface_profile': True
                      }
             newIf = interface_api._create(idict, from_profile=True)
@@ -1397,6 +1398,7 @@ def _create_if_profile(profile_name, profile_node):
                      'imtu': aeIf.mtu,
                      'sriov_numvfs': ethIf.virtualFunctions,
                      'sriov_vf_driver': ethIf.virtualFunctionDriver,
+                     'max_tx_rate': ethIf.maxTxRate,
                      'interface_profile': True
                      }
 
@@ -1425,6 +1427,7 @@ def _create_if_profile(profile_name, profile_node):
                      'imtu': vlanIf.mtu,
                      'sriov_numvfs': ethIf.virtualFunctions,
                      'sriov_vf_driver': ethIf.virtualFunctionDriver,
+                     'max_tx_rate': ethIf.maxTxRate,
                      'interface_profile': True
                      }
 
