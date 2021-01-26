@@ -1209,6 +1209,18 @@ def get_interface_os_ifname(interface, interfaces, ports):
         return interface['ifname']
 
 
+def get_sriov_vf_index(addr, addrs):
+    """
+    Returns vf index of specified pci addr of the vf
+    Returns None if not found
+    """
+    try:
+        return addrs.index(addr)
+    except ValueError:
+        LOG.error("Index not found for this addr %s." % addr)
+        return None
+
+
 def get_dhcp_cid(hostname, network_type, mac):
     """Create the CID for use with dnsmasq. We use a unique identifier for a
     client since different networks can operate over the same device (and hence

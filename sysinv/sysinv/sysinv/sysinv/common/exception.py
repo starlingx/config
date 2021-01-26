@@ -1134,6 +1134,10 @@ class HostLabelInvalid(Invalid):
     message = _("Host label is invalid. Reason: %(reason)s")
 
 
+class LinkSpeedInvalid(Invalid):
+    message = _("Link speed is invalid. Reason: %(reason)s")
+
+
 class PickleableException(Exception):
     """
     Pickleable Exception

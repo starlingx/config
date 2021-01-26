@@ -205,31 +205,40 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
             dbutils.create_test_datanetwork(**dn_values)
 
     def _create_ethernet(self, ifname=None, networktype=None, ifclass=None,
-                         datanetworks=None, host=None, expect_errors=False):
+                         datanetworks=None, host=None, expect_errors=False,
+                         lower_iface=None):
         interface_id = len(self.profile['interfaces']) + 1
+        port = None
         if not ifname:
             ifname = (networktype or 'eth') + str(interface_id)
         if not host:
             host = self.controller
         if not ifclass and networktype in constants.PLATFORM_NETWORK_TYPES:
             ifclass = constants.INTERFACE_CLASS_PLATFORM
-        port_id = len(self.profile['ports'])
-        port = dbutils.create_test_ethernet_port(
-            id=port_id,
-            name='eth' + str(port_id),
-            host_id=host.id,
-            interface_id=interface_id,
-            pciaddr='0000:00:00.' + str(port_id + 1),
-            dev_id=0)
+        if not lower_iface:
+            port_id = len(self.profile['ports'])
+            port = dbutils.create_test_ethernet_port(
+                id=port_id,
+                name='eth' + str(port_id),
+                host_id=host.id,
+                interface_id=interface_id,
+                pciaddr='0000:00:00.' + str(port_id + 1),
+                dev_id=0)
+            self.profile['ports'].append(port)
 
         if not networktype:
             interface = dbutils.create_test_interface(ifname=ifname,
                                                       forihostid=host.id,
                                                       ihost_uuid=host.uuid)
         else:
+            if lower_iface:
+                uses = [lower_iface['ifname']]
+            else:
+                uses = None
             interface = self._post_get_test_interface(
                 ifname=ifname,
                 ifclass=ifclass,
+                uses=uses,
                 forihostid=host.id, ihost_uuid=host.uuid)
             response = self._post_and_check(interface, expect_errors)
             if expect_errors is False:
@@ -252,7 +261,6 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
                                 datanetwork_id=dn.id)
 
         self.profile['interfaces'].append(interface)
-        self.profile['ports'].append(port)
 
         return port, interface
 
@@ -380,7 +388,8 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
             sriov_totalvfs=sriov_totalvfs,
             sriov_numvfs=sriov_numvfs,
             driver='i40e',
-            sriov_vf_driver='i40evf')
+            sriov_vf_driver='i40evf',
+            speed=10000)
 
         ifclass = constants.INTERFACE_CLASS_PCI_SRIOV
         interface = self._post_get_test_interface(
@@ -409,7 +418,7 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
     def _create_vf(self, ifname, ifclass=None,
                    lower_iface=None, sriov_numvfs=None,
                    sriov_vf_driver=None, datanetworks=None, host=None,
-                   expect_errors=False):
+                   expect_errors=False, max_tx_rate=None):
         if not host:
             host = self.controller
         if not lower_iface:
@@ -429,7 +438,8 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
             uses=[lower_iface['ifname']],
             forihostid=host.id, ihost_uuid=host.uuid,
             sriov_numvfs=sriov_numvfs,
-            sriov_vf_driver=sriov_vf_driver)
+            sriov_vf_driver=sriov_vf_driver,
+            max_tx_rate=max_tx_rate)
         response = self._post_and_check(interface, expect_errors)
         if expect_errors is False:
             interface['uuid'] = response.json['uuid']
@@ -615,6 +625,36 @@ class InterfaceControllerVlanOverEthernet(InterfaceTestCase):
         super(InterfaceControllerVlanOverEthernet, self).setUp()
 
     def test_controller_vlan_over_ethernet_profile(self):
+        self._create_and_apply_profile(self.controller)
+
+
+class InterfaceEthernetOverSriov(InterfaceTestCase):
+
+    def _setup_configuration(self):
+        # Setup a sample configuration where the personality is set to a
+        # controller with a worker subfunction and all interfaces are
+        # ethernet aside from a VF over SR-IOV interface.
+        self._create_host(constants.CONTROLLER, constants.WORKER,
+                          admin=constants.ADMIN_LOCKED)
+        self._create_datanetworks()
+
+        lower_port, lower_iface = self._create_sriov(
+            'sriov1', sriov_numvfs=2)
+        self._create_vf('vf1', lower_iface=lower_iface, sriov_numvfs=1,
+                        sriov_vf_driver='vfio', datanetworks='group0-data1')
+        port, iface = self._create_ethernet(
+            'pxeboot', constants.NETWORK_TYPE_PXEBOOT, lower_iface=lower_iface)
+        self._create_vlan('oam', constants.NETWORK_TYPE_OAM,
+                          constants.INTERFACE_CLASS_PLATFORM, 1, lower_iface)
+        self._create_vlan('mgmt', constants.NETWORK_TYPE_MGMT,
+                          constants.INTERFACE_CLASS_PLATFORM, 2, lower_iface)
+        self._create_vlan('cluster', constants.NETWORK_TYPE_CLUSTER_HOST,
+                          constants.INTERFACE_CLASS_PLATFORM, 3, lower_iface)
+
+    def setUp(self):
+        super(InterfaceEthernetOverSriov, self).setUp()
+
+    def test_ethernet_over_sriov_profile(self):
         self._create_and_apply_profile(self.controller)
 
 
@@ -986,6 +1026,39 @@ class InterfaceAIOVfOverSriov(InterfaceTestCase):
         super(InterfaceAIOVfOverSriov, self).setUp()
 
     def test_AIO_vf_over_sriov_profile(self):
+        self._create_and_apply_profile(self.controller)
+
+
+class InterfaceAIOVfWithRatelimitOverSriov(InterfaceTestCase):
+
+    def _setup_configuration(self):
+        # Setup a sample configuration where the personality is set to a
+        # controller with a worker subfunction and all interfaces are
+        # ethernet aside from a VF over SR-IOV interface.
+        self._create_host(constants.CONTROLLER, constants.WORKER,
+                          admin=constants.ADMIN_LOCKED)
+        self._create_datanetworks()
+        self._create_ethernet('oam', constants.NETWORK_TYPE_OAM)
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT)
+        self._create_ethernet('cluster', constants.NETWORK_TYPE_CLUSTER_HOST)
+        self._create_ethernet('data', constants.NETWORK_TYPE_DATA,
+                              constants.INTERFACE_CLASS_DATA,
+                              'group0-data0')
+        self._create_ethernet('pthru', constants.NETWORK_TYPE_PCI_PASSTHROUGH,
+                              constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                              'group0-ext0')
+        lower_port, lower_iface = self._create_sriov(
+            'sriov1', sriov_numvfs=3, datanetworks='group0-data0')
+        self._create_vf('vf1', lower_iface=lower_iface, sriov_numvfs=1,
+                        sriov_vf_driver='vfio', datanetworks='group0-data1')
+        self._create_vf('vf2', lower_iface=lower_iface, sriov_numvfs=1,
+                        sriov_vf_driver='vfio', datanetworks='group0-data1',
+                        max_tx_rate=100)
+
+    def setUp(self):
+        super(InterfaceAIOVfWithRatelimitOverSriov, self).setUp()
+
+    def test_AIO_vf_with_ratelimit_over_sriov_profile(self):
         self._create_and_apply_profile(self.controller)
 
 
@@ -1951,6 +2024,86 @@ class TestPostMixin(object):
         self.assertEqual('application/json', response.content_type)
         self.assertIn('VF interfaces can only use one lower',
                       response.json['error_message'])
+
+    def test_create_vf_interface_with_valid_ratelimit(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, lower_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4)
+        # default speed is 10Gbps
+        self._create_vf('vf1', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=1,
+            expect_errors=False, max_tx_rate=1000)
+        self._create_vf('vf2', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=1,
+            expect_errors=False, max_tx_rate=8000)
+
+    def test_create_vf_interface_with_invalid_ratelimit(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, lower_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4)
+        self._create_vf('vf1', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=1,
+            expect_errors=False, max_tx_rate=1000)
+        # exceeds total bandwidth
+        self._create_vf('vf2', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=1,
+            expect_errors=True, max_tx_rate=9000)
+        # rate is not a numeric value
+        self._create_vf('vf3', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=1,
+            expect_errors=True, max_tx_rate='ratelimit')
+
+    def test_interface_vf_ratelimit_modify_add_ratelimit(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, lower_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4)
+        vf = self._create_vf('vf1', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=3, expect_errors=False)
+
+        patch_result = self.patch_dict_json(
+            '%s' % self._get_path(vf['uuid']),
+            max_tx_rate=2000)
+
+        self.assertEqual('application/json', patch_result.content_type)
+        self.assertEqual(http_client.OK, patch_result.status_code)
+        self.assertEqual(2000, patch_result.json['max_tx_rate'])
+
+    def test_interface_vf_ratelimit_modify_adjust_ratelimit(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, lower_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4)
+        vf = self._create_vf('vf1', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=3,
+            expect_errors=False, max_tx_rate=1000)
+
+        patch_result = self.patch_dict_json(
+            '%s' % self._get_path(vf['uuid']),
+            max_tx_rate=2000)
+
+        self.assertEqual('application/json', patch_result.content_type)
+        self.assertEqual(http_client.OK, patch_result.status_code)
+        self.assertEqual(2000, patch_result.json['max_tx_rate'])
+
+    def test_interface_vf_ratelimit_modify_clear_ratelimit(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, lower_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4)
+        vf = self._create_vf('vf1', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=3,
+            expect_errors=False, max_tx_rate=1000)
+
+        patch_result = self.patch_dict_json(
+            '%s' % self._get_path(vf['uuid']),
+            max_tx_rate=0)
+
+        self.assertEqual('application/json', patch_result.content_type)
+        self.assertEqual(http_client.OK, patch_result.status_code)
+        self.assertEqual(0, patch_result.json['max_tx_rate'])
 
 
 class TestAIOPost(InterfaceTestCase):

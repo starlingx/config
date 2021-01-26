@@ -146,7 +146,8 @@ class Interface(base.SysinvObject):
             'ipv6_pool': utils.uuid_or_none,
             'sriov_numvfs': utils.int_or_none,
             'sriov_vf_driver': utils.str_or_none,
-            'ptp_role': utils.str_or_none
+            'ptp_role': utils.str_or_none,
+            'max_tx_rate': utils.int_or_none,
              }
 
     _foreign_fields = {'uses': _get_interface_name_list,
@@ -169,3 +170,17 @@ class Interface(base.SysinvObject):
     def save_changes(self, context, updates):
         self.dbapi.iinterface_update(self.uuid,  # pylint: disable=no-member
                                      updates)
+
+    @classmethod
+    def from_db_object(cls, db_obj):
+        cls._interface_ratelimit_decode(db_obj)
+        return cls._from_db_object(cls(), db_obj)
+
+    @classmethod
+    def _interface_ratelimit_decode(cls, db_obj):
+        if not isinstance(db_obj, list):
+            try:
+                capabilities = db_obj['ifcapabilities']
+                db_obj['max_tx_rate'] = capabilities['max_tx_rate']
+            except (ValueError, TypeError):
+                db_obj['max_tx_rate'] = None

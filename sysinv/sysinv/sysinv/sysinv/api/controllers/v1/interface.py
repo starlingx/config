@@ -193,6 +193,9 @@ class Interface(base.APIBase):
     ptp_role = wtypes.text
     "The PTP role for this interface"
 
+    max_tx_rate = int
+    "The value of configured max tx rate of VF, Mbps"
+
     def __init__(self, **kwargs):
         self.fields = list(objects.interface.fields.keys())
         for k in self.fields:
@@ -217,7 +220,8 @@ class Interface(base.APIBase):
                                            'aemode', 'schedpolicy', 'txhashpolicy',
                                            'vlan_id', 'uses', 'usesmodify', 'used_by',
                                            'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
-                                           'sriov_numvfs', 'sriov_vf_driver', 'ptp_role'])
+                                           'sriov_numvfs', 'sriov_vf_driver', 'ptp_role',
+                                           'max_tx_rate'])
 
         # never expose the ihost_id attribute
         interface.ihost_id = wtypes.Unset
@@ -672,7 +676,8 @@ def _set_defaults(interface):
                 'vlan_id': None,
                 'sriov_numvfs': 0,
                 'sriov_vf_driver': None,
-                'ptp_role': constants.INTERFACE_PTP_ROLE_NONE}
+                'ptp_role': constants.INTERFACE_PTP_ROLE_NONE,
+                'max_tx_rate': None}
 
     if interface['ifclass'] == constants.INTERFACE_CLASS_DATA:
         defaults['ipv4_mode'] = constants.IPV4_DISABLED
@@ -1016,6 +1021,43 @@ def _check_network_type_and_port(interface, ihost,
             raise wsme.exc.ClientSideError(msg)
 
 
+def _check_interface_ratelimit(interface):
+    # Ensure rate limit is valid for VF interfaces
+    if interface['max_tx_rate'] is not None:
+        if not str(interface['max_tx_rate']).isdigit():
+            msg = _("max_tx_rate must be an integer value.")
+            raise wsme.exc.ClientSideError(msg)
+        if interface['iftype'] != constants.INTERFACE_TYPE_VF:
+            msg = _("max_tx_rate is only allowed to be configured for VF interfaces")
+            raise wsme.exc.ClientSideError(msg)
+
+        # check if an overcommitted config
+        max_tx_rate = interface['max_tx_rate']
+
+        ihost_uuid = interface['ihost_uuid']
+        lower_ifname = interface['uses'][0]
+        lower_iface = (
+            pecan.request.dbapi.iinterface_get(lower_ifname, ihost_uuid))
+
+        ports = pecan.request.dbapi.ethernet_port_get_by_interface(
+                                                        lower_iface['uuid'])
+        if len(ports) > 0 and ports[0]['speed'] is not None:
+            # keep 10% of the bandwidth for PF traffic
+            total_rate_for_vf = int(ports[0]['speed'] * constants.VF_TOTAL_RATE_RATIO)
+            total_rate_used = 0
+            interface_list = pecan.request.dbapi.iinterface_get_all(
+                forihostid=ihost_uuid)
+            for i in interface_list:
+                if (i['iftype'] == constants.INTERFACE_TYPE_VF and
+                     lower_ifname == i['uses'][0]):
+                    if i['max_tx_rate'] is not None:
+                        total_rate_used += i['max_tx_rate']
+
+            if total_rate_used + max_tx_rate > total_rate_for_vf:
+                msg = _("Configured max_tx_rate exceeds total link speed")
+                raise wsme.exc.ClientSideError(msg)
+
+
 def _check_interface_ptp(interface):
     # Ensure PTP settings are valid for this interface
     # Validate PTP role value
@@ -1302,6 +1344,7 @@ def _check_interface_data(op, interface, ihost, existing_interface,
                     (interface['sriov_numvfs'], avail_vfs, lower_iface['ifname']))
             raise wsme.exc.ClientSideError(msg)
     _check_interface_ptp(interface)
+    _check_interface_ratelimit(interface)
 
     return interface
 

@@ -748,6 +748,9 @@ LINK_SPEED_1G = 1000
 LINK_SPEED_10G = 10000
 LINK_SPEED_25G = 25000
 
+# VF rate limit
+VF_TOTAL_RATE_RATIO = 0.9
+
 # DRBD engineering limits.
 # Link Util values are in Percentage.
 DRBD_LINK_UTIL_MIN = 5
