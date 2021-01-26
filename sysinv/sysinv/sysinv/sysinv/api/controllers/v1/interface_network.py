@@ -237,6 +237,8 @@ class InterfaceNetworkController(rest.RestController):
             return
         elif interface.ifclass == constants.INTERFACE_CLASS_PLATFORM:
             return
+        elif interface.ifclass == constants.INTERFACE_CLASS_PCI_SRIOV:
+            return
         else:
             msg = _("An interface with interface class '%s' "
                     "cannot assign platform networks." % interface.ifclass)
