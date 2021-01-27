@@ -6227,6 +6227,29 @@ class ConductorManager(service.PeriodicService):
         self._config_apply_runtime_manifest(
             context, config_uuid, config_dict, force=True)
 
+    def update_pcidp_config(self, context, host_uuid):
+        """update pcidp configuration for a host
+
+        :param context: an admin context
+        :param host_uuid: the host uuid
+        """
+        # update manifest files and notify agent to apply them
+        personalities = [constants.CONTROLLER,
+                         constants.WORKER]
+        config_uuid = self._config_update_hosts(context, personalities,
+                                                host_uuids=[host_uuid])
+
+        config_dict = {
+            "personalities": personalities,
+            'host_uuids': [host_uuid],
+            "classes": ['platform::kubernetes::worker::pci::runtime'],
+            puppet_common.REPORT_INVENTORY_UPDATE:
+                puppet_common.REPORT_PCI_SRIOV_CONFIG,
+        }
+
+        self._config_apply_runtime_manifest(
+            context, config_uuid, config_dict, force=True)
+
     def configure_system_https(self, context):
         """Update the system https configuration.
 
