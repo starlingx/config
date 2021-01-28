@@ -316,16 +316,16 @@ class CertificateController(rest.RestController):
                 force = True
             else:
                 force = False
-            # if PLATFORM_CERT_SECRET_NAME secret is present in k8s, we
+            # if RESTAPI_CERT_SECRET_NAME secret is present in k8s, we
             # assume that SSL cert is managed by cert-manager/cert-mon
             managed_by_cm = self._kube_op.kube_get_secret(
-                    constants.PLATFORM_CERT_SECRET_NAME,
+                    constants.RESTAPI_CERT_SECRET_NAME,
                     constants.CERT_NAMESPACE_PLATFORM_CERTS)
 
             if force is False and managed_by_cm is not None:
                 msg = "Certificate is currently being managed by cert-manager. \n" \
                         "To manage certificate with this command, first delete " \
-                        "the %s Certificate and Secret." % constants.PLATFORM_CERT_SECRET_NAME
+                        "the %s Certificate and Secret." % constants.RESTAPI_CERT_SECRET_NAME
                 LOG.info(msg)
                 return dict(success="", error=msg)
 

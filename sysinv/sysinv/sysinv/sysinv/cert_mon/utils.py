@@ -576,8 +576,8 @@ def rest_api_upload(token, filepath, url, data=None):
     return upload_request_with_data(token, url, body=file_to_upload, data=data)
 
 
-def update_platformcert_pemfile(tls_crt, tls_key):
-    LOG.info('Updating platformcert temporary pemfile')
+def update_pemfile(tls_crt, tls_key):
+    LOG.info('Updating temporary pemfile')
     try:
         fd, tmppath = tempfile.mkstemp(suffix='.pem')
         with open(tmppath, 'w+') as f:
@@ -593,13 +593,20 @@ def update_platformcert_pemfile(tls_crt, tls_key):
     return tmppath
 
 
-def update_platform_cert(token, pem_file_path):
-    LOG.info('Updating platform certificate. pem_file_path=%s' % pem_file_path)
+def update_platform_cert(token, cert_type, pem_file_path, force=False):
+    """Update a platform certificate using the sysinv API
+    :param token: the token to access the sysinv API
+    :param cert_type: the type of the certificate that is being updated
+    :param pem_file_path: path to the certificate file in PEM format
+    :param force: whether to bypass semantic checks and force the update,
+        defaults to False
+    """
+    LOG.info('Updating %s certificate. pem_file_path=%s' % (cert_type, pem_file_path))
     sysinv_url = token.get_service_internal_url(constants.SERVICE_TYPE_PLATFORM, constants.SYSINV_USERNAME)
     api_cmd = sysinv_url + '/certificate/certificate_install'
 
-    data = {'mode': 'ssl',
-            'force': 'true'}
+    data = {'mode': cert_type,
+            'force': str(force).lower()}
 
     response = rest_api_upload(token, pem_file_path, api_cmd, data)
     error = response.get('error')

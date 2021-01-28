@@ -1735,5 +1735,6 @@ DC_ROOT_CA_CONFIG_PATH = \
 ADMIN_EP_CERT_FORMAT = '{tls_key}'
 
 # Platform certificates
-PLATFORM_CERT_SECRET_NAME = "system-restapi-gui-certificate"
+RESTAPI_CERT_SECRET_NAME = "system-restapi-gui-certificate"
+REGISTRY_CERT_SECRET_NAME = "system-registry-local-certificate"
 CERT_NAMESPACE_PLATFORM_CERTS = 'deployment'

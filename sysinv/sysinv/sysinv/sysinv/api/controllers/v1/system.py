@@ -451,12 +451,12 @@ class SystemController(rest.RestController):
             # while 'ssl' cert is managed by cert-manager, return error
             # (Otherwise, cert-mon will turn https back on during cert-renewal process)
             managed_by_cm = self._kube_op.kube_get_secret(
-                    constants.PLATFORM_CERT_SECRET_NAME,
+                    constants.RESTAPI_CERT_SECRET_NAME,
                     constants.CERT_NAMESPACE_PLATFORM_CERTS)
             if https_enabled == 'false' and managed_by_cm is not None:
                 msg = "Certificate is currently being managed by cert-manager. " \
                     "Remove %s Certificate and Secret before disabling https." % \
-                    constants.PLATFORM_CERT_SECRET_NAME
+                    constants.RESTAPI_CERT_SECRET_NAME
                 raise wsme.exc.ClientSideError(_(msg))
 
             if https_enabled != rpc_isystem['capabilities']['https_enabled']:
