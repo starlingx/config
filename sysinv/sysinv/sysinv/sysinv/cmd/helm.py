@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -36,7 +36,7 @@ def create_app_overrides_action(path, app_name=None, namespace=None):
         return
 
     helm_operator = helm.HelmOperator(dbapi=dbapi)
-    app_operator = kube_app.AppOperator(dbapi, helm_operator)
+    app_operator = kube_app.AppOperator(dbapi, helm_operator, {})
 
     if not app_operator.app_has_system_plugins(db_app):
         LOG.info("Overrides generation for application %s is "
@@ -62,7 +62,7 @@ def create_armada_app_overrides_action(path, app_name=None, namespace=None):
         return
 
     helm_operator = helm.HelmOperator(dbapi=dbapi)
-    app_operator = kube_app.AppOperator(dbapi, helm_operator)
+    app_operator = kube_app.AppOperator(dbapi, helm_operator, {})
 
     if not app_operator.app_has_system_plugins(db_app):
         LOG.info("Overrides generation for application %s is "

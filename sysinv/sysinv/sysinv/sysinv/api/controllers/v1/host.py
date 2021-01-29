@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -2068,17 +2068,6 @@ class HostController(rest.RestController):
             ihost_ret = pecan.request.rpcapi.configure_ihost(
                 pecan.request.context, ihost_obj)
 
-            # Trigger a system app reapply if the host has been unlocked.
-            # Only trigger the reapply if it is not during restore and the
-            # openstack app is applied
-            if (cutils.is_openstack_applied(pecan.request.dbapi) and
-                    not os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG) and
-                    patched_ihost.get('action') in
-                    [constants.UNLOCK_ACTION, constants.FORCE_UNLOCK_ACTION]):
-                pecan.request.rpcapi.evaluate_app_reapply(
-                    pecan.request.context,
-                    constants.HELM_APP_OPENSTACK)
-
             pecan.request.dbapi.ihost_update(
                 ihost_obj['uuid'], {'capabilities': ihost_obj['capabilities']})
 
@@ -2086,6 +2075,18 @@ class HostController(rest.RestController):
             ihost_obj['mgmt_ip'] = ihost_ret.mgmt_ip
 
             hostupdate.notify_mtce = True
+
+        # Evaluate app reapply on lock/unlock/swact/reinstall
+        if (not os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG) and
+                patched_ihost.get('action') in
+                [constants.LOCK_ACTION, constants.FORCE_LOCK_ACTION,
+                 constants.UNLOCK_ACTION, constants.FORCE_UNLOCK_ACTION,
+                 constants.SWACT_ACTION, constants.FORCE_SWACT_ACTION,
+                 constants.REINSTALL_ACTION]):
+            pecan.request.rpcapi.evaluate_apps_reapply(
+                pecan.request.context,
+                trigger={'type': patched_ihost.get('action'),
+                         'configure_required': True if hostupdate.configure_required else False})
 
         pecan.request.dbapi.ihost_update(ihost_obj['uuid'],
                                          {'capabilities': ihost_obj['capabilities']})
@@ -2120,6 +2121,11 @@ class HostController(rest.RestController):
                     new_ihost_mtc['action'] = constants.UNLOCK_ACTION
 
                 if new_ihost_mtc['operation'] == 'add':
+                    # Evaluate apps reapply on new host
+                    pecan.request.rpcapi.evaluate_apps_reapply(
+                        pecan.request.context,
+                        trigger={'type': constants.APP_EVALUATE_REAPPLY_TYPE_HOST_ADD})
+
                     mtc_response = mtce_api.host_add(
                         self._api_token, self._mtc_address, self._mtc_port,
                         new_ihost_mtc,
@@ -2529,19 +2535,12 @@ class HostController(rest.RestController):
 
         pecan.request.dbapi.ihost_destroy(ihost_id)
 
-        # Check if platform apps need to be reapplied
-        if personality == constants.CONTROLLER:
-            for app_name in constants.HELM_APPS_PLATFORM_MANAGED:
-                if cutils.is_app_applied(pecan.request.dbapi, app_name):
-                    pecan.request.rpcapi.evaluate_app_reapply(
-                        pecan.request.context, app_name)
-
-        # If the host being removed was an openstack worker node, check to see
-        # if a reapply is needed
-        if openstack_worker and cutils.is_app_applied(
-                pecan.request.dbapi, constants.HELM_APP_OPENSTACK):
-            pecan.request.rpcapi.evaluate_app_reapply(
-                pecan.request.context, constants.HELM_APP_OPENSTACK)
+        # Check if platform apps need to be reapplied after host delete
+        pecan.request.rpcapi.evaluate_apps_reapply(
+            pecan.request.context,
+            trigger={'type': constants.APP_EVALUATE_REAPPLY_TYPE_HOST_DELETE,
+                     'openstack_worker': True if openstack_worker else False,
+                     'personality': personality})
 
     def _notify_mtce_host_delete(self, ihost):
 

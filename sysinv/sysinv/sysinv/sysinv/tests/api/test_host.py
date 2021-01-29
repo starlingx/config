@@ -38,6 +38,7 @@ class FakeConductorAPI(object):
         self.remove_host_config = mock.MagicMock()
         self.delete_barbican_secret = mock.MagicMock()
         self.iplatform_update_by_ihost = mock.MagicMock()
+        self.evaluate_apps_reapply = mock.MagicMock()
         self.evaluate_app_reapply = mock.MagicMock()
         self.update_clock_synchronization_config = mock.MagicMock()
         self.store_default_config = mock.MagicMock()
@@ -252,6 +253,35 @@ class TestPostControllerMixin(object):
         result = self.get_json('/ihosts/%s' % ndict['hostname'])
         self.assertEqual(ndict['personality'], result['personality'])
         self.assertEqual(ndict['serialid'], result['serialid'])
+
+    def test_create_host_evaluate_apps_reapply(self):
+        self.skipTest("Need to allow tests to run from UNPROVISIONED"
+                      " to reach host-add evaluate")
+
+        c1 = self._create_controller_1(
+            invprovision=constants.UNPROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_DISABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        self._create_test_host_platform_interface(c1)
+
+        # Unlock
+        _ = self._patch_host(c1['hostname'],
+                             [{'path': '/action',
+                               'value': constants.UNLOCK_ACTION,
+                               'op': 'replace'},
+                              {'path': '/operational',
+                               'value': constants.OPERATIONAL_ENABLED,
+                               'op': 'replace'},
+                              {'path': '/availability',
+                               'value': constants.AVAILABILITY_ONLINE,
+                               'op': 'replace'}],
+                             'mtce')
+
+        # Verify that the apps reapply was called
+        # once for unlock and once for host-add
+        assert(self.fake_conductor_api.evaluate_apps_reapply.call_count == 2)
 
     def test_create_host_missing_mgmt_mac(self):
         # Test creation of a second node with missing management MAC
@@ -1563,6 +1593,8 @@ class TestDelete(TestHost):
         self.fake_conductor_api.unconfigure_ihost.assert_called_once()
         # Verify that the host was deleted from barbican
         self.fake_conductor_api.delete_barbican_secret.assert_called_once()
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
         # Verify that the host was dropped from patching
         self.mock_patch_api_drop_host.assert_called_once()
         # Verify the host no longer exists
@@ -1901,6 +1933,8 @@ class TestPatch(TestHost):
         self.fake_conductor_api.configure_ihost.assert_called_once()
         # Verify that the app reapply was checked
         self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
         # Verify that the host was added to maintenance
         self.mock_mtce_api_host_modify.assert_called_once()
         # Verify that the host action was cleared
@@ -1934,6 +1968,8 @@ class TestPatch(TestHost):
         self.fake_conductor_api.configure_ihost.assert_called_once()
         # Verify that the app reapply was checked
         self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
         # Verify that the host was modified in maintenance
         self.mock_mtce_api_host_modify.assert_called_once()
         # Verify that the host action was cleared
@@ -1994,6 +2030,8 @@ class TestPatch(TestHost):
         self.fake_conductor_api.configure_ihost.assert_not_called()
         # Verify that the app reapply evaluate was not configured
         self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
         # Verify that the host was not modified in maintenance
         self.mock_mtce_api_host_modify.assert_not_called()
         # Verify that the host action was cleared
@@ -2080,6 +2118,8 @@ class TestPatch(TestHost):
         # Verify that the host action was cleared
         result = self.get_json('/ihosts/%s' % c1_host['hostname'])
         self.assertEqual(constants.NONE_ACTION, result['action'])
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
 
     def test_unlock_action_controller_while_upgrading_kubelet(self):
         # Create controller-0
@@ -2182,6 +2222,8 @@ class TestPatch(TestHost):
         self.fake_conductor_api.configure_ihost.assert_called_once()
         # Verify that the app reapply was checked
         self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
         # Verify that the host was added to maintenance
         self.mock_mtce_api_host_modify.assert_called_once()
         # Verify that the host action was cleared
@@ -2311,6 +2353,8 @@ class TestPatch(TestHost):
         self.fake_conductor_api.configure_ihost.assert_not_called()
         # Verify that the app reapply evaluate was not configured
         self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
         # Verify that the host was not modified in maintenance
         self.mock_mtce_api_host_modify.assert_not_called()
         # Verify that the host action was cleared
@@ -2365,6 +2409,8 @@ class TestPatchStdDuplexControllerAction(TestHost):
         self.fake_conductor_api.configure_ihost.assert_not_called()
         # Verify that the app reapply evaluate was not configured
         self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
         # Verify that the host was modified in maintenance
         self.mock_mtce_api_host_modify.assert_called_once()
         # Verify that the host action was cleared
@@ -2488,6 +2534,8 @@ class TestPatchStdDuplexControllerAction(TestHost):
         self.fake_conductor_api.configure_ihost.assert_not_called()
         # Verify that the app reapply evaluate was not configured
         self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
         # Verify that the host was modified in maintenance
         self.mock_mtce_api_host_modify.assert_called_once()
         # Verify that the host action was cleared
@@ -2591,6 +2639,8 @@ class TestPatchStdDuplexControllerAction(TestHost):
         self.mock_vim_api_host_action.assert_not_called()
         # Verify that the app reapply evaluate was not configured
         self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
         # Verify that the host was configured
         self.fake_conductor_api.configure_ihost.assert_called_once()
         # Verify that the host was modified in maintenance

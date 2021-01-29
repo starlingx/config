@@ -1814,6 +1814,17 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('get_fernet_keys',
                                                 key_id=key_id))
 
+    def evaluate_apps_reapply(self, context, trigger):
+        """Synchronously, determine whether an application
+        re-apply is needed, and if so, raise the re-apply flag.
+
+        :param context: request context.
+        :param trigger: dictionary containing at least the 'type' field
+
+        """
+        return self.call(context, self.make_msg('evaluate_apps_reapply',
+                                                trigger=trigger))
+
     def evaluate_app_reapply(self, context, app_name):
         """Synchronously, determine whether an application
         re-apply is needed, and if so, raise the re-apply flag.

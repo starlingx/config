@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2017 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 import jsonpatch
@@ -518,10 +518,12 @@ class SystemController(rest.RestController):
         capabilities = {}
         distributed_cloud_role = ""
         security_feature = ""
+        delta_fields = {}
 
         for field in objects.system.fields:
             if rpc_isystem[field] != patched_system[field]:
                 rpc_isystem[field] = patched_system[field]
+                delta_fields[field] = patched_system[field]
                 if field == 'name':
                     name = rpc_isystem[field]
                 if field == 'contact':
@@ -542,6 +544,11 @@ class SystemController(rest.RestController):
         delta = rpc_isystem.obj_what_changed()
         delta_handle = list(delta)
         rpc_isystem.save()
+
+        pecan.request.rpcapi.evaluate_apps_reapply(
+            pecan.request.context,
+            trigger={'type': constants.APP_EVALUATE_REAPPLY_TYPE_SYSTEM_MODIFY,
+                     'delta_fields': delta_fields})
 
         if name:
             LOG.info("update system name")

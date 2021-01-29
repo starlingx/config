@@ -183,6 +183,7 @@ class ConductorManager(service.PeriodicService):
 
     RPC_API_VERSION = '1.1'
     my_host_id = None
+    apps_metadata = {constants.APP_METADATA_APPS: {}}
 
     def __init__(self, host, topic):
         serializer = objects_base.SysinvObjectSerializer()
@@ -255,7 +256,7 @@ class ConductorManager(service.PeriodicService):
         # until host unlock and we need ceph-mon up in order to configure
         # ceph for the initial unlock.
         self._helm = helm.HelmOperator(self.dbapi)
-        self._app = kube_app.AppOperator(self.dbapi, self._helm)
+        self._app = kube_app.AppOperator(self.dbapi, self._helm, self.apps_metadata)
         self._docker = kube_app.DockerHelper(self.dbapi)
         self._kube = kubernetes.KubeOperator()
         self._armada = kube_app.ArmadaHelper(self._kube)
@@ -273,6 +274,10 @@ class ConductorManager(service.PeriodicService):
 
         # Save our start time for time limited init actions
         self._start_time = timeutils.utcnow()
+
+        # Load apps metadata
+        for app in self.dbapi.kube_app_get_all():
+            self._app.load_application_metadata(app)
 
     def _get_active_controller_uuid(self):
         ahost = utils.HostHelper.get_active_controller(self.dbapi)
@@ -4815,11 +4820,9 @@ class ConductorManager(service.PeriodicService):
         # Check if apps need to be re-applied when host services are
         # available (after unlock), but only if system restore is not in
         # progress
-        if not os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG) \
-           and availability in [constants.VIM_SERVICES_ENABLED]:
-            for app_name in constants.HELM_APPS_WITH_REAPPLY_SUPPORT:
-                if cutils.is_app_applied(self.dbapi, app_name):
-                    self.evaluate_app_reapply(context, app_name)
+        if not os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG):
+            self.evaluate_apps_reapply(context, trigger={'type': constants.APP_EVALUATE_REAPPLY_HOST_AVAILABILITY,
+                                                         'availability': availability})
 
         # Clear any "reboot needed" DB entry for the host if it is set.
         # If there are no more pending device image update entries in the DB
@@ -5739,7 +5742,7 @@ class ConductorManager(service.PeriodicService):
 
         # Pick first app that needs to be re-applied
         for index, app_name in enumerate(
-                constants.HELM_APPS_WITH_REAPPLY_SUPPORT):
+                self.determine_apps_reapply_order(name_only=True)):
             if self._app.needs_reapply(app_name):
                 break
         else:
@@ -9229,9 +9232,7 @@ class ConductorManager(service.PeriodicService):
                                    host_uuids=host_uuids,
                                    force=force)
 
-        for app_name in constants.HELM_APPS_WITH_REAPPLY_SUPPORT:
-            if cutils.is_app_applied(self.dbapi, app_name):
-                self.evaluate_app_reapply(context, app_name)
+        self.evaluate_apps_reapply(context, trigger={'type': constants.APP_EVALUATE_REAPPLY_TYPE_RUNTIME_APPLY_PUPPET})
 
         # Remove reboot required flag in case it's present. Runtime manifests
         # are no supposed to clear this flag. A host lock/unlock cycle (or similar)
@@ -11741,6 +11742,121 @@ class ConductorManager(service.PeriodicService):
           """
         return self._fernet.get_fernet_keys(key_id)
 
+    def determine_apps_reapply_order(self, name_only):
+        # TODO(dvoicule) reorder apps based on dependencies between them
+        # now make HELM_APP_PLATFORM first to keep backward compatibility
+        ordered_apps = []
+
+        try:
+            apps = list(filter(lambda app: app.active, self.dbapi.kube_app_get_all()))
+
+            ordered_apps = sorted(apps, key=lambda x: x.get('name', 'placeholder')
+                                 if x.get('name', 'placeholder') != constants.HELM_APP_PLATFORM else '')
+            if name_only:
+                ordered_apps = [app.name for app in ordered_apps]
+        except Exception as e:
+            LOG.error("Error while ordering apps for reapply {}".format(e))
+            ordered_apps = []
+
+        return ordered_apps
+
+    def evaluate_apps_reapply(self, context, trigger):
+        """Synchronously, determine whether an application
+        re-apply is needed, and if so, raise the re-apply flag.
+
+        Run 2 checks before doing an app evaluation.
+        First check is a semantic check calling a lifecycle hook which can
+        implement complex logic.
+        Second check is specified in metadata which allows faster development
+        time, doing simple key:value comparisons. Check that the 'trigger'
+        parameter of the function contains a list of key:value pairs at a
+        specified location. Default location for searching is root of 'trigger'
+        dictionary. If the keys are absent or the values do not match, then the
+        check is considered failed and the evaluation skipped.
+
+        :param context: request context.
+        :param trigger: dictionary containing at least the 'type' field
+
+        """
+        LOG.info("Evaluating apps reapply {} ".format(trigger))
+        apps = self.determine_apps_reapply_order(name_only=False)
+
+        metadata_map = constants.APP_EVALUATE_REAPPLY_TRIGGER_TO_METADATA_MAP
+
+        for app in apps:
+
+            app_metadata = self.apps_metadata[constants.APP_METADATA_APPS].get(app.name, {})
+            try:
+                app_triggers = app_metadata[constants.APP_METADATA_BEHAVIOR][
+                    constants.APP_METADATA_EVALUATE_REAPPLY][
+                    constants.APP_METADATA_TRIGGERS]
+            except KeyError:
+                continue
+
+            try:
+                hook_info = LifecycleHookInfo()
+                hook_info.mode = constants.APP_LIFECYCLE_MODE_AUTO
+                hook_info.operation = constants.APP_EVALUATE_REAPPLY_OP
+                hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK
+                hook_info.extra[LifecycleConstants.EVALUATE_REAPPLY_TRIGGER] = trigger
+                self.app_lifecycle_actions(context=context, rpc_app=app, hook_info=hook_info)
+            except exception.LifecycleSemanticCheckException as e:
+                LOG.info("Evaluate reapply for {} rejected: {}".format(app.name, e))
+                continue
+            except exception.LifecycleMissingInfo as e:
+                LOG.error("Evaluate reapply for {} error: {}".format(app.name, e))
+                continue
+            except Exception as e:
+                LOG.error("Unexpected error during hook for app {}, error: {}"
+                          "".format(app.name, e))
+                continue
+
+            if trigger['type'] in metadata_map.keys():
+                # Check if the app subscribes to this trigger type
+                if filter(lambda t: t.get('type', None) ==
+                                    metadata_map[trigger['type']],
+                          app_triggers):
+                    # Get the first trigger with a specific type in the metadata
+                    app_trigger = [x for x in app_triggers if
+                                   x.get(constants.APP_METADATA_TYPE, None) == metadata_map[trigger['type']]][0]
+
+                    # Get the filters for the trigger
+                    trigger_filters = app_trigger.get(constants.APP_METADATA_FILTERS, [])
+
+                    # Get which field inside the trigger should have the filters applied on
+                    # Default is the trigger dictionary itself, but can be redirected to
+                    # a sub-dictionary
+                    target_for_filters_field = app_trigger.get(constants.APP_METADATA_FILTER_FIELD, None)
+                    if target_for_filters_field is None:
+                        target_for_filters = trigger
+                    else:
+                        if target_for_filters_field not in trigger:
+                            LOG.error("Trigger {} does not have field {}"
+                                      "".format(trigger, target_for_filters_field))
+                            continue
+                        target_for_filters = trigger[target_for_filters_field]
+
+                    allow = True
+                    # All filters must match, if any doesn't match then reject
+                    # the evaluation
+                    for filter_ in trigger_filters:
+                        # Each filter is a single entry dict
+                        k = filter_.keys()[0]
+                        if k not in target_for_filters:
+                            LOG.info("Evaluate reapply for {} rejected: "
+                                     "trigger field {} absent".format(app.name, k))
+                            allow = False
+                            break
+                        elif str(target_for_filters[k]) != str(filter_[k]):
+                            LOG.info("Evaluate reapply for {} rejected: "
+                                     "trigger field {} expected {} but got {} "
+                                     "".format(app.name, k, filter_[k], target_for_filters[k]))
+                            allow = False
+                            break
+
+                    if allow:
+                        self.evaluate_app_reapply(context, app.name)
+
     def evaluate_app_reapply(self, context, app_name):
         """Synchronously, determine whether an application
         re-apply is needed, and if so, raise the re-apply flag.
@@ -11792,7 +11908,8 @@ class ConductorManager(service.PeriodicService):
                 LOG.exception("Failed to regenerate the overrides for app %s. %s" %
                               (app.name, e))
         else:
-            LOG.info("%s app status does not warrant re-apply", app.name)
+            LOG.info("{} app active:{} status:{} does not warrant re-apply",
+                     app.name, app.active, app.status)
 
     def app_lifecycle_actions(self, context, rpc_app, hook_info):
         """Perform any lifecycle actions for the operation and timing supplied.
@@ -11829,6 +11946,8 @@ class ConductorManager(service.PeriodicService):
                                        lifecycle_hook_info_app_upload)
         except Exception as e:
             LOG.error("Error performing app_lifecycle_actions %s" % str(e))
+
+        self._app.load_application_metadata(rpc_app)
 
     def perform_app_apply(self, context, rpc_app, mode, lifecycle_hook_info_app_apply):
         """Handling of application install request (via AppOperator)

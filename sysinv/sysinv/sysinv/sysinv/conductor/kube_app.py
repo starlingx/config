@@ -139,9 +139,10 @@ class AppOperator(object):
     # List of in progress apps and their abort status
     abort_requested = {}
 
-    def __init__(self, dbapi, helm_op):
+    def __init__(self, dbapi, helm_op, apps_metadata):
         self._dbapi = dbapi
         self._helm = helm_op
+        self._apps_metadata = apps_metadata
         self._plugins = PluginHelper(self._dbapi, self._helm)
         self._fm_api = fm_api.FaultAPIs()
         self._docker = DockerHelper(self._dbapi)
@@ -1884,6 +1885,30 @@ class AppOperator(object):
         lifecycle_op = self._helm.get_app_lifecycle_operator(app.name)
         lifecycle_op.app_lifecycle_actions(context, conductor_obj, self, app, hook_info)
 
+    def load_application_metadata(self, rpc_app):
+        """ Load the application metadata from the metadata file of the app
+
+        :param rpc_app: data object provided in the rpc request
+
+        """
+        LOG.info("Loading application metadata for %s" % rpc_app.name)
+
+        app = AppOperator.Application(rpc_app)
+
+        metadata = None
+
+        if os.path.exists(app.sync_metadata_file):
+            with open(app.sync_metadata_file, 'r') as f:
+                # The RoundTripLoader removes the superfluous quotes by default.
+                # Set preserve_quotes=True to preserve all the quotes.
+                # The assumption here: there is just one yaml section
+                metadata = yaml.load(
+                    f, Loader=yaml.RoundTripLoader, preserve_quotes=True)
+
+        if metadata:
+            self._apps_metadata[constants.APP_METADATA_APPS][app.name] = metadata
+            LOG.info("Loaded metadata for app {}: {}".format(app.name, metadata))
+
     def perform_app_apply(self, rpc_app, mode, lifecycle_hook_info_app_apply, caller=None):
         """Process application install request
 
@@ -2119,6 +2144,8 @@ class AppOperator(object):
             to_app = self.perform_app_upload(to_rpc_app, tarfile,
                                              lifecycle_hook_info_app_upload=lifecycle_hook_info_app_update)
             lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
+
+            self.load_application_metadata(to_rpc_app)
 
             # Check whether the new application is compatible with the current k8s version
             self._utils._check_app_compatibility(to_app.name, to_app.version)
@@ -2438,6 +2465,9 @@ class AppOperator(object):
                 self._kube_app.get('app_version'),
                 self._kube_app.get('manifest_file'))
             self.sync_imgfile = generate_synced_images_fqpn(
+                self._kube_app.get('name'),
+                self._kube_app.get('app_version'))
+            self.sync_metadata_file = cutils.generate_synced_metadata_fqpn(
                 self._kube_app.get('name'),
                 self._kube_app.get('app_version'))
 
