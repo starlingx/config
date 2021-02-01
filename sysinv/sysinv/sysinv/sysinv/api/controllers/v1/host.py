@@ -5924,22 +5924,29 @@ class HostController(rest.RestController):
                 self._check_swact_device_image_update(hostupdate.ihost_orig,
                                                       ihost_ctr, force_swact)
 
-                if ihost_ctr.config_target:
-                    if ihost_ctr.config_target != ihost_ctr.config_applied:
-                        try:
-                            upgrade = \
-                                pecan.request.dbapi.software_upgrade_get_one()
-                        except exception.NotFound:
-                            upgrade = None
-                        if upgrade and upgrade.state == \
-                                constants.UPGRADE_ABORTING_ROLLBACK:
-                            pass
-                        else:
-                            raise wsme.exc.ClientSideError(
-                                _("%s target Config %s not yet applied."
-                                  " Apply target Config via Lock/Unlock prior"
-                                  " to Swact") %
-                                (ihost_ctr.hostname, ihost_ctr.config_target))
+                if ihost_ctr.config_target and\
+                        ihost_ctr.config_target != ihost_ctr.config_applied:
+                    try:
+                        upgrade = \
+                            pecan.request.dbapi.software_upgrade_get_one()
+                    except exception.NotFound:
+                        upgrade = None
+                    if upgrade and upgrade.state == \
+                            constants.UPGRADE_ABORTING_ROLLBACK:
+                        pass
+                    elif not utils.is_host_active_controller(ihost_ctr):
+                        # This condition occurs when attempting to host-swact
+                        # away from "active" (platform services) controller.
+                        #
+                        # Since api (sysinv, sm) allows for host-swact
+                        # services away from a "standby" controller, this enforcement
+                        # is not required for host-swact to the already
+                        # active controller.
+                        raise wsme.exc.ClientSideError(
+                            _("%s target Config %s not yet applied."
+                              " Apply target Config via Lock/Unlock prior"
+                              " to Swact") %
+                            (ihost_ctr.hostname, ihost_ctr.config_target))
 
                 self._semantic_check_swact_upgrade(hostupdate.ihost_orig,
                                                    ihost_ctr,

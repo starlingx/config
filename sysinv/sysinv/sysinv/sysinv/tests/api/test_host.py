@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -2321,7 +2321,9 @@ class TestPatchStdDuplexControllerAction(TestHost):
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
-            availability=constants.AVAILABILITY_ONLINE)
+            availability=constants.AVAILABILITY_ONLINE,
+            config_target=None,
+            config_applied=None)
 
         # Swact to controller-0
         response = self._patch_host_action(c1_host['hostname'],
@@ -2344,6 +2346,93 @@ class TestPatchStdDuplexControllerAction(TestHost):
         # Verify that the host action was cleared
         result = self.get_json('/ihosts/%s' % c1_host['hostname'])
         self.assertEqual(constants.NONE_ACTION, result['action'])
+
+    def test_swact_action_config_out_of_date_on_active(self):
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            config_target='89fbefe7-7b43-4bd2-9500-663b33df2e57',
+            config_applied='f9fbefe7-7b43-4bd2-9500-663b33df2e57')
+
+        # Create controller-1
+        c1_host = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            config_target='b447d703-b581-4bf6-bcbd-f99ddcbe4663',
+            config_applied='b447d703-b581-4bf6-bcbd-f99ddcbe4663')
+
+        # controller-0 already active, per comment 'Behave as if the API is
+        # running on controller-0'; so swact from controller-1 is allowed
+        response = self._patch_host_action(c1_host['hostname'],
+                                           constants.SWACT_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_swact_action_from_config_out_of_date(self):
+        # Create active controller-0 with config out of date
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            config_target='89fbefe7-7b43-4bd2-9500-663b33df2e57',
+            config_applied='f9fbefe7-7b43-4bd2-9500-663b33df2e57')
+
+        # Create controller-1
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            config_target='b447d703-b581-4bf6-bcbd-f99ddcbe4663',
+            config_applied='b447d703-b581-4bf6-bcbd-f99ddcbe4663')
+
+        # Swact from active controller-0 to controller-1
+        response = self._patch_host_action(c0_host['hostname'],
+                                           constants.SWACT_ACTION,
+                                           'sysinv-test')
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_swact_action_to_config_out_of_date(self):
+        # Create controller-0
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            config_target='d1fd40ca-9306-44c8-a100-671f22111114',
+            config_applied='d1fd40ca-9306-44c8-a100-671f22111114')
+
+        # Create controller-1
+        c1_host = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            config_target='89fbefe7-7b43-4bd2-9500-663b33df2e57',
+            config_applied='f9fbefe7-7b43-4bd2-9500-663b33df2e57')
+
+        # controller-0 already active, swact from controller-0
+        response = self._patch_host_action(c0_host['hostname'],
+                                           constants.SWACT_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("%s target Config %s not yet applied. " % (
+                      c1_host['hostname'], c1_host['config_target']),
+                      response.json['error_message'])
 
     def test_force_swact_action(self):
         # Create controller-0 in disabled state so force swact is required

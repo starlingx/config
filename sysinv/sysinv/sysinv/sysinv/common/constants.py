@@ -1323,9 +1323,9 @@ INSTALL_STATE_COMPLETED = "completed"
 
 tox_work_dir = os.environ.get("TOX_WORK_DIR")
 if tox_work_dir:
-    SYSINV_LOCK_PATH = tox_work_dir
+    SYSINV_VOLATILE_PATH = tox_work_dir
 else:
-    SYSINV_LOCK_PATH = os.path.join(tsc.VOLATILE_PATH, "sysinv")
+    SYSINV_VOLATILE_PATH = os.path.join(tsc.VOLATILE_PATH, "sysinv")
 
 NETWORK_CONFIG_LOCK_FILE = os.path.join(
     tsc.VOLATILE_PATH, "apply_network_config.lock")
