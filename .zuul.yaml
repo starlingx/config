@@ -12,6 +12,8 @@
         - sysinv-tox-flake8
         - sysinv-tox-pylint
         - sysinv-tox-bandit
+        - controllerconfig-tox-py27
+        - controllerconfig-tox-py36
         - controllerconfig-tox-flake8
         - controllerconfig-tox-pylint
         - cgtsclient-tox-py27
@@ -26,6 +28,8 @@
         - sysinv-tox-flake8
         - sysinv-tox-pylint
         - sysinv-tox-bandit
+        - controllerconfig-tox-py27
+        - controllerconfig-tox-py36
         - controllerconfig-tox-flake8
         - controllerconfig-tox-pylint
         - cgtsclient-tox-py27
@@ -104,6 +108,30 @@
     vars:
       tox_envlist: bandit
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
+
+- job:
+    name: controllerconfig-tox-py27
+    parent: tox
+    description: Run py27 tests for controllerconfig
+    required-projects:
+      - starlingx/fault
+    files:
+      - controllerconfig/*
+    vars:
+      tox_envlist: py27
+      tox_extra_args: -c controllerconfig/controllerconfig/tox.ini
+
+- job:
+    name: controllerconfig-tox-py36
+    parent: tox
+    description: Run py36 tests for controllerconfig
+    required-projects:
+      - starlingx/fault
+    files:
+      - controllerconfig/*
+    vars:
+      tox_envlist: py36
+      tox_extra_args: -c controllerconfig/controllerconfig/tox.ini
 
 - job:
     name: controllerconfig-tox-flake8
