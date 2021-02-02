@@ -1575,6 +1575,10 @@ APP_UPDATE_OP = 'update'
 APP_ROLLBACK_OP = 'rollback'
 APP_ABORT_OP = 'abort'
 APP_EVALUATE_REAPPLY_OP = 'evaluate-reapply'
+# Backup/Restore lifecycle actions:
+APP_BACKUP = 'backup'
+APP_ETCD_BACKUP = 'etcd-backup'
+APP_RESTORE = 'restore'
 
 # Lifecycle constants
 APP_LIFECYCLE_TIMING_PRE = 'pre'
@@ -1593,8 +1597,50 @@ APP_LIFECYCLE_TYPE_ARMADA_REQUEST = 'armada-request'
 APP_LIFECYCLE_MODE_MANUAL = 'manual'
 APP_LIFECYCLE_MODE_AUTO = 'auto'
 APP_LIFECYCLE_FORCE_OPERATION = 'force'
-
 APP_LIFECYCLE_OPERATION_MTC_ACTION = 'mtc-action'
+
+BACKUP_ACTION_NOTIFY_SUCCESS = 'success'
+BACKUP_ACTION_NOTIFY_FAILURE = 'failure'
+
+BACKUP_ACTION_SEMANTIC_CHECK = 'backup-semantic-check'
+BACKUP_ACTION_PRE_BACKUP = 'pre-backup-action'
+BACKUP_ACTION_PRE_ETCD_BACKUP = 'pre-etcd-backup-action'
+BACKUP_ACTION_POST_ETCD_BACKUP = 'post-etcd-backup-action'
+BACKUP_ACTION_POST_BACKUP = 'post-backup-action'
+BACKUP_ACTION_PRE_RESTORE = 'pre-restore-action'
+BACKUP_ACTION_POST_RESTORE = 'post-restore-action'
+
+# backup/restore parameters from the command line utility:
+HOOK_PARAMETERS_MAP = {
+    BACKUP_ACTION_SEMANTIC_CHECK: [APP_LIFECYCLE_MODE_AUTO,
+                                   APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                                   APP_LIFECYCLE_TIMING_PRE,
+                                   APP_BACKUP],
+    BACKUP_ACTION_PRE_BACKUP: [APP_LIFECYCLE_MODE_AUTO,
+                               APP_LIFECYCLE_TYPE_OPERATION,
+                               APP_LIFECYCLE_TIMING_PRE,
+                               APP_BACKUP],
+    BACKUP_ACTION_POST_BACKUP: [APP_LIFECYCLE_MODE_AUTO,
+                                APP_LIFECYCLE_TYPE_OPERATION,
+                                APP_LIFECYCLE_TIMING_POST,
+                                APP_BACKUP],
+    BACKUP_ACTION_PRE_ETCD_BACKUP: [APP_LIFECYCLE_MODE_AUTO,
+                                    APP_LIFECYCLE_TYPE_OPERATION,
+                                    APP_LIFECYCLE_TIMING_PRE,
+                                    APP_ETCD_BACKUP],
+    BACKUP_ACTION_POST_ETCD_BACKUP: [APP_LIFECYCLE_MODE_AUTO,
+                                     APP_LIFECYCLE_TYPE_OPERATION,
+                                     APP_LIFECYCLE_TIMING_POST,
+                                     APP_ETCD_BACKUP],
+    BACKUP_ACTION_PRE_RESTORE: [APP_LIFECYCLE_MODE_AUTO,
+                                APP_LIFECYCLE_TYPE_OPERATION,
+                                APP_LIFECYCLE_TIMING_PRE,
+                                APP_RESTORE],
+    BACKUP_ACTION_POST_RESTORE: [APP_LIFECYCLE_MODE_AUTO,
+                                 APP_LIFECYCLE_TYPE_OPERATION,
+                                 APP_LIFECYCLE_TIMING_POST,
+                                 APP_RESTORE],
+}
 
 # Application metadata constants
 APP_METADATA_MAINTAIN_USER_OVERRIDES = 'maintain_user_overrides'
