@@ -43,6 +43,7 @@ import shutil
 import socket
 import tempfile
 import time
+import traceback
 import uuid
 import xml.etree.ElementTree as ElementTree
 from contextlib import contextmanager
@@ -162,6 +163,9 @@ CONFIG_CONTROLLER_FINI_FLAG = os.path.join(tsc.VOLATILE_PATH,
                                            ".config_controller_fini")
 CONFIG_FAIL_FLAG = os.path.join(tsc.VOLATILE_PATH, ".config_fail")
 
+ACTIVE_CONFIG_REBOOT_REQUIRED = os.path.join(
+    constants.SYSINV_VOLATILE_PATH, ".reboot_required")
+
 # configuration UUID reboot required flag (bit)
 CONFIG_REBOOT_REQUIRED = (1 << 127)
 
@@ -187,6 +191,7 @@ class ConductorManager(service.PeriodicService):
         self.dbapi = None
         self.fm_api = None
         self.fm_log = None
+        self.host_uuid = None
         self._app = None
         self._ceph = None
         self._ceph_api = ceph.CephWrapper(
@@ -230,6 +235,7 @@ class ConductorManager(service.PeriodicService):
         self.dbapi = dbapi.get_instance()
         self.fm_api = fm_api.FaultAPIs()
         self.fm_log = fm.FmCustomerLog()
+        self.host_uuid = self._get_active_controller_uuid()
 
         self._openstack = openstack.OpenStackOperator(self.dbapi)
         self._puppet = puppet.PuppetOperator(self.dbapi)
@@ -237,6 +243,7 @@ class ConductorManager(service.PeriodicService):
         # create /var/run/sysinv if required. On DOR, the manifests
         # may not run to create this volatile directory.
         cutils.check_lock_path()
+        self._initialize_active_controller_reboot_config()
 
         system = self._create_default_system()
 
@@ -266,6 +273,21 @@ class ConductorManager(service.PeriodicService):
 
         # Save our start time for time limited init actions
         self._start_time = timeutils.utcnow()
+
+    def _get_active_controller_uuid(self):
+        ahost = utils.HostHelper.get_active_controller(self.dbapi)
+        if ahost:
+            return ahost.uuid
+        else:
+            return None
+
+    def _initialize_active_controller_reboot_config(self):
+        # initialize host_reboot_config for active controller in case
+        # process has been restarted
+        if self.host_uuid and os.path.exists(ACTIVE_CONFIG_REBOOT_REQUIRED):
+            ahost = self.dbapi.ihost_get(self.host_uuid)
+            self._host_reboot_config_uuid[self.host_uuid] = \
+                [ahost.config_target]
 
     def periodic_tasks(self, context, raise_on_error=False):
         """ Periodic tasks are run at pre-specified intervals. """
@@ -6122,7 +6144,7 @@ class ConductorManager(service.PeriodicService):
                     if (host.clock_synchronization == constants.PTP and
                         host.administrative == constants.ADMIN_UNLOCKED and
                         host.operational == constants.OPERATIONAL_ENABLED and
-                        not (self._config_out_of_date(host) and
+                        not (self._config_out_of_date(context, host) and
                                  self._config_is_reboot_required(host.config_target))):
                         runtime_hosts.append(host.uuid)
 
@@ -8703,7 +8725,7 @@ class ConductorManager(service.PeriodicService):
                 self._host_reboot_config_uuid[ihost_uuid].remove(config_uuid)
             except ValueError:
                 LOG.info("_remove_config_from_reboot_config_list fail"
-                         " host:%s", ihost_uuid)
+                         " host:%s config_uuid %s" % (ihost_uuid, config_uuid))
                 pass
 
     def _clear_config_from_reboot_config_list(self, ihost_uuid):
@@ -8716,10 +8738,19 @@ class ConductorManager(service.PeriodicService):
                          " host: %s", ihost_uuid)
                 pass
 
-    def _config_out_of_date(self, ihost_obj):
+    def _config_out_of_date(self, context, ihost_obj):
+
+        def _align_config_target(context, ihost_obj, applied):
+            LOG.info("Config target with no reboot required, "
+                     "align host_uuid=%s target applied=%s" %
+                     (ihost_obj.uuid, applied))
+            ihost_obj.config_target = applied
+            ihost_obj.save(context)
+
         target = ihost_obj.config_target
         applied = ihost_obj.config_applied
         applied_reboot = None
+
         if applied is not None:
             try:
                 applied_reboot = self._config_set_reboot_required(applied)
@@ -8757,10 +8788,21 @@ class ConductorManager(service.PeriodicService):
         elif target == applied_reboot:
             if ihost_obj.uuid in self._host_reboot_config_uuid:
                 if len(self._host_reboot_config_uuid[ihost_obj.uuid]) == 0:
+                    # There are no further config required for host, update config_target
+                    _align_config_target(context, ihost_obj, applied)
                     return False
+                else:
+                    LOG.info("%s: %s reboot required config_applied %s host_reboot_config %s " %
+                             (ihost_obj.hostname, ihost_obj.uuid, applied,
+                              self._host_reboot_config_uuid[ihost_obj.uuid]))
                 return True
             else:
-                return False
+                if self.host_uuid == ihost_obj.uuid:
+                    # In the active controller case, can clear if no reboot required config.
+                    # The is tracked on initialization and protected from host-swact semantic.
+                    _align_config_target(context, ihost_obj, applied)
+                    return False
+                return True
         else:
             LOG.warn("%s: iconfig out of date: target %s, applied %s " %
                      (hostname, target, applied))
@@ -8816,7 +8858,7 @@ class ConductorManager(service.PeriodicService):
         entity_instance_id = self._get_fm_entity_instance_id(ihost_obj)
 
         save_required = False
-        if self._config_out_of_date(ihost_obj) or \
+        if self._config_out_of_date(context, ihost_obj) or \
                 status == constants.CONFIG_STATUS_REINSTALL:
             LOG.warn("SYS_I Raise system config alarm: host %s "
                      "config applied: %s  vs. target: %s." %
@@ -8981,6 +9023,11 @@ class ConductorManager(service.PeriodicService):
         :                         update
         :return The UUID of the configuration generation
         """
+        def _trace_caller(personalities, host_uuids, reboot, config_uuid):
+            tb = traceback.format_stack()
+            LOG.info("_config_update_hosts personalities=%s host_uuids=%s reboot=%s "
+                     "config_uuid=%s tb=%s" %
+                     (personalities, host_uuids, reboot, config_uuid, tb[-3]))
 
         # generate a new configuration identifier for this update
         config_uuid = uuid.uuid4()
@@ -8993,6 +9040,8 @@ class ConductorManager(service.PeriodicService):
             config_uuid = self._config_set_reboot_required(config_uuid)
         else:
             config_uuid = self._config_clear_reboot_required(config_uuid)
+
+        _trace_caller(personalities, host_uuids, reboot, config_uuid)
 
         if not host_uuids:
             hosts = self.dbapi.ihost_get_list()
@@ -9007,6 +9056,10 @@ class ConductorManager(service.PeriodicService):
                     else:
                         self._host_reboot_config_uuid[host.uuid] = []
                         self._host_reboot_config_uuid[host.uuid].append(config_uuid)
+                    if host.uuid == self.host_uuid:
+                        # This ensures that the host_reboot_config_uuid tracking
+                        # on this controller is aware that a reboot is required
+                        cutils.touch(ACTIVE_CONFIG_REBOOT_REQUIRED)
                 self._update_host_config_target(context, host, config_uuid)
 
         LOG.info("_config_update_hosts config_uuid=%s" % config_uuid)

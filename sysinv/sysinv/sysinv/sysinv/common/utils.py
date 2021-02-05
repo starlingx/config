@@ -1281,25 +1281,25 @@ def bytes_to_MiB(bytes_number):
 
 
 def check_lock_path():
-    if os.path.isdir(constants.SYSINV_LOCK_PATH):
+    if os.path.isdir(constants.SYSINV_VOLATILE_PATH):
         return
     try:
         uid = pwd.getpwnam(constants.SYSINV_USERNAME).pw_uid
         gid = grp.getgrnam(constants.SYSINV_GRPNAME).gr_gid
-        os.makedirs(constants.SYSINV_LOCK_PATH)
-        os.chown(constants.SYSINV_LOCK_PATH, uid, gid)
+        os.makedirs(constants.SYSINV_VOLATILE_PATH)
+        os.chown(constants.SYSINV_VOLATILE_PATH, uid, gid)
         LOG.info("Created directory=%s" %
-                 constants.SYSINV_LOCK_PATH)
+                 constants.SYSINV_VOLATILE_PATH)
 
     except OSError as e:
         LOG.exception("makedir %s OSError=%s encountered" %
-                      (constants.SYSINV_LOCK_PATH, e))
+                      (constants.SYSINV_VOLATILE_PATH, e))
 
 
 def synchronized(name, external=True):
     if external:
         check_lock_path()
-        lock_path = constants.SYSINV_LOCK_PATH
+        lock_path = constants.SYSINV_VOLATILE_PATH
     else:
         lock_path = None
     return lockutils.synchronized(name,
