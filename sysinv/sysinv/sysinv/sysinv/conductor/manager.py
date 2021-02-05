@@ -6318,6 +6318,9 @@ class ConductorManager(service.PeriodicService):
         if utils.get_system_mode(self.dbapi) != constants.SYSTEM_MODE_SIMPLEX:
             cutils.touch(
                 self._get_oam_runtime_apply_file(standby_controller=True))
+        else:
+            cutils.touch(
+                self._get_oam_runtime_apply_file(standby_controller=False))
 
     def update_user_config(self, context):
         """Update the user configuration"""

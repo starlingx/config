@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 import os
@@ -193,6 +193,9 @@ class InterfaceNetworkController(rest.RestController):
                 _update_host_mgmt_mac(host, ethernet_port_mac)
                 cutils.perform_distributed_cloud_config(pecan.request.dbapi,
                                                         interface_id)
+
+        if network_type == constants.NETWORK_TYPE_OAM:
+            pecan.request.rpcapi.update_oam_config(pecan.request.context)
 
         return InterfaceNetwork.convert_with_links(result)
 
