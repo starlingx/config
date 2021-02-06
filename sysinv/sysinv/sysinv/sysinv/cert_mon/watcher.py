@@ -564,4 +564,4 @@ class RegistryCertRenew(PlatformCertRenew):
     def update_certificate(self, event_data):
         LOG.info('RegistryCertRenew: Secret changes detected. Initiating certificate update')
 
-        self.update_platform_certificate(event_data, constants.CERT_MODE_DOCKER_REGISTRY)
+        self.update_platform_certificate(event_data, constants.CERT_MODE_DOCKER_REGISTRY, force=True)

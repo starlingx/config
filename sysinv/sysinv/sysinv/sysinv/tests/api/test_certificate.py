@@ -523,9 +523,15 @@ class ApiCertificatePostTestSuite(ApiCertificateTestCaseMixin,
                                 'CA cert'
         self.assertIn(fault_string_expected, str(resp.get('error')))
 
-    # Test install ssl certificate signed by intermediate CA
+    # Test failed installation of ssl certificate managed by cert-manager
     def test_force_failure_install_ssl_certificate(self):
-        mode = 'ssl'
+        self.force_failure_install_certificate(constants.CERT_MODE_SSL)
+
+    # Test failed installation of docker_registry certificate managed by cert-manager
+    def test_force_failure_install_docker_registry_certificate(self):
+        self.force_failure_install_certificate(constants.CERT_MODE_DOCKER_REGISTRY)
+
+    def force_failure_install_certificate(self, mode):
         certfile = os.path.join(os.path.dirname(__file__), "data",
                                 'ssl-cert-2xcert-1xkey-with-key.pem')
 
@@ -560,9 +566,15 @@ class ApiCertificatePostTestSuite(ApiCertificateTestCaseMixin,
         fault_err_msg = "Certificate is currently being managed by cert-manager"
         self.assertIn(fault_err_msg, str(resp.get('error')))
 
-    # Test install ssl certificate signed by intermediate CA
+    # Test successful forced installation of ssl certificate managed by cert-manager
     def test_force_success_install_ssl_certificate(self):
-        mode = 'ssl'
+        self.force_success_install_certificate(constants.CERT_MODE_SSL)
+
+    # Test successful forced installation of docker_registry certificate managed by cert-manager
+    def test_force_success_install_docker_registry_certificate(self):
+        self.force_success_install_certificate(constants.CERT_MODE_DOCKER_REGISTRY)
+
+    def force_success_install_certificate(self, mode):
         certfile = os.path.join(os.path.dirname(__file__), "data",
                                 'ssl-cert-2xcert-1xkey-with-key.pem')
 

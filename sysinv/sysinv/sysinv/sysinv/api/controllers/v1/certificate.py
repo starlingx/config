@@ -308,24 +308,25 @@ class CertificateController(rest.RestController):
         capabilities = system.capabilities
 
         # platform-cert 'force' check for backward compatibility
-        if mode == constants.CERT_MODE_SSL:
+        if self._is_mode_supported_by_cert_manager(mode):
             # Call may not contain 'force' parameter
             # Note: cert-mon will pass a HTTP POST 'force'='true' param
-            force = pecan.request.POST.get('force')
-            if force == 'true':
-                force = True
-            else:
-                force = False
-            # if RESTAPI_CERT_SECRET_NAME secret is present in k8s, we
-            # assume that SSL cert is managed by cert-manager/cert-mon
+            force_param = pecan.request.POST.get('force')
+            force = force_param == "true"
+
+            plat_cert_name = self._get_secret_name_for_mode(mode)
+
+            # if the certificate secret is present in k8s, we
+            # assume that SSL cert is currently being managed by
+            # cert-manager/cert-mon
             managed_by_cm = self._kube_op.kube_get_secret(
-                    constants.RESTAPI_CERT_SECRET_NAME,
+                    plat_cert_name,
                     constants.CERT_NAMESPACE_PLATFORM_CERTS)
 
             if force is False and managed_by_cm is not None:
                 msg = "Certificate is currently being managed by cert-manager. \n" \
                         "To manage certificate with this command, first delete " \
-                        "the %s Certificate and Secret." % constants.RESTAPI_CERT_SECRET_NAME
+                        "the %s Certificate and Secret." % plat_cert_name
                 LOG.info(msg)
                 return dict(success="", error=msg)
 
@@ -571,6 +572,14 @@ class CertificateController(rest.RestController):
         res.result = 'OK'
 
         return res
+
+    @staticmethod
+    def _get_secret_name_for_mode(mode):
+        return constants.CERT_MODE_TO_SECRET_NAME[mode]
+
+    @staticmethod
+    def _is_mode_supported_by_cert_manager(mode):
+        return mode in constants.CERT_MODES_SUPPORTED_CERT_MANAGER
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(Certificate, types.uuid, status_code=200)
