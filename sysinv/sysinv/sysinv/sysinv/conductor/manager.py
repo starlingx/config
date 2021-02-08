@@ -8114,6 +8114,7 @@ class ConductorManager(service.PeriodicService):
 
         LOG.info("Updating parameters configuration for service: %s" % service)
 
+        config_uuid = None
         # On service parameter add just update the host profile
         # for personalities pertinent to that service
         if service == constants.SERVICE_TYPE_HTTP:
@@ -8126,6 +8127,10 @@ class ConductorManager(service.PeriodicService):
             pass
         elif service == constants.SERVICE_TYPE_PTP:
             self._update_ptp_host_configs(context, do_apply=do_apply)
+        elif service == constants.SERVICE_TYPE_DOCKER:
+            config_uuid = self._config_update_hosts(context,
+                                                    [constants.CONTROLLER],
+                                                    reboot=True)
         else:
             # All other services
             personalities = [constants.CONTROLLER]
