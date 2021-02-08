@@ -256,18 +256,32 @@ class DC_CertWatcher(CertWatcher):
             self.register_listener(RootCARenew(self.context))
 
 
-class PlatCert_CertWatcher(CertWatcher):
+class RestApiCert_CertWatcher(CertWatcher):
     def __init__(self):
-        super(PlatCert_CertWatcher, self).__init__()
+        super(RestApiCert_CertWatcher, self).__init__()
 
     def initialize(self):
         self.context.initialize()
 
         platcert_ns = constants.CERT_NAMESPACE_PLATFORM_CERTS
-        LOG.info('setting ns : %s & registering listener' % platcert_ns)
+        LOG.info('setting ns for restapi cert : %s & registering listener' % platcert_ns)
         self.namespace = platcert_ns
         self.context.kubernete_namespace = platcert_ns
-        self.register_listener(PlatformCertRenew(self.context))
+        self.register_listener(RestApiCertRenew(self.context))
+
+
+class RegistryCert_CertWatcher(CertWatcher):
+    def __init__(self):
+        super(RegistryCert_CertWatcher, self).__init__()
+
+    def initialize(self):
+        self.context.initialize()
+
+        platcert_ns = constants.CERT_NAMESPACE_PLATFORM_CERTS
+        LOG.info('setting ns for registry cert : %s & registering listener' % platcert_ns)
+        self.namespace = platcert_ns
+        self.context.kubernete_namespace = platcert_ns
+        self.register_listener(RegistryCertRenew(self.context))
 
 
 class CertificateRenew(CertWatcherListener):
@@ -496,23 +510,58 @@ class RootCARenew(CertificateRenew):
 
 
 class PlatformCertRenew(CertificateRenew):
-    def __init__(self, context):
+    """Handles a renew event for a certificate that must be installed as a platform cert.
+    """
+
+    def __init__(self, context, secret_name):
         super(PlatformCertRenew, self).__init__(context)
-        self.secret_name = constants.PLATFORM_CERT_SECRET_NAME
-        LOG.info('PlatformCertRenew init with secretname: %s' % self.secret_name)
+        self.secret_name = secret_name
+        LOG.info('%s init with secretname: %s' % (self.__class__.__name__, self.secret_name))
 
     def check_filter(self, event_data):
+        LOG.info('%s: Received event_data %s' % (self.secret_name, event_data))
         if self.secret_name == event_data.secret_name:
             return self.certificate_is_ready(event_data)
         else:
             return False
 
+    def update_platform_certificate(self, event_data, cert_type, force=False):
+        """Update a platform certificate
+
+        Save the certificate and key from the secret into a PEM file and send it to the
+        platform to be installed. If force=True, the platform semantic checks will be
+        skipped.
+
+        :param event_data: the event_data that triggered this renew
+        :param cert_type: the type of the certificate that is being updated
+        :param force: whether to bypass semantic checks and force the update,
+            defaults to False
+        """
+        pem_file_path = utils.update_pemfile(event_data.tls_crt, event_data.tls_key)
+
+        token = self.context.get_token()
+        utils.update_platform_cert(token, cert_type, pem_file_path, force)
+
+
+class RestApiCertRenew(PlatformCertRenew):
+    def __init__(self, context):
+        super(RestApiCertRenew, self).__init__(context, constants.RESTAPI_CERT_SECRET_NAME)
+
     def update_certificate(self, event_data):
-        LOG.info('PlatformCertRenew: Secret changes detected. Initiating certificate update')
+        LOG.info('RestApiCertRenew: Secret changes detected. Initiating certificate update')
         token = self.context.get_token()
         system_uuid = utils.get_isystems_uuid(token)
         ret = utils.enable_https(token, system_uuid)
-        pem_file_path = utils.update_platformcert_pemfile(event_data.tls_crt,
-                                   event_data.tls_key)
+
         if ret is True:
-            utils.update_platform_cert(token, pem_file_path)
+            self.update_platform_certificate(event_data, constants.CERT_MODE_SSL, force=True)
+
+
+class RegistryCertRenew(PlatformCertRenew):
+    def __init__(self, context):
+        super(RegistryCertRenew, self).__init__(context, constants.REGISTRY_CERT_SECRET_NAME)
+
+    def update_certificate(self, event_data):
+        LOG.info('RegistryCertRenew: Secret changes detected. Initiating certificate update')
+
+        self.update_platform_certificate(event_data, constants.CERT_MODE_DOCKER_REGISTRY)
