@@ -2471,3 +2471,15 @@ def generate_random_password(length=16):
     if six.PY2:
         password = password.decode()
     return password
+
+
+def get_upgradable_hosts(dbapi):
+    """
+    Get hosts that could be upgraded.
+    """
+    all_hosts = dbapi.ihost_get_list()
+    # TODO:(mingyuan) Exclude edgeworker host from upgradable hosts
+    # until the final phase of the edgeworker feature completed
+    hosts = [i for i in all_hosts if i.personality != constants.EDGEWORKER]
+
+    return hosts

@@ -323,9 +323,9 @@ class UpgradeController(rest.RestController):
                     "upgrade-activate rejected: "
                     "Upgrade already activating or activated."))
 
-            hosts = pecan.request.dbapi.ihost_get_list()
-            # All hosts must be unlocked and enabled, and running the new
-            # release
+            # All hosts must be unlocked and enabled,
+            # and running the new release
+            hosts = cutils.get_upgradable_hosts(pecan.request.dbapi)
             for host in hosts:
                 if host['administrative'] != constants.ADMIN_UNLOCKED or \
                         host['operational'] != constants.OPERATIONAL_ENABLED:
@@ -399,8 +399,8 @@ class UpgradeController(rest.RestController):
 
         elif upgrade.state in [constants.UPGRADE_ABORTING,
                                constants.UPGRADE_ABORTING_ROLLBACK]:
-            # All hosts must be running the old release
-            hosts = pecan.request.dbapi.ihost_get_list()
+            # All upgradable hosts must be running the old release
+            hosts = cutils.get_upgradable_hosts(pecan.request.dbapi)
             for host in hosts:
                 host_upgrade = objects.host_upgrade.get_by_host_id(
                     pecan.request.context, host.id)

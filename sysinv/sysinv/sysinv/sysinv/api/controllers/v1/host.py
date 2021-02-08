@@ -2621,6 +2621,11 @@ class HostController(rest.RestController):
         loads = pecan.request.dbapi.load_get_list()
         new_target_load = cutils.get_imported_load(loads)
         rpc_ihost = objects.host.get_by_uuid(pecan.request.context, uuid)
+
+        if rpc_ihost.personality == constants.EDGEWORKER:
+            raise wsme.exc.ClientSideError(_(
+                "host-upgrade rejected: Not supported for EDGEWORKER node."))
+
         simplex = (utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX)
         # If this is a simplex system skip this check, there's no other nodes
         if simplex:
@@ -2700,6 +2705,10 @@ class HostController(rest.RestController):
         loads = pecan.request.dbapi.load_get_list()
         new_target_load = cutils.get_active_load(loads)
         rpc_ihost = objects.host.get_by_uuid(pecan.request.context, uuid)
+
+        if rpc_ihost.personality == constants.EDGEWORKER:
+            raise wsme.exc.ClientSideError(_(
+                "host-downgrade rejected: Not supported for EDGEWORKER node."))
 
         disable_storage_monitor = False
 
@@ -2994,7 +3003,9 @@ class HostController(rest.RestController):
 
     def _validate_hostname(self, hostname, personality):
 
-        if personality and personality == constants.WORKER:
+        if personality and \
+                (personality == constants.WORKER or
+                 personality == constants.EDGEWORKER):
             # Fix of invalid hostnames
             err_tl = 'Name restricted to at most 255 characters.'
             err_ic = 'Name may only contain letters, ' \
@@ -5027,6 +5038,9 @@ class HostController(rest.RestController):
 
         if personality == constants.WORKER and \
                 cutils.is_aio_duplex_system(pecan.request.dbapi):
+            return
+
+        if personality == constants.EDGEWORKER:
             return
 
         if (utils.SystemHelper.get_product_build() ==
