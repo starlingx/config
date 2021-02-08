@@ -82,6 +82,7 @@ ARMADA_LOCK_PLURAL = 'locks'
 ARMADA_LOCK_NAME = 'lock'
 
 LOCK_NAME_APP_REAPPLY = 'app_reapply'
+LOCK_NAME_PROCESS_APP_METADATA = 'process_app_metadata'
 
 
 # Helper functions
@@ -1888,6 +1889,200 @@ class AppOperator(object):
         lifecycle_op.app_lifecycle_actions(context, conductor_obj, self, app, hook_info)
 
     @staticmethod
+    def recompute_app_evaluation_order(apps_metadata_dict):
+        """ Get the order of app reapplies based on dependencies
+
+        The following algorithm uses these concepts:
+        Root apps are apps that have no dependency.
+        Chain depth for an app is the number of apps that form the longest
+        chain ending in the current app.
+
+        Main logic:
+        Compute reverse graph (after_apps).
+        Determine root apps.
+        Detect cycles and abort.
+        Compute the longest dependency chain.
+        Traverse again to populate ordered list.
+
+        Assumptions:
+        In theory there is one or few root apps that are dominant vertices.
+        Other than the dominant vertices, there are very sparse vertices with
+        a degree more than one, most of the vertices are either leaves or
+        isolated.
+        Chain depth is usually 0 or 1, few apps have a chain depth of 2, 3, 4
+        The structure is a sparse digraph, or multiple separate sparse digraphs
+        with a total number of vertices equal to the number of apps.
+
+        Complexity analysis:
+        Spatial complexity O(V+E)
+        Cycle detection: O(V+E)
+
+        After cycle detection the graph is a DAG.
+        For computing the chain depth and final traversal a subgraph may be
+        revisited. Complexity would be O(V*E).
+
+        Let k = number of apps with a vertex that have the in degree > 1 and
+        that are not leaf apps. We can bind k to be 0<=k<=10000, shall we reach
+        that app number.
+
+        Each node and each vertex will be visited once O(V+E) (root apps
+        + vertex to leaf).
+        Only k nodes will trigger a revisit of a subset of vertices (k * O(E)).
+
+        Complexity now becomes O(V+(k+1)*E) = O(V+E)
+
+        Limitations:
+        If an app(current) depends only on non-existing apps, then
+        current app will not be properly ordered. It will not be present in
+        the ordered list before other apps based on it.
+        If an app(current) depends only on non platform managed apps, then
+        current app will not be properly ordered. It will not be present in
+        the ordered list before other apps based on it.
+
+        :param: apps_metadata_dict dictionary containing parsed and processed
+                metadata collection
+
+        :return: Sorted list containing the app reapply order.
+        """
+        # Apps directly after current
+        after_apps = {}
+
+        # Remember the maximum depth
+        chain_depth = {}
+
+        # Used to detect cycles
+        cycle_depth = {}
+
+        # Used for second traversal when populating ordered list
+        traverse_depth = {}
+
+        # Final result
+        ordered_apps = []
+        apps_metadata_dict[constants.APP_METADATA_ORDERED_APPS] = ordered_apps
+
+        # Initialize structures
+        for app_name in apps_metadata_dict[constants.APP_METADATA_PLATFORM_MANAGED_APPS]:
+            after_apps[app_name] = []
+            chain_depth[app_name] = 0
+            cycle_depth[app_name] = 0
+            traverse_depth[app_name] = 0
+
+        # For each app remember which apps are directly after
+        for app_name in apps_metadata_dict[constants.APP_METADATA_PLATFORM_MANAGED_APPS]:
+            app_metadata = apps_metadata_dict[constants.APP_METADATA_APPS][app_name]
+            metadata_after = app_metadata.get(constants.APP_METADATA_BEHAVIOR, None)
+
+            if metadata_after is not None:
+                metadata_after = metadata_after.get(constants.APP_METADATA_EVALUATE_REAPPLY, None)
+            if metadata_after is not None:
+                metadata_after = metadata_after.get(constants.APP_METADATA_AFTER, None)
+            if metadata_after is not None:
+                for before_app in metadata_after:
+                    # This one may be a non-existing app, need to initialize
+                    if after_apps.get(before_app, None) is None:
+                        after_apps[before_app] = []
+
+                    # Store information
+                    after_apps[before_app].append(app_name)
+
+                    # Remember that current app is before at least one
+                    chain_depth[app_name] = 1
+                    traverse_depth[app_name] = 1
+
+        # Identify root apps
+        root_apps = []
+        for app_name in apps_metadata_dict[constants.APP_METADATA_PLATFORM_MANAGED_APPS]:
+            if chain_depth.get(app_name, None) == 0:
+                root_apps.append(app_name)
+
+        # Used for cycle detection
+        stack_ = queue.LifoQueue()
+        cycle_checked = {}
+        max_depth = len(apps_metadata_dict[constants.APP_METADATA_PLATFORM_MANAGED_APPS])
+
+        # Detect cycles and abort
+        for app_name in apps_metadata_dict[constants.APP_METADATA_PLATFORM_MANAGED_APPS]:
+            # Skip already checked app
+            if cycle_checked.get(app_name, False) is True:
+                continue
+
+            # Start from this
+            stack_.put(app_name)
+
+            # Reinitialize temporary visited
+            visited = {}
+
+            # Traverse DFS to detect cycles
+            while not stack_.empty():
+                app_name = stack_.get_nowait()
+                visited[app_name] = True
+
+                # Skip already checked app
+                if cycle_checked.get(app_name, False) is True:
+                    continue
+
+                for after in after_apps[app_name]:
+                    cycle_depth[after] = max(cycle_depth[app_name] + 1, cycle_depth[after])
+                    # Detected cycle
+                    if cycle_depth[after] > max_depth:
+                        return ordered_apps
+
+                    stack_.put(after)
+
+            # Remember the temporary visited apps to skip them in the future
+            for r in visited.keys():
+                cycle_checked[r] = True
+
+        # Used for traversal
+        queue_ = queue.Queue()
+
+        # Compute the longest dependency chain starting from root apps
+        for app_name in root_apps:
+            queue_.put(app_name)
+
+        # Traverse similar to BFS to compute the longest dependency chain
+        while not queue_.empty():
+            app_name = queue_.get_nowait()
+            for after in after_apps[app_name]:
+                chain_depth[after] = max(chain_depth[app_name] + 1, chain_depth[after])
+                queue_.put(after)
+
+        # Traverse graph again similar to BFS
+        # Add to ordered list when the correct chain depth is reached
+        found = {}
+        for app_name in root_apps:
+            queue_.put(app_name)
+            found[app_name] = True
+            ordered_apps.append(app_name)
+
+        while not queue_.empty():
+            app_name = queue_.get_nowait()
+
+            for after in after_apps[app_name]:
+                traverse_depth[after] = max(traverse_depth[app_name] + 1, traverse_depth[after])
+
+                # This is the correct depth, add to ordered list
+                if traverse_depth[after] == chain_depth[after]:
+                    # Skip if already added
+                    if found.get(after, False) is True:
+                        continue
+
+                    found[after] = True
+                    ordered_apps.append(after)
+
+                queue_.put(after)
+
+        # Add apps that have dependencies on non-existing apps
+        for app_name in apps_metadata_dict[constants.APP_METADATA_PLATFORM_MANAGED_APPS]:
+            if found.get(app_name, False) is True:
+                continue
+            ordered_apps.append(app_name)
+
+        LOG.info("Applications reapply order: {}".format(ordered_apps))
+        apps_metadata_dict[constants.APP_METADATA_ORDERED_APPS] = ordered_apps
+
+    @staticmethod
+    @cutils.synchronized(LOCK_NAME_PROCESS_APP_METADATA, external=False)
     def update_and_process_app_metadata(apps_metadata_dict, app_name, metadata, overwrite=True):
         """ Update the cached metadata for an app
 
@@ -1919,6 +2114,9 @@ class AppOperator(object):
                     constants.APP_METADATA_PLATFORM_MANAGED_APPS][app_name] = None
                 LOG.info("App {} requested to be platform managed"
                          "".format(app_name))
+
+                # Recompute app reapply order
+                AppOperator.recompute_app_evaluation_order(apps_metadata_dict)
 
             # Remember the desired state the app should achieve
             if desired_state is not None:
