@@ -285,6 +285,8 @@ class ConductorManager(service.PeriodicService):
 
         self._handle_restore_in_progress()
 
+        self._reset_simplex_to_duplex_flag(system)
+
         LOG.info("sysinv-conductor start committed system=%s" %
                  system.as_dict())
 
@@ -389,6 +391,21 @@ class ConductorManager(service.PeriodicService):
 
         self._create_default_service_parameter()
         return system
+
+    def _reset_simplex_to_duplex_flag(self, system):
+
+        # Skip if the flag is not set or if the system mode is not set to duplex
+        if (not system.capabilities.get('simplex_to_duplex_migration') or
+                system.system_mode != constants.SYSTEM_MODE_DUPLEX):
+            return
+
+        host = self.dbapi.ihost_get(self.host_uuid)
+        if host.administrative != constants.ADMIN_UNLOCKED:
+            return
+
+        system_dict = system.as_dict()
+        del system_dict['capabilities']['simplex_to_duplex_migration']
+        self.dbapi.isystem_update(system.uuid, system_dict)
 
     def _upgrade_init_actions(self):
         """ Perform any upgrade related startup actions"""
@@ -6357,6 +6374,18 @@ class ConductorManager(service.PeriodicService):
     def update_system_mode_config(self, context):
         """Update the system mode configuration"""
         personalities = [constants.CONTROLLER]
+
+        # Update manifest files if system mode is updated for simplex to
+        # duplex migration
+        system = self.dbapi.isystem_get_one()
+        if system.capabilities.get('simplex_to_duplex_migration'):
+            config_uuid = self._config_update_hosts(context, personalities)
+
+            # NOTE: no specific classes need to be specified since the default
+            # platform::config will be applied to configure the system mode
+            config_dict = {"personalities": personalities}
+            self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
         self._config_update_hosts(context, personalities, reboot=True)
 
     def configure_system_timezone(self, context):

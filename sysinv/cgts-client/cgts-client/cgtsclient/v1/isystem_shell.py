@@ -108,10 +108,6 @@ def do_modify(cc, args):
         if isystem.system_type != constants.TS_AIO:
             raise exc.CommandError("system_mode can only be modified on an "
                                    "AIO system")
-        if isystem.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-            raise exc.CommandError("system_mode can not be modified if it is "
-                                   "currently set to '%s'" %
-                                   constants.SYSTEM_MODE_SIMPLEX)
         mode = args.system_mode
         if isystem.system_mode == mode:
             raise exc.CommandError("system_mode value already set to '%s'" %
