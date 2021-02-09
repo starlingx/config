@@ -1137,12 +1137,14 @@ def _check_interface_data(op, interface, ihost, existing_interface,
                 parent = pecan.request.dbapi.iinterface_get(p, ihost_uuid)
                 if (parent.uuid in interface['uses'] or
                         parent.ifname in interface['uses']):
+                    supported_type = [constants.INTERFACE_TYPE_VLAN,
+                                      constants.INTERFACE_TYPE_VF]
                     if i.iftype == constants.INTERFACE_TYPE_AE:
                         msg = _("Interface '{}' is already used by another"
                                 " AE interface '{}'".format(p, i.ifname))
                         raise wsme.exc.ClientSideError(msg)
                     elif (i.iftype == constants.INTERFACE_TYPE_VLAN and
-                            iftype != constants.INTERFACE_TYPE_VLAN):
+                              iftype not in supported_type):
                         msg = _("Interface '{}' is already used by another"
                                 " VLAN interface '{}'".format(p, i.ifname))
                         raise wsme.exc.ClientSideError(msg)
@@ -1327,7 +1329,8 @@ def _check_interface_data(op, interface, ihost, existing_interface,
         for i in lower_iface['used_by']:
             if i != interface['ifname']:
                 iface = pecan.request.dbapi.iinterface_get(i, ihost_uuid)
-                avail_vfs -= iface.get('sriov_numvfs', 0)
+                if iface.get('sriov_numvfs', 0):
+                    avail_vfs -= iface.get('sriov_numvfs')
         if interface['sriov_numvfs'] > avail_vfs:
             msg = _("The number of virtual functions (%s) must be less "
                     "than or equal to the available VFs (%s) available "
