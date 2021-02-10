@@ -488,6 +488,19 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
             self.assertEqual(http_client.OK, response.status_int)
         return response
 
+    def _delete_and_check(self, iface_uuid, expect_errors=False, error_message=None):
+        response = self.delete('%s' % self._get_path(iface_uuid),
+                                  expect_errors)
+        if expect_errors:
+            self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+            self.assertEqual('application/json', response.content_type)
+            self.assertTrue(response.json['error_message'])
+            if error_message:
+                self.assertIn(error_message, response.json['error_message'])
+        else:
+            self.assertEqual(http_client.NO_CONTENT, response.status_int)
+        return response
+
     def _patch_and_check(self, data, path, expect_errors=False, error_message=None):
         response = self.patch_dict('%s' % path, expect_errors=expect_errors, data=data)
         if expect_errors:
@@ -2437,6 +2450,246 @@ class TestAIOPatch(InterfaceTestCase):
         self.assertEqual('application/json', response.content_type)
         self.assertIn('Corresponding port has invalid driver',
             response.json['error_message'])
+
+
+class TestAIOUnlockedPost(InterfaceTestCase):
+    def setUp(self):
+        super(TestAIOUnlockedPost, self).setUp()
+        p = mock.patch('sysinv.common.utils.is_aio_simplex_system')
+        self.mock_utils_is_aio_simplex_system = p.start()
+        self.mock_utils_is_aio_simplex_system.return_value = True
+        self.addCleanup(p.stop)
+
+        self._create_host(constants.CONTROLLER, constants.WORKER,
+                          admin=constants.ADMIN_UNLOCKED)
+        self.interfaces = {
+            'sriov': dbutils.create_test_interface(
+                ifname='sriov', id=1,
+                ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+                forihostid=self.controller.id,
+                ihost_uuid=self.controller.uuid,
+                sriov_numvfs=8),
+            'mgmt': dbutils.create_test_interface(
+                ifname='mgmt', id=2,
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                forihostid=self.controller.id,
+                ihost_uuid=self.controller.uuid,
+                networktypelist=[constants.NETWORK_TYPE_MGMT]),
+        }
+        idx = 1
+        self.ports = []
+        for interface in self.interfaces.keys():
+            port = dbutils.create_test_ethernet_port(
+                id=idx, name='eth' + str(idx),
+                host_id=self.controller.uuid,
+                interface_id=self.interfaces[interface].id,
+                interface_uuid=self.interfaces[interface].uuid,
+                pciaddr='0000:00:00.' + str(idx),
+                dev_id=0,
+                sriov_totalvfs=8,
+                sriov_vf_driver='mlx5_core',
+                driver='mlx5_core')
+            self.ports.append(port)
+            idx += 1
+
+        self.network = self.dbapi.network_get_by_type(
+            constants.NETWORK_TYPE_MGMT)
+        self.if_net_mgmt = dbutils.create_test_interface_network(
+            interface_id=self.interfaces['mgmt'].id,
+            network_id=self.network.id)
+
+    def test_add_interface_sriov_vf(self):
+        interface = self._post_get_test_interface(
+            ifname='sriov_vf',
+            iftype=constants.INTERFACE_TYPE_VF,
+            ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+            uses=[self.interfaces['sriov'].ifname],
+            forihostid=self.controller.id,
+            ihost_uuid=self.controller.uuid,
+            sriov_numvfs=1,
+            sriov_vf_driver='vfio')
+        # system host-if-add controller-0 sriov_vf vf sriov -c pci-sriov --num-vfs 1
+        self._post_and_check(interface, expect_errors=False)
+
+    def test_non_aiosx_add_interface_sriov_vf_error(self):
+        self.mock_utils_is_aio_simplex_system.return_value = False
+        interface = self._post_get_test_interface(
+            ifname='sriov_vf',
+            iftype=constants.INTERFACE_TYPE_VF,
+            ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+            uses=[self.interfaces['sriov'].ifname],
+            forihostid=self.controller.id,
+            ihost_uuid=self.controller.uuid,
+            sriov_numvfs=1,
+            sriov_vf_driver='vfio')
+        # system host-if-add controller-0 sriov_vf vf sriov -c pci-sriov --num-vfs 1
+        self._post_and_check(interface, expect_errors=True,
+                             error_message="Host must be locked")
+        self.mock_utils_is_aio_simplex_system.return_value = True
+
+    def test_del_interface_sriov_vf(self):
+        sriov_vf = dbutils.create_test_interface(
+                        ifname='sriov_vf', id=3,
+                        uses=[self.interfaces['sriov'].ifname],
+                        ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+                        iftype=constants.INTERFACE_TYPE_VF,
+                        forihostid=self.controller.id,
+                        ihost_uuid=self.controller.uuid,
+                        sriov_numvfs=1)
+        # system host-if-delete controller-0 sriov_vf
+        self._delete_and_check(sriov_vf.uuid, expect_errors=False)
+
+    def test_non_aiosx_del_interface_sriov_vf(self):
+        self.mock_utils_is_aio_simplex_system.return_value = False
+        sriov_vf = dbutils.create_test_interface(
+                        ifname='sriov_vf', id=3,
+                        uses=[self.interfaces['sriov'].ifname],
+                        ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+                        iftype=constants.INTERFACE_TYPE_VF,
+                        forihostid=self.controller.id,
+                        ihost_uuid=self.controller.uuid,
+                        sriov_numvfs=1)
+        # system host-if-delete controller-0 sriov_vf
+        self._delete_and_check(sriov_vf.uuid, expect_errors=True,
+                    error_message="Host must be locked")
+        self.mock_utils_is_aio_simplex_system.return_value = True
+
+
+class TestAIOUnlockedPatch(InterfaceTestCase):
+    def setUp(self):
+        super(TestAIOUnlockedPatch, self).setUp()
+        p = mock.patch('sysinv.common.utils.is_aio_simplex_system')
+        self.mock_utils_is_aio_simplex_system = p.start()
+        self.mock_utils_is_aio_simplex_system.return_value = True
+        self.addCleanup(p.stop)
+
+        self._create_host(constants.CONTROLLER, constants.WORKER,
+                          admin=constants.ADMIN_UNLOCKED)
+
+        self.interfaces = {
+            'data0': dbutils.create_test_interface(
+                ifname='data0', id=1,
+                ifclass=constants.INTERFACE_CLASS_DATA,
+                forihostid=self.controller.id,
+                ihost_uuid=self.controller.uuid),
+            'pass0': dbutils.create_test_interface(
+                ifname='pass0', id=2,
+                ifclass=constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                forihostid=self.controller.id,
+                ihost_uuid=self.controller.uuid),
+            'plat0': dbutils.create_test_interface(
+                ifname='plat0', id=3,
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                forihostid=self.controller.id,
+                ihost_uuid=self.controller.uuid),
+            'sriov': dbutils.create_test_interface(
+                ifname='sriov', id=4,
+                ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+                forihostid=self.controller.id,
+                ihost_uuid=self.controller.uuid,
+                sriov_numvfs=8),
+            'mgmt': dbutils.create_test_interface(
+                ifname='mgmt', id=5,
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                forihostid=self.controller.id,
+                ihost_uuid=self.controller.uuid,
+                networktypelist=[constants.NETWORK_TYPE_MGMT])
+        }
+
+        idx = 1
+        self.ports = []
+        for interface in self.interfaces.keys():
+            port = dbutils.create_test_ethernet_port(
+                id=idx, name='eth' + str(idx),
+                host_id=self.controller.uuid,
+                interface_id=self.interfaces[interface].id,
+                interface_uuid=self.interfaces[interface].uuid,
+                pciaddr='0000:00:00.' + str(idx),
+                dev_id=0, sriov_totalvfs=8,
+                sriov_vf_driver='mlx5_core', driver='mlx5_core')
+            self.ports.append(port)
+            idx += 1
+
+        self.network = self.dbapi.network_get_by_type(
+            constants.NETWORK_TYPE_MGMT)
+        self.if_net_mgmt = dbutils.create_test_interface_network(
+            interface_id=self.interfaces['mgmt'].id,
+            network_id=self.network.id)
+
+    def test_interface_data_conversion_to_sriov(self):
+        data = {
+            'ifname': 'sriov0',
+            'ifclass': 'pci-sriov',
+            'sriov_numvfs': 8,
+        }
+        # system host-if-modify controller-0 data0 -c pci-sriov -n sriov0 -N 8
+        self._patch_and_check(data, self._get_path(self.interfaces['data0'].uuid),
+                              expect_errors=False)
+
+    def test_interface_platform_conversion_to_sriov(self):
+        data = {
+            'ifname': 'sriov1',
+            'ifclass': 'pci-sriov',
+            'sriov_numvfs': 8,
+        }
+        # system host-if-modify controller-0 plat0 -c pci-sriov -n sriov1 -N 8
+        self._patch_and_check(data, self._get_path(self.interfaces['plat0'].uuid),
+                              expect_errors=False)
+
+    def test_interface_pcipasstrough_conversion_to_sriov(self):
+        data = {
+            'ifname': 'sriov2',
+            'ifclass': 'pci-sriov',
+            'sriov_numvfs': 8,
+        }
+        # system host-if-modify controller-0 pass0 -c pci-sriov -n sriov2 -N 8
+        self._patch_and_check(data, self._get_path(self.interfaces['pass0'].uuid),
+                              expect_errors=False)
+
+    def test_non_aiosx_interface_conversion_to_sriov_error(self):
+        self.mock_utils_is_aio_simplex_system.return_value = False
+        data = {
+            'ifname': 'sriov2',
+            'ifclass': 'pci-sriov',
+            'sriov_numvfs': 8,
+        }
+        self._patch_and_check(data, self._get_path(self.interfaces['data0'].uuid),
+                              expect_errors=True,
+                              error_message="Host must be locked")
+        self._patch_and_check(data, self._get_path(self.interfaces['plat0'].uuid),
+                              expect_errors=True,
+                              error_message="Host must be locked")
+        self._patch_and_check(data, self._get_path(self.interfaces['pass0'].uuid),
+                              expect_errors=True,
+                              error_message="Host must be locked")
+        self.mock_utils_is_aio_simplex_system.return_value = True
+
+    def test_interface_sriov_modify_error(self):
+        data = {'sriov_numvfs': 4}
+        # system host-if-modify controller-0 sriov -N 4
+        self._patch_and_check(data, self._get_path(self.interfaces['sriov'].uuid),
+                              expect_errors=True,
+                              error_message="Host must be locked")
+
+        data = {'ifname': 'new_name'}
+        # system host-if-modify controller-0 sriov -n new_name
+        self._patch_and_check(data, self._get_path(self.interfaces['sriov'].uuid),
+                              expect_errors=True,
+                              error_message="Host must be locked")
+
+    def test_interface_sriov_vf_modify_error(self):
+        sriov_vf = dbutils.create_test_interface(
+                        ifname='sriov_vf', uses=['sriov'],
+                        ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+                        iftype=constants.INTERFACE_TYPE_VF,
+                        forihostid=self.controller.id,
+                        ihost_uuid=self.controller.uuid,
+                        sriov_numvfs=1)
+        data = {'sriov_numvfs': 2}
+        # system host-if-modify controller-0 sriov_vf -N 2
+        self._patch_and_check(data, self._get_path(sriov_vf.uuid),
+                              expect_errors=True,
+                              error_message="Host must be locked")
 
 
 class IPv4TestPost(TestPostMixin,
