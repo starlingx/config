@@ -26,7 +26,7 @@ from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv.common import kubernetes
 from sysinv.helm.lifecycle_hook import LifecycleHookInfo
-
+from sysinv.openstack.common.rpc import common as rpc_common
 import cgcs_patch.constants as patch_constants
 
 LOG = log.getLogger(__name__)
@@ -515,6 +515,9 @@ class KubeAppController(rest.RestController):
                                      constants.APP_DELETE_OP)
             self._app_lifecycle_actions(db_app,
                                         lifecycle_hook_info)
+        except rpc_common.RemoteError as e:
+            raise wsme.exc.ClientSideError(_(
+                "Application-delete rejected: " + str(e.value)))
         except Exception as e:
             raise wsme.exc.ClientSideError(_(
                 "Application-delete rejected: " + str(e.message)))

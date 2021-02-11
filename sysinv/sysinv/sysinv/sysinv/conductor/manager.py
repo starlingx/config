@@ -12035,7 +12035,11 @@ class ConductorManager(service.PeriodicService):
         LOG.debug("app_lifecycle_actions for app "
                   "{}, {}".format(rpc_app.name, hook_info))
 
-        self._app.app_lifecycle_actions(context, self, rpc_app, hook_info)
+        try:
+            self._app.app_lifecycle_actions(context, self, rpc_app, hook_info)
+        except exception.LifecycleSemanticCheckOpererationBlocked as e:
+            LOG.info("Metadata-evaluation: {}".format(e))
+            raise
 
     def perform_app_upload(self, context, rpc_app, tarfile, lifecycle_hook_info_app_upload):
         """Handling of application upload request (via AppOperator)

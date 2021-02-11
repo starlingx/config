@@ -1540,5 +1540,9 @@ class LifecycleSemanticCheckException(SysinvException):
     message = _("Semantic check hook for app failed.")
 
 
+class LifecycleSemanticCheckOpererationBlocked(SysinvException):
+    message = _("%(op)s is disabled for this version of %(app)s")
+
+
 class LifecycleMissingInfo(SysinvException):
     message = _("Lifecycle hook missing information.")
