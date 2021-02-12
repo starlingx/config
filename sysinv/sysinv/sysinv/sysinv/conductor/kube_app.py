@@ -2829,6 +2829,8 @@ class AppOperator(object):
             self.sync_imgfile = generate_synced_images_fqpn(self.name, self.version)
             self.sync_overrides_dir = generate_synced_helm_overrides_dir(self.name, self.version)
             self.patch_dependencies = new_patch_dependencies
+            self.inst_plugins_dir = os.path.join(self.inst_path, 'plugins')
+            self.sync_plugins_dir = generate_synced_app_plugins_dir(new_name, new_version)
 
 
 class DockerHelper(object):
