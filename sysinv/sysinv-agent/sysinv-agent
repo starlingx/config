@@ -1,6 +1,6 @@
 #! /bin/sh
 #
-# Copyright (c) 2013-2014 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -29,6 +29,7 @@ SYSINV_CONF_DIR="/etc/sysinv"
 SYSINV_CONF_FILE="${SYSINV_CONF_DIR}/sysinv.conf"
 SYSINV_CONF_DEFAULT_FILE="/opt/platform/sysinv/${SW_VERSION}/sysinv.conf.default"
 SYSINV_READY_FLAG=/var/run/.sysinv_ready
+SYSINV_REPORTED_FLAG=/var/run/sysinv/.sysinv_reported
 
 DELAY_SEC=20
 
@@ -62,11 +63,11 @@ function mount_and_copy_config_file()
     if [ ${RETVAL} -ne 0 ] ; then
         logger "$0: Warn: nfs-mount controller:/opt/platform/sysinv/${SW_VERSION} /mnt/sysinv"
     else
-	mkdir -p $SYSINV_CONF_DIR
+        mkdir -p $SYSINV_CONF_DIR
         cp /mnt/sysinv/sysinv.conf.default ${SYSINV_CONF_FILE}
-	RETVAL=$?
+        RETVAL=$?
         if [ $? -ne 0 ] ; then
-	    logger "$0: Warn: cp /mnt/sysinv/sysinv.conf.default ${SYSINV_CONF_FILE}"
+            logger "$0: Warn: cp /mnt/sysinv/sysinv.conf.default ${SYSINV_CONF_FILE}"
         fi
         timeout 5s umount /mnt/sysinv
         rmdir /mnt/sysinv
@@ -84,18 +85,20 @@ case "$1" in
             exit 1
         fi
 
-        # if [ "$NODETYPE" = "compute" ] ; then
-        # if [ "$NODETYPE" = "compute" ] || [ "$NODETYPE" = "controller" ] ; then
-	echo -n "Setting up config for sysinv-agent: "
-	if [ -e ${SYSINV_READY_FLAG} ] ; then
+        echo -n "Setting up config for sysinv-agent: "
+        if [ -e ${SYSINV_READY_FLAG} ] ; then
             # clear it on every restart, so agent can update it
             rm -f ${SYSINV_READY_FLAG}
         fi
-	
-	if [ -f ${SYSINV_CONF_FILE} ] ; then
-	    logger "$0: ${SYSINV_CONF_FILE} already exists"
-	    RETVAL=0
-	else
+        if [ -e ${SYSINV_REPORTED_FLAG} ] ; then
+            # clear it on every restart, so agent can update it
+            rm -f ${SYSINV_REPORTED_FLAG}
+        fi
+
+        if [ -f ${SYSINV_CONF_FILE} ] ; then
+            logger "$0: ${SYSINV_CONF_FILE} already exists"
+            RETVAL=0
+        else
             # Avoid self-mount due to potential nfs issues
             echo "Checking for controller-platform-nfs "
 
@@ -120,20 +123,20 @@ case "$1" in
                 echo "controller-platform-nfs is not available"
             else
                 # Only required if conf file does not already exist
-		if [ -f ${SYSINV_CONF_DEFAULT_FILE} ]
-		then
-		    echo "Copying self sysinv.conf without mount"
-		    mkdir -p $SYSINV_CONF_DIR
-		    cp ${SYSINV_CONF_DEFAULT_FILE} ${SYSINV_CONF_FILE}
-	            RETVAL=$?
-		    if [ $? -ne 0 ] ; then
+                if [ -f ${SYSINV_CONF_DEFAULT_FILE} ]
+                then
+                    echo "Copying self sysinv.conf without mount"
+                    mkdir -p $SYSINV_CONF_DIR
+                    cp ${SYSINV_CONF_DEFAULT_FILE} ${SYSINV_CONF_FILE}
+                    RETVAL=$?
+                    if [ $? -ne 0 ] ; then
                         logger "$0: Warn: cp /mnt/sysinv/sysinv.conf.default ${SYSINV_CONF_FILE} failed. Try mount."
                     else
                         CONF_COPIED=1
-		    fi
+                    fi
                 fi
                 if [ ${CONF_COPIED} -eq 0 ]
-		then
+                then
                     CONF_COPY_COUNT=0
                     while [ $CONF_COPY_COUNT -lt 3 ]; do
                         if mount_and_copy_config_file ;
@@ -144,52 +147,48 @@ case "$1" in
                         let CONF_COPY_COUNT=CONF_COPY_COUNT+1
                         logger "$0: Warn: Mount and copy config file failed. Attempt: ${CONF_COPY_COUNT}"
                     done
-		fi
+                fi
             fi
-	fi
+        fi
 
-	echo -n "Installing virtio_net driver: "
-	timeout 5s modprobe virtio_net
-	RETVAL=$?
-	if [ ${RETVAL} -eq 0 ] ; then
-	    echo "OK"
-	else
-	    echo "FAIL"
-	fi
+        echo -n "Installing virtio_net driver: "
+        timeout 5s modprobe virtio_net
+        RETVAL=$?
+        if [ ${RETVAL} -eq 0 ] ; then
+            echo "OK"
+        else
+            echo "FAIL"
+        fi
 
-	if [ -e ${daemon_pidfile} ] ; then
-	    echo "Killing existing process before starting new"
-	    pid=`cat ${daemon_pidfile}`
-	    kill -TERM $pid
-	    rm -f ${daemon_pidfile}
-	fi
+        if [ -e ${daemon_pidfile} ] ; then
+            echo "Killing existing process before starting new"
+            pid=`cat ${daemon_pidfile}`
+            kill -TERM $pid
+            rm -f ${daemon_pidfile}
+        fi
 
-	echo -n "Starting sysinv-agent: "
-	/bin/sh -c "${SYSINVAGENT}"' >> /dev/null 2>&1 & echo $!' > ${daemon_pidfile}
-	RETVAL=$?
-	if [ $RETVAL -eq 0 ] ; then
-	    echo "OK"
-	    touch /var/lock/subsys/${DAEMON_NAME}
-	else
-	    echo "FAIL"
-	fi
-        # fi
+        echo -n "Starting sysinv-agent: "
+        /bin/sh -c "${SYSINVAGENT}"' >> /dev/null 2>&1 & echo $!' > ${daemon_pidfile}
+        RETVAL=$?
+        if [ $RETVAL -eq 0 ] ; then
+            echo "OK"
+            touch /var/lock/subsys/${DAEMON_NAME}
+        else
+            echo "FAIL"
+        fi
         ;;
 
     stop)
-        # if [ "$NODETYPE" = "compute" ] ; then
-        # if [ "$NODETYPE" = "compute" ] || [ "$NODETYPE" = "controller" ] ; then
-	echo -n "Stopping sysinv-agent: "
-	if [ -e ${daemon_pidfile} ] ; then
-	    pid=`cat ${daemon_pidfile}`
-	    kill -TERM $pid
-	    rm -f ${daemon_pidfile}
-	    rm -f /var/lock/subsys/${DAEMON_NAME}
-	    echo "OK"
-	else
-	    echo "FAIL"
-	fi
-        # fi
+        echo -n "Stopping sysinv-agent: "
+        if [ -e ${daemon_pidfile} ] ; then
+            pid=`cat ${daemon_pidfile}`
+            kill -TERM $pid
+            rm -f ${daemon_pidfile}
+            rm -f /var/lock/subsys/${DAEMON_NAME}
+            echo "OK"
+        else
+            echo "FAIL"
+        fi
         ;;
 
     restart)

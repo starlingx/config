@@ -1328,6 +1328,11 @@ if tox_work_dir:
 else:
     SYSINV_VOLATILE_PATH = os.path.join(tsc.VOLATILE_PATH, "sysinv")
 
+SYSINV_FIRST_REPORT_FLAG = os.path.join(SYSINV_VOLATILE_PATH,
+                                        ".sysinv_agent_first_report_sent")
+SYSINV_REPORTED = os.path.join(SYSINV_VOLATILE_PATH,
+                               ".sysinv_reported")
+
 NETWORK_CONFIG_LOCK_FILE = os.path.join(
     tsc.VOLATILE_PATH, "apply_network_config.lock")
 
