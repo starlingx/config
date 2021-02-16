@@ -3355,12 +3355,12 @@ class HostController(rest.RestController):
 
         self._check_sriovdp_interface_datanets(interface)
 
-    def _semantic_check_fpga_fec_device(self, host, dev, force_unlock=False):
+    def _semantic_check_acclr_fec_device(self, host, dev, force_unlock=False):
         """
-        Perform semantic checks on an FPGA FEC device.
+        Perform semantic checks on an FEC device.
         """
         if (force_unlock or
-                dev.pdevice_id != device.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF):
+           dev.pdevice_id not in device.SRIOV_ENABLED_FEC_DEVICE_IDS):
             return
 
         sriov_numvfs = dev.sriov_numvfs
@@ -3371,7 +3371,7 @@ class HostController(rest.RestController):
                 LOG.info("check sriov_numvfs=%s sriov_vfs_pci_address=%s" %
                          (sriov_numvfs, dev.sriov_vfs_pci_address))
         else:
-            msg = (_("Expecting number of FPGA device sriov_numvfs=%s. "
+            msg = (_("Expecting number of FEC device sriov_numvfs=%s. "
                      "Please wait a few minutes for inventory update and "
                      "retry host-unlock." %
                      sriov_numvfs))
@@ -3381,15 +3381,15 @@ class HostController(rest.RestController):
                 host['uuid'])
             raise wsme.exc.ClientSideError(msg)
 
-    def _semantic_check_fpga_device(self, host, dev, force_unlock=False):
+    def _semantic_check_acclr_device(self, host, dev, force_unlock=False):
         """
-        Perform semantic checks on an FPGA device.
+        Perform semantic checks on an FEC device.
         """
         if dev.pclass_id != device.PCI_DEVICE_CLASS_FPGA:
             return
 
-        if dev.pdevice_id == device.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF:
-            self._semantic_check_fpga_fec_device(host, dev, force_unlock)
+        if dev.pdevice_id in device.SRIOV_ENABLED_FEC_DEVICE_IDS:
+            self._semantic_check_acclr_fec_device(host, dev, force_unlock)
 
     def _semantic_check_devices(self, host, force_unlock=False):
         """
@@ -3399,7 +3399,7 @@ class HostController(rest.RestController):
             pecan.request.dbapi.pci_device_get_by_host(host['uuid']))
         for dev in devices:
             if dev.pclass_id == device.PCI_DEVICE_CLASS_FPGA:
-                self._semantic_check_fpga_device(host, dev, force_unlock)
+                self._semantic_check_acclr_device(host, dev, force_unlock)
 
     def _semantic_check_unlock_kube_upgrade(self, ihost, force_unlock=False):
         """

@@ -2672,8 +2672,9 @@ class ConductorManager(service.PeriodicService):
                                 pci_dev.get('sriov_vf_pdevice_id', None),
                             'driver': pci_dev['driver']}
                         LOG.info("attr: %s" % attr)
-                        if (host['administrative'] == constants.ADMIN_LOCKED and
-                                pci_dev['pdevice_id'] == dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF):
+                        if (host['administrative'] == constants.ADMIN_LOCKED
+                                and pci_dev['pdevice_id'] in
+                                dconstants.SRIOV_ENABLED_FEC_DEVICE_IDS):
                             # For the FPGA FEC device, the actual VF driver
                             # is only updated on an unlocked host. The set
                             # of VF PCI addresses may not be known when the

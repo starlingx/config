@@ -8,8 +8,25 @@ from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import ihost as ihost_utils
 
-# PCI Device Class ID in hexadecimal string
-PCI_DEVICE_CLASS_FPGA = '120000'
+# Account for those accelerator cards with a progIF set.
+# PCI Device Class ID in hexadecimal string.
+
+
+class pci_device_class_acclr:
+    def __init__(self):
+        self.pci_class_ids = ['120000', '120001']
+
+    def __eq__(self, other):
+        return (other in self.pci_class_ids)
+
+    def __ne__(self, other):
+        return (other not in self.pci_class_ids)
+
+    def __str__(self):
+        return ' '.join(self.pci_class_ids)
+
+
+PCI_DEVICE_CLASS_FPGA = pci_device_class_acclr()
 
 
 def _print_device_show(device):
