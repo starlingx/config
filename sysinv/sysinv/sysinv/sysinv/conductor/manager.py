@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2020 Wind River Systems, Inc.
 #
 
 """Conduct all activity related system inventory.
@@ -6363,9 +6363,6 @@ class ConductorManager(service.PeriodicService):
         if utils.get_system_mode(self.dbapi) != constants.SYSTEM_MODE_SIMPLEX:
             cutils.touch(
                 self._get_oam_runtime_apply_file(standby_controller=True))
-        else:
-            cutils.touch(
-                self._get_oam_runtime_apply_file(standby_controller=False))
 
     def update_user_config(self, context):
         """Update the user configuration"""
