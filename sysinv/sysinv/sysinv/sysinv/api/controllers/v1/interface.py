@@ -1806,7 +1806,21 @@ def _check(op, interface, ports=None, ifaces=None, from_profile=False,
            existing_interface=None, datanetworks=None):
     # Semantic checks
     ihost = pecan.request.dbapi.ihost_get(interface['ihost_uuid']).as_dict()
-    _check_host(ihost)
+
+    check_host = True
+    if (cutils.is_aio_simplex_system(pecan.request.dbapi)
+            and interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV):
+        if (op == 'modify' and interface['iftype'] == constants.INTERFACE_TYPE_ETHERNET
+                and existing_interface['ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV
+                and existing_interface['iftype'] == constants.INTERFACE_TYPE_ETHERNET):
+            # user can modify interface to SR-IOV PF without host lock in AIO-SX
+            check_host = False
+        elif (op == 'add' and interface['iftype'] == constants.INTERFACE_TYPE_VF):
+            # user can add interface SR-IOV VF without host lock in AIO-SX
+            check_host = False
+
+    if check_host:
+        _check_host(ihost)
     if not from_profile:
         if ports:
             _check_ports(op, interface, ihost, ports)
@@ -1912,8 +1926,15 @@ def _delete(interface, from_profile=False):
     ihost = pecan.request.dbapi.ihost_get(interface['forihostid']).as_dict()
 
     if not from_profile:
-        # Semantic checks
-        _check_host(ihost)
+        check_host = True
+        if (cutils.is_aio_simplex_system(pecan.request.dbapi)
+                and interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV
+                and interface['iftype'] == constants.INTERFACE_TYPE_VF):
+            # user can delete interface SR-IOV VF without host lock in AIO-SX
+            check_host = False
+
+        if check_host:
+            _check_host(ihost)
 
     if not from_profile and interface['iftype'] == 'ethernet' and not interface['uses']:
         msg = _("Cannot delete a system created ethernet interface")
