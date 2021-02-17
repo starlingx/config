@@ -14,6 +14,7 @@ import os.path
 from sysinv.common import constants
 from sysinv.cert_mon import service as cert_mon
 from sysinv.cert_mon import utils as cert_mon_utils
+from sysinv.cert_mon import watcher as cert_mon_watcher
 from sysinv.openstack.common.keystone_objects import Token
 from sysinv.tests.db import base
 
@@ -124,3 +125,48 @@ class CertMonTestCase(base.DbTestCase):
 
     def get_data_file_path(self, file_name):
         return os.path.join(os.path.dirname(__file__), "data", file_name)
+
+    @mock.patch('sysinv.cert_mon.watcher.watch.Watch')
+    @mock.patch('sysinv.cert_mon.watcher.client')
+    @mock.patch('sysinv.cert_mon.watcher.config')
+    def test_expired_event(self, mock_config, mock_client, mock_watch):
+        expired_event = {
+            "object": {
+                "api_version": "v1",
+                "kind": "Status",
+                "metadata": {},
+            },
+            "raw_object": {
+                "apiVersion": "v1",
+                "code": 410,
+                "kind": "Status",
+                "message": "too old resource version: 3856747 (5376715)",
+                "metadata": {},
+                "reason": "Expired",
+                "status": "Failure"
+            },
+            "type": "ERROR"
+        }
+        self.check_bad_event(mock_watch, expired_event)
+
+    @mock.patch('sysinv.cert_mon.watcher.watch.Watch')
+    @mock.patch('sysinv.cert_mon.watcher.client')
+    @mock.patch('sysinv.cert_mon.watcher.config')
+    def test_unknown_event(self, mock_config, mock_client, mock_watch):
+        unknown_event = {}
+        self.check_bad_event(mock_watch, unknown_event)
+
+    def check_bad_event(self, mock_watch, event_data):
+        def stream_bad_event(*args, **kwargs):
+            yield event_data
+
+        mock_watch_instance = mock_watch.return_value
+        mock_watch_instance.stream.side_effect = stream_bad_event
+
+        cert_watcher = cert_mon_watcher.CertWatcher()
+        # start_watch will raise an exception if it fails to parse
+        # the event
+        cert_watcher.start_watch(None, None)
+
+        mock_watch_instance.stream.assert_called_once()
+        mock_watch_instance.stop.assert_called_once()

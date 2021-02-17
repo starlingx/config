@@ -220,6 +220,16 @@ class CertWatcher(object):
 
         LOG.info('Monitor secrets in %s' % self.namespace)
         for item in w.stream(ccApi.list_namespaced_secret, namespace=self.namespace):
+            LOG.debug('Received new event: %s' % (item))
+            event_type = item.get('type')
+            if not event_type or event_type == 'ERROR':
+                # we received an unknown or error event on the watch, instead of trying to
+                # identify the exact error, we simply start from scratch, which should be
+                # always safe to do
+                LOG.info('Received unknown or error event on watch, restarting it')
+                w.stop()
+                return
+
             event_data = CertUpdateEventData(item)
             for listener in self.listeners:
                 update_event = CertUpdateEvent(listener, event_data)
