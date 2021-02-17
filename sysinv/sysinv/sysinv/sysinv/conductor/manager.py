@@ -10322,6 +10322,16 @@ class ConductorManager(service.PeriodicService):
         """
         self._openstack.delete_barbican_secret(context=context, name=name)
 
+    def update_snmp_config(self, context):
+        """Update the snmpd configuration"""
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::fm::runtime'],
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
     def get_ceph_pools_config(self, context):
         return self._ceph.get_pools_config()
 

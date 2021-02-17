@@ -511,6 +511,8 @@ class SystemController(rest.RestController):
 
         # Update only the fields that have changed
         name = ""
+        contact = ""
+        location = ""
         system_mode = ""
         timezone = ""
         capabilities = {}
@@ -522,6 +524,10 @@ class SystemController(rest.RestController):
                 rpc_isystem[field] = patched_system[field]
                 if field == 'name':
                     name = rpc_isystem[field]
+                if field == 'contact':
+                    contact = rpc_isystem[field]
+                if field == 'location':
+                    location = rpc_isystem[field]
                 if field == 'system_mode':
                     system_mode = rpc_isystem[field]
                 if field == 'timezone':
@@ -541,6 +547,10 @@ class SystemController(rest.RestController):
             LOG.info("update system name")
             pecan.request.rpcapi.configure_isystemname(pecan.request.context,
                                                        name)
+        if name or location or contact:
+            LOG.info("update SNMP config")
+            pecan.request.rpcapi.update_snmp_config(pecan.request.context)
+
         if 'system_mode' in delta_handle:
             LOG.info("update system mode %s" % system_mode)
             pecan.request.rpcapi.update_system_mode_config(
