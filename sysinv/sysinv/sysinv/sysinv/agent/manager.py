@@ -1589,7 +1589,6 @@ class AgentManager(service.PeriodicService):
                 else:
                     f_content = file_content
 
-                os.umask(0)
                 if f_content is not None:
                     with os.fdopen(os.open(file_name, os.O_CREAT | os.O_WRONLY,
                                permissions), 'wb') as f:

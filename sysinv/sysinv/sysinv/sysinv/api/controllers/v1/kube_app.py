@@ -8,6 +8,7 @@ import os
 import pecan
 from pecan import rest
 import shutil
+import stat
 import tempfile
 import wsme
 from wsme import types as wtypes
@@ -35,12 +36,11 @@ LOG = log.getLogger(__name__)
 @contextmanager
 def TempDirectory():
     tmpdir = tempfile.mkdtemp()
-    saved_umask = os.umask(0o077)
+    os.chmod(tmpdir, stat.S_IRWXU)
     try:
         yield tmpdir
     finally:
         LOG.debug("Cleaning up temp directory %s" % tmpdir)
-        os.umask(saved_umask)
         shutil.rmtree(tmpdir)
 
 
