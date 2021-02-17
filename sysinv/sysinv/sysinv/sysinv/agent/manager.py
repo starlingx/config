@@ -1130,39 +1130,43 @@ class AgentManager(service.PeriodicService):
             disk_size = utils.get_disk_capacity_mib(self._ihost_rootfs_device)
             disk_size = int(disk_size / 1024)
 
-            if disk_size > constants.DEFAULT_SMALL_DISK_SIZE:
-                LOG.info("Disk size for %s: %s ... large disk defaults" %
-                         (self._ihost_rootfs_device, disk_size))
+            if self._ihost_personality == constants.CONTROLLER:
+                if disk_size > constants.DEFAULT_SMALL_DISK_SIZE:
+                    LOG.info("Disk size for %s: %s ... large disk defaults" %
+                             (self._ihost_rootfs_device, disk_size))
 
-                backup_lv_size = \
-                    constants.DEFAULT_DATABASE_STOR_SIZE + \
-                    constants.DEFAULT_PLATFORM_STOR_SIZE + \
-                    constants.BACKUP_OVERHEAD
+                    backup_lv_size = \
+                        constants.DEFAULT_DATABASE_STOR_SIZE + \
+                        constants.DEFAULT_PLATFORM_STOR_SIZE + \
+                        constants.BACKUP_OVERHEAD
 
-            elif disk_size >= constants.MINIMUM_SMALL_DISK_SIZE:
-                LOG.info("Disk size for %s : %s ... small disk defaults" %
-                         (self._ihost_rootfs_device, disk_size))
+                elif disk_size >= constants.MINIMUM_SMALL_DISK_SIZE:
+                    LOG.info("Disk size for %s : %s ... small disk defaults" %
+                             (self._ihost_rootfs_device, disk_size))
 
-                # Due to the small size of the disk we can't provide the
-                # proper amount of backup space which is (database + platform_lv
-                # + BACKUP_OVERHEAD) so we are using a smaller default.
-                backup_lv_size = constants.DEFAULT_SMALL_BACKUP_STOR_SIZE
+                    # Due to the small size of the disk we can't provide the
+                    # proper amount of backup space which is (database +
+                    # platform_lv + BACKUP_OVERHEAD) so we are using a smaller
+                    # default.
+                    backup_lv_size = constants.DEFAULT_SMALL_BACKUP_STOR_SIZE
 
-            elif (disk_size >= constants.MINIMUM_TINY_DISK_SIZE and
-                  rpcapi.is_virtual_system_config(icontext) and
-                  tsc.system_type == constants.TIS_AIO_BUILD):
-                # Supports StarlingX running in QEMU/KVM VM with a tiny disk(AIO only)
-                LOG.info("Disk size for %s : %s ... tiny disk defaults "
-                         "for virtual system configuration" %
-                         (self._ihost_rootfs_device, disk_size))
-                kubelet_lv_size = constants.TINY_KUBELET_STOR_SIZE
-                docker_lv_size = constants.TINY_KUBERNETES_DOCKER_STOR_SIZE
-                backup_lv_size = constants.DEFAULT_TINY_BACKUP_STOR_SIZE
+                elif (disk_size >= constants.MINIMUM_TINY_DISK_SIZE and
+                    rpcapi.is_virtual_system_config(icontext) and
+                        tsc.system_type == constants.TIS_AIO_BUILD):
+                    # Supports StarlingX running in QEMU/KVM VM with a tiny
+                    # disk (AIO only)
+                    LOG.info("Disk size for %s : %s ... tiny disk defaults "
+                             "for virtual system configuration" %
+                             (self._ihost_rootfs_device, disk_size))
+                    kubelet_lv_size = constants.TINY_KUBELET_STOR_SIZE
+                    docker_lv_size = constants.TINY_KUBERNETES_DOCKER_STOR_SIZE
+                    backup_lv_size = constants.DEFAULT_TINY_BACKUP_STOR_SIZE
 
-            else:
-                LOG.info("Disk size for %s : %s ... disk too small" %
-                         (self._ihost_rootfs_device, disk_size))
-                raise exception.SysinvException("Disk size requirements not met.")
+                else:
+                    LOG.info("Disk size for %s : %s ... disk too small" %
+                             (self._ihost_rootfs_device, disk_size))
+                    raise exception.SysinvException(
+                        "Disk size requirements not met.")
 
             # check if the scratch fs is supported for current host
             if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_SCRATCH,
