@@ -47,6 +47,7 @@ Requires: python2-oslo.config
 Requires: python2-oslo.concurrency
 Requires: python2-oslo.db
 Requires: python2-oslo.log
+Requires: python2-oslo.rootwrap
 Requires: python2-oslo.serialization
 Requires: python2-oslo.service
 Requires: python2-oslo.utils
