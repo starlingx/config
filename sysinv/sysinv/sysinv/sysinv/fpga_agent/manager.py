@@ -40,7 +40,6 @@ from glob import glob
 
 import os
 import shlex
-import shutil
 import time
 import urllib
 
@@ -135,20 +134,6 @@ def fetch_device_image(filename):
         imagefile, headers = urllib.urlretrieve(url, local_path)
     except IOError:
         msg = ("Unable to retrieve device image from %s!" % url)
-        LOG.exception(msg)
-        raise exception.SysinvException(msg)
-    return local_path
-
-
-def fetch_device_image_local(filename):
-    # This is a hack since we only support AIO for now.  Just copy the device
-    # image file into the well-known device image cache directory.
-    local_path = DEVICE_IMAGE_CACHE_DIR + "/" + filename
-    image_file_path = os.path.join(dconstants.DEVICE_IMAGE_PATH, filename)
-    try:
-        shutil.copyfile(image_file_path, local_path)
-    except (shutil.Error, IOError):
-        msg = ("Unable to retrieve device image from %s!" % image_file_path)
         LOG.exception(msg)
         raise exception.SysinvException(msg)
     return local_path
@@ -607,15 +592,9 @@ class FpgaAgentManager(service.PeriodicService):
             LOG.info("ensure device image cache exists")
             ensure_device_image_cache_exists()
 
-            # Pull the image from the controller.
+            # Pull the image from the controller via HTTP
             LOG.info("fetch device image %s" % filename)
-            # For now, we only need to support AIO nodes, so just copy the
-            # file from where we know sysinv-conductor put it.
-            local_path = fetch_device_image_local(filename)
-
-            # TODO: when we need to support standalone workers, we'll need to
-            # pull in the image file via HTTP.
-            # local_path = fetch_device_image(filename)
+            local_path = fetch_device_image(filename)
 
             # TODO: check CSK used to sign image, ensure it hasn't been cancelled
             # TODO: check root key used to sign image, ensure it matches root key of hardware
