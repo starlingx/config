@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -13,6 +13,22 @@ LOG = logging.getLogger(__name__)
 
 class ServiceParamPuppet(base.BasePuppet):
     """Class to encapsulate puppet operations for service parameters"""
+
+    def _format_dict_parameter(self, resource, value=None):
+        parameter = {}
+        if value is None:
+            return {}
+        for p in value.split(','):
+            try:
+                key, data = p.split(':')
+                if (len(key) and len(data)):
+                    parameter.update(dict([(key.strip(), data.strip())]))
+            except ValueError:
+                LOG.error("Format error in value passed: %s" % value)
+                pass
+        if (len(parameter)):
+            return ({resource: parameter})
+        return {}
 
     def _format_array_parameter(self, resource, value):
         parameter = {}
@@ -64,6 +80,8 @@ class ServiceParamPuppet(base.BasePuppet):
             if formatter == service_parameter.SERVICE_PARAMETER_DATA_FORMAT_SKIP:
                 # Parameter is handled elsewhere
                 continue
+            elif formatter == service_parameter.SERVICE_PARAMETER_DATA_FORMAT_DICT:
+                config.update(self._format_dict_parameter(resource, param.value))
             elif formatter == service_parameter.SERVICE_PARAMETER_DATA_FORMAT_ARRAY:
                 config.update(self._format_array_parameter(resource, param.value))
             elif formatter == service_parameter.SERVICE_PARAMETER_DATA_FORMAT_BOOLEAN:
