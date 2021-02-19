@@ -1051,41 +1051,34 @@ class ConductorManager(service.PeriodicService):
                     raise exception.SysinvException(_(
                         "Failed to create pxelinux.cfg file"))
 
-    def _enable_etcd_security_config(self, context, config_uuid):
+    def _enable_etcd_security_config(self, context):
         """Update the manifests for etcd security
            Note: this can be removed in the release after STX5.0
+           returns True if runtime manifests were applied
         """
+        controllers = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+        for host in controllers:
+            if not utils.is_host_active_controller(host):
+                # Just enable etcd security on the standby controller.
+                # Etcd security was enabled on the active controller with a
+                # migration script.
+                personalities = [constants.CONTROLLER]
+                host_uuids = [host.uuid]
+                config_uuid = self._config_update_hosts(
+                    context, personalities, host_uuids)
+                config_dict = {
+                    "personalities": personalities,
+                    "host_uuids": host_uuids,
+                    "classes": ['platform::etcd::upgrade::runtime'],
+                    puppet_common.REPORT_STATUS_CFG:
+                        puppet_common.REPORT_UPGRADE_ACTIONS
+                }
+                self._config_apply_runtime_manifest(context,
+                                                    config_uuid=config_uuid,
+                                                    config_dict=config_dict)
+                return True
 
-        personalities = [constants.CONTROLLER]
-        hostname = socket.gethostname()
-        ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
-        valid_ctrls = [ctrl for ctrl in ctrls if
-                       ctrl.administrative == constants.ADMIN_UNLOCKED and
-                       ctrl.availability in [constants.AVAILABILITY_AVAILABLE,
-                                             constants.AVAILABILITY_DEGRADED]]
-        active_ctrl_host = None
-        standby_ctrl_host = None
-
-        for controller_host in valid_ctrls:
-            if controller_host.hostname != hostname:
-                standby_ctrl_host = controller_host
-            else:
-                active_ctrl_host = controller_host
-
-        # Applied etcd security puppet manifest in migration script for active controller.
-        self._update_host_config_applied(context, active_ctrl_host, config_uuid)
-
-        # Just enable etcd security in standby controller, as it has already been
-        # enabled in active controller side in migration script.
-        if standby_ctrl_host:
-            config_dict = {"personalities": personalities,
-                           "host_uuids": [standby_ctrl_host.uuid],
-                           "classes": ['platform::etcd::upgrade::runtime'],
-                           }
-
-            self._config_apply_runtime_manifest(context,
-                                                config_uuid=config_uuid,
-                                                config_dict=config_dict)
+        return False
 
     def _remove_pxe_config(self, host):
         """Delete the PXE config file for this host.
@@ -5146,17 +5139,11 @@ class ConductorManager(service.PeriodicService):
             # Not upgrading. No need to update status
             return
 
-        if upgrade.state == constants.UPGRADE_ACTIVATING:
-            personalities = [constants.CONTROLLER, constants.WORKER]
-
-            all_manifests_applied = True
+        if upgrade.state == constants.UPGRADE_ACTIVATING_HOSTS:
             hosts = self.dbapi.ihost_get_list()
-            for host in hosts:
-                if host.personality in personalities and \
-                        host.config_target != host.config_applied:
-                    all_manifests_applied = False
-                    break
-            if all_manifests_applied:
+            out_of_date_hosts = [host for host in hosts if host.config_target != host.config_applied]
+            if not out_of_date_hosts:
+                LOG.info("Manifests applied. Upgrade activation complete.")
                 self.dbapi.software_upgrade_update(
                     upgrade.uuid,
                     {'state': constants.UPGRADE_ACTIVATION_COMPLETE})
@@ -6960,7 +6947,14 @@ class ConductorManager(service.PeriodicService):
 
         # Identify the executed set of manifests executed
         success = False
-        if reported_cfg == puppet_common.REPORT_DISK_PARTITON_CONFIG:
+        if reported_cfg == puppet_common.REPORT_UPGRADE_ACTIONS:
+            if status == puppet_common.REPORT_SUCCESS:
+                success = True
+            else:
+                host_uuid = iconfig['host_uuid']
+                LOG.info("Upgrade manifest failed for host: %s" % host_uuid)
+                self.report_upgrade_config_failure()
+        elif reported_cfg == puppet_common.REPORT_DISK_PARTITON_CONFIG:
             partition_uuid = iconfig['partition_uuid']
             host_uuid = iconfig['host_uuid']
             idisk_uuid = iconfig['idisk_uuid']
@@ -7866,6 +7860,19 @@ class ConductorManager(service.PeriodicService):
         # Set OSD to error state
         values = {'state': constants.SB_STATE_CONFIG_ERR}
         self.dbapi.istor_update(stor_uuid, values)
+
+    def report_upgrade_config_failure(self):
+        """
+           Callback for Sysinv Agent on upgrade manifest failure
+        """
+        try:
+            upgrade = self.dbapi.software_upgrade_get_one()
+        except exception.NotFound:
+            LOG.error("Upgrade record not found during config failure")
+            return
+        self.dbapi.software_upgrade_update(
+            upgrade.uuid,
+            {'state': constants.UPGRADE_ACTIVATION_FAILED})
 
     def create_controller_filesystems(self, context, rootfs_device):
         """ Create the storage config based on disk size for database, platform,
@@ -9973,11 +9980,6 @@ class ConductorManager(service.PeriodicService):
         to_load = self.dbapi.load_get(upgrade.to_load)
         to_version = to_load.software_version
 
-        # Update the config target of the controllers. This prevents the audit
-        # from changing the upgrade state before we're ready.
-        personalities = [constants.CONTROLLER]
-        config_uuid = self._config_update_hosts(context, personalities)
-
         self.dbapi.software_upgrade_update(
             upgrade.uuid, {'state': constants.UPGRADE_ACTIVATING})
 
@@ -9996,14 +9998,20 @@ class ConductorManager(service.PeriodicService):
                 self.dbapi.software_upgrade_update(
                     upgrade.uuid,
                     {'state': constants.UPGRADE_ACTIVATION_FAILED})
+
+        manifests_applied = False
+        if from_version == tsc.SW_VERSION_20_06:
+            # Apply etcd security puppet manifest to the standby controller.
+            manifests_applied = self._enable_etcd_security_config(context)
+
+        if manifests_applied:
+            LOG.info("Running upgrade activation manifests")
+            self.dbapi.software_upgrade_update(
+                upgrade.uuid, {'state': constants.UPGRADE_ACTIVATING_HOSTS})
         else:
-            if from_version == tsc.SW_VERSION_20_06:
-                # Apply etcd security puppet manifest here for standby controller.
-                self._enable_etcd_security_config(context, config_uuid)
-            else:
-                hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
-                for host in hosts:
-                    self._update_host_config_applied(context, host, config_uuid)
+            LOG.info("Upgrade activation complete")
+            self.dbapi.software_upgrade_update(
+                upgrade.uuid, {'state': constants.UPGRADE_ACTIVATION_COMPLETE})
 
     def complete_upgrade(self, context, upgrade, state):
         """ Complete the upgrade"""

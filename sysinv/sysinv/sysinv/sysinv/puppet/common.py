@@ -27,6 +27,7 @@ REPORT_FAILURE = 'report_failure'
 REPORT_INVENTORY_UPDATE = 'inventory_update'
 
 # name of manifest config operations to report back to sysinv conductor
+REPORT_UPGRADE_ACTIONS = 'upgrade_actions'
 REPORT_AIO_CINDER_CONFIG = 'aio_cinder_config'
 REPORT_DISK_PARTITON_CONFIG = 'manage_disk_partitions'
 REPORT_LVM_BACKEND_CONFIG = 'lvm_config'

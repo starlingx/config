@@ -318,6 +318,7 @@ class UpgradeController(rest.RestController):
         elif updates['state'] == constants.UPGRADE_ACTIVATION_REQUESTED:
 
             if upgrade.state in [constants.UPGRADE_ACTIVATING,
+                                 constants.UPGRADE_ACTIVATING_HOSTS,
                                  constants.UPGRADE_ACTIVATION_COMPLETE]:
                 raise wsme.exc.ClientSideError(_(
                     "upgrade-activate rejected: "
