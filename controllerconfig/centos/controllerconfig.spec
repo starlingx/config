@@ -16,6 +16,7 @@ Requires: psmisc
 Requires: sysinv
 Requires: systemd
 Requires: tsconfig
+Requires: python-cryptography
 Requires: python-iso8601
 Requires: python-keyring
 Requires: python-netaddr
