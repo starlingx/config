@@ -75,6 +75,12 @@ class System(base.APIBase):
     location = wtypes.text
     "The location of the isystem"
 
+    latitude = wtypes.text
+    "The latitude GPS coordinate of the system"
+
+    longitude = wtypes.text
+    "The longitude GPS coordinate of the system"
+
     services = int
     "The services of the isystem"
 
@@ -132,8 +138,8 @@ class System(base.APIBase):
     def convert_with_links(cls, rpc_isystem, expand=True):
         # isystem = isystem(**rpc_isystem.as_dict())
         minimum_fields = ['id', 'uuid', 'name', 'system_type', 'system_mode',
-                          'description', 'capabilities',
-                          'contact', 'location', 'software_version',
+                          'description', 'capabilities', 'contact',
+                          'location', 'latitude', 'longitude', 'software_version',
                           'created_at', 'updated_at', 'timezone',
                           'region_name', 'service_project_name',
                           'distributed_cloud_role', 'security_feature']
@@ -409,6 +415,12 @@ class SystemController(rest.RestController):
                                                      "does not exist." %
                                                      timezone))
 
+            if (p['path'] == '/latitude' or p['path'] == '/longitude'):
+                if p['value'] is not None:
+                    if len(p['value']) > 30:
+                        raise wsme.exc.ClientSideError("Geolocation coordinates can not be "
+                                                       "longer than 30 characters")
+
             if p['path'] == '/sdn_enabled':
                 sdn_enabled = p['value'].lower()
                 patch.remove(p)
@@ -557,7 +569,6 @@ class SystemController(rest.RestController):
         if name or location or contact:
             LOG.info("update SNMP config")
             pecan.request.rpcapi.update_snmp_config(pecan.request.context)
-
         if 'system_mode' in delta_handle:
             LOG.info("update system mode %s" % system_mode)
             pecan.request.rpcapi.update_system_mode_config(
