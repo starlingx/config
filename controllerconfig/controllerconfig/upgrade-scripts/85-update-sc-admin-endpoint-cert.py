@@ -1,5 +1,5 @@
-#!/usr/bin/python
-# Copyright (c) 2020 Wind River Systems, Inc.
+#!/usr/bin/python3
+# Copyright (c) 2020-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
