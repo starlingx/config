@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -41,6 +41,7 @@ from sysinv.api.controllers.v1 import health
 from sysinv.api.controllers.v1 import helm_charts
 from sysinv.api.controllers.v1 import host
 from sysinv.api.controllers.v1 import kube_app
+from sysinv.api.controllers.v1 import kube_cluster
 from sysinv.api.controllers.v1 import kube_host_upgrade
 from sysinv.api.controllers.v1 import kube_upgrade
 from sysinv.api.controllers.v1 import kube_version
@@ -251,6 +252,9 @@ class V1(base.APIBase):
 
     host_fs = [link.Link]
     "Links to the host_fs resource"
+
+    kube_clusters = [link.Link]
+    "Links to the kube_cluster resource"
 
     kube_versions = [link.Link]
     "Links to the kube_version resource"
@@ -793,6 +797,13 @@ class V1(base.APIBase):
                                           'host_fs', '',
                                           bookmark=True)]
 
+        v1.kube_clusters = [link.Link.make_link('self', pecan.request.host_url,
+                                               'kube_clusters', ''),
+                            link.Link.make_link('bookmark',
+                                                pecan.request.host_url,
+                                                'kube_clusters', '',
+                                                bookmark=True)]
+
         v1.kube_versions = [link.Link.make_link('self', pecan.request.host_url,
                                                'kube_versions', ''),
                             link.Link.make_link('bookmark',
@@ -911,6 +922,7 @@ class Controller(rest.RestController):
     datanetworks = datanetwork.DataNetworkController()
     interface_datanetworks = interface_datanetwork.InterfaceDataNetworkController()
     host_fs = host_fs.HostFsController()
+    kube_clusters = kube_cluster.KubeClusterController()
     kube_versions = kube_version.KubeVersionController()
     kube_upgrade = kube_upgrade.KubeUpgradeController()
     kube_host_upgrades = kube_host_upgrade.KubeHostUpgradeController()

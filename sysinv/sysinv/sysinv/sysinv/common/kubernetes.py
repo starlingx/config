@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -28,10 +28,17 @@ from six.moves import http_client as httplib
 from oslo_log import log as logging
 from sysinv.common import exception
 
+
 LOG = logging.getLogger(__name__)
 
 # Kubernetes Files
 KUBERNETES_ADMIN_CONF = '/etc/kubernetes/admin.conf'
+
+# Kubernetes clusters
+KUBERNETES_CLUSTER_DEFAULT = "kubernetes"
+
+# Kubernetes users
+KUBERNETES_ADMIN_USER = "kubernetes-admin"
 
 # Possible states for each supported kubernetes version
 KUBE_STATE_AVAILABLE = 'available'
@@ -171,6 +178,7 @@ class KubeOperator(object):
         c = Configuration()
         c.verify_ssl = False
         Configuration.set_default(c)
+        return c
 
     def _get_kubernetesclient_batch(self):
         if not self._kube_client_batch:
@@ -189,6 +197,9 @@ class KubeOperator(object):
             self._load_kube_config()
             self._kube_client_custom_objects = client.CustomObjectsApi()
         return self._kube_client_custom_objects
+
+    def kube_get_kubernetes_config(self):
+        return self._load_kube_config()
 
     def kube_patch_node(self, name, body):
         try:
@@ -529,6 +540,30 @@ class KubeOperator(object):
             LOG.error("Failed to delete custom object, Namespace %s: %s"
                       % (namespace, e))
             raise
+
+    def kube_get_service_account(self, name, namespace):
+        c = self._get_kubernetesclient_core()
+        try:
+            return c.read_namespaced_service_account(name, namespace)
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                return None
+            else:
+                LOG.error("Failed to get ServiceAccount %s under "
+                          "Namespace %s: %s" % (name, namespace, e.body))
+                raise
+        except Exception as e:
+            LOG.error("Kubernetes exception in kube_get_service_account: %s" % e)
+            raise
+
+    def kube_get_service_account_token(self, name, namespace):
+        sa = self.kube_get_service_account(name, namespace)
+        if not sa:
+            # ServiceAccount does not exist, no token available
+            return None
+
+        secret = self.kube_get_secret(sa.secrets[0].name, namespace)
+        return secret.data.get('token')
 
     def kube_get_control_plane_pod_ready_status(self):
         """Returns the ready status of the control plane pods."""
