@@ -14,4 +14,3 @@ install:
 	install -p -D -m 700 worker_config $(INITDDIR)/worker_config
 	install -p -D -m 755 config_goenabled_check.sh $(GOENABLEDDIR)/config_goenabled_check.sh
 	install -p -D -m 664 workerconfig.service $(SYSTEMDDIR)/config/workerconfig-standalone.service
-	install -p -D -m 664 workerconfig-combined.service $(SYSTEMDDIR)/config/workerconfig-combined.service

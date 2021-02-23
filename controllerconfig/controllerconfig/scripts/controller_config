@@ -588,7 +588,7 @@ start()
 
     if [ -f ${HOST_HIERA} ]; then
         echo "$0: Running puppet manifest apply"
-        puppet-manifest-apply.sh ${HIERADATA_PATH} ${IPADDR} controller
+        puppet-manifest-apply.sh ${HIERADATA_PATH} ${IPADDR} ${subfunction}
         RC=$?
         if [ $RC -ne 0 ]
         then

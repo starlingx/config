@@ -23,13 +23,6 @@ Group: System/Packages
 %description -n workerconfig-standalone
 Initial worker node configuration for StarlingX project.
 
-%package -n workerconfig-subfunction
-Summary: The worker config subfunction package
-Group: System/Packages
-
-%description -n workerconfig-subfunction
-Initial worker node configuration for StarlingX project.
-
 %define initddir %{_sysconfdir}/init.d/
 %define goenableddir %{_sysconfdir}/goenabled.d/
 %define systemddir %{_sysconfdir}/systemd/system/
@@ -44,11 +37,6 @@ make install INITDDIR=%{buildroot}%{initddir} GOENABLEDDIR=%{buildroot}%{goenabl
 
 %post -n workerconfig-standalone
 cp $D%{systemddir}/config/workerconfig-standalone.service $D%{systemddir}/workerconfig.service
-systemctl enable workerconfig.service
-
-
-%post -n workerconfig-subfunction
-cp $D%{systemddir}/config/workerconfig-combined.service $D%{systemddir}/workerconfig.service
 systemctl enable workerconfig.service
 
 %clean
@@ -67,13 +55,5 @@ systemctl enable workerconfig.service
 %dir %{_sysconfdir}/systemd
 %dir %{_sysconfdir}/systemd/system
 %config %{systemddir}/config/workerconfig-standalone.service
-
-%files -n workerconfig-subfunction
-%defattr(-,root,root,-)
-%dir %{systemddir}/config
-%{systemddir}/config/workerconfig-combined.service
-%dir %{_sysconfdir}/systemd
-%dir %{_sysconfdir}/systemd/system
-%config %{systemddir}/config/workerconfig-combined.service
 
 %changelog
