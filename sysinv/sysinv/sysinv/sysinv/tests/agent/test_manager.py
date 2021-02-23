@@ -74,7 +74,8 @@ class TestAgentManager(base.TestCase):
     def test_create_host_filesystems_controller_large(self):
 
         self.agent_manager._ihost_personality = constants.CONTROLLER
-        self.mock_get_disk_capacity.return_value = 241 * 1024
+        self.mock_get_disk_capacity.return_value = \
+            (constants.DEFAULT_SMALL_DISK_SIZE + 1) * 1024
 
         self.agent_manager._create_host_filesystems(self.fake_conductor_api,
                                                     self.context)
@@ -95,7 +96,8 @@ class TestAgentManager(base.TestCase):
     def test_create_host_filesystems_controller_small(self):
 
         self.agent_manager._ihost_personality = constants.CONTROLLER
-        self.mock_get_disk_capacity.return_value = 181 * 1024
+        self.mock_get_disk_capacity.return_value = \
+            constants.MINIMUM_SMALL_DISK_SIZE * 1024
 
         self.agent_manager._create_host_filesystems(self.fake_conductor_api,
                                                     self.context)
@@ -116,7 +118,8 @@ class TestAgentManager(base.TestCase):
     def test_create_host_filesystems_controller_tiny_virtual_fail(self):
 
         self.agent_manager._ihost_personality = constants.CONTROLLER
-        self.mock_get_disk_capacity.return_value = 60 * 1024
+        self.mock_get_disk_capacity.return_value = \
+            constants.MINIMUM_TINY_DISK_SIZE * 1024
         self.fake_conductor_api.is_virtual_system_config_result = True
 
         # Verify filesystems were not created
@@ -126,7 +129,8 @@ class TestAgentManager(base.TestCase):
     def test_create_host_filesystems_controller_too_small_fail(self):
 
         self.agent_manager._ihost_personality = constants.CONTROLLER
-        self.mock_get_disk_capacity.return_value = 59 * 1024
+        self.mock_get_disk_capacity.return_value = \
+            (constants.MINIMUM_TINY_DISK_SIZE - 1) * 1024
 
         # Verify filesystems were not created
         self.fake_conductor_api.create_host_filesystems.assert_not_called()
@@ -136,7 +140,8 @@ class TestAgentManager(base.TestCase):
 
         tsconfig.system_type = constants.TIS_AIO_BUILD
         self.agent_manager._ihost_personality = constants.CONTROLLER
-        self.mock_get_disk_capacity.return_value = 60 * 1024
+        self.mock_get_disk_capacity.return_value = \
+            constants.MINIMUM_TINY_DISK_SIZE * 1024
         self.fake_conductor_api.is_virtual_system_config_result = True
 
         self.agent_manager._create_host_filesystems(self.fake_conductor_api,
@@ -158,7 +163,8 @@ class TestAgentManager(base.TestCase):
     def test_create_host_filesystems_worker_large(self):
 
         self.agent_manager._ihost_personality = constants.WORKER
-        self.mock_get_disk_capacity.return_value = 241 * 1024
+        self.mock_get_disk_capacity.return_value = \
+            (constants.DEFAULT_SMALL_DISK_SIZE + 1) * 1024
 
         self.agent_manager._create_host_filesystems(self.fake_conductor_api,
                                                     self.context)
@@ -178,7 +184,8 @@ class TestAgentManager(base.TestCase):
     def test_create_host_filesystems_worker_small(self):
 
         self.agent_manager._ihost_personality = constants.WORKER
-        self.mock_get_disk_capacity.return_value = 181 * 1024
+        self.mock_get_disk_capacity.return_value = \
+            constants.MINIMUM_SMALL_DISK_SIZE * 1024
 
         self.agent_manager._create_host_filesystems(self.fake_conductor_api,
                                                     self.context)
@@ -219,7 +226,8 @@ class TestAgentManager(base.TestCase):
     def test_create_host_filesystems_storage_large(self):
 
         self.agent_manager._ihost_personality = constants.STORAGE
-        self.mock_get_disk_capacity.return_value = 241 * 1024
+        self.mock_get_disk_capacity.return_value = \
+            (constants.DEFAULT_SMALL_DISK_SIZE + 1) * 1024
 
         self.agent_manager._create_host_filesystems(self.fake_conductor_api,
                                                     self.context)
@@ -239,7 +247,8 @@ class TestAgentManager(base.TestCase):
     def test_create_host_filesystems_storage_small(self):
 
         self.agent_manager._ihost_personality = constants.STORAGE
-        self.mock_get_disk_capacity.return_value = 181 * 1024
+        self.mock_get_disk_capacity.return_value = \
+            constants.MINIMUM_SMALL_DISK_SIZE * 1024
 
         self.agent_manager._create_host_filesystems(self.fake_conductor_api,
                                                     self.context)

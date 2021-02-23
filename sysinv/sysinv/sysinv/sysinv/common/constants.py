@@ -349,14 +349,15 @@ DEFAULT_SMALL_DISK_SIZE = 240
 # ETCD_STOR_SIZE                                        5
 # CEPH_MON_SIZE                                        20
 # KUBELET_STOR_SIZE                                    10
+# DC_VAULT_SIZE                                        15
 # buffer inside VG for LV creation                      1
 # platform backup partition (created in kickstarts)    10
 # root partition (created in kickstarts)               20
 # boot/EFI partition (created in kickstarts)            1
 # buffer for partition creation                         1
 # -------------------------------------------------------
-#                                                     181
-MINIMUM_SMALL_DISK_SIZE = 181
+#                                                     196
+MINIMUM_SMALL_DISK_SIZE = 196
 
 # The minimum tiny disk size needed to create all partitions
 # Value based on the following calculation:
