@@ -1398,6 +1398,8 @@ CERT_MODES_SUPPORTED = [CERT_MODE_SSL,
                         CERT_MODE_OPENSTACK,
                         CERT_MODE_OPENSTACK_CA,
                         ]
+CERT_MODES_SUPPORTED_CERT_MANAGER = [CERT_MODE_SSL,
+                                     CERT_MODE_DOCKER_REGISTRY]
 
 # CONFIG file permissions
 CONFIG_FILE_PERMISSION_ROOT_READ_ONLY = 0o400
@@ -1740,3 +1742,8 @@ ADMIN_EP_CERT_FORMAT = '{tls_key}'
 RESTAPI_CERT_SECRET_NAME = "system-restapi-gui-certificate"
 REGISTRY_CERT_SECRET_NAME = "system-registry-local-certificate"
 CERT_NAMESPACE_PLATFORM_CERTS = 'deployment'
+
+CERT_MODE_TO_SECRET_NAME = {
+    CERT_MODE_SSL: RESTAPI_CERT_SECRET_NAME,
+    CERT_MODE_DOCKER_REGISTRY: REGISTRY_CERT_SECRET_NAME
+}
