@@ -82,6 +82,7 @@ from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1 import vim_api
 from sysinv.common import constants
 from sysinv.common import ceph as cceph
+from sysinv.common import dc_api
 from sysinv.common import device as dconstants
 from sysinv.common import exception
 from sysinv.common import fm
@@ -10194,6 +10195,11 @@ class ConductorManager(service.PeriodicService):
                      (from_version, to_version))
             upgrades_management.complete_upgrade(from_version, to_version, upgrade)
             LOG.info("Finished completing upgrade")
+            # If applicable, notify dcmanager upgrade is complete
+            system = self.dbapi.isystem_get_one()
+            role = system.get('distributed_cloud_role')
+            if role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+                dc_api.notify_dcmanager_platform_upgrade_completed()
 
         # Delete upgrade record
         self.dbapi.software_upgrade_destroy(upgrade.uuid)
