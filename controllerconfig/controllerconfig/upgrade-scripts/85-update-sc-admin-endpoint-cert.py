@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -9,10 +9,15 @@
 # This script can be removed in the release that follows stx.5.0
 #
 
+import base64
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
+from cryptography import x509
 from shutil import copyfile
 import socket
 import subprocess
 import sys
+import time
 
 from controllerconfig.common import log
 
@@ -83,7 +88,7 @@ def execute_command(cmd):
     stdout, stderr = sub.communicate()
     if sub.returncode != 0:
         LOG.error('Command failed:\n %s\n. %s\n%s' % (cmd, stdout, stderr))
-        raise Exception('Failed to update certificate')
+        raise Exception('Failed to execute command: %s' % cmd)
     return stdout
 
 
@@ -112,17 +117,53 @@ def update_sc_admin_endpoint_cert(to_release):
     else:
         raise Exception('Command failed after retries: %s' % cmd)
 
-    # Extract subcloud admin endpoint certificate
+    # Extract subcloud admin endpoint certificate.
+    # There is an issue with cert-manager where even though the certificate is
+    # reported as ready from the previous command, the actual data extracted is
+    # still empty. So we retry if no valid certificate data is extracted, and
+    # retry for private key data for the same reason.
     cmd = "kubectl --kubeconfig=/etc/kubernetes/admin.conf get secret \
-           sc-adminep-certificate -n sc-cert -o=jsonpath='{.data.tls\.crt}' \
-           | base64 --decode"
-    cert = execute_command(cmd)
+           sc-adminep-certificate -n sc-cert -o=jsonpath='{.data.tls\.crt}'"
+    for attempt in range(3):
+        try:
+            cert = execute_command(cmd)
+            if not cert:
+                raise Exception('Certificate extracted is empty.')
+            cert = base64.b64decode(cert)
 
-    # Extract subcloud admin endpoint private key
+            # Test loading the certificate to ensure it's valid
+            x509.load_pem_x509_certificate(cert, default_backend())
+        except Exception as e:
+            LOG.info('Failed to extract certificate: %s Will retry.' % e)
+            time.sleep(5)
+            continue
+        else:
+            break
+    else:
+        raise Exception('Failed to extract certificate from cert-manager.')
+
+    # Extract subcloud admin endpoint private key,
+    # Retry if no valid private key data is extracted.
     cmd = "kubectl --kubeconfig=/etc/kubernetes/admin.conf get secret \
-           sc-adminep-certificate -n sc-cert -o=jsonpath='{.data.tls\.key}' \
-           | base64 --decode"
-    key = execute_command(cmd)
+           sc-adminep-certificate -n sc-cert -o=jsonpath='{.data.tls\.key}'"
+    for attempt in range(3):
+        try:
+            key = execute_command(cmd)
+            if not key:
+                raise Exception('Private key extracted is empty.')
+            key = base64.b64decode(key)
+
+            # Test loading the private key to ensure it's valid
+            serialization.load_pem_private_key(key, password=None,
+                                               backend=default_backend())
+        except Exception as e:
+            LOG.info('Failed to extract private key: %s Will retry.' % e)
+            time.sleep(5)
+            continue
+        else:
+            break
+    else:
+        raise Exception('Failed to extract private key from cert-manager.')
 
     # Create haproxy tls certificate
     cert_file = "/etc/ssl/private/admin-ep-cert.pem"
