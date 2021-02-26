@@ -33,17 +33,22 @@ class AppLifecycleOperator(object):
         """
 
         # Semantic checks
-        if hook_info.lifecycle_type == constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK and \
-                hook_info.mode == constants.APP_LIFECYCLE_MODE_AUTO and \
-                hook_info.operation == constants.APP_APPLY_OP and \
-                hook_info.relative_timing == constants.APP_LIFECYCLE_TIMING_PRE:
-            raise exception.LifecycleSemanticCheckException(
-                "Automatic apply is disabled for %s." % app.name)
+        if hook_info.lifecycle_type == constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK:
+            if hook_info.mode == constants.APP_LIFECYCLE_MODE_AUTO and \
+                    hook_info.operation == constants.APP_APPLY_OP and \
+                    hook_info.relative_timing == constants.APP_LIFECYCLE_TIMING_PRE:
+                raise exception.LifecycleSemanticCheckException(
+                    "Automatic apply is disabled for %s." % app.name)
+            elif hook_info.mode == constants.APP_LIFECYCLE_MODE_AUTO and \
+                    hook_info.operation == constants.APP_EVALUATE_REAPPLY_OP:
+                # To reject the reapply evaluation an app can override this
+                # hook and raise exception.LifecycleSemanticCheckException
+                pass
 
         # TODO(dvoicule) remove once each app has its lifecycle operator and takes care of its rbd
         # this is here to keep the same functionality while decoupling
         # Rbd
-        if hook_info.lifecycle_type == constants.APP_LIFECYCLE_TYPE_RBD:
+        elif hook_info.lifecycle_type == constants.APP_LIFECYCLE_TYPE_RBD:
             if hook_info.operation == constants.APP_APPLY_OP and \
                     hook_info.relative_timing == constants.APP_LIFECYCLE_TIMING_PRE:
                 lifecycle_utils.create_rbd_provisioner_secrets(app_op, app, hook_info)
@@ -54,7 +59,7 @@ class AppLifecycleOperator(object):
         # TODO(dvoicule) remove once each app has its lifecycle operator and takes care of its resources
         # this is here to keep the same functionality while decoupling
         # Resources
-        if hook_info.lifecycle_type == constants.APP_LIFECYCLE_TYPE_RESOURCE:
+        elif hook_info.lifecycle_type == constants.APP_LIFECYCLE_TYPE_RESOURCE:
             if hook_info.operation == constants.APP_APPLY_OP and \
                     hook_info.relative_timing == constants.APP_LIFECYCLE_TIMING_PRE:
                 lifecycle_utils.create_local_registry_secrets(app_op, app, hook_info)

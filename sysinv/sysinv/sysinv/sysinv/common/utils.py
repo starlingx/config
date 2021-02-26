@@ -18,7 +18,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 
@@ -1897,6 +1897,36 @@ def find_metadata_file(path, metadata_file):
     maintain_user_overrides: <true|false>
       - optional: defaults to false. Over an app update any user overrides are
         preserved for the new version of the application
+    ...
+    behavior: - optional: describes the app behavior
+        platform_managed_app: <true/false/yes/no> - optional: when absent behaves as false
+        desired_state: <uploaded/applied> - optional: state the app should reach
+        evaluate_reapply: - optional: describe the reapply evaluation behaviour
+            after: - optional: list of apps that should be evaluated before the current one
+              - <app_name.1>
+              - <app_name.2>
+            triggers: - optional: list of what triggers the reapply evaluation
+              - type: <key in APP_EVALUATE_REAPPLY_TRIGGER_TO_METADATA_MAP>
+                filters: - optional: list of field:value, that aid filtering
+                    of the trigger events. All pairs in this list must be
+                    present in trigger dictionary that is passed in
+                    the calls (eg. trigger[field_name1]==value_name1 and
+                    trigger[field_name2]==value_name2).
+                    Function evaluate_apps_reapply takes a dictionary called
+                    'trigger' as parameter. Depending on trigger type this
+                    may contain custom information used by apps, for example
+                    a field 'personality' corresponding to node personality.
+                    It is the duty of the app developer to enhance existing
+                    triggers with the required information.
+                    Hard to obtain information should be passed in the trigger.
+                    To use existing information it is as simple as defining
+                    the metadata.
+                  - <field_name.1>: <value_name.1>
+                  - <field_name.2>: <value_name.2>
+                filter_field: <field_name> - optional: field name in trigger
+                              dictionary. If specified the filters are applied
+                              to trigger[filter_field] sub-dictionary instead
+                              of the root trigger dictionary.
     """
     app_name = ''
     app_version = ''
@@ -1913,16 +1943,124 @@ def find_metadata_file(path, metadata_file):
                 # metadata file does not have the key(s)
                 pass
 
-        if (app_name is None or
-                app_version is None):
-            raise exception.SysinvException(_(
-                "Invalid %s: app_name or/and app_version "
-                "is/are None." % metadata_file))
+            if (app_name is None or
+                    app_version is None):
+                raise exception.SysinvException(_(
+                    "Invalid %s: app_name or/and app_version "
+                    "is/are None." % metadata_file))
 
-        if not isinstance(patches, list):
-            raise exception.SysinvException(_(
-                "Invalid %s: patch_dependencies should "
-                "be a list." % metadata_file))
+            if not isinstance(patches, list):
+                raise exception.SysinvException(_(
+                    "Invalid %s: patch_dependencies should "
+                    "be a list." % metadata_file))
+
+            behavior = None
+            evaluate_reapply = None
+            triggers = None
+
+            try:
+                behavior = doc[constants.APP_METADATA_BEHAVIOR]
+                if not isinstance(behavior, dict):
+                    raise exception.SysinvException(_(
+                        "Invalid {}: {} should be a dict."
+                        "".format(metadata_file,
+                                  constants.APP_METADATA_BEHAVIOR)))
+            except KeyError:
+                pass
+
+            if behavior:
+                try:
+                    platform_managed_app = behavior[constants.APP_METADATA_PLATFORM_MANAGED_APP]
+                    if not is_valid_boolstr(platform_managed_app):
+                        raise exception.SysinvException(_(
+                            "Invalid {}: {} expected value is a boolean string."
+                            "".format(metadata_file,
+                                      constants.APP_METADATA_PLATFORM_MANAGED_APP)))
+                except KeyError:
+                    pass
+
+                try:
+                    desired_state = behavior[constants.APP_METADATA_DESIRED_STATE]
+                    if not isinstance(desired_state, six.string_types):
+                        raise exception.SysinvException(_(
+                            "Invalid {}: {} should be {}."
+                            "".format(metadata_file,
+                                      constants.APP_METADATA_DESIRED_STATE,
+                                      six.string_types)))
+                except KeyError:
+                    pass
+
+                try:
+                    evaluate_reapply = behavior[constants.APP_METADATA_EVALUATE_REAPPLY]
+                    if not isinstance(evaluate_reapply, dict):
+                        raise exception.SysinvException(_(
+                            "Invalid {}: {} should be a dict."
+                            "".format(metadata_file,
+                                      constants.APP_METADATA_EVALUATE_REAPPLY)))
+                except KeyError:
+                    pass
+
+            if evaluate_reapply:
+                try:
+                    after = evaluate_reapply[constants.APP_METADATA_AFTER]
+                    if not isinstance(after, list):
+                        raise exception.SysinvException(_(
+                            "Invalid {}: {} should be a list."
+                            "".format(metadata_file,
+                                      constants.APP_METADATA_AFTER)))
+                except KeyError:
+                    pass
+
+                try:
+                    triggers = evaluate_reapply[constants.APP_METADATA_TRIGGERS]
+                    if not isinstance(triggers, list):
+                        raise exception.SysinvException(_(
+                            "Invalid {}: {} should be a list."
+                            "".format(metadata_file,
+                                      constants.APP_METADATA_TRIGGERS)))
+                except KeyError:
+                    pass
+
+            if triggers:
+                for trigger in triggers:
+                    if not isinstance(trigger, dict):
+                        raise exception.SysinvException(_(
+                            "Invalid {}: element of {} should be a dict."
+                            "".format(metadata_file,
+                                      constants.APP_METADATA_TRIGGERS)))
+
+                    try:
+                        type = trigger[constants.APP_METADATA_TYPE]
+                        if not isinstance(type, six.string_types):
+                            raise exception.SysinvException(_(
+                                "Invalid {}: {} should be {}."
+                                "".format(metadata_file,
+                                          constants.APP_METADATA_TYPE,
+                                          six.string_types)))
+                    except KeyError:
+                        pass
+
+                    try:
+                        filter_field = trigger[constants.APP_METADATA_FILTER_FIELD]
+                        if not isinstance(filter_field, six.string_types):
+                            raise exception.SysinvException(_(
+                                "Invalid {}: {} should be {}."
+                                "".format(metadata_file,
+                                          constants.APP_METADATA_TYPE,
+                                          six.string_types)))
+                    except KeyError:
+                        pass
+
+                    try:
+                        filters = trigger[constants.APP_METADATA_FILTERS]
+                        if not isinstance(filters, list):
+                            raise exception.SysinvException(_(
+                                "Invalid {}: {} should be a list."
+                                "".format(metadata_file,
+                                          constants.APP_METADATA_TYPE)))
+                    except KeyError:
+                        pass
+
     return app_name, app_version, patches
 
 
@@ -2071,6 +2209,12 @@ def generate_synced_armada_manifest_fqpn(app_name, app_version, manifest_filenam
     return os.path.join(
         constants.APP_SYNCED_ARMADA_DATA_PATH, app_name, app_version,
         app_name + '-' + manifest_filename)
+
+
+def generate_synced_metadata_fqpn(app_name, app_version):
+    return os.path.join(
+        constants.APP_SYNCED_ARMADA_DATA_PATH, app_name, app_version,
+        'metadata.yaml')
 
 
 def is_chart_enabled(dbapi, app_name, chart_name, namespace):

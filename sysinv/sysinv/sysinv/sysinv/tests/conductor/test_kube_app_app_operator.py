@@ -10,6 +10,7 @@ import fixtures
 
 from sysinv.common import constants
 from sysinv.conductor import kube_app
+from sysinv.conductor import manager
 from sysinv.db import api as dbapi
 from sysinv.helm import helm
 from sysinv.openstack.common import context
@@ -24,10 +25,14 @@ class AppOperatorTestCase(base.DbTestCase):
     def setUp(self):
         super(AppOperatorTestCase, self).setUp()
 
+        # Manager holds apps_metadata dict
+        self.service = manager.ConductorManager('test-host', 'test-topic')
+
         # Set up objects for testing
         self.helm_operator = helm.HelmOperator(dbapi.get_instance())
         self.app_operator = kube_app.AppOperator(dbapi.get_instance(),
-                                                 self.helm_operator)
+                                                 self.helm_operator,
+                                                 self.service.apps_metadata)
         self.context = context.get_admin_context()
         self.dbapi = dbapi.get_instance()
         self.temp_dir = self.useFixture(fixtures.TempDir())

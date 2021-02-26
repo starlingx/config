@@ -18,3 +18,8 @@ class LifecycleConstants(object):
     APP_APPLIED = 'app_applied'
     APP_REMOVED = 'app_removed'
     RETURN_CODE = 'rc'
+    EVALUATE_REAPPLY_TRIGGER = 'trigger'
+    TRIGGER_CONFIGURE_REQUIRED = 'configure_required'
+    TRIGGER_TYPE = 'type'
+    TRIGGER_OPENSTACK_WORKER = 'openstack_worker'
+    TRIGGER_DELTA_FIELDS = 'delta_fields'
