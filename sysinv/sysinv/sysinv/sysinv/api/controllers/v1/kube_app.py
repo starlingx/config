@@ -5,6 +5,7 @@
 #
 
 import os
+import hashlib
 import pecan
 from pecan import rest
 import shutil
@@ -128,6 +129,12 @@ class KubeAppController(rest.RestController):
     def __init__(self, parent=None, **kwargs):
         self._parent = parent
 
+    @staticmethod
+    def _make_db_placeholder(prefix, url):
+        url_hash = hashlib.sha256()
+        url_hash.update(bytes(str(url).encode('utf-8')))
+        return "{}-{}".format(prefix, url_hash.hexdigest()[:16])
+
     def _check_tarfile(self, app_tarfile, app_name, app_version, operation):
         def _handle_upload_failure(reason):
             raise wsme.exc.ClientSideError(_(
@@ -140,9 +147,11 @@ class KubeAppController(rest.RestController):
                 # take some time depending on network traffic, target server and file
                 # size.
                 if not app_name:
-                    app_name = constants.APP_NAME_PLACEHOLDER
+                    app_name = self._make_db_placeholder(
+                                    constants.APP_NAME_PLACEHOLDER, app_tarfile)
                 if not app_version:
-                    app_version = constants.APP_VERSION_PLACEHOLDER
+                    app_version = self._make_db_placeholder(
+                                  constants.APP_VERSION_PLACEHOLDER, app_tarfile)
                 mname = constants.APP_MANIFEST_NAME_PLACEHOLDER
                 mfile = constants.APP_TARFILE_NAME_PLACEHOLDER
                 return app_name, app_version, mname, mfile
