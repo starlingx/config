@@ -11460,3 +11460,114 @@ Run the Docker registry garbage collector
 
 This operation does not accept a request body.
 
+
+-------------------
+Kubernetes Clusters
+-------------------
+
+These APIs allow for the retrieval of the Kubernetes cluster information, including
+the access information for remote administrative access.
+
+****************************
+List the Kubernetes clusters
+****************************
+
+.. rest_method:: GET /v1/kube_clusters
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "cluster_name", "plain", "xsd:string", "Kubernetes Cluster Name (kubernetes)"
+   "cluster_version", "plain", "xsd:string", "Kubernetes Release Version"
+   "cluster_api_endpoint", "plain", "xsd:string", "Cluster API Public Endpoint URL"
+   "cluster_ca_cert ", "plain", "xsd:string", "Admin Root CA X.509 Certificate (PEM format)"
+   "admin_client_cert", "plain", "xsd:string", "Admin Client X.509 Certificate (PEM format)"
+   "admin_client_key", "plain", "xsd:string", "Admin Client Key (PEM format)"
+   "admin_user", "plain", "xsd:string", "Admin User Name (kubernetes-admin)"
+   "admin_token (Optional)", "plain", "xsd:string", "Admin service account token for admin_user, if configured (Base64 ASCII)"
+
+::
+
+   {
+      "kube_clusters": [
+         {
+            "cluster_name": "kubernetes",
+            "cluster_version": "v1.18.1",
+            "cluster_api_endpoint": "https://10.10.10.2:6443",
+            "cluster_ca_cert": "REDACTED: <certificate-data>",
+            "admin_client_cert": "REDACTED: <certificate-data>",
+            "admin_client_key": "REDACTED: <key-data>",
+            "admin_user": "kubernetes-admin",
+            "admin_token": "REDACTED: <token-data>"
+         }
+      ]
+   }
+
+This operation does not accept a request body.
+
+********************************************************
+Get the Kubernetes cluster details of a specific cluster
+********************************************************
+
+.. rest_method:: GET /v1/kube_clusters/​{cluster_name}
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "cluster_name", "URI", "xsd:string", "The unique Kubernetes cluster name."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "cluster_name", "plain", "xsd:string", "Kubernetes Cluster Name (kubernetes)"
+   "cluster_version", "plain", "xsd:string", "Kubernetes Release Version"
+   "cluster_api_endpoint", "plain", "xsd:string", "Cluster API Public Endpoint URL"
+   "cluster_ca_cert ", "plain", "xsd:string", "Admin Root CA Certificate (PEM format)"
+   "admin_client_cert", "plain", "xsd:string", "Admin Client Certificate (PEM format)"
+   "admin_client_key", "plain", "xsd:string", "Admin Client Key (PEM format)"
+   "admin_user", "plain", "xsd:string", "Admin User Name (kubernetes-admin)"
+   "admin_token (Optional)", "plain", "xsd:string", "Admin service account token for admin_user, if configured (base64 encoded)"
+
+::
+
+   {
+      "cluster_name": "kubernetes",
+      "cluster_version": "v1.18.1",
+      "cluster_api_endpoint": "https://10.10.10.2:6443",
+      "cluster_ca_cert": "REDACTED: <certificate-data>",
+      "admin_client_cert": "REDACTED: <certificate-data>",
+      "admin_client_key": "REDACTED: <key-data>",
+      "admin_user": "kubernetes-admin",
+      "admin_token": "REDACTED: <token-data>"
+   }
+
+This operation does not accept a request body.
