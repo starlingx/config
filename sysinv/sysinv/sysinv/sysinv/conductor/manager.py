@@ -7925,16 +7925,16 @@ class ConductorManager(service.PeriodicService):
             #         20 G - /var/lib/ceph/mon
             #         15 G - /opt/dc-vault (DRBD ctlr manifest for DCSC)
             #        -----
-            #        163 G / 178 G(DCSC)
+            #        178 G
             #
             #  The absolute minimum disk size for these default settings:
             #      2.0 G - buffer
             #      0.5 G - /boot
             #     10.0 G - /opt/platform-backup
             #     20.0 G - /
-            #    163.0 G / 178.0 G - cgts-vg PV
+            #    178.0 G - cgts-vg PV
             #   -------
-            #    ~ 196 G / 210 G(DCSC) min size disk
+            #    ~ 210 G min size disk
             #
             database_storage = constants.DEFAULT_DATABASE_STOR_SIZE
 
@@ -7942,7 +7942,7 @@ class ConductorManager(service.PeriodicService):
 
             LOG.info("Disk size : %s ... small disk defaults" % disk_size)
 
-            # Small disk: under 240G and over 181G root disk
+            # Small disk: under 240G and over 196G root disk
             #
             #          8 G - /var/log (reserved in kickstart)
             #         16 G - /scratch (reserved in kickstart)
@@ -7969,16 +7969,16 @@ class ConductorManager(service.PeriodicService):
             #         10 G - /var/lib/kubelet
             #         15 G - /opt/dc-vault (DRBD ctlr manifest for DCSC)
             #        -----
-            #        148 G / 163 G(DCSC)
+            #        163 G
             #
             #  The absolute minimum disk size for these default settings:
             #     2.0 G - buffer
             #     0.5 G - /boot
             #    10.0 G - /opt/platform-backup
             #    20.0 G - /
-            #   148.0 G / 163.0 G - cgts-vg PV
+            #   163.0 G - cgts-vg PV
             #   -------
-            #   ~ 181 G / 196 G(DCSC) min size disk
+            #   ~ 196 G min size disk
             #
             database_storage = \
                 constants.DEFAULT_SMALL_DATABASE_STOR_SIZE
