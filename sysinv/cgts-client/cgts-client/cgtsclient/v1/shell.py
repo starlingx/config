@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -42,6 +42,7 @@ from cgtsclient.v1 import istor_shell
 from cgtsclient.v1 import isystem_shell
 from cgtsclient.v1 import iuser_shell
 
+from cgtsclient.v1 import kube_cluster_shell
 from cgtsclient.v1 import kube_upgrade_shell
 from cgtsclient.v1 import kube_version_shell
 from cgtsclient.v1 import label_shell
@@ -121,6 +122,7 @@ COMMAND_MODULES = [
     label_shell,
     app_shell,
     host_fs_shell,
+    kube_cluster_shell,
     kube_version_shell,
     kube_upgrade_shell,
     device_image_shell,
