@@ -169,6 +169,10 @@ ACTIVE_CONFIG_REBOOT_REQUIRED = os.path.join(
 # configuration UUID reboot required flag (bit)
 CONFIG_REBOOT_REQUIRED = (1 << 127)
 
+# Types of runtime configuration applies
+CONFIG_APPLY_RUNTIME_MANIFEST = 'config_apply_runtime_manifest'
+CONFIG_UPDATE_FILE = 'config_update_file'
+
 LOCK_NAME_UPDATE_CONFIG = 'update_config_'
 LOCK_AUTO_APPLY = 'AutoApplyLock'
 
@@ -211,6 +215,9 @@ class ConductorManager(service.PeriodicService):
         # struct {'host_uuid':[config_uuid_0,config_uuid_1]}
         # this will track the config w/ reboot request to apply
         self._host_reboot_config_uuid = {}
+
+        # track deferred runtime config which need to be applied
+        self._host_deferred_runtime_config = []
 
     def start(self):
         self._start()
@@ -5263,6 +5270,68 @@ class ConductorManager(service.PeriodicService):
                                          'install_state_info':
                                              host.install_state_info})
 
+    def _ready_to_apply_runtime_config(
+            self, context, personalities=None, host_uuids=None):
+        """Determine whether ready to apply runtime config"""
+
+        # Scope to the active controller since do not want to block runtime
+        # manifest apply due to other hosts here.  The config target will
+        # still track for any missed config (on other hosts in case other
+        # hosts are unavailable).
+        if personalities is None:
+            personalities = []
+        if host_uuids is None:
+            host_uuids = []
+
+        check_required = False
+        if constants.CONTROLLER in personalities:
+            check_required = True
+        if constants.WORKER in personalities and cutils.is_aio_system(self.dbapi):
+            check_required = True
+        if host_uuids and self.host_uuid not in host_uuids:
+            check_required = False
+
+        if not check_required:
+            return True
+
+        if not os.path.exists(constants.SYSINV_REPORTED):
+            LOG.info("_ready_to_apply_runtime_config path does not exist: %s" %
+                     constants.SYSINV_REPORTED)
+            return False
+
+        return True
+
+    def _audit_deferred_runtime_config(self, context):
+        """Apply deferred config runtime manifests when ready"""
+
+        LOG.debug("_audit_deferred_runtime_config %s" %
+                  self._host_deferred_runtime_config)
+        if not self._ready_to_apply_runtime_config(context):
+            return
+        if self._host_deferred_runtime_config:
+            # apply the deferred runtime manifests
+            for config in list(self._host_deferred_runtime_config):
+                config_type = config.get('config_type')
+                LOG.info("found _audit_deferred_runtime_config request apply %s" %
+                         config)
+
+                if config_type == CONFIG_APPLY_RUNTIME_MANIFEST:
+                    self._config_apply_runtime_manifest(
+                        context,
+                        config['config_uuid'],
+                        config['config_dict'],
+                        force=config.get('force', False))
+                elif config_type == CONFIG_UPDATE_FILE:
+                    self._config_update_file(
+                        context,
+                        config['config_uuid'],
+                        config['config_dict'])
+                else:
+                    LOG.error("Removing unsupported deferred config_type %s" %
+                              config_type)
+
+                self._host_deferred_runtime_config.remove(config)
+
     @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
     def _kubernetes_local_secrets_audit(self, context):
         # Audit kubernetes local registry secrets info
@@ -5274,6 +5343,9 @@ class ConductorManager(service.PeriodicService):
     def _conductor_audit(self, context):
         # periodically, perform audit of inventory
         LOG.debug("Sysinv Conductor running periodic audit task.")
+
+        # check whether there are deferred runtime manifests to apply
+        self._audit_deferred_runtime_config(context)
 
         # check whether we may have just become active with target config
         self._controller_config_active_apply(context)
@@ -9168,6 +9240,21 @@ class ConductorManager(service.PeriodicService):
         :           action_key: match key (for patch only)
         :          }
         """
+
+        if not self._ready_to_apply_runtime_config(
+                context,
+                config_dict.get('personalities'),
+                config_dict.get('host_uuids')):
+            # append to deferred for audit
+            self._host_deferred_runtime_config.append(
+                {'config_type': CONFIG_UPDATE_FILE,
+                 'config_uuid': config_uuid,
+                 'config_dict': config_dict,
+                 })
+            LOG.info("defer update file to _host_deferred_runtime_config %s" %
+                     self._host_deferred_runtime_config)
+            return
+
         # Ensure hiera data is updated prior to active apply.
         self._config_update_puppet(config_uuid, config_dict)
 
@@ -9224,6 +9311,23 @@ class ConductorManager(service.PeriodicService):
                 config_uuid, config_dict["classes"]))
         else:
             LOG.info("applying runtime manifest config_uuid=%s" % config_uuid)
+
+        # only apply runtime manifests to active controller if agent ready,
+        # otherwise will append to the list of outstanding runtime manifests
+        if not self._ready_to_apply_runtime_config(
+                context,
+                config_dict.get('personalities'),
+                config_dict.get('host_uuids')):
+            # append to deferred for audit
+            self._host_deferred_runtime_config.append(
+                {'config_type': CONFIG_APPLY_RUNTIME_MANIFEST,
+                 'config_uuid': config_uuid,
+                 'config_dict': config_dict,
+                 'force': force,
+                 })
+            LOG.info("defer apply runtime manifest %s" %
+                     self._host_deferred_runtime_config)
+            return
 
         # Update hiera data for all hosts prior to runtime apply if host_uuid
         # is not set. If host_uuids is set only update hiera data for those hosts.

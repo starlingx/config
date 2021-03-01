@@ -94,8 +94,6 @@ CONF.register_opts(agent_opts, 'agent')
 MAXSLEEP = 300  # 5 minutes
 
 SYSINV_READY_FLAG = os.path.join(tsc.VOLATILE_PATH, ".sysinv_ready")
-SYSINV_FIRST_REPORT_FLAG = os.path.join(tsc.VOLATILE_PATH,
-                                        ".sysinv_agent_report_sent")
 
 CONFIG_APPLIED_FILE = os.path.join(tsc.PLATFORM_CONF_PATH, ".config_applied")
 CONFIG_APPLIED_DEFAULT = "install"
@@ -209,6 +207,10 @@ class AgentManager(service.PeriodicService):
         initial_reports_required = \
                 self.INVENTORY_REPORTS_REQUIRED - self._inventory_reported
         initial_reports_required.discard(self.HOST_FILESYSTEMS)
+
+        if self._inventory_reported:
+            utils.touch(constants.SYSINV_REPORTED)
+
         if initial_reports_required:
             LOG.info("_report_to_conductor initial_reports_required=%s" %
                  initial_reports_required)
@@ -218,7 +220,7 @@ class AgentManager(service.PeriodicService):
 
     def _report_to_conductor_iplatform_avail(self):
         # First report sent to conductor since boot
-        utils.touch(SYSINV_FIRST_REPORT_FLAG)
+        utils.touch(constants.SYSINV_FIRST_REPORT_FLAG)
         # Sysinv-agent ready; used also by the init script.
         utils.touch(SYSINV_READY_FLAG)
         time.sleep(1)  # give time for conductor to process
@@ -553,7 +555,7 @@ class AgentManager(service.PeriodicService):
 
         # Is this the first time since boot we are reporting to conductor?
         msg_dict.update({constants.SYSINV_AGENT_FIRST_REPORT:
-                         not os.path.exists(SYSINV_FIRST_REPORT_FLAG)})
+                         not os.path.exists(constants.SYSINV_FIRST_REPORT_FLAG)})
 
         try:
             rpcapi.iplatform_update_by_ihost(context,
