@@ -1436,8 +1436,7 @@ class TestPatchMixin(object):
         self._create_sriov_vf_driver_valid('bad_driver', expect_errors=True)
 
     def test_create_sriov_no_mgmt(self):
-        self._create_sriov_vf_driver_valid(constants.SRIOV_DRIVER_TYPE_VFIO,
-                                           expect_errors=True)
+        self._create_sriov_vf_driver_valid(constants.SRIOV_DRIVER_TYPE_VFIO)
 
 
 class TestPostMixin(object):

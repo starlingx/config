@@ -770,25 +770,11 @@ def _check_interface_mtu(interface, ihost, from_profile=False):
     return interface
 
 
-def _get_host_mgmt_interface(ihost):
-    for iface in pecan.request.dbapi.iinterface_get_by_ihost(ihost['id']):
-        for ni in pecan.request.dbapi.interface_network_get_by_interface(iface['id']):
-            network = pecan.request.dbapi.network_get(ni.network_id)
-            if network.type == constants.NETWORK_TYPE_MGMT:
-                return iface
-    return None
-
-
 def _check_interface_sriov(interface, ihost, from_profile=False):
     sriov_update = False
 
     if 'ifclass' in interface.keys() and not interface['ifclass']:
         return sriov_update
-
-    if (interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV and
-          _get_host_mgmt_interface(ihost) is None):
-        raise wsme.exc.ClientSideError(_("Unable to provision pci-sriov interface "
-                                         "without configured mgmt interface."))
 
     if (interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV and
             'sriov_numvfs' not in interface.keys()):
@@ -881,6 +867,11 @@ def _check_interface_class_transition(interface, existing_interface):
     ifclass = interface['ifclass']
     existing_ifclass = existing_interface['ifclass']
     if ifclass == existing_ifclass:
+        return
+    # to share single vf capable nic, we need to allow
+    # platform to pci-sriov class transition
+    if (ifclass == constants.INTERFACE_CLASS_PCI_SRIOV and
+            existing_ifclass == constants.INTERFACE_CLASS_PLATFORM):
         return
     if (ifclass and
             existing_interface[
