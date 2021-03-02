@@ -330,7 +330,8 @@ class AppOperator(object):
                 else:
                     op = 'application-update'
 
-                if app.name in constants.HELM_APPS_PLATFORM_MANAGED:
+                if app.name in self._apps_metadata[
+                        constants.APP_METADATA_PLATFORM_MANAGED_APPS].keys():
                     # For platform core apps, set the new status
                     # to 'uploaded'. The audit task will kick in with
                     # all its pre-requisite checks before reapplying.
@@ -338,7 +339,8 @@ class AppOperator(object):
                     self._clear_app_alarm(app.name)
 
             if (not reset_status or
-                    app.name not in constants.HELM_APPS_PLATFORM_MANAGED):
+                    app.name not in self._apps_metadata[
+                        constants.APP_METADATA_PLATFORM_MANAGED_APPS].keys()):
                 self._raise_app_alarm(
                     app.name, constants.APP_APPLY_FAILURE,
                     fm_constants.FM_ALARM_ID_APPLICATION_APPLY_FAILED,
@@ -1885,17 +1887,78 @@ class AppOperator(object):
         lifecycle_op = self._helm.get_app_lifecycle_operator(app.name)
         lifecycle_op.app_lifecycle_actions(context, conductor_obj, self, app, hook_info)
 
-    def load_application_metadata(self, rpc_app):
+    @staticmethod
+    def update_and_process_app_metadata(apps_metadata_dict, app_name, metadata, overwrite=True):
+        """ Update the cached metadata for an app
+
+        :param apps_metadata_dict: The dictionary being the cache
+        :param app_name: Name of the app
+        :param metadata: Metadata that will replace the old one
+        :param overwrite: If metadata is already present in the cache for this app,
+                          then overwrite needs to be enabled to do the replacement
+
+        """
+        if not overwrite and \
+                app_name in apps_metadata_dict[constants.APP_METADATA_APPS]:
+            LOG.info("Updating metadata for app {} skipped because metadata "
+                     "is present and overwrite is not enabled"
+                     "".format(app_name))
+            return
+
+        apps_metadata_dict[constants.APP_METADATA_APPS][app_name] = metadata
+        LOG.info("Loaded metadata for app {}: {}".format(app_name, metadata))
+
+        behavior = metadata.get(constants.APP_METADATA_BEHAVIOR, None)
+        if behavior is not None:
+            is_managed = behavior.get(constants.APP_METADATA_PLATFORM_MANAGED_APP, None)
+            desired_state = behavior.get(constants.APP_METADATA_DESIRED_STATE, None)
+
+            # Remember if the app wants to be managed by the platform
+            if cutils.is_valid_boolstr(is_managed):
+                apps_metadata_dict[
+                    constants.APP_METADATA_PLATFORM_MANAGED_APPS][app_name] = None
+                LOG.info("App {} requested to be platform managed"
+                         "".format(app_name))
+
+            # Remember the desired state the app should achieve
+            if desired_state is not None:
+                apps_metadata_dict[
+                    constants.APP_METADATA_DESIRED_STATES][app_name] = desired_state
+                LOG.info("App {} requested to achieve {} state"
+                         "".format(app_name, desired_state))
+
+    def load_application_metadata_from_database(self, rpc_app):
+        """ Load the application metadata from the database
+
+        :param rpc_app: KubeApp model object
+
+        """
+        LOG.info("Loading application metadata for {} from database"
+                 "".format(rpc_app.name))
+
+        app = AppOperator.Application(rpc_app)
+        metadata = {}
+
+        # Load metadata as a dictionary from a column in the database
+        db_app = self._dbapi.kube_app_get(app.name)
+        if db_app.app_metadata:
+            metadata = db_app.app_metadata or {}
+
+        AppOperator.update_and_process_app_metadata(self._apps_metadata,
+                                                    app.name,
+                                                    metadata)
+
+    def load_application_metadata_from_file(self, rpc_app):
         """ Load the application metadata from the metadata file of the app
 
         :param rpc_app: data object provided in the rpc request
 
         """
-        LOG.info("Loading application metadata for %s" % rpc_app.name)
+        LOG.info("Loading application metadata for {} from file"
+                 "".format(rpc_app.name))
 
         app = AppOperator.Application(rpc_app)
-
-        metadata = None
+        metadata = {}
 
         if os.path.exists(app.sync_metadata_file):
             with open(app.sync_metadata_file, 'r') as f:
@@ -1903,11 +1966,15 @@ class AppOperator(object):
                 # Set preserve_quotes=True to preserve all the quotes.
                 # The assumption here: there is just one yaml section
                 metadata = yaml.load(
-                    f, Loader=yaml.RoundTripLoader, preserve_quotes=True)
+                    f, Loader=yaml.RoundTripLoader, preserve_quotes=True) or {}
 
-        if metadata:
-            self._apps_metadata[constants.APP_METADATA_APPS][app.name] = metadata
-            LOG.info("Loaded metadata for app {}: {}".format(app.name, metadata))
+        AppOperator.update_and_process_app_metadata(self._apps_metadata,
+                                                    app.name,
+                                                    metadata)
+
+        # Save metadata as a dictionary in a column in the database
+        rpc_app.app_metadata = metadata
+        rpc_app.save()
 
     def perform_app_apply(self, rpc_app, mode, lifecycle_hook_info_app_apply, caller=None):
         """Process application install request
@@ -2145,7 +2212,7 @@ class AppOperator(object):
                                              lifecycle_hook_info_app_upload=lifecycle_hook_info_app_update)
             lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
 
-            self.load_application_metadata(to_rpc_app)
+            self.load_application_metadata_from_file(to_rpc_app)
 
             # Check whether the new application is compatible with the current k8s version
             self._utils._check_app_compatibility(to_app.name, to_app.version)
@@ -2515,6 +2582,10 @@ class AppOperator(object):
         @property
         def mode(self):
             return self._kube_app.get('mode')
+
+        @property
+        def app_metadata(self):
+            return self._kube_app.get('app_metadata')
 
         def update_status(self, new_status, new_progress):
             self._kube_app.status = new_status
