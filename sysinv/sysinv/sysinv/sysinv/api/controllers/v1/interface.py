@@ -1036,16 +1036,21 @@ def _check_interface_ratelimit(interface):
             # keep 10% of the bandwidth for PF traffic
             total_rate_for_vf = int(ports[0]['speed'] * constants.VF_TOTAL_RATE_RATIO)
             total_rate_used = 0
+            this_interface_id = interface.get('id', 0)
             interface_list = pecan.request.dbapi.iinterface_get_all(
                 forihostid=ihost_uuid)
             for i in interface_list:
                 if (i['iftype'] == constants.INTERFACE_TYPE_VF and
-                     lower_ifname == i['uses'][0]):
+                        lower_ifname == i['uses'][0] and
+                        i.id != this_interface_id):
                     if i['max_tx_rate'] is not None:
-                        total_rate_used += i['max_tx_rate']
+                        total_rate_used += i['max_tx_rate'] * i['sriov_numvfs']
 
-            if total_rate_used + max_tx_rate > total_rate_for_vf:
-                msg = _("Configured max_tx_rate exceeds total link speed")
+            vfs_config = interface['sriov_numvfs']
+            if total_rate_used + (max_tx_rate * vfs_config) > total_rate_for_vf:
+                msg = _("Configured (max_tx_rate*sriov_numvfs) exceeds "
+                        "available link speed bandwidth: %d Mbps." %
+                        (total_rate_for_vf - total_rate_used))
                 raise wsme.exc.ClientSideError(msg)
 
 

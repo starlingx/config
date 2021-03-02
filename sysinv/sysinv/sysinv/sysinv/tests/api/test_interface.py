@@ -2076,10 +2076,15 @@ class TestPostMixin(object):
                               host=self.worker)
         port, lower_iface = self._create_sriov(
             'sriov', host=self.worker, sriov_numvfs=4)
+        # 4Gbps*3 > (10Gbps*0.9)
+        self._create_vf('vf0', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=3,
+            expect_errors=True, max_tx_rate=4000)
+
         self._create_vf('vf1', lower_iface=lower_iface,
             host=self.worker, sriov_numvfs=1,
             expect_errors=False, max_tx_rate=1000)
-        # exceeds total bandwidth
+        # 1Gbps+9Gbps > (10Gbps*0.9)
         self._create_vf('vf2', lower_iface=lower_iface,
             host=self.worker, sriov_numvfs=1,
             expect_errors=True, max_tx_rate=9000)
