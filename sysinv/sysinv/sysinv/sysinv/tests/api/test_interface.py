@@ -1400,6 +1400,27 @@ class TestPatchMixin(object):
         self.assertEqual('application/json', response.content_type)
         self.assertTrue(response.json['error_message'])
 
+    # Expected error: Interface MTU ___ cannot be larger than MTU of underlying
+    # interface ___
+    def test_ethernet_mtu_smaller_than_users(self):
+        port, lower_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4)
+        upper = dbutils.create_test_interface(
+            forihostid='2',
+            ihost_uuid=self.worker.uuid,
+            ifname='pxeboot0',
+            networktype=constants.NETWORK_TYPE_PXEBOOT,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            uses=['sriov'],
+            imtu=1500)
+        response = self.patch_dict_json(
+            '%s' % self._get_path(upper['uuid']), imtu=1800,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+
     def _create_sriov_vf_driver_valid(self, vf_driver, expect_errors=False):
         interface = dbutils.create_test_interface(forihostid=self.worker.id,
                                                   datanetworks='group0-data0')

@@ -1287,7 +1287,8 @@ def _check_interface_data(op, interface, ihost, existing_interface,
 
     # check MTU
     if interface['iftype'] in [constants.INTERFACE_TYPE_VLAN,
-                               constants.INTERFACE_TYPE_VF]:
+                               constants.INTERFACE_TYPE_VF,
+                               constants.INTERFACE_TYPE_ETHERNET]:
         interface_mtu = interface['imtu']
         for name in interface['uses']:
             parent = pecan.request.dbapi.iinterface_get(name, ihost_uuid)
@@ -1295,7 +1296,7 @@ def _check_interface_data(op, interface, ihost, existing_interface,
                 msg = _("Interface MTU (%s) cannot be larger than MTU of "
                         "underlying interface (%s)" % (interface_mtu, parent['imtu']))
                 raise wsme.exc.ClientSideError(msg)
-    elif interface['used_by']:
+    if interface['used_by']:
         mtus = _get_interface_mtus(ihost_uuid, interface)
         for mtu in mtus:
             if int(interface['imtu']) < int(mtu):
