@@ -6,7 +6,7 @@
 import json
 
 from oslo_log import log
-from sysinv.api.controllers.v1.rest_api import rest_api_request
+from sysinv.common.rest_api import rest_api_request
 
 LOG = log.getLogger(__name__)
 
