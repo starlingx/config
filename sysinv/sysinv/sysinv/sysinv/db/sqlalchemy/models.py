@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -1614,6 +1614,15 @@ class SoftwareUpgrade(Base):
                              foreign_keys=[from_load])
     load_to = relationship("Load", lazy="joined", join_depth=1,
                            foreign_keys=[to_load])
+
+
+class Restore(Base):
+    __tablename__ = 'backup_restore'
+
+    id = Column('id', Integer, primary_key=True, nullable=False)
+    uuid = Column('uuid', String(36), unique=True)
+    state = Column('state', String(128), nullable=False)
+    capabilities = Column(JSONEncodedDict)
 
 
 class HostUpgrade(Base):

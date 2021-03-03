@@ -15,7 +15,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 """SQLAlchemy storage backend."""
@@ -8706,3 +8706,79 @@ class Connection(api.Connection):
             else:
                 query = query.filter_by(status=status)
         return query.all()
+
+    def _restore_get(self, id):
+        query = model_query(models.Restore)
+        if utils.is_uuid_like(id):
+            query = query.filter_by(uuid=id)
+        else:
+            query = query.filter_by(id=id)
+
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.RestoreNotFound(uuid=id)
+
+        return result
+
+    @objects.objectify(objects.restore)
+    def restore_create(self, values):
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+        restore = models.Restore()
+        restore.update(values)
+        with _session_for_write() as session:
+            try:
+                session.add(restore)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                raise exception.RestoreAlreadyExists(uuid=values['uuid'])
+
+            return restore
+
+    @objects.objectify(objects.restore)
+    def restore_get(self, id):
+        return self._restore_get(id)
+
+    @objects.objectify(objects.restore)
+    def restore_get_list(self, limit=None, marker=None,
+                         sort_key=None, sort_dir=None):
+        query = model_query(models.Restore)
+
+        return _paginate_query(models.Restore, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @objects.objectify(objects.restore)
+    def restore_get_one(self, filters):
+        query = model_query(models.Restore)
+
+        for key in filters if filters else {}:
+            query = query.filter(getattr(models.Restore, key).in_([filters[key]]))
+
+        try:
+            return query.one()
+        except NoResultFound:
+            raise exception.NotFound()
+
+    @objects.objectify(objects.restore)
+    def restore_update(self, uuid, values):
+        with _session_for_write() as session:
+            query = model_query(models.Restore, session=session)
+            query = query.filter_by(uuid=uuid)
+
+            count = query.update(values, synchronize_session='fetch')
+            if count != 1:
+                raise exception.RestoreNotFound(uuid=uuid)
+            return query.one()
+
+    def restore_destroy(self, id):
+        with _session_for_write() as session:
+            query = model_query(models.Restore, session=session)
+            query = query.filter_by(uuid=id)
+
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.RestoreNotFound(uuid=id)
+
+            query.delete()
