@@ -12020,8 +12020,8 @@ class ConductorManager(service.PeriodicService):
                 LOG.exception("Failed to regenerate the overrides for app %s. %s" %
                               (app.name, e))
         else:
-            LOG.info("{} app active:{} status:{} does not warrant re-apply",
-                     app.name, app.active, app.status)
+            LOG.info("{} app active:{} status:{} does not warrant re-apply"
+                     "".format(app.name, app.active, app.status))
 
     def app_lifecycle_actions(self, context, rpc_app, hook_info):
         """Perform any lifecycle actions for the operation and timing supplied.
