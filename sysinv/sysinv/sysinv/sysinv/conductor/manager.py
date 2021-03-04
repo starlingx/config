@@ -402,6 +402,14 @@ class ConductorManager(service.PeriodicService):
         if system_mode == constants.SYSTEM_MODE_SIMPLEX:
             self._init_controller_for_upgrade(upgrade)
 
+        if upgrade.state in [constants.UPGRADE_ACTIVATION_REQUESTED,
+                             constants.UPGRADE_ACTIVATING]:
+            # Reset to activation-failed if the conductor restarts. This could
+            # be due to a swact or the process restarting. Either way we'll
+            # need to rerun the activation.
+            self.dbapi.software_upgrade_update(
+                upgrade.uuid, {'state': constants.UPGRADE_ACTIVATION_FAILED})
+
         self._upgrade_default_service()
         self._upgrade_default_service_parameter()
 
