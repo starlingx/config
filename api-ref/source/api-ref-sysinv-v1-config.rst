@@ -2392,7 +2392,7 @@ itemNotFound (404)
    "iinterfaces (Optional)", "plain", "xsd:list", "The list of L2 interfaces for a specific host."
    "ifname (Optional)", "plain", "xsd:string", "The user-specified name of the interface."
    "ifclass (Optional)", "plain", "xsd:string", "The class of the interface: ``platform``, ``data``, ``pci-passthrough`` or ``pci-sriov``."
-   "iftype (Optional)", "plain", "xsd:string", "Indicates the type of L2 interface; ``ethernet`` or ``ae`` (aggregated ethernet or link aggregation (LAG)) or ``vlan`` (virtual lan)."
+   "iftype (Optional)", "plain", "xsd:string", "Indicates the type of L2 interface; ``ethernet`` or ``ae`` (aggregated ethernet or link aggregation (LAG)) or ``vlan`` (virtual lan) or ``vf`` (sriov vf)."
    "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of ifclass=data."
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute indicates what packet headers the AE/LAG is using to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute indicates that the vlan interface id. A vlan id between 1 and 4094 (inclusive) must be selected. NOTE The vlan id must be unique for the host interface."
@@ -2408,6 +2408,7 @@ itemNotFound (404)
    "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
    "uses (Optional)", "plain", "xsd:list", "Interfaces which the current interface uses."
    "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
 
 ::
 
@@ -2520,6 +2521,7 @@ itemNotFound (404)
    "ports (Optional)", "plain", "xsd:list", "URIs to the physical ports of this interface."
    "uses (Optional)", "plain", "xsd:list", "Interfaces which the current interface uses."
    "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
@@ -2598,15 +2600,16 @@ badMediaType (415)
    "host_id", "URI", "csapi:UUID", "The unique identifier of an existing host."
    "ifname (Optional)", "plain", "xsd:string", "The name for the interface."
    "ifclass (Optional)", "plain", "xsd:string", "The class of the interface: ``platform``, ``data``, ``pci-passthrough`` or ``pci-sriov``."
-   "iftype (Optional)", "plain", "xsd:string", "The type of interface; i.e. ``ae`` or ``vlan``."
+   "iftype (Optional)", "plain", "xsd:string", "The type of interface; i.e. ``ae`` or ``vlan`` or ``ethernet``."
    "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute specifies whether the AE/LAG should operate as ``balanced`` or ``active_standby`` or ``802.3ad`` across its links. The ``balanced`` and ``active_standby`` are the only modes supported by ``data`` type interface. For ``mgmt`` type interface the ``802.3ad`` option must be selected."
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute specifies what packet headers the AE/LAG should use to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute specifies a virtual lan id for a vlan interface type."
    "ports (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of ports that this interface contains. If ``iftype : ethernet`` then only one port is allowed."
-   "uses (Optional)", "plain", "xsd:list", "Only applicable if ``iftype : ae`` or ``iftype: vlan``, this attribute specifies a comma-separated list of interfaces that this interface uses."
+   "uses (Optional)", "plain", "xsd:list", "Only applicable if ``iftype : ae`` or ``iftype: vlan`` or ``iftype: ethernet``, this attribute specifies a comma-separated list of interfaces that this interface uses."
    "used_by (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of interfaces that use this interface."
    "imtu (Optional)", "plain", "xsd:integer", "This attribute specifies the interface's Maximum Transmit Unit."
    "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs to configure on the interface's port; only applicable if ``ifclass : pci-sriov`` where only a single port is associated with the interface."
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
    "ihost_uuid (Optional)", "plain", "csapi:UUID", "The UUID of the host to create the interface on."
 
 **Response parameters**
@@ -2631,6 +2634,7 @@ badMediaType (415)
    "ports (Optional)", "plain", "xsd:list", "URIs to the physical ports of this interface."
    "uses (Optional)", "plain", "xsd:list", "Interfaces which the current interface uses."
    "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
@@ -2730,10 +2734,11 @@ badMediaType (415)
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute specifies what packet headers the AE/LAG should use to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute specifies a virtual lan id for a vlan interface type."
    "ports (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of ports that this interface contains. If ``iftype : ethernet`` then only one port is allowed."
-   "uses (Optional)", "plain", "xsd:list", "Only applicable if ``iftype : ae`` or ``iftype: vlan``, this attribute specifies a comma-separated list of interfaces that this interface uses."
+   "uses (Optional)", "plain", "xsd:list", "Only applicable if ``iftype : ae`` or ``iftype: vlan`` or ``iftype: ethernet``, this attribute specifies a comma-separated list of interfaces that this interface uses."
    "used_by (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of interfaces that use this interface."
    "imtu (Optional)", "plain", "xsd:integer", "This attribute specifies the interface's Maximum Transmit Unit."
    "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs to configure on the interface's port; only applicable if ``ifclass : pci-sriov`` where only a single port is associated with the interface."
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
 
 **Response parameters**
 
@@ -2757,6 +2762,7 @@ badMediaType (415)
    "ports (Optional)", "plain", "xsd:list", "URIs to the physical ports of this interface."
    "uses (Optional)", "plain", "xsd:list", "Interfaces which the current interface uses."
    "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
