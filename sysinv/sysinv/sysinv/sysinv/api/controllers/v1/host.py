@@ -5833,6 +5833,18 @@ class HostController(rest.RestController):
                 _("Swact action not allowed. Upgrade state must be %s") %
                 (constants.UPGRADE_DATA_MIGRATION_COMPLETE))
 
+        activating_states = [constants.UPGRADE_ACTIVATION_REQUESTED,
+                             constants.UPGRADE_ACTIVATING]
+        if upgrade.state in activating_states and not force_swact:
+            # Block swacts during activation to prevent interrupting the
+            # upgrade scripts.
+            # Allow swacts during UPGRADE_ACTIVATING_HOSTS as the active
+            # controller may need a lock/unlock if a runtime manifest fails.
+            # Allow force swacts for recovery in edge cases.
+            raise wsme.exc.ClientSideError(
+                _("Swact action not allowed. Wait until the upgrade-activate "
+                  "command completes"))
+
         if upgrade.state in [constants.UPGRADE_ABORTING,
                              constants.UPGRADE_ABORTING_ROLLBACK]:
             if to_host_load_id == upgrade.to_load:
