@@ -61,12 +61,13 @@ class AppManager(base.Manager):
         resp, body = self.api.json_request('POST', self._path() + "/update", body=data)
         return self.resource_class(self, body)
 
-    def remove(self, app_name):
+    def remove(self, app_name, force):
         """Uninstall the specified application
 
         :param name: app_name
+        :param force: True/False - cli flag/argument
         """
-        return self._update(self._path(app_name) + '?directive=remove',
+        return self._update(self._path(app_name) + '?directive=remove&force=' + str(force),
                             {'values': {}})
 
     def abort(self, app_name):
@@ -77,12 +78,13 @@ class AppManager(base.Manager):
         return self._update(self._path(app_name) + '?directive=abort',
                             {'values': {}})
 
-    def delete(self, app_name):
+    def delete(self, app_name, force):
         """Delete application data
 
         :param name: app_name
+        :param force: True/False - cli flag/argument
         """
-        return self._delete(self._path(app_name))
+        return self._delete(self._path(app_name) + '?force=' + str(force))
 
 
 def _find_app(cc, app_name):

@@ -241,8 +241,8 @@ class KubeAppController(rest.RestController):
         return KubeApp.convert_with_links(new_app)
 
     @cutils.synchronized(LOCK_NAME)
-    @wsme_pecan.wsexpose(KubeApp, wtypes.text, wtypes.text, wtypes.text)
-    def patch(self, name, directive, values):
+    @wsme_pecan.wsexpose(KubeApp, wtypes.text, wtypes.text, wtypes.text, wtypes.text)
+    def patch(self, name, directive, values, force=None):
         """Install/update the specified application
 
         :param name: application name
@@ -332,6 +332,13 @@ class KubeAppController(rest.RestController):
                                          constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
                                          constants.APP_LIFECYCLE_TIMING_PRE,
                                          constants.APP_REMOVE_OP)
+                # Converting string to boolean
+                if force == 'True':
+                    force = True
+                else:
+                    force = False
+
+                lifecycle_hook_info.extra = {constants.APP_LIFECYCLE_FORCE_OPERATION: force}
                 self._app_lifecycle_actions(db_app,
                                             lifecycle_hook_info)
             except rpc_common.RemoteError as e:
@@ -490,8 +497,8 @@ class KubeAppController(rest.RestController):
         return KubeApp.convert_with_links(target_app)
 
     @cutils.synchronized(LOCK_NAME)
-    @wsme_pecan.wsexpose(None, wtypes.text, status_code=204)
-    def delete(self, name):
+    @wsme_pecan.wsexpose(None, wtypes.text, wtypes.text, status_code=204)
+    def delete(self, name, force=None):
         """Delete the application with the given name
 
         :param name: application name
@@ -516,6 +523,13 @@ class KubeAppController(rest.RestController):
                                      constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
                                      constants.APP_LIFECYCLE_TIMING_PRE,
                                      constants.APP_DELETE_OP)
+            # Converting string to boolean
+            if force == 'True':
+                force = True
+            else:
+                force = False
+
+            lifecycle_hook_info.extra = {constants.APP_LIFECYCLE_FORCE_OPERATION: force}
             self._app_lifecycle_actions(db_app,
                                         lifecycle_hook_info)
         except rpc_common.RemoteError as e:
