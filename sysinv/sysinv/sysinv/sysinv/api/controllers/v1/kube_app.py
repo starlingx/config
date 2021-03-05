@@ -334,6 +334,9 @@ class KubeAppController(rest.RestController):
                                          constants.APP_REMOVE_OP)
                 self._app_lifecycle_actions(db_app,
                                             lifecycle_hook_info)
+            except rpc_common.RemoteError as e:
+                raise wsme.exc.ClientSideError(_(
+                    "Application-remove rejected: " + str(e.value)))
             except Exception as e:
                 raise wsme.exc.ClientSideError(_(
                     "Application-remove rejected: " + str(e.message)))
