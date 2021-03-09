@@ -48,6 +48,7 @@ from oslo_log import log
 from oslo_utils import uuidutils
 
 from sysinv.agent import pci
+from sysinv.common import constants as cconstants
 from sysinv.common import device as dconstants
 from sysinv.common import exception
 from sysinv.common import service
@@ -126,9 +127,30 @@ def ensure_device_image_cache_exists():
             raise exception.SysinvException(msg)
 
 
+def get_http_port():
+    # Get the http_port from /etc/platform/platform.conf.
+    prefix = "http_port="
+    http_port = cconstants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT
+    if os.path.isfile(tsc.PLATFORM_CONF_FILE):
+        with open(tsc.PLATFORM_CONF_FILE, 'r') as platform_file:
+            for line in platform_file:
+                line = line.strip()
+                if line.startswith(prefix):
+                    port = line[len(prefix):]
+                    if utils.is_int_like(port):
+                        LOG.info("Agent found %s%s" % (prefix, port))
+                        http_port = port
+                        break
+                    else:
+                        LOG.info("http_port entry: %s in platform.conf "
+                                 "is not an integer" % port)
+    return http_port
+
+
 def fetch_device_image(filename):
     # Pull the image from the controller.
-    url = "http://controller:8080/device_images/" + filename
+    http_port = get_http_port()
+    url = "http://controller:{}/device_images/{}".format(http_port, filename)
     local_path = DEVICE_IMAGE_CACHE_DIR + "/" + filename
     try:
         imagefile, headers = urllib.urlretrieve(url, local_path)
