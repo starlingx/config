@@ -18,7 +18,6 @@ Requires: python3-boto3
 Requires: python3-botocore >= 1.13.21
 Requires: python3-docker
 Requires: python3-eventlet
-Requires: python3-ipaddr
 Requires: python3-jsonpatch
 Requires: python3-keyring
 Requires: python3-keystoneauth1
