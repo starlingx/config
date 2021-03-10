@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2016 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -19,6 +19,7 @@ class AEInterface(interface_ethernet.EthernetInterface):
         'aemode': utils.str_or_none,
         'schedpolicy': utils.str_or_none,
         'txhashpolicy': utils.str_or_none,
+        'primary_reselect': utils.str_or_none,
         'ifcapabilities': utils.dict_or_none,
     }, **interface_ethernet.EthernetInterface.fields)
 

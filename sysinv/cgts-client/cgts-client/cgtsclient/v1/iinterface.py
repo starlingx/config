@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2015 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -15,7 +15,7 @@ from cgtsclient.v1 import port
 CREATION_ATTRIBUTES = ['ifname', 'iftype', 'ihost_uuid', 'imtu', 'ifclass',
                        'networks', 'network_uuid', 'networktype', 'aemode', 'txhashpolicy',
                        'providernetworks', 'datanetworks', 'ifcapabilities', 'ports', 'imac',
-                       'vlan_id', 'uses', 'used_by',
+                       'vlan_id', 'uses', 'used_by', 'primary_reselect',
                        'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
                        'sriov_numvfs', 'sriov_vf_driver', 'ptp_role', 'max_tx_rate']
 

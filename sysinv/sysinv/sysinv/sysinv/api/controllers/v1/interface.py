@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -144,6 +144,9 @@ class Interface(base.APIBase):
     txhashpolicy = wtypes.text
     "Represent the txhashpolicy of the interface"
 
+    primary_reselect = wtypes.text
+    "Represent the primary_reselect mode of the interface"
+
     ifcapabilities = {wtypes.text: utils.ValidTypes(wtypes.text,
                                                     six.integer_types)}
     "This interface's meta data"
@@ -221,7 +224,7 @@ class Interface(base.APIBase):
                                            'vlan_id', 'uses', 'usesmodify', 'used_by',
                                            'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
                                            'sriov_numvfs', 'sriov_vf_driver', 'ptp_role',
-                                           'max_tx_rate'])
+                                           'max_tx_rate', 'primary_reselect'])
 
         # never expose the ihost_id attribute
         interface.ihost_id = wtypes.Unset
@@ -673,6 +676,7 @@ def _set_defaults(interface):
     defaults = {'imtu': DEFAULT_MTU,
                 'aemode': constants.AE_MODE_ACTIVE_STANDBY,
                 'txhashpolicy': None,
+                'primary_reselect': None,
                 'vlan_id': None,
                 'sriov_numvfs': 0,
                 'sriov_vf_driver': None,
@@ -1081,6 +1085,33 @@ def _check_interface_ptp(interface):
             raise wsme.exc.ClientSideError(msg)
 
 
+def _check_ae_primary_reselect(interface):
+    ifclass = interface['ifclass']
+    iftype = interface['iftype']
+    primary_reselect = interface['primary_reselect']
+    aemode = interface['aemode']
+    if primary_reselect is not None:
+        if iftype != constants.INTERFACE_TYPE_AE:
+            msg = _("The option primary_reselect is only applicable to bonded interface. ")
+            raise wsme.exc.ClientSideError(msg)
+        if aemode != constants.AE_MODE_ACTIVE_STANDBY and primary_reselect is not None:
+            msg = _("Device interface with interface type 'aggregated ethernet' "
+                    "in '%s' mode should not specify primary_reselect option." % aemode)
+            raise wsme.exc.ClientSideError(msg)
+        if (ifclass != constants.INTERFACE_CLASS_PLATFORM and
+                primary_reselect != constants.PRIMARY_RESELECT_ALWAYS):
+            msg = _("The option primary_reselect must be 'always' for non-platform interfaces. ")
+            raise wsme.exc.ClientSideError(msg)
+        if primary_reselect not in constants.VALID_PRIMARY_RESELECT_LIST:
+            msg = _("Invalid bonding primary reselect option: '{}'. "
+                    "Valid options must be one of {}".format(primary_reselect,
+                        ', '.join(constants.VALID_PRIMARY_RESELECT_LIST)))
+            raise wsme.exc.ClientSideError(msg)
+    else:
+        if iftype == constants.INTERFACE_TYPE_AE and aemode == constants.AE_MODE_ACTIVE_STANDBY:
+            interface['primary_reselect'] = constants.PRIMARY_RESELECT_ALWAYS
+
+
 def _check_interface_data(op, interface, ihost, existing_interface,
                           datanetworks=None):
     # Get data
@@ -1220,6 +1251,8 @@ def _check_interface_data(op, interface, ihost, existing_interface,
         msg = _("Device interface with interface type 'aggregated ethernet' "
                 "in '%s' mode should not specify a Tx Hash Policy." % aemode)
         raise wsme.exc.ClientSideError(msg)
+
+    _check_ae_primary_reselect(interface)
 
     # Make sure interface type is valid
     supported_type = [constants.INTERFACE_TYPE_AE,
@@ -1864,6 +1897,9 @@ def _check(op, interface, ports=None, ifaces=None, from_profile=False,
 
                         if 'txhashpolicy' not in iface:
                             iface['txhashpolicy'] = None
+
+                        if 'primary_reselect' not in iface:
+                            iface['primary_reselect'] = None
 
                         _check_interface_data(
                             "modify", iface, ihost, existing_iface, datanetworks)

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2019 Wind River Systems, Inc.
+# Copyright (c) 2017-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -878,6 +878,8 @@ def get_bond_interface_options(iface, primary_iface):
         # Requires the active device in an active_standby LAG
         # configuration to be determined based on the lowest MAC address
         options = 'mode=active-backup miimon=100 primary={}'.format(primary_iface['ifname'])
+        if iface['primary_reselect']:
+            options += ' primary_reselect=%s' % iface['primary_reselect']
     else:
         options = 'xmit_hash_policy=%s miimon=100' % tx_hash_policy
         if ae_mode in BALANCED_AE_MODES:

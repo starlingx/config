@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2015 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 import netaddr
@@ -307,12 +307,15 @@ class AeInterface(Interface):
         if node.tag == 'activeStandby':
             self.aeMode = 'activeStandby'
             self.txPolicy = None
+            self.primary_reselect = node.get('primary_reselect')
         elif node.tag == 'balanced':
             self.aeMode = 'balanced'
             self.txPolicy = node.get('txPolicy')
+            self.primary_reselect = None
         elif node.tag == 'ieee802.3ad':
             self.aeMode = '802.3ad'
             self.txPolicy = node.get('txPolicy')
+            self.primary_reselect = None
 
         node = ifNode.find('interfaces')
         if node:

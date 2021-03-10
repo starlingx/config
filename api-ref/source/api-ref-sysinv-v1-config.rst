@@ -2417,6 +2417,7 @@ itemNotFound (404)
    "iftype (Optional)", "plain", "xsd:string", "Indicates the type of L2 interface; ``ethernet`` or ``ae`` (aggregated ethernet or link aggregation (LAG)) or ``vlan`` (virtual lan) or ``vf`` (sriov vf)."
    "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of ifclass=data."
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute indicates what packet headers the AE/LAG is using to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
+   "primary_reselect (Optional)", "plain", "xsd:string", "The reselection policy for the primary slave of the AE/LAG interface: ``always`` (default), ``better``or ``failure``. Only applicable if ``iftype : ae`` and ``aemode : active_standby`` and ``ifclass :platform``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute indicates that the vlan interface id. A vlan id between 1 and 4094 (inclusive) must be selected. NOTE The vlan id must be unique for the host interface."
    "imac (Optional)", "plain", "xsd:string", "The MAC Address being used by the interface. In the case of AE/LAG, the MAC address of one of the physical ports of the AE/LAG group is used."
    "imtu (Optional)", "plain", "xsd:integer", "The Maximum Transmission Unit (MTU) of the interface, in bytes."
@@ -2451,6 +2452,7 @@ itemNotFound (404)
            }
          ],
          "txhashpolicy": null,
+         "primary_reselect": null,
          "schedpolicy": null,
          "imac": "08:00:27:80:aa:6e",
          "sriov_numvfs": 0,
@@ -2476,6 +2478,7 @@ itemNotFound (404)
            }
          ],
          "txhashpolicy": "layer2",
+         "primary_reselect": null,
          "schedpolicy": null,
          "imac": null,
          "sriov_numvfs": 0,
@@ -2532,6 +2535,7 @@ itemNotFound (404)
    "iftype (Optional)", "plain", "xsd:string", "Indicates the type of L2 interface; ``ethernet`` or ``ae`` (aggregated ethernet or link aggregation (LAG)) or ``vlan`` (virtual lan)."
    "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of ifclass=data."
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute indicates what packet headers the AE/LAG is using to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
+   "primary_reselect (Optional)", "plain", "xsd:string", "The reselection policy for the primary slave of the AE/LAG interface: ``always`` (default), ``better``or ``failure``. Only applicable if ``iftype : ae`` and ``aemode : active_standby`` and ``ifclass :platform``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute indicates that the vlan interface id. A vlan id between 1 and 4094 (inclusive) must be selected. NOTE The vlan id must be unique for the host interface."
    "imac (Optional)", "plain", "xsd:string", "The MAC Address being used by the interface. In the case of AE/LAG, the MAC address of one of the physical ports of the AE/LAG group is used."
    "imtu (Optional)", "plain", "xsd:integer", "The Maximum Transmission Unit (MTU) of the interface, in bytes."
@@ -2563,6 +2567,7 @@ itemNotFound (404)
          }
       ],
       "txhashpolicy" : "layer2",
+      "primary_reselect": null,
       "schedpolicy" : null,
       "uuid" : "740a5bec-b7a8-4645-93ed-aea0d4cfbf86",
       "ihost_uuid" : "ff453a51-1d3b-437f-a65e-b2d163f79f85",
@@ -2623,8 +2628,9 @@ badMediaType (415)
    "ifname (Optional)", "plain", "xsd:string", "The name for the interface."
    "ifclass (Optional)", "plain", "xsd:string", "The class of the interface: ``platform``, ``data``, ``pci-passthrough`` or ``pci-sriov``."
    "iftype (Optional)", "plain", "xsd:string", "The type of interface; i.e. ``ae`` or ``vlan`` or ``ethernet``."
-   "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute specifies whether the AE/LAG should operate as ``balanced`` or ``active_standby`` or ``802.3ad`` across its links. The ``balanced`` and ``active_standby`` are the only modes supported by ``data`` type interface. For ``mgmt`` type interface the ``802.3ad`` option must be selected."
+   "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute specifies whether the AE/LAG should operate as ``balanced`` or ``active_standby`` or ``802.3ad`` across its links. The ``balanced`` and ``active_standby`` are the only modes supported by ``data`` type interface. For ``mgmt`` type interface the ``802.3ad`` and ``active_standby`` options are supported."
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute specifies what packet headers the AE/LAG should use to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
+   "primary_reselect (Optional)", "plain", "xsd:string", "The reselection policy for the primary slave of the AE/LAG interface: ``always`` (default), ``better``or ``failure``. Only applicable if ``iftype : ae`` and ``aemode : active_standby`` and ``ifclass :platform``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute specifies a virtual lan id for a vlan interface type."
    "ports (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of ports that this interface contains. If ``iftype : ethernet`` then only one port is allowed."
    "uses (Optional)", "plain", "xsd:list", "Only applicable if ``iftype : ae`` or ``iftype: vlan`` or ``iftype: ethernet``, this attribute specifies a comma-separated list of interfaces that this interface uses."
@@ -2645,6 +2651,7 @@ badMediaType (415)
    "iftype (Optional)", "plain", "xsd:string", "Indicates the type of L2 interface; ``ethernet`` or ``ae`` (aggregated ethernet or link aggregation (LAG)) or ``vlan`` (virtual lan)."
    "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of ifclass=data."
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute indicates what packet headers the AE/LAG is using to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
+   "primary_reselect (Optional)", "plain", "xsd:string", "The reselection policy for the primary slave of the AE/LAG interface: ``always`` (default), ``better``or ``failure``. Only applicable if ``iftype : ae`` and ``aemode : active_standby`` and ``ifclass :platform``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute indicates that the vlan interface id. A vlan id between 1 and 4094 (inclusive) must be selected. NOTE The vlan id must be unique for the host interface."
    "imac (Optional)", "plain", "xsd:string", "The MAC Address being used by the interface. In the case of AE/LAG, the MAC address of one of the physical ports of the AE/LAG group is used."
    "imtu (Optional)", "plain", "xsd:integer", "The Maximum Transmission Unit (MTU) of the interface, in bytes."
@@ -2667,6 +2674,7 @@ badMediaType (415)
    {
      "iftype": "ae",
      "txhashpolicy": "layer2",
+     "primary_reselect": null,
      "ihost_uuid": "ff453a51-1d3b-437f-a65e-b2d163f79f85",
      "imtu": "1500",
      "ifclass": "data",
@@ -2705,6 +2713,7 @@ badMediaType (415)
      "ihost_uuid": "ff453a51-1d3b-437f-a65e-b2d163f79f85",
      "vlan_id": null,
      "txhashpolicy": "layer2",
+     "primary_reselect": null,
      "created_at": "2014-09-29T10:55:20.515705+00:00",
      "schedpolicy": null,
      "imac": null,
@@ -2754,6 +2763,7 @@ badMediaType (415)
    "iftype (Optional)", "plain", "xsd:string", "The type of interface; i.e. ``ethernet`` or ``ae`` or ``vlan``."
    "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute specifies whether the AE/LAG should operate as ``balanced`` or ``active_standby`` across its links. These are the only modes supported by ``data`` type interface."
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute specifies what packet headers the AE/LAG should use to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
+   "primary_reselect (Optional)", "plain", "xsd:string", "The reselection policy for the primary slave of the AE/LAG interface: ``always`` (default), ``better``or ``failure``. Only applicable if ``iftype : ae`` and ``aemode : active_standby`` and ``ifclass :platform``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute specifies a virtual lan id for a vlan interface type."
    "ports (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of ports that this interface contains. If ``iftype : ethernet`` then only one port is allowed."
    "uses (Optional)", "plain", "xsd:list", "Only applicable if ``iftype : ae`` or ``iftype: vlan`` or ``iftype: ethernet``, this attribute specifies a comma-separated list of interfaces that this interface uses."
@@ -2773,6 +2783,7 @@ badMediaType (415)
    "iftype (Optional)", "plain", "xsd:string", "Indicates the type of L2 interface; ``ethernet`` or ``ae`` (aggregated ethernet or link aggregation (LAG)) or ``vlan`` (virtual lan)."
    "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of ifclass=data."
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute indicates what packet headers the AE/LAG is using to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
+   "primary_reselect (Optional)", "plain", "xsd:string", "The reselection policy for the primary slave of the AE/LAG interface: ``always`` (default), ``better``or ``failure``. Only applicable if ``iftype : ae`` and ``aemode : active_standby`` and ``ifclass :platform``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute indicates that the vlan interface id. A vlan id between 1 and 4094 (inclusive) must be selected. NOTE The vlan id must be unique for the host interface."
    "imac (Optional)", "plain", "xsd:string", "The MAC Address being used by the interface. In the case of AE/LAG, the MAC address of one of the physical ports of the AE/LAG group is used."
    "imtu (Optional)", "plain", "xsd:integer", "The Maximum Transmission Unit (MTU) of the interface, in bytes."
@@ -2806,6 +2817,11 @@ badMediaType (415)
      {
        "path": "/aemode",
        "value": "active_standby",
+       "op": "replace"
+     },
+     {
+       "path": "/primary_reselect",
+       "value": "better",
        "op": "replace"
      },
      {
@@ -2844,6 +2860,7 @@ badMediaType (415)
      "ihost_uuid": "ff453a51-1d3b-437f-a65e-b2d163f79f85",
      "vlan_id": null,
      "txhashpolicy": "layer2",
+     "primary_reselect": null,
      "created_at": "2014-09-29T10:55:20.515705+00:00",
      "schedpolicy": null,
      "imac": null,

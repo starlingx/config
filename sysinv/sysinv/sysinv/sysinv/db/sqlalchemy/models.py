@@ -415,6 +415,7 @@ class AeInterfaces(EthernetCommon, Interfaces):
     aedict = Column(JSONEncodedDict)  # e.g. 802.3ad parameters
     txhashpolicy = Column(String(255))  # e.g. L2, L2L3, L3L4
     schedpolicy = Column(String(255))
+    primary_reselect = Column(String(32))  # e.g. always, better, failure
 
     __mapper_args__ = {
         'polymorphic_identity': 'ae',

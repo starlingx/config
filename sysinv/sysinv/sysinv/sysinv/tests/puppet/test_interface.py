@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2018 Wind River Systems, Inc.
+# Copyright (c) 2017-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -1265,12 +1265,29 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
     def test_get_controller_bond_config_active_standby(self):
         bond = self._create_bond_test("bond0")
         bond['aemode'] = 'active_standby'
+        bond['primary_reselect'] = constants.PRIMARY_RESELECT_ALWAYS
         self._update_context()
         config = interface.get_interface_network_config(self.context, bond)
         options = {'IPV6_AUTOCONF': 'no',
                    'up': 'sleep 10',
                    'MACADDR': bond['imac'],
-                   'BONDING_OPTS': 'mode=active-backup miimon=100 primary=eth1'}
+                   'BONDING_OPTS': 'mode=active-backup miimon=100 primary=eth1 primary_reselect=always'}
+        expected = self._get_network_config(
+            ifname=bond['ifname'], mtu=1500, method='manual', options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
+    def test_get_controller_bond_config_active_standby_primary_reselect(self):
+        bond = self._create_bond_test("bond0", constants.INTERFACE_CLASS_PLATFORM,
+                                      constants.NETWORK_TYPE_MGMT)
+        bond['aemode'] = 'active_standby'
+        bond['primary_reselect'] = constants.PRIMARY_RESELECT_BETTER
+        self._update_context()
+        config = interface.get_interface_network_config(self.context, bond)
+        options = {'IPV6_AUTOCONF': 'no',
+                   'up': 'sleep 10',
+                   'MACADDR': bond['imac'],
+                   'BONDING_OPTS': 'mode=active-backup miimon=100 primary=eth1 primary_reselect=better'}
         expected = self._get_network_config(
             ifname=bond['ifname'], mtu=1500, method='manual', options=options)
         print(expected)

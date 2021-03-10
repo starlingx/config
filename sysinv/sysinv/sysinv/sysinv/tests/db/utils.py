@@ -1038,6 +1038,7 @@ def get_test_interface(**kw):
         'networktypelist': kw.get('networktypelist', []),
         'aemode': kw.get('aemode'),
         'txhashpolicy': kw.get('txhashpolicy', None),
+        'primary_reselect': kw.get('primary_reselect', None),
         'vlan_id': kw.get('vlan_id', None),
         'uses': kw.get('uses', []),
         'used_by': kw.get('used_by', []),

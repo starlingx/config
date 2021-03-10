@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2013-2016 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -1742,6 +1742,57 @@ class TestPostMixin(object):
             txhashpolicy='layer2')
         response = self._post_and_check_failure(ndict)
         self.assertIn("Invalid aggregated ethernet mode 'bad_aemode'",
+            response.json['error_message'])
+
+    def test_non_aemode_primary_reselect(self):
+        ndict = self._post_get_test_interface(
+            ihost_uuid=self.worker.uuid,
+            ifname='name',
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            iftype=constants.INTERFACE_TYPE_ETHERNET,
+            aemode=constants.AE_MODE_ACTIVE_STANDBY,
+            primary_reselect=constants.PRIMARY_RESELECT_BETTER)
+        response = self._post_and_check_failure(ndict)
+        self.assertIn("The option primary_reselect is only applicable to bonded interface.",
+            response.json['error_message'])
+
+    def test_aemode_balanced_primary_reselect(self):
+        ndict = self._post_get_test_interface(
+            ihost_uuid=self.worker.uuid,
+            ifname='name',
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            iftype=constants.INTERFACE_TYPE_AE,
+            aemode=constants.AE_MODE_BALANCED,
+            txhashpolicy='layer2',
+            primary_reselect=constants.PRIMARY_RESELECT_BETTER)
+        response = self._post_and_check_failure(ndict)
+        self.assertIn("Device interface with interface type "
+                      "\'aggregated ethernet\' in \'balanced\' "
+                      "mode should not specify primary_reselect option.",
+            response.json['error_message'])
+
+    def test_aemode_invalid_data_primary_reselect(self):
+        ndict = self._post_get_test_interface(
+            ihost_uuid=self.worker.uuid,
+            ifname='name',
+            ifclass=constants.INTERFACE_CLASS_DATA,
+            iftype=constants.INTERFACE_TYPE_AE,
+            aemode=constants.AE_MODE_ACTIVE_STANDBY,
+            primary_reselect=constants.PRIMARY_RESELECT_FAILURE)
+        response = self._post_and_check_failure(ndict)
+        self.assertIn("The option primary_reselect must be 'always' for non-platform interfaces.",
+            response.json['error_message'])
+
+    def test_aemode_invalid_primary_reselect(self):
+        ndict = self._post_get_test_interface(
+            ihost_uuid=self.worker.uuid,
+            ifname='name',
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            iftype=constants.INTERFACE_TYPE_AE,
+            aemode='active_standby',
+            primary_reselect='bad_primary_reselect')
+        response = self._post_and_check_failure(ndict)
+        self.assertIn("Invalid bonding primary reselect option: 'bad_primary_reselect'",
             response.json['error_message'])
 
     def test_setting_mgmt_mtu_allowed(self):

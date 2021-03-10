@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2014 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -17,7 +17,7 @@ from cgtsclient.v1 import iinterface as iinterface_utils
 def _print_iinterface_show(cc, iinterface):
     fields = ['ifname', 'iftype', 'ports',
               'imac', 'imtu', 'ifclass', 'ptp_role',
-              'aemode', 'schedpolicy', 'txhashpolicy',
+              'aemode', 'schedpolicy', 'txhashpolicy', 'primary_reselect',
               'uuid', 'ihost_uuid',
               'vlan_id', 'uses', 'used_by',
               'created_at', 'updated_at', 'sriov_numvfs',
@@ -80,6 +80,9 @@ def do_host_if_list(cc, args):
             if i.aemode in ['balanced', '802.3ad']:
                 attr_str = "%s,AE_XMIT_POLICY=%s" % (
                     attr_str, i.txhashpolicy)
+            if i.aemode == 'active_standby' and i.primary_reselect:
+                attr_str = "%s,primary_reselect=%s" % (
+                    attr_str, i.primary_reselect)
         if i.ifclass and i.ifclass == 'data':
             if False in i.dpdksupport:
                 attr_str = "%s,accelerated=False" % attr_str
@@ -176,11 +179,16 @@ def do_host_if_delete(cc, args):
            dest='max_tx_rate',
            metavar='<max_tx_rate>',
            help='The max tx rate (Mb/s) of the SR-IOV VF interface')
+@utils.arg('--primary-reselect',
+           dest='primary_reselect',
+           metavar='<primary reselect>',
+           choices=['always', 'better', 'failure'],
+           help='The reselection policy for active standby bonded interface (always, better, failure)')
 def do_host_if_add(cc, args):
     """Add an interface."""
 
     field_list = ['ifname', 'iftype', 'imtu', 'ifclass', 'aemode',
-                  'txhashpolicy', 'vlan_id', 'ptp_role',
+                  'txhashpolicy', 'vlan_id', 'ptp_role', 'primary_reselect',
                   'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
                   'sriov_numvfs', 'sriov_vf_driver', 'max_tx_rate']
 
@@ -278,11 +286,16 @@ def do_host_if_add(cc, args):
            dest='max_tx_rate',
            metavar='<max_tx_rate>',
            help='The max tx rate (Mb/s) of the VF interface')
+@utils.arg('--primary-reselect',
+           dest='primary_reselect',
+           metavar='<primary reselect>',
+           choices=['always', 'better', 'failure'],
+           help='The reselection policy for active standby bonded interface (always, better, failure)')
 def do_host_if_modify(cc, args):
     """Modify interface attributes."""
 
     rwfields = ['iftype', 'ifname', 'imtu', 'aemode', 'txhashpolicy',
-                'ports', 'ifclass', 'ptp_role',
+                'ports', 'ifclass', 'ptp_role', 'primary_reselect',
                 'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
                 'sriov_numvfs', 'sriov_vf_driver', 'max_tx_rate']
 
