@@ -98,6 +98,8 @@ from sysinv.objects import storage_ceph_external
 from sysinv.objects import storage_ceph_rook
 from sysinv.objects import host_fs
 from sysinv.objects import restore
+from sysinv.objects import kube_rootca_update
+from sysinv.objects import kube_rootca_host_update
 
 
 def objectify(klass):
@@ -205,6 +207,8 @@ device_image_state = device_image_state.DeviceImageState
 device_label = device_label.DeviceLabel
 fpga_device = fpga_device.FPGADevice
 restore = restore.Restore
+kube_rootca_host_update = kube_rootca_host_update.KubeRootCAHostUpdate
+kube_rootca_update = kube_rootca_update.KubeRootCAUpdate
 
 __all__ = ("system",
            "cluster",
@@ -282,6 +286,8 @@ __all__ = ("system",
            "device_label",
            "fpga_device",
            "restore",
+           "kube_rootca_host_update",
+           "kube_rootca_update",
            # alias objects for RPC compatibility
            "ihost",
            "ilvg",
