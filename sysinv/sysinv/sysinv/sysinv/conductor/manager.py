@@ -39,6 +39,7 @@ import math
 import os
 import re
 import requests
+import ruamel.yaml as yaml
 import shutil
 import socket
 import tempfile
@@ -188,7 +189,6 @@ class ConductorManager(service.PeriodicService):
 
     RPC_API_VERSION = '1.1'
     my_host_id = None
-    apps_metadata = {constants.APP_METADATA_APPS: {}}
 
     def __init__(self, host, topic):
         serializer = objects_base.SysinvObjectSerializer()
@@ -219,6 +219,13 @@ class ConductorManager(service.PeriodicService):
 
         # track deferred runtime config which need to be applied
         self._host_deferred_runtime_config = []
+
+        # Guard for a function that should run only once per conductor start
+        self._has_loaded_missing_apps_metadata = False
+
+        self.apps_metadata = {constants.APP_METADATA_APPS: {},
+                              constants.APP_METADATA_PLATFORM_MANAGED_APPS: {},
+                              constants.APP_METADATA_DESIRED_STATES: {}}
 
     def start(self):
         self._start()
@@ -285,7 +292,7 @@ class ConductorManager(service.PeriodicService):
 
         # Load apps metadata
         for app in self.dbapi.kube_app_get_all():
-            self._app.load_application_metadata(app)
+            self._app.load_application_metadata_from_database(app)
 
     def _get_active_controller_uuid(self):
         ahost = utils.HostHelper.get_active_controller(self.dbapi)
@@ -5638,6 +5645,71 @@ class ConductorManager(service.PeriodicService):
         app.save()
         self._auto_apply_managed_app(context, app_name)
 
+    def _load_metadata_of_missing_apps(self):
+        """ Load metadata of apps from the directory containing
+        apps bundled with the iso.
+        """
+        for tarfile in os.listdir(constants.HELM_APP_ISO_INSTALL_PATH):
+            # Get the app name from the tarball name
+            # If the app has the metadata loaded already, by conductor restart,
+            # then skip the tarball extraction
+            app_name = None
+            pattern = re.compile("^(.*)-([0-9]+\.[0-9]+-[0-9]+)")
+
+            match = pattern.search(tarfile)
+            if match:
+                app_name = match.group(1)
+
+            if app_name and \
+                    app_name in self.apps_metadata[constants.APP_METADATA_APPS]:
+                LOG.info("{} metadata already loaded, skip loading from "
+                         "the bundled tarball.".format(app_name))
+                continue
+
+            # Proceed with extracting the tarball
+            tarball_name = '{}/{}'.format(
+                constants.HELM_APP_ISO_INSTALL_PATH, tarfile)
+
+            with kube_api.TempDirectory() as app_path:
+                if not cutils.extract_tarfile(app_path, tarball_name):
+                    LOG.error("Failed to extract tar file {}.".format(
+                        os.path.basename(tarball_name)))
+                    continue
+
+                # If checksum file is included in the tarball, verify its contents.
+                if not cutils.verify_checksum(app_path):
+                    LOG.error("Checksum validation failed for %s." % tarball_name)
+                    continue
+
+                try:
+                    name, version, patches = \
+                        self._kube_app_helper._verify_metadata_file(
+                            app_path, None, None)
+                except exception.SysinvException as e:
+                    LOG.error("Extracting tarfile for %s failed: %s." % (
+                        tarball_name, str(e)))
+                    continue
+
+                metadata_file = os.path.join(app_path,
+                                             constants.APP_METADATA_FILE)
+                if os.path.exists(metadata_file):
+                    with open(metadata_file, 'r') as f:
+                        # The RoundTripLoader removes the superfluous quotes by default.
+                        # Set preserve_quotes=True to preserve all the quotes.
+                        # The assumption here: there is just one yaml section
+                        metadata = yaml.load(
+                            f, Loader=yaml.RoundTripLoader, preserve_quotes=True)
+
+                if name and metadata:
+                    # Update metadata only if it was not loaded during conductor init
+                    # The reason is that we don't want to lose the modified version
+                    # by loading the default metadata from the bundled app.
+                    kube_app.AppOperator.update_and_process_app_metadata(
+                        self.apps_metadata, name, metadata, overwrite=False)
+
+        # Prevent this function from running until conductor restart
+        self._has_loaded_missing_apps_metadata = True
+
     def _k8s_application_images_audit(self, context):
         """
         Make sure that the required images for k8s applications are present
@@ -5759,27 +5831,50 @@ class ConductorManager(service.PeriodicService):
                      "activity")
             return
 
-        # Check the application state and take the approprate action
-        for app_name in constants.HELM_APPS_PLATFORM_MANAGED:
+        # Load metadata of apps from predefined directory to allow platform
+        # managed apps list to be populated
+        # Run only once per conductor start
+        if not self._has_loaded_missing_apps_metadata:
+            self._load_metadata_of_missing_apps()
 
+        # cache a database query
+        app_statuses = {}
+
+        # Upload missing system apps
+        for app_name in self.apps_metadata[constants.APP_METADATA_PLATFORM_MANAGED_APPS].keys():
             # Handle initial loading states
             try:
                 app = kubeapp_obj.get_by_name(context, app_name)
-                status = app.status
+                app_statuses[app_name] = app.status
             except exception.KubeAppNotFound:
-                status = constants.APP_NOT_PRESENT
+                app_statuses[app_name] = constants.APP_NOT_PRESENT
 
+            if app_statuses[app_name] == constants.APP_NOT_PRESENT:
+                if app_name in self.apps_metadata[constants.APP_METADATA_DESIRED_STATES].keys() and \
+                        self.apps_metadata[constants.APP_METADATA_DESIRED_STATES][
+                            app_name] in [constants.APP_UPLOAD_SUCCESS, constants.APP_APPLY_SUCCESS]:
+                    self._auto_upload_managed_app(context, app_name)
+
+        # Check the application state and take the appropriate action
+        # App applies need to be done in a specific order
+        for app_name in self.determine_apps_reapply_order(name_only=True, filter_active=False):
+            if app_name not in self.apps_metadata[constants.APP_METADATA_PLATFORM_MANAGED_APPS].keys():
+                continue
+
+            status = app_statuses[app_name]
             LOG.debug("Platform managed application %s: %s" % (app_name, status))
-            if status == constants.APP_NOT_PRESENT:
-                self._auto_upload_managed_app(context, app_name)
-            elif status == constants.APP_UPLOAD_IN_PROGRESS:
+
+            if status == constants.APP_UPLOAD_IN_PROGRESS:
                 # Action: do nothing
                 pass
             elif status == constants.APP_UPLOAD_FAILURE:
                 # Action: Raise alarm?
                 pass
             elif status == constants.APP_UPLOAD_SUCCESS:
-                self._auto_apply_managed_app(context, app_name)
+                if app_name in self.apps_metadata[constants.APP_METADATA_DESIRED_STATES].keys() and \
+                        self.apps_metadata[constants.APP_METADATA_DESIRED_STATES][
+                            app_name] == constants.APP_APPLY_SUCCESS:
+                    self._auto_apply_managed_app(context, app_name)
             elif status == constants.APP_APPLY_IN_PROGRESS:
                 # Action: do nothing
                 pass
@@ -5817,7 +5912,7 @@ class ConductorManager(service.PeriodicService):
 
         # Pick first app that needs to be re-applied
         for index, app_name in enumerate(
-                self.determine_apps_reapply_order(name_only=True)):
+                self.determine_apps_reapply_order(name_only=True, filter_active=False)):
             if self._app.needs_reapply(app_name):
                 break
         else:
@@ -11875,13 +11970,24 @@ class ConductorManager(service.PeriodicService):
           """
         return self._fernet.get_fernet_keys(key_id)
 
-    def determine_apps_reapply_order(self, name_only):
+    def determine_apps_reapply_order(self, name_only, filter_active=True):
+        """ Order the apps for reapply
+
+        :param name_only: return list of app names if name_only is True
+                          return list of apps if name_only is False
+        :param filter_active: When true keep only applied apps in the list
+
+        :returns: list of apps or app names
+        """
         # TODO(dvoicule) reorder apps based on dependencies between them
         # now make HELM_APP_PLATFORM first to keep backward compatibility
         ordered_apps = []
 
         try:
-            apps = list(filter(lambda app: app.active, self.dbapi.kube_app_get_all()))
+            if filter_active:
+                apps = list(filter(lambda app: app.active, self.dbapi.kube_app_get_all()))
+            else:
+                apps = self.dbapi.kube_app_get_all()
 
             ordered_apps = sorted(apps, key=lambda x: x.get('name', 'placeholder')
                                  if x.get('name', 'placeholder') != constants.HELM_APP_PLATFORM else '')
@@ -11912,7 +12018,7 @@ class ConductorManager(service.PeriodicService):
 
         """
         LOG.info("Evaluating apps reapply {} ".format(trigger))
-        apps = self.determine_apps_reapply_order(name_only=False)
+        apps = self.determine_apps_reapply_order(name_only=False, filter_active=True)
 
         metadata_map = constants.APP_EVALUATE_REAPPLY_TRIGGER_TO_METADATA_MAP
 
@@ -12074,6 +12180,7 @@ class ConductorManager(service.PeriodicService):
         lifecycle_hook_info_app_upload.operation = constants.APP_UPLOAD_OP
 
         self._app.perform_app_upload(rpc_app, tarfile, lifecycle_hook_info_app_upload)
+        self._app.load_application_metadata_from_file(rpc_app)
 
         # Perform post upload operation actions
         try:
@@ -12083,8 +12190,6 @@ class ConductorManager(service.PeriodicService):
                                        lifecycle_hook_info_app_upload)
         except Exception as e:
             LOG.error("Error performing app_lifecycle_actions %s" % str(e))
-
-        self._app.load_application_metadata(rpc_app)
 
     def perform_app_apply(self, context, rpc_app, mode, lifecycle_hook_info_app_apply):
         """Handling of application install request (via AppOperator)
