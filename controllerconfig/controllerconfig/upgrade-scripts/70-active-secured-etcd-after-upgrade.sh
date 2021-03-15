@@ -55,13 +55,13 @@ enable_secured_etcd()
     fi
 
     ETCD_SEC_ENABLED=$(grep "platform::etcd::params::security_enabled" ${STATIC_YAML} | awk '{print $2}')
-    CLUSTER_HOST_ADDRESS=$(grep "platform::network::cluster_host::params::subnet_start" ${SYSTEM_YAML} | awk '{print $2}')
+    CLUSTER_HOST_ADDRESS=$(grep "platform::network::cluster_host::params::controller_address" ${SYSTEM_YAML} | awk '{print $2}')
     CLUSTER_HOST_ADDRESS_VERSION=$(grep "platform::network::cluster_host::params::subnet_version" ${SYSTEM_YAML} | awk '{print $2}')
     HOST_ADDR=$(get_ip $(hostname))
 
     if [ "$ETCD_SEC_ENABLED" != "true" ]; then
         ansible-playbook /usr/share/ansible/stx-ansible/playbooks/enable_secured_etcd.yml \
-            -e "default_cluster_host_start_address=${CLUSTER_HOST_ADDRESS}" \
+            -e "cluster_floating_address=${CLUSTER_HOST_ADDRESS}" \
             -e "etcd_listen_address_version=${CLUSTER_HOST_ADDRESS_VERSION}" \
             -e "puppet_permdir=/opt/platform/puppet/${sw_version}" \
             -e "config_permdir=/opt/platform/config/${sw_version}" \
