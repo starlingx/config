@@ -99,6 +99,8 @@ class isystem(Base):
     capabilities = Column(JSONEncodedDict)
     contact = Column(String(255))
     location = Column(String(255))
+    latitude = Column(String(30))
+    longitude = Column(String(30))
     services = Column(Integer, default=72)
     software_version = Column(String(255))
     timezone = Column(String(255))

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2017 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -17,9 +17,9 @@ from six.moves import input
 
 def _print_isystem_show(isystem):
     fields = ['name', 'system_type', 'system_mode', 'description', 'location',
-              'contact', 'timezone', 'software_version', 'uuid',
-              'created_at', 'updated_at', 'region_name', 'service_project_name',
-              'security_feature']
+              'latitude', 'longitude', 'contact', 'timezone', 'software_version',
+              'uuid', 'created_at', 'updated_at', 'region_name',
+              'service_project_name', 'security_feature']
     if isystem.capabilities.get('region_config'):
         fields.append('shared_services')
         setattr(isystem, 'shared_services',
@@ -76,6 +76,12 @@ def do_show(cc, args):
 @utils.arg('-l', '--location',
            metavar='<location>',
            help='The location of the system')
+@utils.arg('-la', '--latitude',
+           metavar='<latitude>',
+           help='The latitude GEO location coordinate of the system')
+@utils.arg('-lo', '--longitude',
+           metavar='<longitude>',
+           help='The longitude GEO location coordinate of the system')
 @utils.arg('-p', '--https_enabled',
            metavar='<https_enabled>',
            choices=['true', 'false', 'True', 'False'],
@@ -134,8 +140,9 @@ def do_modify(cc, args):
             return
         print('Please follow the admin guide to complete the reconfiguration.')
 
-    field_list = ['name', 'system_mode', 'description', 'location', 'contact',
-                  'timezone', 'sdn_enabled', 'https_enabled', 'vswitch_type', 'security_feature']
+    field_list = ['name', 'system_mode', 'description', 'location', 'latitude',
+                  'longitude', 'contact', 'timezone', 'sdn_enabled',
+                  'https_enabled', 'vswitch_type', 'security_feature']
 
     # use field list as filter
     user_fields = dict((k, v) for (k, v) in vars(args).items()

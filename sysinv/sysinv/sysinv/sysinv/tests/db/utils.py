@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 """Sysinv test utilities."""
@@ -201,6 +201,8 @@ def get_test_isystem(**kw):
             'system_mode': kw.get('system_mode', constants.SYSTEM_MODE_DUPLEX),
             'region_name': kw.get('region_name', constants.REGION_ONE_NAME),
             'location': kw.get('location', 'isystemlocation'),
+            'latitude': kw.get('latitude'),
+            'longitude': kw.get('longitude'),
             'services': kw.get('services', 72),
             'software_version': kw.get('software_version', SW_VERSION)
            }

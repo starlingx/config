@@ -525,6 +525,8 @@ itemNotFound (404)
    "timezone (Optional)", "plain", "xsd:string", "The timezone of the cloud system."
    "description (Optional)", "plain", "xsd:string", "A user-specified description of the cloud system."
    "location (Optional)", "plain", "xsd:string", "The user-specified location of the cloud system."
+   "latitude (Optional)", "plain", "xsd:string", "The user-specified latitude GPS coordinate of the cloud system."
+   "longitude (Optional)", "plain", "xsd:string", "The user-specified longitude GPS coordinate of the cloud system."
    "capabilities (Optional)", "plain", "xsd:dictionary", "System capabilities. <ul><li>sdn_enabled : (Boolean) Software Defined Networking enabled. </li><li>region_config : (Boolean) region selection: <ul><li>true : Secondary region. </li><li>false : Primary region. </li></ul></li><li>shared_services : Services provided by Primary region. </li><li>bm_region : Board Management controller network selection: <ul><li>External : OAM network. </li><li>Internal : Management network. </li></ul></li><li>cinder_backend : backend selection for Cinder. </li><li>vswitch_type : vSwitch selection. </li><li>security_feature : Selection of Spectre and Meltdown mitigation options. </li><li>https_enabled : (Boolean) selection of https mode for public URLs. </li></ul>"
    "contact (Optional)", "plain", "xsd:string", "The user-specified contact for the cloud system."
    "software_version (Optional)", "plain", "xsd:string", "Contains the Cloud Server Software Version and the Software Version of the underlying Linux Kernel."
@@ -555,6 +557,8 @@ itemNotFound (404)
          "updated_at": "2014-09-24T14:35:38.091392+00:00",
          "contact": null,
          "location": null,
+         "latitude": null,
+         "longitude": null,
          "description": "The Ottawa Cloud Test Lab.",
          "system_type": "Standard",
          "system_mode": "duplex",
@@ -591,6 +595,10 @@ The attributes of the System object that are modifiable are:
 
 -  location,
 
+-  latitude,
+
+-  longitude,
+
 -  sdn_enabled,
 
 -  contact.
@@ -616,6 +624,8 @@ badMediaType (415)
    "timezone (Optional)", "plain", "xsd:string", "The timezone of the cloud system."
    "description (Optional)", "plain", "xsd:string", "A user-specified description of the cloud system."
    "location (Optional)", "plain", "xsd:string", "The user-specified location of the cloud system."
+   "latitude (Optional)", "plain", "xsd:string", "The user-specified latitude GPS coordinate of the cloud system."
+   "longitude (Optional)", "plain", "xsd:string", "The user-specified longitude GPS coordinate of the cloud system."
    "capabilities (Optional)", "plain", "xsd:dictionary", "System capabilities. <ul><li>sdn_enabled : (Boolean) Software Defined Networking enabled. </li><li>region_config : (Boolean) region selection: <ul><li>true : Secondary region. </li><li>false : Primary region. </li></ul></li><li>shared_services : Services provided by Primary region. </li><li>bm_region : Board Management controller network selection: <ul><li>External : OAM network. </li><li>Internal : Management network. </li></ul></li><li>cinder_backend : backend selection for Cinder. </li><li>vswitch_type : vSwitch selection. </li><li>security_feature : Selection of Spectre and Meltdown mitigation options. </li><li>https_enabled : (Boolean) selection of https mode for public URLs. </li></ul>"
    "contact (Optional)", "plain", "xsd:string", "The user-specified contact for the cloud system."
    "software_version (Optional)", "plain", "xsd:string", "Contains the Cloud Server Software Version and the Software Version of the underlying Linux Kernel."
@@ -640,6 +650,16 @@ badMediaType (415)
      {
        "path": "/location",
        "value": "350 Terry Fox Dr, Kanata, Ontario, Canada",
+       "op": "replace"
+     }
+     {
+       "path": "/latitude",
+       "value": "45.35189954974955",
+       "op": "replace"
+     }
+     {
+       "path": "/longitude",
+       "value": "-75.91866628453701",
        "op": "replace"
      }
      {
@@ -684,6 +704,8 @@ badMediaType (415)
          "updated_at": "2017-07-31T17:44:06.051441+00:00",
          "created_at": "2017-07-31T17:35:46.836024+00:00",
          "location": "350 Terry Fox Dr, Kanata, Ontario, Canada",
+         "latitude": "45.35189954974955",
+         "longitude": "-75.91866628453701",
          "capabilities": {
            "sdn_enabled": true,
            "shared_services": "[]",

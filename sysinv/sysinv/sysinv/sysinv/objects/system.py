@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2016 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -27,6 +27,8 @@ class System(base.SysinvObject):
             'capabilities': utils.dict_or_none,
             'contact': utils.str_or_none,
             'location': utils.str_or_none,
+            'latitude': utils.str_or_none,
+            'longitude': utils.str_or_none,
             'services': utils.int_or_none,
             'software_version': utils.str_or_none,
             'timezone': utils.str_or_none,
