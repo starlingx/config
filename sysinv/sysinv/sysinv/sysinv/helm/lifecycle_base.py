@@ -44,8 +44,9 @@ class AppLifecycleOperator(object):
                 # To reject the reapply evaluation an app can override this
                 # hook and raise exception.LifecycleSemanticCheckException
                 pass
-            # Check if it is a delete operation
-            elif hook_info.operation == constants.APP_DELETE_OP:
+            # Check if operation is a delete or remove operation
+            elif hook_info.operation == constants.APP_DELETE_OP or \
+                    hook_info.operation == constants.APP_REMOVE_OP:
                 try:
                     # Store the forbidden operations in a list
                     forbidden = conductor_obj.apps_metadata[
@@ -55,10 +56,10 @@ class AppLifecycleOperator(object):
                 except KeyError:
                     pass
                 else:
-                    # Check if deletion is a forbidden operation
-                    if constants.APP_DELETE_OP in forbidden:
+                    # Check if it is a forbidden operation
+                    if hook_info.operation in forbidden:
                         raise exception.LifecycleSemanticCheckOpererationBlocked(
-                            op=constants.APP_DELETE_OP.capitalize(),
+                            op=hook_info.operation.capitalize(),
                             app=app.name)
 
         # TODO(dvoicule) remove once each app has its lifecycle operator and takes care of its rbd
