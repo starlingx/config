@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 """Conduct all activity related system inventory.
@@ -225,7 +225,8 @@ class ConductorManager(service.PeriodicService):
 
         self.apps_metadata = {constants.APP_METADATA_APPS: {},
                               constants.APP_METADATA_PLATFORM_MANAGED_APPS: {},
-                              constants.APP_METADATA_DESIRED_STATES: {}}
+                              constants.APP_METADATA_DESIRED_STATES: {},
+                              constants.APP_METADATA_ORDERED_APPS: []}
 
     def start(self):
         self._start()
@@ -11979,22 +11980,30 @@ class ConductorManager(service.PeriodicService):
 
         :returns: list of apps or app names
         """
-        # TODO(dvoicule) reorder apps based on dependencies between them
-        # now make HELM_APP_PLATFORM first to keep backward compatibility
-        ordered_apps = []
-
         try:
-            if filter_active:
-                apps = list(filter(lambda app: app.active, self.dbapi.kube_app_get_all()))
-            else:
-                apps = self.dbapi.kube_app_get_all()
+            # Cached entry: precomputed order of reapply evaluation
+            if name_only and not filter_active:
+                return self.apps_metadata[constants.APP_METADATA_ORDERED_APPS]
 
-            ordered_apps = sorted(apps, key=lambda x: x.get('name', 'placeholder')
-                                 if x.get('name', 'placeholder') != constants.HELM_APP_PLATFORM else '')
+            ordered_apps = []
+            # Start from already ordered list
+            for app_name in self.apps_metadata[constants.APP_METADATA_ORDERED_APPS]:
+                try:
+                    app = self.dbapi.kube_app_get(app_name)
+                except exception.KubeAppNotFound:
+                    continue
+
+                if filter_active and app.active:
+                    ordered_apps.append(app)
+                elif not filter_active:
+                    ordered_apps.append(app)
+
+            LOG.info("Apps reapply order: {}".format([app.name for app in ordered_apps]))
+
             if name_only:
                 ordered_apps = [app.name for app in ordered_apps]
         except Exception as e:
-            LOG.error("Error while ordering apps for reapply {}".format(e))
+            LOG.error("Error while ordering apps for reapply {}".format(str(e)))
             ordered_apps = []
 
         return ordered_apps

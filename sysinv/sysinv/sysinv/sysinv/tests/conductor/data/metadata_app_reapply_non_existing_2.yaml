@@ -1,0 +1,32 @@
+---
+app_name: app0
+behavior:
+  platform_managed_app: true
+  evaluate_reapply:
+    after:
+      - app_non_existing_0
+      - app4
+---
+app_name: app1
+behavior:
+  platform_managed_app: true
+---
+app_name: app2
+behavior:
+  platform_managed_app: true
+  evaluate_reapply:
+    after:
+      - app_non_existing_2
+      - app4
+---
+app_name: app3
+behavior:
+  platform_managed_app: true
+  evaluate_reapply:
+    after:
+      - app0
+      - app2
+---
+app_name: app4
+behavior:
+  platform_managed_app: true
