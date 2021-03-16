@@ -30,6 +30,7 @@ import time
 import zipfile
 
 from collections import namedtuple
+from distutils.util import strtobool
 from eventlet import greenpool
 from eventlet import greenthread
 from eventlet import queue
@@ -1252,21 +1253,54 @@ class AppOperator(object):
             except Exception as e:
                 LOG.exception(e)
 
-    def _get_metadata_value(self, app, flag, default):
-        # This function gets a boolean
-        # parameter from application metadata
-        flag_result = default
+    def _get_metadata_value(self, app, key_or_keys, default=None,
+                           enforce_type=False):
+        """
+        Get application metadata value from nested dictionary.
+
+        If a default value is specified, this will enforce that
+        the value returned is of the same type.
+
+        :param app: application object
+        :param key_or_keys: single key string, or list of keys
+        :param default: default value (and type)
+        :param enforce_type: enforce type check between return value and default
+
+        :return: The value from nested dictionary D[key1][key2][...] = value
+                 assuming all keys are present, otherwise default.
+        """
+        value = default
+
+        if isinstance(key_or_keys, list):
+            keys = key_or_keys
+        else:
+            keys = [key_or_keys]
+
         metadata_file = os.path.join(app.inst_path,
                                      constants.APP_METADATA_FILE)
         if os.path.exists(metadata_file) and os.path.getsize(metadata_file) > 0:
             with open(metadata_file, 'r') as f:
                 try:
-                    y = yaml.safe_load(f)
-                    flag_result = y.get(flag, default)
+                    metadata = yaml.safe_load(f) or {}
+                    value = cutils.deep_get(metadata, keys, default=default)
+                    # TODO(jgauld): There is inconsistent treatment of YAML
+                    # boolean between the module ruamel.yaml and module yaml
+                    # in utils.py, health.py, and kube_app.py. Until these
+                    # usage variants are unified, leave the following check
+                    # as optional.
+                    if enforce_type and default is not None and value is not None:
+                        default_type = type(default)
+                        if type(value) != default_type:
+                            raise exception.SysinvException(_(
+                                "Invalid {}: {} {!r} expected value is {}."
+                                "".format(metadata_file, '.'.join(keys),
+                                          value, default_type)))
                 except KeyError:
                     # metadata file does not have the key
                     pass
-        return flag_result
+        LOG.debug('_get_metadata_value: metadata_file=%s, keys=%s, default=%r, value=%r',
+                  metadata_file, keys, default, value)
+        return value
 
     def _preserve_user_overrides(self, from_app, to_app):
         """Dump user overrides
@@ -1607,7 +1641,7 @@ class AppOperator(object):
             LOG.error("Application %s recover to version %s aborted!"
                       % (old_app.name, old_app.version))
 
-    def _perform_app_rollback(self, from_app, to_app):
+    def _perform_app_rollback(self, from_app, to_app, no_rollback):
         """Perform application rollback request
 
         This method invokes Armada to rollback the application releases to
@@ -1616,10 +1650,18 @@ class AppOperator(object):
 
         :param from_app: application object that application updating from
         :param to_app: application object that application updating to
+        :param no_rollback: boolean: whether application should skip rollback
         :return boolean: whether application rollback was successful
         """
 
         LOG.info("Application %s (%s) rollback started." % (to_app.name, to_app.version))
+        if no_rollback:
+            LOG.info("Application %s (%s) has configured no_rollback %s, "
+                     "rollback skipped.",
+                     to_app.name, to_app.version, no_rollback)
+            # Assume application not aborted. The subsequent success path will
+            # cleanup the from_app.
+            return True
 
         try:
             if AppOperator.is_app_aborted(to_app.name):
@@ -2452,7 +2494,10 @@ class AppOperator(object):
                 self._plugins.activate_plugins(to_app)
 
                 # lifecycle hooks not used in perform_app_rollback
-                result = self._perform_app_rollback(from_app, to_app)
+                keys = [constants.APP_METADATA_UPGRADES,
+                        constants.APP_METADATA_UPDATE_FAILURE_NO_ROLLBACK]
+                no_rollback = bool(strtobool(str(self._get_metadata_value(to_app, keys, False))))
+                result = self._perform_app_rollback(from_app, to_app, no_rollback)
 
             if not result:
                 LOG.error("Application %s update from version %s to version "

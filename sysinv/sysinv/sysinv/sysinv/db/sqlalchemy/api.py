@@ -7716,7 +7716,7 @@ class Connection(api.Connection):
 
             count = query.update(values, synchronize_session='fetch')
             if count == 0:
-                raise exception.KubeAppNotFound(values['name'])
+                raise exception.KubeAppNotFound(name=values.get('name'))
             return query.one()
 
     def kube_app_destroy(self, name, version=None, inactive=False):

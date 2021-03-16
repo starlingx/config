@@ -5591,7 +5591,7 @@ class ConductorManager(service.PeriodicService):
         tarball_name = '{}/{}'.format(
             constants.HELM_APP_ISO_INSTALL_PATH, tarfiles[0])
 
-        with kube_api.TempDirectory() as app_path:
+        with cutils.TempDirectory() as app_path:
             if not cutils.extract_tarfile(app_path, tarball_name):
                 LOG.error("Failed to extract tar file {}.".format(
                     os.path.basename(tarball_name)))
@@ -5691,7 +5691,7 @@ class ConductorManager(service.PeriodicService):
             tarball_name = '{}/{}'.format(
                 constants.HELM_APP_ISO_INSTALL_PATH, tarfile)
 
-            with kube_api.TempDirectory() as app_path:
+            with cutils.TempDirectory() as app_path:
                 if not cutils.extract_tarfile(app_path, tarball_name):
                     LOG.error("Failed to extract tar file {}.".format(
                         os.path.basename(tarball_name)))

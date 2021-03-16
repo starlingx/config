@@ -53,6 +53,7 @@ import shutil
 import signal
 import six
 import socket
+import stat
 import string
 import tempfile
 import time
@@ -1878,17 +1879,26 @@ def verify_checksum(path):
     return rc
 
 
-def find_metadata_file(path, metadata_file):
+def find_metadata_file(path, metadata_file, upgrade_from_release=None):
     """ Find and validate the metadata file in a given directory.
 
     Valid keys for metadata file are defined in the following format:
 
     app_name: <name>
     app_version: <version>
-    patch_dependencies:
-    - <patch.1>
-    - <patch.2>
-    ...
+    upgrades:
+      update_failure_no_rollback: <true/false/yes/no>
+      from_versions:
+      - <version.1>
+      - <version.2>
+    supported_k8s_version:
+      minimum: <version>
+      maximum: <version>
+    supported_releases:
+      <release>:
+      - <patch.1>
+      - <patch.2>
+      ...
     repo: <helm repo> - optional: defaults to HELM_REPO_FOR_APPS
     disabled_charts: - optional: charts default to enabled
     - <chart name>
@@ -1942,7 +1952,6 @@ def find_metadata_file(path, metadata_file):
                 doc = yaml.safe_load(f)
                 app_name = doc['app_name']
                 app_version = doc['app_version']
-                patches = doc['patch_dependencies']
             except KeyError:
                 # metadata file does not have the key(s)
                 pass
@@ -1952,11 +1961,6 @@ def find_metadata_file(path, metadata_file):
                 raise exception.SysinvException(_(
                     "Invalid %s: app_name or/and app_version "
                     "is/are None." % metadata_file))
-
-            if not isinstance(patches, list):
-                raise exception.SysinvException(_(
-                    "Invalid %s: patch_dependencies should "
-                    "be a list." % metadata_file))
 
             behavior = None
             evaluate_reapply = None
@@ -2081,6 +2085,127 @@ def find_metadata_file(path, metadata_file):
 
             except KeyError:
                 pass
+
+        upgrades = None
+        from_versions = []
+
+        try:
+            upgrades = doc[constants.APP_METADATA_UPGRADES]
+            if not isinstance(upgrades, dict):
+                raise exception.SysinvException(_(
+                    "Invalid {}: {} should be a dict."
+                    "".format(metadata_file,
+                              constants.APP_METADATA_UPGRADES)))
+        except KeyError:
+            pass
+
+        if upgrades:
+            try:
+                no_rollback = \
+                    upgrades[constants.APP_METADATA_UPDATE_FAILURE_NO_ROLLBACK]
+                if not is_valid_boolstr(no_rollback):
+                    raise exception.SysinvException(_(
+                        "Invalid {}: {} expected value is a boolean string."
+                        "".format(metadata_file,
+                                  constants.APP_METADATA_UPDATE_FAILURE_NO_ROLLBACK)))
+            except KeyError:
+                pass
+
+            try:
+                from_versions = upgrades[constants.APP_METADATA_FROM_VERSIONS]
+                if not isinstance(from_versions, list):
+                    raise exception.SysinvException(_(
+                        "Invalid {}: {} should be a dict."
+                        "".format(metadata_file,
+                                  constants.APP_METADATA_FROM_VERSIONS)))
+            except KeyError:
+                pass
+
+            for version in from_versions:
+                if not isinstance(version, six.string_types):
+                    raise exception.SysinvException(_(
+                        "Invalid {}: {} each version should be {}."
+                        "".format(metadata_file,
+                                  constants.APP_METADATA_FROM_VERSIONS,
+                                  six.string_types)))
+
+        k8s_version = None
+
+        try:
+            k8s_version = doc[constants.APP_METADATA_SUPPORTED_K8S_VERSION]
+            if not isinstance(k8s_version, dict):
+                raise exception.SysinvException(_(
+                    "Invalid {}: {} should be a dict."
+                    "".format(metadata_file,
+                              constants.APP_METADATA_SUPPORTED_K8S_VERSION)))
+        except KeyError:
+            pass
+
+        if k8s_version:
+            try:
+                _minimum = k8s_version[constants.APP_METADATA_MINIMUM]
+                if not isinstance(_minimum, six.string_types):
+                    raise exception.SysinvException(_(
+                        "Invalid {}: {} should be {}."
+                        "".format(metadata_file,
+                                  constants.constants.APP_METADATA_MINIMUM,
+                                  six.string_types)))
+            except KeyError:
+                pass
+
+            try:
+                _maximum = k8s_version[constants.APP_METADATA_MAXIMUM]
+                if not isinstance(_maximum, six.string_types):
+                    raise exception.SysinvException(_(
+                        "Invalid {}: {} should be {}."
+                        "".format(metadata_file,
+                                  constants.constants.APP_METADATA_MAXIMUM,
+                                  six.string_types)))
+            except KeyError:
+                pass
+
+        supported_releases = {}
+        try:
+            supported_releases = doc[constants.APP_METADATA_SUPPORTED_RELEASES]
+            if not isinstance(supported_releases, dict):
+                raise exception.SysinvException(_(
+                    "Invalid {}: {} should be a dict."
+                    "".format(metadata_file,
+                              constants.APP_METADATA_SUPPORTED_RELEASES)))
+        except KeyError:
+            pass
+
+        if upgrade_from_release is None:
+            check_release = get_sw_version()
+        else:
+            check_release = upgrade_from_release
+        for release, release_patches in supported_releases.items():
+            if not isinstance(release, six.string_types):
+                raise exception.SysinvException(_(
+                    "Invalid {}: {} release key should be {}."
+                    "".format(metadata_file,
+                              constants.APP_METADATA_SUPPORTED_RELEASES,
+                              six.string_types)))
+            if not isinstance(release_patches, list):
+                raise exception.SysinvException(_(
+                    "Invalid {}: {} <release>: [<patch>, ...] "
+                    "patches should be a list."
+                    "".format(metadata_file,
+                              constants.APP_METADATA_SUPPORTED_RELEASES)))
+            for patch in release_patches:
+                if not isinstance(patch, six.string_types):
+                    raise exception.SysinvException(_(
+                        "Invalid {}: {} <release>: [<patch>, ...] "
+                        "each patch should be {}."
+                        "".format(metadata_file,
+                                  constants.APP_METADATA_SUPPORTED_RELEASES,
+                                  six.string_types)))
+            if release == check_release:
+                patches.extend(release_patches)
+                LOG.info('{}, application {} ({}), '
+                         'check_release {}, requires patches {}'
+                         ''.format(metadata_file, app_name, app_version,
+                                   check_release, release_patches))
 
     return app_name, app_version, patches
 
@@ -2648,3 +2773,31 @@ def get_upgradable_hosts(dbapi):
     hosts = [i for i in all_hosts if i.personality != constants.EDGEWORKER]
 
     return hosts
+
+
+def deep_get(nested_dict, keys, default=None):
+    """Get a value from nested dictionary."""
+    if not isinstance(nested_dict, dict):
+        raise exception.SysinvException(_(
+            "Expected a dictionary, cannot get keys {}.".format(keys)))
+
+    def _reducer(d, key):
+        if isinstance(d, dict):
+            return d.get(key, default)
+        return default
+
+    return functools.reduce(_reducer, keys, nested_dict)
+
+
+@contextlib.contextmanager
+def TempDirectory():
+    tmpdir = tempfile.mkdtemp()
+    os.chmod(tmpdir, stat.S_IRWXU)
+    try:
+        yield tmpdir
+    finally:
+        try:
+            LOG.debug("Cleaning up temp directory %s" % tmpdir)
+            shutil.rmtree(tmpdir)
+        except OSError as e:
+            LOG.error(_('Could not remove tmpdir: %s'), str(e))
