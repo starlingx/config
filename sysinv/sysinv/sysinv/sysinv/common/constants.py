@@ -1582,7 +1582,7 @@ APP_LIFECYCLE_TYPE_ARMADA_REQUEST = 'armada-request'
 
 APP_LIFECYCLE_MODE_MANUAL = 'manual'
 APP_LIFECYCLE_MODE_AUTO = 'auto'
-
+APP_LIFECYCLE_FORCE_OPERATION = 'force'
 
 # Application metadata constants
 APP_METADATA_MAINTAIN_USER_OVERRIDES = 'maintain_user_overrides'

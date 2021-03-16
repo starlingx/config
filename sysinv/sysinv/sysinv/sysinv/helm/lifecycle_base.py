@@ -45,8 +45,9 @@ class AppLifecycleOperator(object):
                 # hook and raise exception.LifecycleSemanticCheckException
                 pass
             # Check if operation is a delete or remove operation
-            elif hook_info.operation == constants.APP_DELETE_OP or \
-                    hook_info.operation == constants.APP_REMOVE_OP:
+            elif (hook_info.operation in [constants.APP_DELETE_OP,
+                    constants.APP_REMOVE_OP]) and \
+                        not hook_info.extra['force']:
                 try:
                     # Store the forbidden operations in a list
                     forbidden = conductor_obj.apps_metadata[

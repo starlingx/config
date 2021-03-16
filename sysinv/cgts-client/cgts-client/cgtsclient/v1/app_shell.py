@@ -162,10 +162,14 @@ def do_application_apply(cc, args):
 
 @utils.arg('name', metavar='<app name>',
            help='Name of the application to be uninstalled')
+@utils.arg('-f', '--force',
+           action='store_true',
+           default=False,
+           help="Force a remove operation")
 def do_application_remove(cc, args):
     """Uninstall the application"""
     try:
-        response = cc.app.remove(args.name)
+        response = cc.app.remove(args.name, args.force)
         _print_application_show(response)
         _print_reminder_msg(args.name)
     except exc.HTTPNotFound:
@@ -188,10 +192,14 @@ def do_application_abort(cc, args):
 
 @utils.arg('name', metavar='<application name>',
            help='Name of the application to be deleted')
+@utils.arg('-f', '--force',
+           action='store_true',
+           default=False,
+           help="Force a delete operation")
 def do_application_delete(cc, args):
     """Remove the uninstalled application from the system"""
     try:
-        cc.app.delete(args.name)
+        cc.app.delete(args.name, args.force)
         print('Application %s deleted.' % args.name)
     except exc.HTTPNotFound:
         raise exc.CommandError('Application not found: %s' % args.name)
