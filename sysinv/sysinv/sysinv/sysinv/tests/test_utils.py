@@ -326,9 +326,15 @@ class GenericUtilsTestCase(base.TestCase):
             self.assertTrue(any(i in special_chars for i in passwd))
 
     def test_generate_random_password_exception(self):
-            self.assertRaises(exception.SysinvException,
-                              utils.generate_random_password,
-                              length=7)
+        self.assertRaises(exception.SysinvException,
+                          utils.generate_random_password,
+                          length=7)
+
+    def test_is_valid_url(self):
+        self.assertTrue(utils.is_url('http://controller'))
+        self.assertTrue(utils.is_url('https://controller'))
+        self.assertFalse(utils.is_url('https://'))
+        self.assertFalse(utils.is_url('//controller'))
 
 
 class MkfsTestCase(base.TestCase):

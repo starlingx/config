@@ -49,6 +49,7 @@ import os
 import pwd
 import random
 import re
+import rfc3986
 import shutil
 import signal
 import six
@@ -61,7 +62,6 @@ import uuid
 import wsme
 import yaml
 
-from django.core.validators import URLValidator
 from eventlet.green import subprocess
 from eventlet import greenthread
 import netaddr
@@ -1798,11 +1798,17 @@ def is_openstack_applied(dbapi):
 
 
 def is_url(url_str):
+    uri = rfc3986.uri_reference(url_str)
+    validator = rfc3986.validators.Validator().require_presence_of(
+        'scheme', 'host',
+    ).check_validity_of(
+        'scheme', 'host', 'path',
+    )
     try:
-        URLValidator()(url_str)
-        return True
-    except Exception:
+        validator.validate(uri)
+    except rfc3986.exceptions.RFC3986Exception:
         return False
+    return True
 
 
 def is_valid_domain(url_str):
