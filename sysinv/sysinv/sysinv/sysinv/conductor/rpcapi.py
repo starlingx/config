@@ -1835,6 +1835,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('evaluate_app_reapply',
                                                 app_name=app_name))
 
+    def mtc_action_apps_semantic_checks(self, context, action):
+        """Synchronously, call apps semantic check for maintenance actions
+
+        :param context: request context.
+        :param action: maintenance action
+        """
+        return self.call(context, self.make_msg('mtc_action_apps_semantic_checks',
+                                                action=action))
+
     def app_lifecycle_actions(self, context, rpc_app, hook_info):
         """Synchronously, perform any lifecycle actions required
         for the operation

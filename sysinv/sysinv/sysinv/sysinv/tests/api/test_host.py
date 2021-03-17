@@ -45,6 +45,7 @@ class FakeConductorAPI(object):
         self.kube_upgrade_control_plane = mock.MagicMock()
         self.kube_upgrade_kubelet = mock.MagicMock()
         self.create_barbican_secret = mock.MagicMock()
+        self.mtc_action_apps_semantic_checks = mock.MagicMock()
 
     def create_ihost(self, context, values):
         # Create the host in the DB as the code under test expects this
@@ -3250,3 +3251,69 @@ class PatchAIODuplexHostTestCase(PatchAIOHostTestCase):
 
 class PatchAIODuplexDirectHostTestCase(PatchAIOHostTestCase):
     system_mode = constants.SYSTEM_MODE_DUPLEX_DIRECT
+
+
+class RejectMaintananceActionByAppTestCase(TestHost):
+    def an_app_rejected_the_maintanance_action(self, *args):
+        from sysinv.openstack.common.rpc import common as rpc_common
+        raise rpc_common.RemoteError("")
+
+    def test_lock_rejected_action_controller(self):
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        c1_host = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Simulate an app that rejects any action it is asked for
+        self.fake_conductor_api.mtc_action_apps_semantic_checks.side_effect = \
+            self.an_app_rejected_the_maintanance_action
+
+        # Lock host
+        response = self._patch_host_action(c1_host['hostname'],
+                                           constants.LOCK_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("{} action semantic check failed by app"
+                      "".format(constants.LOCK_ACTION.capitalize()),
+                      response.json['error_message'])
+
+    def test_force_lock_not_rejected_action_controller(self):
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        c1_host = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Simulate an app that rejects any action it is asked for
+        self.fake_conductor_api.mtc_action_apps_semantic_checks.side_effect = \
+            self.an_app_rejected_the_maintanance_action
+
+        # Force lock host
+        response = self._patch_host_action(c1_host['hostname'],
+                                           constants.FORCE_LOCK_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)

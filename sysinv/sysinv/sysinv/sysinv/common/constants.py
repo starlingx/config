@@ -1584,6 +1584,8 @@ APP_LIFECYCLE_MODE_MANUAL = 'manual'
 APP_LIFECYCLE_MODE_AUTO = 'auto'
 APP_LIFECYCLE_FORCE_OPERATION = 'force'
 
+APP_LIFECYCLE_OPERATION_MTC_ACTION = 'mtc-action'
+
 # Application metadata constants
 APP_METADATA_MAINTAIN_USER_OVERRIDES = 'maintain_user_overrides'
 APP_METADATA_HELM_TOOLKIT_REQUIRED = 'helm_toolkit_required'

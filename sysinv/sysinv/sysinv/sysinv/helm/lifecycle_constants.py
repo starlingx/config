@@ -23,3 +23,5 @@ class LifecycleConstants(object):
     TRIGGER_TYPE = 'type'
     TRIGGER_OPENSTACK_WORKER = 'openstack_worker'
     TRIGGER_DELTA_FIELDS = 'delta_fields'
+    ACTION = 'action'
+    APP_STATUS = 'app_status'

@@ -13136,6 +13136,38 @@ class ConductorManager(service.PeriodicService):
         LOG.info(output)
         return output
 
+    def mtc_action_apps_semantic_checks(self, context, action):
+        """Call semantic check for maintenance actions of each app.
+        Fail if at least one app rejects the action.
+
+        :param context: request context.
+        :param action: maintenance action
+        """
+        apps = self.dbapi.kube_app_get_all()
+
+        for app in apps:
+            try:
+                semantic_check_hook_info = LifecycleHookInfo()
+                semantic_check_hook_info.init(
+                    constants.APP_LIFECYCLE_MODE_MANUAL,
+                    constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                    constants.APP_LIFECYCLE_TIMING_PRE,
+                    constants.APP_LIFECYCLE_OPERATION_MTC_ACTION)
+                semantic_check_hook_info.extra[
+                    LifecycleConstants.APP_STATUS] = app.status
+                semantic_check_hook_info.extra[
+                    LifecycleConstants.ACTION] = action
+
+                self._app.app_lifecycle_actions(context, self, app, semantic_check_hook_info)
+            except exception.LifecycleSemanticCheckException as e:
+                LOG.info("App {} rejected maintance action {} for reason: {}"
+                         "".format(app.name, action, str(e)))
+                raise
+            except Exception as e:
+                LOG.error("App {} maintance action {} semantic check error: {}"
+                          "".format(app.name, action, str(e)))
+                raise
+
 
 def device_image_state_sort_key(dev_img_state):
     if dev_img_state.bitstream_type == dconstants.BITSTREAM_TYPE_ROOT_KEY:

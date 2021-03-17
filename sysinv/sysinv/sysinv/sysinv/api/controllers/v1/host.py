@@ -95,6 +95,8 @@ from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.common import health
 
+from sysinv.openstack.common.rpc import common as rpc_common
+
 LOG = log.getLogger(__name__)
 KEYRING_BM_SERVICE = "BM"
 ERR_CODE_LOCK_SOLE_SERVICE_PROVIDER = "-1003"
@@ -4416,6 +4418,23 @@ class HostController(rest.RestController):
                     pecan.request.rpcapi.configure_ttys_dcd(
                         pecan.request.context, ihost['uuid'], ttys_dcd)
 
+    def mtc_action_apps_semantic_checks(self, action):
+        """ Enhance semantic checks from this class.
+        Let apps run semantic checks.
+
+        :param action: maintenance action
+
+        """
+        try:
+            pecan.request.rpcapi.mtc_action_apps_semantic_checks(
+                pecan.request.context, action)
+        except rpc_common.RemoteError as e:
+            raise wsme.exc.ClientSideError(_(
+                "{} action semantic check failed by app: {}"
+                "".format(action.capitalize(), str(e.value))))
+
+        return True
+
     def action_check(self, action, hostupdate):
         """Performs semantic checks related to action"""
 
@@ -4486,8 +4505,13 @@ class HostController(rest.RestController):
                     pecan.request.dbapi.ihost_update(hostupdate.ihost_orig['uuid'],
                                                      hostupdate.ihost_val_prenotify)
                     raise
+
+                if not force_unlock:
+                    self.mtc_action_apps_semantic_checks(action)
+
         elif action == constants.LOCK_ACTION:
-            if self.check_lock(hostupdate):
+            if self.check_lock(hostupdate) and \
+                    self.mtc_action_apps_semantic_checks(action):
                 rc = self.update_ihost_action(action, hostupdate)
         elif action == constants.FORCE_LOCK_ACTION:
             if self.check_force_lock(hostupdate):
