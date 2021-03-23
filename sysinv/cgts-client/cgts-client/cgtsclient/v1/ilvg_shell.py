@@ -125,7 +125,7 @@ def do_host_lvg_add(cc, args):
     user_specified_fields = dict((k, v) for (k, v) in vars(args).items()
                                  if k in field_list and not (v is None))
 
-    if 'lvm_vg_name' in user_specified_fields.keys():
+    if 'lvm_vg_name' in list(user_specified_fields.keys()):
         user_specified_fields['lvm_vg_name'] =\
             user_specified_fields['lvm_vg_name'].replace(" ", "")
     fields.update(user_specified_fields)

@@ -28,6 +28,7 @@ import textwrap
 from cgtsclient.common.cli_no_wrap import is_nowrap_set
 from cgtsclient.common.cli_no_wrap import set_no_wrap
 from prettytable import _get_size
+from six.moves import range
 
 UUID_MIN_LENGTH = 36
 
@@ -669,7 +670,7 @@ def build_wrapping_formatters(objs, fields, field_labels, format_spec, add_blank
         else:
             format_spec = build_best_guess_formatters_using_average_widths(objs, fields, field_labels)
 
-    for k in format_spec.keys():
+    for k in list(format_spec.keys()):
         if k not in fields:
             raise Exception("Error in buildWrappingFormatters: format_spec "
                             "specifies a field {} that is not specified "
