@@ -182,7 +182,7 @@ def do_host_if_add(cc, args):
     user_specified_fields = dict((k, v) for (k, v) in vars(args).items()
                                  if k in field_list and not (v is None))
 
-    if 'iftype' in user_specified_fields.keys():
+    if 'iftype' in list(user_specified_fields.keys()):
         if args.iftype == 'ae' or args.iftype == 'vlan':
             uses = args.portsorifaces
             portnamesoruuids = None
@@ -282,7 +282,7 @@ def do_host_if_modify(cc, args):
     fields.update(user_specified_fields)
 
     # Allow setting an interface back to a None type
-    if 'ifclass' in user_specified_fields.keys():
+    if 'ifclass' in list(user_specified_fields.keys()):
         if args.ifclass == 'none':
             iinterface_utils._get_ports(cc, ihost, interface)
             if interface.ports or interface.uses:

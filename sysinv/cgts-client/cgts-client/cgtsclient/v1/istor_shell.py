@@ -55,7 +55,7 @@ def do_host_stor_show(cc, args):
 
     # convert journal size from mib to gib when display
     if i.journal_size_mib:
-        i.journal_size_mib = i.journal_size_mib / 1024
+        i.journal_size_mib = i.journal_size_mib // 1024
 
     _print_istor_show(i)
 
@@ -73,7 +73,7 @@ def do_host_stor_list(cc, args):
 
         # convert journal size from mib to gib when display
         if i.journal_size_mib:
-            i.journal_size_mib = i.journal_size_mib / 1024
+            i.journal_size_mib = i.journal_size_mib // 1024
 
     field_labels = ['uuid', 'function', 'osdid', 'state',
                     'idisk_uuid', 'journal_path', 'journal_node',
@@ -129,15 +129,15 @@ def do_host_stor_add(cc, args):
             raise exc.CommandError('Journal size must be an integer '
                                    'greater than 0: %s' % user_specified_fields[f])
 
-    if 'journal_size' in user_specified_fields.keys():
+    if 'journal_size' in list(user_specified_fields.keys()):
         user_specified_fields['journal_size_mib'] = \
             user_specified_fields.pop('journal_size') * 1024
 
-    if 'function' in user_specified_fields.keys():
+    if 'function' in list(user_specified_fields.keys()):
         user_specified_fields['function'] = \
             user_specified_fields['function'].replace(" ", "")
 
-    if 'tier_uuid' in user_specified_fields.keys():
+    if 'tier_uuid' in list(user_specified_fields.keys()):
         user_specified_fields['tier_uuid'] = \
             user_specified_fields['tier_uuid'].replace(" ", "")
 
@@ -195,7 +195,7 @@ def do_host_stor_update(cc, args):
             raise exc.CommandError('Journal size must be an integer '
                                    'greater than 0: %s' % user_specified_fields[f])
 
-    if 'journal_size' in user_specified_fields.keys():
+    if 'journal_size' in list(user_specified_fields.keys()):
         user_specified_fields['journal_size_mib'] = \
             user_specified_fields.pop('journal_size') * 1024
 
