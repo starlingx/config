@@ -58,6 +58,8 @@ from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import cpu as cpu_api
 from sysinv.api.controllers.v1 import cpu_utils
 from sysinv.api.controllers.v1 import disk
+from sysinv.api.controllers.v1 \
+    import kube_rootca_update as kube_rootca_update_api
 from sysinv.api.controllers.v1 import partition
 from sysinv.api.controllers.v1 import ceph_mon
 from sysinv.api.controllers.v1 import interface as interface_api
@@ -506,6 +508,9 @@ class Host(base.APIBase):
     host_fs = [link.Link]
     "Links to the collection of host_fs on this ihost"
 
+    kube_update_ca = [link.Link]
+    "Links to the collection of kube_update_ca on this ihost"
+
     isensors = [link.Link]
     "Links to the collection of isensors on this ihost"
 
@@ -751,6 +756,19 @@ class Host(base.APIBase):
                                  uhost.uuid + "/host_fs",
                                  bookmark=True)
                              ]
+
+            uhost.kube_update_ca = [
+                             link.Link.make_link('self',
+                                 pecan.request.host_url,
+                                 'ihosts',
+                                 uhost.uuid + "/kube_update_ca"),
+                             link.Link.make_link(
+                                 'bookmark',
+                                 pecan.request.host_url,
+                                 'ihosts',
+                                 uhost.uuid + "/kube_update_ca",
+                                 bookmark=True)
+                            ]
 
             uhost.isensors = [link.Link.make_link('self',
                                                   pecan.request.host_url,
@@ -1086,6 +1104,10 @@ class HostController(rest.RestController):
 
     host_fs = host_fs_api.HostFsController(from_ihosts=True)
     "Expose host_fs as a sub-element of ihosts"
+
+    kube_update_ca = \
+        kube_rootca_update_api.KubeRootCAHostUpdateController(from_ihosts=True)
+    "Expose kube_update_ca as a sub-element of ihosts"
 
     addresses = address_api.AddressController(parent="ihosts")
     "Expose addresses as a sub-element of ihosts"

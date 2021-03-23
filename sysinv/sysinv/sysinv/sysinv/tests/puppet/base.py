@@ -21,6 +21,7 @@ class PuppetTestCaseMixin(object):
         mock.patch('sysinv.common.utils.is_virtual', return_value=False).start()
         mock.patch('sysinv.puppet.kubernetes.KubernetesPuppet._get_host_join_command',
                    return_value={}).start()
+        mock.patch('sysinv.common.kubernetes.KubeOperator.kube_get_secret').start()
 
     def assertConfigParameters(self, mock_write_config, parameters):
         """Validate the configuration contains the supplied parameters"""

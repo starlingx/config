@@ -11,6 +11,7 @@ import os
 
 from oslo_log import log as logging
 from sysinv._i18n import _
+from sysinv.common import constants
 from sysinv.common import exception
 from tsconfig import tsconfig
 
@@ -40,6 +41,9 @@ REPORT_PCI_SRIOV_CONFIG = 'pci_sriov_config'
 REPORT_CEPH_OSD_CONFIG = 'ceph_osd'
 REPORT_CEPH_RADOSGW_CONFIG = 'ceph_radosgw'
 REPORT_CEPH_ROOK_CONFIG = 'ceph_rook_config'
+REPORT_KUBE_CERT_UPDATE_TRUSTBOTHCAS = constants.KUBE_CERT_UPDATE_TRUSTBOTHCAS
+REPORT_KUBE_CERT_UPDATE_UPDATECERTS = constants.KUBE_CERT_UPDATE_UPDATECERTS
+REPORT_KUBE_CERT_UPDATE_TRUSTNEWCA = constants.KUBE_CERT_UPDATE_TRUSTNEWCA
 
 
 def puppet_apply_manifest(ip_address, personality,
