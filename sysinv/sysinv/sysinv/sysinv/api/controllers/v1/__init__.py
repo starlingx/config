@@ -43,6 +43,7 @@ from sysinv.api.controllers.v1 import host
 from sysinv.api.controllers.v1 import kube_app
 from sysinv.api.controllers.v1 import kube_cluster
 from sysinv.api.controllers.v1 import kube_host_upgrade
+from sysinv.api.controllers.v1 import kube_rootca_update
 from sysinv.api.controllers.v1 import kube_upgrade
 from sysinv.api.controllers.v1 import kube_version
 from sysinv.api.controllers.v1 import label
@@ -261,6 +262,9 @@ class V1(base.APIBase):
 
     kube_upgrade = [link.Link]
     "Links to the kube_upgrade resource"
+
+    kube_rootca_update = [link.Link]
+    "Links to the kube_rootca_update resource"
 
     kube_host_upgrades = [link.Link]
     "Links to the kube_host_upgrade resource"
@@ -818,6 +822,13 @@ class V1(base.APIBase):
                                                'kube_upgrade', '',
                                                bookmark=True)]
 
+        v1.kube_rootca_update = [link.Link.make_link('self', pecan.request.host_url,
+                                               'kube_rootca_update', ''),
+                           link.Link.make_link('bookmark',
+                                               pecan.request.host_url,
+                                               'kube_rootca_update', '',
+                                               bookmark=True)]
+
         v1.kube_host_upgrades = [link.Link.make_link('self',
                                                      pecan.request.host_url,
                                                      'kube_host_upgrades', ''),
@@ -925,6 +936,7 @@ class Controller(rest.RestController):
     kube_clusters = kube_cluster.KubeClusterController()
     kube_versions = kube_version.KubeVersionController()
     kube_upgrade = kube_upgrade.KubeUpgradeController()
+    kube_rootca_update = kube_rootca_update.KubeRootCAUpdateController()
     kube_host_upgrades = kube_host_upgrade.KubeHostUpgradeController()
     device_images = device_image.DeviceImageController()
     device_image_state = device_image_state.DeviceImageStateController()

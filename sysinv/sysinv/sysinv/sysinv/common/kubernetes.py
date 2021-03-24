@@ -76,6 +76,29 @@ KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED = 'upgrading-control-plane-failed'
 KUBE_HOST_UPGRADING_KUBELET = 'upgrading-kubelet'
 KUBE_HOST_UPGRADING_KUBELET_FAILED = 'upgrading-kubelet-failed'
 
+# Kubernetes rootca update states
+KUBE_ROOTCA_UPDATE_STARTED = 'update-started'
+KUBE_ROOTCA_UPDATE_CERT_UPLOADED = 'update-new-rootca-cert-uploaded'
+KUBE_ROOTCA_UPDATE_CERT_GENERATED = 'update-new-rootca-cert-generated'
+KUBE_ROOTCA_UPDATE_UPDATING_PODS_TRUSTBOTHCAS = 'updating-pods-trustBothCAs'
+KUBE_ROOTCA_UPDATE_UPDATED_PODS_TRUSTBOTHCAS = 'updated-pods-trustBothCAs'
+KUBE_ROOTCA_UPDATE_UPDATING_PODS_TRUSTBOTHCAS_FAILED = 'updating-pods-trustBothCAs-failed'
+KUBE_ROOTCA_UPDATE_UPDATING_PODS_TRUSTNEWCA = 'updating-pods-trustNewCA'
+KUBE_ROOTCA_UPDATE_UPDATED_PODS_TRUSTNEWCA = 'updated-pods-trustNewCA'
+KUBE_ROOTCA_UPDATE_UPDATING_PODS_TRUSTNEWCA_FAILED = 'updating-pods-trustNewCA-failed'
+KUBE_ROOTCA_UPDATE_COMPLETED = 'update-completed'
+
+# Kubernetes rootca host update states
+KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS = 'updating-host-trustBothCAs'
+KUBE_ROOTCA_UPDATED_HOST_TRUSTBOTHCAS = 'updated-host-trustBothCAs'
+KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS_FAILED = 'updating-host-trustBothCAs-failed'
+KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS = 'updating-host-updateCerts'
+KUBE_ROOTCA_UPDATED_HOST_UPDATECERTS = 'updated-host-updateCerts'
+KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS_FAILED = 'updating-host-updateCerts-failed'
+KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA = 'updating-host-trustNewCA'
+KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA = 'updated-host-trustNewCA'
+KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA_FAILED = 'updating-host-trustNewCA-failed'
+
 # Kubernetes constants
 MANIFEST_APPLY_TIMEOUT = 60 * 15
 MANIFEST_APPLY_INTERVAL = 10
