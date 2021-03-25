@@ -83,12 +83,13 @@ def update_subcloud_sync():
                     # endpoint types supported for each subcloud
                     cur.execute("INSERT into subcloud_sync (subcloud_id, "
                                 "subcloud_name, endpoint_type, "
-                                "created_at, "
+                                "audit_status, created_at, "
                                 "deleted) values (%d, '%s', "
-                                "'%s', '%s', 0)"
+                                "'%s', '%s', '%s', 0)"
                                 % (record['id'],
                                    record['region_name'],
                                    ept,
+                                   'none',
                                    record['created_at']))
 
     LOG.info("dcorch subcloud_sync data migration completed.")
