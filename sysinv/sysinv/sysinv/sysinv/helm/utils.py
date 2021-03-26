@@ -20,6 +20,7 @@ from sysinv.openstack.common import context
 import tempfile
 import threading
 import psutil
+import retrying
 
 LOG = logging.getLogger(__name__)
 
@@ -179,6 +180,14 @@ def delete_helm_release(release):
         timer.cancel()
 
 
+def _retry_on_HelmTillerFailure(ex):
+    LOG.info('Caught HelmTillerFailure exception. Retrying... '
+            'Exception: {}'.format(ex))
+    return isinstance(ex, exception.HelmTillerFailure)
+
+
+@retrying.retry(stop_max_attempt_number=2,
+                retry_on_exception=_retry_on_HelmTillerFailure)
 def get_openstack_pending_install_charts():
     env = os.environ.copy()
     env['PATH'] = '/usr/local/sbin:' + env['PATH']
