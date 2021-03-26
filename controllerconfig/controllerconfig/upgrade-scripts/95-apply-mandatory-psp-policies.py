@@ -34,7 +34,7 @@ def main():
 
     log.configure()
 
-    if to_release == '20.06' and action == 'activate':
+    if from_release == '20.06' and action == 'activate':
         LOG.info("%s invoked from_release = %s to_release = %s action = %s"
                  % (sys.argv[0], from_release, to_release, action))
         apply_mandatory_psp_policies()
