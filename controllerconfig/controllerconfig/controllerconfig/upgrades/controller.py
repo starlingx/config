@@ -24,6 +24,7 @@ import time
 import yaml
 
 from sysinv.common import constants as sysinv_constants
+from sysinv.puppet import common as puppet_common
 
 
 # WARNING: The controller-1 upgrade is done before any puppet manifests
@@ -825,6 +826,51 @@ def migrate_hiera_data(from_release, to_release, role=None):
         yaml.dump(static_config, yaml_file, default_flow_style=False)
 
 
+def apply_sriov_config(db_credentials):
+    # If controller-1 has any FEC devices or sriov vfs configured, apply the
+    # sriov runtime manifest. We can't apply it from controller-0 during the
+    # host-unlock process as controller-1 is running the new release.
+    database = 'sysinv'
+    username = db_credentials[database]['username']
+    password = db_credentials[database]['password']
+    # psycopg2 can connect with the barbican string eg postgresql:// ...
+    connection_string = DB_BARBICAN_CONNECTION_FORMAT % (
+        username, password, database)
+    conn = psycopg2.connect(connection_string)
+    cur = conn.cursor()
+    cur.execute(
+        "select id, mgmt_ip from i_host where hostname='controller-1';")
+    host = cur.fetchone()
+    host_id = host[0]
+    mgmt_ip = host[1]
+    cur.execute("select id from pci_devices "
+                "where sriov_numvfs > 0 and host_id=%s",
+                (host_id,))
+    fec_device = cur.fetchone()
+    cur.execute("select id from interfaces "
+                "where forihostid=%s and iftype='ethernet' "
+                "and sriov_numvfs>0;",
+                (host_id,))
+    interface = cur.fetchone()
+    if interface or fec_device:
+        # There are FEC devices/sriov vfs configured, apply the sriov manifest
+        LOG.info("Applying sriov/fec manifest")
+        personality = sysinv_constants.WORKER
+        classes = [
+            'platform::interfaces::sriov::runtime',
+            'platform::devices::fpga::fec::runtime'
+        ]
+        config = {'classes': classes}
+        # create a temporary file to hold the runtime configuration values
+        fd, tmpfile = tempfile.mkstemp(suffix='.yaml')
+        with open(tmpfile, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False)
+        puppet_common.puppet_apply_manifest(
+            mgmt_ip, personality, manifest='runtime', runtime=tmpfile)
+        os.close(fd)
+        os.remove(tmpfile)
+
+
 def upgrade_controller(from_release, to_release):
     """ Executed on the release N+1 side upgrade controller-1. """
 
@@ -986,6 +1032,8 @@ def upgrade_controller(from_release, to_release):
         LOG.exception(e)
         LOG.info("Failed to update hiera configuration")
         raise
+
+    apply_sriov_config(db_credentials)
 
     # Remove /etc/kubernetes/admin.conf after it is used to generate
     # the hiera data
