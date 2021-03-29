@@ -6518,24 +6518,44 @@ class ConductorManager(service.PeriodicService):
     def update_oam_config(self, context):
         """Update the OAM network configuration"""
 
-        # update kube-apiserver cert's SANs at runtime
         personalities = [constants.CONTROLLER]
         config_uuid = self._config_update_hosts(context, personalities)
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::kubernetes::certsans::runtime']
-        }
+
+        config_dict = {}
+        is_aio_simplex_system = cutils.is_aio_simplex_system(self.dbapi)
+        if is_aio_simplex_system:
+            # update all necessary config at runtime for AIO-SX
+            config_dict = {
+                "personalities": personalities,
+                "classes": ['platform::network::runtime',
+                            'platform::kubernetes::certsans::runtime',
+                            'platform::firewall::runtime',
+                            'platform::smapi',
+                            'platform::sm::update_oam_config::runtime',
+                            'platform::nfv::webserver::runtime',
+                            'platform::haproxy::runtime',
+                            'platform::dockerdistribution::config',
+                            'platform::dockerdistribution::runtime']
+            }
+        else:
+            # update kube-apiserver cert's SANs at runtime
+            config_dict = {
+                "personalities": personalities,
+                "classes": ['platform::kubernetes::certsans::runtime']
+            }
+
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-        # there is still pending reboot required config to apply
-        self._config_update_hosts(context, [constants.CONTROLLER], reboot=True)
+        # there is still pending reboot required config to apply if not AIO-SX
+        if not is_aio_simplex_system:
+            self._config_update_hosts(context, [constants.CONTROLLER], reboot=True)
 
         extoam = self.dbapi.iextoam_get_one()
 
         self._update_hosts_file('oamcontroller', extoam.oam_floating_ip,
                                 active=False)
 
-        if utils.get_system_mode(self.dbapi) != constants.SYSTEM_MODE_SIMPLEX:
+        if not is_aio_simplex_system:
             cutils.touch(
                 self._get_oam_runtime_apply_file(standby_controller=True))
 
