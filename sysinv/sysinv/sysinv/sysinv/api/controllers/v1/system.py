@@ -275,6 +275,26 @@ class SystemController(rest.RestController):
                 raise wsme.exc.ClientSideError(
                     _("Host {} must be locked.".format(h['hostname'])))
 
+    def _check_mgmt(self, system_mode):
+        iinterfaces = pecan.request.dbapi.iinterface_get_all()
+        mgmt_if = None
+        for iif in iinterfaces:
+            if (iif.networktypelist and
+                    constants.NETWORK_TYPE_MGMT in iif.networktypelist):
+                mgmt_if = iif
+                break
+        if mgmt_if is None:
+            msg = _("Cannot modify system mode to %s "
+                    "without configuring the management "
+                    "interface." % system_mode)
+            raise wsme.exc.ClientSideError(msg)
+        if mgmt_if.ifname == constants.LOOPBACK_IFNAME:
+            msg = _("Cannot modify system mode to %s "
+                    "when the management interface is "
+                    "configured on loopback. "
+                    % system_mode)
+            raise wsme.exc.ClientSideError(msg)
+
     def _get_isystem_collection(self, marker, limit, sort_key, sort_dir,
                                 expand=False, resource_url=None):
         limit = api_utils.validate_limit(limit)
@@ -360,6 +380,7 @@ class SystemController(rest.RestController):
         change_sdn = False
         change_dc_role = False
         vswitch_type = None
+        new_system_mode = None
 
         # prevent description field from being updated
         for p in jsonpatch.JsonPatch(patch):
@@ -390,14 +411,12 @@ class SystemController(rest.RestController):
                     # be bound to the conditions below.
                     if cutils.is_initial_config_complete():
                         if rpc_isystem.system_mode == \
-                                constants.SYSTEM_MODE_SIMPLEX:
+                                constants.SYSTEM_MODE_DUPLEX:
                             msg = _("Cannot modify system mode when it is "
-                                    "already set to %s." % rpc_isystem.system_mode)
+                                    "set to %s." % rpc_isystem.system_mode)
                             raise wsme.exc.ClientSideError(msg)
-                        elif new_system_mode == constants.SYSTEM_MODE_SIMPLEX:
-                            msg = _("Cannot modify system mode to simplex when "
-                                    "it is set to %s " % rpc_isystem.system_mode)
-                            raise wsme.exc.ClientSideError(msg)
+                        elif new_system_mode != constants.SYSTEM_MODE_SIMPLEX:
+                            self._check_mgmt(new_system_mode)
                     else:
                         system_mode_options.append(constants.SYSTEM_MODE_SIMPLEX)
 
@@ -446,6 +465,14 @@ class SystemController(rest.RestController):
                                                    jsonpatch.JsonPatch(patch))
         except api_utils.JSONPATCH_EXCEPTIONS as e:
             raise exception.PatchError(patch=patch, reason=e)
+
+        if 'system_mode' in updates:
+            # Update capabilities if system mode is changed from simplex to
+            # duplex after the initial config is complete
+            if (cutils.is_initial_config_complete() and
+                    rpc_isystem.system_mode == constants.SYSTEM_MODE_SIMPLEX and
+                    new_system_mode == constants.SYSTEM_MODE_DUPLEX):
+                patched_system['capabilities']['simplex_to_duplex_migration'] = True
 
         if 'sdn_enabled' in updates:
             if sdn_enabled != rpc_isystem['capabilities']['sdn_enabled']:

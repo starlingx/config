@@ -3447,6 +3447,29 @@ class HostController(rest.RestController):
         self._semantic_check_upgrade_refresh(upgrade, ihost, force_unlock)
 
     @staticmethod
+    def _semantic_check_duplex_oam_config(ihost):
+        system = pecan.request.dbapi.isystem_get_one()
+        if system.capabilities.get('simplex_to_duplex_migration'):
+            network = pecan.request.dbapi.network_get_by_type(constants.NETWORK_TYPE_OAM)
+            address_names = {'oam_c0_ip': '%s-%s' % (constants.CONTROLLER_0_HOSTNAME,
+                                                     constants.NETWORK_TYPE_OAM),
+                             'oam_c1_ip': '%s-%s' % (constants.CONTROLLER_1_HOSTNAME,
+                                                     constants.NETWORK_TYPE_OAM)}
+            addresses = {a['name']: a for a in
+                         pecan.request.dbapi.addresses_get_by_pool_uuid(network.pool_uuid)}
+
+            # check if controller-0-oam and controller-1-oam entries exist
+            for key, name in address_names.items():
+                if addresses.get(name) is None:
+                    msg = _("Can not unlock controller on a duplex without "
+                            "configuring %s." % key)
+                    raise wsme.exc.ClientSideError(msg)
+                if addresses[name].address is None:
+                    msg = _("Can not unlock controller on a duplex without "
+                            "configuring a unit IP for %s." % key)
+                    raise wsme.exc.ClientSideError(msg)
+
+    @staticmethod
     def _semantic_check_oam_interface(ihost):
         """
         Perform semantic checks against oam interface to ensure validity of
@@ -5532,6 +5555,8 @@ class HostController(rest.RestController):
         # If HTTPS is enabled then we may be in TPM configuration mode
         if utils.get_https_enabled():
             self._semantic_check_tpm_config(hostupdate.ihost_orig)
+        if utils.get_system_mode() == constants.SYSTEM_MODE_DUPLEX:
+            self._semantic_check_duplex_oam_config(hostupdate.ihost_orig)
 
     def check_unlock_worker(self, hostupdate, force_unlock=False):
         """Check semantics on  host-unlock of a worker."""
