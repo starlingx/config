@@ -6515,6 +6515,17 @@ class ConductorManager(service.PeriodicService):
 
         return oam_config_required_flag
 
+    def initialize_oam_config(self, context, host):
+        """Initialize a new OAM network configuration"""
+
+        extoam = self.dbapi.iextoam_get_one()
+
+        self._update_hosts_file('oamcontroller', extoam.oam_floating_ip,
+                                active=True)
+
+        cutils.touch(os.path.join(
+            tsc.CONFIG_PATH, '.oam_config_required_') + host['hostname'])
+
     def update_oam_config(self, context):
         """Update the OAM network configuration"""
 
