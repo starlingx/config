@@ -1252,7 +1252,7 @@ class AppOperator(object):
             except Exception as e:
                 LOG.exception(e)
 
-    def _get_metadata_flag(self, app, flag, default):
+    def _get_metadata_value(self, app, flag, default):
         # This function gets a boolean
         # parameter from application metadata
         flag_result = default
@@ -1363,20 +1363,14 @@ class AppOperator(object):
             """ Progress monitoring task, to be run in a separate thread """
             LOG.info("Starting progress monitoring thread for app %s" % app.name)
 
-            def _progress_adjust(app):
-                helm_toolkit_app = \
-                    self._get_metadata_flag(app,
-                                            constants.APP_METADATA_HELM_TOOLKIT_REQUIRED,
-                                            True)
-
-                if helm_toolkit_app:
-                    return 1
-                else:
-                    return 0
-
             try:
+                adjust = self._get_metadata_value(app,
+                                constants.APP_METADATA_APPLY_PROGRESS_ADJUST,
+                                constants.APP_METADATA_APPLY_PROGRESS_ADJUST_DEFAULT_VALUE)
                 with Timeout(INSTALLATION_TIMEOUT,
                              exception.KubeAppProgressMonitorTimeout()):
+
+                    charts_count = len(app.charts)
                     while True:
                         try:
                             monitor_flag.get_nowait()
@@ -1386,19 +1380,27 @@ class AppOperator(object):
                         except queue.Empty:
                             last, num = _get_armada_log_stats(pattern, logfile)
                             if last:
-                                if app.system_app:
-                                    adjust = _progress_adjust(app)
-                                    percent = \
-                                        round(float(num) /
-                                              (len(app.charts) - adjust) * 100)
+                                if charts_count == 0:
+                                    percent = 100
                                 else:
-                                    percent = round(float(num) / len(app.charts) * 100)
-                                progress_str = 'processing chart: ' + str(last) +\
-                                    ', overall completion: ' + str(percent) + '%'
+                                    tadjust = 0
+                                    if app.system_app:
+                                        tadjust = adjust
+                                        if tadjust >= charts_count:
+                                            LOG.error("Application metadata key '{}'"
+                                                      "has an invalid value {} (too few charts)".
+                                                      format(constants.APP_METADATA_APPLY_PROGRESS_ADJUST,
+                                                             adjust))
+                                            tadjust = 0
+
+                                    percent = round((float(num) / (charts_count - tadjust)) * 100)
+
+                                progress_str = "processing chart: {}, overall completion: {}%".\
+                                               format(last, percent)
+
                                 if app.progress != progress_str:
                                     LOG.info("%s" % progress_str)
-                                    self._update_app_status(
-                                        app, new_progress=progress_str)
+                                    self._update_app_status(app, new_progress=progress_str)
                             greenthread.sleep(1)
             except Exception as e:
                 # timeout or subprocess error
@@ -2420,9 +2422,9 @@ class AppOperator(object):
             result = False
             if operation == constants.APP_APPLY_OP:
                 reuse_overrides = \
-                    self._get_metadata_flag(to_app,
-                                            constants.APP_METADATA_MAINTAIN_USER_OVERRIDES,
-                                            False)
+                    self._get_metadata_value(to_app,
+                                             constants.APP_METADATA_MAINTAIN_USER_OVERRIDES,
+                                             False)
                 if reuse_user_overrides is not None:
                     reuse_overrides = reuse_user_overrides
 

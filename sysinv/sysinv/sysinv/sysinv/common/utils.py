@@ -1927,6 +1927,10 @@ def find_metadata_file(path, metadata_file):
                               dictionary. If specified the filters are applied
                               to trigger[filter_field] sub-dictionary instead
                               of the root trigger dictionary.
+    apply_progress_adjust: - optional: Positive integer value by which to adjust the
+                                       percentage calculations for the progress of
+                                       a monitoring task.
+                                       Default value is zero (no adjustment)
     """
     app_name = ''
     app_version = ''
@@ -2060,6 +2064,23 @@ def find_metadata_file(path, metadata_file):
                                           constants.APP_METADATA_TYPE)))
                     except KeyError:
                         pass
+
+            try:
+                apply_progress_adjust_value = doc[constants.APP_METADATA_APPLY_PROGRESS_ADJUST]
+                if not isinstance(apply_progress_adjust_value, six.integer_types):
+                    raise exception.SysinvException(_(
+                                "Invalid {}: {} should be {}."
+                                "".format(metadata_file,
+                                          constants.APP_METADATA_APPLY_PROGRESS_ADJUST,
+                                          six.integer_types)))
+                if apply_progress_adjust_value < 0:
+                    raise exception.SysinvException(_(
+                                "Invalid {}: {} should be greater or equal to zero."
+                                "".format(metadata_file,
+                                          constants.APP_METADATA_APPLY_PROGRESS_ADJUST)))
+
+            except KeyError:
+                pass
 
     return app_name, app_version, patches
 
