@@ -221,6 +221,9 @@ class ConductorManager(service.PeriodicService):
         self._host_deferred_runtime_config = []
 
         # Guard for a function that should run only once per conductor start
+        self._do_detect_swact = True
+
+        # Guard for a function that should run only once per conductor start
         self._has_loaded_missing_apps_metadata = False
 
         self.apps_metadata = {constants.APP_METADATA_APPS: {},
@@ -5799,6 +5802,53 @@ class ConductorManager(service.PeriodicService):
         else:
             return True
 
+    def _detect_swact_once(self, context):
+        """ Detect that a swact occurred to trigger a reapply evaluation
+        """
+        # Detection may be done only once per conductor restart
+        if not self._do_detect_swact:
+            return
+
+        # No meaning on AIO-SX
+        if cutils.is_aio_simplex_system(self.dbapi):
+            self._do_detect_swact = False
+            return
+
+        new_active = cutils.get_local_controller_hostname()
+
+        # Define file
+        file = constants.SYSINV_CONDUCTOR_ACTIVE_PATH
+
+        # Read file
+        if os.path.exists(file):
+            with open(file, 'r') as reader:
+                stored = reader.read()
+
+            # Difference detected
+            if stored != new_active:
+                LOG.info("Detected swact from {} to {}"
+                         "".format(stored, new_active))
+
+                # Save the new active
+                with open(file, 'w') as writer:
+                    writer.write(new_active)
+
+                # Trigger reapply evaluation
+                self.evaluate_apps_reapply(
+                    context,
+                    trigger={'type': constants.APP_EVALUATE_REAPPLY_TYPE_DETECTED_SWACT})
+
+        else:
+            LOG.info("Initial save active controller {}"
+                     "".format(new_active))
+
+            # Save the new active
+            with open(file, 'w') as writer:
+                writer.write(new_active)
+
+        # No need to detect again until conductor restart
+        self._do_detect_swact = False
+
     @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval,
                                  run_immediately=True)
     def _k8s_application_audit(self, context):
@@ -5854,6 +5904,9 @@ class ConductorManager(service.PeriodicService):
         # Run only once per conductor start
         if not self._has_loaded_missing_apps_metadata:
             self._load_metadata_of_missing_apps()
+
+        # Detect swact
+        self._detect_swact_once(context)
 
         # cache a database query
         app_statuses = {}
