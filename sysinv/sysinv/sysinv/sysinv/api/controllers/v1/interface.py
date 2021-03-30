@@ -1832,6 +1832,18 @@ def _create(interface, from_profile=False):
             pecan.request.dbapi.iinterface_destroy(new_interface['uuid'])
             raise e
 
+    if (cutils.is_aio_simplex_system(pecan.request.dbapi)
+            and new_interface['iftype'] == constants.INTERFACE_TYPE_VF):
+        try:
+            pecan.request.rpcapi.update_sriov_vf_config(
+                pecan.request.context,
+                ihost['uuid'])
+        except Exception as e:
+            LOG.exception(e)
+            msg = _("Interface pci-sriov-vf creation failed: host %s if %s"
+                    % (ihost['hostname'], interface['ifname']))
+            raise wsme.exc.ClientSideError(msg)
+
     return new_interface
 
 
