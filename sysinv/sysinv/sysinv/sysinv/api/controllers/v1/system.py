@@ -275,14 +275,20 @@ class SystemController(rest.RestController):
                 raise wsme.exc.ClientSideError(
                     _("Host {} must be locked.".format(h['hostname'])))
 
-    def _check_mgmt(self, system_mode):
+    def _check_interfaces(self, system_mode):
         iinterfaces = pecan.request.dbapi.iinterface_get_all()
         mgmt_if = None
+        cluster_host_if = None
+
         for iif in iinterfaces:
-            if (iif.networktypelist and
-                    constants.NETWORK_TYPE_MGMT in iif.networktypelist):
-                mgmt_if = iif
+            if iif.networktypelist:
+                if constants.NETWORK_TYPE_MGMT in iif.networktypelist:
+                    mgmt_if = iif
+                if constants.NETWORK_TYPE_CLUSTER_HOST in iif.networktypelist:
+                    cluster_host_if = iif
+            if mgmt_if and cluster_host_if:
                 break
+
         if mgmt_if is None:
             msg = _("Cannot modify system mode to %s "
                     "without configuring the management "
@@ -291,6 +297,17 @@ class SystemController(rest.RestController):
         if mgmt_if.ifname == constants.LOOPBACK_IFNAME:
             msg = _("Cannot modify system mode to %s "
                     "when the management interface is "
+                    "configured on loopback. "
+                    % system_mode)
+            raise wsme.exc.ClientSideError(msg)
+        if cluster_host_if is None:
+            msg = _("Cannot modify system mode to %s "
+                    "without configuring the cluster-host "
+                    "interface." % system_mode)
+            raise wsme.exc.ClientSideError(msg)
+        if cluster_host_if.ifname == constants.LOOPBACK_IFNAME:
+            msg = _("Cannot modify system mode to %s "
+                    "when the cluster-host interface is "
                     "configured on loopback. "
                     % system_mode)
             raise wsme.exc.ClientSideError(msg)
@@ -416,7 +433,7 @@ class SystemController(rest.RestController):
                                     "set to %s." % rpc_isystem.system_mode)
                             raise wsme.exc.ClientSideError(msg)
                         elif new_system_mode != constants.SYSTEM_MODE_SIMPLEX:
-                            self._check_mgmt(new_system_mode)
+                            self._check_interfaces(new_system_mode)
                     else:
                         system_mode_options.append(constants.SYSTEM_MODE_SIMPLEX)
 
