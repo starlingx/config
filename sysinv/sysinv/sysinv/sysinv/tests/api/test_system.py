@@ -90,8 +90,6 @@ class TestSystemUpdateModeFromSimplex(TestSystem):
         self.dbapi = db_api.get_instance()
         self.system = dbutils.create_test_isystem(system_type=constants.TIS_AIO_BUILD,
                                                   system_mode=constants.SYSTEM_MODE_SIMPLEX)
-
-    def _create_mgmt_interface_network(self, interface='mgmt'):
         self.controller = dbutils.create_test_ihost(
             id='1',
             uuid=None,
@@ -101,6 +99,8 @@ class TestSystemUpdateModeFromSimplex(TestSystem):
             subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
         )
+
+    def _create_mgmt_interface_network(self, interface='mgmt'):
         self.address_pool_mgmt = dbutils.create_test_address_pool(
             id=1,
             network='192.168.204.0',
@@ -114,21 +114,48 @@ class TestSystemUpdateModeFromSimplex(TestSystem):
             link_capacity=1000,
             vlan_id=2,
             address_pool_id=self.address_pool_mgmt.id)
-
-        self.mgmt_interface = dbutils.create_test_interface(ifname=interface,
-                                      id=1,
-                                      ifclass=constants.INTERFACE_CLASS_PLATFORM,
-                                      forihostid=self.controller.id,
-                                      ihost_uuid=self.controller.uuid,
-                                      networktypelist=[constants.NETWORK_TYPE_MGMT])
+        self.mgmt_interface = dbutils.create_test_interface(
+            ifname=interface,
+            id=1,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=self.controller.id,
+            ihost_uuid=self.controller.uuid,
+            networktypelist=[constants.NETWORK_TYPE_MGMT])
 
         dbutils.create_test_interface_network(
             interface_id=self.mgmt_interface.id,
             network_id=self.mgmt_network.id)
 
+    def _create_cluster_host_interface_network(self, interface='cluster-host'):
+        self.address_pool_cluster_host = dbutils.create_test_address_pool(
+            id=2,
+            network='192.168.206.0',
+            name='cluster-host',
+            ranges=[['192.168.206.2', '192.168.206.254']],
+            prefix=24)
+        self.cluster_host_network = dbutils.create_test_network(
+            id=2,
+            name='cluster-host',
+            type=constants.NETWORK_TYPE_CLUSTER_HOST,
+            link_capacity=10000,
+            vlan_id=3,
+            address_pool_id=self.address_pool_cluster_host.id)
+        self.cluster_host_interface = dbutils.create_test_interface(
+            ifname=interface,
+            id=2,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=self.controller.id,
+            ihost_uuid=self.controller.uuid,
+            networktypelist=[constants.NETWORK_TYPE_CLUSTER_HOST])
+
+        dbutils.create_test_interface_network(
+            interface_id=self.cluster_host_interface.id,
+            network_id=self.cluster_host_network.id)
+
     @mock.patch('sysinv.common.utils.is_initial_config_complete', return_value=True)
-    def test_update_system_mode_simplex_to_duplex_with_mgmt_if(self, mock_exists):
+    def test_update_system_mode_simplex_to_duplex(self, mock_exists):
         self._create_mgmt_interface_network()
+        self._create_cluster_host_interface_network()
         update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
         self._patch_and_check(self._get_path(self.system.uuid),
                               update)
@@ -139,15 +166,44 @@ class TestSystemUpdateModeFromSimplex(TestSystem):
     @mock.patch('sysinv.common.utils.is_initial_config_complete', return_value=True)
     def test_update_system_mode_simplex_to_duplex_mgmt_on_lo(self, mock_exists):
         self._create_mgmt_interface_network(interface=constants.LOOPBACK_IFNAME)
+        self._create_cluster_host_interface_network()
         update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
         self._patch_and_check(self._get_path(self.system.uuid),
                               update, expect_errors=True)
+        system = self.dbapi.isystem_get_one()
+        system_dict = system.as_dict()
+        self.assertNotIn('simplex_to_duplex_migration', system_dict['capabilities'])
 
     @mock.patch('sysinv.common.utils.is_initial_config_complete', return_value=True)
     def test_update_system_mode_simplex_to_duplex_no_mgmt_if(self, mock_exists):
+        self._create_cluster_host_interface_network()
         update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
         self._patch_and_check(self._get_path(self.system.uuid),
                               update, expect_errors=True)
+        system = self.dbapi.isystem_get_one()
+        system_dict = system.as_dict()
+        self.assertNotIn('simplex_to_duplex_migration', system_dict['capabilities'])
+
+    @mock.patch('sysinv.common.utils.is_initial_config_complete', return_value=True)
+    def test_update_system_mode_simplex_to_duplex_cluster_host_on_lo(self, mock_exists):
+        self._create_mgmt_interface_network()
+        self._create_cluster_host_interface_network(interface=constants.LOOPBACK_IFNAME)
+        update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update, expect_errors=True)
+        system = self.dbapi.isystem_get_one()
+        system_dict = system.as_dict()
+        self.assertNotIn('simplex_to_duplex_migration', system_dict['capabilities'])
+
+    @mock.patch('sysinv.common.utils.is_initial_config_complete', return_value=True)
+    def test_update_system_mode_simplex_to_duplex_no_cluster_host_if(self, mock_exists):
+        self._create_mgmt_interface_network()
+        update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update, expect_errors=True)
+        system = self.dbapi.isystem_get_one()
+        system_dict = system.as_dict()
+        self.assertNotIn('simplex_to_duplex_migration', system_dict['capabilities'])
 
     @mock.patch('sysinv.common.utils.is_initial_config_complete', return_value=True)
     def test_update_system_mode_simplex_to_simplex(self, mock_exists):
@@ -160,6 +216,16 @@ class TestSystemUpdateModeFromSimplex(TestSystem):
 
     @mock.patch('sysinv.common.utils.is_initial_config_complete', return_value=False)
     def test_update_system_mode_before_initial_config_complete(self, mock_exists):
+        update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update)
+        system = self.dbapi.isystem_get_one()
+        system_dict = system.as_dict()
+        self.assertNotIn('simplex_to_duplex_migration', system_dict['capabilities'])
+
+    @mock.patch('sysinv.common.utils.is_initial_config_complete', return_value=False)
+    def test_update_system_mode_before_initial_config_complete_only_mgmt_if(self, mock_exists):
+        self._create_mgmt_interface_network()
         update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
         self._patch_and_check(self._get_path(self.system.uuid),
                               update)
