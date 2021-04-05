@@ -240,6 +240,20 @@ class BaseHelm(object):
                                   constants.AVAILABILITY_DEGRADED],
                     vim_progress_status=constants.VIM_SERVICES_ENABLED)
 
+    def _num_replicas_for_platform_app(self):
+        """
+        Returns the number of replicas that should be used by
+        platform managed applications. This method will return
+        the number of provisioned controllers, with a minimum of 1.
+
+        It takes care of the case where one controller is provisioned
+        and the other is installed but not provisioned. When the second
+        controller is provisioned, the unlock will check if the
+        overrides are different and reapply platform managed
+        applications appropriately
+        """
+        return max(1, self._num_provisioned_controllers())
+
     def _get_address_by_name(self, name, networktype):
         """
         Retrieve an address entry by name and scoped by network type
