@@ -1,4 +1,4 @@
-# Copyright 2013, 2017 Wind River, Inc.
+# Copyright 2013-2021 Wind River, Inc.
 # Copyright 2012 Openstack Foundation
 # All Rights Reserved.
 #
@@ -15,9 +15,11 @@
 #    under the License.
 #
 
+import hashlib
 import httplib2
 import logging
 import os
+from oslo_utils import encodeutils
 import requests
 from requests_toolbelt import MultipartEncoder
 import socket
@@ -37,11 +39,11 @@ except ImportError:
     import simplejson as json
 
 from cgtsclient import exc as exceptions
-from neutronclient.common import utils
 
 _logger = logging.getLogger(__name__)
 
 CHUNKSIZE = 1024 * 64  # 64kB
+SENSITIVE_HEADERS = ('X-Auth-Token',)
 
 # httplib2 retries requests on socket.timeout which
 # is not idempotent and can lead to orhan objects.
@@ -156,6 +158,32 @@ class HTTPClient(httplib2.Http):
                        'headers': resp_headers,
                        'body': body})
 
+    @staticmethod
+    def http_log_req(_logger, args, kwargs):
+        if not _logger.isEnabledFor(logging.DEBUG):
+            return
+
+        string_parts = ['curl -i']
+        for element in args:
+            if element in ('GET', 'POST', 'DELETE', 'PUT'):
+                string_parts.append(' -X %s' % element)
+            else:
+                string_parts.append(' %s' % element)
+
+        for (key, value) in kwargs['headers'].items():
+            if key in SENSITIVE_HEADERS:
+                v = value.encode('utf-8')
+                h = hashlib.sha256(v)
+                d = h.hexdigest()
+                value = "{SHA256}%s" % d
+            header = ' -H "%s: %s"' % (key, value)
+            string_parts.append(header)
+
+        if 'body' in kwargs and kwargs['body']:
+            string_parts.append(" -d '%s'" % (kwargs['body']))
+            req = encodeutils.safe_encode("".join(string_parts))
+            _logger.debug("REQ: %s", req)
+
     def _cs_request(self, *args, **kwargs):
         kargs = {}
         kargs.setdefault('headers', kwargs.get('headers', {}))
@@ -172,24 +200,22 @@ class HTTPClient(httplib2.Http):
 
         if 'body' in kwargs:
             kargs['body'] = kwargs['body']
-        args = utils.safe_encode_list(args)
-        kargs = utils.safe_encode_dict(kargs)
         if self.log_credentials:
             log_kargs = kargs
         else:
             log_kargs = self._strip_credentials(kargs)
 
-        utils.http_log_req(_logger, args, log_kargs)
+        self.http_log_req(_logger, args, log_kargs)
         try:
             resp, body = self.request(*args, **kargs)
-        except httplib2.SSLHandshakeError as e:
-            raise exceptions.SslCertificateValidationError(reason=e)
+        except requests.exceptions.SSLError as e:
+            raise exceptions.SslCertificateValidationError(reason=str(e))
         except Exception as e:
             # Wrap the low-level connection error (socket timeout, redirect
             # limit, decompression error, etc) into our custom high-level
             # connection exception (it is excepted in the upper layers of code)
             _logger.debug("throwing ConnectionFailed : %s", e)
-            raise exceptions.CommunicationError(e)
+            raise exceptions.CommunicationError(str(e))
         finally:
             # Temporary Fix for gate failures. RPC calls and HTTP requests
             # seem to be stepping on each other resulting in bogus fd's being
@@ -199,7 +225,7 @@ class HTTPClient(httplib2.Http):
         # Read body into string if it isn't obviously image data
         body_str = None
         if 'content-type' in resp and resp['content-type'] != 'application/octet-stream':
-            body_str = ''.join([chunk for chunk in body])
+            body_str = ''.join([chunk for chunk in body.decode('utf8')])
             self.http_log_resp(_logger, resp, body_str)
             body = body_str
         else:
