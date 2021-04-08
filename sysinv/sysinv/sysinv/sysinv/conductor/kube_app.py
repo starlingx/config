@@ -1527,6 +1527,9 @@ class AppOperator(object):
         LOG.info("Starting recover Application %s from version: %s to version: %s" %
                  (old_app.name, new_app.version, old_app.version))
 
+        # Ensure that the the failed app plugins are disabled prior to cleanup
+        self._plugins.deactivate_plugins(new_app)
+
         self._update_app_status(
             old_app, constants.APP_RECOVER_IN_PROGRESS,
             constants.APP_PROGRESS_UPDATE_ABORTED.format(old_app.version, new_app.version) +
@@ -3803,7 +3806,12 @@ class PluginHelper(object):
 
             # Clean up the working set
             for distribution in plugin_distributions:
-                del pkg_resources.working_set.by_key[distribution]
+                try:
+                    del pkg_resources.working_set.by_key[distribution]
+                except KeyError:
+                    LOG.warn("Plugin distribution %s not enabled for version %s"
+                             ", but expected to be. Continuing with plugin "
+                             "deactivation." % (distribution, app.version))
             del pkg_resources.working_set.entry_keys[app.sync_plugins_dir]
             pkg_resources.working_set.entries.remove(app.sync_plugins_dir)
 
