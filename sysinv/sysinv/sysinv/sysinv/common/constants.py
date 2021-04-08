@@ -1800,6 +1800,7 @@ CERTIFICATE_TYPE_ADMIN_ENDPOINT_INTERMEDIATE_CA = 'intermediate-ca-cert'
 
 DC_ADMIN_ENDPOINT_SECRET_NAME = 'dc-adminep-certificate'
 SC_ADMIN_ENDPOINT_SECRET_NAME = 'sc-adminep-certificate'
+SC_INTERMEDIATE_CA_SECRET_NAME = 'sc-adminep-ca-certificate'
 
 DC_ADMIN_ROOT_CA_SECRET_NAME = 'dc-adminep-root-ca-certificate'
 

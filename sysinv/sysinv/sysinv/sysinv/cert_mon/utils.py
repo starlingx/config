@@ -11,18 +11,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2021 Wind River Systems, Inc.
 #
 # The right to copy, distribute, modify, or otherwise make use
 # of this software may be licensed only pursuant to the terms
 # of an applicable Wind River license agreement.
 #
+import base64
 import json
 import os
 import re
 import requests
 import ssl
 import tempfile
+from eventlet.green import subprocess
 from six.moves.urllib.parse import urlparse
 from keystoneclient.v3 import client as keystone_client
 from keystoneauth1 import session
@@ -77,6 +79,65 @@ def update_admin_ep_cert(token, ca_crt, tls_crt, tls_key):
     else:
         LOG.error('Request response %s' % resp)
         raise Exception('Update admin endpoint certificate failed')
+
+
+def verify_adminep_cert_chain():
+    """
+    Verify admin endpoint certificate chain & delete if invalid
+    :param context: an admin context.
+    :return: True/False if chain is valid
+    """
+    """
+    * Retrieve ICA & AdminEP cert secrets from k8s
+    * base64 decode ICA cert (tls.crt from SC_INTERMEDIATE_CA_SECRET_NAME)
+    *   & adminep (tls.crt from SC_ADMIN_ENDPOINT_SECRET_NAME)
+    *   & store the crts in tempfiles
+    * Run openssl verify against RootCA to verify the chain
+    """
+    kube_op = sys_kube.KubeOperator()
+
+    secret_ica = kube_op.kube_get_secret(constants.SC_INTERMEDIATE_CA_SECRET_NAME,
+                                         CERT_NAMESPACE_SUBCLOUD_CONTROLLER)
+    if 'tls.crt' not in secret_ica.data:
+        raise Exception('%s tls.crt (ICA) data missing'
+                        % (constants.SC_INTERMEDIATE_CA_SECRET_NAME))
+
+    secret_adminep = kube_op.kube_get_secret(constants.SC_ADMIN_ENDPOINT_SECRET_NAME,
+                                             CERT_NAMESPACE_SUBCLOUD_CONTROLLER)
+    if 'tls.crt' not in secret_adminep.data:
+        raise Exception('%s tls.crt data missing'
+                        % (constants.SC_ADMIN_ENDPOINT_SECRET_NAME))
+
+    txt_ca_crt = base64.b64decode(secret_ica.data['tls.crt'])
+    txt_tls_crt = base64.b64decode(secret_adminep.data['tls.crt'])
+
+    with tempfile.NamedTemporaryFile() as ca_tmpfile:
+        ca_tmpfile.write(txt_ca_crt)
+        ca_tmpfile.flush()
+        with tempfile.NamedTemporaryFile() as adminep_tmpfile:
+            adminep_tmpfile.write(txt_tls_crt)
+            adminep_tmpfile.flush()
+
+            cmd = ['openssl', 'verify', '-CAfile', constants.DC_ROOT_CA_CERT_PATH,
+                   '-untrusted', ca_tmpfile.name, adminep_tmpfile.name]
+            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = proc.communicate()
+            proc.wait()
+            if 0 == proc.returncode:
+                LOG.info('verify_adminep_cert_chain passed. Valid chain')
+                return True
+            else:
+                LOG.info('verify_adminep_cert_chain: Chain is invalid\n%s\n%s'
+                         % (stdout, stderr))
+
+                res = kube_op.kube_delete_secret(constants.SC_ADMIN_ENDPOINT_SECRET_NAME,
+                                                 CERT_NAMESPACE_SUBCLOUD_CONTROLLER)
+                LOG.info('Deleting AdminEP secret due to invalid chain. %s:%s, result %s, msg %s'
+                         % (CERT_NAMESPACE_SUBCLOUD_CONTROLLER,
+                         constants.SC_ADMIN_ENDPOINT_SECRET_NAME,
+                         res.status, res.message))
+                return False
 
 
 def dc_get_subcloud_sysinv_url(subcloud_name):
