@@ -15,6 +15,7 @@ from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.helm import common
 
 from sysinv.puppet import openstack
+from eventlet.green import subprocess
 
 LOG = logging.getLogger(__name__)
 
@@ -93,6 +94,8 @@ class CephPuppet(openstack.OpenstackBasePuppet):
             (utils.is_std_system(self.dbapi) and
             ceph_backend.task == constants.SB_TASK_RESTORE)
 
+        is_sx_to_dx_migration = self._get_system_capability('simplex_to_duplex_migration')
+
         config = {
             'ceph::ms_bind_ipv6': ms_bind_ipv6,
 
@@ -129,7 +132,14 @@ class CephPuppet(openstack.OpenstackBasePuppet):
                 self._get_service_tenant_name(),
             'platform::ceph::params::skip_osds_during_restore':
                 skip_osds_during_restore,
+            'platform::ceph::params::simplex_to_duplex_migration':
+                bool(is_sx_to_dx_migration),
         }
+
+        if is_sx_to_dx_migration:
+            cephfs_filesystems = self._get_cephfs_filesystems()
+            if cephfs_filesystems:
+                config['platform::ceph::params::cephfs_filesystems'] = cephfs_filesystems
 
         if (utils.is_openstack_applied(self.dbapi) and
                 utils.is_chart_enabled(self.dbapi,
@@ -300,6 +310,56 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         if ceph_mons:
             return ceph_mons[0]
         return None
+
+    def _get_cephfs_filesystems(self):
+        """ Returns cephfs filesystem pool names to be recovered when
+        transition from simplex to duplex is happening. Ceph monitor will
+        be recreated using a DRBD filesystem and cephfs need to be
+        recovered from the existing pools
+        :return dict with the filesystem names and its associated pools
+        """
+        process = subprocess.Popen(args=["ceph", "fs", "ls"], stdout=subprocess.PIPE,
+                                   universal_newlines=True)
+
+        fs_pools = []
+        fs_name = "name"
+        fs_metadata_pool = "metadata pool"
+        fs_data_pool = "data pools"
+
+        while True:
+            output = process.stdout.readline()
+            if output == '' and process.poll() is not None:
+                break
+            if output:
+                fs = dict(f.strip().split(":") for f in output.split(","))
+                # trim values
+                for k in fs.keys():
+                    fs[k] = fs[k].strip()
+                if fs[fs_data_pool]:
+                    data_pools = fs[fs_data_pool].replace('[', '').replace(']', '')
+                    fs[fs_data_pool] = data_pools.split(",")
+
+                fs_pools.append(fs)
+        return_code = process.poll()
+
+        if return_code != 0:
+            LOG.error("Error processing list of existing cephfs file systems")
+            return None
+
+        filesystems = {}
+        for fs in fs_pools:
+            pools = []
+            pools.append(fs[fs_metadata_pool])
+            for pool in fs[fs_data_pool]:
+                pools.append(pool.strip())
+
+            filesystems.update({fs[fs_name]: pools})
+
+        return filesystems
+
+    def _get_system_capability(self, capability):
+        system = self.dbapi.isystem_get_one()
+        return system.capabilities.get(capability)
 
     def _is_radosgw_enabled(self):
         enabled = False
