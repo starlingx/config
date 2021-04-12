@@ -193,6 +193,8 @@ class InterfaceNetworkController(rest.RestController):
                 _update_host_mgmt_mac(host, ethernet_port_mac)
                 cutils.perform_distributed_cloud_config(pecan.request.dbapi,
                                                         interface_id)
+            elif network_type == constants.NETWORK_TYPE_OAM:
+                pecan.request.rpcapi.initialize_oam_config(pecan.request.context, host)
 
         return InterfaceNetwork.convert_with_links(result)
 

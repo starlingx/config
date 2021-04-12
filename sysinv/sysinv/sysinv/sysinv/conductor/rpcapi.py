@@ -807,6 +807,14 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('update_security_feature_config'))
 
+    def initialize_oam_config(self, context, host):
+        """Synchronously, have the conductor create an OAM configuration.
+
+        :param context: request context.
+        :param host: an ihost object.
+        """
+        return self.call(context, self.make_msg('initialize_oam_config', host=host))
+
     def update_oam_config(self, context):
         """Synchronously, have the conductor update the OAM configuration.
 
