@@ -2528,12 +2528,26 @@ class TestAIOPatch(InterfaceTestCase):
             response.json['error_message'])
 
 
+class FakeConductorAPI(object):
+
+    def __init__(self):
+        self.update_sriov_config = mock.MagicMock()
+        self.update_sriov_vf_config = mock.MagicMock()
+
+
 class TestAIOUnlockedPost(InterfaceTestCase):
     def setUp(self):
         super(TestAIOUnlockedPost, self).setUp()
         p = mock.patch('sysinv.common.utils.is_aio_simplex_system')
         self.mock_utils_is_aio_simplex_system = p.start()
         self.mock_utils_is_aio_simplex_system.return_value = True
+        self.addCleanup(p.stop)
+
+        # Mock the conductor API
+        self.fake_conductor_api = FakeConductorAPI()
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI')
+        self.mock_conductor_api = p.start()
+        self.mock_conductor_api.return_value = self.fake_conductor_api
         self.addCleanup(p.stop)
 
         self._create_host(constants.CONTROLLER, constants.WORKER,
@@ -2583,9 +2597,11 @@ class TestAIOUnlockedPost(InterfaceTestCase):
             forihostid=self.controller.id,
             ihost_uuid=self.controller.uuid,
             sriov_numvfs=1,
-            sriov_vf_driver='vfio')
+            sriov_vf_driver='vfio',
+            max_tx_rate=200)
         # system host-if-add controller-0 sriov_vf vf sriov -c pci-sriov --num-vfs 1
         self._post_and_check(interface, expect_errors=False)
+        self.fake_conductor_api.update_sriov_vf_config.assert_called()
 
     def test_non_aiosx_add_interface_sriov_vf_error(self):
         self.mock_utils_is_aio_simplex_system.return_value = False
@@ -2637,6 +2653,13 @@ class TestAIOUnlockedPatch(InterfaceTestCase):
         p = mock.patch('sysinv.common.utils.is_aio_simplex_system')
         self.mock_utils_is_aio_simplex_system = p.start()
         self.mock_utils_is_aio_simplex_system.return_value = True
+        self.addCleanup(p.stop)
+
+        # Mock the conductor API
+        self.fake_conductor_api = FakeConductorAPI()
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI')
+        self.mock_conductor_api = p.start()
+        self.mock_conductor_api.return_value = self.fake_conductor_api
         self.addCleanup(p.stop)
 
         self._create_host(constants.CONTROLLER, constants.WORKER,
@@ -2697,10 +2720,12 @@ class TestAIOUnlockedPatch(InterfaceTestCase):
             'ifname': 'sriov0',
             'ifclass': 'pci-sriov',
             'sriov_numvfs': 8,
+            'sriov_vf_driver': 'vfio',
         }
         # system host-if-modify controller-0 data0 -c pci-sriov -n sriov0 -N 8
         self._patch_and_check(data, self._get_path(self.interfaces['data0'].uuid),
                               expect_errors=False)
+        self.fake_conductor_api.update_sriov_config.assert_called()
 
     def test_interface_platform_conversion_to_sriov(self):
         data = {
@@ -2711,6 +2736,7 @@ class TestAIOUnlockedPatch(InterfaceTestCase):
         # system host-if-modify controller-0 plat0 -c pci-sriov -n sriov1 -N 8
         self._patch_and_check(data, self._get_path(self.interfaces['plat0'].uuid),
                               expect_errors=False)
+        self.fake_conductor_api.update_sriov_config.assert_called()
 
     def test_interface_pcipasstrough_conversion_to_sriov(self):
         data = {
@@ -2721,6 +2747,7 @@ class TestAIOUnlockedPatch(InterfaceTestCase):
         # system host-if-modify controller-0 pass0 -c pci-sriov -n sriov2 -N 8
         self._patch_and_check(data, self._get_path(self.interfaces['pass0'].uuid),
                               expect_errors=False)
+        self.fake_conductor_api.update_sriov_config.assert_called()
 
     def test_non_aiosx_interface_conversion_to_sriov_error(self):
         self.mock_utils_is_aio_simplex_system.return_value = False
