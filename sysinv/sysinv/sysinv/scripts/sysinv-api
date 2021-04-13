@@ -225,7 +225,7 @@ sysinv_api_request () {
         rc=$?
         if [ $rc -ne 0 ]; then
             ocf_log err "Failed to connect to the System Inventory Service (sysinv-api): $rc"
-            return $OCF_NOT_RUNNING
+            return $OCF_ERR_GENERIC
         else
             return $OCF_SUCCESS
         fi
@@ -239,7 +239,7 @@ sysinv_api_request () {
             return $OCF_SUCCESS
         fi
         ocf_log err "Unable to communicate with the System Inventory Service (sysinv-api)"
-        return $OCF_NOT_RUNNING
+        return $OCF_ERR_GENERIC
     fi
 }
 
@@ -303,8 +303,8 @@ sysinv_api_start () {
         else
             sysinv_api_request_with_attempt
             rc=$?
+            return ${rc}
         fi
-        return ${rc}
     fi
 
     if [ ${OCF_RESKEY_dbg} = "true" ] ; then
@@ -347,7 +347,7 @@ sysinv_api_start () {
         ocf_log info "Inventory Service (${OCF_RESKEY_binary}) started (pid=${pid})"
     else
         ocf_log err "Inventory Service (${OCF_RESKEY_binary}) failed to start (rc=${rc})"
-        rc=${OCF_NOT_RUNNING}
+        rc=${OCF_ERR_GENERIC}
     fi
 
     return ${rc}
