@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015 Wind River Systems, Inc.
+# Copyright (c) 2015-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -88,10 +88,23 @@ def _get_range_tuples(data):
 @utils.arg('--order',
            metavar='<sequential | random>',
            help="The allocation order within the start/end range")
+@utils.arg('--floating-address',
+           metavar='<floating address>',
+           help="The floating address")
+@utils.arg('--controller0-address',
+           metavar='<controller0 address>',
+           help="The address of controller-0")
+@utils.arg('--controller1-address',
+           metavar='<controller1 address>',
+           help="The address of controller-1")
+@utils.arg('--gateway-address',
+           metavar='<gateway address>',
+           help="The gateway address")
 def do_addrpool_add(cc, args):
     """Add an IP address pool."""
 
-    field_list = ['name', 'network', 'prefix', 'order', 'ranges']
+    field_list = ['name', 'network', 'prefix', 'order', 'ranges', 'floating_address',
+                  'controller0_address', 'controller1_address', 'gateway_address']
 
     # Prune input fields down to required/expected values
     data = dict((k, v) for (k, v) in vars(args).items()
