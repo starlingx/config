@@ -1370,6 +1370,34 @@ def _get_cinder_device_info(dbapi, forihostid):
     return cinder_device, cinder_size_gib
 
 
+def acquire_file_lock(lockfd, max_retry=5, wait_interval=5):
+    """
+    This method is to acquire a lock for the given file descriptor to
+    avoid conflict with other processes trying accessing the same file.
+
+    :returns: fd of the lock, if successful. 0 on error.
+    """
+    count = 1
+    while count <= max_retry:
+        try:
+            fcntl.flock(lockfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            LOG.debug("Successfully acquired lock (fd={})".format(lockfd))
+            return lockfd
+        except IOError as e:
+            # raise on unrelated IOErrors
+            if e.errno != errno.EAGAIN:
+                raise
+            else:
+                LOG.info("Could not acquire lock({}): {} ({}/{}), "
+                         "will retry".format(lockfd, str(e),
+                                             count, max_retry))
+                time.sleep(wait_interval)
+                count += 1
+
+    LOG.error("Failed to acquire lock (fd={}). Stop trying...".format(lockfd))
+    return 0
+
+
 def skip_udev_partition_probe(function):
     def wrapper(*args, **kwargs):
         """Decorator to skip partition rescanning in udev
@@ -1397,7 +1425,7 @@ def skip_udev_partition_probe(function):
         device_node = kwargs.get('device_node', None)
         if device_node:
             with open(device_node, 'r') as f:
-                fcntl.flock(f, fcntl.LOCK_SH | fcntl.LOCK_NB)
+                acquire_file_lock(f)
                 try:
                     return function(*args, **kwargs)
                 finally:
