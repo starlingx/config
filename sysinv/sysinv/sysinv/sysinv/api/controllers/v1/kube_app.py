@@ -8,14 +8,10 @@ import os
 import hashlib
 import pecan
 from pecan import rest
-import shutil
-import stat
-import tempfile
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
-from contextlib import contextmanager
 from oslo_log import log
 from sysinv._i18n import _
 from sysinv import objects
@@ -32,17 +28,6 @@ from sysinv.openstack.common.rpc import common as rpc_common
 import cgcs_patch.constants as patch_constants
 
 LOG = log.getLogger(__name__)
-
-
-@contextmanager
-def TempDirectory():
-    tmpdir = tempfile.mkdtemp()
-    os.chmod(tmpdir, stat.S_IRWXU)
-    try:
-        yield tmpdir
-    finally:
-        LOG.debug("Cleaning up temp directory %s" % tmpdir)
-        shutil.rmtree(tmpdir)
 
 
 class KubeApp(base.APIBase):
@@ -165,7 +150,7 @@ class KubeAppController(rest.RestController):
                     "{} has unrecognizable tar file extension. Supported "
                     "extensions are: .tgz and .tar.gz.".format(app_tarfile))
 
-            with TempDirectory() as app_path:
+            with cutils.TempDirectory() as app_path:
                 if not cutils.extract_tarfile(app_path, app_tarfile):
                     _handle_upload_failure(
                         "failed to extract tar file {}.".format(os.path.basename(app_tarfile)))
@@ -585,21 +570,38 @@ class KubeAppHelper(object):
                 raise exception.SysinvException(_(
                     "Patching operation is in progress."))
 
-    def _check_patch_is_applied(self, patches):
+    def _check_required_patches_are_applied(self, patches=None):
+        """Validates that each patch provided is applied on the system"""
+        if patches is None:
+            patches = []
         try:
             system = self._dbapi.isystem_get_one()
-            response = patch_api.patch_is_applied(
+            response = patch_api.patch_query(
                 token=None,
                 timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS,
-                region_name=system.region_name,
-                patches=patches
+                region_name=system.region_name
             )
         except Exception as e:
             LOG.error(e)
             raise exception.SysinvException(_(
                 "Error while querying patch-controller for the "
                 "state of the patch(es)."))
-        return response
+        query_patches = response['pd']
+        applied_patches = []
+        for patch_key in query_patches:
+            patch = query_patches[patch_key]
+            patchstate = patch.get('patchstate', None)
+            if patchstate == patch_constants.APPLIED or \
+                    patchstate == patch_constants.COMMITTED:
+                applied_patches.append(patch_key)
+
+        missing_patches = []
+        for required_patch in patches:
+            if required_patch not in applied_patches:
+                missing_patches.append(required_patch)
+
+        success = not missing_patches
+        return success, missing_patches
 
     def _patch_report_app_dependencies(self, name, patches=None):
         if patches is None:
@@ -659,10 +661,12 @@ class KubeAppHelper(object):
             raise exception.SysinvException(_(
                 "Application-upload rejected: manifest file is missing."))
 
-    def _verify_metadata_file(self, app_path, app_name, app_version):
+    def _verify_metadata_file(self, app_path, app_name, app_version,
+                              upgrade_from_release=None):
         try:
             name, version, patches = cutils.find_metadata_file(
-                app_path, constants.APP_METADATA_FILE)
+                app_path, constants.APP_METADATA_FILE,
+                upgrade_from_release=upgrade_from_release)
         except exception.SysinvException as e:
             raise exception.SysinvException(_(
                 "metadata validation failed. {}".format(e)))
@@ -673,8 +677,8 @@ class KubeAppHelper(object):
             version = app_version
 
         if (not name or not version or
-                name == constants.APP_VERSION_PLACEHOLDER or
-                version == constants.APP_VERSION_PLACEHOLDER):
+                name.startswith(constants.APP_VERSION_PLACEHOLDER) or
+                version.startswith(constants.APP_VERSION_PLACEHOLDER)):
             raise exception.SysinvException(_(
                 "application name or/and version is/are not included "
                 "in the tar file. Please specify the application name "
@@ -692,16 +696,19 @@ class KubeAppHelper(object):
                     "{}. Communication Error with patching subsytem. "
                     "Preventing application upload.".format(e)))
 
-            applied = self._check_patch_is_applied(patches)
+            applied, missing_patches = \
+                self._check_required_patches_are_applied(patches)
             if not applied:
                 raise exception.SysinvException(_(
-                    "the required patch(es) for application {} ({}) "
-                    "must be applied".format(name, version)))
+                    "the required patch(es) ({}) for application {} ({}) "
+                    "must be applied".format(', '.join(missing_patches),
+                                             name, version)))
 
             LOG.info("The required patch(es) for application {} ({}) "
                      "has/have applied.".format(name, version))
         else:
-            LOG.info("No patch required for application {} ({}).".format(name, version))
+            LOG.info("No patch required for application {} ({})."
+                     "".format(name, version))
 
         return name, version, patches
 
