@@ -222,6 +222,28 @@ def create_host_overrides(filename):
         sys.exit(1)
 
 
+VALID_NOTIFICATION_VALUES = constants.HOOK_PARAMETERS_MAP.keys()
+NOTIFICATION_ACTION_SUCCESS_VALUES = {'success': True,
+                                      'failure': False}
+
+
+def send_notification(operation, success):
+    if operation not in VALID_NOTIFICATION_VALUES:
+        LOG.error("Invalid notification '{}'.".format(operation))
+        sys.exit(2)
+    ctx = context.get_admin_context()
+    rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+    ok, app = rpcapi.backup_restore_lifecycle_actions(ctx, operation, success)
+    if not ok:
+        if app is not None:
+            LOG.error("Operation '{}' was aborted by '{}' appliction.".format(operation, app))
+            sys.stderr.write(app)
+            sys.exit(1)
+        else:
+            LOG.error("Error while performing operation '{}'.".format(operation))
+            sys.exit(2)
+
+
 def add_action_parsers(subparsers):
 
     parser = subparsers.add_parser('create-host-overrides')
@@ -233,6 +255,14 @@ def add_action_parsers(subparsers):
     parser.add_argument('filename', nargs='?')
     parser.add_argument('--all-apps', action='store_true', default=False)
     parser.add_argument('--apps', nargs='*', required=False, default=None)
+
+    parser = subparsers.add_parser('notify')
+    parser.set_defaults(func=send_notification)
+    parser.add_argument('operation')
+    parser.add_argument('success',
+                        choices=NOTIFICATION_ACTION_SUCCESS_VALUES.keys(),
+                        default='success',
+                        nargs='?')
 
 
 CONF.register_cli_opt(
@@ -255,5 +285,8 @@ def main():
             LOG.error("filename is required")
         else:
             CONF.action.func(CONF.action.filename, CONF.action.apps, CONF.action.all_apps)
+    elif CONF.action.name == 'notify':
+        success = NOTIFICATION_ACTION_SUCCESS_VALUES[CONF.action.success]
+        CONF.action.func(CONF.action.operation, success)
     else:
         CONF.action.func()

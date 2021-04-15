@@ -1554,3 +1554,13 @@ class LifecycleSemanticCheckOpererationBlocked(SysinvException):
 
 class LifecycleMissingInfo(SysinvException):
     message = _("Lifecycle hook missing information.")
+
+
+class BackupRestoreInvalidRevertOperation(SysinvException):
+    message = _("Operation %(operation)s has no revert action associated.")
+
+
+class ApplicationLifecycleNotificationException(Exception):
+    def __init__(self, application_name, message):
+        self.application_name = application_name
+        super(ApplicationLifecycleNotificationException, self).__init__(message)

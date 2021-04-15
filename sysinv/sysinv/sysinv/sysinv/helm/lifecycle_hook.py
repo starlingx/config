@@ -7,6 +7,8 @@
 #
 
 import six
+from copy import copy
+from copy import deepcopy
 
 from sysinv.objects import base
 from sysinv.objects import utils
@@ -67,3 +69,13 @@ class LifecycleHookInfo(base.SysinvObject):
             {k: v for k, v in six.iteritems(self)
              if (k.startswith('_') and k[1:] in self.fields.keys())
                 or k in self.fields.keys()})
+
+    def __copy__(self):
+        instance = type(self).__new__(self.__class__)
+        instance.__dict__.update(self.__dict__)
+        return instance
+
+    def __deepcopy__(self, m):
+        hook = copy(self)
+        hook.extra = deepcopy(self.extra, m)
+        return hook
