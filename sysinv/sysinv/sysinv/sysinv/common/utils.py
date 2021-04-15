@@ -1037,16 +1037,14 @@ def get_required_platform_reserved_memory(dbapi, ihost, numa_node, low_core=Fals
         required_reserved += \
             constants.DISTRIBUTED_CLOUD_CONTROLLER_MEMORY_RESERVED_MIB // numa_node_count
     elif host_has_function(ihost, constants.WORKER):
-        # Engineer 2G per numa node for disk IO RSS overhead
+        # Engineer reserve per numa node for disk IO RSS overhead
         required_reserved += constants.DISK_IO_RESIDENT_SET_SIZE_MIB
         if numa_node == 0:
-            # Engineer 2G for worker to give some headroom;
-            # typically requires 650 MB PSS
+            # Engineer platform reserve for worker
             required_reserved += \
                 constants.PLATFORM_CORE_MEMORY_RESERVED_MIB
             if host_has_function(ihost, constants.CONTROLLER):
-                # Over-engineer controller memory.
-                # Typically require 5GB PSS; accommodate 2GB headroom.
+                # If AIO, reserve additional memory for controller function.
                 # Controller memory usage depends on number of workers.
                 if low_core:
                     required_reserved += \
@@ -1055,8 +1053,7 @@ def get_required_platform_reserved_memory(dbapi, ihost, numa_node, low_core=Fals
                     required_reserved += \
                         constants.COMBINED_NODE_CONTROLLER_MEMORY_RESERVED_MIB
             else:
-                # If not a controller,
-                # add overhead for metadata and vrouters
+                # If not a controller, add overhead for metadata and vrouters
                 required_reserved += \
                     constants.NETWORK_METADATA_OVERHEAD_MIB
     elif ihost['personality'] == constants.CONTROLLER:
