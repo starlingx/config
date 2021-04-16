@@ -3767,6 +3767,17 @@ class ConductorManager(service.PeriodicService):
             LOG.exception("Invalid ihost_uuid %s" % ihost_uuid)
             return
 
+        try:
+            self.dbapi.software_upgrade_get_one()
+        except exception.NotFound:
+            # No upgrade in progress
+            pass
+        else:
+            if db_host.software_load != tsc.SW_VERSION:
+                LOG.info("Ignore updating disk partition for host: %s. Version "
+                         "%s mismatch." % (db_host.hostname, db_host.software_load))
+                return
+
         # Get the id of the host.
         forihostid = db_host['id']
 
@@ -3957,6 +3968,17 @@ class ConductorManager(service.PeriodicService):
         except exception.ServerNotFound:
             LOG.exception("Invalid ihost_uuid %s" % ihost_uuid)
             return
+
+        try:
+            self.dbapi.software_upgrade_get_one()
+        except exception.NotFound:
+            # No upgrade in progress
+            pass
+        else:
+            if ihost.software_load != tsc.SW_VERSION:
+                LOG.info("Ignore updating physical volume for host: %s. Version "
+                         "%s mismatch." % (ihost.hostname, ihost.software_load))
+                return
 
         forihostid = ihost['id']
 
