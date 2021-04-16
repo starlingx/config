@@ -2,5 +2,7 @@ keyring
 oslo.i18n  # Apache-2.0
 oslo.serialization>=1.10.0,!=2.19.1  # Apache-2.0
 oslo.utils>=3.5.0  # Apache-2.0
+six>=1.10.0 # MIT
+prettytable<0.8,>=0.7.2 # BSD
 requests-toolbelt
 python-dateutil
