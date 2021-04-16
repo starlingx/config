@@ -16,7 +16,7 @@ BuildRequires: python2-wheel
 Requires: python-httplib2
 Requires: python-prettytable
 Requires: bash-completion
-Requires: python-neutronclient
+Requires: python-dateutil
 Requires: python-keystoneclient
 Requires: python2-oslo-i18n
 Requires: python2-oslo-serialization
