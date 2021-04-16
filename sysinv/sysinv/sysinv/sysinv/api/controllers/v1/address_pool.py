@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2015-2017 Wind River Systems, Inc.
+# Copyright (c) 2015-2021 Wind River Systems, Inc.
 #
 
 
@@ -54,6 +54,11 @@ ADDRPOOL_CONTROLLER0_ADDRESS_ID = 'controller0_address_id'
 ADDRPOOL_CONTROLLER1_ADDRESS_ID = 'controller1_address_id'
 ADDRPOOL_FLOATING_ADDRESS_ID = 'floating_address_id'
 ADDRPOOL_GATEWAY_ADDRESS_ID = 'gateway_address_id'
+
+# Address pool for system controller in the subcloud are
+# allowed to be deleted/modified post install
+SYSTEM_CONTROLLER_ADDRPOOLS = ['system-controller-subnet',
+                               'system-controller-oam-subnet']
 
 
 class AddressPoolPatchType(types.JsonPatchType):
@@ -332,14 +337,17 @@ class AddressPoolController(rest.RestController):
             self._check_valid_range(network, start, end, ipset)
             ipset.update(netaddr.IPRange(start, end))
 
-    def _check_pool_readonly(self, address_pool_id):
-        networks = pecan.request.dbapi.networks_get_by_pool(address_pool_id)
-        # Pool is considered readonly after the initial configuration is
-        # complete. During bootstrap it should be modifiable even though
-        # it is allocated to a network.
-        if networks and cutils.is_initial_config_complete():
-            # network managed address pool, no changes permitted
-            raise exception.AddressPoolReadonly()
+    def _check_pool_readonly(self, addrpool):
+        # The system controller's network pools are expected writeable for re-home
+        # a subcloud to new system controllers.
+        if addrpool.name not in SYSTEM_CONTROLLER_ADDRPOOLS:
+            networks = pecan.request.dbapi.networks_get_by_pool(addrpool.id)
+            # An addresspool except the system controller's pools, is considered
+            # readonly after the initial configuration is complete. During bootstrap
+            # it should be modifiable even though it is allocated to a network.
+            if networks and cutils.is_initial_config_complete():
+                # network managed address pool, no changes permitted
+                raise exception.AddressPoolReadonly()
 
     def _make_default_range(self, addrpool):
         ipset = netaddr.IPSet([addrpool['network'] + "/" + str(addrpool['prefix'])])
@@ -550,7 +558,7 @@ class AddressPoolController(rest.RestController):
         """Updates attributes of an IP address pool."""
         addrpool = self._get_one(address_pool_uuid)
         updates = self._get_updates(patch)
-        self._check_pool_readonly(addrpool.id)
+        self._check_pool_readonly(addrpool)
         self._validate_updates(addrpool, updates)
         return pecan.request.dbapi.address_pool_update(
             address_pool_uuid, updates)
@@ -560,11 +568,16 @@ class AddressPoolController(rest.RestController):
     def delete(self, address_pool_uuid):
         """Delete an IP address pool."""
         addrpool = self._get_one(address_pool_uuid)
-        self._check_pool_readonly(addrpool.id)
+        self._check_pool_readonly(addrpool)
         addresses = pecan.request.dbapi.addresses_get_by_pool(
             addrpool.id)
         if addresses:
-            if cutils.is_initial_config_complete():
+            # All the initial configured addresspools are not deleteable,
+            # except the system controller's network addresspool, which
+            # can be deleted/re-added during re-homing a subcloud to new
+            # system controllers
+            if cutils.is_initial_config_complete() and \
+               (addrpool.name not in SYSTEM_CONTROLLER_ADDRPOOLS):
                 raise exception.AddressPoolInUseByAddresses()
             else:
                 # Must be a request as a result of network reconfiguration
