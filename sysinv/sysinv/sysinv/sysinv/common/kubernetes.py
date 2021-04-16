@@ -167,6 +167,7 @@ class KubeOperator(object):
         self._kube_client_batch = None
         self._kube_client_core = None
         self._kube_client_custom_objects = None
+        self._kube_client_admission_registration = None
 
     def _load_kube_config(self):
         if not is_k8s_configured():
@@ -197,6 +198,12 @@ class KubeOperator(object):
             self._load_kube_config()
             self._kube_client_custom_objects = client.CustomObjectsApi()
         return self._kube_client_custom_objects
+
+    def _get_kubernetesclient_admission_registration(self):
+        if not self._kube_client_admission_registration:
+            self._load_kube_config()
+            self._kube_client_admission_registration = client.AdmissionregistrationV1beta1Api()
+        return self._kube_client_admission_registration
 
     def kube_get_kubernetes_config(self):
         return self._load_kube_config()
@@ -797,4 +804,41 @@ class KubeOperator(object):
         except Exception as e:
             LOG.error("Kubernetes exception in "
                       "kube_exec_container %s/%s: %s" % (namespace, name, e))
+            raise
+
+    def kube_delete_validating_webhook_configuration(self, name, **kwargs):
+        c = self._get_kubernetesclient_admission_registration()
+        body = {}
+
+        if kwargs:
+            body.update(kwargs)
+
+        try:
+            c.delete_validating_webhook_configuration(name, body)
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                LOG.warn("ValidatingWebhookConfiguration %s "
+                         "not found." % name)
+            else:
+                LOG.error("Failed to clean up ValidatingWebhookConfiguration "
+                          "%s : %s" % (name, e.body))
+                raise
+        except Exception as e:
+            LOG.error("Kubernetes exception "
+                      "in kube_delete_validating_webhook_configuration: %s" % e)
+            raise
+
+    def kube_get_validating_webhook_configurations_by_selector(self, label_selector, field_selector):
+        c = self._get_kubernetesclient_admission_registration()
+        try:
+            api_response = c.list_validating_webhook_configuration(
+                label_selector="%s" % label_selector,
+                field_selector="%s" % field_selector)
+            LOG.debug("kube_get_validating_webhook_configurations_by_selector "
+                      "Response: %s" % api_response)
+            return api_response.items
+        except ApiException as e:
+            LOG.error("Kubernetes exception in "
+                      "kube_get_validating_webhook_configurations_by_selector %s/%s: %s",
+                       label_selector, field_selector, e)
             raise
