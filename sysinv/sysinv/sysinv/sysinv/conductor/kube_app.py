@@ -2457,6 +2457,26 @@ class AppOperator(object):
                                              lifecycle_hook_info_app_upload=lifecycle_hook_info_app_update)
             lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
 
+            # Semantic checking for N+1 app
+            try:
+                lifecycle_hook_info = copy.deepcopy(lifecycle_hook_info_app_update)
+                lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK
+                lifecycle_hook_info[LifecycleConstants.EXTRA][LifecycleConstants.TO_APP] = True
+
+                self.app_lifecycle_actions(None, None, to_rpc_app, lifecycle_hook_info)
+            except exception.LifecycleSemanticCheckException as e:
+                LOG.info("App {} rejected operation {} for reason: {}"
+                         "".format(to_app.name, constants.APP_UPDATE_OP, str(e)))
+                # lifecycle hooks not used in perform_app_recover
+                return self._perform_app_recover(from_app, to_app,
+                                                 armada_process_required=False)
+            except Exception as e:
+                LOG.error("App {} operation {} semantic check error: {}"
+                          "".format(to_app.name, constants.APP_UPDATE_OP, str(e)))
+                # lifecycle hooks not used in perform_app_recover
+                return self._perform_app_recover(from_app, to_app,
+                                                 armada_process_required=False)
+
             self.load_application_metadata_from_file(to_rpc_app)
 
             # Check whether the new application is compatible with the current k8s version
