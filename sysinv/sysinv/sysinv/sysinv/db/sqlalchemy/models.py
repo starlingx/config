@@ -845,6 +845,7 @@ class StorageCeph(StorageBackend):
     object_pool_gib = Column(Integer)
     kube_pool_gib = Column(Integer)
     object_gateway = Column(Boolean, default=False)
+    network = Column(String(255), default=constants.NETWORK_TYPE_MGMT)
     tier_id = Column(Integer,
                      ForeignKey('storage_tiers.id'))
 

@@ -17,7 +17,7 @@
 #    under the License.
 #
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -107,6 +107,10 @@ class StorageCephExternal(base.APIBase):
     # Confirmation parameter [API-only field]
     confirmed = types.boolean
     "Represent confirmation that the backend operation should proceed"
+
+    # Network parameter: [API-only field]
+    network = wtypes.text
+    "The network for backend components"
 
     def __init__(self, **kwargs):
         defaults = {'uuid': uuidutils.generate_uuid(),
