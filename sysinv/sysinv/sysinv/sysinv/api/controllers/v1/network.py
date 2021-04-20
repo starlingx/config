@@ -345,7 +345,25 @@ class NetworkController(rest.RestController):
             pecan.request.rpcapi.reconfigure_service_endpoints(
                 pecan.request.context, chosts[0])
 
+        # After the initial configration completed, we can still delete/add
+        # the system controller networks in a subcloud's controller to
+        # re-home a subcloud to a new central cloud. In this case, we want
+        # to update the related services configurations in runtime.
+        if cutils.is_initial_config_complete() and \
+            network['type'] in [constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
+                                constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM]:
+            self._update_system_controller_network_config(network['type'])
         return Network.convert_with_links(result)
+
+    def _update_system_controller_network_config(self, type):
+        """ Update related services configurations after updating system
+            controller networks"""
+        if type == constants.NETWORK_TYPE_SYSTEM_CONTROLLER:
+            pecan.request.rpcapi.update_ldap_client_config(
+                pecan.request.context)
+        elif type == constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM:
+            pecan.request.rpcapi.update_dnsmasq_config(
+                pecan.request.context)
 
     @wsme_pecan.wsexpose(NetworkCollection,
                          types.uuid, int, wtypes.text, wtypes.text)

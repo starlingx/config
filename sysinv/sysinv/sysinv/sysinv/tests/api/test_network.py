@@ -120,6 +120,14 @@ class NetworkTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
             hostnames, self.storage_subnet,
             constants.NETWORK_TYPE_STORAGE)
 
+        self._create_test_addresses(
+            hostnames, self.system_controller_subnet,
+            constants.NETWORK_TYPE_SYSTEM_CONTROLLER)
+
+        self._create_test_addresses(
+            hostnames, self.system_controller_oam_subnet,
+            constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM)
+
 
 class TestPostMixin(NetworkTestCase):
 
@@ -174,6 +182,38 @@ class TestPostMixin(NetworkTestCase):
         self.assertEqual(response.status_code, http_client.CONFLICT)
         self.assertIn("Network of type %s already exists." % network_type,
                       response.json['error_message'])
+
+    def test_create_success_system_controller_oam(self):
+        self._create_test_host(constants.CONTROLLER)
+        m = mock.Mock()
+        update_dnsmasq_config = "sysinv.conductor.rpcapi." \
+                                        "ConductorAPI." \
+                                        "update_dnsmasq_config"
+        with mock.patch('sysinv.common.utils.is_initial_config_complete',
+                        lambda: True), \
+            mock.patch(update_dnsmasq_config,
+                       m.update_dnsmasq_config):
+            self._test_create_network_success(
+                'system-controller-oam',
+                constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM,
+                self.system_controller_oam_subnet)
+        m.update_dnsmasq_config.assert_called_once()
+
+    def test_create_success_system_controller(self):
+        self._create_test_host(constants.CONTROLLER)
+        m = mock.Mock()
+        update_ldap_client_config = "sysinv.conductor.rpcapi." \
+                                        "ConductorAPI." \
+                                        "update_ldap_client_config"
+        with mock.patch('sysinv.common.utils.is_initial_config_complete',
+                        lambda: True), \
+            mock.patch(update_ldap_client_config,
+                       m.update_ldap_client_config):
+            self._test_create_network_success(
+                'system-controller',
+                constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
+                self.system_controller_subnet)
+        m.update_ldap_client_config.assert_called_once()
 
     def test_create_success_pxeboot(self):
         self._test_create_network_success(

@@ -2186,3 +2186,25 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param context: request context.
         """
         return self.call(context, self.make_msg('get_restore_state'))
+
+    def update_ldap_client_config(self, context):
+        """Synchronously, have a conductor configure LDAP client configureation
+
+        Does the following tasks:
+        - Update puppet hiera configuration file and apply run time manifest.
+
+        :param context: request context.
+        """
+        return self.call(context,
+                         self.make_msg('update_ldap_client_config'))
+
+    def update_dnsmasq_config(self, context):
+        """Synchronously, have a conductor configure the DNS configuration
+
+        Does the following tasks:
+        - Update puppet hiera configuration file and apply run time manifest.
+
+        :param context: request context.
+        """
+        return self.call(context,
+                         self.make_msg('update_dnsmasq_config'))
