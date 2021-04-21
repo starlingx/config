@@ -37,8 +37,7 @@ Requires: python-webob
 Requires: python-webtest
 Requires: python-wsme
 Requires: python-six
-Requires: python2-django
-Requires: python2-mox3
+Requires: python2-rfc3986
 Requires: python2-oslo-i18n
 Requires: python2-oslo-config
 Requires: python2-oslo-concurrency
