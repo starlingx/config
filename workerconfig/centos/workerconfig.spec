@@ -22,13 +22,6 @@ Group: base
 %description -n workerconfig-standalone
 Initial worker node configuration
 
-%package -n workerconfig-subfunction
-Summary: workerconfig
-Group: base
-
-%description -n workerconfig-subfunction
-Initial worker node configuration
-
 %define initddir /etc/init.d/
 %define goenableddir /etc/goenabled.d/
 %define systemddir /etc/systemd/system/
@@ -53,19 +46,6 @@ else
 fi
 systemctl enable workerconfig.service
 
-
-%post -n workerconfig-subfunction
-if [ ! -e $D%{systemddir}/workerconfig.service ]; then
-    cp $D%{systemddir}/config/workerconfig-combined.service $D%{systemddir}/workerconfig.service
-else
-    cmp -s $D%{systemddir}/config/workerconfig-combined.service $D%{systemddir}/workerconfig.service
-    if [ $? -ne 0 ]; then
-        rm -f $D%{systemddir}/workerconfig.service
-        cp $D%{systemddir}/config/workerconfig-combined.service $D%{systemddir}/workerconfig.service
-    fi
-fi
-systemctl enable workerconfig.service
-
 %clean
 
 %files
@@ -79,7 +59,3 @@ systemctl enable workerconfig.service
 %{systemddir}/config/workerconfig-standalone.service
 %{goenableddir}/*
 
-%files -n workerconfig-subfunction
-%defattr(-,root,root,-)
-%dir %{systemddir}/config
-%{systemddir}/config/workerconfig-combined.service
