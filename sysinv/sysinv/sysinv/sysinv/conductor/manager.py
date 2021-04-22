@@ -12716,18 +12716,20 @@ class ConductorManager(service.PeriodicService):
             LOG.exception(ex)
             return (False, None)
 
-    def perform_app_upload(self, context, rpc_app, tarfile, lifecycle_hook_info_app_upload):
+    def perform_app_upload(self, context, rpc_app, tarfile,
+                           lifecycle_hook_info_app_upload, images=False):
         """Handling of application upload request (via AppOperator)
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
         :param tarfile: location of the application tarfile to be exracted
         :param lifecycle_hook_info_app_upload: LifecycleHookInfo object
+        :param images: save application images in the registry as part of app upload
 
         """
         lifecycle_hook_info_app_upload.operation = constants.APP_UPLOAD_OP
 
-        self._app.perform_app_upload(rpc_app, tarfile, lifecycle_hook_info_app_upload)
+        self._app.perform_app_upload(rpc_app, tarfile, lifecycle_hook_info_app_upload, images)
         self._app.load_application_metadata_from_file(rpc_app)
 
         # Perform post upload operation actions

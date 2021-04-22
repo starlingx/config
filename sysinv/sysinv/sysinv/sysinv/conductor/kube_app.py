@@ -1729,7 +1729,7 @@ class AppOperator(object):
         LOG.error("Application rollback aborted!")
         return False
 
-    def perform_app_upload(self, rpc_app, tarfile, lifecycle_hook_info_app_upload):
+    def perform_app_upload(self, rpc_app, tarfile, lifecycle_hook_info_app_upload, images=False):
         """Process application upload request
 
         This method validates the application manifest. If Helm charts are
@@ -1740,6 +1740,7 @@ class AppOperator(object):
         :param rpc_app: application object in the RPC request
         :param tarfile: location of application tarfile
         :param lifecycle_hook_info_app_upload: LifecycleHookInfo object
+        :param images: save application images in the registry as part of app upload
 
         """
 
@@ -1815,6 +1816,17 @@ class AppOperator(object):
             # System overrides will be generated here. Plugins must be activated
             # prior to scraping chart/system/armada overrides for images
             self._save_images_list(app)
+
+            if images:
+                # We need to download the images at upload_app so that subclouds
+                # may use the distributed cloud registry
+                self._update_app_status(
+                    app, new_progress=constants.APP_PROGRESS_DOWNLOAD_IMAGES)
+
+                if AppOperator.is_app_aborted(app.name):
+                    raise exception.KubeAppAbort()
+
+                self.download_images(app)
 
             if app.patch_dependencies:
                 self._utils._patch_report_app_dependencies(

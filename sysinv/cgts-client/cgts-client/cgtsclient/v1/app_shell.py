@@ -103,9 +103,19 @@ def do_application_show(cc, args):
 @utils.arg('-v', '--app-version',
            metavar='<app version>',
            help='Version of the application')
+@utils.arg('-i', '--images',
+           action='store_true',
+           default=False,
+           help='Save application images in the registry as part of app'
+                ' upload. This option is normally used in the System'
+                ' Controller of a Distributed Cloud system to also upload'
+                ' the application images to the central registry when the'
+                ' app is registered within the system')
 def do_application_upload(cc, args):
     """Upload application Helm chart(s) and manifest"""
     data = _application_check(args)
+    if args.images:
+        data.update({'images': True})
 
     if not _is_url(data["tarfile"]):
         try:
