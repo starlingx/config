@@ -101,8 +101,12 @@ if [ "$FROM_RELEASE" == "20.06" ] && [ "$ACTION" == "activate" ]; then
         log "$NAME: $EXISTING_APP_NAME, version $EXISTING_APP_VERSION, is currently in the state: $EXISTING_APP_STATUS"
 
         if [ "x${UPGRADE_APP_VERSION}" == "x${EXISTING_APP_VERSION}" ]; then
-            log "$NAME: ${UPGRADE_APP_NAME}, version ${EXISTING_APP_VERSION}, is already present. skipping..."
-            continue
+            # If the app is in uploaded or applied state, then we continue with next iteration.
+            # Else, the code execution proceeds and the script would exit with an unexpected state.
+            if [[ "${EXISTING_APP_STATUS}" =~ ^(uploaded|applied)$ ]]; then
+                log "$NAME: ${UPGRADE_APP_NAME}, version ${EXISTING_APP_VERSION}, is already present. skipping..."
+                continue
+            fi
         fi
 
         # All applications should be in an 'applied' or 'uploaded' state. Any other state is unexpected
