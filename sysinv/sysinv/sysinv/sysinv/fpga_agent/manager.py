@@ -81,16 +81,9 @@ CONF.register_opts(agent_opts, 'fpga_agent')
 # This is the docker image containing the OPAE tools to access the FPGA device.
 OPAE_IMG = "registry.local:9001/docker.io/starlingx/n3000-opae:stx.4.0-v1.0.0"
 
-# This is a flag file created by puppet after doing a "docker login".
-# We need to wait for it to exist before trying to run docker images.
-DOCKER_LOGIN_FLAG = "/var/run/docker_login_done"
-
 # This is the location where we cache the device image file while
 # writing it to the hardware.
 DEVICE_IMAGE_CACHE_DIR = "/usr/local/share/applications/sysinv"
-
-# Volatile flag file so we only reset the N3000s once after bootup.
-N3000_RESET_FLAG = os.path.join(tsc.VOLATILE_PATH, ".sysinv_n3000_reset")
 
 SYSFS_DEVICE_PATH = "/sys/bus/pci/devices/"
 FME_PATH = "/fpga/intel-fpga-dev.*/intel-fpga-fme.*/"
@@ -110,7 +103,7 @@ BMC_BUILD_VER_PATH = "max10_version"
 def wait_for_docker_login():
     # TODO: add a timeout
     LOG.info("Waiting for docker login flag.")
-    while not os.path.exists(DOCKER_LOGIN_FLAG):
+    while not os.path.exists(constants.DOCKER_LOGIN_FLAG):
         time.sleep(1)
     LOG.info("Found docker login flag, continuing.")
 
@@ -189,33 +182,6 @@ def write_device_image_n3000(filename, pci_addr):
         msg = ("Failed to update device image %s for device %s, "
                "return code is %d, command output: %s." %
                (filename, pci_addr, exc.returncode,
-                exc.output.decode('utf-8')))
-        LOG.error(msg)
-        LOG.error("Check for intel-max10 kernel logs.")
-        raise exception.SysinvException(msg)
-
-
-def reset_device_n3000(pci_addr):
-    # Reset the N3000 FPGA at the specified PCI address.
-    try:
-        # Build up the command to perform the reset.
-        # Note the hack to work around OPAE tool locale issues
-        cmd = ("docker run -t --privileged -e LC_ALL=en_US.UTF-8 "
-               "-e LANG=en_US.UTF-8 " + OPAE_IMG +
-               " rsu bmcimg " + pci_addr)
-
-        # Issue the command to perform the firmware update.
-        subprocess.check_output(shlex.split(cmd),  # pylint: disable=not-callable
-                                         stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError as exc:
-        # "docker run" return code will be:
-        #    125 if the error is with Docker daemon itself
-        #    126 if the contained command cannot be invoked
-        #    127 if the contained command cannot be found
-        #    Exit code of contained command otherwise
-        msg = ("Failed to reset device %s, "
-               "return code is %d, command output: %s." %
-               (pci_addr, exc.returncode,
                 exc.output.decode('utf-8')))
         LOG.error(msg)
         LOG.error("Check for intel-max10 kernel logs.")
@@ -347,24 +313,6 @@ def get_n3000_devices():
     return fpga_addrs
 
 
-def reset_n3000_fpgas():
-    # We only want to do this once after host startup.
-    if not os.path.exists(N3000_RESET_FLAG):
-        # Reset all N3000 FPGAs on the system.
-        # TODO: make this run in parallel if there are multiple devices.
-        LOG.info("Resetting N3000 FPGAs.")
-        got_exception = False
-        fpga_addrs = get_n3000_devices()
-        for fpga_addr in fpga_addrs:
-            try:
-                reset_device_n3000(fpga_addr)
-            except Exception:
-                got_exception = True
-        LOG.info("Done resetting N3000 FPGAs.")
-        if not got_exception:
-            utils.touch(N3000_RESET_FLAG)
-
-
 def get_n3000_pci_info():
     """ Query PCI information about N3000 PCI devices.
 
@@ -465,11 +413,6 @@ class FpgaAgentManager(service.PeriodicService):
 
         # Wait for puppet to log in to the local docker registry
         wait_for_docker_login()
-
-        # Trigger reset of N3000 FPGAs.  This is needed because the PCI address
-        # changes on the first reset after boot.
-        reset_n3000_fpgas()
-
         # Wait around until someone else updates the platform.conf file
         # with our host UUID.
         self.wait_for_host_uuid()
