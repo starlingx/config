@@ -181,9 +181,32 @@ def delete_helm_release(release):
 
 
 def _retry_on_HelmTillerFailure(ex):
-    LOG.info('Caught HelmTillerFailure exception. Retrying... '
+    LOG.info('Caught HelmTillerFailure exception. Resetting tiller and retrying... '
             'Exception: {}'.format(ex))
-    return isinstance(ex, exception.HelmTillerFailure)
+    env = os.environ.copy()
+    env['PATH'] = '/usr/local/sbin:' + env['PATH']
+    env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
+    helm_reset = subprocess.Popen(
+        ['helmv2-cli', '--',
+         'helm', 'reset', '--force'],
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    timer = threading.Timer(20, kill_process_and_descendants, [helm_reset])
+
+    try:
+        timer.start()
+        out, err = helm_reset.communicate()
+        if helm_reset.returncode == 0:
+            return isinstance(ex, exception.HelmTillerFailure)
+        elif err:
+            raise exception.HelmTillerFailure(reason=err)
+        else:
+            err_msg = "helmv2-cli -- helm reset operation failed."
+            raise exception.HelmTillerFailure(reason=err_msg)
+    except Exception as e:
+        raise exception.HelmTillerFailure(
+            reason="Failed to reset tiller: %s" % e)
+    finally:
+        timer.cancel()
 
 
 @retrying.retry(stop_max_attempt_number=2,
