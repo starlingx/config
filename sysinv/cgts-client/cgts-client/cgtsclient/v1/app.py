@@ -40,7 +40,7 @@ class AppManager(base.Manager):
     def upload(self, data):
         """Stage the specified application, getting it ready for deployment.
 
-        :param data: application name and location of tarfile
+        :param data: application name and location of tarfile and the binary of the tarfile
         """
         return self._create(self._path(), data)
 

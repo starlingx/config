@@ -126,7 +126,11 @@ class ApiDictType(wtypes.UserType):
     name = 'apidict'
     __name__ = name
 
-    basetype = {wtypes.text: apiutils.ValidTypes(wtypes.text, six.integer_types)}
+    basetype = {wtypes.text: apiutils.ValidTypes(
+        wtypes.text,
+        six.integer_types,
+        wsme.types.bytes
+    )}
 
 
 apidict = ApiDictType()
