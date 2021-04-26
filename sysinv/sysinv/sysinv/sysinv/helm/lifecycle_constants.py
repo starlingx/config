@@ -25,3 +25,5 @@ class LifecycleConstants(object):
     TRIGGER_DELTA_FIELDS = 'delta_fields'
     ACTION = 'action'
     APP_STATUS = 'app_status'
+    FROM_APP = 'from_app'
+    TO_APP = 'to_app'

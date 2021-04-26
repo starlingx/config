@@ -23,6 +23,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv.common import kubernetes
+from sysinv.helm.lifecycle_constants import LifecycleConstants
 from sysinv.helm.lifecycle_hook import LifecycleHookInfo
 from sysinv.openstack.common.rpc import common as rpc_common
 import cgcs_patch.constants as patch_constants
@@ -415,6 +416,7 @@ class KubeAppController(rest.RestController):
                                      constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
                                      constants.APP_LIFECYCLE_TIMING_PRE,
                                      constants.APP_UPDATE_OP)
+            lifecycle_hook_info[LifecycleConstants.EXTRA][LifecycleConstants.FROM_APP] = True
             self._app_lifecycle_actions(applied_app,
                                         lifecycle_hook_info)
         except Exception as e:
