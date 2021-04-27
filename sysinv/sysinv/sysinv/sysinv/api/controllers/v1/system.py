@@ -312,6 +312,15 @@ class SystemController(rest.RestController):
                     % system_mode)
             raise wsme.exc.ClientSideError(msg)
 
+    def _check_controller_locked(self):
+        controller = api_utils.HostHelper.get_active_controller()
+        if controller is None:
+            return
+        if controller.administrative != constants.ADMIN_LOCKED:
+            msg = _("Cannot modify system mode if host '%s' is not "
+                    "locked." % controller.hostname)
+            raise wsme.exc.ClientSideError(msg)
+
     def _get_isystem_collection(self, marker, limit, sort_key, sort_dir,
                                 expand=False, resource_url=None):
         limit = api_utils.validate_limit(limit)
@@ -433,6 +442,7 @@ class SystemController(rest.RestController):
                                     "set to %s." % rpc_isystem.system_mode)
                             raise wsme.exc.ClientSideError(msg)
                         elif new_system_mode != constants.SYSTEM_MODE_SIMPLEX:
+                            self._check_controller_locked()
                             self._check_interfaces(new_system_mode)
                     else:
                         system_mode_options.append(constants.SYSTEM_MODE_SIMPLEX)

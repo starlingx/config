@@ -98,6 +98,7 @@ class TestSystemUpdateModeFromSimplex(TestSystem):
             personality=constants.CONTROLLER,
             subfunctions=constants.CONTROLLER,
             invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED
         )
 
     def _create_mgmt_interface_network(self, interface='mgmt'):
@@ -152,8 +153,12 @@ class TestSystemUpdateModeFromSimplex(TestSystem):
             interface_id=self.cluster_host_interface.id,
             network_id=self.cluster_host_network.id)
 
-    @mock.patch('sysinv.common.utils.is_initial_config_complete', return_value=True)
-    def test_update_system_mode_simplex_to_duplex(self, mock_exists):
+    @mock.patch('socket.gethostname',
+                return_value='controller-0')
+    @mock.patch('sysinv.common.utils.is_initial_config_complete',
+                return_value=True)
+    def test_update_system_mode_simplex_to_duplex(self, mock_init_config,
+                                                  mock_controller):
         self._create_mgmt_interface_network()
         self._create_cluster_host_interface_network()
         update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
@@ -163,8 +168,13 @@ class TestSystemUpdateModeFromSimplex(TestSystem):
         system_dict = system.as_dict()
         self.assertIn('simplex_to_duplex_migration', system_dict['capabilities'])
 
-    @mock.patch('sysinv.common.utils.is_initial_config_complete', return_value=True)
-    def test_update_system_mode_simplex_to_duplex_mgmt_on_lo(self, mock_exists):
+    @mock.patch('socket.gethostname',
+                return_value='controller-0')
+    @mock.patch('sysinv.common.utils.is_initial_config_complete',
+                return_value=True)
+    def test_update_system_mode_simplex_to_duplex_mgmt_on_lo(self,
+                                                             mock_init_config,
+                                                             mock_controller):
         self._create_mgmt_interface_network(interface=constants.LOOPBACK_IFNAME)
         self._create_cluster_host_interface_network()
         update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
@@ -174,8 +184,13 @@ class TestSystemUpdateModeFromSimplex(TestSystem):
         system_dict = system.as_dict()
         self.assertNotIn('simplex_to_duplex_migration', system_dict['capabilities'])
 
-    @mock.patch('sysinv.common.utils.is_initial_config_complete', return_value=True)
-    def test_update_system_mode_simplex_to_duplex_no_mgmt_if(self, mock_exists):
+    @mock.patch('socket.gethostname',
+                return_value='controller-0')
+    @mock.patch('sysinv.common.utils.is_initial_config_complete',
+                return_value=True)
+    def test_update_system_mode_simplex_to_duplex_no_mgmt_if(self,
+                                                             mock_init_config,
+                                                             mock_controller):
         self._create_cluster_host_interface_network()
         update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
         self._patch_and_check(self._get_path(self.system.uuid),
@@ -184,8 +199,13 @@ class TestSystemUpdateModeFromSimplex(TestSystem):
         system_dict = system.as_dict()
         self.assertNotIn('simplex_to_duplex_migration', system_dict['capabilities'])
 
-    @mock.patch('sysinv.common.utils.is_initial_config_complete', return_value=True)
-    def test_update_system_mode_simplex_to_duplex_cluster_host_on_lo(self, mock_exists):
+    @mock.patch('socket.gethostname',
+                return_value='controller-0')
+    @mock.patch('sysinv.common.utils.is_initial_config_complete',
+                return_value=True)
+    def test_update_system_mode_simplex_to_duplex_cluster_host_on_lo(self,
+                                                                     mock_init_config,
+                                                                     mock_controller):
         self._create_mgmt_interface_network()
         self._create_cluster_host_interface_network(interface=constants.LOOPBACK_IFNAME)
         update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
@@ -195,8 +215,13 @@ class TestSystemUpdateModeFromSimplex(TestSystem):
         system_dict = system.as_dict()
         self.assertNotIn('simplex_to_duplex_migration', system_dict['capabilities'])
 
-    @mock.patch('sysinv.common.utils.is_initial_config_complete', return_value=True)
-    def test_update_system_mode_simplex_to_duplex_no_cluster_host_if(self, mock_exists):
+    @mock.patch('socket.gethostname',
+                return_value='controller-0')
+    @mock.patch('sysinv.common.utils.is_initial_config_complete',
+                return_value=True)
+    def test_update_system_mode_simplex_to_duplex_no_cluster_host_if(self,
+                                                                     mock_init_config,
+                                                                     mock_controller):
         self._create_mgmt_interface_network()
         update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
         self._patch_and_check(self._get_path(self.system.uuid),
@@ -205,8 +230,12 @@ class TestSystemUpdateModeFromSimplex(TestSystem):
         system_dict = system.as_dict()
         self.assertNotIn('simplex_to_duplex_migration', system_dict['capabilities'])
 
-    @mock.patch('sysinv.common.utils.is_initial_config_complete', return_value=True)
-    def test_update_system_mode_simplex_to_simplex(self, mock_exists):
+    @mock.patch('socket.gethostname',
+                return_value='controller-0')
+    @mock.patch('sysinv.common.utils.is_initial_config_complete',
+                return_value=True)
+    def test_update_system_mode_simplex_to_simplex(self, mock_init_config,
+                                                         mock_controller):
         update = {"system_mode": constants.SYSTEM_MODE_SIMPLEX}
         self._patch_and_check(self._get_path(self.system.uuid),
                               update)
@@ -214,8 +243,13 @@ class TestSystemUpdateModeFromSimplex(TestSystem):
         system_dict = system.as_dict()
         self.assertNotIn('simplex_to_duplex_migration', system_dict['capabilities'])
 
-    @mock.patch('sysinv.common.utils.is_initial_config_complete', return_value=False)
-    def test_update_system_mode_before_initial_config_complete(self, mock_exists):
+    @mock.patch('socket.gethostname',
+                return_value='controller-0')
+    @mock.patch('sysinv.common.utils.is_initial_config_complete',
+                return_value=False)
+    def test_update_system_mode_before_initial_config_complete(self,
+                                                               mock_init_config,
+                                                               mock_controller):
         update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
         self._patch_and_check(self._get_path(self.system.uuid),
                               update)
@@ -223,12 +257,49 @@ class TestSystemUpdateModeFromSimplex(TestSystem):
         system_dict = system.as_dict()
         self.assertNotIn('simplex_to_duplex_migration', system_dict['capabilities'])
 
-    @mock.patch('sysinv.common.utils.is_initial_config_complete', return_value=False)
-    def test_update_system_mode_before_initial_config_complete_only_mgmt_if(self, mock_exists):
+    @mock.patch('socket.gethostname',
+                return_value='controller-0')
+    @mock.patch('sysinv.common.utils.is_initial_config_complete',
+                return_value=False)
+    def test_update_system_mode_before_initial_config_complete_only_mgmt_if(self,
+                                                                            mock_init_config,
+                                                                            mock_controller):
         self._create_mgmt_interface_network()
         update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
         self._patch_and_check(self._get_path(self.system.uuid),
                               update)
+        system = self.dbapi.isystem_get_one()
+        system_dict = system.as_dict()
+        self.assertNotIn('simplex_to_duplex_migration', system_dict['capabilities'])
+
+
+class TestSystemUpdateModeUnlockedController(TestSystem):
+
+    def setUp(self):
+        super(TestSystemUpdateModeUnlockedController, self).setUp()
+        self.dbapi = db_api.get_instance()
+        self.system = dbutils.create_test_isystem(system_type=constants.TIS_AIO_BUILD,
+                                                  system_mode=constants.SYSTEM_MODE_SIMPLEX)
+        self.controller = dbutils.create_test_ihost(
+            id='1',
+            uuid=None,
+            forisystemid=self.system.id,
+            hostname='controller-0',
+            personality=constants.CONTROLLER,
+            subfunctions=constants.CONTROLLER,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED
+        )
+
+    @mock.patch('socket.gethostname',
+                return_value='controller-0')
+    @mock.patch('sysinv.common.utils.is_initial_config_complete',
+                return_value=True)
+    def test_update_system_mode_on_unlocked_controller(self, mock_init_config,
+                                                       mock_controller):
+        update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update, expect_errors=True)
         system = self.dbapi.isystem_get_one()
         system_dict = system.as_dict()
         self.assertNotIn('simplex_to_duplex_migration', system_dict['capabilities'])
