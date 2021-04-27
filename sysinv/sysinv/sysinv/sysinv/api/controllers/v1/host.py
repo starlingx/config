@@ -6081,6 +6081,14 @@ class HostController(rest.RestController):
             raise wsme.exc.ClientSideError(
                 _("%s" % response['error_details']))
 
+        # Check no app apply is in progress
+        # Skip if it is a force swact
+        if force_swact is False:
+            for _app in pecan.request.dbapi.kube_app_get_all():
+                if _app.status == constants.APP_APPLY_IN_PROGRESS:
+                    raise wsme.exc.ClientSideError(
+                        _("Swact action not allowed. %s apply is in progress." % _app.name))
+
     def check_lock_storage(self, hostupdate, force=False):
         """Pre lock semantic checks for storage"""
         LOG.info("%s ihost check_lock_storage" % hostupdate.displayid)
