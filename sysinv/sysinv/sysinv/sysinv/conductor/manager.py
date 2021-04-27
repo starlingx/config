@@ -6685,6 +6685,7 @@ class ConductorManager(service.PeriodicService):
                             'platform::sm::update_oam_config::runtime',
                             'platform::nfv::webserver::runtime',
                             'platform::haproxy::runtime',
+                            'openstack::keystone::endpoint::runtime',
                             'platform::dockerdistribution::config',
                             'platform::dockerdistribution::runtime']
             }
