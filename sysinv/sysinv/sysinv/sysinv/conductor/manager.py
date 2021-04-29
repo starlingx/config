@@ -5149,22 +5149,12 @@ class ConductorManager(service.PeriodicService):
             if not standby_host or (standby_host and
                (standby_host.config_applied == standby_host.config_target or
                standby_host.config_applied == standby_config_target_flipped)):
+                all_fs_resized = self._resize_filesystems_update_db(context, standby_host)
 
-                if self._config_resize_filesystems(context, standby_host):
-                    cutils.touch(CONFIG_CONTROLLER_FINI_FLAG)
-
-                    controller_fs_list = self.dbapi.controller_fs_get_list()
-                    for fs in controller_fs_list:
-                        if (fs.get('state') !=
-                                constants.CONTROLLER_FS_AVAILABLE):
-                            self.dbapi.controller_fs_update(
-                                fs.uuid,
-                                {'state': constants.CONTROLLER_FS_AVAILABLE})
-
+                if all_fs_resized:
                     self._update_alarm_status(context, active_host)
                     if standby_host and standby_host.config_applied == standby_host.config_target:
                         self._update_alarm_status(context, standby_host)
-
         else:
             # Ignore the reboot required bit for active controller when doing the comparison
             active_config_target_flipped = None
@@ -5180,22 +5170,28 @@ class ConductorManager(service.PeriodicService):
                 if not standby_host or (standby_host and
                    (standby_host.config_applied == standby_host.config_target or
                    standby_host.config_applied == standby_config_target_flipped)):
+                    all_fs_resized = self._resize_filesystems_update_db(context, standby_host)
 
-                    if self._config_resize_filesystems(context, standby_host):
-                        cutils.touch(CONFIG_CONTROLLER_FINI_FLAG)
+                    if (all_fs_resized and standby_host and
+                       standby_host.config_applied == standby_host.config_target):
+                        self._update_alarm_status(context, standby_host)
 
-                        controller_fs_list = \
-                            self.dbapi.controller_fs_get_list()
-                        for fs in controller_fs_list:
-                            if (fs.get('state') !=
-                                    constants.CONTROLLER_FS_AVAILABLE):
-                                self.dbapi.controller_fs_update(
-                                    fs.uuid,
-                                    {'state':
-                                        constants.CONTROLLER_FS_AVAILABLE})
+    def _resize_filesystems_update_db(self, context, standby_host):
+        """Resize the filesystems upon completion of storage config.
+           Update sysinv db for each filesystem updated so that if one fails other
+           successfully resized filesystems are properly updated on the database"""
+        all_fs_resized, drbd_fs_resized = self._config_resize_filesystems(context, standby_host)
+        controller_fs_list = self.dbapi.controller_fs_get_list()
 
-                        if standby_host and standby_host.config_applied == standby_host.config_target:
-                            self._update_alarm_status(context, standby_host)
+        for fs in controller_fs_list:
+            if ((fs.get('state') != constants.CONTROLLER_FS_AVAILABLE) and
+               (fs.get('name') in drbd_fs_resized)):
+                self.dbapi.controller_fs_update(fs.uuid, {'state': constants.CONTROLLER_FS_AVAILABLE})
+
+        if all_fs_resized:
+            cutils.touch(CONFIG_CONTROLLER_FINI_FLAG)
+
+        return all_fs_resized
 
     def _audit_ihost_action(self, ihost):
         """Audit whether the ihost_action needs to be terminated or escalated.
@@ -9140,6 +9136,8 @@ class ConductorManager(service.PeriodicService):
 
         retry_attempts = 3
         rc = False
+        drbd_fs_resized = set()
+
         with open(os.devnull, "w"):
             try:
                 if standby_host:
@@ -9156,101 +9154,82 @@ class ConductorManager(service.PeriodicService):
                     LOG.info("Performed %s" % progress)
                     cutils.touch(CFS_DRBDADM_RECONFIGURED)
 
-                pgsql_resized = False
-                platform_resized = False
-                extension_resized = False
-                patch_resized = False
-                etcd_resized = False
-                dockerdistribution_resized = False
                 loop_timeout = 0
-                drbd_fs_updated = self._drbd_fs_updated(context)
+                max_loop = 5
+                drbd_fs_updated = set(self._drbd_fs_updated(context))
+
                 if not drbd_fs_updated:
                     rc = True
                 else:
-                    while(loop_timeout <= 5):
-                        if constants.DRBD_PGSQL in drbd_fs_updated:
-                            if (not pgsql_resized and
-                                (not standby_host or (standby_host and
-                                 constants.DRBD_PGSQL in self._drbd_fs_sync()))):
+                    while(loop_timeout <= max_loop):
+                        if constants.DRBD_PGSQL in (drbd_fs_updated - drbd_fs_resized):
+                            if (not standby_host or (standby_host and
+                                 constants.DRBD_PGSQL in self._drbd_fs_sync())):
                                 # database_gib /var/lib/postgresql
                                 drbd_dev = "drbd0"
                                 drbd_lv = "pgsql-lv"
-                                pgsql_resized = self._resize2fs_drbd_dev(context, retry_attempts,
-                                                                         drbd_dev, drbd_lv)
+                                if self._resize2fs_drbd_dev(context, retry_attempts,
+                                                            drbd_dev, drbd_lv):
+                                    drbd_fs_resized.add(constants.DRBD_PGSQL)
 
-                        if constants.DRBD_PLATFORM in drbd_fs_updated:
-                            if (not platform_resized and
-                                (not standby_host or (standby_host and
-                                 constants.DRBD_PLATFORM in self._drbd_fs_sync()))):
+                        if constants.DRBD_PLATFORM in (drbd_fs_updated - drbd_fs_resized):
+                            if (not standby_host or (standby_host and
+                                 constants.DRBD_PLATFORM in self._drbd_fs_sync())):
                                 # platform_gib /opt/platform
                                 drbd_dev = "drbd2"
                                 drbd_lv = "platform-lv"
-                                platform_resized = self._resize2fs_drbd_dev(context, retry_attempts,
-                                                                            drbd_dev, drbd_lv)
+                                if self._resize2fs_drbd_dev(context, retry_attempts,
+                                                            drbd_dev, drbd_lv):
+                                    drbd_fs_resized.add(constants.DRBD_PLATFORM)
 
-                        if constants.DRBD_EXTENSION in drbd_fs_updated:
-                            if (not extension_resized and
-                                (not standby_host or (standby_host and
-                                 constants.DRBD_EXTENSION in self._drbd_fs_sync()))):
+                        if constants.DRBD_EXTENSION in (drbd_fs_updated - drbd_fs_resized):
+                            if (not standby_host or (standby_host and
+                                 constants.DRBD_EXTENSION in self._drbd_fs_sync())):
                                 # extension_gib /opt/extension
                                 drbd_dev = "drbd5"
                                 drbd_lv = "extension-lv"
-                                extension_resized = self._resize2fs_drbd_dev(context, retry_attempts,
-                                                                             drbd_dev, drbd_lv)
+                                if self._resize2fs_drbd_dev(context, retry_attempts,
+                                                            drbd_dev, drbd_lv):
+                                    drbd_fs_resized.add(constants.DRBD_EXTENSION)
 
-                        if constants.DRBD_DC_VAULT in drbd_fs_updated:
-                            if (not patch_resized and
-                                (not standby_host or (standby_host and
-                                 constants.DRBD_DC_VAULT in self._drbd_fs_sync()))):
+                        if constants.DRBD_DC_VAULT in (drbd_fs_updated - drbd_fs_resized):
+                            if (not standby_host or (standby_host and
+                                 constants.DRBD_DC_VAULT in self._drbd_fs_sync())):
                                 # patch_gib /opt/dc-vault
                                 drbd_dev = "drbd6"
                                 drbd_lv = "dc-vault-lv"
-                                patch_resized = self._resize2fs_drbd_dev(context, retry_attempts,
-                                                                         drbd_dev, drbd_lv)
+                                if self._resize2fs_drbd_dev(context, retry_attempts,
+                                                            drbd_dev, drbd_lv):
+                                    drbd_fs_resized.add(constants.DRBD_DC_VAULT)
 
-                        if constants.DRBD_ETCD in drbd_fs_updated:
-                            if (not etcd_resized and
-                                (not standby_host or (standby_host and
-                                 constants.DRBD_ETCD in self._drbd_fs_sync()))):
+                        if constants.DRBD_ETCD in (drbd_fs_updated - drbd_fs_resized):
+                            if (not standby_host or (standby_host and
+                                 constants.DRBD_ETCD in self._drbd_fs_sync())):
                                 # patch_gib /opt/etcd
                                 drbd_dev = "drbd7"
                                 drbd_lv = "etcd-lv"
-                                etcd_resized = self._resize2fs_drbd_dev(context, retry_attempts,
-                                                                        drbd_dev, drbd_lv)
+                                if self._resize2fs_drbd_dev(context, retry_attempts,
+                                                            drbd_dev, drbd_lv):
+                                    drbd_fs_resized.add(constants.DRBD_ETCD)
 
-                        if constants.DRBD_DOCKER_DISTRIBUTION in drbd_fs_updated:
-                            if (not dockerdistribution_resized and
-                                (not standby_host or (standby_host and
-                                 constants.DRBD_DOCKER_DISTRIBUTION in self._drbd_fs_sync()))):
+                        if constants.DRBD_DOCKER_DISTRIBUTION in (drbd_fs_updated - drbd_fs_resized):
+                            if (not standby_host or (standby_host and
+                                 constants.DRBD_DOCKER_DISTRIBUTION in self._drbd_fs_sync())):
                                 # patch_gib /var/lib/docker-distribution
                                 drbd_dev = "drbd8"
                                 drbd_lv = "dockerdistribution-lv"
-                                dockerdistribution_resized = self._resize2fs_drbd_dev(context, retry_attempts,
-                                                                                      drbd_dev, drbd_lv)
+                                if self._resize2fs_drbd_dev(context, retry_attempts,
+                                                            drbd_dev, drbd_lv):
+                                    drbd_fs_resized.add(constants.DRBD_DOCKER_DISTRIBUTION)
 
-                        if not standby_host:
-                            rc = True
-                            break
-
-                        all_resized = True
-                        for drbd in drbd_fs_updated:
-                            if drbd == constants.DRBD_PGSQL and not pgsql_resized:
-                                all_resized = False
-                            elif drbd == constants.DRBD_PLATFORM and not platform_resized:
-                                all_resized = False
-                            elif drbd == constants.DRBD_EXTENSION and not extension_resized:
-                                all_resized = False
-                            elif drbd == constants.DRBD_DC_VAULT and not patch_resized:
-                                all_resized = False
-                            elif drbd == constants.DRBD_ETCD and not etcd_resized:
-                                all_resized = False
-                            elif drbd == constants.DRBD_DOCKER_DISTRIBUTION and not dockerdistribution_resized:
-                                all_resized = False
-
-                        if all_resized:
+                        if drbd_fs_updated == drbd_fs_resized:
                             LOG.info("resizing filesystems completed")
                             rc = True
                             break
+                        else:
+                            LOG.warn("Failed to resize filesystems: " +
+                                     ", ".join(drbd_fs_updated - drbd_fs_resized) +
+                                     ". Retry {} of {}".format(loop_timeout, max_loop))
 
                         loop_timeout += 1
                         time.sleep(1)
@@ -9263,7 +9242,7 @@ class ConductorManager(service.PeriodicService):
                          {"cmd": ex.cmd, "stdout": ex.stdout,
                           "stderr": ex.stderr, "rc": ex.exit_code})
 
-        return rc
+        return (rc, drbd_fs_resized)
 
     # Retrying a few times and waiting between each retry should provide
     # enough protection in the unlikely case LVM's own locking mechanism
