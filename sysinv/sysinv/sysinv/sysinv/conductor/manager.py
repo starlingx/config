@@ -8757,17 +8757,25 @@ class ConductorManager(service.PeriodicService):
         fs = []
         for row in output:
             # Check PausedSyncS as well as drbd sync is changed to serial
-            if "drbd-pgsql" in row and ("SyncSource" in row or "PausedSyncS" in row):
+            # Check Connected because there are cases when drbd-overview
+            # showed Connected instead of PausedSyncS and SyncSource states
+            if "drbd-pgsql" in row and ("SyncSource" in row or "PausedSyncS" in row
+                                        or "Connected" in row):
                 fs.append(constants.DRBD_PGSQL)
-            if "drbd-platform" in row and ("SyncSource" in row or "PausedSyncS" in row):
+            if "drbd-platform" in row and ("SyncSource" in row or "PausedSyncS" in row
+                                           or "Connected" in row):
                 fs.append(constants.DRBD_PLATFORM)
-            if "drbd-extension" in row and ("SyncSource" in row or "PausedSyncS" in row):
+            if "drbd-extension" in row and ("SyncSource" in row or "PausedSyncS" in row
+                                            or "Connected" in row):
                 fs.append(constants.DRBD_EXTENSION)
-            if "drbd-dc-vault" in row and ("SyncSource" in row or "PausedSyncS" in row):
+            if "drbd-dc-vault" in row and ("SyncSource" in row or "PausedSyncS" in row
+                                           or "Connected" in row):
                 fs.append(constants.DRBD_DC_VAULT)
-            if "drbd-etcd" in row and ("SyncSource" in row or "PausedSyncS" in row):
+            if "drbd-etcd" in row and ("SyncSource" in row or "PausedSyncS" in row
+                                       or "Connected" in row):
                 fs.append(constants.DRBD_ETCD)
-            if "drbd-dockerdistribution" in row and ("SyncSource" in row or "PausedSyncS" in row):
+            if "drbd-dockerdistribution" in row and ("SyncSource" in row or "PausedSyncS" in row
+                                                     or "Connected" in row):
                 fs.append(constants.DRBD_DOCKER_DISTRIBUTION)
         return fs
 
@@ -8785,32 +8793,18 @@ class ConductorManager(service.PeriodicService):
 
         for row in drbd_dict:
             if "sync\'ed" not in row:
-                try:
-                    size = ([_f for _f in row.split(' ') if _f])[8]
-                except IndexError:
-                    LOG.error("Skipping unexpected drbd-overview output: %s" % row)
-                    continue
-                unit = size[-1]
-                size = float(size[:-1])
-
-                # drbd-overview can display the units in M or G
-                if unit == 'M':
-                    size = size / 1024
-                elif unit == 'T':
-                    size = size * 1024
-
                 if 'drbd-pgsql' in row:
-                    drbd_pgsql_size = size
-                if 'drbd-platform' in row:
-                    drbd_platform_size = size
-                if 'drbd-extension' in row:
-                    drbd_extension_size = size
-                if 'drbd-dc-vault' in row:
-                    drbd_patch_size = size
-                if 'drbd-etcd' in row:
-                    drbd_etcd_size = size
-                if 'drbd-dockerdistribution' in row:
-                    dockerdistribution_size = size
+                    drbd_pgsql_size = self._get_drbd_fs_size("drbd0")[0]
+                elif 'drbd-platform' in row:
+                    drbd_platform_size = self._get_drbd_fs_size("drbd2")[0]
+                elif 'drbd-extension' in row:
+                    drbd_extension_size = self._get_drbd_fs_size("drbd5")[0]
+                elif 'drbd-dc-vault' in row:
+                    drbd_patch_size = self._get_drbd_fs_size("drbd6")[0]
+                elif 'drbd-etcd' in row:
+                    drbd_etcd_size = self._get_drbd_fs_size("drbd7")[0]
+                elif 'drbd-dockerdistribution' in row:
+                    dockerdistribution_size = self._get_drbd_fs_size("drbd8")[0]
 
         lvdisplay_dict = self.get_controllerfs_lv_sizes(context)
         if lvdisplay_dict.get('pgsql-lv', None):
@@ -8851,11 +8845,111 @@ class ConductorManager(service.PeriodicService):
 
         return drbd_fs_updated
 
+    def _get_drbd_fs_size(self, drbd_dev):
+        """ Get drbd filesystem size
+
+        :param drbd_dev: drbd device name
+        :returns: tuple with (drbd_filesystem_size, return_code)
+        """
+        cmd = "dumpe2fs -h /dev/{}".format(drbd_dev)
+        dumpfs_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE, shell=True)
+        dumpfs_out, dumpfs_err = dumpfs_proc.communicate()
+        total_size = 0
+        retcode = dumpfs_proc.returncode
+        log_msg = "Executed _get_drbd_fs_size: drbd_dev: {} return code: {}"\
+            .format(drbd_dev, retcode)
+        if retcode == 0:
+            dumpfs_dict = [_f for _f in dumpfs_out.split('\n') if _f]
+            block_size = 0
+            block_count = 0
+            try:
+                for row in dumpfs_dict:
+                    if "Block size" in row:
+                        block_size = int([i for i in row.split() if i][2])
+                    elif "Block count" in row:
+                        block_count = int([i for i in row.split() if i][2])
+                total_size = cutils.bytes_to_GiB(block_count * block_size)
+            except IndexError:
+                retcode = 1
+        else:
+            log_msg += "\nstdout={}\nstderr={}".format(dumpfs_out, dumpfs_err)
+        LOG.info(log_msg)
+        return total_size, retcode
+
+    def _get_drbd_dev_size(self, drbd_dev):
+        """ Get drbd device size
+
+        :param drbd_dev: drbd device name
+        :returns: tuple with (drbd_device_size, return_code)
+        """
+        cmd = "blockdev --getpbsz /dev/{}".format(drbd_dev)
+        blockdev_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                         stderr=subprocess.PIPE, shell=True)
+        blockdev_out, blockdev_err = blockdev_proc.communicate()
+        total_size = 0
+        retcode = blockdev_proc.returncode
+        log_msg = "Executed _get_drbd_dev_size: drbd_dev: {} return code: {}"\
+            .format(drbd_dev, retcode)
+        if retcode == 0:
+            sector_size = 0
+            drbd_size_in_sectors = 0
+            try:
+                sector_size = int(blockdev_out.strip())
+                drbd_size_in_sectors_file_path = "/sys/block/{}/size".format(drbd_dev)
+                with open(drbd_size_in_sectors_file_path) as f:
+                    drbd_size_in_sectors = int(f.read().strip())
+            except ValueError:
+                retcode = 1
+            total_size = cutils.bytes_to_GiB(sector_size * drbd_size_in_sectors)
+        else:
+            log_msg += "\nstdout={}\nstderr={}".format(blockdev_out, blockdev_err)
+        LOG.info(log_msg)
+        return total_size, retcode
+
+    def _verify_drbd_dev_resized(self, context, drbd_dev, drbd_lv):
+        return self._verify_drbd_resized_generic(context, drbd_dev,
+                                                 drbd_lv, self._get_drbd_dev_size)
+
+    def _verify_drbd_fs_resized(self, context, drbd_dev, drbd_lv):
+        return self._verify_drbd_resized_generic(context, drbd_dev,
+                                                 drbd_lv, self._get_drbd_fs_size)
+
+    def _verify_drbd_resized_generic(self, context, drbd_dev, drbd_lv,
+                                     get_actual_size_func, delay=15, max_retries=3):
+        retries = 0
+        resized = False
+        while retries < max_retries:
+            lvdisplay_dict = self.get_controllerfs_lv_sizes(context)
+            drbd_actual_size, retcode = get_actual_size_func(drbd_dev)
+            if retcode == 0 and lvdisplay_dict.get(drbd_lv, None):
+                drbd_lv_size = float(lvdisplay_dict[drbd_lv])
+                if math.ceil(drbd_actual_size) >= math.ceil(drbd_lv_size):
+                    resized = True
+                    break
+            retries += 1
+            time.sleep(delay)
+        return resized
+
+    def _resize2fs_drbd_dev(self, context, retry_attempts, drbd_dev, drbd_lv):
+        resized = False
+        if self._verify_drbd_dev_resized(context, drbd_dev, drbd_lv):
+            progress = "resize2fs {}".format(drbd_dev)
+            cmd = ["resize2fs", "/dev/{}".format(drbd_dev)]
+            stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
+            if self._verify_drbd_fs_resized(context, drbd_dev, drbd_lv):
+                LOG.info("Performed %s" % progress)
+                resized = True
+            else:
+                LOG.warn("{} filesystem not resized yet".format(drbd_dev))
+        else:
+            LOG.warn("{} device not resized yet".format(drbd_dev))
+        return resized
+
     def _config_resize_filesystems(self, context, standby_host):
         """Resize the filesystems upon completion of storage config.
            Retry in case of errors or racing issues when resizing fails."""
 
-        progress = ""
         retry_attempts = 3
         rc = False
         with open(os.devnull, "w"):
@@ -8891,66 +8985,60 @@ class ConductorManager(service.PeriodicService):
                                 (not standby_host or (standby_host and
                                  constants.DRBD_PGSQL in self._drbd_fs_sync()))):
                                 # database_gib /var/lib/postgresql
-                                progress = "resize2fs drbd0"
-                                cmd = ["resize2fs", "/dev/drbd0"]
-                                stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
-                                LOG.info("Performed %s" % progress)
-                                pgsql_resized = True
+                                drbd_dev = "drbd0"
+                                drbd_lv = "pgsql-lv"
+                                pgsql_resized = self._resize2fs_drbd_dev(context, retry_attempts,
+                                                                         drbd_dev, drbd_lv)
 
                         if constants.DRBD_PLATFORM in drbd_fs_updated:
                             if (not platform_resized and
                                 (not standby_host or (standby_host and
                                  constants.DRBD_PLATFORM in self._drbd_fs_sync()))):
                                 # platform_gib /opt/platform
-                                progress = "resize2fs drbd2"
-                                cmd = ["resize2fs", "/dev/drbd2"]
-                                stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
-                                LOG.info("Performed %s" % progress)
-                                platform_resized = True
+                                drbd_dev = "drbd2"
+                                drbd_lv = "platform-lv"
+                                platform_resized = self._resize2fs_drbd_dev(context, retry_attempts,
+                                                                            drbd_dev, drbd_lv)
 
                         if constants.DRBD_EXTENSION in drbd_fs_updated:
                             if (not extension_resized and
                                 (not standby_host or (standby_host and
                                  constants.DRBD_EXTENSION in self._drbd_fs_sync()))):
                                 # extension_gib /opt/extension
-                                progress = "resize2fs drbd5"
-                                cmd = ["resize2fs", "/dev/drbd5"]
-                                stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
-                                LOG.info("Performed %s" % progress)
-                                extension_resized = True
+                                drbd_dev = "drbd5"
+                                drbd_lv = "extension-lv"
+                                extension_resized = self._resize2fs_drbd_dev(context, retry_attempts,
+                                                                             drbd_dev, drbd_lv)
 
                         if constants.DRBD_DC_VAULT in drbd_fs_updated:
                             if (not patch_resized and
                                 (not standby_host or (standby_host and
                                  constants.DRBD_DC_VAULT in self._drbd_fs_sync()))):
                                 # patch_gib /opt/dc-vault
-                                progress = "resize2fs drbd6"
-                                cmd = ["resize2fs", "/dev/drbd6"]
-                                stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
-                                LOG.info("Performed %s" % progress)
-                                patch_resized = True
+                                drbd_dev = "drbd6"
+                                drbd_lv = "dc-vault-lv"
+                                patch_resized = self._resize2fs_drbd_dev(context, retry_attempts,
+                                                                         drbd_dev, drbd_lv)
 
                         if constants.DRBD_ETCD in drbd_fs_updated:
                             if (not etcd_resized and
                                 (not standby_host or (standby_host and
                                  constants.DRBD_ETCD in self._drbd_fs_sync()))):
                                 # patch_gib /opt/etcd
-                                progress = "resize2fs drbd7"
-                                cmd = ["resize2fs", "/dev/drbd7"]
-                                stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
-                                LOG.info("Performed %s" % progress)
-                                etcd_resized = True
+                                drbd_dev = "drbd7"
+                                drbd_lv = "etcd-lv"
+                                etcd_resized = self._resize2fs_drbd_dev(context, retry_attempts,
+                                                                        drbd_dev, drbd_lv)
 
                         if constants.DRBD_DOCKER_DISTRIBUTION in drbd_fs_updated:
                             if (not dockerdistribution_resized and
                                 (not standby_host or (standby_host and
                                  constants.DRBD_DOCKER_DISTRIBUTION in self._drbd_fs_sync()))):
                                 # patch_gib /var/lib/docker-distribution
-                                progress = "resize2fs drbd8"
-                                cmd = ["resize2fs", "/dev/drbd8"]
-                                stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
-                                LOG.info("Performed %s" % progress)
-                                dockerdistribution_resized = True
+                                drbd_dev = "drbd8"
+                                drbd_lv = "dockerdistribution-lv"
+                                dockerdistribution_resized = self._resize2fs_drbd_dev(context, retry_attempts,
+                                                                                      drbd_dev, drbd_lv)
 
                         if not standby_host:
                             rc = True
@@ -8980,12 +9068,11 @@ class ConductorManager(service.PeriodicService):
                         time.sleep(1)
                     else:
                         LOG.warn("resizing filesystems not completed")
-
             except exception.ProcessExecutionError as ex:
                 LOG.warn("Failed to perform storage resizing (cmd: '%(cmd)s', "
                          "return code: %(rc)s, stdout: '%(stdout)s).', "
                          "stderr: '%(stderr)s'" %
-                         {"cmd": " ".join(cmd), "stdout": ex.stdout,
+                         {"cmd": ex.cmd, "stdout": ex.stdout,
                           "stderr": ex.stderr, "rc": ex.exit_code})
 
         return rc
