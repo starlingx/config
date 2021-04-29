@@ -497,7 +497,7 @@ class StorageController(rest.RestController):
                          constants.STOR_FUNCTION_OSD,
                          constants.SB_STATE_CONFIGURING_ON_UNLOCK))
 
-    def delete_stor(self, stor_uuid):
+    def delete_stor(self, stor_uuid, remove_from_cluster=False):
         """Delete a stor"""
 
         stor = objects.storage.get_by_uuid(pecan.request.context, stor_uuid)
@@ -505,9 +505,9 @@ class StorageController(rest.RestController):
         try:
             # The conductor will handle removing the stor, not all functions
             # need special handling
-            # if stor.function == constants.STOR_FUNCTION_OSD:
-            #     pecan.request.rpcapi.unconfigure_osd_istor(pecan.request.context,
-            #                                                stor)
+            if stor.function == constants.STOR_FUNCTION_OSD and remove_from_cluster:
+                pecan.request.rpcapi.unconfigure_osd_istor(pecan.request.context,
+                                                            stor)
             if stor.function == constants.STOR_FUNCTION_JOURNAL:
                 pecan.request.dbapi.istor_disable_journal(stor_uuid)
             # Now remove the stor from DB

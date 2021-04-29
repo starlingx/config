@@ -2491,12 +2491,14 @@ class HostController(rest.RestController):
                     ceph_mons[0].uuid, {'device_path': None}
                 )
 
+        remove_from_cluster = True if ihost.invprovision == constants.PROVISIONED else False
+
         # Delete the stor entries associated with this host
         istors = pecan.request.dbapi.istor_get_by_ihost(ihost['uuid'])
 
         for stor in istors:
             try:
-                self.istors.delete_stor(stor.uuid)
+                self.istors.delete_stor(stor.uuid, remove_from_cluster)
             except Exception as e:
                 # Do not destroy the ihost if the stor cannot be deleted.
                 LOG.exception(e)
