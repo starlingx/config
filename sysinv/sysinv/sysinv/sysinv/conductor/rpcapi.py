@@ -1881,6 +1881,17 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                                 rpc_app=rpc_app,
                                                 hook_info=hook_info))
 
+    def backup_restore_lifecycle_actions(self, context, operation, success):
+        """Synchronously, perform any lifecycle actions required
+        for backup and restore operations
+        :param context: request context.
+        :param operation: what operation to notify about.
+        :param success: True if the operation was successful, False if it fails.
+                        used in post-*-action to indicate that an operation in progress failed.
+        """
+        return self.call(context, self.make_msg('backup_restore_lifecycle_actions',
+                                                operation=operation, success=success))
+
     def perform_app_upload(self, context, rpc_app, tarfile, lifecycle_hook_info):
         """Handle application upload request
 
