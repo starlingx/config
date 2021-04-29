@@ -5225,7 +5225,8 @@ class ConductorManager(service.PeriodicService):
 
         if upgrade.state == constants.UPGRADE_ACTIVATING_HOSTS:
             hosts = self.dbapi.ihost_get_list()
-            out_of_date_hosts = [host for host in hosts if host.config_target != host.config_applied]
+            out_of_date_hosts = [host for host in hosts
+                                 if host.config_target and host.config_target != host.config_applied]
             if not out_of_date_hosts:
                 LOG.info("Manifests applied. Upgrade activation complete.")
                 self.dbapi.software_upgrade_update(
