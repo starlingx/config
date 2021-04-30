@@ -389,15 +389,6 @@ start()
         fi
     fi
 
-    if [ -e $CONFIG_DIR/admin-ep-cert.pem ]
-    then
-        cp $CONFIG_DIR/admin-ep-cert.pem /etc/ssl/private/
-        if [ $? -ne 0 ]
-        then
-            fatal_error "Unable to copy $CONFIG_DIR/admin-ep-cert.pem to certificates dir"
-        fi
-    fi
-
     if [ -e $CONFIG_DIR/dc-adminep-root-ca.crt ]
     then
         cp $CONFIG_DIR/dc-adminep-root-ca.crt /etc/pki/ca-trust/source/anchors/
