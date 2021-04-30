@@ -11,7 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2021 Wind River Systems, Inc.
 #
 # The right to copy, distribute, modify, or otherwise make use
 # of this software may be licensed only pursuant to the terms
@@ -365,8 +365,16 @@ class AdminEndpointRenew(CertificateRenew):
 
     def update_certificate(self, event_data):
         token = self.context.get_token()
+
+        role = self.context.dc_role
         utils.update_admin_ep_cert(token, event_data.ca_crt, event_data.tls_crt,
-                                   event_data.tls_key)
+                                event_data.tls_key)
+
+        # In subclouds, it was observed that sometimes old ICA was used
+        # to sign adminep-cert. Here we run a verification to confirm that
+        # the chain is valid & delete secret if chain fails
+        if role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+            utils.verify_adminep_cert_chain()
 
 
 class DCIntermediateCertRenew(CertificateRenew):
