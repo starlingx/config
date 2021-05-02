@@ -1,6 +1,6 @@
 # sim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2019-2021 Wind River Systems, Inc.
+# Copyright (c) 2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #

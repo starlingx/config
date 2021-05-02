@@ -3258,12 +3258,8 @@ class ArmadaHelper(object):
 
         # Wait for armada to be ready for cmd execution.
         # NOTE: make_armada_requests() also has retry mechanism
-        TIMEOUT_DELTA = 5
-        TIMEOUT_SLEEP = 5
-        TIMEOUT_START_VALUE = 30
-
-        timeout = TIMEOUT_START_VALUE
-        while timeout > 0:
+        timeout = 30
+        while True:
             try:
                 pods = self._kube.kube_get_pods_by_selector(
                     ARMADA_NAMESPACE,
@@ -3291,42 +3287,20 @@ class ArmadaHelper(object):
                         LOG.error("Failed to copy %s to %s, error: %s",
                                   src, dest_dir, stderr)
                         raise RuntimeError('armada pod not ready')
-                    break
+                    else:
+                        return True
+                    return True
 
             except Exception as e:
                 LOG.info("Could not get Armada service : %s " % e)
 
-            time.sleep(TIMEOUT_SLEEP)
-            timeout -= TIMEOUT_DELTA
-
-        if timeout <= 0:
-            LOG.error("Failed to get Armada service after {seconds} seconds.".
-                      format(seconds=TIMEOUT_START_VALUE))
-            return False
-
-        # We don't need to loop through the code that checks the pod's status
-        # again. Once the previous loop exits with pod 'Running' we can test
-        # the connectivity to the tiller postgres backend:
-        timeout = TIMEOUT_START_VALUE
-        while timeout > 0:
-            try:
-                _ = helm_utils.retrieve_helm_releases()
+            if timeout <= 0:
                 break
-            except exception.HelmTillerFailure:
-                LOG.warn("Could not query Helm/Tiller releases")
-                time.sleep(TIMEOUT_SLEEP)
-                timeout -= TIMEOUT_DELTA
-                continue
-            except Exception as ex:
-                LOG.error("Unhandled exception : {error}".format(error=str(ex)))
-                return False
+            time.sleep(5)
+            timeout -= 5
 
-        if timeout <= 0:
-            LOG.error("Failed to query Helm/Tiller for {seconds} seconds.".
-                      format(seconds=TIMEOUT_START_VALUE))
-            return False
-
-        return True
+        LOG.error("Failed to get Armada service after 30 seconds.")
+        return False
 
     def stop_armada_request(self):
         """A simple way to cancel an on-going manifest apply/rollback/delete
