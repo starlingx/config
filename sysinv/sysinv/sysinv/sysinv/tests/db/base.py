@@ -48,6 +48,8 @@ class BaseIPv4Mixin(object):
     cluster_service_subnet = netaddr.IPNetwork('10.96.0.0/12')
     multicast_subnet = netaddr.IPNetwork('239.1.1.0/28')
     storage_subnet = netaddr.IPNetwork('10.10.20.0/24')
+    system_controller_subnet = netaddr.IPNetwork('192.168.104.0/24')
+    system_controller_oam_subnet = netaddr.IPNetwork('10.10.50.0/24')
 
     nameservers = ['8.8.8.8', '8.8.4.4']
 
@@ -65,6 +67,8 @@ class BaseIPv6Mixin(object):
     cluster_service_subnet = netaddr.IPNetwork('fd04::/112')
     multicast_subnet = netaddr.IPNetwork('ff08::1:1:0/124')
     storage_subnet = netaddr.IPNetwork('fd05::/64')
+    system_controller_subnet = netaddr.IPNetwork('fd07::/64')
+    system_controller_oam_subnet = netaddr.IPNetwork('fd06::/64')
 
     nameservers = ['2001:4860:4860::8888', '2001:4860:4860::8844']
 
@@ -240,6 +244,14 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
                                   constants.NETWORK_TYPE_STORAGE,
                                   self.storage_subnet)
 
+        self._create_test_network('system-controller',
+                                  constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
+                                  self.system_controller_subnet)
+
+        self._create_test_network('system-controller-oam',
+                                  constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM,
+                                  self.system_controller_oam_subnet)
+
     def _create_test_addresses(self, hostnames, subnet, network_type,
                                start=1, stop=None):
         ips = itertools.islice(subnet, start, stop)
@@ -285,6 +297,14 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self._create_test_addresses(
             hostnames, self.storage_subnet,
             constants.NETWORK_TYPE_STORAGE)
+
+        self._create_test_addresses(
+            hostnames, self.system_controller_subnet,
+            constants.NETWORK_TYPE_SYSTEM_CONTROLLER)
+
+        self._create_test_addresses(
+            hostnames, self.system_controller_oam_subnet,
+            constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM)
 
     def _create_test_oam(self):
         self.oam = dbutils.create_test_oam()

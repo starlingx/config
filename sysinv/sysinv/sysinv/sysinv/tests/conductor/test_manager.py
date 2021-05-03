@@ -1901,6 +1901,44 @@ class ManagerTestCase(base.DbTestCase):
         ihost = self.dbapi.ihost_get(host_id)
         self.assertEqual(ihost.reboot_needed, True)
 
+    def test_update_dnsmasq_config(self):
+        mock_config_update_hosts = mock.MagicMock()
+        mock_config_apply_runtime_manifest = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager._config_update_hosts',
+                       mock_config_update_hosts)
+        p.start().return_value = '1234'
+        self.addCleanup(p.stop)
+        p2 = mock.patch('sysinv.conductor.manager.ConductorManager._config_apply_runtime_manifest',
+                        mock_config_apply_runtime_manifest)
+        p2.start()
+        self.addCleanup(p2.stop)
+        self.service.update_dnsmasq_config(self.context)
+        personalities = [constants.CONTROLLER]
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::dns::dnsmasq::runtime'],
+        }
+        mock_config_apply_runtime_manifest.assert_called_with(mock.ANY, '1234', config_dict)
+
+    def test_update_ldap_client_config(self):
+        mock_config_update_hosts = mock.MagicMock()
+        mock_config_apply_runtime_manifest = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager._config_update_hosts',
+                       mock_config_update_hosts)
+        p.start().return_value = '1234'
+        self.addCleanup(p.stop)
+        p2 = mock.patch('sysinv.conductor.manager.ConductorManager._config_apply_runtime_manifest',
+                        mock_config_apply_runtime_manifest)
+        p2.start()
+        self.addCleanup(p2.stop)
+        self.service.update_ldap_client_config(self.context)
+        personalities = [constants.CONTROLLER]
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::ldap::client::runtime'],
+        }
+        mock_config_apply_runtime_manifest.assert_called_with(mock.ANY, '1234', config_dict)
+
 
 class ManagerTestCaseInternal(base.BaseHostTestCase):
 

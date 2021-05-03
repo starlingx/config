@@ -10821,6 +10821,26 @@ class ConductorManager(service.PeriodicService):
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
+    def update_dnsmasq_config(self, context):
+        """Update the dnsmasq configuration"""
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::dns::dnsmasq::runtime'],
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+    def update_ldap_client_config(self, context):
+        """Update the LDAP client configuration"""
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::ldap::client::runtime'],
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
     def get_ceph_pools_config(self, context):
         return self._ceph.get_pools_config()
 
