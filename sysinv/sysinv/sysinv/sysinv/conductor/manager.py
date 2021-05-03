@@ -13502,6 +13502,22 @@ class ConductorManager(service.PeriodicService):
             self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_DEVICE_IMAGE_UPDATE_IN_PROGRESS,
                                     entity_instance_id)
 
+    def _get_current_kube_rootca(self):
+        """ Extract current k8s rootca """
+        current_cert = None
+        try:
+            with open('/etc/kubernetes/pki/ca.crt', 'rb') as old_rootca:
+                old_rootca.seek(0, os.SEEK_SET)
+                read_ca = old_rootca.read()
+                old_rootca_cert = cutils.extract_certs_from_pem(read_ca)[0]
+                hash_subject = cutils.get_cert_issuer_string_hash(old_rootca_cert)
+                serial_number = cutils.get_cert_serial(old_rootca_cert)
+                current_cert = "%s-%s" % (str(hash_subject), str(serial_number))
+        except Exception:
+            msg = "Extracting information regarding current k8s rootca failed"
+            return dict(success="", error=msg)
+        return current_cert
+
     def fpga_device_update_by_host(self, context,
                                   host_uuid, fpga_device_dict_array):
         """Create FPGA devices for an ihost with the supplied data.
@@ -13707,6 +13723,177 @@ class ConductorManager(service.PeriodicService):
 
         LOG.info(output)
         return output
+
+    def _create_kube_rootca_resources(self, certificate, key):
+        """ A method to create new resources to store new kubernetes
+        rootca data.
+
+        :param certificate: the certificate to be stored in TLS secret
+        :param key: the certificate key to be stored in TLS secret
+        :return: An error message if method is not successful, otherwhise None
+        """
+        kube_operator = kubernetes.KubeOperator()
+
+        body = {
+            'apiVersion': 'v1',
+            'type': 'kubernetes.io/tls',
+            'kind': 'Secret',
+            'metadata': {
+                'name': constants.KUBE_ROOTCA_SECRET,
+                'namespace': kubernetes.NAMESPACE_DEPLOYMENT
+            },
+            'data': {
+                'tls.crt': certificate,
+                'tls.key': key
+            }
+        }
+
+        try:
+            secret = kube_operator.kube_get_secret(constants.KUBE_ROOTCA_SECRET,
+                                                    kubernetes.NAMESPACE_DEPLOYMENT)
+            if secret is not None:
+                kube_operator.kube_delete_secret(constants.KUBE_ROOTCA_SECRET,
+                                                    kubernetes.NAMESPACE_DEPLOYMENT)
+            kube_operator.kube_create_secret(kubernetes.NAMESPACE_DEPLOYMENT, body)
+        except Exception as e:
+            msg = "Creation of kube-rootca secret failed: %s" % str(e)
+            LOG.error(msg)
+            return msg
+
+        body = {
+            'apiVersion': 'cert-manager.io/v1alpha2',
+            'kind': 'Issuer',
+            'metadata': {
+                'name': constants.KUBE_ROOTCA_ISSUER,
+                'namespace': kubernetes.NAMESPACE_DEPLOYMENT
+            },
+            'spec': {
+                'ca': {
+                    'secretName': constants.KUBE_ROOTCA_SECRET
+                }
+            }
+        }
+
+        try:
+            kube_operator.apply_custom_resource('cert-manager.io',
+                                                     'v1alpha2',
+                                                     kubernetes.NAMESPACE_DEPLOYMENT,
+                                                     'issuers',
+                                                     constants.KUBE_ROOTCA_ISSUER,
+                                                     body)
+        except Exception as e:
+            msg = "Not successfull applying issuer: %s" % str(e)
+            return msg
+
+    def _precheck_save_kubernetes_rootca_cert(self, update, temp_pem_contents):
+        """ This method intends to do a series of validations to allow the upload
+            of a new rootca for kubernetes. These validations are respective to the
+            procedure itself or the new ca file that is being uploaded.
+
+        :param update: actual entry of kube rootca update procedure from DB
+        :param temp_pem_contents: content of the file uploaded to update kube rootca
+        :return: A dictionaire with a new_cert if successful and eventual error message
+        """
+
+        if update.state != kubernetes.KUBE_ROOTCA_UPDATE_STARTED:
+            msg = "A new root CA certificate already exists"
+            return dict(success="", error=msg)
+
+        if update.to_rootca_cert:
+            LOG.info("root CA target with serial number %s will be overwritten"
+                     % update.to_rootca_cert)
+
+        # extract the certificate contained in PEM file
+        try:
+            cert = cutils.extract_certs_from_pem(temp_pem_contents)[0]
+        except Exception as e:
+            msg = "Failed to extract certificate from file: %s" % str(e)
+            return dict(success="", error=msg)
+
+        if not cert:
+            msg = "No certificate have been added, " \
+                  "no valid certificate found in file."
+            LOG.info(msg)
+            return dict(success="", error=msg)
+
+        # validate certificate
+        msg = cutils.check_cert_validity(cert)
+
+        if msg is not None:
+            return dict(success="", error=msg)
+
+        is_ca = cutils.is_ca_cert(cert)
+        if not is_ca:
+                msg = "The certificate in the file is not a CA certificate"
+                return dict(success="", error=msg)
+
+        # extract information regarding the new rootca
+        try:
+            hash_subject = cutils.get_cert_issuer_string_hash(cert)
+            serial_number = cutils.get_cert_serial(cert)
+            new_cert = '%s-%s' % (hash_subject, serial_number)
+        except Exception:
+            msg = "Failed to extract respective subject and serial number"
+            return dict(success="", error=msg)
+
+        return dict(success=new_cert, error="")
+
+    def save_kubernetes_rootca_cert(self, context, ca_file):
+        """
+        Save a new uploaded kubernetes rootca for update procedure
+        :param context: request context
+        :param ca_file: a stream representing the PEM file uploaded
+        """
+
+        # ca_file has to be in bytes format for extract information
+        if not isinstance(ca_file, bytes):
+            temp_pem_contents = ca_file.encode("utf-8")
+        else:
+            temp_pem_contents = ca_file
+
+        try:
+            update = self.dbapi.kube_rootca_update_get_one()
+        except exception.NotFound:
+            msg = "Kubernetes root CA update not started"
+            LOG.error(msg)
+            return dict(success="", error=msg)
+
+        result = self._precheck_save_kubernetes_rootca_cert(update, temp_pem_contents)
+        if result.get("error"):
+            msg = result.get("error")
+            return dict(success="", error=msg)
+        else:
+            new_cert = result.get("success")
+
+        # extract current k8s rootca
+        current_cert = self._get_current_kube_rootca()
+        if not current_cert:
+            msg = "Not able to get the current kube rootca"
+            return dict(success="", error=msg)
+
+        try:
+            certificate = cutils.extract_ca_crt_bytes_from_pem(temp_pem_contents)
+        except exception.InvalidKubernetesCA:
+            msg = "Invalid certificate format"
+            return dict(success="", error=msg)
+
+        try:
+            key = cutils.extract_ca_private_key_bytes_from_pem(temp_pem_contents)
+        except exception.InvalidKubernetesCA:
+            msg = "Failed to extract key from certificate file"
+            return dict(success="", error=msg)
+
+        msg = self._create_kube_rootca_resources(certificate, key)
+        if msg is not None:
+            return dict(success="", error=msg)
+
+        # update db
+        update_obj = {'state': kubernetes.KUBE_ROOTCA_UPDATE_CERT_UPLOADED,
+                      'from_rootca_cert': current_cert,
+                      'to_rootca_cert': new_cert}
+
+        r = self.dbapi.kube_rootca_update_update(update.id, update_obj)
+        return dict(success=r.to_rootca_cert, error="")
 
     def mtc_action_apps_semantic_checks(self, context, action):
         """Call semantic check for maintenance actions of each app.

@@ -47,6 +47,7 @@ KUBE_STATE_PARTIAL = 'partial'
 
 # Kubernetes namespaces
 NAMESPACE_KUBE_SYSTEM = 'kube-system'
+NAMESPACE_DEPLOYMENT = 'deployment'
 
 # Kubernetes control plane components
 KUBE_APISERVER = 'kube-apiserver'
@@ -80,12 +81,12 @@ KUBE_HOST_UPGRADING_KUBELET_FAILED = 'upgrading-kubelet-failed'
 KUBE_ROOTCA_UPDATE_STARTED = 'update-started'
 KUBE_ROOTCA_UPDATE_CERT_UPLOADED = 'update-new-rootca-cert-uploaded'
 KUBE_ROOTCA_UPDATE_CERT_GENERATED = 'update-new-rootca-cert-generated'
-KUBE_ROOTCA_UPDATE_UPDATING_PODS_TRUSTBOTHCAS = 'updating-pods-trustBothCAs'
-KUBE_ROOTCA_UPDATE_UPDATED_PODS_TRUSTBOTHCAS = 'updated-pods-trustBothCAs'
-KUBE_ROOTCA_UPDATE_UPDATING_PODS_TRUSTBOTHCAS_FAILED = 'updating-pods-trustBothCAs-failed'
-KUBE_ROOTCA_UPDATE_UPDATING_PODS_TRUSTNEWCA = 'updating-pods-trustNewCA'
-KUBE_ROOTCA_UPDATE_UPDATED_PODS_TRUSTNEWCA = 'updated-pods-trustNewCA'
-KUBE_ROOTCA_UPDATE_UPDATING_PODS_TRUSTNEWCA_FAILED = 'updating-pods-trustNewCA-failed'
+KUBE_ROOTCA_UPDATING_PODS_TRUSTBOTHCAS = 'updating-pods-trustBothCAs'
+KUBE_ROOTCA_UPDATED_PODS_TRUSTBOTHCAS = 'updated-pods-trustBothCAs'
+KUBE_ROOTCA_UPDATING_PODS_TRUSTBOTHCAS_FAILED = 'updating-pods-trustBothCAs-failed'
+KUBE_ROOTCA_UPDATING_PODS_TRUSTNEWCA = 'updating-pods-trustNewCA'
+KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA = 'updated-pods-trustNewCA'
+KUBE_ROOTCA_UPDATING_PODS_TRUSTNEWCA_FAILED = 'updating-pods-trustNewCA-failed'
 KUBE_ROOTCA_UPDATE_COMPLETED = 'update-completed'
 
 # Kubernetes rootca host update states
@@ -553,6 +554,44 @@ class KubeOperator(object):
             LOG.error("Failed to delete Jobs with label %s under "
                       "Namespace %s: %s" % (label, namespace, e))
             raise
+
+    def get_custom_resource(self, group, version, namespace, plural, name):
+        custom_resource_api = self._get_kubernetesclient_custom_objects()
+
+        try:
+            cert = custom_resource_api.get_namespaced_custom_object(
+                group,
+                version,
+                namespace,
+                plural,
+                name)
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                return None
+            else:
+                LOG.error("Fail to access %s:%s. %s" % (namespace, name, e))
+                raise
+        else:
+            return cert
+
+    def apply_custom_resource(self, group, version, namespace, plural, name, body):
+        custom_resource_api = self._get_kubernetesclient_custom_objects()
+
+        # if resource already exists we apply just a patch
+        cert = self.get_custom_resource(group, version, namespace, plural, name)
+        if cert:
+            custom_resource_api.patch_namespaced_custom_object(group,
+                                                               version,
+                                                               namespace,
+                                                               plural,
+                                                               name,
+                                                               body)
+        else:
+            custom_resource_api.create_namespaced_custom_object(group,
+                                                                version,
+                                                                namespace,
+                                                                plural,
+                                                                body)
 
     def delete_custom_resource(self, group, version, namespace, plural, name):
         c = self._get_kubernetesclient_custom_objects()

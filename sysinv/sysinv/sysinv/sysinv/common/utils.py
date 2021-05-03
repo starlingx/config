@@ -2564,6 +2564,45 @@ def get_aws_ecr_registry_credentials(dbapi, registry, username, password):
     return dict(username=username, password=password)
 
 
+def extract_ca_private_key_bytes_from_pem(pem_content):
+    """ Extract key from the PEM file bytes
+
+    :param pem_content: bytes from PEM file where we'll get the key
+    :return base64_crt: extracted key base64 encoded
+    """
+    begin_search = pem_content.find(constants.BEGIN_PRIVATE_KEY_MARKER)
+    if begin_search < 0:
+        raise exception.InvalidKubernetesCA
+
+    end_search = pem_content.find(constants.END_PRIVATE_KEY_MARKER)
+    if end_search < 0:
+        LOG.info(pem_content)
+        raise exception.InvalidKubernetesCA
+    end_search += len(constants.END_PRIVATE_KEY_MARKER)
+
+    base64_key = base64.b64encode(pem_content[begin_search:end_search])
+    return base64_key
+
+
+def extract_ca_crt_bytes_from_pem(pem_content):
+    """ Extract certificate from the PEM file bytes
+
+    :param pem_content: bytes from PEM file where we'll get the certificate
+    :return base64_crt: extracted certificate base64 encoded
+    """
+    begin_search = pem_content.find(constants.BEGIN_CERTIFICATE_MARKER)
+    if begin_search < 0:
+        raise exception.InvalidKubernetesCA
+
+    end_search = pem_content.find(constants.END_CERTIFICATE_MARKER)
+    if end_search < 0:
+        raise exception.InvalidKubernetesCA
+
+    end_search += len(constants.END_CERTIFICATE_MARKER)
+    base64_crt = base64.b64encode(pem_content[begin_search:end_search])
+    return base64_crt
+
+
 def extract_certs_from_pem(pem_contents):
     """
     Extract certificates from a pem string
@@ -2571,12 +2610,10 @@ def extract_certs_from_pem(pem_contents):
     :param pem_contents: A string in pem format
     :return certs: A list of x509 cert objects
     """
-    marker = b'-----BEGIN CERTIFICATE-----'
-
     start = 0
     certs = []
     while True:
-        index = pem_contents.find(marker, start)
+        index = pem_contents.find(constants.BEGIN_CERTIFICATE_MARKER, start)
         if index == -1:
             break
         try:
@@ -2589,8 +2626,23 @@ def extract_certs_from_pem(pem_contents):
                 "Failed to load pem x509 certificate"))
 
         certs.append(cert)
-        start = index + len(marker)
+        start = index + len(constants.BEGIN_CERTIFICATE_MARKER)
     return certs
+
+
+def check_cert_validity(cert):
+    """Perform checks on validity of certificate
+    """
+    now = datetime.datetime.utcnow()
+    msg = ("certificate is not valid before %s nor after %s" %
+            (cert.not_valid_before, cert.not_valid_after))
+    LOG.info(msg)
+    if now <= cert.not_valid_before or now >= cert.not_valid_after:
+        msg = ("certificate is not valid before %s nor after %s" %
+                (cert.not_valid_before, cert.not_valid_after))
+        LOG.info(msg)
+        return msg
+    return None
 
 
 def is_ca_cert(cert):
@@ -2634,6 +2686,55 @@ def get_cert_issuer_hash(cert):
     return hash_issuer
 
 
+def get_cert_issuer_string_hash(cert):
+    """
+    Get the hash value of the cert's issuer DN
+
+    :param cert: the certificate to get issuer from
+    :return: The hash value of the cert's issuer DN
+    """
+    try:
+        public_bytes = cert.public_bytes(encoding=serialization.Encoding.PEM)
+        cert_c = crypto.load_certificate(crypto.FILETYPE_PEM, public_bytes)
+
+        # get the issuer object from the loaded certificate
+        cert_issuer = cert_c.get_issuer()
+
+        # for each component presented on certificate issuer,
+        # converts the respective name and value for strings and join all
+        # together
+        issuer_attributes = "".join("/{0:s}={1:s}".format(name.decode(),
+                                                           value.decode())
+                                     for name, value in
+                                         cert_issuer.get_components())
+
+        # apply the hash function to binary form of the string above and
+        # digest it as a hexdecimal value, and take the first 16 bytes.
+        hashed_attributes = \
+            hashlib.md5(issuer_attributes.encode()).hexdigest()[:16]
+
+        LOG.info("hashed issuer attributes %s from certificate "
+                % hashed_attributes)
+    except Exception:
+        LOG.exception()
+        raise exception.SysinvException(_(
+            "Failed to get certificate issuer hash."))
+
+    return hashed_attributes
+
+
+def get_cert_serial(cert):
+    try:
+        public_bytes = cert.public_bytes(encoding=serialization.Encoding.PEM)
+        cert_c = crypto.load_certificate(crypto.FILETYPE_PEM, public_bytes)
+        serial_number = cert_c.get_serial_number()
+    except Exception:
+        LOG.exception()
+        raise exception.SysinvException(_(
+            "Failed to get certificate serial number."))
+    return serial_number
+
+
 def get_cert_subject_hash(cert):
     """
     Get the hash value of the cert's subject DN
@@ -2651,6 +2752,43 @@ def get_cert_subject_hash(cert):
             "Failed to get certificate subject hash."))
 
     return hash_subject
+
+
+def get_cert_subject_string_hash(cert):
+    """
+    Get the hash value of the cert's subject DN
+
+    :param cert: the certificate to get subject from
+    :return: The hash value of the cert's subject DN
+    """
+    try:
+        public_bytes = cert.public_bytes(encoding=serialization.Encoding.PEM)
+        cert_c = crypto.load_certificate(crypto.FILETYPE_PEM, public_bytes)
+
+        # get the subject object from the loaded certificate
+        cert_subject = cert_c.get_subject()
+
+        # for each component presented on certificate subject,
+        # converts the respective name and value for strings and join all
+        # together
+        subject_attributes = "".join("/{0:s}={1:s}".format(name.decode(),
+                                                           value.decode())
+                                     for name, value in
+                                         cert_subject.get_components())
+
+        # apply the hash function to binary form of the string above and
+        # digest it as a hexdecimal value, and take the first 16 bytes.
+        hashed_attributes = \
+            hashlib.md5(subject_attributes.encode()).hexdigest()[:16]
+
+        LOG.info("hashed subject attributes %s from certificate "
+                % hashed_attributes)
+    except Exception:
+        LOG.exception()
+        raise exception.SysinvException(_(
+            "Failed to get certificate subject hash."))
+
+    return hashed_attributes
 
 
 def format_image_filename(device_image):

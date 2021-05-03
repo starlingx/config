@@ -2,9 +2,10 @@
 Tests for the API /kube_rootca_update/ methods.
 """
 
+import json
 import mock
+import os
 from six.moves import http_client
-
 from sysinv.common import constants
 from sysinv.common import health
 from sysinv.common import kubernetes
@@ -34,6 +35,9 @@ class FakeConductorAPI(object):
 
     def __init__(self):
         self.service = ConductorManager('test-host', 'test-topic')
+        self.save_kubernetes_rootca_cert = self.fake_config_certificate
+        self.config_certificate_return = None
+        self.platcert_k8s_secret_value = False
 
     def get_system_health(self, context, force=False, upgrade=False,
                           kube_upgrade=False, kube_rootca_update=False,
@@ -45,6 +49,12 @@ class FakeConductorAPI(object):
             kube_upgrade=kube_upgrade,
             kube_rootca_update=kube_rootca_update,
             alarm_ignore_list=alarm_ignore_list)
+
+    def fake_config_certificate(self, context, pem):
+        return self.config_certificate_return
+
+    def setup_config_certificate(self, data):
+        self.config_certificate_return = data
 
 
 class TestKubeRootCAUpdate(base.FunctionalTest):
@@ -119,6 +129,8 @@ class TestPostKubeRootUpdate(TestKubeRootCAUpdate,
         # Verify that the kubernetes rootca update has the expected attributes
         self.assertEqual(result.json['state'],
                         kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
+        self.assertNotEqual(result.json['from_rootca_cert'], None)
+        self.assertEqual(result.json['from_rootca_cert'], 'oldCertSerial')
 
     def test_create_rootca_update_unhealthy_from_alarms(self):
         """ Test creation of kube rootca update while there are alarms"""
@@ -192,3 +204,41 @@ class TestPostKubeRootUpdate(TestKubeRootCAUpdate,
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
         self.assertIn("rootca update cannot be done while a platform upgrade",
                       result.json['error_message'])
+
+
+class TestKubeRootCAUpload(TestKubeRootCAUpdate,
+                        dbbase.ProvisionedControllerHostTestCase):
+
+    def setUp(self):
+        super(TestKubeRootCAUpload, self).setUp()
+        self.fake_conductor_api.service.dbapi = self.dbapi
+
+    @mock.patch.object(kubernetes.KubeOperator,
+                       'kube_create_secret')
+    @mock.patch.object(kubernetes.KubeOperator,
+                       'apply_custom_resource')
+    def test_upload_rootca(self, mock_create_secret, mock_create_custom_resource):
+        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
+        certfile = os.path.join(os.path.dirname(__file__), "data",
+                                'rootca-with-key.pem')
+
+        fake_save_rootca_return = {'success': '137813-123', 'error': ''}
+
+        self.fake_conductor_api.\
+            setup_config_certificate(fake_save_rootca_return)
+
+        files = [('file', certfile)]
+        response = self.post_with_files('%s/%s' % ('/kube_rootca_update', 'upload'),
+                                  {},
+                                  upload_files=files,
+                                  headers={'User-Agent': 'sysinv-test'},
+                                  expect_errors=False)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+        resp = json.loads(response.body)
+
+        self.assertTrue(resp.get('success'))
+        self.assertEqual(resp.get('success'), fake_save_rootca_return.get('success'))
+        self.assertFalse(resp.get('error'))
