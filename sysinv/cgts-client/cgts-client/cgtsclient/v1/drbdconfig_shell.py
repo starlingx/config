@@ -106,7 +106,7 @@ def do_drbdsync_modify(cc, args):
     wait_interval = 8
     configuration_timeout = 90
     do_wait = True
-    LOOP_MAX = int(configuration_timeout / wait_interval)
+    LOOP_MAX = int(configuration_timeout // wait_interval)
     for x in range(0, LOOP_MAX):
         ihosts = cc.ihost.list_personality(personality=CONTROLLER)
         do_wait = False

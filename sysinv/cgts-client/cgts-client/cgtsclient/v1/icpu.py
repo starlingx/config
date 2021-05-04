@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+from six.moves import range
 
 from cgtsclient._i18n import _
 from cgtsclient.common import base

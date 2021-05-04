@@ -33,7 +33,7 @@ class LoadManager(base.Manager):
             return None
 
     def _create_load(self, load, path):
-        if set(load.keys()) != set(CREATION_ATTRIBUTES):
+        if set(list(load.keys())) != set(CREATION_ATTRIBUTES):
             raise exc.InvalidAttribute()
 
         return self._create(path, load)

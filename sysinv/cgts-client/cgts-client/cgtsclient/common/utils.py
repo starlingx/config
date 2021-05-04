@@ -48,6 +48,8 @@ from oslo_utils import importutils
 
 from cgtsclient.common import wrapping_formatters
 from six.moves import input
+from six.moves import map
+from six.moves import zip
 
 
 class HelpFormatter(argparse.HelpFormatter):

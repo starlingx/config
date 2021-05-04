@@ -16,7 +16,7 @@ OP_LOOKUP = {'!=': 'ne',
              '<': 'lt',
              '=': 'eq'}
 
-OP_LOOKUP_KEYS = '|'.join(sorted(OP_LOOKUP.keys(), key=len, reverse=True))
+OP_LOOKUP_KEYS = '|'.join(sorted(list(OP_LOOKUP.keys()), key=len, reverse=True))
 OP_SPLIT_RE = re.compile(r'(%s)' % OP_LOOKUP_KEYS)
 
 DATA_TYPE_RE = re.compile(r'^(string|integer|float|datetime|boolean)(::)(.+)$')
