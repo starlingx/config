@@ -14,8 +14,8 @@ BuildRequires: fdupes
 Requires: python-httplib2
 Requires: python-prettytable
 Requires: bash-completion
-Requires: python-neutronclient
 Requires: python-keystoneclient
+Requires: python-dateutil
 # Needed for python2 and python3 compatible
 Requires: python-six
 
