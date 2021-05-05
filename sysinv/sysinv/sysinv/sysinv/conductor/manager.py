@@ -303,7 +303,7 @@ class ConductorManager(service.PeriodicService):
 
         self._handle_restore_in_progress()
 
-        self._reset_simplex_to_duplex_flag(system)
+        self._sx_to_dx_post_migration_actions(system)
 
         LOG.info("sysinv-conductor start committed system=%s" %
                  system.as_dict())
@@ -410,20 +410,85 @@ class ConductorManager(service.PeriodicService):
         self._create_default_service_parameter()
         return system
 
-    def _reset_simplex_to_duplex_flag(self, system):
+    def _update_pvc_migration_alarm(self, alarm_state=None):
+        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_K8S,
+                                        "PV-migration-failed")
+        reason_text = "Failed to patch Persistent Volumes backed by CEPH "\
+                      "during AIO-SX to AIO-DX migration"
 
-        # Skip if the flag is not set or if the system mode is not set to duplex
-        if (not system.capabilities.get('simplex_to_duplex_migration') or
-                system.system_mode != constants.SYSTEM_MODE_DUPLEX):
-            return
+        if alarm_state == fm_constants.FM_ALARM_STATE_SET:
+            fault = fm_api.Fault(
+                alarm_id=fm_constants.FM_ALARM_ID_K8S_RESOURCE_PV,
+                alarm_state=fm_constants.FM_ALARM_STATE_SET,
+                entity_type_id=fm_constants.FM_ENTITY_TYPE_K8S,
+                entity_instance_id=entity_instance_id,
+                severity=fm_constants.FM_ALARM_SEVERITY_MAJOR,
+                reason_text=reason_text,
+                alarm_type=fm_constants.FM_ALARM_TYPE_3,
+                probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_6,
+                proposed_repair_action=_("Manually execute /usr/bin/ceph_k8s_update_monitors.sh "
+                                         "to confirm PVs are updated, then lock/unlock to clear "
+                                         "alarms. If problem persists, contact next level of "
+                                         "support."),
+                service_affecting=False)
 
+            self.fm_api.set_fault(fault)
+        else:
+            alarms = self.fm_api.get_faults(entity_instance_id)
+            if alarms:
+                self.fm_api.clear_all(entity_instance_id)
+
+    def _pvc_monitor_migration(self):
+        ceph_backend_enabled = StorageBackendConfig.get_backend(
+            self.dbapi,
+            constants.SB_TYPE_CEPH)
+
+        if not ceph_backend_enabled:
+            # if it does not have ceph backend enabled there is
+            # nothing to migrate
+            return True
+
+        # get the controller-0 and floating management IP address
+        controller_0_address = self.dbapi.address_get_by_name(
+            constants.CONTROLLER_0_MGMT).address
+        floating_address = self.dbapi.address_get_by_name(
+            cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
+                                       constants.NETWORK_TYPE_MGMT)).address
+        try:
+            cmd = ["/usr/bin/ceph_k8s_update_monitors.sh",
+                controller_0_address,
+                floating_address]
+            __, __ = cutils.execute(*cmd, run_as_root=True)
+
+            LOG.info("Updated ceph-mon address from {} to {} on existing Persistent Volumes."
+                .format(controller_0_address, floating_address))
+            self._update_pvc_migration_alarm()
+        except exception.ProcessExecutionError:
+            error_msg = "Failed to patch Kubernetes Persistent Volume resources. "\
+                "ceph-mon address changed from {} to {}".format(
+                    controller_0_address, floating_address)
+            LOG.error(error_msg)
+
+            # raise alarm
+            self._update_pvc_migration_alarm(fm_constants.FM_ALARM_STATE_SET)
+            return False
+        return True
+
+    def _sx_to_dx_post_migration_actions(self, system):
         host = self.dbapi.ihost_get(self.host_uuid)
-        if host.administrative != constants.ADMIN_UNLOCKED:
+        # Skip if the system mode is not set to duplex or it is not unlocked
+        if (system.system_mode != constants.SYSTEM_MODE_DUPLEX or
+                host.administrative != constants.ADMIN_UNLOCKED):
             return
 
-        system_dict = system.as_dict()
-        del system_dict['capabilities']['simplex_to_duplex_migration']
-        self.dbapi.isystem_update(system.uuid, system_dict)
+        if system.capabilities.get('simplex_to_duplex_migration'):
+            system_dict = system.as_dict()
+            del system_dict['capabilities']['simplex_to_duplex_migration']
+            self.dbapi.isystem_update(system.uuid, system_dict)
+
+            greenthread.spawn(self._pvc_monitor_migration)
+        elif self.fm_api.get_faults_by_id(fm_constants.FM_ALARM_ID_K8S_RESOURCE_PV):
+            greenthread.spawn(self._pvc_monitor_migration)
 
     def _upgrade_init_actions(self):
         """ Perform any upgrade related startup actions"""

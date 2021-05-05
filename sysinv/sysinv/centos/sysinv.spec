@@ -117,6 +117,7 @@ install -p -D -m 755 scripts/validate-platform-backup.sh %{buildroot}%{local_bin
 install -p -D -m 755 scripts/manage-partitions %{buildroot}%{local_bindir}/manage-partitions
 install -p -D -m 755 scripts/query_pci_id %{buildroot}%{local_bindir}/query_pci_id
 install -p -D -m 700 scripts/kube-cert-rotation.sh %{buildroot}%{local_bindir}/kube-cert-rotation.sh
+install -p -D -m 755 scripts/ceph_k8s_update_monitors.sh %{buildroot}%{local_bindir}/ceph_k8s_update_monitors.sh
 
 %clean
 echo "CLEAN CALLED"
