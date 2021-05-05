@@ -3631,6 +3631,8 @@ class HostController(rest.RestController):
 
         # Make adjustment to 2M and 1G hugepages to accomodate an
         # increase in platform reserved memory.
+        # Also, consider the available memory on the calculation
+        # hupeages shall not be decreased if there is memory available
         for m in mems:
             # ignore updates when no change required
             if m.platform_reserved_mib is None or \
@@ -3644,45 +3646,68 @@ class HostController(rest.RestController):
                 continue
 
             # start with current measured hugepage
+            n_total_hp_size = 0
+            if m.vswitch_hugepages_reqd is not None:
+                n_total_hp_size += m.vswitch_hugepages_reqd \
+                    * m.vswitch_hugepages_size_mib
+            else:
+                n_total_hp_size += m.vswitch_hugepages_nr \
+                    * m.vswitch_hugepages_size_mib
             if m.vm_hugepages_nr_2M is not None:
                 n_2M = m.vm_hugepages_nr_2M
+                n_total_hp_size += n_2M * constants.MIB_2M
             else:
                 n_2M = None
             if m.vm_hugepages_nr_1G is not None:
                 n_1G = m.vm_hugepages_nr_1G
+                n_total_hp_size += n_1G * constants.MIB_1G
             else:
                 n_1G = None
 
-            # adjust current measurements
-            d_MiB = reserved - m.platform_reserved_mib
-            d_2M = int(d_MiB / constants.MIB_2M)
-            d_1G = int((d_MiB + 512) / constants.MIB_1G)
-            if n_2M is not None and n_2M - d_2M > 0:
-                d_1G = 0
-                n_2M -= d_2M
-            else:
-                d_2M = 0
-                if n_1G is not None and n_1G - d_1G > 0:
-                    n_1G -= d_1G
-                else:
-                    d_1G = 0
-
-            # override with pending values
-            if m.vm_hugepages_nr_2M_pending is not None:
-                n_2M = m.vm_hugepages_nr_2M_pending
-            if m.vm_hugepages_nr_1G_pending is not None:
-                n_1G = m.vm_hugepages_nr_1G_pending
-
+            # adjust current hugepage measurements based on the available
+            # memory
+            hp_mem_avail_mib = m.node_memtotal_mib - reserved \
+                - int(n_total_hp_size)
             values = {}
             values.update({'platform_reserved_mib': reserved})
-            if n_2M is not None:
-                values.update({'vm_hugepages_nr_2M_pending': n_2M})
-            if n_1G is not None:
-                values.update({'vm_hugepages_nr_1G_pending': n_1G})
-            LOG.info("%s auto_adjust_memory numa_node=%d, "
-                     "+2M=%d, +1G=%d, values=%s"
-                     % (ihost['hostname'], node['numa_node'],
-                        -d_2M, -d_1G, values))
+
+            # Only adjust the number of hugepages if the memory available is
+            # less than 50% of the total memory
+            if (hp_mem_avail_mib < int(0.5 * m.node_memtotal_mib)):
+                d_MiB = reserved - m.platform_reserved_mib
+                d_2M = int(d_MiB / constants.MIB_2M)
+                d_1G = int((d_MiB + 512) / constants.MIB_1G)
+                if n_2M is not None and n_2M - d_2M > 0:
+                    d_1G = 0
+                    n_2M -= d_2M
+                else:
+                    d_2M = 0
+                    if n_1G is not None and n_1G - d_1G > 0:
+                        n_1G -= d_1G
+                    else:
+                        d_1G = 0
+
+                # override with pending values
+                if m.vm_hugepages_nr_2M_pending is not None:
+                    n_2M = m.vm_hugepages_nr_2M_pending
+                if m.vm_hugepages_nr_1G_pending is not None:
+                    n_1G = m.vm_hugepages_nr_1G_pending
+
+                if n_2M is not None:
+                    values.update({'vm_hugepages_nr_2M_pending': n_2M})
+                if n_1G is not None:
+                    values.update({'vm_hugepages_nr_1G_pending': n_1G})
+                LOG.info("%s auto_adjust_memory numa_node=%d, "
+                        "+2M=%d, +1G=%d, values=%s"
+                        % (ihost['hostname'], node['numa_node'],
+                            -d_2M, -d_1G, values))
+            else:
+                LOG.info("%s auto_adjust_memory numa_node=%d, "
+                        "number of app hugepages preserved: "
+                        "2M=%d, 1G=%d, values=%s, "
+                        "available memory (MB): %d"
+                        % (ihost['hostname'], node['numa_node'],
+                            n_2M, n_1G, values, hp_mem_avail_mib))
             pecan.request.dbapi.imemory_update(m.uuid, values)
 
         return None
