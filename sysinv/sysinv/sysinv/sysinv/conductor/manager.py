@@ -13575,20 +13575,17 @@ class ConductorManager(service.PeriodicService):
                                     entity_instance_id)
 
     def _get_current_kube_rootca(self):
-        """ Extract current k8s rootca """
-        current_cert = None
+        """ Extract current k8s rootca"""
         try:
-            with open('/etc/kubernetes/pki/ca.crt', 'rb') as old_rootca:
-                old_rootca.seek(0, os.SEEK_SET)
-                read_ca = old_rootca.read()
-                old_rootca_cert = cutils.extract_certs_from_pem(read_ca)[0]
-                hash_subject = cutils.get_cert_issuer_string_hash(old_rootca_cert)
-                serial_number = cutils.get_cert_serial(old_rootca_cert)
-                current_cert = "%s-%s" % (str(hash_subject), str(serial_number))
+            with open(kubernetes.KUBERNETES_ROOTCA_CERT, 'rb') as current_rootca:
+                current_rootca.seek(0, os.SEEK_SET)
+                read_ca = current_rootca.read()
+                current_rootca_cert = cutils.extract_certs_from_pem(read_ca)[0]
         except Exception:
-            msg = "Extracting information regarding current k8s rootca failed"
-            return dict(success="", error=msg)
-        return current_cert
+            LOG.error("Not able to extract information about CA at %s"
+                      % kubernetes.KUBERNETES_ROOTCA_CERT)
+            return None
+        return current_rootca_cert
 
     def fpga_device_update_by_host(self, context,
                                   host_uuid, fpga_device_dict_array):
@@ -13832,8 +13829,10 @@ class ConductorManager(service.PeriodicService):
             LOG.error(msg)
             return msg
 
+        api_version = "%s/%s" % (kubernetes.CERT_MANAGER_GROUP,
+                                 kubernetes.V1_ALPHA_2)
         body = {
-            'apiVersion': 'cert-manager.io/v1alpha2',
+            'apiVersion': api_version,
             'kind': 'Issuer',
             'metadata': {
                 'name': constants.KUBE_ROOTCA_ISSUER,
@@ -13847,8 +13846,8 @@ class ConductorManager(service.PeriodicService):
         }
 
         try:
-            kube_operator.apply_custom_resource('cert-manager.io',
-                                                     'v1alpha2',
+            kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                                     kubernetes.V1_ALPHA_2,
                                                      kubernetes.NAMESPACE_DEPLOYMENT,
                                                      'issuers',
                                                      constants.KUBE_ROOTCA_ISSUER,
@@ -13888,6 +13887,12 @@ class ConductorManager(service.PeriodicService):
             LOG.info(msg)
             return dict(success="", error=msg)
 
+        # extract current k8s rootca
+        current_cert = self._get_current_kube_rootca()
+        if not current_cert:
+            msg = "Not able to get the current kube rootca"
+            return dict(success="", error=msg)
+
         # validate certificate
         msg = cutils.check_cert_validity(cert)
 
@@ -13896,19 +13901,19 @@ class ConductorManager(service.PeriodicService):
 
         is_ca = cutils.is_ca_cert(cert)
         if not is_ca:
-                msg = "The certificate in the file is not a CA certificate"
-                return dict(success="", error=msg)
+            msg = "The certificate in the file is not a CA certificate"
+            LOG.error(msg)
+            return dict(success="", error=msg)
 
         # extract information regarding the new rootca
         try:
-            hash_subject = cutils.get_cert_issuer_string_hash(cert)
-            serial_number = cutils.get_cert_serial(cert)
-            new_cert = '%s-%s' % (hash_subject, serial_number)
+            new_cert_id = cutils.build_cert_identifier(cert)
         except Exception:
-            msg = "Failed to extract respective subject and serial number"
+            msg = "Failed to extract subject and serial number from new root CA"
+            LOG.error(msg)
             return dict(success="", error=msg)
 
-        return dict(success=new_cert, error="")
+        return dict(success=new_cert_id, error="")
 
     def save_kubernetes_rootca_cert(self, context, ca_file):
         """
@@ -13942,6 +13947,13 @@ class ConductorManager(service.PeriodicService):
         if not current_cert:
             msg = "Not able to get the current kube rootca"
             return dict(success="", error=msg)
+        try:
+            current_cert_identifier = cutils.build_cert_identifier(current_cert)
+        except Exception:
+            msg = "Failed to extract issuer and serial number from " \
+                  "current k8s root CA"
+            LOG.error(msg)
+            return dict(success="", error=msg)
 
         try:
             certificate = cutils.extract_ca_crt_bytes_from_pem(temp_pem_contents)
@@ -13961,7 +13973,186 @@ class ConductorManager(service.PeriodicService):
 
         # update db
         update_obj = {'state': kubernetes.KUBE_ROOTCA_UPDATE_CERT_UPLOADED,
-                      'from_rootca_cert': current_cert,
+                      'from_rootca_cert': current_cert_identifier,
+                      'to_rootca_cert': new_cert}
+
+        r = self.dbapi.kube_rootca_update_update(update.id, update_obj)
+        return dict(success=r.to_rootca_cert, error="")
+
+    def generate_kubernetes_rootca_cert(self, context):
+        """ Generate a new k8s root CA
+            this will consist on 5 steps:
+                1. Pre-check to assure all conditions are OK for the cert generation
+                2. Generate a self-signed issuer
+                3. Generate a Certificate (root CA) from this issuer
+                4. Generate an issuer from this newly self-signed root CA
+                5. Extract info from new and current root CA and save it on DB
+
+        :param context: request context.
+        :returns: the identifier for the new root CA
+        """
+
+        # Step 1: Pre-checking
+        # check actual procedure entry
+        try:
+            update = self.dbapi.kube_rootca_update_get_one()
+        except exception.NotFound:
+            msg = "Kubernetes root CA update not started"
+            LOG.error(msg)
+            return dict(success="", error=msg)
+
+        # check if procedure is in a state that allow us to generate new cert
+        if update.state != kubernetes.KUBE_ROOTCA_UPDATE_STARTED:
+            msg = "A new root CA certificate already exists"
+            LOG.error(msg)
+            return dict(success="", error=msg)
+
+        if update.to_rootca_cert:
+            LOG.info("root CA target with serial number %s "
+                     "will be overwritten" % update.to_rootca_cert)
+
+        # extract current k8s rootca identifier
+        current_cert = \
+            self._get_current_kube_rootca()
+        if not current_cert:
+            msg = "Not able to get the current kube rootca"
+            return dict(success="", error=msg)
+
+        try:
+            current_cert_identifier = cutils.build_cert_identifier(current_cert)
+        except Exception:
+            msg = "Failed to extract issuer and serial number from " \
+                  "current k8s root CA"
+            LOG.error(msg)
+            return dict(success="", error=msg)
+
+        # extract validation period from current cert
+        # the generated one will have the same period of validity
+        validation_period = current_cert.not_valid_after - \
+                            current_cert.not_valid_before
+
+        # extract duration in hours to apply in resource spec
+        duration = validation_period.days * 24
+
+        # Step 2: Generating a self-signed issuer
+        kube_operator = kubernetes.KubeOperator()
+        selfsigned_issuer_name = constants.KUBE_SELFSIGNED_ISSUER
+        api_version = "%s/%s" % (kubernetes.CERT_MANAGER_GROUP,
+                                 kubernetes.V1_ALPHA_2)
+        selfsigned_issuer = {
+            'apiVersion': api_version,
+            'kind': 'Issuer',
+            'metadata': {
+                'name': selfsigned_issuer_name,
+                'namespace': kubernetes.NAMESPACE_DEPLOYMENT
+            },
+            'spec': {
+                'selfSigned': {}
+            }
+        }
+
+        try:
+            kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                                     kubernetes.V1_ALPHA_2,
+                                                     kubernetes.NAMESPACE_DEPLOYMENT,
+                                                     'issuers',
+                                                     selfsigned_issuer_name,
+                                                     selfsigned_issuer)
+        except Exception:
+            msg = "Failed to generate self-signed issuer in cert-manager"
+            LOG.error(msg)
+            return dict(success="", error=msg)
+
+        # Step 3: Generating a self-signed CA from issuer
+        rootca_certificate_name = constants.KUBE_ROOTCA_SECRET
+
+        rootca_certificate = {
+            'apiVersion': api_version,
+            'kind': 'Certificate',
+            'metadata': {
+                'name': rootca_certificate_name,
+                'namespace': kubernetes.NAMESPACE_DEPLOYMENT
+            },
+            'spec': {
+                'commonName': 'kubernetes',
+                'isCA': True,
+                'duration': str(duration) + 'h',
+                'secretName': rootca_certificate_name,
+                'issuerRef': {
+                    'name': selfsigned_issuer_name,
+                    'kind': 'Issuer'
+                }
+            }
+        }
+
+        try:
+            kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                                     kubernetes.V1_ALPHA_2,
+                                                     kubernetes.NAMESPACE_DEPLOYMENT,
+                                                     'certificates',
+                                                     rootca_certificate_name,
+                                                     rootca_certificate)
+        except Exception:
+            msg = ("Failed to generate root CA certificate in cert-manager")
+            LOG.error(msg)
+            return dict(success="", error=msg)
+
+        # Step 4: Generating issuer to sign certificates within newly
+        # root CA certificate
+        certificate_issuer_name = constants.KUBE_ROOTCA_ISSUER
+
+        certificate_issuer = {
+            'apiVersion': api_version,
+            'kind': 'Issuer',
+            'metadata': {
+                'name': certificate_issuer_name,
+                'namespace': kubernetes.NAMESPACE_DEPLOYMENT
+            },
+            'spec': {
+                'ca': {
+                    'secretName': rootca_certificate_name
+                }
+            }
+        }
+
+        try:
+            kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                                     kubernetes.V1_ALPHA_2,
+                                                     kubernetes.NAMESPACE_DEPLOYMENT,
+                                                     'issuers',
+                                                     certificate_issuer_name,
+                                                     certificate_issuer)
+        except Exception:
+            msg = ("Failed to create root CA issuer in cert-manager")
+            LOG.error(msg)
+            return dict(success="", error=msg)
+
+        # Step 5: Extracting information from current and new root CA
+        # The new root CA will be stored in the secret
+        # system-kube-rootca-certificate as indicated in Certificate
+        # resource above
+        secret = kube_operator.get_cert_secret(rootca_certificate_name,
+                                               kubernetes.NAMESPACE_DEPLOYMENT)
+        if secret is None:
+            msg = ("TLS Secret creation timeout")
+            LOG.error(msg)
+            return dict(success="", error=msg)
+
+        data = secret.data
+        tls_crt = base64.b64decode(data['tls.crt'])
+        cert = cutils.extract_certs_from_pem(tls_crt)[0]
+
+        # extract information regarding the new rootca
+        try:
+            new_cert = cutils.build_cert_identifier(cert)
+        except Exception:
+            msg = "Failed to extract issuer and serial number from new root CA"
+            LOG.error(msg)
+            return dict(success="", error=msg)
+
+        # update db
+        update_obj = {'state': kubernetes.KUBE_ROOTCA_UPDATE_CERT_GENERATED,
+                      'from_rootca_cert': current_cert_identifier,
                       'to_rootca_cert': new_cert}
 
         r = self.dbapi.kube_rootca_update_update(update.id, update_obj)

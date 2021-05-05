@@ -36,8 +36,10 @@ class FakeConductorAPI(object):
     def __init__(self):
         self.service = ConductorManager('test-host', 'test-topic')
         self.save_kubernetes_rootca_cert = self.fake_config_certificate
+        self.generate_kubernetes_rootca_cert = self.fake_generate_rootca
         self.config_certificate_return = None
         self.platcert_k8s_secret_value = False
+        self.generate_rootca_return = None
 
     def get_system_health(self, context, force=False, upgrade=False,
                           kube_upgrade=False, kube_rootca_update=False,
@@ -53,8 +55,14 @@ class FakeConductorAPI(object):
     def fake_config_certificate(self, context, pem):
         return self.config_certificate_return
 
+    def fake_generate_rootca(self, context):
+        return self.generate_rootca_return
+
     def setup_config_certificate(self, data):
         self.config_certificate_return = data
+
+    def setup_generate_rootca(self, data):
+        self.generate_rootca_return = data
 
     def kube_certificate_update_by_host(self, context, host_uuid, phase):
         return
@@ -134,7 +142,7 @@ class TestKubeRootCAUpdate(base.FunctionalTest):
         }
 
 
-class TestPostKubeRootUpdate(TestKubeRootCAUpdate,
+class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
                         dbbase.ProvisionedControllerHostTestCase):
 
     def test_create(self):
@@ -246,6 +254,33 @@ class TestKubeRootCAUpload(TestKubeRootCAUpdate,
                                   upload_files=files,
                                   headers={'User-Agent': 'sysinv-test'},
                                   expect_errors=False)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+        resp = json.loads(response.body)
+
+        self.assertTrue(resp.get('success'))
+        self.assertEqual(resp.get('success'), fake_save_rootca_return.get('success'))
+        self.assertFalse(resp.get('error'))
+
+
+class TestKubeRootCAGenerate(TestKubeRootCAUpdate,
+                        dbbase.ProvisionedControllerHostTestCase):
+    def setUp(self):
+        super(TestKubeRootCAGenerate, self).setUp()
+        self.fake_conductor_api.service.dbapi = self.dbapi
+
+    def test_generate_rootca(self):
+        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
+        fake_save_rootca_return = {'success': '137813-123', 'error': ''}
+
+        self.fake_conductor_api.\
+            setup_generate_rootca(fake_save_rootca_return)
+
+        response = self.post_json('/kube_rootca_update/generate_cert', {},
+                                headers={'User-Agent': 'sysinv-test'},
+                                expect_errors=True)
 
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)

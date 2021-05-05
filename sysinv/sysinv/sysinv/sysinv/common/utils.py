@@ -2791,6 +2791,22 @@ def get_cert_subject_string_hash(cert):
     return hashed_attributes
 
 
+def build_cert_identifier(cert):
+    """ Builds a certificate identifier.
+
+    This identifier will consist of a hash from certificate
+    issuer representation and its serial number
+
+    :param cert: x509.Certificate object
+    :returns: a string in the format of the identifier <issuer_hash>-<serial_number>
+    """
+    hash_subject = get_cert_issuer_string_hash(cert)
+    serial_number = get_cert_serial(cert)
+    cert_id = '%s-%s' % (hash_subject, serial_number)
+    LOG.info("%s is the identifier for the new root CA certificate" % cert_id)
+    return cert_id
+
+
 def format_image_filename(device_image):
     """ Format device image filename """
     return "{}-{}-{}-{}.bit".format(device_image.bitstream_type,

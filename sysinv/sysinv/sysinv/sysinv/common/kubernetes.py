@@ -16,6 +16,7 @@ from distutils.version import LooseVersion
 import json
 import os
 import re
+import time
 
 from kubernetes import config
 from kubernetes import client
@@ -31,8 +32,16 @@ from sysinv.common import exception
 
 LOG = logging.getLogger(__name__)
 
+# Kubernetes groups
+CERT_MANAGER_GROUP = 'cert-manager.io'
+
+# Kubernetes API versions
+V1_ALPHA_2 = 'v1alpha2'
+
+
 # Kubernetes Files
 KUBERNETES_ADMIN_CONF = '/etc/kubernetes/admin.conf'
+KUBERNETES_ROOTCA_CERT = '/etc/kubernetes/pki/ca.crt'
 
 # Kubernetes clusters
 KUBERNETES_CLUSTER_DEFAULT = "kubernetes"
@@ -904,3 +913,11 @@ class KubeOperator(object):
                       "kube_get_validating_webhook_configurations_by_selector %s/%s: %s",
                        label_selector, field_selector, e)
             raise
+
+    def get_cert_secret(self, name, namespace, max_retries=4):
+        for i in range(0, max_retries):
+            secret = self.kube_get_secret(name, NAMESPACE_DEPLOYMENT)
+            if secret is not None:
+                return secret
+            time.sleep(5)
+        return None
