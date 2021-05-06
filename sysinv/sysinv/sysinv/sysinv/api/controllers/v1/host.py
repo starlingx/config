@@ -3397,6 +3397,17 @@ class HostController(rest.RestController):
            dev.pdevice_id not in device.SRIOV_ENABLED_FEC_DEVICE_IDS):
             return
 
+        if (dev.extra_info and
+                dev.extra_info.endswith(device.DEVICE_APPLY_PENDING)):
+            msg = (_("Pending configuration of FEC device. "
+                     "Please wait a few minutes for inventory update and "
+                     "retry host-unlock."))
+            LOG.info(msg)
+            pecan.request.rpcapi.update_sriov_config(
+                pecan.request.context,
+                host['uuid'])
+            raise wsme.exc.ClientSideError(msg)
+
         sriov_numvfs = dev.sriov_numvfs
         if not sriov_numvfs:
             return

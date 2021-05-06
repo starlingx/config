@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2020 Wind River Systems, Inc.
+# Copyright (c) 2015-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -327,6 +327,13 @@ class PCIDeviceController(rest.RestController):
                     rpc_device[field] = None
                 else:
                     rpc_device[field] = getattr(device, field)
+
+        if sriov_update:
+            # Set indication of pending configuration (runtime manifest apply)
+            # for this device
+            if not rpc_device['extra_info']:
+                rpc_device['extra_info'] = ''
+            rpc_device['extra_info'] += dconstants.DEVICE_APPLY_PENDING
 
         rpc_device.save()
 

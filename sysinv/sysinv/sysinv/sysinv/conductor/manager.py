@@ -2800,8 +2800,22 @@ class ConductorManager(service.PeriodicService):
                             'sriov_vf_driver': pci_dev.get('sriov_vf_driver', None),
                             'sriov_vf_pdevice_id':
                                 pci_dev.get('sriov_vf_pdevice_id', None),
-                            'driver': pci_dev['driver']}
+                            'driver': pci_dev['driver'],
+                            'extra_info': dev.get('extra_info', None)}
                         LOG.info("attr: %s" % attr)
+
+                        if attr['extra_info']:
+                            extra_info = attr['extra_info']
+
+                            # TODO: Change 'extra_info' to be a string representation
+                            # of a dictionary, embedding the desired (requested) #VFs
+                            # along with the APPLYING flag
+
+                            # Get rid of indication of pending configuration, if any
+                            if extra_info.endswith(dconstants.DEVICE_APPLY_PENDING):
+                                attr['extra_info'] = extra_info[:extra_info.find(
+                                    dconstants.DEVICE_APPLY_PENDING)]
+
                         if (host['administrative'] == constants.ADMIN_LOCKED
                                 and pci_dev['pdevice_id'] in
                                 dconstants.SRIOV_ENABLED_FEC_DEVICE_IDS):
