@@ -10,6 +10,7 @@
 
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import yaml
@@ -71,6 +72,10 @@ def migrate_etcd_on_swact():
     if not os.path.isfile(UPGRADE_ETCD_FILE):
         LOG.info("Skipping etcd migration, no request %s" %
                  UPGRADE_ETCD_FILE)
+        return
+
+    if socket.gethostname() != 'controller-0':
+        LOG.info("Skipping etcd migration, not running on controller-0")
         return
 
     with open(UPGRADE_ETCD_FILE, 'r') as f:
