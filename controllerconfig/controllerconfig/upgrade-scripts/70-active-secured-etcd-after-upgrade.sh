@@ -15,6 +15,10 @@ FROM_REL=$1
 TO_REL=$2
 ACTION=$3
 
+function log {
+    logger -p local1.info $1
+}
+
 # below function is cloned from ../scripts/controller_config
 get_ip()
 {
@@ -49,8 +53,8 @@ enable_secured_etcd()
     SYSTEM_YAML="/opt/platform/puppet/${sw_version}/hieradata/system.yaml"
 
     if [[ ! -f ${STATIC_YAML} ]] || [[ ! -f ${SYSTEM_YAML} ]]; then
-        echo "Could not find specific static/system yaml files in "\
-             "/opt/platform/puppet/${sw_version}/hieradata!"
+        log "Could not find specific static/system yaml files in \
+            /opt/platform/puppet/${sw_version}/hieradata!"
         exit 1
     fi
 
@@ -60,6 +64,7 @@ enable_secured_etcd()
     HOST_ADDR=$(get_ip $(hostname))
 
     if [ "$ETCD_SEC_ENABLED" != "true" ]; then
+        ANSIBLE_LOG_PATH=/root/enable_secured_etcd.log \
         ansible-playbook /usr/share/ansible/stx-ansible/playbooks/enable_secured_etcd.yml \
             -e "cluster_floating_address=${CLUSTER_HOST_ADDRESS}" \
             -e "etcd_listen_address_version=${CLUSTER_HOST_ADDRESS_VERSION}" \
@@ -69,18 +74,16 @@ enable_secured_etcd()
             -e "k8s_root_ca_cert=''" \
             -e "k8s_root_ca_key=''"
         if [ $? -ne 0 ]; then
-            echo "Failed to run ansible playbook!"
+            log "Failed to run ansible playbook!"
             exit 1
         fi
     fi
 }
 
-echo "${0} invoked with from_release = ${FROM_REL} to_release = ${TO_REL} action = ${ACTION}"
+log "${0} invoked with from_release = ${FROM_REL} to_release = ${TO_REL} action = ${ACTION}"
 
 if [ ${FROM_REL} == "20.06" -a ${ACTION} == "activate" ]; then
     enable_secured_etcd
-else
-    echo "Only execute this upgrade code when the activate action is being done and the from release is 20.06!"
 fi
 
 exit 0
