@@ -4,6 +4,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+import base64
 import os
 import re
 
@@ -105,6 +106,15 @@ def do_application_show(cc, args):
 def do_application_upload(cc, args):
     """Upload application Helm chart(s) and manifest"""
     data = _application_check(args)
+
+    if not _is_url(data["tarfile"]):
+        try:
+            with open(data["tarfile"], 'rb') as tarfile:
+                binary_data = base64.urlsafe_b64encode(tarfile.read())
+            data.update({'binary_data': binary_data})
+        except Exception:
+            raise exc.CommandError("Error: Could not open file %s." % data["tarfile"])
+
     response = cc.app.upload(data)
     _print_application_show(response)
     _print_reminder_msg(response.name)

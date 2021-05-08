@@ -4,10 +4,13 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import base64
 import os
 import hashlib
 import pecan
+import pwd
 from pecan import rest
+import time
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
@@ -200,10 +203,30 @@ class KubeAppController(rest.RestController):
     @wsme_pecan.wsexpose(KubeApp, body=types.apidict)
     def post(self, body):
         """Uploading an application to be deployed by Armada"""
-        tarfile = body.get('tarfile')
+        tarfile_path = body.get('tarfile')
+        tarfile_binary = body.get('binary_data', '')
         name = body.get('name', '')
         version = body.get('app_version', '')
-        name, version, mname, mfile = self._check_tarfile(tarfile, name, version,
+
+        if not cutils.is_url(tarfile_path) and not os.path.exists(tarfile_path):
+            path_tarballs = '/tmp/tarball_uploads'
+            if not os.path.exists(path_tarballs):
+                os.makedirs(path_tarballs)
+                uid, gid = pwd.getpwnam('sysinv').pw_uid, pwd.getpwnam('sysinv').pw_uid
+                os.chown(path_tarballs, uid, gid)
+
+            # Keep unique tarball name to avoid conflicts
+            tarball_name = '{}-{}'.format(time.time(), os.path.basename(tarfile_path))
+            tarfile_path = os.path.join(path_tarballs, tarball_name)
+            try:
+                with open(tarfile_path, 'wb') as f:
+                    f.write(base64.urlsafe_b64decode(tarfile_binary))
+            except Exception as e:
+                LOG.exception('Error: writing the tarfile: {}'.format(e))
+                raise wsme.exc.ClientSideError(_(
+                    "Could not save the application on path {}".format(tarfile_path)))
+
+        name, version, mname, mfile = self._check_tarfile(tarfile_path, name, version,
                                                           constants.APP_UPLOAD_OP)
 
         try:
@@ -231,7 +254,7 @@ class KubeAppController(rest.RestController):
         lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_MANUAL
 
         pecan.request.rpcapi.perform_app_upload(pecan.request.context,
-                                                new_app, tarfile,
+                                                new_app, tarfile_path,
                                                 lifecycle_hook_info=lifecycle_hook_info)
         return KubeApp.convert_with_links(new_app)
 
