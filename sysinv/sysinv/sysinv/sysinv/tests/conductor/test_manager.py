@@ -239,6 +239,7 @@ class ManagerTestCase(base.DbTestCase):
         self.service._allocate_addresses_for_host = mock.Mock()
         self.service._update_pxe_config = mock.Mock()
         self.service._ceph_mon_create = mock.Mock()
+        self.service._sx_to_dx_post_migration_actions = mock.Mock()
         self.alarm_raised = False
 
     def tearDown(self):

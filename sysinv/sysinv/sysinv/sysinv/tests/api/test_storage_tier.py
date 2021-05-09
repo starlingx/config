@@ -625,6 +625,7 @@ class StorageTierDependentTCs(base.FunctionalTest):
                     mock.patch.object(ceph_utils, 'fix_crushmap')) as (mock_fsid, mock_fix_crushmap):
             mock_fix_crushmap.return_value = True
             mock_fsid.return_value = (mock.MagicMock(ok=False), None)
+            self.service._sx_to_dx_post_migration_actions = mock.Mock()
             self.service.start()
             self.service._init_ceph_cluster_info()
             mock_fsid.assert_called()
