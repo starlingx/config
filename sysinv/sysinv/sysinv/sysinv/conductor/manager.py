@@ -475,7 +475,15 @@ class ConductorManager(service.PeriodicService):
         return True
 
     def _sx_to_dx_post_migration_actions(self, system):
-        host = self.dbapi.ihost_get(self.host_uuid)
+        if not self.host_uuid:
+            return
+
+        try:
+            host = self.dbapi.ihost_get(self.host_uuid)
+        except exception.ServerNotFound:
+            LOG.warn('No active controller available')
+            return
+
         # Skip if the system mode is not set to duplex or it is not unlocked
         if (system.system_mode != constants.SYSTEM_MODE_DUPLEX or
                 host.administrative != constants.ADMIN_UNLOCKED):
