@@ -15,7 +15,7 @@ from cgtsclient import exc
 
 def _print_certificate_show(certificate):
     fields = ['uuid', 'certtype', 'signature', 'start_date', 'expiry_date']
-    if type(certificate) is dict:
+    if isinstance(certificate, dict):
         data = [(f, certificate.get(f, '')) for f in fields]
         details = ('details', certificate.get('details', ''))
     else:
