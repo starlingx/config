@@ -57,6 +57,7 @@ from cgtsclient.v1 import iuser
 from cgtsclient.v1 import kube_cluster
 from cgtsclient.v1 import kube_cmd_version
 from cgtsclient.v1 import kube_host_upgrade
+from cgtsclient.v1 import kube_rootca_update
 from cgtsclient.v1 import kube_upgrade
 from cgtsclient.v1 import kube_version
 from cgtsclient.v1 import label
@@ -175,3 +176,4 @@ class Client(http.HTTPClient):
         self.device_image_state = device_image_state.DeviceImageStateManager(self)
         self.device_label = device_label.DeviceLabelManager(self)
         self.restore = restore.RestoreManager(self)
+        self.kube_rootca_update = kube_rootca_update.KubeRootCAUpdateManager(self)

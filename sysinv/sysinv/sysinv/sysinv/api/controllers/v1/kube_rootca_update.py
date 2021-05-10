@@ -597,6 +597,9 @@ class KubeRootCAUpdateController(rest.RestController):
 
         rpc_host_update_list = pecan.request.dbapi.kube_rootca_host_update_get_list()
         hostnames = [host.hostname for host in rpc_host_update_list]
+
+        LOG.debug("Starting cleanup procedure")
+
         self._clear_kubernetes_resources(hostnames)
 
         # cleanup kube_rootca_host_update table
@@ -615,21 +618,25 @@ class KubeRootCAUpdateController(rest.RestController):
         # cleanup kube_rootca_update table for completion
         if update_state == kubernetes.KUBE_ROOTCA_UPDATE_COMPLETED:
             pecan.request.dbapi.kube_rootca_update_destroy(rpc_kube_rootca_update.id)
+            LOG.debug("Removed procedure entry on kube_rootca_update table")
 
             # If applicable, notify dcmanager that the update is completed
             system = pecan.request.dbapi.isystem_get_one()
             role = system.get('distributed_cloud_role')
             if role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
                 dc_api.notify_dcmanager_kube_rootca_update_completed()
+            LOG.info("Kubernetes rootca update completed")
 
         # clear update in progess alarm
         if self.fm_api.get_fault(fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_IN_PROGRESS,
                                 self.alarm_instance_id):
+            LOG.debug("Removing KUBE ROOTCA UPDATE IN PROGRESS alarm")
             self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_IN_PROGRESS,
                                     self.alarm_instance_id)
 
         # raise update aborted alarm if this is an abort
         if update_state == kubernetes.KUBE_ROOTCA_UPDATE_ABORTED:
+            LOG.debug("Raising KUBE ROOTCA PROCEDURE ABORTED alarm")
             fault = fm_api.Fault(
                     alarm_id=fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_ABORTED,
                     alarm_state=fm_constants.FM_ALARM_STATE_SET,
@@ -714,11 +721,8 @@ class KubeRootCAHostUpdateController(rest.RestController):
 
         # Get all the host update state
         host_updates_temp = []
-        try:
-            host_updates_temp = \
-                pecan.request.dbapi.kube_rootca_host_update_get_list()
-        except exception.NotFound:
-            pass
+        host_updates_temp = \
+            pecan.request.dbapi.kube_rootca_host_update_get_list()
         host_updates = [host_update for host_update in host_updates_temp
                         if host_update.state is not None]
 

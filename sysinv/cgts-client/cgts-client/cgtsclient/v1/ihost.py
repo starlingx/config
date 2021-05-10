@@ -138,6 +138,14 @@ class ihostManager(base.Manager):
             body=post_body)
         return self.resource_class(self, body)
 
+    def kube_update_rootca(self, hostid, phase):
+        post_body = {}
+        post_body['phase'] = phase
+        resp, body = self.api.json_request(
+            'POST', self._path(hostid) + "/kube_update_ca",
+            body=post_body)
+        return self.resource_class(self, body)
+
     def device_image_update(self, hostid):
         path = self._path(hostid) + "/device_image_update"
         resp, body = self.api.json_request('POST', path)
