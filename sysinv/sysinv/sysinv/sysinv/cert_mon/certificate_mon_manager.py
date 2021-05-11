@@ -166,6 +166,11 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         # Failed tasks that need to be reattempted will be taken care here
         max_attempts = CONF.certmon.max_retry
         tasks = self.reattempt_tasks[:]
+
+        num_tasks = len(tasks)
+        if num_tasks > 0:
+            LOG.info('%s failed tasks to reattempt in queue.' % num_tasks)
+
         for task in tasks:
             if task.run():
                 self.reattempt_tasks.remove(task)

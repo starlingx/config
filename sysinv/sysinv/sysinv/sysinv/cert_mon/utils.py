@@ -618,23 +618,37 @@ def upload_request_with_data(token, url, **kwargs):
     files = {'file': ("for_upload",
                     kwargs['body'],)}
     data = kwargs.get('data')
-    req = requests.post(url, headers=headers, files=files,
-                        data=data)
+    timeout = kwargs.get('timeout')
+    try:
+        req = requests.post(url, headers=headers, files=files,
+                            data=data, timeout=timeout)
+        req.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        if 401 == e.response.status_code:
+            if token:
+                token.set_expired()
+        raise
+    except requests.exceptions.InvalidURL:
+        LOG.error("Cannot access %s" % url)
+        raise
+
     LOG.info('response from upload API = %s' % req.json())
     return req.json()
 
 
-def rest_api_upload(token, filepath, url, data=None):
+def rest_api_upload(token, filepath, url, data=None, timeout=30):
     """
     Make a rest-api upload call
     """
-    LOG.info('rest_api_upload called. filepath=%s, url=%s, data=%s' % (filepath, url, data))
+    LOG.info('rest_api_upload called. filepath=%s, url=%s, data=%s, timeout=%s'
+            % (filepath, url, data, timeout))
     try:
         file_to_upload = open(filepath, 'rb')
     except Exception as e:
         LOG.exception(e)
 
-    return upload_request_with_data(token, url, body=file_to_upload, data=data)
+    return upload_request_with_data(token, url, body=file_to_upload, data=data,
+                                    timeout=timeout)
 
 
 def update_pemfile(tls_crt, tls_key):
