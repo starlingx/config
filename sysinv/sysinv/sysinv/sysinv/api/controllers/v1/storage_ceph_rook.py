@@ -14,7 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 # Copyright (c) 2020 Intel Corporation, Inc
 #
 
@@ -99,6 +99,10 @@ class StorageCephRook(base.APIBase):
     # Confirmation parameter [API-only field]
     confirmed = types.boolean
     "Represent confirmation that the backend operation should proceed"
+
+    # Network parameter: [API-only field]
+    network = wtypes.text
+    "The network for backend components"
 
     def __init__(self, **kwargs):
         defaults = {'uuid': uuidutils.generate_uuid(),

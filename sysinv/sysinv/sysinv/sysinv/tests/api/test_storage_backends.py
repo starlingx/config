@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2017-2018 Wind River Systems, Inc.
+# Copyright (c) 2017-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -12,8 +12,10 @@ Tests for the API /storage_backend/ methods.
 """
 
 import mock
+from collections import namedtuple
 from six.moves import http_client
 
+from sysinv.db import api as dbapi
 from sysinv.tests.api import base
 from sysinv.tests.db import utils as dbutils
 from sysinv.common import constants
@@ -83,6 +85,12 @@ class StorageBackendTestCases(base.FunctionalTest):
         self.tier = dbutils.create_test_storage_tier(forclusterid=self.cluster.id)
         self.load = dbutils.create_test_load()
         self.host = dbutils.create_test_ihost(forisystemid=self.system.id)
+
+        # Patch management network for ceph
+        self.dbapi = dbapi.get_instance()
+        p = mock.patch.object(self.dbapi, 'networks_get_by_type')
+        p.start().return_value = [{'network_type': constants.NETWORK_TYPE_MGMT}]
+        self.addCleanup(p.stop)
 
     def assertDeleted(self, fullPath):
         self.get_json(fullPath, expect_errors=True)  # Make sure this line raises an error
@@ -1223,6 +1231,12 @@ class StorageCephTestCases(base.FunctionalTest):
         self.load = dbutils.create_test_load()
         self.host = dbutils.create_test_ihost(forisystemid=self.system.id)
 
+        # Patch management network for ceph
+        self.dbapi = dbapi.get_instance()
+        p = mock.patch.object(self.dbapi, 'networks_get_by_type')
+        p.start().return_value = [{'network_type': constants.NETWORK_TYPE_MGMT}]
+        self.addCleanup(p.stop)
+
     def assertDeleted(self, fullPath):
         self.get_json(fullPath, expect_errors=True)  # Make sure this line raises an error
 
@@ -1358,3 +1372,45 @@ class StorageCephTestCases(base.FunctionalTest):
                                        response.json['uuid'])['backend'])  # Result
         self.assertEqual(constants.SB_TYPE_CEPH,
                          self.get_json('/storage_backend')['storage_backends'][0]['backend'])
+
+
+class StorageBackendConfigTest(base.FunctionalTest):
+    def setUp(self):
+        super(StorageBackendConfigTest, self).setUp()
+        self.dbapi = dbapi.get_instance()
+
+    def test_get_ceph_mon_ip_addresses(self):
+        self._test_get_ceph_mon_ip_addresses(constants.NETWORK_TYPE_MGMT)
+        self._test_get_ceph_mon_ip_addresses(constants.NETWORK_TYPE_CLUSTER_HOST)
+        pass
+
+    def _test_get_ceph_mon_ip_addresses(self, network_type):
+        hostnames = [constants.CONTROLLER_HOSTNAME,
+                     constants.CONTROLLER_0_HOSTNAME,
+                     constants.CONTROLLER_1_HOSTNAME]
+        ips_mock = ['1', '2', '3']
+        placeholders = [constants.CEPH_FLOATING_MON,
+                        constants.CEPH_MON_0,
+                        constants.CEPH_MON_1]
+        result_mock = dict(map(lambda x, y: (x, y), placeholders, ips_mock))
+
+        addresses = list(map(lambda x: '{}-{}'.format(x, network_type), hostnames))
+        addresses_mock = \
+            list(map(lambda x, y: ({'name': x, 'address': y}), addresses, ips_mock))
+        addresses_mock_object = \
+            list(map(lambda x: namedtuple("Addresses", x.keys())(*x.values()), addresses_mock))
+
+        p = mock.patch.object(self.dbapi, 'ceph_mon_get_list')
+        p.start().return_value = list(map(lambda x: {'hostname': x}, hostnames))
+        self.addCleanup(p.stop)
+
+        p = mock.patch.object(self.dbapi, 'storage_ceph_get_list')
+        p.start().return_value = [{'network': network_type}]
+        self.addCleanup(p.stop)
+
+        p = mock.patch.object(self.dbapi, 'addresses_get_all')
+        p.start().return_value = addresses_mock_object
+        self.addCleanup(p.stop)
+
+        result = StorageBackendConfig.get_ceph_mon_ip_addresses(self.dbapi)
+        self.assertDictEqual(result, result_mock)

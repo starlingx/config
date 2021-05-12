@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2017-2019 Wind River Systems, Inc.
+# Copyright (c) 2017-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -659,6 +659,12 @@ class StorageTierDependentTCs(base.FunctionalTest):
         peer = self.dbapi.peer_get(ihost_0.peer_id)
         self.assertEqual(peer.name, 'group-0')
         self.assertEqual(peer.hosts, [storage_0.hostname])
+
+        # Patch management network for ceph
+        self.dbapi = dbapi.get_instance()
+        p = mock.patch.object(self.dbapi, 'networks_get_by_type')
+        p.start().return_value = [{'network_type': constants.NETWORK_TYPE_MGMT}]
+        self.addCleanup(p.stop)
 
         # Add the default ceph backend
         values = {
