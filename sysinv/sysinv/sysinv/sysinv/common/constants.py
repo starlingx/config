@@ -1122,6 +1122,14 @@ DEFAULT_REGISTRIES_INFO = {
 }
 
 # kubernetes parameters
+SERVICE_PARAM_SECTION_KUBERNETES_CONFIG = 'config'
+SERVICE_PARAM_NAME_KUBERNETES_POD_MAX_PIDS = 'pod_max_pids'
+# Platform pods use under 20 in steady state, but allow extra room.
+SERVICE_PARAM_KUBERNETES_POD_MAX_PIDS_MIN = 100
+# Some openstack pods reach ~450 in steady state, allow 2/3 extra to be safe.
+SERVICE_PARAM_KUBERNETES_POD_MAX_PIDS_DEFAULT = 750
+SERVICE_PARAM_KUBERNETES_POD_MAX_PIDS_MAX = 65535
+
 SERVICE_PARAM_SECTION_KUBERNETES_CERTIFICATES = 'certificates'
 SERVICE_PARAM_NAME_KUBERNETES_API_SAN_LIST = 'apiserver_certsan'
 
