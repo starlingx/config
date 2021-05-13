@@ -714,8 +714,8 @@ class AgentManager(service.PeriodicService):
         return port_list, pci_device_list, host_macs
 
     def _retry_on_missing_host_uuid(ex):  # pylint: disable=no-self-argument
-        LOG.info('Caught missing host_uuid exception. Retrying... '
-                 'Exception: {}'.format(ex))
+        LOG.info('Caught exception missing host. '
+                 'Retrying...Exception: {}'.format(ex))
         return isinstance(ex, exception.LocalHostUUIDNotFound)
 
     @retrying.retry(wait_fixed=15 * 1000, stop_max_delay=300 * 1000,
@@ -1525,7 +1525,8 @@ class AgentManager(service.PeriodicService):
             tsc.install_uuid = install_uuid
 
     def _retry_on_personality_is_none(ex):  # pylint: disable=no-self-argument
-        LOG.info('Caught exception. Retrying... Exception: {}'.format(ex))
+        LOG.info('Caught exception _retry_on_personality_is_none '
+                 'Retrying ... Exception: {}'.format(ex))
         return isinstance(ex, exception.LocalManagementPersonalityNotFound)
 
     @retrying.retry(wait_fixed=10 * 1000, stop_max_delay=300 * 1000,
@@ -1580,19 +1581,22 @@ class AgentManager(service.PeriodicService):
                         if not os.path.isfile(file_name_sysinv):
                             shutil.copy2(file_name, file_name_sysinv)
 
-                    # Remove resolv.conf file. It may have been created as a
-                    # symlink by the volatile configuration scripts.
-                    subprocess.call(["rm", "-f", file_name])  # pylint: disable=not-callable
-
                 if isinstance(file_content, dict):
                     f_content = file_content.get(file_name)
                 else:
                     f_content = file_content
 
                 if f_content is not None:
-                    with os.fdopen(os.open(file_name, os.O_CREAT | os.O_WRONLY,
-                               permissions), 'wb') as f:
+                    # create a temporary file to hold the runtime configuration values
+                    dirname = os.path.dirname(file_name)
+                    basename = os.path.basename(file_name)
+                    fd, tmppath = tempfile.mkstemp(dir=dirname, prefix=basename)
+                    with os.fdopen(fd, 'wb') as f:
                         f.write(f_content)
+                    if os.path.islink(file_name):
+                        os.unlink(file_name)
+                    os.rename(tmppath, file_name)
+                    os.chmod(file_name, permissions)
 
             self._update_config_applied(iconfig_uuid)
             self._report_config_applied(context)
@@ -1606,7 +1610,8 @@ class AgentManager(service.PeriodicService):
             LOG.error("report_inventory unknown request=%s" % inventory_update)
 
     def _retry_on_missing_inventory_info(ex):  # pylint: disable=no-self-argument
-        LOG.info('Caught exception. Retrying... Exception: {}'.format(ex))
+        LOG.info('Caught exception _retry_on_missing_inventory_info. '
+                 'Retrying... Exception: {}'.format(ex))
         return isinstance(ex, exception.AgentInventoryInfoNotFound)
 
     @staticmethod
