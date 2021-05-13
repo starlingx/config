@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -89,3 +89,6 @@ DEVICE_IMAGE_UPDATE_NULL = ''
 # Device Image Action
 APPLY_ACTION = 'apply'
 REMOVE_ACTION = 'remove'
+
+# Device Configuration Status
+DEVICE_APPLY_PENDING = '/APPLYING'
