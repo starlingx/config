@@ -1107,9 +1107,6 @@ def _check_ae_primary_reselect(interface):
                     "Valid options must be one of {}".format(primary_reselect,
                         ', '.join(constants.VALID_PRIMARY_RESELECT_LIST)))
             raise wsme.exc.ClientSideError(msg)
-    else:
-        if iftype == constants.INTERFACE_TYPE_AE and aemode == constants.AE_MODE_ACTIVE_STANDBY:
-            interface['primary_reselect'] = constants.PRIMARY_RESELECT_ALWAYS
 
 
 def _check_interface_data(op, interface, ihost, existing_interface,
