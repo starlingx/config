@@ -3397,29 +3397,38 @@ class HostController(rest.RestController):
            dev.pdevice_id not in device.SRIOV_ENABLED_FEC_DEVICE_IDS):
             return
 
-        if (dev.extra_info and
-                dev.extra_info.endswith(device.DEVICE_APPLY_PENDING)):
-            msg = (_("Pending configuration of FEC device. "
-                     "Please wait a few minutes for inventory update and "
-                     "retry host-unlock."))
-            LOG.info(msg)
-            pecan.request.rpcapi.update_sriov_config(
-                pecan.request.context,
-                host['uuid'])
-            raise wsme.exc.ClientSideError(msg)
+        try:
+            sriov_numvfs = int(dev.sriov_numvfs)
+        except TypeError:
+            sriov_numvfs = 0
 
-        sriov_numvfs = dev.sriov_numvfs
-        if not sriov_numvfs:
-            return
-        if (dev.sriov_vfs_pci_address and
-                sriov_numvfs == len(dev.sriov_vfs_pci_address.split(','))):
+        if dev.extra_info:
+            extra_info = ast.literal_eval(dev.extra_info)
+            expected_numvfs = int(extra_info['expected_numvfs'])
+            if sriov_numvfs != expected_numvfs:
+                msg = (_("Expecting sriov_numvfs=%d for FEC device pciaddr=%s. "
+                         "Please wait a few minutes for inventory update and "
+                         "retry host-unlock." % (expected_numvfs, dev.pciaddr)))
+                LOG.info(msg)
+                pecan.request.rpcapi.update_sriov_config(
+                    pecan.request.context,
+                    host['uuid'])
+                raise wsme.exc.ClientSideError(msg)
+
+        if not dev.sriov_vfs_pci_address or len(dev.sriov_vfs_pci_address) == 0:
+            sriov_vfs_pci_address = []
+        else:
+            sriov_vfs_pci_address = dev.sriov_vfs_pci_address.split(',')
+
+        if sriov_numvfs == len(sriov_vfs_pci_address):
+            if sriov_numvfs > 0:
                 LOG.info("check sriov_numvfs=%s sriov_vfs_pci_address=%s" %
                          (sriov_numvfs, dev.sriov_vfs_pci_address))
         else:
-            msg = (_("Expecting number of FEC device sriov_numvfs=%s. "
-                     "Please wait a few minutes for inventory update and "
-                     "retry host-unlock." %
-                     sriov_numvfs))
+            msg = (_("Expecting sriov_vfs_pci_address length=%d for FEC "
+                     "device pciaddr=%s. Please wait a few minutes for "
+                     "inventory update and retry host-unlock." %
+                     (sriov_numvfs, dev.pciaddr)))
             LOG.info(msg)
             pecan.request.rpcapi.update_sriov_config(
                 pecan.request.context,

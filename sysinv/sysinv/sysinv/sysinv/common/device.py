@@ -89,6 +89,3 @@ DEVICE_IMAGE_UPDATE_NULL = ''
 # Device Image Action
 APPLY_ACTION = 'apply'
 REMOVE_ACTION = 'remove'
-
-# Device Configuration Status
-DEVICE_APPLY_PENDING = '/APPLYING'
