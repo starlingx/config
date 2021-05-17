@@ -2460,6 +2460,7 @@ class AppOperator(object):
             # Semantic checking for N+1 app
             try:
                 lifecycle_hook_info = copy.deepcopy(lifecycle_hook_info_app_update)
+                lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
                 lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK
                 lifecycle_hook_info[LifecycleConstants.EXTRA][LifecycleConstants.TO_APP] = True
 
