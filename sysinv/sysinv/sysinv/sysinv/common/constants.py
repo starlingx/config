@@ -1661,7 +1661,7 @@ APP_METADATA_DESIRED_STATES = 'desired_states'
 APP_METADATA_FORBIDDEN_MANUAL_OPERATIONS = 'forbidden_manual_operations'
 APP_METADATA_ORDERED_APPS = 'ordered_apps'
 APP_METADATA_UPGRADES = 'upgrades'
-APP_METADATA_UPDATE_FAILURE_NO_ROLLBACK = 'update_failure_no_rollback'
+APP_METADATA_UPDATE_FAILURE_SKIP_RECOVERY = 'update_failure_no_rollback'
 APP_METADATA_FROM_VERSIONS = 'from_versions'
 APP_METADATA_SUPPORTED_K8S_VERSION = 'supported_k8s_version'
 APP_METADATA_SUPPORTED_RELEASES = 'supported_releases'
@@ -1732,6 +1732,9 @@ APP_PROGRESS_RECOVER_COMPLETED = 'Application recover to version {} completed. '
 APP_PROGRESS_CLEANUP_FAILED = 'Application files/helm release cleanup for version {} failed.'
 APP_PROGRESS_RECOVER_IN_PROGRESS = 'recovering version {} '
 APP_PROGRESS_RECOVER_CHARTS = 'recovering helm charts'
+APP_PROGRESS_UPDATE_FAILED_SKIP_RECOVERY = "Application {} update from " \
+    "version {} to version {} failed and recovery skipped " \
+    "because skip_recovery was requested."
 
 # Auto-recovery limits
 APP_AUTO_RECOVERY_MAX_COUNT = 5

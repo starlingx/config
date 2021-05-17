@@ -1644,7 +1644,7 @@ class AppOperator(object):
             LOG.error("Application %s recover to version %s aborted!"
                       % (old_app.name, old_app.version))
 
-    def _perform_app_rollback(self, from_app, to_app, no_rollback):
+    def _perform_app_rollback(self, from_app, to_app):
         """Perform application rollback request
 
         This method invokes Armada to rollback the application releases to
@@ -1653,18 +1653,10 @@ class AppOperator(object):
 
         :param from_app: application object that application updating from
         :param to_app: application object that application updating to
-        :param no_rollback: boolean: whether application should skip rollback
         :return boolean: whether application rollback was successful
         """
 
         LOG.info("Application %s (%s) rollback started." % (to_app.name, to_app.version))
-        if no_rollback:
-            LOG.info("Application %s (%s) has configured no_rollback %s, "
-                     "rollback skipped.",
-                     to_app.name, to_app.version, no_rollback)
-            # Assume application not aborted. The subsequent success path will
-            # cleanup the from_app.
-            return True
 
         try:
             if AppOperator.is_app_aborted(to_app.name):
@@ -2484,6 +2476,11 @@ class AppOperator(object):
 
             self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS)
 
+            # Get the skip_recovery flag from app metadata
+            keys = [constants.APP_METADATA_UPGRADES,
+                    constants.APP_METADATA_UPDATE_FAILURE_SKIP_RECOVERY]
+            skip_recovery = bool(strtobool(str(self._get_metadata_value(to_app, keys, False))))
+
             result = False
             if operation == constants.APP_APPLY_OP:
                 reuse_overrides = \
@@ -2517,12 +2514,23 @@ class AppOperator(object):
                 self._plugins.activate_plugins(to_app)
 
                 # lifecycle hooks not used in perform_app_rollback
-                keys = [constants.APP_METADATA_UPGRADES,
-                        constants.APP_METADATA_UPDATE_FAILURE_NO_ROLLBACK]
-                no_rollback = bool(strtobool(str(self._get_metadata_value(to_app, keys, False))))
-                result = self._perform_app_rollback(from_app, to_app, no_rollback)
+                result = self._perform_app_rollback(from_app, to_app)
 
-            if not result:
+            operation_successful = result
+
+            # If operation failed consider doing the app recovery
+            do_recovery = not operation_successful
+
+            # Here the app operation failed (do_recovery is True)
+            # but skip_recovery requested.
+            if skip_recovery and do_recovery:
+                LOG.info("Application %s (%s) has configured skip_recovery %s"
+                         ", recovery skipped.",
+                         to_app.name, to_app.version, skip_recovery)
+                do_recovery = False
+
+            # If recovery is requested stop the flow of execution here
+            if do_recovery:
                 LOG.error("Application %s update from version %s to version "
                           "%s aborted." % (to_app.name, from_app.version, to_app.version))
 
@@ -2532,7 +2540,7 @@ class AppOperator(object):
             self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS,
                                     "cleanup application version {}".format(from_app.version))
 
-            # App apply/rollback succeeded
+            # App apply/rollback succeeded or it failed but skip_recovery was set
             # Starting cleanup old application
             from_app.charts = self._get_list_of_charts(from_app.sync_armada_mfile)
             to_app_charts = [c.release for c in to_app.charts]
@@ -2550,12 +2558,26 @@ class AppOperator(object):
             self._utils._patch_report_app_dependencies(
                 from_app.name + '-' + from_app.version)
 
-            self._update_app_status(
-                to_app, constants.APP_APPLY_SUCCESS,
-                constants.APP_PROGRESS_UPDATE_COMPLETED.format(from_app.version,
-                                                               to_app.version))
-            LOG.info("Application %s update from version %s to version "
-                     "%s completed." % (to_app.name, from_app.version, to_app.version))
+            # The initial operation for to_app is successful
+            if operation_successful:
+                self._update_app_status(
+                    to_app, constants.APP_APPLY_SUCCESS,
+                    constants.APP_PROGRESS_UPDATE_COMPLETED.format(
+                        from_app.version, to_app.version))
+                LOG.info("Application %s update from version %s to version "
+                         "%s completed." % (to_app.name, from_app.version, to_app.version))
+
+            # The initial operation for to_app failed
+            # This is reached here only when skip_recovery is requested
+            # Need to inform the user
+            else:
+                message = \
+                    constants.APP_PROGRESS_UPDATE_FAILED_SKIP_RECOVERY.format(
+                        to_app.name, from_app.version, to_app.version)
+                self._update_app_status(
+                    to_app, constants.APP_APPLY_FAILURE, message)
+                LOG.info(message)
+
         except (exception.IncompatibleKubeVersion,
                 exception.KubeAppUploadFailure,
                 exception.KubeAppApplyFailure,
