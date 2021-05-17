@@ -318,6 +318,11 @@ class BaseHelm(object):
         ]
         return formatted_monitor_ips
 
+    def _get_management_address(self):
+        address = self._get_address_by_name(
+            constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_MGMT)
+        return address.address
+
     @staticmethod
     def _format_url_address(address):
         return utils.format_url_address(address)
