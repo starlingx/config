@@ -21,6 +21,7 @@ from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import patch_api
 from sysinv.api.controllers.v1 import types
 from sysinv.common import constants
+from sysinv.common import dc_api
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
@@ -382,6 +383,12 @@ class KubeUpgradeController(rest.RestController):
 
             LOG.info("Completed kubernetes upgrade to version: %s" %
                 kube_upgrade_obj.to_version)
+
+            # If applicable, notify dcmanager upgrade is complete
+            system = pecan.request.dbapi.isystem_get_one()
+            role = system.get('distributed_cloud_role')
+            if role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+                dc_api.notify_dcmanager_kubernetes_upgrade_completed()
             return KubeUpgrade.convert_with_links(kube_upgrade_obj)
 
         else:

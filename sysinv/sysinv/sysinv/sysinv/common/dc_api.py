@@ -41,3 +41,8 @@ def notify_dcmanager(events):
 def notify_dcmanager_platform_upgrade_completed():
     """Send the platform-upgrade-completed event to dcmanager."""
     notify_dcmanager([DC_EVENT_PLATFORM_UPGRADE_COMPLETED])
+
+
+def notify_dcmanager_kubernetes_upgrade_completed():
+    """Send the k8s-upgrade-completed event to dcmanager."""
+    notify_dcmanager([DC_EVENT_K8S_UPGRADE_COMPLETED])
