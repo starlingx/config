@@ -8583,6 +8583,14 @@ class ConductorManager(service.PeriodicService):
             config_uuid = self._config_update_hosts(context,
                                                     [constants.CONTROLLER],
                                                     reboot=True)
+        elif service == constants.SERVICE_TYPE_KUBERNETES:
+            # The KUBERNETES_POD_MAX_PIDS affects workers.
+            # A smarter way would be for update_service_config to receive the
+            # diff list or dict, to only target required personalities.
+            config_uuid = self._config_update_hosts(context,
+                                                    [constants.CONTROLLER,
+                                                     constants.WORKER],
+                                                    reboot=True)
         else:
             # All other services
             personalities = [constants.CONTROLLER]
