@@ -2120,13 +2120,13 @@ def find_metadata_file(path, metadata_file, upgrade_from_release=None):
 
         if upgrades:
             try:
-                no_rollback = \
-                    upgrades[constants.APP_METADATA_UPDATE_FAILURE_NO_ROLLBACK]
-                if not is_valid_boolstr(no_rollback):
+                skip_recovery = \
+                    upgrades[constants.APP_METADATA_UPDATE_FAILURE_SKIP_RECOVERY]
+                if not is_valid_boolstr(skip_recovery):
                     raise exception.SysinvException(_(
                         "Invalid {}: {} expected value is a boolean string."
                         "".format(metadata_file,
-                                  constants.APP_METADATA_UPDATE_FAILURE_NO_ROLLBACK)))
+                                  constants.APP_METADATA_UPDATE_FAILURE_SKIP_RECOVERY)))
             except KeyError:
                 pass
 
