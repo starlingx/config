@@ -96,8 +96,10 @@ if [ "$FROM_RELEASE" == "20.06" ] && [ "$ACTION" == "activate" ]; then
         fi
 
         # Get the existing application details
-        EXISTING_APP_VERSION=$(system application-show $EXISTING_APP_NAME --column app_version --format value)
-        EXISTING_APP_STATUS=$(system application-show $EXISTING_APP_NAME --column status --format value)
+        EXISTING_APP_INFO=$(system application-show $EXISTING_APP_NAME --column app_version --column status --format yaml)
+        EXISTING_APP_VERSION=$(echo ${EXISTING_APP_INFO} | sed 's/.*app_version:[[:space:]]\(\S*\).*/\1/')
+        EXISTING_APP_STATUS=$(echo ${EXISTING_APP_INFO} | sed 's/.*status:[[:space:]]\(\S*\).*/\1/')
+
         log "$NAME: $EXISTING_APP_NAME, version $EXISTING_APP_VERSION, is currently in the state: $EXISTING_APP_STATUS"
 
         if [ "x${UPGRADE_APP_VERSION}" == "x${EXISTING_APP_VERSION}" ]; then
@@ -156,9 +158,10 @@ if [ "$FROM_RELEASE" == "20.06" ] && [ "$ACTION" == "activate" ]; then
                 system application-update $fqpn_app
                 # Wait on the upload, should be quick
                 for tries in $(seq 1 $UPDATE_RESULT_ATTEMPTS); do
-                    UPDATING_APP_NAME=$(system application-show $UPGRADE_APP_NAME --column name --format value)
-                    UPDATING_APP_VERSION=$(system application-show $UPGRADE_APP_NAME --column app_version --format value)
-                    UPDATING_APP_STATUS=$(system application-show $UPGRADE_APP_NAME --column status --format value)
+                    UPDATING_APP_INFO=$(system application-show $UPGRADE_APP_NAME --column name --column app_version --column status --format yaml)
+                    UPDATING_APP_NAME=$(echo ${UPDATING_APP_INFO} | sed 's/.*name:[[:space:]]\(\S*\).*/\1/')
+                    UPDATING_APP_VERSION=$(echo ${UPDATING_APP_INFO} | sed 's/.*app_version:[[:space:]]\(\S*\).*/\1/')
+                    UPDATING_APP_STATUS=$(echo ${UPDATING_APP_INFO} | sed 's/.*status:[[:space:]]\(\S*\).*/\1/')
 
                     if [ "${UPDATING_APP_NAME}" == "${UPGRADE_APP_NAME}" ] && \
                        [ "${UPDATING_APP_VERSION}" == "${UPGRADE_APP_VERSION}" ] && \
