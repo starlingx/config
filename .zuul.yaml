@@ -73,6 +73,7 @@
     parent: tox
     description: |
       Run flake8 test for sysinv
+    nodeset: ubuntu-bionic
     files:
       - sysinv/sysinv/*
     vars:
@@ -84,6 +85,7 @@
     parent: tox
     description: |
       Run pylint test for sysinv
+    nodeset: ubuntu-bionic
     required-projects:
       - starlingx/fault
       - starlingx/update
@@ -99,6 +101,7 @@
     parent: tox
     description: |
       Run bandit test for sysinv
+    nodeset: ubuntu-bionic
     files:
       - sysinv/sysinv/*
     vars:
@@ -109,6 +112,7 @@
     name: controllerconfig-tox-flake8
     parent: tox
     description: Run flake8 tests for controllerconfig
+    nodeset: ubuntu-xenial
     files:
       - controllerconfig/*
     vars:
@@ -119,6 +123,7 @@
     name: controllerconfig-tox-pylint
     parent: tox
     description: Run pylint tests for controllerconfig
+    nodeset: ubuntu-xenial
     required-projects:
       - starlingx/fault
     files:
@@ -156,6 +161,7 @@
     parent: tox
     description: |
       Run py27 test for cgts-client
+    nodeset: ubuntu-xenial
     files:
       - sysinv/cgts-client/*
     vars:
@@ -180,6 +186,7 @@
     parent: tox
     description: |
       Run pep8 test for cgts-client
+    nodeset: ubuntu-bionic
     files:
       - sysinv/cgts-client/*
     vars:
@@ -191,6 +198,7 @@
     parent: tox
     description: |
       Run pylint test for cgts-client
+    nodeset: ubuntu-xenial
     files:
       - sysinv/cgts-client/*
     vars:
