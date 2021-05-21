@@ -9,6 +9,7 @@ from pecan import rest
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
+from ast import literal_eval
 
 from oslo_log import log
 from sysinv._i18n import _
@@ -327,13 +328,16 @@ class PCIDeviceController(rest.RestController):
                     rpc_device[field] = None
                 else:
                     rpc_device[field] = getattr(device, field)
-
-        if sriov_update:
-            # Set indication of pending configuration (runtime manifest apply)
-            # for this device
-            if not rpc_device['extra_info']:
-                rpc_device['extra_info'] = ''
-            rpc_device['extra_info'] += dconstants.DEVICE_APPLY_PENDING
+                    if field == 'sriov_numvfs':
+                        # Save desired number of VFs in extra_info since
+                        # sriov_numvfs may get overwritten by concurrent inventory report
+                        expected_numvfs = {'expected_numvfs': rpc_device[field]}
+                        if not rpc_device['extra_info']:
+                            rpc_device['extra_info'] = str(expected_numvfs)
+                        else:
+                            extra_info = literal_eval(rpc_device['extra_info'])
+                            extra_info.update(expected_numvfs)
+                            rpc_device['extra_info'] = str(extra_info)
 
         rpc_device.save()
 
@@ -355,7 +359,7 @@ def _check_host(host):
 
 
 def _check_field(field):
-    if field not in ["enabled", "name", "driver", "sriov_numvfs", "sriov_vf_driver"]:
+    if field not in ["enabled", "name", "driver", "sriov_numvfs", "sriov_vf_driver", "extra_info"]:
         raise wsme.exc.ClientSideError(_('Modifying %s attribute restricted') % field)
 
 
