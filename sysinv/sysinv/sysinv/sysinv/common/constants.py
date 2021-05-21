@@ -1518,6 +1518,7 @@ HELM_APP_VAULT = 'vault'
 HELM_APP_ROOK_CEPH = 'rook-ceph-apps'
 HELM_APP_SNMP = 'snmp'
 HELM_APP_PTP_NOTIFICATION = 'ptp-notification'
+HELM_APP_PORTIERIS = 'portieris'
 
 # Apply mode for openstack app
 OPENSTACK_RESTORE_DB = 'restore_db'
