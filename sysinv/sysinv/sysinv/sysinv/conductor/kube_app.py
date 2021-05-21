@@ -1503,45 +1503,32 @@ class AppOperator(object):
 
         return rc
 
-    def _in_upgrade_old_app_is_non_decoupled(self, old_app):
-        """Special case application upgrade check for STX 4.0
+    def _old_app_is_non_decoupled(self, old_app):
+        """Special case application upgrade check for STX 5.0
 
-        This is a special case identifier for platform application rollbacks of
-        non-decoupled application.
+        This is a special case identifier for platform application recovery of
+        non-decoupled application during application upgrade.
 
-        In STX 4.0, helm plugins were removed and delivered as part of the
-        application tarball. During platform upgrade, platform applications are
-        updated (uploaded and applied) to the new delivered versions. In the
-        case of an apply failure the application is rolled back to restore
-        application functionality.
+        Helm plugins were removed and delivered as part of the application tarball.
+        During application update, in the case of an apply failure the application
+        is recovered to the old version to restore application functionality.
 
         The current decoupled app framework relies on the existence of a plugin
         directory to signify that it is a system knowledgeable application. The
-        prior not decoupled applications, do not have this structure. This
+        prior not decoupled applications, do not have this structure(ie.portieris
+        and nginx-ingress-controller applications are not decoupled in stx4.0).This
         function will identify them so their saved overrides can be used during
-        rollback.
-
-        Include the 'nginx-ingress-controller' app in this as well since it
-        possibly could be applied and is currently not a system aware platform
-        application.
+        recovery and plugins/operators can be reloaded after recovery is completed.
 
         NOTE: This and its call should be removed from master after branching
-        for STX 4.0 is complete. All applications post STX 4.0 will all be
+        for STX 5.0 is complete. All applications post STX 5.0 will all be
         decoupled and future application upgrades do not require this.
         """
-        try:
-            self._dbapi.software_upgrade_get_one()
-        except exception.NotFound:
-            # No upgrade in progress
-            return False
-        else:
-            if (old_app.system_app or
-                old_app.name in [constants.HELM_APP_CERT_MANAGER,
-                                 constants.HELM_APP_OIDC_AUTH,
-                                 constants.HELM_APP_PLATFORM,
-                                 constants.HELM_APP_NGINX_IC]):
-                return True
-            return False
+        if (not old_app.system_app and
+            old_app.name in [constants.HELM_APP_NGINX_IC,
+                             constants.HELM_APP_PORTIERIS]):
+            return True
+        return False
 
     def _perform_app_recover(self, old_app, new_app, armada_process_required=True):
         """Perform application recover
@@ -1558,6 +1545,17 @@ class AppOperator(object):
         :param new_app: the application object that application recovering from
         :param armada_process_required: boolean, whether armada operation is needed
         """
+
+        def _activate_old_app_plugins(old_app):
+            # Enable the old app plugins. Only reload the operators for the
+            # apps decoupled in stx5.0 but not decoupled in stx4.0, this is
+            # to make sure the correct information is loaded. This particular
+            # handling for non-decoupled apps can be removed in the stx6.0
+            if self._old_app_is_non_decoupled(old_app):
+                self._helm.discover_plugins()
+            else:
+                self._plugins.activate_plugins(old_app)
+
         LOG.info("Starting recover Application %s from version: %s to version: %s" %
                  (old_app.name, new_app.version, old_app.version))
 
@@ -1590,12 +1588,15 @@ class AppOperator(object):
             if armada_process_required:
                 overrides_str = ''
                 old_app.charts = self._get_list_of_charts(old_app.sync_armada_mfile)
-                if old_app.system_app or self._in_upgrade_old_app_is_non_decoupled(old_app):
+                if old_app.system_app or self._old_app_is_non_decoupled(old_app):
                     (helm_files, armada_files) = self._get_overrides_files(
                         old_app.sync_overrides_dir, old_app.charts, old_app.name, mode=None)
 
                     overrides_str = self._generate_armada_overrides_str(
                         old_app.name, old_app.version, helm_files, armada_files)
+
+                # Ensure that the old app plugins are enabled prior to armada process.
+                _activate_old_app_plugins(old_app)
 
                 if self._make_armada_request_with_monitor(old_app,
                                                           constants.APP_APPLY_OP,
@@ -1624,6 +1625,9 @@ class AppOperator(object):
                 'Please check logs for details.')
             LOG.error(e)
             return
+        finally:
+            # Ensure that the old app plugins are enabled after recovery
+            _activate_old_app_plugins(old_app)
 
         if rc:
             self._update_app_status(
