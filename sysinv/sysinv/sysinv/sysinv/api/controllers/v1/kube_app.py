@@ -207,6 +207,7 @@ class KubeAppController(rest.RestController):
         tarfile_binary = body.get('binary_data', '')
         name = body.get('name', '')
         version = body.get('app_version', '')
+        images = body.get('images', False)
 
         if not cutils.is_url(tarfile_path) and not os.path.exists(tarfile_path):
             path_tarballs = '/tmp/tarball_uploads'
@@ -255,7 +256,8 @@ class KubeAppController(rest.RestController):
 
         pecan.request.rpcapi.perform_app_upload(pecan.request.context,
                                                 new_app, tarfile_path,
-                                                lifecycle_hook_info=lifecycle_hook_info)
+                                                lifecycle_hook_info=lifecycle_hook_info,
+                                                images=images)
         return KubeApp.convert_with_links(new_app)
 
     @cutils.synchronized(LOCK_NAME)

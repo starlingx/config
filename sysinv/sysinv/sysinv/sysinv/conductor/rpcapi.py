@@ -1892,20 +1892,22 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('backup_restore_lifecycle_actions',
                                                 operation=operation, success=success))
 
-    def perform_app_upload(self, context, rpc_app, tarfile, lifecycle_hook_info):
+    def perform_app_upload(self, context, rpc_app, tarfile, lifecycle_hook_info, images=False):
         """Handle application upload request
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
         :param tarfile: location of application tarfile to be extracted
         :param lifecycle_hook_info: LifecycleHookInfo object
+        :param images: save application images in the registry as part of app upload
 
         """
         return self.cast(context,
                          self.make_msg('perform_app_upload',
                                        rpc_app=rpc_app,
                                        tarfile=tarfile,
-                                       lifecycle_hook_info_app_upload=lifecycle_hook_info))
+                                       lifecycle_hook_info_app_upload=lifecycle_hook_info,
+                                       images=images))
 
     def perform_app_apply(self, context, rpc_app, mode, lifecycle_hook_info):
         """Handle application apply request
