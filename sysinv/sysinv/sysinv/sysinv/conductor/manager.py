@@ -6559,9 +6559,10 @@ class ConductorManager(service.PeriodicService):
         if system.capabilities.get('simplex_to_duplex_migration'):
             config_uuid = self._config_update_hosts(context, personalities)
 
-            # NOTE: no specific classes need to be specified since the default
-            # platform::config will be applied to configure the system mode
-            config_dict = {"personalities": personalities}
+            config_dict = {
+                "personalities": personalities,
+                "classes": ['platform::kubernetes::duplex_migration::runtime'],
+            }
             self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
         self._config_update_hosts(context, personalities, reboot=True)
