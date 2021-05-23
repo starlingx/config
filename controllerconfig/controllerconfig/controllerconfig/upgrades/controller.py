@@ -826,7 +826,7 @@ def migrate_hiera_data(from_release, to_release, role=None):
         yaml.dump(static_config, yaml_file, default_flow_style=False)
 
 
-def apply_sriov_config(db_credentials):
+def apply_sriov_config(db_credentials, hostname):
     # If controller-1 has any FEC devices or sriov vfs configured, apply the
     # sriov runtime manifest. We can't apply it from controller-0 during the
     # host-unlock process as controller-1 is running the new release.
@@ -839,7 +839,7 @@ def apply_sriov_config(db_credentials):
     conn = psycopg2.connect(connection_string)
     cur = conn.cursor()
     cur.execute(
-        "select id, mgmt_ip from i_host where hostname='controller-1';")
+        "select id, mgmt_ip from i_host where hostname=%s;", (hostname,))
     host = cur.fetchone()
     host_id = host[0]
     mgmt_ip = host[1]
@@ -1033,7 +1033,7 @@ def upgrade_controller(from_release, to_release):
         LOG.info("Failed to update hiera configuration")
         raise
 
-    apply_sriov_config(db_credentials)
+    apply_sriov_config(db_credentials, utils.CONTROLLER_1_HOSTNAME)
 
     # Remove /etc/kubernetes/admin.conf after it is used to generate
     # the hiera data
@@ -1433,9 +1433,26 @@ def upgrade_controller_simplex(backup_file):
     utils.execute_migration_scripts(
         from_release, to_release, utils.ACTION_MIGRATE)
 
+    hostname = 'controller-0'
+    LOG.info("Generating config for %s" % hostname)
+    try:
+        cutils.create_system_config()
+        cutils.create_host_config(hostname)
+    except Exception as e:
+        LOG.exception(e)
+        LOG.info("Failed to update hiera configuration")
+        raise
+
+    # Runtime manifests may modify platform.conf, so we'll back it up
+    temp_platform_conf = PLATFORM_CONF_FILE + ".backup"
+    shutil.copy(PLATFORM_CONF_FILE, temp_platform_conf)
+    apply_sriov_config(db_credentials, hostname)
+
     archive.close()
     shutil.rmtree(staging_dir, ignore_errors=True)
 
+    # Restore platform.conf
+    shutil.move(temp_platform_conf, PLATFORM_CONF_FILE)
     # Restore sysinv.conf
     shutil.move("/etc/sysinv/sysinv-temp.conf", "/etc/sysinv/sysinv.conf")
     # Restore fm.conf
