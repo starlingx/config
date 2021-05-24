@@ -143,6 +143,17 @@ class StorageBackend(base.APIBase):
                                                  'services',
                                                  'capabilities'])
 
+        try:
+            if storage_backend.backend == constants.SB_TYPE_CEPH:
+                rpc_storage_ceph = objects.storage_ceph.get_by_uuid(
+                    pecan.request.context,
+                    storage_backend.uuid)
+                setattr(storage_backend, 'network', rpc_storage_ceph.network)
+            else:
+                setattr(storage_backend, 'network', wsme.Unset)
+        except Exception:
+            pass
+
         # never expose the isystem_id attribute
         storage_backend.isystem_id = wtypes.Unset
 
