@@ -34,9 +34,7 @@ Commands (from conductors) are received via RPC calls.
 """
 
 from __future__ import print_function
-import errno
 from eventlet.green import subprocess
-import fcntl
 import fileinput
 import os
 import retrying
@@ -583,30 +581,12 @@ class AgentManager(service.PeriodicService):
         """
         lock_file_fd = os.open(
             constants.NETWORK_CONFIG_LOCK_FILE, os.O_CREAT | os.O_RDONLY)
-        count = 1
-        delay = 5
-        max_count = 5
-        while count <= max_count:
-            try:
-                fcntl.flock(lock_file_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                return lock_file_fd
-            except IOError as e:
-                # raise on unrelated IOErrors
-                if e.errno != errno.EAGAIN:
-                    raise
-                else:
-                    LOG.info("Could not acquire lock({}): {} ({}/{}), "
-                             "will retry".format(lock_file_fd, str(e),
-                                                 count, max_count))
-                    time.sleep(delay)
-                    count += 1
-        LOG.error("Failed to acquire lock (fd={})".format(lock_file_fd))
-        return 0
+        return utils.acquire_exclusive_nb_flock(lock_file_fd)
 
     def _release_network_config_lock(self, lockfd):
         """ Release the lock guarding apply_network_config.sh """
         if lockfd:
-            fcntl.flock(lockfd, fcntl.LOCK_UN)
+            utils.release_flock(lockfd)
             os.close(lockfd)
 
     def _get_ports_inventory(self):
