@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -24,11 +24,19 @@ class KubeRootCAHostUpdate(base.SysinvObject):
         'target_rootca_cert': utils.str_or_none,
         'effective_rootca_cert': utils.str_or_none,
         'state': utils.str_or_none,
-        'host_id': int,
         'capabilities': utils.dict_or_none,
         'reserved_1': utils.str_or_none,
         'reserved_2': utils.str_or_none,
         'reserved_3': utils.str_or_none,
+
+        'host_id': int,
+        'hostname': utils.str_or_none,
+        'personality': utils.str_or_none,
+    }
+
+    _foreign_fields = {
+        'hostname': 'host:hostname',
+        'personality': 'host:personality',
     }
 
     @base.remotable_classmethod

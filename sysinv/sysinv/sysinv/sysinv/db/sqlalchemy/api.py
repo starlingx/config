@@ -8830,13 +8830,6 @@ class Connection(api.Connection):
         return self._kube_rootca_host_update_get(rootca_host_update_id)
 
     @objects.objectify(objects.kube_rootca_host_update)
-    def kube_rootca_host_update_get_list(self, limit=None, marker=None,
-                                   sort_key=None, sort_dir=None):
-        query = model_query(models.KubeRootCAHostUpdate)
-        return _paginate_query(models.KubeRootCAHostUpdate, limit, marker,
-                               sort_key, sort_dir, query)
-
-    @objects.objectify(objects.kube_rootca_host_update)
     def kube_rootca_host_update_get_by_host(self, host_id):
         query = model_query(models.KubeRootCAHostUpdate)
         query = add_kube_rootca_host_update_filter_by_host(query, host_id)
@@ -8913,6 +8906,13 @@ class Connection(api.Connection):
         query = model_query(models.KubeRootCAUpdate)
 
         return _paginate_query(models.KubeRootCAUpdate, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @objects.objectify(objects.kube_rootca_host_update)
+    def kube_rootca_host_update_get_list(self, limit=None, marker=None,
+                                   sort_key=None, sort_dir=None):
+        query = model_query(models.KubeRootCAHostUpdate)
+        return _paginate_query(models.KubeRootCAHostUpdate, limit, marker,
                                sort_key, sort_dir, query)
 
     @objects.objectify(objects.kube_rootca_update)

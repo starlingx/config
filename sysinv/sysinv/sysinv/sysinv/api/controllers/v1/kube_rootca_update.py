@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -18,6 +18,7 @@ from pecan import expose
 from pecan import rest
 from sysinv import objects
 from sysinv.api.controllers.v1 import base
+from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
@@ -147,6 +148,12 @@ class KubeRootCAHostUpdate(base.APIBase):
     state = wtypes.text
     "Kubernetes rootCA host update state"
 
+    hostname = wtypes.text
+    "Represent the hostname of the host"
+
+    personality = wtypes.text
+    "Represent the personality of the host"
+
     capabilities = {wtypes.text: utils.ValidTypes(wtypes.text,
                                                   six.integer_types)}
     "Additional properties to be used in kube_rootca_host_update operations"
@@ -181,6 +188,44 @@ class KubeRootCAHostUpdate(base.APIBase):
                                 bookmark=True)
                         ]
         return kube_rootca_host_update
+
+
+class KubeRootCAHostUpdateCollection(collection.Collection):
+    kube_host_updates = [KubeRootCAHostUpdate]
+    "A list containing kubernetes rootCA update hosts"
+
+    def __init__(self):
+        self._type = 'kube_host_updates'
+
+    @classmethod
+    def convert_with_links(cls, kube_host_update_objs, limit=None, url=None,
+                           expand=True, **kwargs):
+        update_collection = KubeRootCAHostUpdateCollection()
+        update_collection.kube_host_updates = [
+            KubeRootCAHostUpdate.convert_with_links(p, expand)
+            for p in kube_host_update_objs]
+        update_collection.next = update_collection.get_next(
+            limit, url=url, **kwargs)
+        return update_collection
+
+
+class KubeRootCAUpdateCollection(collection.Collection):
+    kube_rootca_updates = [KubeRootCAUpdate]
+    "A list containing kubernetes rootCA updates"
+
+    def __init__(self):
+        self._type = 'kube_rootca_updates'
+
+    @classmethod
+    def convert_with_links(cls, kube_host_update_objs, limit=None, url=None,
+                           expand=True, **kwargs):
+        update_collection = KubeRootCAUpdateCollection()
+        update_collection.kube_rootca_updates = [
+            KubeRootCAUpdate.convert_with_links(p, expand)
+            for p in kube_host_update_objs]
+        update_collection.next = update_collection.get_next(
+            limit, url=url, **kwargs)
+        return update_collection
 
 
 class KubeRootCAPodsUpdateController(rest.RestController):
@@ -249,15 +294,34 @@ class KubeRootCAPodsUpdateController(rest.RestController):
         return KubeRootCAUpdate.convert_with_links(update)
 
 
+class KubeRootCAHostUpdateListController(rest.RestController):
+
+    @wsme_pecan.wsexpose(KubeRootCAHostUpdateCollection)
+    def get(self):
+        """Retrieves a list of kubernetes rootca update status by host"""
+
+        try:
+            pecan.request.dbapi.kube_rootca_update_get_one()
+        except exception.NotFound:
+            raise wsme.exc.ClientSideError(_(
+                "kube-rootca-update-list rejected: No kubernetes root CA update in progress."))
+
+        rpc_host_update_status_list = pecan.request.dbapi.kube_rootca_host_update_get_list()
+        return KubeRootCAHostUpdateCollection.convert_with_links(rpc_host_update_status_list)
+
+
 class KubeRootCAUpdateController(rest.RestController):
     """REST controller for kubernetes rootCA updates."""
 
     # Controller for /kube_rootca_update/upload, upload new root CA
     # certificate.
     upload = KubeRootCAUploadController()
+    # Controller for /kube_rootca_update/generate_cert, generates a new root CA
     generate_cert = KubeRootCAGenerateController()
     # Controller for /kube_rootca_update/pods, update pods certificates.
     pods = KubeRootCAPodsUpdateController()
+    # Controller for /kube_rootca_update/hosts, list updates by hosts.
+    hosts = KubeRootCAHostUpdateListController()
 
     def __init__(self):
         self.fm_api = fm_api.FaultAPIs()
@@ -338,12 +402,18 @@ class KubeRootCAUpdateController(rest.RestController):
         return KubeRootCAUpdate.convert_with_links(new_update)
 
     @wsme_pecan.wsexpose(KubeRootCAUpdate, types.uuid)
-    def get_one(self, uuid):
+    def get_one(self, uuid=None):
         """Retrieve information about the given kubernetes rootca update."""
 
         rpc_kube_rootca_update = objects.kube_rootca_update.get_by_uuid(
             pecan.request.context, uuid)
         return KubeRootCAUpdate.convert_with_links(rpc_kube_rootca_update)
+
+    @wsme_pecan.wsexpose(KubeRootCAUpdateCollection)
+    def get(self):
+        """Retrieve kubernetes rootca update status."""
+        rpc_kube_rootca_update = pecan.request.dbapi.kube_rootca_update_get_list()
+        return KubeRootCAUpdateCollection.convert_with_links(rpc_kube_rootca_update)
 
 
 class KubeRootCAHostUpdateController(rest.RestController):

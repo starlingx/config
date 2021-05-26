@@ -25,6 +25,9 @@ class FakeAlarm(object):
 FAKE_MGMT_ALARM = FakeAlarm('900.401', "True")
 # FAKE_NON_MGMT_AFFECTING_ALARM = FakeAlarm('900.400', "False")
 
+# API_HEADERS are a generic header passed to most API calls
+API_HEADERS = {'User-Agent': 'sysinv-test'}
+
 
 class FakeFmClient(object):
     def __init__(self):
@@ -83,6 +86,7 @@ class TestKubeRootCAUpdate(base.FunctionalTest):
         p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI')
         self.mock_conductor_api = p.start()
         self.mock_conductor_api.return_value = self.fake_conductor_api
+        self.headers = API_HEADERS
         self.addCleanup(p.stop)
 
         self.setup_health_mocked_calls()
@@ -152,7 +156,7 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
         # Test creation of kubernetes rootca update
         create_dict = dbutils.get_test_kube_rootca_update()
         result = self.post_json('/kube_rootca_update', create_dict,
-                                headers={'User-Agent': 'sysinv-test'})
+                                headers=self.headers)
 
         # Verify that the kubernetes rootca update has the expected attributes
         self.assertEqual(result.json['state'],
@@ -170,7 +174,7 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
         # Test creation of kubernetes rootca update
         create_dict = dbutils.get_test_kube_rootca_update()
         result = self.post_json('/kube_rootca_update', create_dict,
-                                headers={'User-Agent': 'sysinv-test'},
+                                headers=self.headers,
                                 expect_errors=True)
 
         # Verify that the rootca update has the expected attributes
@@ -187,7 +191,7 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
         dbutils.create_test_kube_rootca_update()
         create_dict = dbutils.post_get_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
         result = self.post_json('/kube_rootca_update', create_dict,
-                                headers={'User-Agent': 'sysinv-test'},
+                                headers=self.headers,
                                 expect_errors=True)
 
         # Verify the failure
@@ -205,7 +209,7 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
         )
         create_dict = dbutils.post_get_test_kube_rootca_update()
         result = self.post_json('/kube_rootca_update', create_dict,
-                                headers={'User-Agent': 'sysinv-test'},
+                                headers=self.headers,
                                 expect_errors=True)
 
         # Verify the failure
@@ -224,7 +228,7 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
 
         create_dict = dbutils.post_get_test_kube_rootca_update()
         result = self.post_json('/kube_rootca_update', create_dict,
-                                headers={'User-Agent': 'sysinv-test'},
+                                headers=self.headers,
                                 expect_errors=True)
 
         # Verify the failure
@@ -232,6 +236,75 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
         self.assertIn("rootca update cannot be done while a platform upgrade",
                       result.json['error_message'])
+
+
+class TestKubeRootCAUpdateShow(TestKubeRootCAUpdate,
+                        dbbase.ProvisionedControllerHostTestCase):
+
+    def setUp(self):
+        super(TestKubeRootCAUpdateShow, self).setUp()
+        self.url = '/kube_rootca_update'
+
+    def test_update_show_update_exists(self):
+        dbutils.create_test_kube_rootca_update()
+
+        result = self.get_json(self.url)
+        updates = result['kube_rootca_updates']
+
+        self.assertEqual(updates[0]['state'], kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
+
+    def test_update_show_no_update_exists(self):
+        result = self.get_json(self.url)
+        updates = result['kube_rootca_updates']
+        self.assertEqual(len(updates), 0)
+
+
+class TestKubeRootCAHostUpdateList(TestKubeRootCAUpdate,
+                        dbbase.ProvisionedAIODuplexSystemTestCase):
+
+    def setUp(self):
+        super(TestKubeRootCAHostUpdateList, self).setUp()
+        self.url = '/kube_rootca_update/hosts'
+
+    def test_update_list_update_exists(self):
+        """ Test that output lists the hosts"""
+        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS)
+
+        dbutils.create_test_kube_rootca_host_update(host_id=self.host.id,
+            state=kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTBOTHCAS)
+        dbutils.create_test_kube_rootca_host_update(host_id=self.host2.id,
+            state=kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTBOTHCAS)
+
+        result = self.get_json(self.url)
+        updates = result['kube_host_updates']
+
+        self.assertEqual(updates[0]['state'], kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTBOTHCAS)
+        self.assertEqual(updates[1]['state'], kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTBOTHCAS)
+        self.assertEqual(updates[0]['personality'], constants.CONTROLLER)
+        self.assertEqual(updates[1]['personality'], constants.CONTROLLER)
+        self.assertEqual(updates[0]['hostname'], 'controller-0')
+        self.assertEqual(updates[1]['hostname'], 'controller-1')
+        self.assertEqual(updates[0]['target_rootca_cert'], 'newCertSerial')
+        self.assertEqual(updates[1]['target_rootca_cert'], 'newCertSerial')
+        self.assertEqual(updates[0]['effective_rootca_cert'], 'oldCertSerial')
+        self.assertEqual(updates[1]['effective_rootca_cert'], 'oldCertSerial')
+
+    def test_update_list_with_no_update_in_progress(self):
+        """ Should return error message if no update has been stared"""
+
+        result = self.get_json(self.url, expect_errors=True)
+
+        self.assertEqual(result.status_int, http_client.BAD_REQUEST)
+        self.assertIn("kube-rootca-update-list rejected: No kubernetes root CA update in progress.",
+                        result.json['error_message'])
+
+    def test_update_list_with_no_host_update_in_progress(self):
+        """ Should return warning message if no update has been stared on hosts"""
+        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS)
+
+        result = self.get_json(self.url)
+        updates = result['kube_host_updates']
+        self.assertEqual(len(updates), 0)
 
 
 class TestKubeRootCAUpload(TestKubeRootCAUpdate,
@@ -255,7 +328,7 @@ class TestKubeRootCAUpload(TestKubeRootCAUpdate,
         response = self.post_with_files('%s/%s' % ('/kube_rootca_update', 'upload'),
                                   {},
                                   upload_files=files,
-                                  headers={'User-Agent': 'sysinv-test'},
+                                  headers=self.headers,
                                   expect_errors=False)
 
         self.assertEqual(response.content_type, 'application/json')
@@ -282,7 +355,7 @@ class TestKubeRootCAGenerate(TestKubeRootCAUpdate,
             setup_generate_rootca(fake_save_rootca_return)
 
         response = self.post_json('/kube_rootca_update/generate_cert', {},
-                                headers={'User-Agent': 'sysinv-test'},
+                                headers=self.headers,
                                 expect_errors=True)
 
         self.assertEqual(response.content_type, 'application/json')
@@ -301,7 +374,7 @@ class TestKubeRootCAPodsUpdateTrustBothCAs(TestKubeRootCAUpdate,
         super(TestKubeRootCAPodsUpdateTrustBothCAs, self).setUp()
         self.phase = constants.KUBE_CERT_UPDATE_TRUSTBOTHCAS
         self.post_url = '/kube_rootca_update/pods'
-        self.headers = {'User-Agent': 'sysinv-test'}
+        self.headers = API_HEADERS
 
     def test_rootca_update_pods(self):
         # Test kube root CA update for pods
@@ -345,7 +418,7 @@ class TestKubeRootCAPodsUpdateTrustNewCA(TestKubeRootCAUpdate,
         super(TestKubeRootCAPodsUpdateTrustNewCA, self).setUp()
         self.phase = constants.KUBE_CERT_UPDATE_TRUSTNEWCA
         self.post_url = '/kube_rootca_update/pods'
-        self.headers = {'User-Agent': 'sysinv-test'}
+        self.headers = API_HEADERS
 
     def test_rootca_update_pods(self):
         # Test kube root CA update for pods
@@ -384,9 +457,6 @@ class TestKubeRootCAPodsUpdateTrustNewCA(TestKubeRootCAUpdate,
 
 
 class TestKubeRootCAHostUpdate(base.FunctionalTest):
-    # API_HEADERS are a generic header passed to most API calls
-    API_HEADERS = {'User-Agent': 'sysinv-test'}
-
     # API_PREFIX is the prefix for the URL
     API_PREFIX = '/ihosts'
 
@@ -411,7 +481,7 @@ class TestKubeRootCAHostUpdate(base.FunctionalTest):
         self.mock_kube_get_secret = z.start()
         self.addCleanup(z.stop)
 
-        self.headers = {'User-Agent': 'sysinv-test'}
+        self.headers = API_HEADERS
         self.post_url = \
             '%s/%s/kube_update_ca' % (self.API_PREFIX, self.host.uuid)
 
