@@ -42,6 +42,7 @@ V1_ALPHA_2 = 'v1alpha2'
 # Kubernetes Files
 KUBERNETES_ADMIN_CONF = '/etc/kubernetes/admin.conf'
 KUBERNETES_ROOTCA_CERT = '/etc/kubernetes/pki/ca.crt'
+KUBERNETES_APISERVER_CERT = '/etc/kubernetes/pki/apiserver.crt'
 
 # Kubernetes clusters
 KUBERNETES_CLUSTER_DEFAULT = "kubernetes"

@@ -1915,5 +1915,13 @@ KUBE_ROOTCA_SECRET = 'system-kube-rootca-certificate'
 KUBE_ROOTCA_ISSUER = 'system-kube-rootca-issuer'
 KUBE_SELFSIGNED_ISSUER = 'system-kube-selfsigned-issuer'
 
+# kubernetes components secrets on rootCA update procedure
+KUBE_ADMIN_CERT = 'system-kube-admin-client-certificate'
+KUBE_APISERVER_CERT = 'system-kube-apiserver-{}-server-certificate'
+KUBE_APISERVER_KUBELET_CERT = 'system-kube-apiserver-{}-kubelet-client-certificate'
+KUBE_SCHEDULER_CERT = 'system-kube-scheduler-{}-client-certificate'
+KUBE_CONTROLLER_MANAGER_CERT = 'system-kube-controller-manager-{}-client-certificate'
+KUBE_KUBELET_CERT = 'system-kube-kubelet-{}-client-certificate'
+
 # configuration UUID reboot required flag (bit)
 CONFIG_REBOOT_REQUIRED = (1 << 127)

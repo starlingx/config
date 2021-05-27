@@ -207,7 +207,7 @@ class ManagerTestCase(base.DbTestCase):
 
         self.mock_get_current_kube_rootca = mock.MagicMock()
         z = mock.patch(
-            'sysinv.conductor.manager.ConductorManager._get_current_kube_rootca',
+            'sysinv.common.utils.get_certificate_from_file',
             self.mock_get_current_kube_rootca
         )
         self.mock_current_kube_rootca = z.start()

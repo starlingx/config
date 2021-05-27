@@ -85,6 +85,9 @@ class KubernetesPuppet(base.BasePuppet):
         # Get the kubernetes version for this host
         config.update(self._get_kubernetes_version(host))
 
+        # Get kubernetes certificates config for this host
+        config.update(self._get_host_k8s_certificates_config(host))
+
         return config
 
     def get_host_config_upgrade(self, host):
@@ -134,6 +137,13 @@ class KubernetesPuppet(base.BasePuppet):
             'platform::kubernetes::params::rootca_key': key,
         })
 
+        secret_list = [constants.KUBE_ADMIN_CERT]
+        cert_data = self._get_kubernetes_components_cert_and_key(secret_list)
+        config.update({
+            'platform::kubernetes::params::admin_cert': cert_data[constants.KUBE_ADMIN_CERT][0],
+            'platform::kubernetes::params::admin_key': cert_data[constants.KUBE_ADMIN_CERT][1],
+        })
+
         return config
 
     @staticmethod
@@ -159,6 +169,31 @@ class KubernetesPuppet(base.BasePuppet):
             # During ansible bootstrap, kubernetes is not configured.
             # Set the cert and key to 'undef'
             return 'undef', 'undef'
+
+    @staticmethod
+    def _get_kubernetes_components_cert_and_key(secret_names):
+        """"Get kubernetes components certficates from secrets issued by
+            cert-manager Certificate resource.
+        """
+        certificate_dict = {}
+        kube_operator = kubernetes.KubeOperator()
+        for secret_name in secret_names:
+            try:
+                secret = kube_operator.kube_get_secret(secret_name,
+                                                KUBE_ROOTCA_CERT_NS)
+                # The respective cert/key are not stored in kubernetes yet
+                if not secret:
+                    certificate_dict[secret_name] = 'undef', 'undef'
+                if hasattr(secret, 'data') and secret.data:
+                    cert = secret.data.get('tls.crt', None)
+                    key = secret.data.get('tls.key', None)
+                    if cert and key:
+                        certificate_dict[secret_name] = cert, key
+            except exception.KubeNotConfigured:
+                # During ansible bootstrap, kubernetes is not configured.
+                # Set the cert and key to 'undef'
+                certificate_dict[secret_name] = 'undef', 'undef'
+        return certificate_dict
 
     @staticmethod
     def _get_active_kubernetes_version():
@@ -335,6 +370,38 @@ class KubernetesPuppet(base.BasePuppet):
             host_label_keys.append(label.label_key)
         config.update(
             {'platform::kubernetes::params::host_labels': host_label_keys})
+        return config
+
+    def _get_host_k8s_certificates_config(self, host):
+        config = {}
+        # kubernetes components certificate secrets
+
+        kube_apiserver_cert_secret = constants.KUBE_APISERVER_CERT.format(host.hostname)
+        kube_apiserver_kubelet_client_cert_secret = constants.KUBE_APISERVER_KUBELET_CERT.format(host.hostname)
+        kube_scheduler_cert_secret = constants.KUBE_SCHEDULER_CERT.format(host.hostname)
+        kube_controller_manager_cert_secret = constants.KUBE_CONTROLLER_MANAGER_CERT.format(host.hostname)
+        kube_kubelet_cert_secret = constants.KUBE_KUBELET_CERT.format(host.hostname)
+
+        secret_list = [kube_apiserver_cert_secret, kube_apiserver_kubelet_client_cert_secret,
+                        kube_scheduler_cert_secret, kube_controller_manager_cert_secret,
+                        kube_kubelet_cert_secret]
+
+        cert_data = self._get_kubernetes_components_cert_and_key(secret_list)
+        config.update({
+            'platform::kubernetes::params::apiserver_cert': cert_data[kube_apiserver_cert_secret][0],
+            'platform::kubernetes::params::apiserver_key': cert_data[kube_apiserver_cert_secret][1],
+            'platform::kubernetes::params::apiserver_kubelet_cert':
+                cert_data[kube_apiserver_kubelet_client_cert_secret][0],
+            'platform::kubernetes::params::apiserver_kubelet_key':
+                cert_data[kube_apiserver_kubelet_client_cert_secret][1],
+            'platform::kubernetes::params::scheduler_cert': cert_data[kube_scheduler_cert_secret][0],
+            'platform::kubernetes::params::scheduler_key': cert_data[kube_scheduler_cert_secret][1],
+            'platform::kubernetes::params::controller_manager_cert': cert_data[kube_controller_manager_cert_secret][0],
+            'platform::kubernetes::params::controller_manager_key': cert_data[kube_controller_manager_cert_secret][1],
+            'platform::kubernetes::params::kubelet_cert': cert_data[kube_kubelet_cert_secret][0],
+            'platform::kubernetes::params::kubelet_key': cert_data[kube_kubelet_cert_secret][1],
+        })
+
         return config
 
     def _get_host_k8s_cgroup_config(self, host):

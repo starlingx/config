@@ -422,6 +422,59 @@ class KubeRootCAHostUpdateController(rest.RestController):
     def __init__(self, from_ihosts=False):
         self._from_ihosts = from_ihosts
 
+    def _precheck_updatecerts(self, cluster_update, ihost):
+
+        # Get all the host update states and ensure this phase of the
+        # procedure is allowed to be executed.
+        host_updates = pecan.request.dbapi.kube_rootca_host_update_get_list()
+        if len(host_updates) == 0:
+            raise wsme.exc.ClientSideError(_(
+                    "kube-rootca-host-update rejected: host update "
+                    "not started yet"))
+
+        if cluster_update.state in [
+                kubernetes.KUBE_ROOTCA_UPDATED_HOST_UPDATECERTS,
+                kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS,
+                kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS_FAILED]:
+            if cluster_update.state == kubernetes.KUBE_ROOTCA_UPDATED_HOST_UPDATECERTS:
+                # updatecerts phase completed
+                raise wsme.exc.ClientSideError(_(
+                        "kube-rootca-host-update rejected: update already "
+                        "completed on cluster"))
+            for host_update in host_updates:
+                if host_update.state == kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS_FAILED:
+                    # other host is on FAILED state
+                    if host_update.host_id != ihost.id:
+                        host_name = pecan.request.dbapi.ihost_get(
+                            host_update.host_id).hostname
+                        raise wsme.exc.ClientSideError(_(
+                            "kube-rootca-host-update rejected: update failed "
+                            "on host %s" % host_name))
+                elif host_update.state == kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS:
+                    # procedure already in progress in some host
+                    host_name = pecan.request.dbapi.ihost_get(
+                            host_update.host_id).hostname
+                    raise wsme.exc.ClientSideError(_(
+                        "kube-rootca-host-update rejected: update in progress "
+                        "on host %s" % host_name))
+                elif host_update.state == kubernetes.KUBE_ROOTCA_UPDATED_HOST_UPDATECERTS:
+                    if host_update.host_id == ihost.id:
+                        raise wsme.exc.ClientSideError(_(
+                            "kube-rootca-host-update rejected: update already "
+                            "completed on host %s" % ihost.hostname))
+
+        # if is the first host to be update on this phase we need
+        # to assure that cluster_update state is what we expect
+        # that is the state where all pods were restarted and running successfuly
+        else:
+            if cluster_update.state != kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTBOTHCAS:
+                raise wsme.exc.ClientSideError(_(
+                        "kube-rootca-host-update rejected: not "
+                        "allowed when cluster update is in state: %s. "
+                        "(only allowed when in state: %s)"
+                        % (cluster_update.state,
+                        kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTBOTHCAS)))
+
     def _precheck_trustbothcas(self, cluster_update, ihost):
         """ Pre checking if conditions met for phase trust-both-cas """
 
@@ -444,7 +497,7 @@ class KubeRootCAHostUpdateController(rest.RestController):
                     host_name = pecan.request.dbapi.ihost_get(
                                 host_update.host_id).hostname
                     raise wsme.exc.ClientSideError(_(
-                        "kube-rootca-host-update rejected: update in progess "
+                        "kube-rootca-host-update rejected: update in progress "
                         "on host %s" % host_name))
 
             # Check if this host update ever started
@@ -521,7 +574,16 @@ class KubeRootCAHostUpdateController(rest.RestController):
             raise wsme.exc.ClientSideError(_(
                 "kube-rootca-host-update rejected: no new root CA cert found."))
 
-        ihost = pecan.request.dbapi.ihost_get(host_uuid)
+        try:
+            ihost = pecan.request.dbapi.ihost_get(host_uuid)
+        except exception.ServerNotFound:
+            raise exception.SysinvException(_(
+                "Invalid host_uuid %s" % host_uuid))
+
+        if ihost.personality not in [constants.CONTROLLER, constants.WORKER]:
+            raise exception.SysinvException(_(
+                "Invalid personality %s to update kube certificate." %
+                ihost.personality))
 
         phase = body['phase'].lower()
 
@@ -529,6 +591,10 @@ class KubeRootCAHostUpdateController(rest.RestController):
             # kube root CA update on host phase trust-both-cas
             self._precheck_trustbothcas(update, ihost)
             update_state = kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS
+        elif phase == constants.KUBE_CERT_UPDATE_UPDATECERTS:
+            # kube root CA update on host phase updateCerts
+            self._precheck_updatecerts(update, ihost)
+            update_state = kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS
         else:
             raise wsme.exc.ClientSideError(_(
                 "kube-rootca-host-update rejected: not supported phase."))
@@ -562,7 +628,7 @@ class KubeRootCAHostUpdateController(rest.RestController):
 
         # perform rpc to conductor to perform config apply
         pecan.request.rpcapi.kube_certificate_update_by_host(
-            pecan.request.context, host_uuid, body['phase'])
+            pecan.request.context, ihost, body['phase'])
 
         LOG.info("Kubernetes rootca update started on host: %s"
                  % ihost.hostname)
