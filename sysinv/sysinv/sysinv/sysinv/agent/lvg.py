@@ -86,6 +86,7 @@ class LVGOperator(object):
             vgdisplay_output = ""
 
         # parse the output 1 vg/row
+        rook_vgs = []
         for row in vgdisplay_output.split('\n'):
             if row.strip().startswith("ceph"):
 
@@ -100,9 +101,9 @@ class LVGOperator(object):
                     if k in attr.keys():
                         attr[k] = int(attr[k])
 
-                return attr
+                rook_vgs.append(attr)
 
-        return None
+        return rook_vgs
 
     def ilvg_get(self, cinder_device=None):
         '''Enumerate physical volume topology based on:
@@ -178,9 +179,10 @@ class LVGOperator(object):
             if attr:
                 ilvg.append(attr)
 
-        rook_vg = self.ilvg_rook_get()
-        if (rook_vg and (rook_vg not in ilvg)):
-            ilvg.append(rook_vg)
+        rook_vgs = self.ilvg_rook_get()
+        for vg in rook_vgs:
+            if vg and vg not in ilvg:
+                ilvg.append(vg)
 
         LOG.debug("ilvg= %s" % ilvg)
 
