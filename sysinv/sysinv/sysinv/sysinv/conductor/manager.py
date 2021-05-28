@@ -6803,6 +6803,12 @@ class ConductorManager(service.PeriodicService):
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
+    def update_controller_rollback_flag(self, context):
+        """Update the controller upgrade rollback flag"""
+        LOG.info("update_controller_rollback_flag")
+
+        cutils.touch(tsc.UPGRADE_ROLLBACK_FLAG)
+
     def update_controller_upgrade_flag(self, context):
         """Update the controller upgrade flag"""
         LOG.info("update_controller_upgrade_flag")
