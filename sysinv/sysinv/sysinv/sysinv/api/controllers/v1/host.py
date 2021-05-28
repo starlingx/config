@@ -2769,7 +2769,10 @@ class HostController(rest.RestController):
                 self._semantic_check_rollback()
                 if StorageBackendConfig.has_backend_configured(
                         pecan.request.dbapi, constants.CINDER_BACKEND_CEPH):
-                    disable_storage_monitor = True
+                    # elif block ensures this is a duplex env.
+                    # We do not set disable_storage_monitor True for AIO-DX
+                    if not cutils.is_aio_duplex_system(pecan.request.dbapi):
+                        disable_storage_monitor = True
                 # the upgrade rollback flag can only be created by root so
                 # send an rpc request to sysinv-conductor to create the flag
                 pecan.request.rpcapi.update_controller_rollback_flag(

@@ -6460,8 +6460,9 @@ class ConductorManager(service.PeriodicService):
 
     def kill_ceph_storage_monitor(self, context):
         """Stop the ceph storage monitor.
-        pmon will not restart it. This should only be used in an
-        upgrade/rollback
+        pmon will not restart it.
+        This should only be used in an upgrade/rollback.
+        This should not be called for an AIO (SX or DX).
 
         :param context: request context.
         """
