@@ -845,6 +845,14 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('update_user_config'))
 
+    def update_controller_rollback_flag(self, context):
+        """Synchronously, have a conductor update controller rollback flag
+
+        :param context: request context
+         """
+        return self.call(context,
+                         self.make_msg('update_controller_rollback_flag'))
+
     def update_controller_upgrade_flag(self, context):
         """Synchronously, have a conductor update controller upgrade flag
 

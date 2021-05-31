@@ -2770,7 +2770,10 @@ class HostController(rest.RestController):
                 if StorageBackendConfig.has_backend_configured(
                         pecan.request.dbapi, constants.CINDER_BACKEND_CEPH):
                     disable_storage_monitor = True
-                open(tsc.UPGRADE_ROLLBACK_FLAG, "w").close()
+                # the upgrade rollback flag can only be created by root so
+                # send an rpc request to sysinv-conductor to create the flag
+                pecan.request.rpcapi.update_controller_rollback_flag(
+                    pecan.request.context)
             elif rpc_ihost.hostname == constants.CONTROLLER_1_HOSTNAME:
                 self._check_host_load(constants.CONTROLLER_0_HOSTNAME,
                                       new_target_load)
