@@ -14,6 +14,7 @@ from netaddr import IPNetwork
 from oslo_log import log
 from sysinv._i18n import _
 from sysinv.common import constants
+from sysinv.common import device as dconstants
 from sysinv.common import exception
 from sysinv.common import interface
 from sysinv.common import utils
@@ -53,6 +54,7 @@ DHCP_METHOD = 'dhcp'
 
 NETWORK_CONFIG_RESOURCE = 'platform::interfaces::network_config'
 SRIOV_CONFIG_RESOURCE = 'platform::interfaces::sriov::sriov_config'
+FPGA_CONFIG_RESOURCE = 'platform::interfaces::fpga::fpga_config'
 ADDRESS_CONFIG_RESOURCE = 'platform::network::addresses::address_config'
 ROUTE_CONFIG_RESOURCE = 'platform::network::routes::route_config'
 
@@ -89,6 +91,7 @@ class InterfacePuppet(base.BasePuppet):
             ROUTE_CONFIG_RESOURCE: {},
             ADDRESS_CONFIG_RESOURCE: {},
             SRIOV_CONFIG_RESOURCE: {},
+            FPGA_CONFIG_RESOURCE: {},
             DATA_IFACE_LIST_RESOURCE: [],
         }
 
@@ -453,6 +456,28 @@ def is_a_mellanox_cx3_device(context, iface):
         return False
     port = get_interface_port(context, iface)
     if port['driver'] == constants.DRIVER_MLX_CX3:
+        return True
+    return False
+
+
+def is_an_n3000_i40_device(context, iface):
+    """
+    Determine if the underlying device is onboard an N3000 FPGA.
+    """
+    if iface['iftype'] != constants.INTERFACE_TYPE_ETHERNET:
+        # We only care about configuring specific settings for related ethernet
+        # devices.
+        return False
+
+    port = get_interface_port(context, iface)
+    if not port:
+        return False
+
+    device_id = interface.get_pci_device_id(port)
+    if not device_id:
+        return False
+
+    if device_id == dconstants.PCI_DEVICE_ID_FPGA_INTEL_I40_PF:
         return True
     return False
 
@@ -1116,6 +1141,34 @@ def get_sriov_config(context, iface):
     return config
 
 
+def get_n3000_config(context, iface):
+    config = {}
+    if is_an_n3000_i40_device(context, iface):
+        port = get_interface_port(context, iface)
+        if not port:
+            return {}
+
+        device_id = interface.get_pci_device_id(port)
+        if not device_id:
+            return {}
+
+        config = {
+            'ifname': port['name'],
+            'device_id': device_id,
+            'used_by': iface['used_by'] or []
+        }
+    return config
+
+
+def get_fpga_config(context, iface):
+    """
+    Returns an FPGA interface config dictionary.
+    """
+    config = {}
+    config.update(get_n3000_config(context, iface))
+    return config
+
+
 def get_common_network_config(context, iface, config, network_id=None):
     """
     Augments a basic config dictionary with the attributes specific to an upper
@@ -1252,6 +1305,12 @@ def generate_network_config(context, config, iface):
             config[SRIOV_CONFIG_RESOURCE].update({
                 sriov_config['ifname']: format_sriov_config(sriov_config)
             })
+
+    fpga_config = get_fpga_config(context, iface)
+    if fpga_config:
+        config[FPGA_CONFIG_RESOURCE].update({
+            fpga_config['ifname']: format_fpga_config(fpga_config)
+        })
 
 
 def find_network_by_pool_uuid(context, pool_uuid):
@@ -1489,3 +1548,13 @@ def format_sriov_config(config):
     sriov_config = copy.copy(config)
     del sriov_config['ifname']
     return sriov_config
+
+
+def format_fpga_config(config):
+    """
+    Converts a fpga_config resource dictionary to the equivalent puppet
+    resource definition parameters.
+    """
+    fpga_config = copy.copy(config)
+    del fpga_config['ifname']
+    return fpga_config

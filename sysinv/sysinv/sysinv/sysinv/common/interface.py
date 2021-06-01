@@ -127,6 +127,22 @@ def get_lower_interface(context, iface):
     return context['interfaces'][lower_ifname]
 
 
+def get_pci_device_id(port):
+    """
+    Determine the PCI device id of given port.
+    """
+    # The device id can be found by inspecting the '[xxxx]' at the
+    # end of the port's pdevice field
+    if not port or not port.get('pdevice', None):
+        return None
+    device_id = re.search(r'\[([0-9a-fA-F]{1,4})\]$', port['pdevice'])
+    if device_id:
+        device_id = device_id.group(1)
+        return str(device_id)
+
+    return None
+
+
 def get_sriov_interface_port(context, iface):
     """
     Determine the underlying port of the SR-IOV interface.
@@ -143,15 +159,10 @@ def get_sriov_interface_device_id(context, iface):
     """
     Determine the underlying PCI device id of the SR-IOV interface.
     """
-    # The device id can be found by inspecting the '[xxxx]' at the
-    # end of the port's pdevice field
-    device_id = None
     port = get_sriov_interface_port(context, iface)
-    if port:
-        device_id = re.search(r'\[([0-9a-fA-F]{1,4})\]$', port['pdevice'])
-        if device_id:
-            device_id = device_id.group(1)
-    return device_id
+    if not port:
+        return None
+    return get_pci_device_id(port)
 
 
 def get_sriov_interface_vf_addrs(context, iface, vf_addr_list):
