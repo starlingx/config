@@ -507,7 +507,8 @@ class ProvisionedAIOHostTestCase(BaseHostTestCase):
                                            administrative=constants.ADMIN_UNLOCKED,
                                            operational=constants.OPERATIONAL_ENABLED,
                                            availability=constants.AVAILABILITY_AVAILABLE,
-                                           vim_progress_status=constants.VIM_SERVICES_ENABLED)
+                                           vim_progress_status=constants.VIM_SERVICES_ENABLED,
+                                           invprovision=constants.PROVISIONED)
         self._create_test_host_cpus(self.host, platform=2, vswitch=2, application=11)
 
 
@@ -545,6 +546,7 @@ class ProvisionedAIODuplexSystemTestCase(ProvisionedAIOHostTestCase):
                                             administrative=constants.ADMIN_UNLOCKED,
                                             operational=constants.OPERATIONAL_ENABLED,
                                             availability=constants.AVAILABILITY_AVAILABLE,
-                                            vim_progress_status=constants.VIM_SERVICES_ENABLED)
+                                            vim_progress_status=constants.VIM_SERVICES_ENABLED,
+                                            invprovision=constants.PROVISIONED)
         self._create_test_host_cpus(self.host2, platform=2, vswitch=2,
                                     application=11)

@@ -2268,3 +2268,20 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                 phase=phase
             )
         )
+
+    def clear_kubernetes_rootca_update_resources(self, context, certificate_list,
+                                    issuers_list, secret_list):
+        """Synchronously, clear resources created during kubernetes root ca update
+
+        :param context: request context
+        :param certificate_list: certificates names to be deleted
+        :param issuers_list: issuers names to be deleted
+        :param secret_list: secret names to be deleted
+        """
+
+        return self.call(context,
+                         self.make_msg(
+                                       'clear_kubernetes_rootca_update_resources',
+                                       certificate_list=certificate_list,
+                                       issuers_list=issuers_list,
+                                       secret_list=secret_list))
