@@ -587,6 +587,12 @@ class PlatformPuppet(base.BasePuppet):
                 host, constants.ISOLATED_FUNCTION, threads=True)
             app_isolated_cpuset = set([c.cpu for c in app_isolated_cpus])
 
+            # application cpus
+            app_cpus = self._get_host_cpu_list(
+                host, constants.APPLICATION_FUNCTION, threads=True)
+            app_cpuset = set([c.cpu for c in app_cpus])
+            app_ranges = utils.format_range_set(app_cpuset)
+
             cpu_options = ""
             cpu_ranges = {}
             if constants.LOWLATENCY in host.subfunctions:
@@ -604,9 +610,16 @@ class PlatformPuppet(base.BasePuppet):
             cpu_ranges.update({
                 "isolcpus": isolcpus_ranges,
                 "rcu_nocbs": rcu_nocbs_ranges,
-                "kthread_cpus": platform_ranges,
-                "irqaffinity": platform_ranges
+                "kthread_cpus": platform_ranges
             })
+
+            # Put IRQs on application cores if they are configured.
+            # Note that PCI IRQs for platform interfaces are reaffined to
+            # platform cores at runtime.
+            if app_cpuset:
+                cpu_ranges.update({"irqaffinity": app_ranges})
+            else:
+                cpu_ranges.update({"irqaffinity": platform_ranges})
 
             for key, value in cpu_ranges.items():
                 if str(value).strip() != "":
