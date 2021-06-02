@@ -621,6 +621,64 @@ class KubeRootCAHostUpdateController(rest.RestController):
                         % (cluster_update.state,
                         kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS)))
 
+    def _precheck_trustnewca(self, cluster_update, ihost):
+
+        # Get all the host update state
+        host_updates = pecan.request.dbapi.kube_rootca_host_update_get_list()
+        if len(host_updates) == 0:
+            raise wsme.exc.ClientSideError(_(
+                    "kube-rootca-host-update rejected: host update "
+                    "not started yet"))
+
+        if cluster_update.state in [
+                kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA,
+                kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA,
+                kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA_FAILED]:
+            if cluster_update.state == \
+                    kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA:
+                # trustNewCA phase completed
+                raise wsme.exc.ClientSideError(_(
+                        "kube-rootca-host-update rejected: update already "
+                        "completed on cluster"))
+            for host_update in host_updates:
+                if host_update.state == kubernetes.\
+                        KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA_FAILED:
+                    # other host is on FAILED state
+                    if host_update.host_id != ihost.id:
+                        host_name = pecan.request.dbapi.ihost_get(
+                            host_update.host_id).hostname
+                        raise wsme.exc.ClientSideError(_(
+                            "kube-rootca-host-update rejected: update "
+                            "failed on host %s" % host_name))
+                elif host_update.state == \
+                        kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA:
+                    # procedure already in progress in some host
+                    host_name = pecan.request.dbapi.ihost_get(
+                            host_update.host_id).hostname
+                    raise wsme.exc.ClientSideError(_(
+                        "kube-rootca-host-update rejected: update in "
+                        "progress on host %s" % host_name))
+                elif host_update.state == \
+                        kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA:
+                    if host_update.host_id == ihost.id:
+                        raise wsme.exc.ClientSideError(_(
+                            "kube-rootca-host-update rejected: update "
+                            "already completed on host %s"
+                            % ihost.hostname))
+
+        # If this is the first host to be update on this phase we need to ensure
+        # that cluster_update state is what we expect, which is updateCerts
+        # phase has completed successfully on all hosts.
+        else:
+            if cluster_update.state != \
+                    kubernetes.KUBE_ROOTCA_UPDATED_HOST_UPDATECERTS:
+                raise wsme.exc.ClientSideError(_(
+                        "kube-rootca-host-update rejected: not "
+                        "allowed when cluster update is in state: %s. "
+                        "(only allowed when in state: %s)"
+                        % (cluster_update.state,
+                        kubernetes.KUBE_ROOTCA_UPDATED_HOST_UPDATECERTS)))
+
     @cutils.synchronized(LOCK_KUBE_ROOTCA_CONTROLLER)
     @wsme_pecan.wsexpose(KubeRootCAHostUpdate, types.uuid, body=six.text_type)
     def post(self, host_uuid, body):
@@ -671,6 +729,10 @@ class KubeRootCAHostUpdateController(rest.RestController):
             # kube root CA update on host phase updateCerts
             self._precheck_updatecerts(update, ihost)
             update_state = kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS
+        elif phase == constants.KUBE_CERT_UPDATE_TRUSTNEWCA:
+            # kube root CA update on host phase trustNewCA
+            self._precheck_trustnewca(update, ihost)
+            update_state = kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA
         else:
             raise wsme.exc.ClientSideError(_(
                 "kube-rootca-host-update rejected: not supported phase."))

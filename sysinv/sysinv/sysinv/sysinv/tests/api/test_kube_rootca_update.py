@@ -965,3 +965,173 @@ class TestKubeRootCAHostUpdateUpdateCerts(TestKubeRootCAHostUpdate,
         self.assertIn("kube-rootca-host-update rejected: update failed "
                             "on host %s" % self.host2.hostname,
                             result.json['error_message'])
+
+
+class TestKubeRootCAHostUpdateTrustNewCA(TestKubeRootCAHostUpdate,
+                        dbbase.ProvisionedAIODuplexSystemTestCase):
+    def setUp(self):
+        super(TestKubeRootCAHostUpdateTrustNewCA, self).setUp()
+        # Set host root CA update phase
+        self.set_phase(constants.KUBE_CERT_UPDATE_TRUSTNEWCA)
+
+    def test_trustnewca_host_update(self):
+        # Test kubernetes rootca host update phase trustNewCA success case
+        create_dict = {'phase': self.phase}
+
+        # overall update is updateCerts phase completed
+        dbutils.create_test_kube_rootca_update(
+            state=kubernetes.KUBE_ROOTCA_UPDATED_HOST_UPDATECERTS)
+
+        # host update is updateCerts phase completed on this host
+        dbutils.create_test_kube_rootca_host_update(host_id=self.host.id,
+            state=kubernetes.KUBE_ROOTCA_UPDATED_HOST_UPDATECERTS)
+
+        result = self.post_json(self.post_url, create_dict,
+                                headers=self.headers,
+                                expect_errors=True)
+
+        # Verify that the rootca host update has the expected attributes
+        self.assertEqual(result.json['state'],
+                        kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA)
+        self.assertEqual(result.json['target_rootca_cert'], 'newCertSerial')
+        self.assertEqual(result.json['effective_rootca_cert'], 'oldCertSerial')
+
+        # Verify that the overall rootca update has the expected attributes
+        result = dbutils.get_kube_rootca_update()
+        self.assertEqual(result.state,
+                        kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA)
+
+    def test_trustnewca_host_update_failed_retry(self):
+        # Test kubernetes rootca host update phase trustNewCA failed and retry
+        create_dict = {'phase': self.phase}
+
+        # overall update is trustNewCA phase in progress
+        dbutils.create_test_kube_rootca_update(
+            state=kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA)
+
+        # host update is trustNewCA phase failed on this host
+        dbutils.create_test_kube_rootca_host_update(host_id=self.host.id,
+            state=kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA_FAILED)
+
+        result = self.post_json(self.post_url, create_dict,
+                                headers=self.headers,
+                                expect_errors=True)
+
+        # Verify that the rootca host update has the expected attributes
+        self.assertEqual(result.json['state'],
+                        kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA)
+        self.assertEqual(result.json['target_rootca_cert'], 'newCertSerial')
+        self.assertEqual(result.json['effective_rootca_cert'], 'oldCertSerial')
+
+        # Verify that the overall rootca update has the expected attributes
+        result = dbutils.get_kube_rootca_update()
+        self.assertEqual(result.state,
+                        kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA)
+
+    def test_trustnewca_host_update_in_progress(self):
+        create_dict = {'phase': self.phase}
+
+        # overall update is trustNewCA phase in progress
+        dbutils.create_test_kube_rootca_update(
+            state=kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA)
+
+        # host update is trustNewCA phase in progress on this host
+        dbutils.create_test_kube_rootca_host_update(host_id=self.host.id,
+            state=kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA)
+
+        result = self.post_json(self.post_url, create_dict,
+                                headers=self.headers,
+                                expect_errors=True)
+
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertIn("kube-rootca-host-update rejected: update in progress "
+                      "on host %s" % self.host.hostname,
+                      result.json['error_message'])
+
+    def test_trustnewca_host_update_failed_cluster_in_advanced_state(self):
+        create_dict = {'phase': self.phase}
+
+        # overall update is pods trustnewca phase completed
+        dbutils.create_test_kube_rootca_update(
+            state=kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTNEWCA)
+
+        dbutils.create_test_kube_rootca_host_update(host_id=self.host.id,
+            state=kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA)
+
+        result = self.post_json(self.post_url, create_dict,
+                                headers=self.headers,
+                                expect_errors=True)
+
+        # but client make a call to perform host update phase trustNewCA
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertIn("kube-rootca-host-update rejected: not "
+                        "allowed when cluster update is in state: %s. "
+                        "(only allowed when in state: %s)"
+                        % (kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTNEWCA,
+                        kubernetes.KUBE_ROOTCA_UPDATED_HOST_UPDATECERTS),
+            result.json['error_message'])
+
+    def test_trustnewca_host_update_failed_already_completed(self):
+        create_dict = {'phase': self.phase}
+
+        # overall update is host update trustnewca phase in progress
+        dbutils.create_test_kube_rootca_update(
+            state=kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA)
+
+        # host update is trustnewca phase completed on this host
+        dbutils.create_test_kube_rootca_host_update(host_id=self.host.id,
+            state=kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA)
+
+        result = self.post_json(self.post_url, create_dict,
+                                headers=self.headers,
+                                expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertIn("kube-rootca-host-update rejected: update already "
+                      "completed on host %s" % self.host.hostname,
+                      result.json['error_message'])
+
+    def test_trustnewca_host_update_failed_in_past_state(self):
+        create_dict = {'phase': self.phase}
+
+        # overall update is host update trustnewca phase in progress
+        dbutils.create_test_kube_rootca_update(
+            state=kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS)
+
+        # host update is trustbothcas phase completed
+        dbutils.create_test_kube_rootca_host_update(host_id=self.host.id,
+            state=kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTBOTHCAS)
+
+        result = self.post_json(self.post_url, create_dict,
+                                headers=self.headers,
+                                expect_errors=True)
+
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertIn("kube-rootca-host-update rejected: not "
+                        "allowed when cluster update is in state: %s. "
+                        "(only allowed when in state: %s)"
+                        % (kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS,
+                        kubernetes.KUBE_ROOTCA_UPDATED_HOST_UPDATECERTS),
+            result.json['error_message'])
+
+    def test_trustnewca_host_update_failed_other_host_failed(self):
+        create_dict = {'phase': self.phase}
+
+        # overall update is host update trustnewca phase failed
+        dbutils.create_test_kube_rootca_update(
+            state=kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA_FAILED)
+
+        # host update is trustnewca phase failed on host2
+        dbutils.create_test_kube_rootca_host_update(host_id=self.host2.id,
+            state=kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA_FAILED)
+
+        dbutils.create_test_kube_rootca_host_update(host_id=self.host.id,
+            state=kubernetes.KUBE_ROOTCA_UPDATED_HOST_UPDATECERTS)
+
+        result = self.post_json(self.post_url, create_dict,
+                                headers=self.headers,
+                                expect_errors=True)
+
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertIn("kube-rootca-host-update rejected: update failed "
+                            "on host %s" % self.host2.hostname,
+                            result.json['error_message'])

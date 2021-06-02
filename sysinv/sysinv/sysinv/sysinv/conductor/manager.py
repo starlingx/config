@@ -8345,21 +8345,26 @@ class ConductorManager(service.PeriodicService):
         LOG.info("Kube root CA update phase '%s' succeeded on host: %s"
                 % (reported_cfg, host_uuid))
 
+        values = {}
+        h_update = self.dbapi.kube_rootca_host_update_get_by_host(host_uuid)
+
         if reported_cfg == puppet_common.REPORT_KUBE_CERT_UPDATE_TRUSTBOTHCAS:
             state = kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTBOTHCAS
+            values.update({'state': state})
         elif reported_cfg == puppet_common.REPORT_KUBE_CERT_UPDATE_UPDATECERTS:
             state = kubernetes.KUBE_ROOTCA_UPDATED_HOST_UPDATECERTS
+            values.update({'state': state})
         elif reported_cfg == puppet_common.REPORT_KUBE_CERT_UPDATE_TRUSTNEWCA:
             state = kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA
+            values.update({'state': state,
+                           'effective_rootca_cert': h_update.target_rootca_cert})
         else:
             LOG.info("Not supported reported_cfg: %s" % reported_cfg)
             raise exception.SysinvException(_(
                 "Not supported reported_cfg: %s" % reported_cfg))
 
         # Update host 'update state'
-        h_update = self.dbapi.kube_rootca_host_update_get_by_host(host_uuid)
-        self.dbapi.kube_rootca_host_update_update(h_update.id,
-                                                  {'state': state})
+        self.dbapi.kube_rootca_host_update_update(h_update.id, values)
 
         # Update cluster 'update state'
         hosts = self.dbapi.ihost_get_list()
