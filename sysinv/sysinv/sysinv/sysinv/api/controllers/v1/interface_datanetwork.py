@@ -141,7 +141,7 @@ class InterfaceDataNetworkController(rest.RestController):
         interface_datanetwork_dict['datanetwork_id'] = datanetwork_id
 
         interface_obj = pecan.request.dbapi.iinterface_get(interface_uuid)
-        self._check_host(interface_obj.ihost_uuid)
+        self._check_host(interface_obj)
 
         self._check_interface_class(interface_obj)
         self._check_interface_mtu(interface_obj, datanetwork_obj)
@@ -151,6 +151,10 @@ class InterfaceDataNetworkController(rest.RestController):
 
         result = pecan.request.dbapi.interface_datanetwork_create(
             interface_datanetwork_dict)
+
+        if interface_obj.ifclass == constants.INTERFACE_CLASS_PCI_SRIOV:
+            pecan.request.rpcapi.update_pcidp_config(
+                pecan.request.context, interface_obj.ihost_uuid)
 
         return InterfaceDataNetwork.convert_with_links(result)
 
@@ -211,8 +215,14 @@ class InterfaceDataNetworkController(rest.RestController):
                 raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
-    def _check_host(host_uuid):
-        host = pecan.request.dbapi.ihost_get(host_uuid)
+    def _check_host(interface_obj):
+        # In general, we don't want to support changing the interface configuration
+        # at runtime, allowing only this specific combination, because it can have an
+        # impact on the host availability and services
+        if (cutils.is_aio_simplex_system(pecan.request.dbapi)
+                and interface_obj.ifclass == constants.INTERFACE_CLASS_PCI_SRIOV):
+            return
+        host = pecan.request.dbapi.ihost_get(interface_obj.ihost_uuid)
         if host.administrative != constants.ADMIN_LOCKED:
             msg = _("Operation Rejected: Host '%s' is adminstrative '%s' " %
                     (host.hostname, host.administrative))
@@ -310,6 +320,9 @@ class InterfaceDataNetworkController(rest.RestController):
             interface_datanetwork_uuid)
         interface_obj = pecan.request.dbapi.iinterface_get(
             ifdn_obj.interface_uuid)
-        self._check_host(interface_obj.ihost_uuid)
+        self._check_host(interface_obj)
         pecan.request.dbapi.interface_datanetwork_destroy(
             interface_datanetwork_uuid)
+        if interface_obj.ifclass == constants.INTERFACE_CLASS_PCI_SRIOV:
+            pecan.request.rpcapi.update_pcidp_config(
+                pecan.request.context, interface_obj.ihost_uuid)

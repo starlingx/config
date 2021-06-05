@@ -180,6 +180,7 @@ class StoragePuppet(base.BasePuppet):
         nova_transition_devices = []
         cinder_devices = []
         ceph_mon_devices = []
+        rook_osd_devices = []
 
         # LVM Global Filter is driven by:
         # - cgts-vg PVs       : all nodes
@@ -202,10 +203,13 @@ class StoragePuppet(base.BasePuppet):
             elif pv.lvm_vg_name == constants.LVG_CINDER_VOLUMES:
                 if constants.CINDER_DRBD_DEVICE not in cinder_devices:
                     cinder_devices.append(constants.CINDER_DRBD_DEVICE)
+            elif pv.lvm_vg_name.startswith("ceph"):
+                rook_osd_devices.append(pv.disk_or_part_device_path)
 
         # The final_filter contain only the final global_filter devices, while the transition_filter
         # contains the transient list of removing devices as well
         final_devices = cgts_devices + cinder_devices + nova_final_devices + ceph_mon_devices
+        final_devices += rook_osd_devices
         final_filter = self._operator.storage.format_lvm_filter(final_devices)
 
         transition_filter = self._operator.storage.format_lvm_filter(

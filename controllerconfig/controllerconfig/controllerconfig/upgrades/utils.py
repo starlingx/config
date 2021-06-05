@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016-2020 Wind River Systems, Inc.
+# Copyright (c) 2016-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -27,9 +27,7 @@ from tsconfig.tsconfig import PLATFORM_PATH
 from controllerconfig import utils as cutils
 from controllerconfig.common import constants
 from sysinv.common import constants as sysinv_constants
-# sysinv common utils is needed for adding new service account and endpoints
-# during upgrade.
-# from sysinv.common import utils as sysinv_utils
+from sysinv.common import utils as sysinv_utils
 
 from oslo_log import log
 
@@ -52,7 +50,8 @@ ACTION_MIGRATE = "migrate"
 ACTION_ACTIVATE = "activate"
 
 
-def execute_migration_scripts(from_release, to_release, action):
+def execute_migration_scripts(from_release, to_release, action,
+                              migration_script_dir="/etc/upgrade.d"):
     """ Execute migration scripts with an action:
           start: Prepare for upgrade on release N side. Called during
                  "system upgrade-start".
@@ -62,8 +61,6 @@ def execute_migration_scripts(from_release, to_release, action):
 
     devnull = open(os.devnull, 'w')
 
-    migration_script_dir = "/etc/upgrade.d"
-
     LOG.info("Executing migration scripts with from_release: %s, "
              "to_release: %s, action: %s" % (from_release, to_release, action))
 
@@ -72,7 +69,16 @@ def execute_migration_scripts(from_release, to_release, action):
     files = [f for f in os.listdir(migration_script_dir)
              if os.path.isfile(os.path.join(migration_script_dir, f)) and
              os.access(os.path.join(migration_script_dir, f), os.X_OK)]
-    files.sort()
+    # From file name, get the number to sort the calling sequence,
+    # abort when the file name format does not follow the pattern
+    # "nnn-*.*", where "nnn" string shall contain only digits, corresponding
+    # to a valid unsigned integer (first sequence of characters before "-")
+    try:
+        files.sort(key=lambda x: int(x.split("-")[0]))
+    except Exception:
+        LOG.exception("Migration script sequence validation failed, invalid "
+                      "file name format")
+        raise
 
     # Execute each migration script
     for f in files:
@@ -107,6 +113,22 @@ def get_password_from_keyring(service, username):
     except Exception as e:
         LOG.exception("Received exception when attempting to get password "
                       "for service %s, username %s: %s" %
+                      (service, username, e))
+        raise
+    finally:
+        del os.environ["XDG_DATA_HOME"]
+    return password
+
+
+def set_password_in_keyring(service, username):
+    """Generate random password and store in keyring"""
+    os.environ["XDG_DATA_HOME"] = constants.KEYRING_PERMDIR
+    try:
+        password = sysinv_utils.generate_random_password(length=16)
+        keyring.set_password(service, username, password)
+    except Exception as e:
+        LOG.exception("Received exception when attempting to generate "
+                      "password for service %s, username %s: %s" %
                       (service, username, e))
         raise
     finally:

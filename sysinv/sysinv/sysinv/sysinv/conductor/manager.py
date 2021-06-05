@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 """Conduct all activity related system inventory.
@@ -39,17 +39,21 @@ import math
 import os
 import re
 import requests
+import ruamel.yaml as yaml
 import shutil
 import socket
 import tempfile
 import time
+import traceback
 import uuid
 import xml.etree.ElementTree as ElementTree
 from contextlib import contextmanager
 from datetime import datetime
+from copy import deepcopy
 
 import tsconfig.tsconfig as tsc
 from collections import namedtuple
+from collections import OrderedDict
 from cgcs_patch.patch_verify import verify_files
 from controllerconfig.upgrades import management as upgrades_management
 from cryptography.hazmat.backends import default_backend
@@ -81,6 +85,7 @@ from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1 import vim_api
 from sysinv.common import constants
 from sysinv.common import ceph as cceph
+from sysinv.common import dc_api
 from sysinv.common import device as dconstants
 from sysinv.common import exception
 from sysinv.common import fm
@@ -109,6 +114,9 @@ from sysinv.openstack.common import periodic_task
 from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
 from sysinv.helm import helm
+from sysinv.helm.lifecycle_constants import LifecycleConstants
+from sysinv.helm.lifecycle_hook import LifecycleHookInfo
+
 
 MANAGER_TOPIC = 'sysinv.conductor_manager'
 
@@ -159,8 +167,15 @@ CONFIG_CONTROLLER_FINI_FLAG = os.path.join(tsc.VOLATILE_PATH,
                                            ".config_controller_fini")
 CONFIG_FAIL_FLAG = os.path.join(tsc.VOLATILE_PATH, ".config_fail")
 
+ACTIVE_CONFIG_REBOOT_REQUIRED = os.path.join(
+    constants.SYSINV_VOLATILE_PATH, ".reboot_required")
+
 # configuration UUID reboot required flag (bit)
 CONFIG_REBOOT_REQUIRED = (1 << 127)
+
+# Types of runtime configuration applies
+CONFIG_APPLY_RUNTIME_MANIFEST = 'config_apply_runtime_manifest'
+CONFIG_UPDATE_FILE = 'config_update_file'
 
 LOCK_NAME_UPDATE_CONFIG = 'update_config_'
 LOCK_AUTO_APPLY = 'AutoApplyLock'
@@ -184,6 +199,7 @@ class ConductorManager(service.PeriodicService):
         self.dbapi = None
         self.fm_api = None
         self.fm_log = None
+        self.host_uuid = None
         self._app = None
         self._ceph = None
         self._ceph_api = ceph.CephWrapper(
@@ -202,6 +218,33 @@ class ConductorManager(service.PeriodicService):
         # struct {'host_uuid':[config_uuid_0,config_uuid_1]}
         # this will track the config w/ reboot request to apply
         self._host_reboot_config_uuid = {}
+
+        # track deferred runtime config which need to be applied
+        self._host_deferred_runtime_config = []
+
+        # Guard for a function that should run only once per conductor start
+        self._do_detect_swact = True
+
+        # Guard for a function that should run only once per conductor start
+        self._has_loaded_missing_apps_metadata = False
+
+        self.apps_metadata = {constants.APP_METADATA_APPS: {},
+                              constants.APP_METADATA_PLATFORM_MANAGED_APPS: {},
+                              constants.APP_METADATA_DESIRED_STATES: {},
+                              constants.APP_METADATA_ORDERED_APPS: []}
+
+        self._backup_action_map = dict()
+        for action in [constants.BACKUP_ACTION_SEMANTIC_CHECK,
+                       constants.BACKUP_ACTION_PRE_BACKUP,
+                       constants.BACKUP_ACTION_POST_BACKUP,
+                       constants.BACKUP_ACTION_PRE_ETCD_BACKUP,
+                       constants.BACKUP_ACTION_POST_ETCD_BACKUP,
+                       constants.BACKUP_ACTION_PRE_RESTORE,
+                       constants.BACKUP_ACTION_POST_RESTORE]:
+            impl = getattr(self, '_do_' + action.replace('-', '_'))
+            self._backup_action_map[action] = impl
+
+        self._initialize_backup_actions_log()
 
     def start(self):
         self._start()
@@ -227,6 +270,7 @@ class ConductorManager(service.PeriodicService):
         self.dbapi = dbapi.get_instance()
         self.fm_api = fm_api.FaultAPIs()
         self.fm_log = fm.FmCustomerLog()
+        self.host_uuid = self._get_active_controller_uuid()
 
         self._openstack = openstack.OpenStackOperator(self.dbapi)
         self._puppet = puppet.PuppetOperator(self.dbapi)
@@ -234,6 +278,7 @@ class ConductorManager(service.PeriodicService):
         # create /var/run/sysinv if required. On DOR, the manifests
         # may not run to create this volatile directory.
         cutils.check_lock_path()
+        self._initialize_active_controller_reboot_config()
 
         system = self._create_default_system()
 
@@ -245,9 +290,10 @@ class ConductorManager(service.PeriodicService):
         # until host unlock and we need ceph-mon up in order to configure
         # ceph for the initial unlock.
         self._helm = helm.HelmOperator(self.dbapi)
-        self._app = kube_app.AppOperator(self.dbapi, self._helm)
+        self._app = kube_app.AppOperator(self.dbapi, self._helm, self.apps_metadata)
         self._docker = kube_app.DockerHelper(self.dbapi)
         self._kube = kubernetes.KubeOperator()
+        self._armada = kube_app.ArmadaHelper(self._kube)
         self._kube_app_helper = kube_api.KubeAppHelper(self.dbapi)
         self._fernet = fernet.FernetOperator()
 
@@ -257,11 +303,32 @@ class ConductorManager(service.PeriodicService):
 
         self._handle_restore_in_progress()
 
+        self._sx_to_dx_post_migration_actions(system)
+
         LOG.info("sysinv-conductor start committed system=%s" %
                  system.as_dict())
 
         # Save our start time for time limited init actions
         self._start_time = timeutils.utcnow()
+
+        # Load apps metadata
+        for app in self.dbapi.kube_app_get_all():
+            self._app.load_application_metadata_from_database(app)
+
+    def _get_active_controller_uuid(self):
+        ahost = utils.HostHelper.get_active_controller(self.dbapi)
+        if ahost:
+            return ahost.uuid
+        else:
+            return None
+
+    def _initialize_active_controller_reboot_config(self):
+        # initialize host_reboot_config for active controller in case
+        # process has been restarted
+        if self.host_uuid and os.path.exists(ACTIVE_CONFIG_REBOOT_REQUIRED):
+            ahost = self.dbapi.ihost_get(self.host_uuid)
+            self._host_reboot_config_uuid[self.host_uuid] = \
+                [ahost.config_target]
 
     def periodic_tasks(self, context, raise_on_error=False):
         """ Periodic tasks are run at pre-specified intervals. """
@@ -343,6 +410,94 @@ class ConductorManager(service.PeriodicService):
         self._create_default_service_parameter()
         return system
 
+    def _update_pvc_migration_alarm(self, alarm_state=None):
+        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_K8S,
+                                        "PV-migration-failed")
+        reason_text = "Failed to patch Persistent Volumes backed by CEPH "\
+                      "during AIO-SX to AIO-DX migration"
+
+        if alarm_state == fm_constants.FM_ALARM_STATE_SET:
+            fault = fm_api.Fault(
+                alarm_id=fm_constants.FM_ALARM_ID_K8S_RESOURCE_PV,
+                alarm_state=fm_constants.FM_ALARM_STATE_SET,
+                entity_type_id=fm_constants.FM_ENTITY_TYPE_K8S,
+                entity_instance_id=entity_instance_id,
+                severity=fm_constants.FM_ALARM_SEVERITY_MAJOR,
+                reason_text=reason_text,
+                alarm_type=fm_constants.FM_ALARM_TYPE_3,
+                probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_6,
+                proposed_repair_action=_("Manually execute /usr/bin/ceph_k8s_update_monitors.sh "
+                                         "to confirm PVs are updated, then lock/unlock to clear "
+                                         "alarms. If problem persists, contact next level of "
+                                         "support."),
+                service_affecting=False)
+
+            self.fm_api.set_fault(fault)
+        else:
+            alarms = self.fm_api.get_faults(entity_instance_id)
+            if alarms:
+                self.fm_api.clear_all(entity_instance_id)
+
+    def _pvc_monitor_migration(self):
+        ceph_backend_enabled = StorageBackendConfig.get_backend(
+            self.dbapi,
+            constants.SB_TYPE_CEPH)
+
+        if not ceph_backend_enabled:
+            # if it does not have ceph backend enabled there is
+            # nothing to migrate
+            return True
+
+        # get the controller-0 and floating management IP address
+        controller_0_address = self.dbapi.address_get_by_name(
+            constants.CONTROLLER_0_MGMT).address
+        floating_address = self.dbapi.address_get_by_name(
+            cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
+                                       constants.NETWORK_TYPE_MGMT)).address
+        try:
+            cmd = ["/usr/bin/ceph_k8s_update_monitors.sh",
+                controller_0_address,
+                floating_address]
+            __, __ = cutils.execute(*cmd, run_as_root=True)
+
+            LOG.info("Updated ceph-mon address from {} to {} on existing Persistent Volumes."
+                .format(controller_0_address, floating_address))
+            self._update_pvc_migration_alarm()
+        except exception.ProcessExecutionError:
+            error_msg = "Failed to patch Kubernetes Persistent Volume resources. "\
+                "ceph-mon address changed from {} to {}".format(
+                    controller_0_address, floating_address)
+            LOG.error(error_msg)
+
+            # raise alarm
+            self._update_pvc_migration_alarm(fm_constants.FM_ALARM_STATE_SET)
+            return False
+        return True
+
+    def _sx_to_dx_post_migration_actions(self, system):
+        if not self.host_uuid:
+            return
+
+        try:
+            host = self.dbapi.ihost_get(self.host_uuid)
+        except exception.ServerNotFound:
+            LOG.warn('No active controller available')
+            return
+
+        # Skip if the system mode is not set to duplex or it is not unlocked
+        if (system.system_mode != constants.SYSTEM_MODE_DUPLEX or
+                host.administrative != constants.ADMIN_UNLOCKED):
+            return
+
+        if system.capabilities.get('simplex_to_duplex_migration'):
+            system_dict = system.as_dict()
+            del system_dict['capabilities']['simplex_to_duplex_migration']
+            self.dbapi.isystem_update(system.uuid, system_dict)
+
+            greenthread.spawn(self._pvc_monitor_migration)
+        elif self.fm_api.get_faults_by_id(fm_constants.FM_ALARM_ID_K8S_RESOURCE_PV):
+            greenthread.spawn(self._pvc_monitor_migration)
+
     def _upgrade_init_actions(self):
         """ Perform any upgrade related startup actions"""
         try:
@@ -363,6 +518,14 @@ class ConductorManager(service.PeriodicService):
         system_mode = self.dbapi.isystem_get_one().system_mode
         if system_mode == constants.SYSTEM_MODE_SIMPLEX:
             self._init_controller_for_upgrade(upgrade)
+
+        if upgrade.state in [constants.UPGRADE_ACTIVATION_REQUESTED,
+                             constants.UPGRADE_ACTIVATING]:
+            # Reset to activation-failed if the conductor restarts. This could
+            # be due to a swact or the process restarting. Either way we'll
+            # need to rerun the activation.
+            self.dbapi.software_upgrade_update(
+                upgrade.uuid, {'state': constants.UPGRADE_ACTIVATION_FAILED})
 
         self._upgrade_default_service()
         self._upgrade_default_service_parameter()
@@ -1025,6 +1188,35 @@ class ConductorManager(service.PeriodicService):
                     raise exception.SysinvException(_(
                         "Failed to create pxelinux.cfg file"))
 
+    def _enable_etcd_security_config(self, context):
+        """Update the manifests for etcd security
+           Note: this can be removed in the release after STX5.0
+           returns True if runtime manifests were applied
+        """
+        controllers = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+        for host in controllers:
+            if not utils.is_host_active_controller(host):
+                # Just enable etcd security on the standby controller.
+                # Etcd security was enabled on the active controller with a
+                # migration script.
+                personalities = [constants.CONTROLLER]
+                host_uuids = [host.uuid]
+                config_uuid = self._config_update_hosts(
+                    context, personalities, host_uuids)
+                config_dict = {
+                    "personalities": personalities,
+                    "host_uuids": host_uuids,
+                    "classes": ['platform::etcd::upgrade::runtime'],
+                    puppet_common.REPORT_STATUS_CFG:
+                        puppet_common.REPORT_UPGRADE_ACTIONS
+                }
+                self._config_apply_runtime_manifest(context,
+                                                    config_uuid=config_uuid,
+                                                    config_dict=config_dict)
+                return True
+
+        return False
+
     def _remove_pxe_config(self, host):
         """Delete the PXE config file for this host.
 
@@ -1302,6 +1494,27 @@ class ConductorManager(service.PeriodicService):
         self._remove_address(hostname, constants.NETWORK_TYPE_MGMT)
         self._remove_leases_by_mac_address(host.mgmt_mac)
         self._generate_dnsmasq_hosts_file(deleted_host=host)
+
+    def _update_host_lvm_config(self, context, host, force=False):
+        personalities = [host.personality]
+        # For rook must update lvm filter
+        config_dict = {
+            "host_uuids": [host.uuid],
+        }
+
+        if host.personality == constants.CONTROLLER:
+            config_dict["personalities"] = [constants.CONTROLLER]
+            config_dict["classes"] = ['platform::lvm::controller::runtime']
+        elif host.personality == constants.WORKER:
+            config_dict["personalities"] = [constants.WORKER]
+            config_dict["classes"] = ['platform::lvm::compute::runtime']
+
+        config_uuid = self._config_update_hosts(context, personalities,
+                                                host_uuids=[host.uuid])
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid,
+                                            config_dict,
+                                            force=force)
 
     def _configure_controller_host(self, context, host):
         """Configure a controller host with the supplied data.
@@ -1613,6 +1826,18 @@ class ConductorManager(service.PeriodicService):
         # Set up the PXE config file for this host so it can run the installer
         self._update_pxe_config(host)
 
+    def _configure_edgeworker_host(self, context, host):
+        """Configure an edgeworker host with the supplied data.
+
+        Does the following tasks:
+        - Create or update entries in address table
+        - Allocates management address if none exists
+
+        :param context: request context
+        :param host: host object
+        """
+        self._allocate_addresses_for_host(context, host)
+
     def _configure_storage_host(self, context, host):
         """Configure a storage ihost with the supplied data.
 
@@ -1713,6 +1938,13 @@ class ConductorManager(service.PeriodicService):
         self._remove_pxe_config(host)
         self._remove_ceph_mon(host)
 
+    def _unconfigure_edgeworker_host(self, host):
+        """Unconfigure an edgeworker host.
+
+        :param host: a host object.
+        """
+        self._remove_addresses_for_host(host)
+
     def _unconfigure_storage_host(self, host):
         """Unconfigure a storage host.
 
@@ -1748,6 +1980,8 @@ class ConductorManager(service.PeriodicService):
             self._configure_controller_host(context, host)
         elif host.personality == constants.WORKER:
             self._configure_worker_host(context, host)
+        elif host.personality == constants.EDGEWORKER:
+            self._configure_edgeworker_host(context, host)
         elif host.personality == constants.STORAGE:
             self._configure_storage_host(context, host)
         else:
@@ -1783,6 +2017,8 @@ class ConductorManager(service.PeriodicService):
                 self._unconfigure_controller_host(ihost_obj)
             elif personality == constants.WORKER:
                 self._unconfigure_worker_host(ihost_obj, is_cpe)
+            elif personality == constants.EDGEWORKER:
+                self._unconfigure_edgeworker_host(ihost_obj)
             elif personality == constants.STORAGE:
                 self._unconfigure_storage_host(ihost_obj)
             else:
@@ -2564,10 +2800,13 @@ class ConductorManager(service.PeriodicService):
                             'sriov_vf_driver': pci_dev.get('sriov_vf_driver', None),
                             'sriov_vf_pdevice_id':
                                 pci_dev.get('sriov_vf_pdevice_id', None),
-                            'driver': pci_dev['driver']}
+                            'driver': pci_dev['driver'],
+                            'extra_info': dev.get('extra_info', None)}
                         LOG.info("attr: %s" % attr)
-                        if (host['administrative'] == constants.ADMIN_LOCKED and
-                                pci_dev['pdevice_id'] == dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF):
+
+                        if (host['administrative'] == constants.ADMIN_LOCKED
+                                and pci_dev['pdevice_id'] in
+                                dconstants.SRIOV_ENABLED_FEC_DEVICE_IDS):
                             # For the FPGA FEC device, the actual VF driver
                             # is only updated on an unlocked host. The set
                             # of VF PCI addresses may not be known when the
@@ -3117,8 +3356,8 @@ class ConductorManager(service.PeriodicService):
                 except OSError:
                     pass
 
-            rpcapi.disk_format_gpt(context, ihost.uuid, agent_idisk,
-                                   is_cinder_device)
+            rpcapi.disk_prepare(context, ihost.uuid, agent_idisk,
+                                False, is_cinder_device)
 
             if system_mode == constants.SYSTEM_MODE_SIMPLEX:
                 timeout = 0
@@ -3439,6 +3678,25 @@ class ConductorManager(service.PeriodicService):
         # Purge the database records for volume groups that have been
         # removed
         for ilvg in ilvgs:
+            if ilvg.lvm_vg_name.startswith("ceph-"):
+                found = False
+                for i in ilvg_dict_array:
+                    if ilvg.lvm_vg_name == i['lvm_vg_name']:
+                        found = True
+
+                if not found:
+                    try:
+                        LOG.info("remove out-of-date rook provisioned lv %s" % ilvg.lvm_vg_name)
+                        ipvs = self.dbapi.ipv_get_by_ihost(ihost_uuid)
+                        for ipv in ipvs:
+                            if ipv.lvm_vg_name == ilvg.lvm_vg_name:
+                                LOG.info("remove out-of-date rook provisioned pv %s" % ipv.lvm_vg_name)
+                                self._ipv_handle_phys_storage_removal(ipv, ilvg.lvm_vg_name)
+
+                        self.dbapi.ilvg_destroy(ilvg.id)
+                    except Exception:
+                        LOG.exception("Local Volume Group removal failed")
+
             if ilvg.vg_state == constants.LVG_DEL:
                 # Make sure that the agent hasn't reported that it is
                 # still present on the host
@@ -3790,6 +4048,17 @@ class ConductorManager(service.PeriodicService):
             LOG.exception("Invalid ihost_uuid %s" % ihost_uuid)
             return
 
+        try:
+            self.dbapi.software_upgrade_get_one()
+        except exception.NotFound:
+            # No upgrade in progress
+            pass
+        else:
+            if db_host.software_load != tsc.SW_VERSION:
+                LOG.info("Ignore updating disk partition for host: %s. Version "
+                         "%s mismatch." % (db_host.hostname, db_host.software_load))
+                return
+
         # Get the id of the host.
         forihostid = db_host['id']
 
@@ -3980,6 +4249,17 @@ class ConductorManager(service.PeriodicService):
         except exception.ServerNotFound:
             LOG.exception("Invalid ihost_uuid %s" % ihost_uuid)
             return
+
+        try:
+            self.dbapi.software_upgrade_get_one()
+        except exception.NotFound:
+            # No upgrade in progress
+            pass
+        else:
+            if ihost.software_load != tsc.SW_VERSION:
+                LOG.info("Ignore updating physical volume for host: %s. Version "
+                         "%s mismatch." % (ihost.hostname, ihost.software_load))
+                return
 
         forihostid = ihost['id']
 
@@ -4182,6 +4462,79 @@ class ConductorManager(service.PeriodicService):
                         self._ipv_handle_phys_storage_removal(ipv, 'idisk')
                     break
 
+            # Create the physical volume if it doesn't currently exist for rook
+            if ((not found) and ('forilvgid' in pv_dict) and
+                    pv_dict['lvm_vg_name'].startswith("ceph-")):
+
+                # Lookup the uuid of the disk
+                pv_dict['disk_or_part_uuid'] = None
+                pv_dict['disk_or_part_device_node'] = None
+
+                # Determine the volume type => look for a partition number.
+                if "nvme" not in i["lvm_pv_name"]:
+                    if regex.match(i['lvm_pv_name']):
+                        pv_dict['pv_type'] = constants.PV_TYPE_PARTITION
+                    else:
+                        pv_dict['pv_type'] = constants.PV_TYPE_DISK
+                else:
+                    # for nvme disk, it named with /dev/nvme0n1
+                    # for nvme partition, it name with /dev/nvme0n1p0, /dev/nvme0n1p1
+                    nvme_regex = re.compile("^/dev/nvme.*p[1-9][0-9]?$")
+                    if nvme_regex.match(i['lvm_pv_name']):
+                        pv_dict['pv_type'] = constants.PV_TYPE_PARTITION
+                    else:
+                        pv_dict['pv_type'] = constants.PV_TYPE_DISK
+
+                LOG.info("add rook provisioned node %s, type %s" % (i['lvm_pv_name'], pv_dict['pv_type']))
+
+                # Lookup the uuid of the disk
+                pv_dict['disk_or_part_uuid'] = None
+                pv_dict['disk_or_part_device_node'] = None
+
+                if pv_dict['pv_type'] == constants.PV_TYPE_DISK:
+                    idisk = self.dbapi.idisk_get_by_ihost(ihost_uuid)
+                    for d in idisk:
+                        if d.device_node in i['lvm_pv_name']:
+                            pv_dict['disk_or_part_uuid'] = d.uuid
+                            pv_dict['disk_or_part_device_node'] = d.device_node
+                            pv_dict['disk_or_part_device_path'] = d.device_path
+                elif pv_dict['pv_type'] == constants.PV_TYPE_PARTITION:
+                    ipartition = self.dbapi.partition_get_by_ihost(ihost_uuid)
+                    for p in ipartition:
+                        if p.device_node in i['lvm_pv_name']:
+                            pv_dict['disk_or_part_uuid'] = p.uuid
+                            pv_dict['disk_or_part_device_node'] = p.device_node
+                            pv_dict['disk_or_part_device_path'] = p.device_path
+
+                LOG.info("pv_dict %s" % pv_dict)
+                pv_dict['pv_state'] = constants.PROVISIONED
+
+                # Create the Physical Volume
+                pv = None
+                try:
+                    pv = self.dbapi.ipv_create(forihostid, pv_dict)
+                except Exception:
+                    LOG.exception("PV Volume Creation failed")
+
+                if pv.get('pv_type') == constants.PV_TYPE_PARTITION:
+                    try:
+                        self.dbapi.partition_update(
+                            pv.disk_or_part_uuid,
+                            {'foripvid': pv.id,
+                             'status': constants.PARTITION_IN_USE_STATUS})
+                    except Exception:
+                        LOG.exception("Updating partition (%s) for ipv id "
+                                      "failed (%s)" % (pv.disk_or_part_uuid,
+                                                       pv.uuid))
+                elif pv.get('pv_type') == constants.PV_TYPE_DISK:
+                    try:
+                        self.dbapi.idisk_update(pv.disk_or_part_uuid,
+                                                {'foripvid': pv.id})
+                    except Exception:
+                        LOG.exception("Updating idisk (%s) for ipv id "
+                                      "failed (%s)" % (pv.disk_or_part_uuid,
+                                                       pv.uuid))
+
             # Special Case: DRBD has provisioned the cinder partition. Update the existing PV partition
             if not found and i['lvm_pv_name'] == constants.CINDER_DRBD_DEVICE:
                 if cinder_pv_id:
@@ -4342,6 +4695,11 @@ class ConductorManager(service.PeriodicService):
                             # mapping in the DB. Use a different PV state for
                             # standby controller
                             continue
+                        if ipv.lvm_vg_name.startswith("ceph-"):
+                            # rook removed osd, destroy the standby PV
+                            LOG.info("remove out-of-date rook provisioned pv %s" % ipv.lvm_pv_name)
+                            self._prepare_for_ipv_removal(ipv)
+                            self.dbapi.ipv_destroy(ipv.id)
             else:
                 if (ipv.pv_state == constants.PV_ERR and
                         ipv.lvm_vg_name == ipv_in_agent['lvm_vg_name']):
@@ -4608,14 +4966,12 @@ class ConductorManager(service.PeriodicService):
             config_uuid = imsg_dict['config_applied']
             self._update_host_config_applied(context, ihost, config_uuid)
 
-        # Check if platform apps need to be re-applied when host services are
+        # Check if apps need to be re-applied when host services are
         # available (after unlock), but only if system restore is not in
         # progress
-        if not os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG) \
-           and availability in [constants.VIM_SERVICES_ENABLED]:
-            for app_name in constants.HELM_APPS_PLATFORM_MANAGED:
-                if cutils.is_app_applied(self.dbapi, app_name):
-                    self.evaluate_app_reapply(context, app_name)
+        if not os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG):
+            self.evaluate_apps_reapply(context, trigger={'type': constants.APP_EVALUATE_REAPPLY_HOST_AVAILABILITY,
+                                                         'availability': availability})
 
         # Clear any "reboot needed" DB entry for the host if it is set.
         # If there are no more pending device image update entries in the DB
@@ -4942,17 +5298,12 @@ class ConductorManager(service.PeriodicService):
             # Not upgrading. No need to update status
             return
 
-        if upgrade.state == constants.UPGRADE_ACTIVATING:
-            personalities = [constants.CONTROLLER, constants.WORKER]
-
-            all_manifests_applied = True
+        if upgrade.state == constants.UPGRADE_ACTIVATING_HOSTS:
             hosts = self.dbapi.ihost_get_list()
-            for host in hosts:
-                if host.personality in personalities and \
-                        host.config_target != host.config_applied:
-                    all_manifests_applied = False
-                    break
-            if all_manifests_applied:
+            out_of_date_hosts = [host for host in hosts
+                                 if host.config_target and host.config_target != host.config_applied]
+            if not out_of_date_hosts:
+                LOG.info("Manifests applied. Upgrade activation complete.")
                 self.dbapi.software_upgrade_update(
                     upgrade.uuid,
                     {'state': constants.UPGRADE_ACTIVATION_COMPLETE})
@@ -5056,6 +5407,68 @@ class ConductorManager(service.PeriodicService):
                                          'install_state_info':
                                              host.install_state_info})
 
+    def _ready_to_apply_runtime_config(
+            self, context, personalities=None, host_uuids=None):
+        """Determine whether ready to apply runtime config"""
+
+        # Scope to the active controller since do not want to block runtime
+        # manifest apply due to other hosts here.  The config target will
+        # still track for any missed config (on other hosts in case other
+        # hosts are unavailable).
+        if personalities is None:
+            personalities = []
+        if host_uuids is None:
+            host_uuids = []
+
+        check_required = False
+        if constants.CONTROLLER in personalities:
+            check_required = True
+        if constants.WORKER in personalities and cutils.is_aio_system(self.dbapi):
+            check_required = True
+        if host_uuids and self.host_uuid not in host_uuids:
+            check_required = False
+
+        if not check_required:
+            return True
+
+        if not os.path.exists(constants.SYSINV_REPORTED):
+            LOG.info("_ready_to_apply_runtime_config path does not exist: %s" %
+                     constants.SYSINV_REPORTED)
+            return False
+
+        return True
+
+    def _audit_deferred_runtime_config(self, context):
+        """Apply deferred config runtime manifests when ready"""
+
+        LOG.debug("_audit_deferred_runtime_config %s" %
+                  self._host_deferred_runtime_config)
+        if not self._ready_to_apply_runtime_config(context):
+            return
+        if self._host_deferred_runtime_config:
+            # apply the deferred runtime manifests
+            for config in list(self._host_deferred_runtime_config):
+                config_type = config.get('config_type')
+                LOG.info("found _audit_deferred_runtime_config request apply %s" %
+                         config)
+
+                if config_type == CONFIG_APPLY_RUNTIME_MANIFEST:
+                    self._config_apply_runtime_manifest(
+                        context,
+                        config['config_uuid'],
+                        config['config_dict'],
+                        force=config.get('force', False))
+                elif config_type == CONFIG_UPDATE_FILE:
+                    self._config_update_file(
+                        context,
+                        config['config_uuid'],
+                        config['config_dict'])
+                else:
+                    LOG.error("Removing unsupported deferred config_type %s" %
+                              config_type)
+
+                self._host_deferred_runtime_config.remove(config)
+
     @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
     def _kubernetes_local_secrets_audit(self, context):
         # Audit kubernetes local registry secrets info
@@ -5067,6 +5480,9 @@ class ConductorManager(service.PeriodicService):
     def _conductor_audit(self, context):
         # periodically, perform audit of inventory
         LOG.debug("Sysinv Conductor running periodic audit task.")
+
+        # check whether there are deferred runtime manifests to apply
+        self._audit_deferred_runtime_config(context)
 
         # check whether we may have just become active with target config
         self._controller_config_active_apply(context)
@@ -5236,17 +5652,36 @@ class ConductorManager(service.PeriodicService):
         # latest status.
         LOG.info("Platform managed application %s: "
                     "Uploading..." % app_name)
-        greenthread.spawn(self._app.perform_app_upload, app,
-                            tarball.tarball_name)
+
+        hook_info = LifecycleHookInfo()
+        hook_info.mode = constants.APP_LIFECYCLE_MODE_AUTO
+
+        greenthread.spawn(self.perform_app_upload, context,
+                          app, tarball.tarball_name, hook_info)
 
     def _auto_apply_managed_app(self, context, app_name):
-        if not self._met_app_apply_prerequisites(app_name):
-            LOG.info("Platform managed application %s: Prerequisites "
-                        "not met." % app_name)
+        try:
+            app = kubeapp_obj.get_by_name(context, app_name)
+        except exception.KubeAppNotFound as e:
+            LOG.exception(e)
             return
 
-        LOG.info("Platform managed application %s: Prerequisites "
-                 "met." % app_name)
+        hook_info = LifecycleHookInfo()
+        hook_info.init(constants.APP_LIFECYCLE_MODE_AUTO,
+                       constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                       constants.APP_LIFECYCLE_TIMING_PRE,
+                       constants.APP_APPLY_OP)
+        try:
+            self.app_lifecycle_actions(context, app, hook_info)
+        except exception.LifecycleSemanticCheckException as e:
+            LOG.info("Auto-apply failed prerequisites for {}: {}".format(app.name, e))
+            return
+        except Exception as e:
+            LOG.exception("Automatic operation:{} "
+                          "for app {} failed with: {}".format(hook_info,
+                                                              app.name,
+                                                              e))
+            return
 
         if self._patching_operation_is_occurring():
             return
@@ -5269,7 +5704,7 @@ class ConductorManager(service.PeriodicService):
         tarball_name = '{}/{}'.format(
             constants.HELM_APP_ISO_INSTALL_PATH, tarfiles[0])
 
-        with kube_api.TempDirectory() as app_path:
+        with cutils.TempDirectory() as app_path:
             if not cutils.extract_tarfile(app_path, tarball_name):
                 LOG.error("Failed to extract tar file {}.".format(
                     os.path.basename(tarball_name)))
@@ -5316,31 +5751,6 @@ class ConductorManager(service.PeriodicService):
                         "Preventing managed application actions.".format(e))
         return True
 
-    def _met_app_apply_prerequisites(self, app_name):
-        prereqs_met = False
-        if app_name == constants.HELM_APP_PLATFORM:
-            # For the application to apply, make sure:
-            # - for the ceph related apps that we have ceph access and the
-            #   crushmap is applied to correctly set up related k8s
-            #   resources.
-            # - the replica count will be non-zero so that manifest apply will
-            #   not timeout
-            crushmap_flag_file = os.path.join(constants.SYSINV_CONFIG_PATH,
-                constants.CEPH_CRUSH_MAP_APPLIED)
-            if (os.path.isfile(crushmap_flag_file) and
-                    self._ceph.have_ceph_monitor_access() and
-                    self._ceph.ceph_status_ok() and
-                    (self.dbapi.count_hosts_matching_criteria(
-                        personality=constants.CONTROLLER,
-                        administrative=constants.ADMIN_UNLOCKED,
-                        operational=constants.OPERATIONAL_ENABLED,
-                        availability=[constants.AVAILABILITY_AVAILABLE,
-                                      constants.AVAILABILITY_DEGRADED],
-                        vim_progress_status=constants.VIM_SERVICES_ENABLED) > 0)):
-
-                prereqs_met = True
-        return prereqs_met
-
     def _auto_recover_managed_app(self, context, app_name):
         try:
             app = kubeapp_obj.get_by_name(context, app_name)
@@ -5368,6 +5778,71 @@ class ConductorManager(service.PeriodicService):
         app.recovery_attempts += 1
         app.save()
         self._auto_apply_managed_app(context, app_name)
+
+    def _load_metadata_of_missing_apps(self):
+        """ Load metadata of apps from the directory containing
+        apps bundled with the iso.
+        """
+        for tarfile in os.listdir(constants.HELM_APP_ISO_INSTALL_PATH):
+            # Get the app name from the tarball name
+            # If the app has the metadata loaded already, by conductor restart,
+            # then skip the tarball extraction
+            app_name = None
+            pattern = re.compile("^(.*)-([0-9]+\.[0-9]+-[0-9]+)")
+
+            match = pattern.search(tarfile)
+            if match:
+                app_name = match.group(1)
+
+            if app_name and \
+                    app_name in self.apps_metadata[constants.APP_METADATA_APPS]:
+                LOG.info("{} metadata already loaded, skip loading from "
+                         "the bundled tarball.".format(app_name))
+                continue
+
+            # Proceed with extracting the tarball
+            tarball_name = '{}/{}'.format(
+                constants.HELM_APP_ISO_INSTALL_PATH, tarfile)
+
+            with cutils.TempDirectory() as app_path:
+                if not cutils.extract_tarfile(app_path, tarball_name):
+                    LOG.error("Failed to extract tar file {}.".format(
+                        os.path.basename(tarball_name)))
+                    continue
+
+                # If checksum file is included in the tarball, verify its contents.
+                if not cutils.verify_checksum(app_path):
+                    LOG.error("Checksum validation failed for %s." % tarball_name)
+                    continue
+
+                try:
+                    name, version, patches = \
+                        self._kube_app_helper._verify_metadata_file(
+                            app_path, None, None)
+                except exception.SysinvException as e:
+                    LOG.error("Extracting tarfile for %s failed: %s." % (
+                        tarball_name, str(e)))
+                    continue
+
+                metadata_file = os.path.join(app_path,
+                                             constants.APP_METADATA_FILE)
+                if os.path.exists(metadata_file):
+                    with open(metadata_file, 'r') as f:
+                        # The RoundTripLoader removes the superfluous quotes by default.
+                        # Set preserve_quotes=True to preserve all the quotes.
+                        # The assumption here: there is just one yaml section
+                        metadata = yaml.load(
+                            f, Loader=yaml.RoundTripLoader, preserve_quotes=True)
+
+                if name and metadata:
+                    # Update metadata only if it was not loaded during conductor init
+                    # The reason is that we don't want to lose the modified version
+                    # by loading the default metadata from the bundled app.
+                    kube_app.AppOperator.update_and_process_app_metadata(
+                        self.apps_metadata, name, metadata, overwrite=False)
+
+        # Prevent this function from running until conductor restart
+        self._has_loaded_missing_apps_metadata = True
 
     def _k8s_application_images_audit(self, context):
         """
@@ -5429,9 +5904,63 @@ class ConductorManager(service.PeriodicService):
 
         return False
 
-    @staticmethod
-    def _verify_restore_in_progress():
-        return os.path.isfile(constants.SYSINV_RESTORE_FLAG)
+    def _verify_restore_in_progress(self):
+        """Check if restore is in progress"""
+
+        try:
+            self.dbapi.restore_get_one(
+                filters={'state': constants.RESTORE_STATE_IN_PROGRESS})
+        except exception.NotFound:
+            return False
+        else:
+            return True
+
+    def _detect_swact_once(self, context):
+        """ Detect that a swact occurred to trigger a reapply evaluation
+        """
+        # Detection may be done only once per conductor restart
+        if not self._do_detect_swact:
+            return
+
+        # No meaning on AIO-SX
+        if cutils.is_aio_simplex_system(self.dbapi):
+            self._do_detect_swact = False
+            return
+
+        new_active = cutils.get_local_controller_hostname()
+
+        # Define file
+        file = constants.SYSINV_CONDUCTOR_ACTIVE_PATH
+
+        # Read file
+        if os.path.exists(file):
+            with open(file, 'r') as reader:
+                stored = reader.read()
+
+            # Difference detected
+            if stored != new_active:
+                LOG.info("Detected swact from {} to {}"
+                         "".format(stored, new_active))
+
+                # Save the new active
+                with open(file, 'w') as writer:
+                    writer.write(new_active)
+
+                # Trigger reapply evaluation
+                self.evaluate_apps_reapply(
+                    context,
+                    trigger={'type': constants.APP_EVALUATE_REAPPLY_TYPE_DETECTED_SWACT})
+
+        else:
+            LOG.info("Initial save active controller {}"
+                     "".format(new_active))
+
+            # Save the new active
+            with open(file, 'w') as writer:
+                writer.write(new_active)
+
+        # No need to detect again until conductor restart
+        self._do_detect_swact = False
 
     @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval,
                                  run_immediately=True)
@@ -5463,12 +5992,16 @@ class ConductorManager(service.PeriodicService):
                      "activity")
             return
 
-        # Ensure that armada pod is running.
+        # Ensure that armada pod is running and ready.
         pods = self._kube.kube_get_pods_by_selector("armada",
                                                     "application=armada",
                                                     "status.phase=Running")
-        if not pods:
-            LOG.warning("armada pod not present")
+        for pod in pods:
+            if (pod.metadata.deletion_timestamp is None and
+                 self._armada.check_pod_ready_probe(pod)):
+                break
+        else:
+            LOG.warning("Armada pod is not running and ready. Defer audit.")
             return
 
         # Defer platform managed application activity while an upgrade is active
@@ -5479,27 +6012,53 @@ class ConductorManager(service.PeriodicService):
                      "activity")
             return
 
-        # Check the application state and take the approprate action
-        for app_name in constants.HELM_APPS_PLATFORM_MANAGED:
+        # Load metadata of apps from predefined directory to allow platform
+        # managed apps list to be populated
+        # Run only once per conductor start
+        if not self._has_loaded_missing_apps_metadata:
+            self._load_metadata_of_missing_apps()
 
+        # Detect swact
+        self._detect_swact_once(context)
+
+        # cache a database query
+        app_statuses = {}
+
+        # Upload missing system apps
+        for app_name in self.apps_metadata[constants.APP_METADATA_PLATFORM_MANAGED_APPS].keys():
             # Handle initial loading states
             try:
                 app = kubeapp_obj.get_by_name(context, app_name)
-                status = app.status
+                app_statuses[app_name] = app.status
             except exception.KubeAppNotFound:
-                status = constants.APP_NOT_PRESENT
+                app_statuses[app_name] = constants.APP_NOT_PRESENT
 
+            if app_statuses[app_name] == constants.APP_NOT_PRESENT:
+                if app_name in self.apps_metadata[constants.APP_METADATA_DESIRED_STATES].keys() and \
+                        self.apps_metadata[constants.APP_METADATA_DESIRED_STATES][
+                            app_name] in [constants.APP_UPLOAD_SUCCESS, constants.APP_APPLY_SUCCESS]:
+                    self._auto_upload_managed_app(context, app_name)
+
+        # Check the application state and take the appropriate action
+        # App applies need to be done in a specific order
+        for app_name in self.determine_apps_reapply_order(name_only=True, filter_active=False):
+            if app_name not in self.apps_metadata[constants.APP_METADATA_PLATFORM_MANAGED_APPS].keys():
+                continue
+
+            status = app_statuses[app_name]
             LOG.debug("Platform managed application %s: %s" % (app_name, status))
-            if status == constants.APP_NOT_PRESENT:
-                self._auto_upload_managed_app(context, app_name)
-            elif status == constants.APP_UPLOAD_IN_PROGRESS:
+
+            if status == constants.APP_UPLOAD_IN_PROGRESS:
                 # Action: do nothing
                 pass
             elif status == constants.APP_UPLOAD_FAILURE:
                 # Action: Raise alarm?
                 pass
             elif status == constants.APP_UPLOAD_SUCCESS:
-                self._auto_apply_managed_app(context, app_name)
+                if app_name in self.apps_metadata[constants.APP_METADATA_DESIRED_STATES].keys() and \
+                        self.apps_metadata[constants.APP_METADATA_DESIRED_STATES][
+                            app_name] == constants.APP_APPLY_SUCCESS:
+                    self._auto_apply_managed_app(context, app_name)
             elif status == constants.APP_APPLY_IN_PROGRESS:
                 # Action: do nothing
                 pass
@@ -5537,7 +6096,7 @@ class ConductorManager(service.PeriodicService):
 
         # Pick first app that needs to be re-applied
         for index, app_name in enumerate(
-                constants.HELM_APPS_WITH_REAPPLY_SUPPORT):
+                self.determine_apps_reapply_order(name_only=True, filter_active=False)):
             if self._app.needs_reapply(app_name):
                 break
         else:
@@ -5581,7 +6140,10 @@ class ConductorManager(service.PeriodicService):
         app.status = constants.APP_APPLY_IN_PROGRESS
         app.save()
 
-        greenthread.spawn(self._app.perform_app_apply, app, app.mode)
+        lifecycle_hook_info = LifecycleHookInfo()
+        lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_AUTO
+        greenthread.spawn(self.perform_app_apply, context,
+                          app, app.mode, lifecycle_hook_info)
 
     def _upgrade_downgrade_kube_components(self):
         self._upgrade_downgrade_static_images()
@@ -5660,20 +6222,17 @@ class ConductorManager(service.PeriodicService):
         return True
 
     def check_nodes_stable(self):
+        """Check if the nodes are in a stable state in order to allow apps to be applied"""
         try:
             hosts = self.dbapi.ihost_get_list()
-            if (utils.is_host_simplex_controller(hosts[0]) and
-                    (not hosts[0].vim_progress_status or
-                    not hosts[0].vim_progress_status.startswith(
-                    constants.VIM_SERVICES_ENABLED))):
-                # If the apply is triggered too early on AIO-SX, tiller will not
-                # be up and cause the re-apply to fail, so wait for services
-                # to enable
-                return False
             for host in hosts:
                 if host.availability == constants.AVAILABILITY_INTEST:
                     return False
                 if host.task:
+                    return False
+                if (host.personality == constants.CONTROLLER and
+                        not host.vim_progress_status.startswith(
+                            constants.VIM_SERVICES_ENABLED)):
                     return False
         except Exception as e:
             LOG.warn("Failed check_nodes_stable. (%s)" % str(e))
@@ -5881,7 +6440,7 @@ class ConductorManager(service.PeriodicService):
     # @staticmethod can't be used with @retry decorator below because
     # it raises a "'staticmethod' object is not callable" exception
     def _osd_must_be_down(result):  # pylint: disable=no-self-argument
-        response, body = result
+        response, body = result  # pylint: disable=unpacking-non-sequence
         if not response.ok:
             LOG.error("OSD remove failed: {}".format(body))
         if (response.status_code == httplib.BAD_REQUEST and
@@ -5901,8 +6460,9 @@ class ConductorManager(service.PeriodicService):
 
     def kill_ceph_storage_monitor(self, context):
         """Stop the ceph storage monitor.
-        pmon will not restart it. This should only be used in an
-        upgrade/rollback
+        pmon will not restart it.
+        This should only be used in an upgrade/rollback.
+        This should not be called for an AIO (SX or DX).
 
         :param context: request context.
         """
@@ -5966,7 +6526,7 @@ class ConductorManager(service.PeriodicService):
                     if (host.clock_synchronization == constants.PTP and
                         host.administrative == constants.ADMIN_UNLOCKED and
                         host.operational == constants.OPERATIONAL_ENABLED and
-                        not (self._config_out_of_date(host) and
+                        not (self._config_out_of_date(context, host) and
                                  self._config_is_reboot_required(host.config_target))):
                         runtime_hosts.append(host.uuid)
 
@@ -5981,6 +6541,19 @@ class ConductorManager(service.PeriodicService):
     def update_system_mode_config(self, context):
         """Update the system mode configuration"""
         personalities = [constants.CONTROLLER]
+
+        # Update manifest files if system mode is updated for simplex to
+        # duplex migration
+        system = self.dbapi.isystem_get_one()
+        if system.capabilities.get('simplex_to_duplex_migration'):
+            config_uuid = self._config_update_hosts(context, personalities)
+
+            config_dict = {
+                "personalities": personalities,
+                "classes": ['platform::kubernetes::duplex_migration::runtime'],
+            }
+            self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
         self._config_update_hosts(context, personalities, reboot=True)
 
     def configure_system_timezone(self, context):
@@ -6071,6 +6644,50 @@ class ConductorManager(service.PeriodicService):
         self._config_apply_runtime_manifest(
             context, config_uuid, config_dict, force=True)
 
+    def update_sriov_vf_config(self, context, host_uuid):
+        """update sriov vf configuration for a host
+
+        :param context: an admin context
+        :param host_uuid: the host uuid
+        """
+        # update manifest files and notify agent to apply them
+        personalities = [constants.CONTROLLER,
+                         constants.WORKER]
+        config_uuid = self._config_update_hosts(context, personalities,
+                                                host_uuids=[host_uuid])
+
+        config_dict = {
+            "personalities": personalities,
+            'host_uuids': [host_uuid],
+            "classes": ['platform::interfaces::sriov::vf::runtime']
+        }
+
+        self._config_apply_runtime_manifest(
+            context, config_uuid, config_dict, force=True)
+
+    def update_pcidp_config(self, context, host_uuid):
+        """update pcidp configuration for a host
+
+        :param context: an admin context
+        :param host_uuid: the host uuid
+        """
+        # update manifest files and notify agent to apply them
+        personalities = [constants.CONTROLLER,
+                         constants.WORKER]
+        config_uuid = self._config_update_hosts(context, personalities,
+                                                host_uuids=[host_uuid])
+
+        config_dict = {
+            "personalities": personalities,
+            'host_uuids': [host_uuid],
+            "classes": ['platform::kubernetes::worker::pci::runtime'],
+            puppet_common.REPORT_INVENTORY_UPDATE:
+                puppet_common.REPORT_PCI_SRIOV_CONFIG,
+        }
+
+        self._config_apply_runtime_manifest(
+            context, config_uuid, config_dict, force=True)
+
     def configure_system_https(self, context):
         """Update the system https configuration.
 
@@ -6080,7 +6697,13 @@ class ConductorManager(service.PeriodicService):
         system = self.dbapi.isystem_get_one()
 
         if system.capabilities.get('https_enabled', False):
-            self._config_selfsigned_certificate(context)
+            certificates = self.dbapi.certificate_get_list()
+            for certificate in certificates:
+                if certificate.certtype in [constants.CERT_MODE_SSL,
+                                            constants.CERT_MODE_TPM]:
+                    break
+            else:
+                self._config_selfsigned_certificate(context)
 
         config_dict = {
             "personalities": personalities,
@@ -6092,10 +6715,6 @@ class ConductorManager(service.PeriodicService):
 
         config_uuid = self._config_update_hosts(context, personalities)
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-        if not system.capabilities.get('https_enabled', False):
-            self._destroy_tpm_config(context)
-            self._destroy_certificates(context)
 
         cutils.touch(constants.HTTPS_CONFIG_REQUIRED)
 
@@ -6114,27 +6733,59 @@ class ConductorManager(service.PeriodicService):
 
         return oam_config_required_flag
 
+    def initialize_oam_config(self, context, host):
+        """Initialize a new OAM network configuration"""
+
+        extoam = self.dbapi.iextoam_get_one()
+
+        self._update_hosts_file('oamcontroller', extoam.oam_floating_ip,
+                                active=True)
+
+        cutils.touch(os.path.join(
+            tsc.CONFIG_PATH, '.oam_config_required_') + host['hostname'])
+
     def update_oam_config(self, context):
         """Update the OAM network configuration"""
 
-        # update kube-apiserver cert's SANs at runtime
         personalities = [constants.CONTROLLER]
         config_uuid = self._config_update_hosts(context, personalities)
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::kubernetes::certsans::runtime']
-        }
+
+        config_dict = {}
+        is_aio_simplex_system = cutils.is_aio_simplex_system(self.dbapi)
+        if is_aio_simplex_system:
+            # update all necessary config at runtime for AIO-SX
+            config_dict = {
+                "personalities": personalities,
+                "classes": ['platform::network::runtime',
+                            'platform::kubernetes::certsans::runtime',
+                            'platform::firewall::runtime',
+                            'platform::smapi',
+                            'platform::sm::update_oam_config::runtime',
+                            'platform::nfv::webserver::runtime',
+                            'platform::haproxy::runtime',
+                            'openstack::keystone::endpoint::runtime::post',
+                            'platform::dockerdistribution::config',
+                            'platform::dockerdistribution::runtime']
+            }
+        else:
+            # update kube-apiserver cert's SANs at runtime
+            config_dict = {
+                "personalities": personalities,
+                "classes": ['platform::kubernetes::certsans::runtime']
+            }
+
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-        # there is still pending reboot required config to apply
-        self._config_update_hosts(context, [constants.CONTROLLER], reboot=True)
+        # there is still pending reboot required config to apply if not AIO-SX
+        if not is_aio_simplex_system:
+            self._config_update_hosts(context, [constants.CONTROLLER], reboot=True)
 
         extoam = self.dbapi.iextoam_get_one()
 
         self._update_hosts_file('oamcontroller', extoam.oam_floating_ip,
                                 active=False)
 
-        if utils.get_system_mode(self.dbapi) != constants.SYSTEM_MODE_SIMPLEX:
+        if not is_aio_simplex_system:
             cutils.touch(
                 self._get_oam_runtime_apply_file(standby_controller=True))
 
@@ -6152,6 +6803,12 @@ class ConductorManager(service.PeriodicService):
             "classes": ['platform::users::runtime']
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+    def update_controller_rollback_flag(self, context):
+        """Update the controller upgrade rollback flag"""
+        LOG.info("update_controller_rollback_flag")
+
+        cutils.touch(tsc.UPGRADE_ROLLBACK_FLAG)
 
     def update_controller_upgrade_flag(self, context):
         """Update the controller upgrade flag"""
@@ -6609,6 +7266,51 @@ class ConductorManager(service.PeriodicService):
                       'task': None}
             self.dbapi.storage_ceph_external_update(sb_uuid, values)
 
+    def update_ceph_rook_config(self, context, sb_uuid, services):
+        """Update the manifests for Rook Ceph backend and services"""
+
+        personalities = [constants.CONTROLLER]
+
+        # Update service table
+        self.update_service_table_for_cinder()
+
+        ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+        valid_ctrls = [ctrl for ctrl in ctrls if
+                       ctrl.administrative == constants.ADMIN_UNLOCKED and
+                       ctrl.availability in [constants.AVAILABILITY_AVAILABLE,
+                                             constants.AVAILABILITY_DEGRADED]]
+
+        classes = ['platform::rook::runtime']
+        if cutils.is_aio_duplex_system(self.dbapi):
+            # On 2 node systems we have a floating Ceph monitor.
+            classes.append('platform::drbd::rookmon::runtime')
+            classes.append('platform::sm::ceph::runtime')
+
+        host_ids = [ctrl.uuid for ctrl in valid_ctrls]
+        config_dict = {"personalities": personalities,
+                       "host_uuids": host_ids,
+                       "classes": classes,
+                       puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_CEPH_ROOK_CONFIG,
+                       }
+
+        # Set config out-of-date for controllers
+        config_uuid = self._config_update_hosts(context,
+                                                personalities,
+                                                host_uuids=host_ids)
+
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid=config_uuid,
+                                            config_dict=config_dict)
+
+        tasks = {}
+        for ctrl in valid_ctrls:
+            tasks[ctrl.hostname] = constants.SB_TASK_APPLY_MANIFESTS
+
+        # Update initial task states
+        values = {'state': constants.SB_STATE_CONFIGURING,
+                  'task': str(tasks)}
+        self.dbapi.storage_ceph_rook_update(sb_uuid, values)
+
     def _update_image_conversion_alarm(self, alarm_state, fs_name, reason_text=None):
         """ Raise conversion configuration alarm"""
         entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_IMAGE_CONVERSION,
@@ -6688,7 +7390,14 @@ class ConductorManager(service.PeriodicService):
 
         # Identify the executed set of manifests executed
         success = False
-        if reported_cfg == puppet_common.REPORT_DISK_PARTITON_CONFIG:
+        if reported_cfg == puppet_common.REPORT_UPGRADE_ACTIONS:
+            if status == puppet_common.REPORT_SUCCESS:
+                success = True
+            else:
+                host_uuid = iconfig['host_uuid']
+                LOG.info("Upgrade manifest failed for host: %s" % host_uuid)
+                self.report_upgrade_config_failure()
+        elif reported_cfg == puppet_common.REPORT_DISK_PARTITON_CONFIG:
             partition_uuid = iconfig['partition_uuid']
             host_uuid = iconfig['host_uuid']
             idisk_uuid = iconfig['idisk_uuid']
@@ -6804,6 +7513,20 @@ class ConductorManager(service.PeriodicService):
             if status == puppet_common.REPORT_SUCCESS:
                 # Configuration was successful
                 success = True
+        elif reported_cfg == puppet_common.REPORT_CEPH_ROOK_CONFIG:
+            host_uuid = iconfig['host_uuid']
+            if status == puppet_common.REPORT_SUCCESS:
+                # Configuration was successful
+                success = True
+                self.report_ceph_rook_config_success(context, host_uuid)
+            elif status == puppet_common.REPORT_FAILURE:
+                # Configuration has failed
+                self.report_ceph_rook_config_failure(host_uuid, error)
+            else:
+                args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
+                LOG.error("No match for sysinv-agent manifest application reported! "
+                          "reported_cfg: %(cfg)s status: %(status)s "
+                          "iconfig: %(iconfig)s" % args)
         else:
             LOG.error("Reported configuration '%(cfg)s' is not handled by"
                       " report_config_status! iconfig: %(iconfig)s" %
@@ -7022,6 +7745,18 @@ class ConductorManager(service.PeriodicService):
                                             config_uuid,
                                             config_dict)
 
+    def _update_config_for_rook_ceph(self, context):
+        rpcapi = agent_rpcapi.AgentAPI()
+        controller_hosts = \
+            self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+        worker_hosts = \
+            self.dbapi.ihost_get_by_personality(constants.WORKER)
+        hosts = controller_hosts + worker_hosts
+
+        for host in hosts:
+            rpcapi.update_host_lvm(context, host.uuid)
+            self._update_host_lvm_config(context, host)
+
     def report_lvm_cinder_config_success(self, context, host_uuid):
         """ Callback for Sysinv Agent
 
@@ -7215,6 +7950,80 @@ class ConductorManager(service.PeriodicService):
         reason = "Ceph external configuration failed to apply on host: %(host)s" % args
         self._update_storage_backend_alarm(fm_constants.FM_ALARM_STATE_SET,
                                            constants.CINDER_BACKEND_CEPH,
+                                           reason)
+
+    def report_ceph_rook_config_success(self, context, host_uuid):
+        """ Callback for Sysinv Agent
+
+        Configuring Ceph Rook was successful, finalize operation.
+        The Agent calls this if Ceph manifests are applied correctly.
+        Both controllers have to get their manifests applied before accepting
+        the entire operation as successful.
+        """
+        LOG.info("Ceph manifests success on host: %s" % host_uuid)
+
+        # As we can have multiple rook_ceph backends, need to find the one
+        # that is in configuring state.
+        ceph_conf = StorageBackendConfig.get_configuring_target_backend(
+            self.dbapi, target=constants.SB_TYPE_CEPH_ROOK)
+
+        if ceph_conf:
+            config_done = True
+            active_controller = utils.HostHelper.get_active_controller(self.dbapi)
+            if not utils.is_host_simplex_controller(active_controller):
+                ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+                for host in ctrls:
+                    if host.uuid == host_uuid:
+                        break
+                else:
+                    LOG.error("Host %s is not a controller?" % host_uuid)
+                    return
+                tasks = eval(ceph_conf.get('task', '{}'))
+                if tasks:
+                    tasks[host.hostname] = None
+                else:
+                    tasks = {host.hostname: None}
+
+                for h in ctrls:
+                    if tasks[h.hostname]:
+                        config_done = False
+                        break
+
+            if config_done:
+                values = {'state': constants.SB_STATE_CONFIGURED,
+                          'task': None}
+
+                # Clear alarm, if any
+                self._update_storage_backend_alarm(fm_constants.FM_ALARM_STATE_CLEAR,
+                                                   constants.SB_TYPE_CEPH_ROOK)
+            else:
+                values = {'task': str(tasks)}
+
+            self.dbapi.storage_backend_update(ceph_conf.uuid, values)
+
+    def report_ceph_rook_config_failure(self, host_uuid, error):
+        """ Callback for Sysinv Agent
+
+        Configuring Rook Ceph backend failed, set backend to err and raise alarm
+        The agent calls this if Ceph manifests failed to apply
+        """
+
+        args = {'host': host_uuid, 'error': error}
+        LOG.error("Ceph rook manifests failed on host: %(host)s. Error: %(error)s" % args)
+
+        # As we can have multiple rook_ceph backends, need to find the one
+        # that is in configuring state.
+        ceph_conf = StorageBackendConfig.get_configuring_target_backend(
+            self.dbapi, target=constants.SB_TYPE_CEPH_ROOK)
+
+        # Set ceph backend to error state
+        values = {'state': constants.SB_STATE_CONFIG_ERR, 'task': None}
+        self.dbapi.storage_backend_update(ceph_conf.uuid, values)
+
+        # Raise alarm
+        reason = "Ceph rook configuration failed to apply on host: %(host)s" % args
+        self._update_storage_backend_alarm(fm_constants.FM_ALARM_STATE_SET,
+                                           constants.SB_TYPE_CEPH_ROOK,
                                            reason)
 
     def report_ceph_config_success(self, context, host_uuid):
@@ -7495,6 +8304,19 @@ class ConductorManager(service.PeriodicService):
         values = {'state': constants.SB_STATE_CONFIG_ERR}
         self.dbapi.istor_update(stor_uuid, values)
 
+    def report_upgrade_config_failure(self):
+        """
+           Callback for Sysinv Agent on upgrade manifest failure
+        """
+        try:
+            upgrade = self.dbapi.software_upgrade_get_one()
+        except exception.NotFound:
+            LOG.error("Upgrade record not found during config failure")
+            return
+        self.dbapi.software_upgrade_update(
+            upgrade.uuid,
+            {'state': constants.UPGRADE_ACTIVATION_FAILED})
+
     def create_controller_filesystems(self, context, rootfs_device):
         """ Create the storage config based on disk size for database, platform,
             extension, rabbit, etcd, docker-distribution, dc-vault(SC)
@@ -7550,16 +8372,16 @@ class ConductorManager(service.PeriodicService):
             #         20 G - /var/lib/ceph/mon
             #         15 G - /opt/dc-vault (DRBD ctlr manifest for DCSC)
             #        -----
-            #        163 G / 178 G(DCSC)
+            #        178 G
             #
             #  The absolute minimum disk size for these default settings:
             #      2.0 G - buffer
             #      0.5 G - /boot
             #     10.0 G - /opt/platform-backup
             #     20.0 G - /
-            #    163.0 G / 178.0 G - cgts-vg PV
+            #    178.0 G - cgts-vg PV
             #   -------
-            #    ~ 196 G / 210 G(DCSC) min size disk
+            #    ~ 210 G min size disk
             #
             database_storage = constants.DEFAULT_DATABASE_STOR_SIZE
 
@@ -7567,7 +8389,7 @@ class ConductorManager(service.PeriodicService):
 
             LOG.info("Disk size : %s ... small disk defaults" % disk_size)
 
-            # Small disk: under 240G and over 181G root disk
+            # Small disk: under 240G and over 196G root disk
             #
             #          8 G - /var/log (reserved in kickstart)
             #         16 G - /scratch (reserved in kickstart)
@@ -7594,16 +8416,16 @@ class ConductorManager(service.PeriodicService):
             #         10 G - /var/lib/kubelet
             #         15 G - /opt/dc-vault (DRBD ctlr manifest for DCSC)
             #        -----
-            #        148 G / 163 G(DCSC)
+            #        163 G
             #
             #  The absolute minimum disk size for these default settings:
             #     2.0 G - buffer
             #     0.5 G - /boot
             #    10.0 G - /opt/platform-backup
             #    20.0 G - /
-            #   148.0 G / 163.0 G - cgts-vg PV
+            #   163.0 G - cgts-vg PV
             #   -------
-            #   ~ 181 G / 196 G(DCSC) min size disk
+            #   ~ 196 G min size disk
             #
             database_storage = \
                 constants.DEFAULT_SMALL_DATABASE_STOR_SIZE
@@ -7740,6 +8562,7 @@ class ConductorManager(service.PeriodicService):
 
         LOG.info("Updating parameters configuration for service: %s" % service)
 
+        config_uuid = None
         # On service parameter add just update the host profile
         # for personalities pertinent to that service
         if service == constants.SERVICE_TYPE_HTTP:
@@ -7752,6 +8575,18 @@ class ConductorManager(service.PeriodicService):
             pass
         elif service == constants.SERVICE_TYPE_PTP:
             self._update_ptp_host_configs(context, do_apply=do_apply)
+        elif service == constants.SERVICE_TYPE_DOCKER:
+            config_uuid = self._config_update_hosts(context,
+                                                    [constants.CONTROLLER],
+                                                    reboot=True)
+        elif service == constants.SERVICE_TYPE_KUBERNETES:
+            # The KUBERNETES_POD_MAX_PIDS affects workers.
+            # A smarter way would be for update_service_config to receive the
+            # diff list or dict, to only target required personalities.
+            config_uuid = self._config_update_hosts(context,
+                                                    [constants.CONTROLLER,
+                                                     constants.WORKER],
+                                                    reboot=True)
         else:
             # All other services
             personalities = [constants.CONTROLLER]
@@ -7832,7 +8667,9 @@ class ConductorManager(service.PeriodicService):
 
     def update_security_feature_config(self, context):
         """Update the kernel options configuration"""
-        personalities = constants.PERSONALITIES
+        # Move the edgeworker personality out since it is not configured by puppet
+        personalities = [i for i in constants.PERSONALITIES if i != constants.EDGEWORKER]
+
         config_uuid = self._config_update_hosts(context, personalities, reboot=True)
 
         config_dict = {
@@ -8012,17 +8849,25 @@ class ConductorManager(service.PeriodicService):
         fs = []
         for row in output:
             # Check PausedSyncS as well as drbd sync is changed to serial
-            if "drbd-pgsql" in row and ("SyncSource" in row or "PausedSyncS" in row):
+            # Check Connected because there are cases when drbd-overview
+            # showed Connected instead of PausedSyncS and SyncSource states
+            if "drbd-pgsql" in row and ("SyncSource" in row or "PausedSyncS" in row
+                                        or "Connected" in row):
                 fs.append(constants.DRBD_PGSQL)
-            if "drbd-platform" in row and ("SyncSource" in row or "PausedSyncS" in row):
+            if "drbd-platform" in row and ("SyncSource" in row or "PausedSyncS" in row
+                                           or "Connected" in row):
                 fs.append(constants.DRBD_PLATFORM)
-            if "drbd-extension" in row and ("SyncSource" in row or "PausedSyncS" in row):
+            if "drbd-extension" in row and ("SyncSource" in row or "PausedSyncS" in row
+                                            or "Connected" in row):
                 fs.append(constants.DRBD_EXTENSION)
-            if "drbd-dc-vault" in row and ("SyncSource" in row or "PausedSyncS" in row):
+            if "drbd-dc-vault" in row and ("SyncSource" in row or "PausedSyncS" in row
+                                           or "Connected" in row):
                 fs.append(constants.DRBD_DC_VAULT)
-            if "drbd-etcd" in row and ("SyncSource" in row or "PausedSyncS" in row):
+            if "drbd-etcd" in row and ("SyncSource" in row or "PausedSyncS" in row
+                                       or "Connected" in row):
                 fs.append(constants.DRBD_ETCD)
-            if "drbd-dockerdistribution" in row and ("SyncSource" in row or "PausedSyncS" in row):
+            if "drbd-dockerdistribution" in row and ("SyncSource" in row or "PausedSyncS" in row
+                                                     or "Connected" in row):
                 fs.append(constants.DRBD_DOCKER_DISTRIBUTION)
         return fs
 
@@ -8040,32 +8885,18 @@ class ConductorManager(service.PeriodicService):
 
         for row in drbd_dict:
             if "sync\'ed" not in row:
-                try:
-                    size = ([_f for _f in row.split(' ') if _f])[8]
-                except IndexError:
-                    LOG.error("Skipping unexpected drbd-overview output: %s" % row)
-                    continue
-                unit = size[-1]
-                size = float(size[:-1])
-
-                # drbd-overview can display the units in M or G
-                if unit == 'M':
-                    size = size / 1024
-                elif unit == 'T':
-                    size = size * 1024
-
                 if 'drbd-pgsql' in row:
-                    drbd_pgsql_size = size
-                if 'drbd-platform' in row:
-                    drbd_platform_size = size
-                if 'drbd-extension' in row:
-                    drbd_extension_size = size
-                if 'drbd-dc-vault' in row:
-                    drbd_patch_size = size
-                if 'drbd-etcd' in row:
-                    drbd_etcd_size = size
-                if 'drbd-dockerdistribution' in row:
-                    dockerdistribution_size = size
+                    drbd_pgsql_size = self._get_drbd_fs_size("drbd0")[0]
+                elif 'drbd-platform' in row:
+                    drbd_platform_size = self._get_drbd_fs_size("drbd2")[0]
+                elif 'drbd-extension' in row:
+                    drbd_extension_size = self._get_drbd_fs_size("drbd5")[0]
+                elif 'drbd-dc-vault' in row:
+                    drbd_patch_size = self._get_drbd_fs_size("drbd6")[0]
+                elif 'drbd-etcd' in row:
+                    drbd_etcd_size = self._get_drbd_fs_size("drbd7")[0]
+                elif 'drbd-dockerdistribution' in row:
+                    dockerdistribution_size = self._get_drbd_fs_size("drbd8")[0]
 
         lvdisplay_dict = self.get_controllerfs_lv_sizes(context)
         if lvdisplay_dict.get('pgsql-lv', None):
@@ -8106,11 +8937,111 @@ class ConductorManager(service.PeriodicService):
 
         return drbd_fs_updated
 
+    def _get_drbd_fs_size(self, drbd_dev):
+        """ Get drbd filesystem size
+
+        :param drbd_dev: drbd device name
+        :returns: tuple with (drbd_filesystem_size, return_code)
+        """
+        cmd = "dumpe2fs -h /dev/{}".format(drbd_dev)
+        dumpfs_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE, shell=True)
+        dumpfs_out, dumpfs_err = dumpfs_proc.communicate()
+        total_size = 0
+        retcode = dumpfs_proc.returncode
+        log_msg = "Executed _get_drbd_fs_size: drbd_dev: {} return code: {}"\
+            .format(drbd_dev, retcode)
+        if retcode == 0:
+            dumpfs_dict = [_f for _f in dumpfs_out.split('\n') if _f]
+            block_size = 0
+            block_count = 0
+            try:
+                for row in dumpfs_dict:
+                    if "Block size" in row:
+                        block_size = int([i for i in row.split() if i][2])
+                    elif "Block count" in row:
+                        block_count = int([i for i in row.split() if i][2])
+                total_size = cutils.bytes_to_GiB(block_count * block_size)
+            except IndexError:
+                retcode = 1
+        else:
+            log_msg += "\nstdout={}\nstderr={}".format(dumpfs_out, dumpfs_err)
+        LOG.info(log_msg)
+        return total_size, retcode
+
+    def _get_drbd_dev_size(self, drbd_dev):
+        """ Get drbd device size
+
+        :param drbd_dev: drbd device name
+        :returns: tuple with (drbd_device_size, return_code)
+        """
+        cmd = "blockdev --getpbsz /dev/{}".format(drbd_dev)
+        blockdev_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                         stderr=subprocess.PIPE, shell=True)
+        blockdev_out, blockdev_err = blockdev_proc.communicate()
+        total_size = 0
+        retcode = blockdev_proc.returncode
+        log_msg = "Executed _get_drbd_dev_size: drbd_dev: {} return code: {}"\
+            .format(drbd_dev, retcode)
+        if retcode == 0:
+            sector_size = 0
+            drbd_size_in_sectors = 0
+            try:
+                sector_size = int(blockdev_out.strip())
+                drbd_size_in_sectors_file_path = "/sys/block/{}/size".format(drbd_dev)
+                with open(drbd_size_in_sectors_file_path) as f:
+                    drbd_size_in_sectors = int(f.read().strip())
+            except ValueError:
+                retcode = 1
+            total_size = cutils.bytes_to_GiB(sector_size * drbd_size_in_sectors)
+        else:
+            log_msg += "\nstdout={}\nstderr={}".format(blockdev_out, blockdev_err)
+        LOG.info(log_msg)
+        return total_size, retcode
+
+    def _verify_drbd_dev_resized(self, context, drbd_dev, drbd_lv):
+        return self._verify_drbd_resized_generic(context, drbd_dev,
+                                                 drbd_lv, self._get_drbd_dev_size)
+
+    def _verify_drbd_fs_resized(self, context, drbd_dev, drbd_lv):
+        return self._verify_drbd_resized_generic(context, drbd_dev,
+                                                 drbd_lv, self._get_drbd_fs_size)
+
+    def _verify_drbd_resized_generic(self, context, drbd_dev, drbd_lv,
+                                     get_actual_size_func, delay=15, max_retries=3):
+        retries = 0
+        resized = False
+        while retries < max_retries:
+            lvdisplay_dict = self.get_controllerfs_lv_sizes(context)
+            drbd_actual_size, retcode = get_actual_size_func(drbd_dev)
+            if retcode == 0 and lvdisplay_dict.get(drbd_lv, None):
+                drbd_lv_size = float(lvdisplay_dict[drbd_lv])
+                if math.ceil(drbd_actual_size) >= math.ceil(drbd_lv_size):
+                    resized = True
+                    break
+            retries += 1
+            time.sleep(delay)
+        return resized
+
+    def _resize2fs_drbd_dev(self, context, retry_attempts, drbd_dev, drbd_lv):
+        resized = False
+        if self._verify_drbd_dev_resized(context, drbd_dev, drbd_lv):
+            progress = "resize2fs {}".format(drbd_dev)
+            cmd = ["resize2fs", "/dev/{}".format(drbd_dev)]
+            stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
+            if self._verify_drbd_fs_resized(context, drbd_dev, drbd_lv):
+                LOG.info("Performed %s" % progress)
+                resized = True
+            else:
+                LOG.warn("{} filesystem not resized yet".format(drbd_dev))
+        else:
+            LOG.warn("{} device not resized yet".format(drbd_dev))
+        return resized
+
     def _config_resize_filesystems(self, context, standby_host):
         """Resize the filesystems upon completion of storage config.
            Retry in case of errors or racing issues when resizing fails."""
 
-        progress = ""
         retry_attempts = 3
         rc = False
         with open(os.devnull, "w"):
@@ -8146,66 +9077,60 @@ class ConductorManager(service.PeriodicService):
                                 (not standby_host or (standby_host and
                                  constants.DRBD_PGSQL in self._drbd_fs_sync()))):
                                 # database_gib /var/lib/postgresql
-                                progress = "resize2fs drbd0"
-                                cmd = ["resize2fs", "/dev/drbd0"]
-                                stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
-                                LOG.info("Performed %s" % progress)
-                                pgsql_resized = True
+                                drbd_dev = "drbd0"
+                                drbd_lv = "pgsql-lv"
+                                pgsql_resized = self._resize2fs_drbd_dev(context, retry_attempts,
+                                                                         drbd_dev, drbd_lv)
 
                         if constants.DRBD_PLATFORM in drbd_fs_updated:
                             if (not platform_resized and
                                 (not standby_host or (standby_host and
                                  constants.DRBD_PLATFORM in self._drbd_fs_sync()))):
                                 # platform_gib /opt/platform
-                                progress = "resize2fs drbd2"
-                                cmd = ["resize2fs", "/dev/drbd2"]
-                                stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
-                                LOG.info("Performed %s" % progress)
-                                platform_resized = True
+                                drbd_dev = "drbd2"
+                                drbd_lv = "platform-lv"
+                                platform_resized = self._resize2fs_drbd_dev(context, retry_attempts,
+                                                                            drbd_dev, drbd_lv)
 
                         if constants.DRBD_EXTENSION in drbd_fs_updated:
                             if (not extension_resized and
                                 (not standby_host or (standby_host and
                                  constants.DRBD_EXTENSION in self._drbd_fs_sync()))):
                                 # extension_gib /opt/extension
-                                progress = "resize2fs drbd5"
-                                cmd = ["resize2fs", "/dev/drbd5"]
-                                stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
-                                LOG.info("Performed %s" % progress)
-                                extension_resized = True
+                                drbd_dev = "drbd5"
+                                drbd_lv = "extension-lv"
+                                extension_resized = self._resize2fs_drbd_dev(context, retry_attempts,
+                                                                             drbd_dev, drbd_lv)
 
                         if constants.DRBD_DC_VAULT in drbd_fs_updated:
                             if (not patch_resized and
                                 (not standby_host or (standby_host and
                                  constants.DRBD_DC_VAULT in self._drbd_fs_sync()))):
                                 # patch_gib /opt/dc-vault
-                                progress = "resize2fs drbd6"
-                                cmd = ["resize2fs", "/dev/drbd6"]
-                                stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
-                                LOG.info("Performed %s" % progress)
-                                patch_resized = True
+                                drbd_dev = "drbd6"
+                                drbd_lv = "dc-vault-lv"
+                                patch_resized = self._resize2fs_drbd_dev(context, retry_attempts,
+                                                                         drbd_dev, drbd_lv)
 
                         if constants.DRBD_ETCD in drbd_fs_updated:
                             if (not etcd_resized and
                                 (not standby_host or (standby_host and
                                  constants.DRBD_ETCD in self._drbd_fs_sync()))):
                                 # patch_gib /opt/etcd
-                                progress = "resize2fs drbd7"
-                                cmd = ["resize2fs", "/dev/drbd7"]
-                                stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
-                                LOG.info("Performed %s" % progress)
-                                etcd_resized = True
+                                drbd_dev = "drbd7"
+                                drbd_lv = "etcd-lv"
+                                etcd_resized = self._resize2fs_drbd_dev(context, retry_attempts,
+                                                                        drbd_dev, drbd_lv)
 
                         if constants.DRBD_DOCKER_DISTRIBUTION in drbd_fs_updated:
                             if (not dockerdistribution_resized and
                                 (not standby_host or (standby_host and
                                  constants.DRBD_DOCKER_DISTRIBUTION in self._drbd_fs_sync()))):
                                 # patch_gib /var/lib/docker-distribution
-                                progress = "resize2fs drbd8"
-                                cmd = ["resize2fs", "/dev/drbd8"]
-                                stdout, __ = cutils.execute(*cmd, attempts=retry_attempts, run_as_root=True)
-                                LOG.info("Performed %s" % progress)
-                                dockerdistribution_resized = True
+                                drbd_dev = "drbd8"
+                                drbd_lv = "dockerdistribution-lv"
+                                dockerdistribution_resized = self._resize2fs_drbd_dev(context, retry_attempts,
+                                                                                      drbd_dev, drbd_lv)
 
                         if not standby_host:
                             rc = True
@@ -8235,12 +9160,11 @@ class ConductorManager(service.PeriodicService):
                         time.sleep(1)
                     else:
                         LOG.warn("resizing filesystems not completed")
-
             except exception.ProcessExecutionError as ex:
                 LOG.warn("Failed to perform storage resizing (cmd: '%(cmd)s', "
                          "return code: %(rc)s, stdout: '%(stdout)s).', "
                          "stderr: '%(stderr)s'" %
-                         {"cmd": " ".join(cmd), "stdout": ex.stdout,
+                         {"cmd": ex.cmd, "stdout": ex.stdout,
                           "stderr": ex.stderr, "rc": ex.exit_code})
 
         return rc
@@ -8374,7 +9298,7 @@ class ConductorManager(service.PeriodicService):
                 self._host_reboot_config_uuid[ihost_uuid].remove(config_uuid)
             except ValueError:
                 LOG.info("_remove_config_from_reboot_config_list fail"
-                         " host:%s", ihost_uuid)
+                         " host:%s config_uuid %s" % (ihost_uuid, config_uuid))
                 pass
 
     def _clear_config_from_reboot_config_list(self, ihost_uuid):
@@ -8387,10 +9311,19 @@ class ConductorManager(service.PeriodicService):
                          " host: %s", ihost_uuid)
                 pass
 
-    def _config_out_of_date(self, ihost_obj):
+    def _config_out_of_date(self, context, ihost_obj):
+
+        def _align_config_target(context, ihost_obj, applied):
+            LOG.info("Config target with no reboot required, "
+                     "align host_uuid=%s target applied=%s" %
+                     (ihost_obj.uuid, applied))
+            ihost_obj.config_target = applied
+            ihost_obj.save(context)
+
         target = ihost_obj.config_target
         applied = ihost_obj.config_applied
         applied_reboot = None
+
         if applied is not None:
             try:
                 applied_reboot = self._config_set_reboot_required(applied)
@@ -8428,10 +9361,21 @@ class ConductorManager(service.PeriodicService):
         elif target == applied_reboot:
             if ihost_obj.uuid in self._host_reboot_config_uuid:
                 if len(self._host_reboot_config_uuid[ihost_obj.uuid]) == 0:
+                    # There are no further config required for host, update config_target
+                    _align_config_target(context, ihost_obj, applied)
                     return False
+                else:
+                    LOG.info("%s: %s reboot required config_applied %s host_reboot_config %s " %
+                             (ihost_obj.hostname, ihost_obj.uuid, applied,
+                              self._host_reboot_config_uuid[ihost_obj.uuid]))
                 return True
             else:
-                return False
+                if self.host_uuid == ihost_obj.uuid:
+                    # In the active controller case, can clear if no reboot required config.
+                    # The is tracked on initialization and protected from host-swact semantic.
+                    _align_config_target(context, ihost_obj, applied)
+                    return False
+                return True
         else:
             LOG.warn("%s: iconfig out of date: target %s, applied %s " %
                      (hostname, target, applied))
@@ -8487,7 +9431,7 @@ class ConductorManager(service.PeriodicService):
         entity_instance_id = self._get_fm_entity_instance_id(ihost_obj)
 
         save_required = False
-        if self._config_out_of_date(ihost_obj) or \
+        if self._config_out_of_date(context, ihost_obj) or \
                 status == constants.CONFIG_STATUS_REINSTALL:
             LOG.warn("SYS_I Raise system config alarm: host %s "
                      "config applied: %s  vs. target: %s." %
@@ -8652,6 +9596,11 @@ class ConductorManager(service.PeriodicService):
         :                         update
         :return The UUID of the configuration generation
         """
+        def _trace_caller(personalities, host_uuids, reboot, config_uuid):
+            tb = traceback.format_stack()
+            LOG.info("_config_update_hosts personalities=%s host_uuids=%s reboot=%s "
+                     "config_uuid=%s tb=%s" %
+                     (personalities, host_uuids, reboot, config_uuid, tb[-3]))
 
         # generate a new configuration identifier for this update
         config_uuid = uuid.uuid4()
@@ -8664,6 +9613,8 @@ class ConductorManager(service.PeriodicService):
             config_uuid = self._config_set_reboot_required(config_uuid)
         else:
             config_uuid = self._config_clear_reboot_required(config_uuid)
+
+        _trace_caller(personalities, host_uuids, reboot, config_uuid)
 
         if not host_uuids:
             hosts = self.dbapi.ihost_get_list()
@@ -8678,6 +9629,10 @@ class ConductorManager(service.PeriodicService):
                     else:
                         self._host_reboot_config_uuid[host.uuid] = []
                         self._host_reboot_config_uuid[host.uuid].append(config_uuid)
+                    if host.uuid == self.host_uuid:
+                        # This ensures that the host_reboot_config_uuid tracking
+                        # on this controller is aware that a reboot is required
+                        cutils.touch(ACTIVE_CONFIG_REBOOT_REQUIRED)
                 self._update_host_config_target(context, host, config_uuid)
 
         LOG.info("_config_update_hosts config_uuid=%s" % config_uuid)
@@ -8718,8 +9673,14 @@ class ConductorManager(service.PeriodicService):
                     host.invprovision == constants.PROVISIONED or
                     (host.invprovision == constants.PROVISIONING and
                      host.personality == constants.CONTROLLER)):
-                    self._puppet.update_host_config(host, config_uuid)
-                    host_updated = True
+                    if host.software_load == tsc.SW_VERSION:
+                        # We will not generate the hieradata in runtime here if the
+                        # software load of the host is different from the active
+                        # controller. The Hieradata of a host during an upgrade/rollback
+                        # will be saved by update_host_config_upgrade() to the
+                        # directory of the host's software load.
+                        self._puppet.update_host_config(host, config_uuid)
+                        host_updated = True
                 else:
                     LOG.info(
                         "Cannot regenerate the configuration for %s, "
@@ -8749,6 +9710,21 @@ class ConductorManager(service.PeriodicService):
         :           action_key: match key (for patch only)
         :          }
         """
+
+        if not self._ready_to_apply_runtime_config(
+                context,
+                config_dict.get('personalities'),
+                config_dict.get('host_uuids')):
+            # append to deferred for audit
+            self._host_deferred_runtime_config.append(
+                {'config_type': CONFIG_UPDATE_FILE,
+                 'config_uuid': config_uuid,
+                 'config_dict': config_dict,
+                 })
+            LOG.info("defer update file to _host_deferred_runtime_config %s" %
+                     self._host_deferred_runtime_config)
+            return
+
         # Ensure hiera data is updated prior to active apply.
         self._config_update_puppet(config_uuid, config_dict)
 
@@ -8806,6 +9782,23 @@ class ConductorManager(service.PeriodicService):
         else:
             LOG.info("applying runtime manifest config_uuid=%s" % config_uuid)
 
+        # only apply runtime manifests to active controller if agent ready,
+        # otherwise will append to the list of outstanding runtime manifests
+        if not self._ready_to_apply_runtime_config(
+                context,
+                config_dict.get('personalities'),
+                config_dict.get('host_uuids')):
+            # append to deferred for audit
+            self._host_deferred_runtime_config.append(
+                {'config_type': CONFIG_APPLY_RUNTIME_MANIFEST,
+                 'config_uuid': config_uuid,
+                 'config_dict': config_dict,
+                 'force': force,
+                 })
+            LOG.info("defer apply runtime manifest %s" %
+                     self._host_deferred_runtime_config)
+            return
+
         # Update hiera data for all hosts prior to runtime apply if host_uuid
         # is not set. If host_uuids is set only update hiera data for those hosts.
         self._config_update_puppet(config_uuid,
@@ -8813,9 +9806,7 @@ class ConductorManager(service.PeriodicService):
                                    host_uuids=host_uuids,
                                    force=force)
 
-        for app_name in constants.HELM_APPS_WITH_REAPPLY_SUPPORT:
-            if cutils.is_app_applied(self.dbapi, app_name):
-                self.evaluate_app_reapply(context, app_name)
+        self.evaluate_apps_reapply(context, trigger={'type': constants.APP_EVALUATE_REAPPLY_TYPE_RUNTIME_APPLY_PUPPET})
 
         # Remove reboot required flag in case it's present. Runtime manifests
         # are no supposed to clear this flag. A host lock/unlock cycle (or similar)
@@ -9459,6 +10450,25 @@ class ConductorManager(service.PeriodicService):
                     self.dbapi.software_upgrade_update(upgrade.uuid,
                                                        upgrade_update)
 
+                    LOG.info("Prepare for swact to controller-0")
+                    # As a temporary solution we only migrate the etcd database
+                    # when we swact to controller-0. This solution will present
+                    # some problems when we do upgrade etcd, so further
+                    # development will be required at that time.
+                    try:
+                        with open(os.devnull, "w") as devnull:
+                            call_args = [
+                                '/usr/bin/upgrade_swact_migration.py',
+                                'prepare_swact',
+                                upgrade.from_release,
+                                upgrade.to_release
+                            ]
+                            subprocess.check_call(call_args, stdout=devnull)  # pylint: disable=not-callable
+                    except subprocess.CalledProcessError as e:
+                        LOG.exception(e)
+                        raise exception.SysinvException(
+                            "Failed upgrade_swact_migration prepare_swact")
+
     def start_upgrade(self, context, upgrade):
         """ Start the upgrade"""
 
@@ -9538,11 +10548,6 @@ class ConductorManager(service.PeriodicService):
         to_load = self.dbapi.load_get(upgrade.to_load)
         to_version = to_load.software_version
 
-        # Update the config target of the controllers. This prevents the audit
-        # from changing the upgrade state before we're ready.
-        personalities = [constants.CONTROLLER]
-        config_uuid = self._config_update_hosts(context, personalities)
-
         self.dbapi.software_upgrade_update(
             upgrade.uuid, {'state': constants.UPGRADE_ACTIVATING})
 
@@ -9562,9 +10567,19 @@ class ConductorManager(service.PeriodicService):
                     upgrade.uuid,
                     {'state': constants.UPGRADE_ACTIVATION_FAILED})
 
-        hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
-        for host in hosts:
-            self._update_host_config_applied(context, host, config_uuid)
+        manifests_applied = False
+        if from_version == tsc.SW_VERSION_20_06:
+            # Apply etcd security puppet manifest to the standby controller.
+            manifests_applied = self._enable_etcd_security_config(context)
+
+        if manifests_applied:
+            LOG.info("Running upgrade activation manifests")
+            self.dbapi.software_upgrade_update(
+                upgrade.uuid, {'state': constants.UPGRADE_ACTIVATING_HOSTS})
+        else:
+            LOG.info("Upgrade activation complete")
+            self.dbapi.software_upgrade_update(
+                upgrade.uuid, {'state': constants.UPGRADE_ACTIVATION_COMPLETE})
 
     def complete_upgrade(self, context, upgrade, state):
         """ Complete the upgrade"""
@@ -9618,6 +10633,11 @@ class ConductorManager(service.PeriodicService):
                 raise exception.SysinvException(
                     _("Unable to complete upgrade: Upgrade not in %s state.")
                     % constants.UPGRADE_COMPLETING)
+
+            # Complete the restore procedure
+            if tsc.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+                self.complete_restore(context)
+
             # Force all host_upgrade entries to use the new load
             # In particular we may have host profiles created in the from load
             # that we need to update before we can delete the load.
@@ -9637,6 +10657,11 @@ class ConductorManager(service.PeriodicService):
                      (from_version, to_version))
             upgrades_management.complete_upgrade(from_version, to_version, upgrade)
             LOG.info("Finished completing upgrade")
+            # If applicable, notify dcmanager upgrade is complete
+            system = self.dbapi.isystem_get_one()
+            role = system.get('distributed_cloud_role')
+            if role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+                dc_api.notify_dcmanager_platform_upgrade_completed()
 
         # Delete upgrade record
         self.dbapi.software_upgrade_destroy(upgrade.uuid)
@@ -9677,6 +10702,27 @@ class ConductorManager(service.PeriodicService):
 
         self._puppet.update_system_config()
         self._puppet.update_secure_system_config()
+
+        # There are upgrade flags that are written to controller-0 that need to
+        # be removed before downgrading controller-1. As these flags reside on
+        # controller-0, we restrict this to abort actions started on that
+        # controller. When the abort is run on controller-1 the data-migration
+        # must be complete, and only the CONTROLLER_UPGRADE_COMPLETE_FLAG would
+        # remain. The CONTROLLER_UPGRADE_COMPLETE_FLAG does not interfere with
+        # the host-downgrade. Any remaining flags will be removed during
+        # upgrade-complete.
+        if utils.is_host_active_controller(controller_0):
+            upgrade_flag_files = [
+                tsc.CONTROLLER_UPGRADE_FLAG,
+                tsc.CONTROLLER_UPGRADE_COMPLETE_FLAG,
+                tsc.CONTROLLER_UPGRADE_FAIL_FLAG,
+                tsc.CONTROLLER_UPGRADE_STARTED_FLAG
+            ]
+            for file in upgrade_flag_files:
+                try:
+                    os.remove(file)
+                except OSError:
+                    LOG.exception("Failed to remove upgrade flag: %s" % file)
 
         # When we abort from controller-1 while controller-0 is running
         # the previous release, controller-0 will not be aware of the abort.
@@ -9745,7 +10791,8 @@ class ConductorManager(service.PeriodicService):
         return
 
     def get_system_health(self, context, force=False, upgrade=False,
-                          kube_upgrade=False):
+                          kube_upgrade=False,
+                          alarm_ignore_list=None):
         """
         Performs a system health check.
 
@@ -9754,18 +10801,26 @@ class ConductorManager(service.PeriodicService):
         :param upgrade: set to true to perform an upgrade health check
         :param kube_upgrade: set to true to perform a kubernetes upgrade health
                              check
+        :param alarm_ignore_list: list of alarm ids to ignore when performing
+                                  a health check
         """
         health_util = health.Health(self.dbapi)
 
         if upgrade is True:
-            return health_util.get_system_health_upgrade(context=context,
-                                                         force=force)
+            return health_util.get_system_health_upgrade(
+                context=context,
+                force=force,
+                alarm_ignore_list=alarm_ignore_list)
         elif kube_upgrade is True:
-            return health_util.get_system_health_kube_upgrade(context=context,
-                                                              force=force)
+            return health_util.get_system_health_kube_upgrade(
+                context=context,
+                force=force,
+                alarm_ignore_list=alarm_ignore_list)
         else:
-            return health_util.get_system_health(context=context,
-                                                 force=force)
+            return health_util.get_system_health(
+                context=context,
+                force=force,
+                alarm_ignore_list=alarm_ignore_list)
 
     def _get_cinder_address_name(self, network_type):
         ADDRESS_FORMAT_ARGS = (constants.CONTROLLER_HOSTNAME,
@@ -9854,8 +10909,27 @@ class ConductorManager(service.PeriodicService):
         config_uuid = self._config_update_hosts(context, personalities)
         config_dict = {
             "personalities": personalities,
-            "classes": ['platform::snmp::runtime',
-                        'platform::fm::runtime'],
+            "classes": ['platform::fm::runtime'],
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+    def update_dnsmasq_config(self, context):
+        """Update the dnsmasq configuration"""
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::dns::dnsmasq::runtime'],
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+    def update_ldap_client_config(self, context):
+        """Update the LDAP client configuration"""
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::ldap::client::runtime'],
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
@@ -10361,29 +11435,6 @@ class ConductorManager(service.PeriodicService):
         config_dict = {"personalities": personalities}
 
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-    def _destroy_certificates(self, context):
-        """Delete certificates."""
-        LOG.info("_destroy_certificates clear ssl/tpm certificates")
-
-        certificates = self.dbapi.certificate_get_list()
-        for certificate in certificates:
-            if certificate.certtype in [constants.CERT_MODE_SSL,
-                                        constants.CERT_MODE_TPM,
-                                        constants.CERT_MODE_OPENSTACK]:
-                self.dbapi.certificate_destroy(certificate.uuid)
-
-        personalities = [constants.CONTROLLER]
-
-        config_uuid = self._config_update_hosts(context, personalities)
-        config_dict = {
-            'personalities': personalities,
-            'file_names': [constants.SSL_PEM_FILE],
-            'file_content': None,
-            'permissions': constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY,
-            'nobackup': True,
-        }
-        self._config_update_file(context, config_uuid, config_dict)
 
     def _destroy_tpm_config(self, context, tpm_obj=None):
         """Delete a tpmconfig."""
@@ -10921,7 +11972,23 @@ class ConductorManager(service.PeriodicService):
                                'wb') as f:
             f.write(file_content)
 
-        return cert_list[0].get('signature')
+        # Inventory the self signed certificate.
+        # In case the self signed cert is ICA signed,
+        # skip these intermediate CA certs.
+        for cert in cert_list:
+            if not cert.get('is_ca', False):
+                values = {
+                    'certtype': mode,
+                    'signature': cert.get('signature'),
+                    'start_date': cert.get('cert').not_valid_before,
+                    'expiry_date': cert.get('cert').not_valid_after,
+                }
+                self.dbapi.certificate_create(values)
+                break
+        else:
+            msg = "Fail to inventory the self signed certificate, \
+                   no leaf cert found."
+            raise exception.SysinvException(_(msg))
 
     def delete_certificate(self, context, mode, signature):
         """Delete a certificate by its mode and signature.
@@ -11275,6 +12342,140 @@ class ConductorManager(service.PeriodicService):
           """
         return self._fernet.get_fernet_keys(key_id)
 
+    def determine_apps_reapply_order(self, name_only, filter_active=True):
+        """ Order the apps for reapply
+
+        :param name_only: return list of app names if name_only is True
+                          return list of apps if name_only is False
+        :param filter_active: When true keep only applied apps in the list
+
+        :returns: list of apps or app names
+        """
+        try:
+            # Cached entry: precomputed order of reapply evaluation
+            if name_only and not filter_active:
+                return self.apps_metadata[constants.APP_METADATA_ORDERED_APPS]
+
+            ordered_apps = []
+            # Start from already ordered list
+            for app_name in self.apps_metadata[constants.APP_METADATA_ORDERED_APPS]:
+                try:
+                    app = self.dbapi.kube_app_get(app_name)
+                except exception.KubeAppNotFound:
+                    continue
+
+                if filter_active and app.active:
+                    ordered_apps.append(app)
+                elif not filter_active:
+                    ordered_apps.append(app)
+
+            LOG.info("Apps reapply order: {}".format([app.name for app in ordered_apps]))
+
+            if name_only:
+                ordered_apps = [app.name for app in ordered_apps]
+        except Exception as e:
+            LOG.error("Error while ordering apps for reapply {}".format(str(e)))
+            ordered_apps = []
+
+        return ordered_apps
+
+    def evaluate_apps_reapply(self, context, trigger):
+        """Synchronously, determine whether an application
+        re-apply is needed, and if so, raise the re-apply flag.
+
+        Run 2 checks before doing an app evaluation.
+        First check is a semantic check calling a lifecycle hook which can
+        implement complex logic.
+        Second check is specified in metadata which allows faster development
+        time, doing simple key:value comparisons. Check that the 'trigger'
+        parameter of the function contains a list of key:value pairs at a
+        specified location. Default location for searching is root of 'trigger'
+        dictionary. If the keys are absent or the values do not match, then the
+        check is considered failed and the evaluation skipped.
+
+        :param context: request context.
+        :param trigger: dictionary containing at least the 'type' field
+
+        """
+        LOG.info("Evaluating apps reapply {} ".format(trigger))
+        apps = self.determine_apps_reapply_order(name_only=False, filter_active=True)
+
+        metadata_map = constants.APP_EVALUATE_REAPPLY_TRIGGER_TO_METADATA_MAP
+
+        for app in apps:
+
+            app_metadata = self.apps_metadata[constants.APP_METADATA_APPS].get(app.name, {})
+            try:
+                app_triggers = app_metadata[constants.APP_METADATA_BEHAVIOR][
+                    constants.APP_METADATA_EVALUATE_REAPPLY][
+                    constants.APP_METADATA_TRIGGERS]
+            except KeyError:
+                continue
+
+            try:
+                hook_info = LifecycleHookInfo()
+                hook_info.mode = constants.APP_LIFECYCLE_MODE_AUTO
+                hook_info.operation = constants.APP_EVALUATE_REAPPLY_OP
+                hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK
+                hook_info.extra[LifecycleConstants.EVALUATE_REAPPLY_TRIGGER] = trigger
+                self.app_lifecycle_actions(context=context, rpc_app=app, hook_info=hook_info)
+            except exception.LifecycleSemanticCheckException as e:
+                LOG.info("Evaluate reapply for {} rejected: {}".format(app.name, e))
+                continue
+            except exception.LifecycleMissingInfo as e:
+                LOG.error("Evaluate reapply for {} error: {}".format(app.name, e))
+                continue
+            except Exception as e:
+                LOG.error("Unexpected error during hook for app {}, error: {}"
+                          "".format(app.name, e))
+                continue
+
+            if trigger['type'] in metadata_map.keys():
+                # Check if the app subscribes to this trigger type
+                if filter(lambda t: t.get('type', None) ==
+                                    metadata_map[trigger['type']],
+                          app_triggers):
+                    # Get the first trigger with a specific type in the metadata
+                    app_trigger = [x for x in app_triggers if
+                                   x.get(constants.APP_METADATA_TYPE, None) == metadata_map[trigger['type']]][0]
+
+                    # Get the filters for the trigger
+                    trigger_filters = app_trigger.get(constants.APP_METADATA_FILTERS, [])
+
+                    # Get which field inside the trigger should have the filters applied on
+                    # Default is the trigger dictionary itself, but can be redirected to
+                    # a sub-dictionary
+                    target_for_filters_field = app_trigger.get(constants.APP_METADATA_FILTER_FIELD, None)
+                    if target_for_filters_field is None:
+                        target_for_filters = trigger
+                    else:
+                        if target_for_filters_field not in trigger:
+                            LOG.error("Trigger {} does not have field {}"
+                                      "".format(trigger, target_for_filters_field))
+                            continue
+                        target_for_filters = trigger[target_for_filters_field]
+
+                    allow = True
+                    # All filters must match, if any doesn't match then reject
+                    # the evaluation
+                    for filter_ in trigger_filters:
+                        # Each filter is a single entry dict
+                        k = filter_.keys()[0]
+                        if k not in target_for_filters:
+                            LOG.info("Evaluate reapply for {} rejected: "
+                                     "trigger field {} absent".format(app.name, k))
+                            allow = False
+                            break
+                        elif str(target_for_filters[k]) != str(filter_[k]):
+                            LOG.info("Evaluate reapply for {} rejected: "
+                                     "trigger field {} expected {} but got {} "
+                                     "".format(app.name, k, filter_[k], target_for_filters[k]))
+                            allow = False
+                            break
+
+                    if allow:
+                        self.evaluate_app_reapply(context, app.name)
+
     def evaluate_app_reapply(self, context, app_name):
         """Synchronously, determine whether an application
         re-apply is needed, and if so, raise the re-apply flag.
@@ -11326,77 +12527,275 @@ class ConductorManager(service.PeriodicService):
                 LOG.exception("Failed to regenerate the overrides for app %s. %s" %
                               (app.name, e))
         else:
-            LOG.info("%s app status does not warrant re-apply", app.name)
+            LOG.info("{} app active:{} status:{} does not warrant re-apply"
+                     "".format(app.name, app.active, app.status))
 
-    def app_lifecycle_actions(self, context, rpc_app, operation, relative_timing):
+    def app_lifecycle_actions(self, context, rpc_app, hook_info):
         """Perform any lifecycle actions for the operation and timing supplied.
 
         :param context: request context.
         :param rpc_app: application to be checked
-        :param operation: operation being performed
-        :param relative_timing: timing of operation
+        :param hook_info: LifecycleHookInfo object
+
         """
 
-        LOG.info("app_lifecycle_actions for app "
-                 "%s, opp %s %s %s" % (rpc_app.name, operation, relative_timing, rpc_app.status))
+        LOG.debug("app_lifecycle_actions for app "
+                  "{}, {}".format(rpc_app.name, hook_info))
 
-        if rpc_app.status in [constants.APP_APPLY_IN_PROGRESS,
-                              constants.APP_APPLY_SUCCESS,
-                              constants.APP_APPLY_FAILURE]:
-            self._app.app_lifecycle_actions(context, self, rpc_app, operation, relative_timing)
-        else:
-            self._app.activate_app_plugins(rpc_app)
+        try:
+            self._app.app_lifecycle_actions(context, self, rpc_app, hook_info)
+        except exception.LifecycleSemanticCheckOpererationBlocked as e:
+            LOG.info("Metadata-evaluation: {}".format(e))
+            raise
+
+    def _log_applications_not_reverted(self, operation):
+        try:
+            operation_log = self._backup_actions_log[operation]
+            if len(operation_log):
+                LOG.error("{} : {} applications:\n{}".
+                          format(operation,
+                                 len(operation_log),
+                                 '\n'.join(['\t- {}'.format(_) for _ in operation_log.keys()])
+                                 ))
+        except KeyError:
+            LOG.error("Internal error, no such revert operation '{}'".format(operation))
+
+    def _initialize_backup_actions_log(self, report_operation=None):
+
+        if report_operation is not None:
+            LOG.error("Failed to revert backup from {}.\n"
+                      "The following applications were left in an undeterminate state:".
+                      format(report_operation))
+
+            self._log_applications_not_reverted(constants.BACKUP_ACTION_PRE_ETCD_BACKUP)
+            self._log_applications_not_reverted(constants.BACKUP_ACTION_PRE_BACKUP)
+
+        actions_list = self._backup_action_map.keys()
+        self._backup_actions_log = dict(zip(actions_list, [OrderedDict()] * len(actions_list)))
+
+    def _revert_backup_operation(self, operation):
+        if operation not in self._backup_actions_log:
+            raise exception.BackupRestoreInvalidRevertOperation(operation=operation)
+        current_app = None
+        completed_apps = []
+        operation_log = self._backup_actions_log[operation]
+        for app_name, callback in operation_log.iteritems():
+            current_app = app_name
+            LOG.info("Reverting backup of app {} : {}".format(current_app, operation))
             try:
-                self._app.app_lifecycle_actions(context, self, rpc_app, operation, relative_timing)
-            except Exception:
-                raise
-            finally:
-                self._app.deactivate_app_plugins(rpc_app)
+                callback()
+            except Exception as ex:
+                # we must swallow any exceptions and keep reverting all apps:
+                LOG.exception("Unhandled exception {} from app {} while reverting backup.".
+                              format(str(ex), current_app))
+                continue
+            completed_apps.append(current_app)
+        # remove all apps that had their callback() finish successfully:
+        for app in completed_apps:
+            del operation_log[app]
 
-    def perform_app_upload(self, context, rpc_app, tarfile):
+    def _make_backup_hook_info(self, operation, success):
+        try:
+            hook_parameters = constants.HOOK_PARAMETERS_MAP[operation]
+            hook_info = LifecycleHookInfo()
+            hook_info.init(*hook_parameters)
+            hook_info.extra[constants.BACKUP_ACTION_NOTIFY_SUCCESS] = success
+            return hook_info
+        except KeyError:
+            LOG.error("Unexpected action '{}' (success={})".format(operation, success))
+            raise
+        except Exception as ex:
+            LOG.exception("Failed to create a backup/restore hook for operation '{}': {}".
+                          format(operation, ex))
+            raise
+
+    def _get_kube_apps_list(self, context):
+        try:
+            return [kubeapp_obj.get_by_name(context, k.name) for k in self.dbapi.kube_app_get_all()]
+        except Exception as ex:
+            LOG.exception("Failed to to get list of kube applications: {}".format(ex))
+            raise
+
+    def _do_backup_semantic_check(self, context, success):
+        hook_info = self._make_backup_hook_info(constants.BACKUP_ACTION_SEMANTIC_CHECK, success)
+        try:
+            for app in self._get_kube_apps_list(context):
+                self._app.app_lifecycle_actions(context, self, app, deepcopy(hook_info))
+        except Exception as ex:
+            app_name = app.name if app is not None else None
+            raise exception.ApplicationLifecycleNotificationException(app_name, str(ex))
+
+    def _do_pre_action(self, context, operation, revert_operation, success,
+                       continue_on_exception=False):
+        hook_info = self._make_backup_hook_info(operation, success)
+        revert_hook_info = self._make_backup_hook_info(revert_operation,
+                                                       constants.BACKUP_ACTION_NOTIFY_FAILURE)
+
+        operation_log = self._backup_actions_log[operation]
+        try:
+            for app in self._get_kube_apps_list(context):
+                # log the 'revert' operation for this app so we can call it in case something fails:
+                operation_log[app.name] = lambda app=app: \
+                            self._app.app_lifecycle_actions(context, self, app,
+                                                            deepcopy(revert_hook_info))
+
+                try:
+                    self._app.app_lifecycle_actions(context, self, app, deepcopy(hook_info))
+                except Exception as ex:
+                    if continue_on_exception:
+                        LOG.exception("Application {} raised '{}', ignoring.".
+                                      format(app.name, str(ex)))
+                        continue
+                    else:
+                        raise
+        except Exception as ex:
+            # we always revert in the correct order for the backup state machine:
+            self._revert_backup_operation(constants.BACKUP_ACTION_PRE_ETCD_BACKUP)
+            self._revert_backup_operation(constants.BACKUP_ACTION_PRE_BACKUP)
+            # report error and clean all pending reverts
+            self._initialize_backup_actions_log(operation)
+            app_name = app.name if app is not None else None
+            raise exception.ApplicationLifecycleNotificationException(app_name, str(ex))
+
+    def _do_post_action(self, context, operation, success,
+                        remove_revert_operations=None): # noqa 0102
+        hook_info = self._make_backup_hook_info(operation, success)
+
+        try:
+            for app in self._get_kube_apps_list(context):
+                self._app.app_lifecycle_actions(context, self, app, deepcopy(hook_info))
+            # if we notified all apps successfully of this POST action, then we need to
+            # remove any 'revert' actions from its associated PRE action:
+            for op in remove_revert_operations if remove_revert_operations is not None else []:
+                    self._backup_actions_log[op] = OrderedDict()
+        except Exception as ex:
+            app_name = app.name if app is not None else None
+            raise exception.ApplicationLifecycleNotificationException(app_name, str(ex))
+
+    def _do_pre_backup_action(self, context, success):
+        operation = constants.BACKUP_ACTION_PRE_BACKUP
+        revert_operation = constants.BACKUP_ACTION_POST_BACKUP
+        self._do_pre_action(context, operation, revert_operation, success)
+
+    def _do_post_backup_action(self, context, success):
+        operation = constants.BACKUP_ACTION_POST_BACKUP
+        self._do_post_action(context=context,
+                             operation=operation,
+                             success=success,
+                             remove_revert_operations=[constants.BACKUP_ACTION_PRE_BACKUP])
+
+    def _do_pre_etcd_backup_action(self, context, success):
+        operation = constants.BACKUP_ACTION_PRE_ETCD_BACKUP
+        revert_operation = constants.BACKUP_ACTION_POST_ETCD_BACKUP
+        self._do_pre_action(context, operation, revert_operation, success)
+
+    def _do_post_etcd_backup_action(self, context, success):
+        operation = constants.BACKUP_ACTION_POST_ETCD_BACKUP
+        self._do_post_action(context=context,
+                             operation=operation,
+                             success=success,
+                             remove_revert_operations=[constants.BACKUP_ACTION_PRE_ETCD_BACKUP])
+
+    def _do_pre_restore_action(self, context, success):
+        operation = constants.BACKUP_ACTION_PRE_RESTORE
+        raise NotImplementedError("{} action not implemented.".format(operation))
+
+    def _do_post_restore_action(self, context, success):
+        operation = constants.BACKUP_ACTION_POST_RESTORE
+        hook_info = self._make_backup_hook_info(operation, success)
+
+        for app in self._get_kube_apps_list(context):
+            try:
+                self._app.app_lifecycle_actions(context, self, app, deepcopy(hook_info))
+            except Exception as ex:
+                LOG.exception("Application {} raised '{}' during {}, ignoring.".
+                              format(app.name, str(ex), operation))
+                app.status = constants.APP_APPLY_FAILURE
+                app.save()
+                continue
+
+    def backup_restore_lifecycle_actions(self, context, operation, success):
+        """Perform any lifecycle actions for backup and restore operations.
+        :param context: request context
+        :param operation: operation we are notified about
+        :param success: true if the operation was successful, false if it fails.
+                        used in post-*-action to indicate that an operation in progress failed.
+        """
+
+        # TODO (agrosu): if this blocks for too long, it might trigger a RPC timeout.
+        #                maybe parallelize the calls to pre/post hooks.
+        try:
+            self._backup_action_map[operation](context, success)
+            return (True, None)
+        except exception.ApplicationLifecycleNotificationException as ex:
+            LOG.exception(ex)
+            return (False, ex.application_name)
+        except Exception as ex:
+            LOG.exception(ex)
+            return (False, None)
+
+    def perform_app_upload(self, context, rpc_app, tarfile,
+                           lifecycle_hook_info_app_upload, images=False):
         """Handling of application upload request (via AppOperator)
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
         :param tarfile: location of the application tarfile to be exracted
+        :param lifecycle_hook_info_app_upload: LifecycleHookInfo object
+        :param images: save application images in the registry as part of app upload
 
         """
-        self._app.perform_app_upload(rpc_app, tarfile)
+        lifecycle_hook_info_app_upload.operation = constants.APP_UPLOAD_OP
 
-    def perform_app_apply(self, context, rpc_app, mode):
+        self._app.perform_app_upload(rpc_app, tarfile, lifecycle_hook_info_app_upload, images)
+        self._app.load_application_metadata_from_file(rpc_app)
+
+        # Perform post upload operation actions
+        try:
+            lifecycle_hook_info_app_upload.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
+            lifecycle_hook_info_app_upload.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+            self.app_lifecycle_actions(context, rpc_app,
+                                       lifecycle_hook_info_app_upload)
+        except Exception as e:
+            LOG.error("Error performing app_lifecycle_actions %s" % str(e))
+
+    def perform_app_apply(self, context, rpc_app, mode, lifecycle_hook_info_app_apply):
         """Handling of application install request (via AppOperator)
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
         :param mode: mode to control how to apply application manifest
+        :param lifecycle_hook_info_app_apply: LifecycleHookInfo object
+
         """
-        was_applied = self._app.is_app_active(rpc_app)
-        app_applied = self._app.perform_app_apply(rpc_app, mode)
-        appname = self._app.get_appname(rpc_app)
-        if constants.HELM_APP_OPENSTACK == appname and app_applied \
-                and not was_applied:
-            # apply any runtime configurations that are needed for
-            # stx_openstack application
-            self._update_config_for_stx_openstack(context)
-            self._update_pciirqaffinity_config(context)
+        lifecycle_hook_info_app_apply.operation = constants.APP_APPLY_OP
 
-            # The radosgw chart may have been enabled/disabled. Regardless of
-            # the prior apply state, update the ceph config
-            self._update_radosgw_config(context)
+        # Perform pre apply operation actions
+        try:
+            lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
+            lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+            self.app_lifecycle_actions(context, rpc_app,
+                                       lifecycle_hook_info_app_apply)
+        except Exception as e:
+            LOG.error("Error performing app_lifecycle_actions %s" % str(e))
 
-        if app_applied:
-            try:
-                # perform any post apply lifecycle actions
-                self.app_lifecycle_actions(context, rpc_app,
-                                           constants.APP_APPLY_OP,
-                                           constants.APP_LIFECYCLE_POST)
-            except Exception as e:
-                LOG.error("Error performing app_lifecycle_actions %s" % str(e))
+        # TODO pass context and move hooks inside?
+        app_applied = self._app.perform_app_apply(rpc_app, mode, lifecycle_hook_info_app_apply)
+        lifecycle_hook_info_app_apply[LifecycleConstants.EXTRA][LifecycleConstants.APP_APPLIED] = app_applied
+
+        # Perform post apply operation actions
+        try:
+            lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
+            lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+            self.app_lifecycle_actions(context, rpc_app,
+                                       lifecycle_hook_info_app_apply)
+        except Exception as e:
+            LOG.error("Error performing app_lifecycle_actions %s" % str(e))
 
         return app_applied
 
     def perform_app_update(self, context, from_rpc_app, to_rpc_app, tarfile,
-                           operation, reuse_user_overrides=None):
+                           operation, lifecycle_hook_info_app_update, reuse_user_overrides=None):
         """Handling of application update request (via AppOperator)
 
         :param context: request context.
@@ -11406,90 +12805,84 @@ class ConductorManager(service.PeriodicService):
                            application update to
         :param tarfile: location of the application tarfile to be extracted
         :param operation: apply or rollback
+        :param lifecycle_hook_info_app_update: LifecycleHookInfo object
         :param reuse_user_overrides: (optional) True or False
 
         """
-        self._app.perform_app_update(from_rpc_app, to_rpc_app, tarfile,
-                                     operation, reuse_user_overrides)
+        lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
 
-    def perform_app_remove(self, context, rpc_app):
+        self._app.perform_app_update(from_rpc_app, to_rpc_app, tarfile,
+                                     operation, lifecycle_hook_info_app_update, reuse_user_overrides)
+
+    def perform_app_remove(self, context, rpc_app, lifecycle_hook_info_app_remove):
         """Handling of application removal request (via AppOperator)
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
+        :param lifecycle_hook_info_app_remove: LifecycleHookInfo object
 
         """
+        lifecycle_hook_info_app_remove.operation = constants.APP_REMOVE_OP
+
         # deactivate the app
         self._app.deactivate(rpc_app)
-        appname = self._app.get_appname(rpc_app)
 
-        # TODO(rchurch): Decouple this. No specific app names should be
-        # specified. Needs to be generalized as some apps may require more
-        # complex application integration with the platform.
-        if appname in [constants.HELM_APP_OPENSTACK]:
+        # Perform pre remove operation actions
+        try:
+            lifecycle_hook_info_app_remove.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info_app_remove.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
+            self.app_lifecycle_actions(context, rpc_app,
+                                       lifecycle_hook_info_app_remove)
+        except Exception as e:
+            LOG.error("Error performing app_lifecycle_actions %s" % str(e))
 
-            # Pre-removal actions:
-            if constants.HELM_APP_OPENSTACK == appname:
-                # Need to update sm stx_openstack runtime manifest first
-                # to deprovision dbmon service prior to removing the
-                # stx-openstack application
-                self._config_sm_stx_openstack(context)
+        app_removed = self._app.perform_app_remove(
+            rpc_app, lifecycle_hook_info_app_remove)
+        lifecycle_hook_info_app_remove[LifecycleConstants.EXTRA][LifecycleConstants.APP_REMOVED] = app_removed
 
-            # Remove the application but defer disabling the application plugins
-            # for access by post-removal actions
-            app_removed = self._app.perform_app_remove(
-                rpc_app, deactivate_plugins=False)
-
-            # Post-removal actions:
-            if app_removed:
-                if constants.HELM_APP_OPENSTACK == appname:
-                    # Update the VIM and PciIrqAffinity configuration.
-                    self._update_vim_config(context)
-                    self._update_pciirqaffinity_config(context)
-                    self._update_radosgw_config(context)
-
-                # Now that post removal actions are complete, deactivate the
-                # plugins
-                self._app.deactivate_app_plugins(rpc_app)
-
-        else:
-
-            # Remove the application but defer disabling the application plugins
-            # for access by post-removal actions
-            app_removed = self._app.perform_app_remove(
-                rpc_app, deactivate_plugins=False)
-
-            if app_removed:
-                # Perform for any post remove lifecycle actions and
-                # deactivate the plugins.
-                try:
-                    self.app_lifecycle_actions(context, rpc_app,
-                                               constants.APP_REMOVE_OP,
-                                               constants.APP_LIFECYCLE_POST)
-                except Exception as e:
-                    LOG.error("Error performing app_lifecycle_actions %s" % str(e))
-                finally:
-                    self._app.deactivate_app_plugins(rpc_app)
+        # Perform post remove operation actions
+        try:
+            lifecycle_hook_info_app_remove.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+            lifecycle_hook_info_app_remove.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
+            self.app_lifecycle_actions(context, rpc_app,
+                                       lifecycle_hook_info_app_remove)
+        except Exception as e:
+            LOG.error("Error performing app_lifecycle_actions %s" % str(e))
 
         return app_removed
 
-    def perform_app_abort(self, context, rpc_app):
+    def perform_app_abort(self, context, rpc_app, lifecycle_hook_info_app_abort):
         """Handling of application abort request (via AppOperator)
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
+        :param lifecycle_hook_info_app_abort: LifecycleHookInfo object
 
         """
-        return self._app.perform_app_abort(rpc_app)
+        lifecycle_hook_info_app_abort.operation = constants.APP_ABORT_OP
 
-    def perform_app_delete(self, context, rpc_app):
+        return self._app.perform_app_abort(rpc_app, lifecycle_hook_info_app_abort)
+
+    def perform_app_delete(self, context, rpc_app, lifecycle_hook_info_app_delete):
         """Handling of application delete request (via AppOperator)
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
+        :param lifecycle_hook_info_app_delete: LifecycleHookInfo object
 
         """
-        return self._app.perform_app_delete(rpc_app)
+        lifecycle_hook_info_app_delete.operation = constants.APP_DELETE_OP
+
+        # Perform pre delete operation actions
+        try:
+            lifecycle_hook_info_app_delete.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info_app_delete.lifecycle_type = constants.APP_LIFECYCLE_TYPE_OPERATION
+            self.app_lifecycle_actions(context, rpc_app,
+                                       lifecycle_hook_info_app_delete)
+        except Exception as e:
+            LOG.error("Error performing app_lifecycle_actions %s" % str(e))
+
+        return self._app.perform_app_delete(rpc_app, lifecycle_hook_info_app_delete)
 
     def reconfigure_service_endpoints(self, context, host):
         """Reconfigure the service endpoints upon the creation of initial
@@ -12235,11 +13628,18 @@ class ConductorManager(service.PeriodicService):
         :param context: request context.
         """
 
-        LOG.info("Preparing for restore procedure. Creating flag file.")
+        LOG.info("Preparing for restore procedure.")
+        try:
+            self.dbapi.restore_get_one(
+                filters={'state': constants.RESTORE_STATE_IN_PROGRESS})
+        except exception.NotFound:
+            self.dbapi.restore_create(
+                values={'state': constants.RESTORE_STATE_IN_PROGRESS})
+        else:
+            return constants.RESTORE_PROGRESS_ALREADY_IN_PROGRESS
 
-        cutils.touch(constants.SYSINV_RESTORE_FLAG)
-
-        return "Restore procedure started"
+        # TODO (agrosu): no use case at this point for sending a BACKUP_ACTION_PRE_RESTORE notification.
+        return constants.RESTORE_PROGRESS_STARTED
 
     def complete_restore(self, context):
         """Complete the restore
@@ -12269,11 +13669,27 @@ class ConductorManager(service.PeriodicService):
             LOG.error(e)
             return message
 
-        LOG.info("Complete the restore procedure. Remove flag file.")
+        try:
+            restore = self.dbapi.restore_get_one(
+                filters={'state': constants.RESTORE_STATE_IN_PROGRESS})
+        except exception.NotFound:
+            return constants.RESTORE_PROGRESS_ALREADY_COMPLETED
+        else:
+            ok, app = self.backup_restore_lifecycle_actions(context,
+                                                  constants.BACKUP_ACTION_POST_RESTORE,
+                                                  constants.BACKUP_ACTION_NOTIFY_SUCCESS)
+            state = constants.RESTORE_STATE_COMPLETED
+            if not ok:
+                if app is None:
+                    app = 'unknown'
+                LOG.error("Restore action failed because of application '{}'".format(app))
 
-        cutils.delete_if_exists(constants.SYSINV_RESTORE_FLAG)
+            self.dbapi.restore_update(restore.uuid,
+                                      values={'state': state})
 
-        return "Restore procedure completed"
+        LOG.info("Complete the restore procedure.")
+
+        return constants.RESTORE_PROGRESS_COMPLETED
 
     def get_restore_state(self, context):
         """Get the restore state
@@ -12282,12 +13698,44 @@ class ConductorManager(service.PeriodicService):
         """
 
         if self._verify_restore_in_progress():
-            output = "Restore procedure is in progress"
+            output = constants.RESTORE_PROGRESS_IN_PROGRESS
         else:
-            output = "Restore procedure is not in progress"
+            output = constants.RESTORE_PROGRESS_NOT_IN_PROGRESS
 
         LOG.info(output)
         return output
+
+    def mtc_action_apps_semantic_checks(self, context, action):
+        """Call semantic check for maintenance actions of each app.
+        Fail if at least one app rejects the action.
+
+        :param context: request context.
+        :param action: maintenance action
+        """
+        apps = self.dbapi.kube_app_get_all()
+
+        for app in apps:
+            try:
+                semantic_check_hook_info = LifecycleHookInfo()
+                semantic_check_hook_info.init(
+                    constants.APP_LIFECYCLE_MODE_MANUAL,
+                    constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                    constants.APP_LIFECYCLE_TIMING_PRE,
+                    constants.APP_LIFECYCLE_OPERATION_MTC_ACTION)
+                semantic_check_hook_info.extra[
+                    LifecycleConstants.APP_STATUS] = app.status
+                semantic_check_hook_info.extra[
+                    LifecycleConstants.ACTION] = action
+
+                self._app.app_lifecycle_actions(context, self, app, semantic_check_hook_info)
+            except exception.LifecycleSemanticCheckException as e:
+                LOG.info("App {} rejected maintance action {} for reason: {}"
+                         "".format(app.name, action, str(e)))
+                raise
+            except Exception as e:
+                LOG.error("App {} maintance action {} semantic check error: {}"
+                          "".format(app.name, action, str(e)))
+                raise
 
 
 def device_image_state_sort_key(dev_img_state):

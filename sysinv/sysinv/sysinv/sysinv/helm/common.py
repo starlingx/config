@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2020 Wind River Systems, Inc.
+# Copyright (c) 2018-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -37,6 +37,7 @@ HELM_NS_RBD_PROVISIONER = HELM_NS_KUBE_SYSTEM
 HELM_NS_STORAGE_PROVISIONER = HELM_NS_KUBE_SYSTEM
 HELM_NS_CERT_MANAGER = 'cert-manager'
 HELM_NS_VAULT = 'vault'
+HELM_NS_NOTIFICATION = 'notification'
 
 # Services
 # Matches configassistant.py value => Should change to STARLINGX

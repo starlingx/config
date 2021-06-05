@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Copyright (c) 2013-2014, 2016 Wind River Systems, Inc.
+# Copyright (c) 2013-2014, 2016, 2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -37,6 +37,8 @@
 process="sysinv"
 service="-api"
 binname="${process}${service}"
+readonly max_sysinv_api_request_attempts=15
+readonly sysinv_api_request_sleep=1
 
 #######################################################################
 
@@ -47,6 +49,7 @@ OCF_RESKEY_user_default="sysinv"
 OCF_RESKEY_pid_default="/var/run/${binname}.pid"
 OCF_RESKEY_config_default="/etc/sysinv/sysinv.conf"
 OCF_RESKEY_client_binary_default="system"
+OCF_RESKEY_os_tenant_name_default="admin"
 
 : ${OCF_RESKEY_binary=${OCF_RESKEY_binary_default}}
 : ${OCF_RESKEY_dbg=${OCF_RESKEY_dbg_default}}
@@ -54,6 +57,7 @@ OCF_RESKEY_client_binary_default="system"
 : ${OCF_RESKEY_pid=${OCF_RESKEY_pid_default}}
 : ${OCF_RESKEY_config=${OCF_RESKEY_config_default}}
 : ${OCF_RESKEY_client_binary=${OCF_RESKEY_client_binary_default}}
+: ${OCF_RESKEY_os_tenant_name=${OCF_RESKEY_os_tenant_name_default}}
 
 mydaemon="/usr/bin/${OCF_RESKEY_binary}"
 TMP_DIR=/var/run/sysinv_tmp
@@ -208,6 +212,52 @@ sysinv_api_status() {
     fi
 }
 
+sysinv_api_request () {
+    # Monitor the RA by retrieving the system show
+    if [ -n "$OCF_RESKEY_os_username" ] && [ -n "$OCF_RESKEY_os_tenant_name" ] && [ -n "$OCF_RESKEY_os_auth_url" ]; then
+            ocf_run -q $OCF_RESKEY_client_binary \
+        --os-username "$OCF_RESKEY_os_username" \
+        --os-project-name "$OCF_RESKEY_os_tenant_name" \
+        --os-auth-url "$OCF_RESKEY_os_auth_url" \
+        --os-region-name "$OCF_RESKEY_os_region_name" \
+        --system-url "$OCF_RESKEY_system_url" \
+        show > /dev/null 2>&1
+        rc=$?
+        if [ $rc -ne 0 ]; then
+            ocf_log err "Failed to connect to the System Inventory Service (sysinv-api): $rc"
+            return $OCF_ERR_GENERIC
+        else
+            return $OCF_SUCCESS
+        fi
+    else
+        ocf_log err "Unable to run system show, trying direct request on sysinv-api URL (sysinv-api)"
+        # Test request on "http://controller:6385/v1" if minimum variables are not available
+        # "controller" matches the mgmt ip on /etc/hosts
+        ocf_run curl http://controller:6385/v1 > /dev/null 2>&1
+        rc=$?
+        if [ $rc -eq 0 ]; then
+            return $OCF_SUCCESS
+        fi
+        ocf_log err "Unable to communicate with the System Inventory Service (sysinv-api)"
+        return $OCF_ERR_GENERIC
+    fi
+}
+
+sysinv_api_request_with_attempt() {
+    for (( i = 1; i <= $max_sysinv_api_request_attempts; i++ ))
+    do
+        sysinv_api_request
+        rc=$?
+        if [ $rc -ne ${OCF_SUCCESS} ]; then
+            ocf_log info "Retrying to connect to the System Inventory Service (sysinv-api), attempt #$i"
+        else
+            break
+        fi
+        sleep $sysinv_api_request_sleep
+    done
+    return ${rc}
+}
+
 sysinv_api_monitor () {
     local rc
     proc="${binname}:monitor"
@@ -223,25 +273,15 @@ sysinv_api_monitor () {
         return $rc
     fi
 
-    # Monitor the RA by retrieving the system show
-    if [ -n "$OCF_RESKEY_os_username" ] && [ -n "$OCF_RESKEY_os_tenant_name" ] && [ -n "$OCF_RESKEY_os_auth_url" ]; then
-            ocf_run -q $OCF_RESKEY_client_binary \
-        --os_username "$OCF_RESKEY_os_username" \
-        --os_project_name "$OCF_RESKEY_os_tenant_name" \
-        --os_auth_url "$OCF_RESKEY_os_auth_url" \
-        --os_region_name "$OCF_RESKEY_os_region_name" \
-        --system_url "$OCF_RESKEY_system_url" \
-        show > /dev/null 2>&1
-        rc=$?
-        if [ $rc -ne 0 ]; then
-            ocf_log err "Failed to connect to the System Inventory Service (sysinv-api): $rc"
-            return $OCF_NOT_RUNNING
-        fi
+    # Trigger a request over sysinv-api to determine if it is properly started
+    sysinv_api_request
+    rc=$?
+    if [ $rc -ne ${OCF_SUCCESS} ] ; then
+        ocf_log err "System Inventory Service (sysinv-api) monitor failed"
+    else
+        ocf_log debug "System Inventory Service (sysinv-api) monitor succeeded"
     fi
-
-    ocf_log debug "System Inventory Service (sysinv-api) monitor succeeded"
-
-    return $OCF_SUCCESS
+    return ${rc}
 }
 
 sysinv_api_start () {
@@ -252,7 +292,8 @@ sysinv_api_start () {
         ocf_log info "${proc}"
     fi
 
-    # If running then issue a ping test
+    # If running then issue a ping test and check sysinv-api availability
+    # Retry to connect to it in case of failure
     if [ -f ${OCF_RESKEY_pid} ] ; then
         sysinv_api_status
         rc=$?
@@ -260,7 +301,9 @@ sysinv_api_start () {
             ocf_log err "${proc} ping test failed (rc=${rc})"
             sysinv_api_stop
         else
-            return ${OCF_SUCCESS}
+            sysinv_api_request_with_attempt
+            rc=$?
+            return ${rc}
         fi
     fi
 
@@ -285,12 +328,26 @@ sysinv_api_start () {
         fi
     fi
 
+    # If running then issue a ping test and check sysinv-api availability
+    # Retry to connect to it in case of failure
+    if [ -f ${OCF_RESKEY_pid} ] ; then
+        sysinv_api_status
+        rc=$?
+        if [ $rc -ne ${OCF_SUCCESS} ] ; then
+            ocf_log info "${proc} ping test failed (rc=${rc})"
+            sysinv_api_stop
+        else
+            sysinv_api_request_with_attempt
+            rc=$?
+        fi
+    fi
+
     # Record success or failure and return status
     if [ ${rc} -eq $OCF_SUCCESS ] ; then
         ocf_log info "Inventory Service (${OCF_RESKEY_binary}) started (pid=${pid})"
     else
         ocf_log err "Inventory Service (${OCF_RESKEY_binary}) failed to start (rc=${rc})"
-        rc=${OCF_NOT_RUNNING}
+        rc=${OCF_ERR_GENERIC}
     fi
 
     return ${rc}

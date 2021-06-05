@@ -148,7 +148,7 @@ def upgrade(migrate_engine):
         for storcfg in storcfg_items:
 
             # Populate the storage_backend table.
-            storage_backend_insert = storage_backend.insert()
+            storage_backend_insert = storage_backend.insert()  # pylint: disable=no-value-for-parameter
             storage_backend_uuid = str(uuid.uuid4())
 
             values = {'created_at': datetime.now(),
@@ -169,7 +169,7 @@ def upgrade(migrate_engine):
 
             # Populate the storage_lvm table.
             if storcfg['cinder_backend'] == 'lvm':
-                storage_lvm_insert = storage_lvm.insert()
+                storage_lvm_insert = storage_lvm.insert()  # pylint: disable=no-value-for-parameter
 
                 values = {'created_at': datetime.now(),
                           'updated_at': None,
@@ -187,7 +187,7 @@ def upgrade(migrate_engine):
                         storcfg['glance_pool_gib'] or
                         storcfg['ephemeral_pool_gib']):
 
-                    storage_ceph_insert = storage_ceph.insert()
+                    storage_ceph_insert = storage_ceph.insert()  # pylint: disable=no-value-for-parameter
                     values = {'created_at': datetime.now(),
                               'updated_at': None,
                               'deleted_at': None,
@@ -209,7 +209,7 @@ def upgrade(migrate_engine):
                 fill_storage = False
 
             if fill_storage:
-                controller_fs_insert = controller_fs.insert()
+                controller_fs_insert = controller_fs.insert()  # pylint: disable=no-value-for-parameter
                 controller_fs_uuid = str(uuid.uuid4())
 
                 values = {'created_at': datetime.now(),
@@ -230,8 +230,8 @@ def upgrade(migrate_engine):
                 if (storcfg['ceph_mon_dev_ctrl0'] and
                         storcfg['ceph_mon_dev_ctrl1'] and
                         storcfg['ceph_mon_gib']):
-                    ceph_mon_insert_ctrl0 = ceph_mon.insert()
-                    ceph_mon_insert_ctrl1 = ceph_mon.insert()
+                    ceph_mon_insert_ctrl0 = ceph_mon.insert()  # pylint: disable=no-value-for-parameter
+                    ceph_mon_insert_ctrl1 = ceph_mon.insert()  # pylint: disable=no-value-for-parameter
 
                     ctrl0_id_sel = select([i_host]).where(
                         i_host.c.hostname == 'controller-0')

@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2017-2019 Wind River Systems, Inc.
+# Copyright (c) 2017-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -625,6 +625,7 @@ class StorageTierDependentTCs(base.FunctionalTest):
                     mock.patch.object(ceph_utils, 'fix_crushmap')) as (mock_fsid, mock_fix_crushmap):
             mock_fix_crushmap.return_value = True
             mock_fsid.return_value = (mock.MagicMock(ok=False), None)
+            self.service._sx_to_dx_post_migration_actions = mock.Mock()
             self.service.start()
             self.service._init_ceph_cluster_info()
             mock_fsid.assert_called()
@@ -658,6 +659,12 @@ class StorageTierDependentTCs(base.FunctionalTest):
         peer = self.dbapi.peer_get(ihost_0.peer_id)
         self.assertEqual(peer.name, 'group-0')
         self.assertEqual(peer.hosts, [storage_0.hostname])
+
+        # Patch management network for ceph
+        self.dbapi = dbapi.get_instance()
+        p = mock.patch.object(self.dbapi, 'networks_get_by_type')
+        p.start().return_value = [{'network_type': constants.NETWORK_TYPE_MGMT}]
+        self.addCleanup(p.stop)
 
         # Add the default ceph backend
         values = {

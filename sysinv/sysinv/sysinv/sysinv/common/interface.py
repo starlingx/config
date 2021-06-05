@@ -111,12 +111,18 @@ def get_interface_port(context, iface):
     Determine the port of the underlying device.
     """
     assert iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET
-    return context['ports'][iface['id']]
+    try:
+        # only for pxeboot on sriov ethernet interface case
+        # other cases have no lower ethernet interface used
+        iface = get_lower_interface(context, iface)
+    finally:
+        return context['ports'][iface['id']]
 
 
 def get_lower_interface(context, iface):
     assert iface['iftype'] in [constants.INTERFACE_TYPE_VLAN,
-                               constants.INTERFACE_TYPE_VF]
+                               constants.INTERFACE_TYPE_VF,
+                               constants.INTERFACE_TYPE_ETHERNET]
     lower_ifname = iface['uses'][0]
     return context['interfaces'][lower_ifname]
 
@@ -165,6 +171,8 @@ def get_sriov_interface_vf_addrs(context, iface, vf_addr_list):
         sibling_ifaces = lower_iface['used_by']
         for sibling_ifname in sibling_ifaces:
             sibling_iface = context['interfaces'][sibling_ifname]
+            if sibling_iface['iftype'] != constants.INTERFACE_TYPE_VF:
+                continue
             sibling_numvfs = sibling_iface['sriov_numvfs']
             if sibling_ifname == iface['ifname']:
                 # Reserve the appropriate number of VF addresses from
@@ -180,6 +188,8 @@ def get_sriov_interface_vf_addrs(context, iface, vf_addr_list):
         upper_ifaces = iface['used_by']
         for upper_ifname in upper_ifaces:
             upper_iface = context['interfaces'][upper_ifname]
+            if upper_iface['iftype'] != constants.INTERFACE_TYPE_VF:
+                continue
             upper_numvfs = upper_iface['sriov_numvfs']
             if upper_numvfs:
                 # Remove the VF addresses reserved for any child

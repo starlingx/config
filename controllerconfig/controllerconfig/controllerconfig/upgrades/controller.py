@@ -24,6 +24,7 @@ import time
 import yaml
 
 from sysinv.common import constants as sysinv_constants
+from sysinv.puppet import common as puppet_common
 
 
 # WARNING: The controller-1 upgrade is done before any puppet manifests
@@ -715,6 +716,25 @@ def migrate_hiera_data(from_release, to_release, role=None):
     from_hiera_path = os.path.join(PLATFORM_PATH, "puppet", from_release,
                                    "hieradata")
     to_hiera_path = constants.HIERADATA_PERMDIR
+
+    # For simplex upgrade, we already set etcd security config during
+    # apply-bootstrap-manifest. Need to get it and update to target
+    # static.yaml.
+    static_file = os.path.join(to_hiera_path, "static.yaml")
+    etcd_security_config = {}
+
+    if os.path.exists(static_file):
+        with open(static_file, 'r') as yaml_file:
+            static_config = yaml.load(yaml_file)
+
+        if 'platform::etcd::params::security_enabled' in static_config.keys():
+            etcd_security_config['platform::etcd::params::security_enabled'] = \
+                static_config['platform::etcd::params::security_enabled']
+            etcd_security_config['platform::etcd::params::bind_address'] = \
+                static_config['platform::etcd::params::bind_address']
+            etcd_security_config['platform::etcd::params::bind_address_version'] = \
+                static_config['platform::etcd::params::bind_address_version']
+
     shutil.rmtree(to_hiera_path, ignore_errors=True)
     os.makedirs(to_hiera_path)
 
@@ -757,9 +777,98 @@ def migrate_hiera_data(from_release, to_release, role=None):
                 'openstack::keystone::bootstrap::dc_services_project_id':
                     service_project_id
             })
+    # Just for upgrade from STX4.0 to STX5.0
+    if (from_release == SW_VERSION_20_06 and etcd_security_config):
+        static_config.update(etcd_security_config)
+
+    if from_release == SW_VERSION_20_06:
+        # The helm db is new in the release stx5.0 and requires
+        # a password to be generated and a new user to access the DB.
+        # This is required for all types of system upgrade. Should
+        # removed in the release that follows stx5.0
+        static_config.update({
+            'platform::helm::v2::db::postgresql::user': 'admin-helmv2'
+        })
+
+        helmv2_db_pw = utils.get_password_from_keyring('helmv2', 'database')
+        if not helmv2_db_pw:
+            helmv2_db_pw = utils.set_password_in_keyring('helmv2', 'database')
+
+        secure_static_file = os.path.join(
+            constants.HIERADATA_PERMDIR, "secure_static.yaml")
+        with open(secure_static_file, 'r') as yaml_file:
+            secure_static_config = yaml.load(yaml_file)
+        secure_static_config.update({
+            'platform::helm::v2::db::postgresql::password': helmv2_db_pw
+        })
+
+        # update below static secure config
+        #   sysinv::certmon::local_keystone_password
+        #   sysinv::certmon::dc_keystone_password
+        sysinv_pass = utils.get_password_from_keyring('sysinv', 'services')
+        secure_static_config.update({
+            'sysinv::certmon::local_keystone_password': sysinv_pass
+        })
+
+        dc_pass = ''
+        if role == sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+            dc_pass = utils.get_password_from_keyring('dcmanager', 'services')
+
+        secure_static_config.update({
+            'sysinv::certmon::dc_keystone_password': dc_pass
+        })
+
+        with open(secure_static_file, 'w') as yaml_file:
+            yaml.dump(secure_static_config, yaml_file,
+                      default_flow_style=False)
 
     with open(static_file, 'w') as yaml_file:
         yaml.dump(static_config, yaml_file, default_flow_style=False)
+
+
+def apply_sriov_config(db_credentials, hostname):
+    # If controller-1 has any FEC devices or sriov vfs configured, apply the
+    # sriov runtime manifest. We can't apply it from controller-0 during the
+    # host-unlock process as controller-1 is running the new release.
+    database = 'sysinv'
+    username = db_credentials[database]['username']
+    password = db_credentials[database]['password']
+    # psycopg2 can connect with the barbican string eg postgresql:// ...
+    connection_string = DB_BARBICAN_CONNECTION_FORMAT % (
+        username, password, database)
+    conn = psycopg2.connect(connection_string)
+    cur = conn.cursor()
+    cur.execute(
+        "select id, mgmt_ip from i_host where hostname=%s;", (hostname,))
+    host = cur.fetchone()
+    host_id = host[0]
+    mgmt_ip = host[1]
+    cur.execute("select id from pci_devices "
+                "where sriov_numvfs > 0 and host_id=%s",
+                (host_id,))
+    fec_device = cur.fetchone()
+    cur.execute("select id from interfaces "
+                "where forihostid=%s and iftype='ethernet' "
+                "and sriov_numvfs>0;",
+                (host_id,))
+    interface = cur.fetchone()
+    if interface or fec_device:
+        # There are FEC devices/sriov vfs configured, apply the sriov manifest
+        LOG.info("Applying sriov/fec manifest")
+        personality = sysinv_constants.WORKER
+        classes = [
+            'platform::interfaces::sriov::runtime',
+            'platform::devices::fpga::fec::runtime'
+        ]
+        config = {'classes': classes}
+        # create a temporary file to hold the runtime configuration values
+        fd, tmpfile = tempfile.mkstemp(suffix='.yaml')
+        with open(tmpfile, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False)
+        puppet_common.puppet_apply_manifest(
+            mgmt_ip, personality, manifest='runtime', runtime=tmpfile)
+        os.close(fd)
+        os.remove(tmpfile)
 
 
 def upgrade_controller(from_release, to_release):
@@ -924,6 +1033,8 @@ def upgrade_controller(from_release, to_release):
         LOG.info("Failed to update hiera configuration")
         raise
 
+    apply_sriov_config(db_credentials, utils.CONTROLLER_1_HOSTNAME)
+
     # Remove /etc/kubernetes/admin.conf after it is used to generate
     # the hiera data
     admin_conf = os.path.join(utils.KUBERNETES_CONF_PATH,
@@ -933,18 +1044,6 @@ def upgrade_controller(from_release, to_release):
                               stdout=devnull)
     except subprocess.CalledProcessError:
         LOG.exception("Failed to remove file %s" % admin_conf)
-
-    # Prepare for swact
-    LOG.info("Prepare for swact to controller-1")
-    try:
-        subprocess.check_call(['/usr/bin/upgrade_swact_migration.py',
-                               'prepare_swact',
-                               from_release,
-                               to_release],
-                              stdout=devnull)
-    except subprocess.CalledProcessError:
-        LOG.exception("Failed upgrade_swact_migration prepare_swact")
-        raise
 
     print("Shutting down upgrade processes...")
 
@@ -1334,9 +1433,26 @@ def upgrade_controller_simplex(backup_file):
     utils.execute_migration_scripts(
         from_release, to_release, utils.ACTION_MIGRATE)
 
+    hostname = 'controller-0'
+    LOG.info("Generating config for %s" % hostname)
+    try:
+        cutils.create_system_config()
+        cutils.create_host_config(hostname)
+    except Exception as e:
+        LOG.exception(e)
+        LOG.info("Failed to update hiera configuration")
+        raise
+
+    # Runtime manifests may modify platform.conf, so we'll back it up
+    temp_platform_conf = PLATFORM_CONF_FILE + ".backup"
+    shutil.copy(PLATFORM_CONF_FILE, temp_platform_conf)
+    apply_sriov_config(db_credentials, hostname)
+
     archive.close()
     shutil.rmtree(staging_dir, ignore_errors=True)
 
+    # Restore platform.conf
+    shutil.move(temp_platform_conf, PLATFORM_CONF_FILE)
     # Restore sysinv.conf
     shutil.move("/etc/sysinv/sysinv-temp.conf", "/etc/sysinv/sysinv.conf")
     # Restore fm.conf

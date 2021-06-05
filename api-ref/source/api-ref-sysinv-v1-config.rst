@@ -525,6 +525,8 @@ itemNotFound (404)
    "timezone (Optional)", "plain", "xsd:string", "The timezone of the cloud system."
    "description (Optional)", "plain", "xsd:string", "A user-specified description of the cloud system."
    "location (Optional)", "plain", "xsd:string", "The user-specified location of the cloud system."
+   "latitude (Optional)", "plain", "xsd:string", "The user-specified latitude GPS coordinate of the cloud system."
+   "longitude (Optional)", "plain", "xsd:string", "The user-specified longitude GPS coordinate of the cloud system."
    "capabilities (Optional)", "plain", "xsd:dictionary", "System capabilities. <ul><li>sdn_enabled : (Boolean) Software Defined Networking enabled. </li><li>region_config : (Boolean) region selection: <ul><li>true : Secondary region. </li><li>false : Primary region. </li></ul></li><li>shared_services : Services provided by Primary region. </li><li>bm_region : Board Management controller network selection: <ul><li>External : OAM network. </li><li>Internal : Management network. </li></ul></li><li>cinder_backend : backend selection for Cinder. </li><li>vswitch_type : vSwitch selection. </li><li>security_feature : Selection of Spectre and Meltdown mitigation options. </li><li>https_enabled : (Boolean) selection of https mode for public URLs. </li></ul>"
    "contact (Optional)", "plain", "xsd:string", "The user-specified contact for the cloud system."
    "software_version (Optional)", "plain", "xsd:string", "Contains the Cloud Server Software Version and the Software Version of the underlying Linux Kernel."
@@ -555,6 +557,8 @@ itemNotFound (404)
          "updated_at": "2014-09-24T14:35:38.091392+00:00",
          "contact": null,
          "location": null,
+         "latitude": null,
+         "longitude": null,
          "description": "The Ottawa Cloud Test Lab.",
          "system_type": "Standard",
          "system_mode": "duplex",
@@ -591,6 +595,10 @@ The attributes of the System object that are modifiable are:
 
 -  location,
 
+-  latitude,
+
+-  longitude,
+
 -  sdn_enabled,
 
 -  contact.
@@ -616,6 +624,8 @@ badMediaType (415)
    "timezone (Optional)", "plain", "xsd:string", "The timezone of the cloud system."
    "description (Optional)", "plain", "xsd:string", "A user-specified description of the cloud system."
    "location (Optional)", "plain", "xsd:string", "The user-specified location of the cloud system."
+   "latitude (Optional)", "plain", "xsd:string", "The user-specified latitude GPS coordinate of the cloud system."
+   "longitude (Optional)", "plain", "xsd:string", "The user-specified longitude GPS coordinate of the cloud system."
    "capabilities (Optional)", "plain", "xsd:dictionary", "System capabilities. <ul><li>sdn_enabled : (Boolean) Software Defined Networking enabled. </li><li>region_config : (Boolean) region selection: <ul><li>true : Secondary region. </li><li>false : Primary region. </li></ul></li><li>shared_services : Services provided by Primary region. </li><li>bm_region : Board Management controller network selection: <ul><li>External : OAM network. </li><li>Internal : Management network. </li></ul></li><li>cinder_backend : backend selection for Cinder. </li><li>vswitch_type : vSwitch selection. </li><li>security_feature : Selection of Spectre and Meltdown mitigation options. </li><li>https_enabled : (Boolean) selection of https mode for public URLs. </li></ul>"
    "contact (Optional)", "plain", "xsd:string", "The user-specified contact for the cloud system."
    "software_version (Optional)", "plain", "xsd:string", "Contains the Cloud Server Software Version and the Software Version of the underlying Linux Kernel."
@@ -640,6 +650,16 @@ badMediaType (415)
      {
        "path": "/location",
        "value": "350 Terry Fox Dr, Kanata, Ontario, Canada",
+       "op": "replace"
+     }
+     {
+       "path": "/latitude",
+       "value": "45.35189954974955",
+       "op": "replace"
+     }
+     {
+       "path": "/longitude",
+       "value": "-75.91866628453701",
        "op": "replace"
      }
      {
@@ -684,6 +704,8 @@ badMediaType (415)
          "updated_at": "2017-07-31T17:44:06.051441+00:00",
          "created_at": "2017-07-31T17:35:46.836024+00:00",
          "location": "350 Terry Fox Dr, Kanata, Ontario, Canada",
+         "latitude": "45.35189954974955",
+         "longitude": "-75.91866628453701",
          "capabilities": {
            "sdn_enabled": true,
            "shared_services": "[]",
@@ -1044,7 +1066,7 @@ This operation does not accept a request body.
 Creates a partition on a specific disk of a host
 **************************************************
 
-.. rest_method:: POST /v1/ihosts/​{host_id}​/partitions
+.. rest_method:: POST /v1/partitions
 
 **Normal response codes**
 
@@ -1060,8 +1082,8 @@ badMediaType (415)
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
-   "host_id", "URI", "csapi:UUID", "The unique identifier of an existing host."
    "ihost_uuid (Optional)", "plain", "csapi:UUID", "This parameter specifies the partition host uuid."
+   "forihostid (Optional)", "plain", "xsd:string", "The ID of the host of this interface."
    "type_guid (Optional)", "plain", "csapi:UUID", "This parameter specifies the partition type guid."
    "idisk_uuid (Optional)", "plain", "csapi:UUID", "This parameter specifies the partition disk uuid."
    "size_mib (Optional)", "plain", "xsd:integer", "This parameter specifies the size of the partition."
@@ -1439,8 +1461,8 @@ badMediaType (415)
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
-   "lvm_vg_name (Optional)", "plain", "xsd:string", "This parameter specifies the volume group name. Valid values are (is): ``nova-local``"
-   "ihost_uuid (Optional)", "plain", "csapi:UUID", "This parameter specifies the compute host uuid."
+   "lvm_vg_name", "plain", "xsd:string", "This parameter specifies the volume group name. Valid values are (is): ``nova-local``"
+   "ihost_uuid", "plain", "csapi:UUID", "This parameter specifies the worker host uuid."
 
 **Response parameters**
 
@@ -2392,9 +2414,10 @@ itemNotFound (404)
    "iinterfaces (Optional)", "plain", "xsd:list", "The list of L2 interfaces for a specific host."
    "ifname (Optional)", "plain", "xsd:string", "The user-specified name of the interface."
    "ifclass (Optional)", "plain", "xsd:string", "The class of the interface: ``platform``, ``data``, ``pci-passthrough`` or ``pci-sriov``."
-   "iftype (Optional)", "plain", "xsd:string", "Indicates the type of L2 interface; ``ethernet`` or ``ae`` (aggregated ethernet or link aggregation (LAG)) or ``vlan`` (virtual lan)."
+   "iftype (Optional)", "plain", "xsd:string", "Indicates the type of L2 interface; ``ethernet`` or ``ae`` (aggregated ethernet or link aggregation (LAG)) or ``vlan`` (virtual lan) or ``vf`` (sriov vf)."
    "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of ifclass=data."
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute indicates what packet headers the AE/LAG is using to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
+   "primary_reselect (Optional)", "plain", "xsd:string", "The reselection policy for the primary slave of the AE/LAG interface: ``always`` (default), ``better``or ``failure``. Only applicable if ``iftype : ae`` and ``aemode : active_standby`` and ``ifclass :platform``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute indicates that the vlan interface id. A vlan id between 1 and 4094 (inclusive) must be selected. NOTE The vlan id must be unique for the host interface."
    "imac (Optional)", "plain", "xsd:string", "The MAC Address being used by the interface. In the case of AE/LAG, the MAC address of one of the physical ports of the AE/LAG group is used."
    "imtu (Optional)", "plain", "xsd:integer", "The Maximum Transmission Unit (MTU) of the interface, in bytes."
@@ -2408,6 +2431,7 @@ itemNotFound (404)
    "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
    "uses (Optional)", "plain", "xsd:list", "Interfaces which the current interface uses."
    "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
 
 ::
 
@@ -2428,6 +2452,7 @@ itemNotFound (404)
            }
          ],
          "txhashpolicy": null,
+         "primary_reselect": null,
          "schedpolicy": null,
          "imac": "08:00:27:80:aa:6e",
          "sriov_numvfs": 0,
@@ -2453,6 +2478,7 @@ itemNotFound (404)
            }
          ],
          "txhashpolicy": "layer2",
+         "primary_reselect": null,
          "schedpolicy": null,
          "imac": null,
          "sriov_numvfs": 0,
@@ -2509,6 +2535,7 @@ itemNotFound (404)
    "iftype (Optional)", "plain", "xsd:string", "Indicates the type of L2 interface; ``ethernet`` or ``ae`` (aggregated ethernet or link aggregation (LAG)) or ``vlan`` (virtual lan)."
    "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of ifclass=data."
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute indicates what packet headers the AE/LAG is using to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
+   "primary_reselect (Optional)", "plain", "xsd:string", "The reselection policy for the primary slave of the AE/LAG interface: ``always`` (default), ``better``or ``failure``. Only applicable if ``iftype : ae`` and ``aemode : active_standby`` and ``ifclass :platform``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute indicates that the vlan interface id. A vlan id between 1 and 4094 (inclusive) must be selected. NOTE The vlan id must be unique for the host interface."
    "imac (Optional)", "plain", "xsd:string", "The MAC Address being used by the interface. In the case of AE/LAG, the MAC address of one of the physical ports of the AE/LAG group is used."
    "imtu (Optional)", "plain", "xsd:integer", "The Maximum Transmission Unit (MTU) of the interface, in bytes."
@@ -2520,6 +2547,7 @@ itemNotFound (404)
    "ports (Optional)", "plain", "xsd:list", "URIs to the physical ports of this interface."
    "uses (Optional)", "plain", "xsd:list", "Interfaces which the current interface uses."
    "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
@@ -2539,6 +2567,7 @@ itemNotFound (404)
          }
       ],
       "txhashpolicy" : "layer2",
+      "primary_reselect": null,
       "schedpolicy" : null,
       "uuid" : "740a5bec-b7a8-4645-93ed-aea0d4cfbf86",
       "ihost_uuid" : "ff453a51-1d3b-437f-a65e-b2d163f79f85",
@@ -2598,15 +2627,17 @@ badMediaType (415)
    "host_id", "URI", "csapi:UUID", "The unique identifier of an existing host."
    "ifname (Optional)", "plain", "xsd:string", "The name for the interface."
    "ifclass (Optional)", "plain", "xsd:string", "The class of the interface: ``platform``, ``data``, ``pci-passthrough`` or ``pci-sriov``."
-   "iftype (Optional)", "plain", "xsd:string", "The type of interface; i.e. ``ae`` or ``vlan``."
-   "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute specifies whether the AE/LAG should operate as ``balanced`` or ``active_standby`` or ``802.3ad`` across its links. The ``balanced`` and ``active_standby`` are the only modes supported by ``data`` type interface. For ``mgmt`` type interface the ``802.3ad`` option must be selected."
+   "iftype (Optional)", "plain", "xsd:string", "The type of interface; i.e. ``ae`` or ``vlan`` or ``ethernet``."
+   "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute specifies whether the AE/LAG should operate as ``balanced`` or ``active_standby`` or ``802.3ad`` across its links. The ``balanced`` and ``active_standby`` are the only modes supported by ``data`` type interface. For ``mgmt`` type interface the ``802.3ad`` and ``active_standby`` options are supported."
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute specifies what packet headers the AE/LAG should use to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
+   "primary_reselect (Optional)", "plain", "xsd:string", "The reselection policy for the primary slave of the AE/LAG interface: ``always`` (default), ``better``or ``failure``. Only applicable if ``iftype : ae`` and ``aemode : active_standby`` and ``ifclass :platform``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute specifies a virtual lan id for a vlan interface type."
    "ports (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of ports that this interface contains. If ``iftype : ethernet`` then only one port is allowed."
-   "uses (Optional)", "plain", "xsd:list", "Only applicable if ``iftype : ae`` or ``iftype: vlan``, this attribute specifies a comma-separated list of interfaces that this interface uses."
+   "uses (Optional)", "plain", "xsd:list", "Only applicable if ``iftype : ae`` or ``iftype: vlan`` or ``iftype: ethernet``, this attribute specifies a comma-separated list of interfaces that this interface uses."
    "used_by (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of interfaces that use this interface."
    "imtu (Optional)", "plain", "xsd:integer", "This attribute specifies the interface's Maximum Transmit Unit."
    "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs to configure on the interface's port; only applicable if ``ifclass : pci-sriov`` where only a single port is associated with the interface."
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
    "ihost_uuid (Optional)", "plain", "csapi:UUID", "The UUID of the host to create the interface on."
 
 **Response parameters**
@@ -2620,6 +2651,7 @@ badMediaType (415)
    "iftype (Optional)", "plain", "xsd:string", "Indicates the type of L2 interface; ``ethernet`` or ``ae`` (aggregated ethernet or link aggregation (LAG)) or ``vlan`` (virtual lan)."
    "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of ifclass=data."
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute indicates what packet headers the AE/LAG is using to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
+   "primary_reselect (Optional)", "plain", "xsd:string", "The reselection policy for the primary slave of the AE/LAG interface: ``always`` (default), ``better``or ``failure``. Only applicable if ``iftype : ae`` and ``aemode : active_standby`` and ``ifclass :platform``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute indicates that the vlan interface id. A vlan id between 1 and 4094 (inclusive) must be selected. NOTE The vlan id must be unique for the host interface."
    "imac (Optional)", "plain", "xsd:string", "The MAC Address being used by the interface. In the case of AE/LAG, the MAC address of one of the physical ports of the AE/LAG group is used."
    "imtu (Optional)", "plain", "xsd:integer", "The Maximum Transmission Unit (MTU) of the interface, in bytes."
@@ -2631,6 +2663,7 @@ badMediaType (415)
    "ports (Optional)", "plain", "xsd:list", "URIs to the physical ports of this interface."
    "uses (Optional)", "plain", "xsd:list", "Interfaces which the current interface uses."
    "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
@@ -2641,6 +2674,7 @@ badMediaType (415)
    {
      "iftype": "ae",
      "txhashpolicy": "layer2",
+     "primary_reselect": null,
      "ihost_uuid": "ff453a51-1d3b-437f-a65e-b2d163f79f85",
      "imtu": "1500",
      "ifclass": "data",
@@ -2679,6 +2713,7 @@ badMediaType (415)
      "ihost_uuid": "ff453a51-1d3b-437f-a65e-b2d163f79f85",
      "vlan_id": null,
      "txhashpolicy": "layer2",
+     "primary_reselect": null,
      "created_at": "2014-09-29T10:55:20.515705+00:00",
      "schedpolicy": null,
      "imac": null,
@@ -2728,12 +2763,14 @@ badMediaType (415)
    "iftype (Optional)", "plain", "xsd:string", "The type of interface; i.e. ``ethernet`` or ``ae`` or ``vlan``."
    "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute specifies whether the AE/LAG should operate as ``balanced`` or ``active_standby`` across its links. These are the only modes supported by ``data`` type interface."
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute specifies what packet headers the AE/LAG should use to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
+   "primary_reselect (Optional)", "plain", "xsd:string", "The reselection policy for the primary slave of the AE/LAG interface: ``always`` (default), ``better``or ``failure``. Only applicable if ``iftype : ae`` and ``aemode : active_standby`` and ``ifclass :platform``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute specifies a virtual lan id for a vlan interface type."
    "ports (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of ports that this interface contains. If ``iftype : ethernet`` then only one port is allowed."
-   "uses (Optional)", "plain", "xsd:list", "Only applicable if ``iftype : ae`` or ``iftype: vlan``, this attribute specifies a comma-separated list of interfaces that this interface uses."
+   "uses (Optional)", "plain", "xsd:list", "Only applicable if ``iftype : ae`` or ``iftype: vlan`` or ``iftype: ethernet``, this attribute specifies a comma-separated list of interfaces that this interface uses."
    "used_by (Optional)", "plain", "xsd:list", "This attribute specifies a comma-separated list of interfaces that use this interface."
    "imtu (Optional)", "plain", "xsd:integer", "This attribute specifies the interface's Maximum Transmit Unit."
    "sriov_numvfs (Optional)", "plain", "xsd:integer", "The number of VFs to configure on the interface's port; only applicable if ``ifclass : pci-sriov`` where only a single port is associated with the interface."
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
 
 **Response parameters**
 
@@ -2746,6 +2783,7 @@ badMediaType (415)
    "iftype (Optional)", "plain", "xsd:string", "Indicates the type of L2 interface; ``ethernet`` or ``ae`` (aggregated ethernet or link aggregation (LAG)) or ``vlan`` (virtual lan)."
    "aemode (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae``, this attribute indicates the basic mode of operation for the AE/LAG interface. Supported modes are: balanced round robin, active-backup, balanced xor, broadcast, 802.3ad, balance-tlb, balance-alb. NOTE only balanced xor and active-standby modes are supported by interfaces of ifclass=data."
    "txhashpolicy (Optional)", "plain", "xsd:string", "Only applicable if ``iftype : ae`` and ``aemode : balanced``, this attribute indicates what packet headers the AE/LAG is using to distribute packets across the different links/ports of the AE/LAG group; ``layer2``, ``layer2+3`` or ``layer3+4``."
+   "primary_reselect (Optional)", "plain", "xsd:string", "The reselection policy for the primary slave of the AE/LAG interface: ``always`` (default), ``better``or ``failure``. Only applicable if ``iftype : ae`` and ``aemode : active_standby`` and ``ifclass :platform``."
    "vlan_id (Optional)", "plain", "xsd:integer", "Only applicable if ``iftype : vlan``, this attribute indicates that the vlan interface id. A vlan id between 1 and 4094 (inclusive) must be selected. NOTE The vlan id must be unique for the host interface."
    "imac (Optional)", "plain", "xsd:string", "The MAC Address being used by the interface. In the case of AE/LAG, the MAC address of one of the physical ports of the AE/LAG group is used."
    "imtu (Optional)", "plain", "xsd:integer", "The Maximum Transmission Unit (MTU) of the interface, in bytes."
@@ -2757,6 +2795,7 @@ badMediaType (415)
    "ports (Optional)", "plain", "xsd:list", "URIs to the physical ports of this interface."
    "uses (Optional)", "plain", "xsd:list", "Interfaces which the current interface uses."
    "used_by (Optional)", "plain", "xsd:list", "Interfaces which use the current interface."
+   "max_tx_rate (Optional)", "plain", "xsd:integer", "The Maximum Transmission Rate of the interface, in Mbps. Only applicable if ``ifclass : pci-sriov`` and ``iftype : vf``"
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
    "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
@@ -2778,6 +2817,11 @@ badMediaType (415)
      {
        "path": "/aemode",
        "value": "active_standby",
+       "op": "replace"
+     },
+     {
+       "path": "/primary_reselect",
+       "value": "better",
        "op": "replace"
      },
      {
@@ -2816,6 +2860,7 @@ badMediaType (415)
      "ihost_uuid": "ff453a51-1d3b-437f-a65e-b2d163f79f85",
      "vlan_id": null,
      "txhashpolicy": "layer2",
+     "primary_reselect": null,
      "created_at": "2014-09-29T10:55:20.515705+00:00",
      "schedpolicy": null,
      "imac": null,
@@ -4801,548 +4846,20 @@ badMediaType (415)
 SNMP Communities
 -----------------
 
-****************************
-Lists all SNMP Communities
-****************************
+StarlingX supports SNMPv2c and SNMPv3, but it is now configured using Helm
+charts.
 
-.. rest_method:: GET /v1/icommunity
-
-**Normal response codes**
-
-200
-
-**Error response codes**
-
-computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
-unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
-itemNotFound (404)
-
-**Response parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "icommunity (Optional)", "plain", "xsd:list", "The list of SNMP Communities."
-   "access (Optional)", "plain", "xsd:string", "The SNMP GET/SET access control for a specific community."
-   "community (Optional)", "plain", "xsd:string", "The community string of which the SNMP client is a member."
-   "view (Optional)", "plain", "xsd:string", "The SNMP MIB view of which the community has access to."
-   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
-   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
-   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
-   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
-
-::
-
-   {
-     "icommunity": [
-       {
-       "access": "ro",
-       "uuid": "744cddaa-8a24-4573-aa0e-4f8b535d95b7",
-       "community": "new",
-       "view": ".1"
-       },
-       {
-       "access": "ro",
-       "uuid": "73706882-9d7c-4a8f-9409-185ffee0066c",
-       "community": "guest",
-       "view": ".1"
-       }
-     ]
-   }
-
-This operation does not accept a request body.
-
-***************************************************
-Shows information about a specific SNMP Community
-***************************************************
-
-.. rest_method:: GET /v1/icommunity/​{community_id}​
-
-**Normal response codes**
-
-200
-
-**Error response codes**
-
-computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
-unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
-itemNotFound (404)
-
-**Request parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "community_id", "URI", "xsd:string", "The unique community string of an existing SNMP Community."
-
-**Response parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "access (Optional)", "plain", "xsd:string", "The SNMP GET/SET access control for a specific community."
-   "community (Optional)", "plain", "xsd:string", "The community string of which the SNMP client is a member."
-   "view (Optional)", "plain", "xsd:string", "The SNMP MIB view of which the community has access to."
-   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
-   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
-   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
-   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
-
-::
-
-   {
-       "uuid": "73706882-9d7c-4a8f-9409-185ffee0066c",
-       "created_at": "2014-09-24T20:06:54.386982+00:00",
-       "updated_at": null,
-       "community": "guest",
-       "access": "ro",
-       "view": ".1"
-   }
-
-This operation does not accept a request body.
-
-**************************
-Creates a SNMP Community
-**************************
-
-.. rest_method:: POST /v1/icommunity
-
-**Normal response codes**
-
-200
-
-**Error response codes**
-
-badMediaType (415)
-
-**Request parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "community (Optional)", "plain", "xsd:string", "This parameter specifies the community string to create."
-
-**Response parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "access (Optional)", "plain", "xsd:string", "The SNMP GET/SET access control for a specific community."
-   "community (Optional)", "plain", "xsd:string", "The community string of which the SNMP client is a member."
-   "view (Optional)", "plain", "xsd:string", "The SNMP MIB view of which the community has access to."
-   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
-   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
-   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
-   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
-
-::
-
-   {
-       "community": "guest"
-   }
-
-::
-
-   {
-       "uuid": "73706882-9d7c-4a8f-9409-185ffee0066c",
-       "created_at": "2014-09-24T20:06:54.386982+00:00",
-       "updated_at": null,
-       "community": "guest",
-       "access": "ro",
-       "view": ".1"
-   }
-
-************************************
-Modifies a specific SNMP Community
-************************************
-
-.. rest_method:: PATCH /v1/icommunity/​{community_id}​
-
-**Normal response codes**
-
-200
-
-**Error response codes**
-
-badMediaType (415)
-
-**Request parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "community_id", "URI", "xsd:string", "The unique community string of an existing SNMP Community."
-   "community (Optional)", "plain", "xsd:string", "This parameter specifies the new community string."
-
-**Response parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "access (Optional)", "plain", "xsd:string", "The SNMP GET/SET access control for a specific community."
-   "community (Optional)", "plain", "xsd:string", "The community string of which the SNMP client is a member."
-   "view (Optional)", "plain", "xsd:string", "The SNMP MIB view of which the community has access to."
-   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
-   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
-   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
-   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
-
-::
-
-   [
-     {
-       "path": "/community",
-       "value": "wrs",
-       "op": "replace"
-     }
-   ]
-
-::
-
-   {
-       "uuid": "744cddaa-8a24-4573-aa0e-4f8b535d95b7",
-       "created_at": "2014-09-23T15:01:53.187164+00:00",
-       "updated_at": "2014-09-24T19:46:40.138145+00:00",
-       "community": "wrs",
-       "access": "ro",
-        "view": ".1"
-   }
-
-***********************************
-Deletes a specific SNMP Community
-***********************************
-
-.. rest_method:: DELETE /v1/icommunity/​{community_id}​
-
-**Normal response codes**
-
-204
-
-**Request parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "community_id", "URI", "xsd:string", "The unique community string of an existing SNMP Community."
-
-This operation does not accept a request body.
+For more information, see the `Fault Management Guide, SNMP overview <https://docs.starlingx.io/fault-mgmt/snmp-overview.html>`_ section.
 
 -----------------------
 SNMP Trap Destinations
 -----------------------
 
-**********************************
-Lists all SNMP Trap Destinations
-**********************************
+StarlingX supports SNMPv2c and SNMPv3, but it is now configured using Helm
+charts.
 
-.. rest_method:: GET /v1/itrapdest
+For more information, see the `Fault Management Guide, SNMP overview <https://docs.starlingx.io/fault-mgmt/snmp-overview.html>`_ section.
 
-**Normal response codes**
-
-200
-
-**Error response codes**
-
-computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
-unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
-itemNotFound (404)
-
-**Response parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "itrapdests (Optional)", "plain", "xsd:list", "The list of SNMP Trap Destinations."
-   "ip_address (Optional)", "plain", "xsd:string", "The IP address of a specific trap destination."
-   "community (Optional)", "plain", "xsd:string", "The community of which the trap destination is a member."
-   "type (Optional)", "plain", "xsd:string", "The SNMP version of the trap message for a specific destination."
-   "port (Optional)", "plain", "xsd:integer", "The port number of which SNMP manager is listening for traps."
-   "transport (Optional)", "plain", "xsd:string", "The transport protocol used by the trap messages."
-   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
-   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
-   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
-   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
-
-::
-
-   {
-     "itrapdest": [
-       {
-           "uuid": "fc33945c-7aba-4d83-9216-a60db7097a23", "links": [
-           {
-               "href": "http://192.168.204.2:6385/v1/itrapdest/fc33945c-7aba-4d83-9216-a60db7097a23",
-               "rel": "self"
-           },
-           {
-               "href": "http://192.168.204.2:6385/itrapdest/fc33945c-7aba-4d83-9216-a60db7097a23",
-               "rel": "bookmark"
-           }
-         ],
-           "ip_address": "10.10.10.1",
-           "community": "cgts",
-           "type": "snmpv2c_trap",
-           "port": 162, "transport": "udp"
-       },
-       {
-           "uuid": "22f0497c-0a09-41c4-8514-cb5afcbf930d", "links": [
-           {
-               "href": "http://192.168.204.2:6385/v1/itrapdest/22f0497c-0a09-41c4-8514-cb5afcbf930d",
-               "rel": "self"
-           },
-           {
-               "href": "http://192.168.204.2:6385/itrapdest/22f0497c-0a09-41c4-8514-cb5afcbf930d",
-               "rel": "bookmark"
-           }
-         ],
-           "ip_address": "27.134.0.8",
-           "community": "sprint",
-           "type": "snmpv2c_trap",
-           "port": 162,
-           "transport": "udp"
-       }
-     ]
-   }
-
-This operation does not accept a request body.
-
-**********************************************************
-Shows information about a specific SNMP Trap Destination
-**********************************************************
-
-.. rest_method:: GET /v1/itrapdest/​{ip_address}​
-
-**Normal response codes**
-
-200
-
-**Error response codes**
-
-computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
-unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
-itemNotFound (404)
-
-**Request parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "ip_address", "plain", "xsd:string", "The IP address of a specific trap destination."
-
-**Response parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "ip_address (Optional)", "plain", "xsd:string", "The IP address of a specific trap destination."
-   "community (Optional)", "plain", "xsd:string", "The community of which the trap destination is a member."
-   "type (Optional)", "plain", "xsd:string", "The SNMP version of the trap message for a specific destination."
-   "port (Optional)", "plain", "xsd:integer", "The port number of which SNMP manager is listening for traps."
-   "transport (Optional)", "plain", "xsd:string", "The transport protocol used by the trap messages."
-   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
-   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
-   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
-   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
-
-::
-
-   {
-     "uuid": "22f0497c-0a09-41c4-8514-cb5afcbf930d", "links": [
-       {
-           "href": "http://192.168.204.2:6385/v1/itrapdest/22f0497c-0a09-41c4-8514-cb5afcbf930d",
-           "rel": "self"
-       },
-       {
-           "href": "http://192.168.204.2:6385/itrapdest/22f0497c-0a09-41c4-8514-cb5afcbf930d",
-           "rel": "bookmark"
-       }
-     ],
-       "type": "snmpv2c_trap",
-       "created_at": "2014-09-24T21:09:02.842231+00:00",
-       "updated_at": null,
-       "community": "sprint",
-       "ip_address": "27.134.0.8",
-       "port": 162,
-       "transport": "udp"
-   }
-
-This operation does not accept a request body.
-
-*********************************
-Creates a SNMP Trap Destination
-*********************************
-
-.. rest_method:: POST /v1/itrapdest
-
-**Normal response codes**
-
-200
-
-**Error response codes**
-
-badMediaType (415)
-
-**Request parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "ip_address (Optional)", "plain", "xsd:string", "This parameter specifies the IP address of a new trap destination."
-   "community (Optional)", "plain", "xsd:string", "This parameter specifies the community of which the trap destination is a member."
-
-**Response parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "ip_address (Optional)", "plain", "xsd:string", "The IP address of a specific trap destination."
-   "community (Optional)", "plain", "xsd:string", "The community of which the trap destination is a member."
-   "type (Optional)", "plain", "xsd:string", "The SNMP version of the trap message for a specific destination."
-   "port (Optional)", "plain", "xsd:integer", "The port number of which SNMP manager is listening for traps."
-   "transport (Optional)", "plain", "xsd:string", "The transport protocol used by the trap messages."
-   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
-   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
-   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
-   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
-
-::
-
-   {
-       "ip_address": "27.134.0.8",
-       "community": "sprint"
-   }
-
-::
-
-   {
-     "uuid": "22f0497c-0a09-41c4-8514-cb5afcbf930d", "links":
-       [
-         {
-           "href": "http://192.168.204.2:6385/v1/itrapdest/22f0497c-0a09-41c4-8514-cb5afcbf930d",
-           "rel": "self"
-         },
-         {
-           "href": "http://192.168.204.2:6385/itrapdest/22f0497c-0a09-41c4-8514-cb5afcbf930d",
-           "rel": "bookmark"
-         }
-       ],
-       "type": "snmpv2c_trap",
-       "created_at": "2014-09-24T21:09:02.842231+00:00",
-       "updated_at": null,
-       "community": "sprint",
-       "ip_address": "27.134.0.8",
-       "port": 162,
-       "transport": "udp"
-   }
-
-*******************************************
-Modifies a specific SNMP Trap Destination
-*******************************************
-
-.. rest_method:: PATCH /v1/itrapdest/​{trapdest_id}​
-
-**Normal response codes**
-
-200
-
-**Error response codes**
-
-badMediaType (415)
-
-**Request parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "trapdest_id", "URI", "csapi:UUID", "The unique identifier of an existing SNMP Trap Destination."
-   "ip_address (Optional)", "plain", "xsd:string", "This parameter specifies the IP address of a specific trap destination."
-   "community (Optional)", "plain", "xsd:string", "This parameter specifies the community of which the trap destination is a member."
-
-**Response parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "ip_address (Optional)", "plain", "xsd:string", "The IP address of a specific trap destination."
-   "community (Optional)", "plain", "xsd:string", "The community of which the trap destination is a member."
-   "type (Optional)", "plain", "xsd:string", "The SNMP version of the trap message for a specific destination."
-   "port (Optional)", "plain", "xsd:integer", "The port number of which SNMP manager is listening for traps."
-   "transport (Optional)", "plain", "xsd:string", "The transport protocol used by the trap messages."
-   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
-   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
-   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
-   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
-
-::
-
-   [
-     {
-       "path": "/ip_address",
-       "value": "47.10.1.128",
-       "op": "replace"
-     },
-     {
-       "path": "/community",
-       "value": "sprint",
-       "op": "replace"
-     }
-   ]
-
-::
-
-   {
-     "uuid": "22f0497c-0a09-41c4-8514-cb5afcbf930d", "links": [
-       {
-           "href": "http://192.168.204.2:6385/v1/itrapdest/22f0497c-0a09-41c4-8514-cb5afcbf930d",
-           "rel": "self"
-       },
-       {
-           "href": "http://192.168.204.2:6385/itrapdest/22f0497c-0a09-41c4-8514-cb5afcbf930d",
-           "rel": "bookmark"
-       }
-     ],
-       "type": "snmpv2c_trap",
-       "created_at": "2014-09-24T21:09:02.842231+00:00",
-       "updated_at": "2014-09-24T21:13:51.061300+00:00",
-       "community": "sprint",
-       "ip_address": "47.10.1.128",
-       "port": 162,
-       "transport": "udp"
-   }
-
-******************************************
-Deletes a specific SNMP Trap Destination
-******************************************
-
-.. rest_method:: DELETE /v1/itrapdest/​{trapdest_id}​
-
-**Normal response codes**
-
-204
-
-**Request parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "trapdest_id", "URI", "csapi:UUID", "The unique identifier of an existing SNMP Trap Destination."
-
-This operation does not accept a request body.
 
 --------
 Devices
@@ -5850,7 +5367,7 @@ This operation does not accept a request body.
 Shows the attributes of a specific PCI device
 ***********************************************
 
-.. rest_method:: GET /v1/devices/​{device_id}​
+.. rest_method:: GET /v1/pci_devices/​{device_id}​
 
 **Normal response codes**
 
@@ -5940,7 +5457,7 @@ This operation does not accept a request body.
 Modifies a specific PCI device
 ********************************
 
-.. rest_method:: PATCH /v1/devices/​{device_id}​
+.. rest_method:: PATCH /v1/pci_devices/​{device_id}​
 
 **Normal response codes**
 
@@ -9539,9 +9056,9 @@ badMediaType (415)
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
-   "backend (Optional)", "plain", "xsd:string", "This parameter specifies the type of the backend. Valid values are (is): ``file``"
+   "backend", "plain", "xsd:string", "This parameter specifies the type of the backend. Valid values are (is): ``file``"
    "name (Optional)", "plain", "xsd:string", "This parameter specifies the name of the backend."
-   "services (Optional)", "plain", "xsd:string", "The name of the storage service."
+   "services", "plain", "xsd:string", "The name of the storage service."
    "capabilities (Optional)", "plain", "xsd:string", "A dictionary of storage backend capabilities."
    "confirmed (Optional)", "plain", "xsd:boolean", "When ""false"" it will run in test mode without applying any modification. This allow checking a request for validity before performing non-reversible changes. When set to ""true"" the modifications are immediately applied."
 
@@ -11092,7 +10609,7 @@ itemNotFound (404)
 Deletes a specific ceph monitor
 ***********************************
 
-.. rest_method:: DELETE /v1/ceph_mon/​{ceph_mon_id}​
+.. rest_method:: DELETE /v1/ceph_mon/​{host_uuid}​
 
 Delete a ceph monitor.
 
@@ -11106,7 +10623,7 @@ Delete a ceph monitor.
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
-   "ceph_mon_id", "URI", "csapi:UUID", "The unique identifier of a Ceph monitor."
+   "host_uuid", "URI", "csapi:UUID", "The host UUID that the Ceph monitor belongs to."
 
 This operation does not accept a request body.
 
@@ -11460,3 +10977,114 @@ Run the Docker registry garbage collector
 
 This operation does not accept a request body.
 
+
+-------------------
+Kubernetes Clusters
+-------------------
+
+These APIs allow for the retrieval of the Kubernetes cluster information, including
+the access information for remote administrative access.
+
+****************************
+List the Kubernetes clusters
+****************************
+
+.. rest_method:: GET /v1/kube_clusters
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "cluster_name", "plain", "xsd:string", "Kubernetes Cluster Name (kubernetes)"
+   "cluster_version", "plain", "xsd:string", "Kubernetes Release Version"
+   "cluster_api_endpoint", "plain", "xsd:string", "Cluster API Public Endpoint URL"
+   "cluster_ca_cert ", "plain", "xsd:string", "Admin Root CA X.509 Certificate (PEM format)"
+   "admin_client_cert", "plain", "xsd:string", "Admin Client X.509 Certificate (PEM format)"
+   "admin_client_key", "plain", "xsd:string", "Admin Client Key (PEM format)"
+   "admin_user", "plain", "xsd:string", "Admin User Name (kubernetes-admin)"
+   "admin_token (Optional)", "plain", "xsd:string", "Admin service account token for admin_user, if configured (Base64 ASCII)"
+
+::
+
+   {
+      "kube_clusters": [
+         {
+            "cluster_name": "kubernetes",
+            "cluster_version": "v1.18.1",
+            "cluster_api_endpoint": "https://10.10.10.2:6443",
+            "cluster_ca_cert": "REDACTED: <certificate-data>",
+            "admin_client_cert": "REDACTED: <certificate-data>",
+            "admin_client_key": "REDACTED: <key-data>",
+            "admin_user": "kubernetes-admin",
+            "admin_token": "REDACTED: <token-data>"
+         }
+      ]
+   }
+
+This operation does not accept a request body.
+
+********************************************************
+Get the Kubernetes cluster details of a specific cluster
+********************************************************
+
+.. rest_method:: GET /v1/kube_clusters/​{cluster_name}
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
+itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "cluster_name", "URI", "xsd:string", "The unique Kubernetes cluster name."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "cluster_name", "plain", "xsd:string", "Kubernetes Cluster Name (kubernetes)"
+   "cluster_version", "plain", "xsd:string", "Kubernetes Release Version"
+   "cluster_api_endpoint", "plain", "xsd:string", "Cluster API Public Endpoint URL"
+   "cluster_ca_cert ", "plain", "xsd:string", "Admin Root CA Certificate (PEM format)"
+   "admin_client_cert", "plain", "xsd:string", "Admin Client Certificate (PEM format)"
+   "admin_client_key", "plain", "xsd:string", "Admin Client Key (PEM format)"
+   "admin_user", "plain", "xsd:string", "Admin User Name (kubernetes-admin)"
+   "admin_token (Optional)", "plain", "xsd:string", "Admin service account token for admin_user, if configured (base64 encoded)"
+
+::
+
+   {
+      "cluster_name": "kubernetes",
+      "cluster_version": "v1.18.1",
+      "cluster_api_endpoint": "https://10.10.10.2:6443",
+      "cluster_ca_cert": "REDACTED: <certificate-data>",
+      "admin_client_cert": "REDACTED: <certificate-data>",
+      "admin_client_key": "REDACTED: <key-data>",
+      "admin_user": "kubernetes-admin",
+      "admin_token": "REDACTED: <token-data>"
+   }
+
+This operation does not accept a request body.

@@ -81,6 +81,26 @@ class Database(fixtures.Fixture):
 
     def post_migrations(self):
         """Any addition steps that are needed outside of the migrations."""
+        # This is a workaround for unit test only.
+        # The migration of adding edgeworker personality works with postgres
+        # db. But sqlite db which is used by unit test neither supports
+        # ALTER TYPE to introduce a new personality, nor supports adding
+        # a new CHECK contraint to an existing table. This implements the
+        # migration of version 109 to add an edgeworker personality enum
+        # to i_host table.
+        personality_check_old = "CHECK (personality IN ('controller', " + \
+            "'worker', 'network', 'storage', 'profile', 'reserve1', " + \
+            "'reserve2'))"
+        personality_check_new = "CHECK (personality IN ('controller', " + \
+            "'worker', 'network', 'storage', 'profile', 'reserve1', " + \
+            "'reserve2', 'edgeworker'))"
+        results = self.engine.execute("SELECT sql FROM sqlite_master \
+            WHERE type='table' AND name='i_host'")
+        create_i_host = results.first().values()[0]
+        create_i_host = create_i_host.replace(personality_check_old,
+                                               personality_check_new)
+        self.engine.execute("ALTER TABLE i_host RENAME TO i_host_bak")
+        self.engine.execute(create_i_host)
 
 
 class ReplaceModule(fixtures.Fixture):

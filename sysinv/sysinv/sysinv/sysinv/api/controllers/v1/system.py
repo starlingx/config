@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2017 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 import jsonpatch
@@ -75,6 +75,12 @@ class System(base.APIBase):
     location = wtypes.text
     "The location of the isystem"
 
+    latitude = wtypes.text
+    "The latitude GPS coordinate of the system"
+
+    longitude = wtypes.text
+    "The longitude GPS coordinate of the system"
+
     services = int
     "The services of the isystem"
 
@@ -132,8 +138,8 @@ class System(base.APIBase):
     def convert_with_links(cls, rpc_isystem, expand=True):
         # isystem = isystem(**rpc_isystem.as_dict())
         minimum_fields = ['id', 'uuid', 'name', 'system_type', 'system_mode',
-                          'description', 'capabilities',
-                          'contact', 'location', 'software_version',
+                          'description', 'capabilities', 'contact',
+                          'location', 'latitude', 'longitude', 'software_version',
                           'created_at', 'updated_at', 'timezone',
                           'region_name', 'service_project_name',
                           'distributed_cloud_role', 'security_feature']
@@ -269,6 +275,52 @@ class SystemController(rest.RestController):
                 raise wsme.exc.ClientSideError(
                     _("Host {} must be locked.".format(h['hostname'])))
 
+    def _check_interfaces(self, system_mode):
+        iinterfaces = pecan.request.dbapi.iinterface_get_all()
+        mgmt_if = None
+        cluster_host_if = None
+
+        for iif in iinterfaces:
+            if iif.networktypelist:
+                if constants.NETWORK_TYPE_MGMT in iif.networktypelist:
+                    mgmt_if = iif
+                if constants.NETWORK_TYPE_CLUSTER_HOST in iif.networktypelist:
+                    cluster_host_if = iif
+            if mgmt_if and cluster_host_if:
+                break
+
+        if mgmt_if is None:
+            msg = _("Cannot modify system mode to %s "
+                    "without configuring the management "
+                    "interface." % system_mode)
+            raise wsme.exc.ClientSideError(msg)
+        if mgmt_if.ifname == constants.LOOPBACK_IFNAME:
+            msg = _("Cannot modify system mode to %s "
+                    "when the management interface is "
+                    "configured on loopback. "
+                    % system_mode)
+            raise wsme.exc.ClientSideError(msg)
+        if cluster_host_if is None:
+            msg = _("Cannot modify system mode to %s "
+                    "without configuring the cluster-host "
+                    "interface." % system_mode)
+            raise wsme.exc.ClientSideError(msg)
+        if cluster_host_if.ifname == constants.LOOPBACK_IFNAME:
+            msg = _("Cannot modify system mode to %s "
+                    "when the cluster-host interface is "
+                    "configured on loopback. "
+                    % system_mode)
+            raise wsme.exc.ClientSideError(msg)
+
+    def _check_controller_locked(self):
+        controller = api_utils.HostHelper.get_active_controller()
+        if controller is None:
+            return
+        if controller.administrative != constants.ADMIN_LOCKED:
+            msg = _("Cannot modify system mode if host '%s' is not "
+                    "locked." % controller.hostname)
+            raise wsme.exc.ClientSideError(msg)
+
     def _get_isystem_collection(self, marker, limit, sort_key, sort_dir,
                                 expand=False, resource_url=None):
         limit = api_utils.validate_limit(limit)
@@ -354,6 +406,7 @@ class SystemController(rest.RestController):
         change_sdn = False
         change_dc_role = False
         vswitch_type = None
+        new_system_mode = None
 
         # prevent description field from being updated
         for p in jsonpatch.JsonPatch(patch):
@@ -384,14 +437,13 @@ class SystemController(rest.RestController):
                     # be bound to the conditions below.
                     if cutils.is_initial_config_complete():
                         if rpc_isystem.system_mode == \
-                                constants.SYSTEM_MODE_SIMPLEX:
+                                constants.SYSTEM_MODE_DUPLEX:
                             msg = _("Cannot modify system mode when it is "
-                                    "already set to %s." % rpc_isystem.system_mode)
+                                    "set to %s." % rpc_isystem.system_mode)
                             raise wsme.exc.ClientSideError(msg)
-                        elif new_system_mode == constants.SYSTEM_MODE_SIMPLEX:
-                            msg = _("Cannot modify system mode to simplex when "
-                                    "it is set to %s " % rpc_isystem.system_mode)
-                            raise wsme.exc.ClientSideError(msg)
+                        elif new_system_mode != constants.SYSTEM_MODE_SIMPLEX:
+                            self._check_controller_locked()
+                            self._check_interfaces(new_system_mode)
                     else:
                         system_mode_options.append(constants.SYSTEM_MODE_SIMPLEX)
 
@@ -408,6 +460,12 @@ class SystemController(rest.RestController):
                     raise wsme.exc.ClientSideError(_("Timezone file %s "
                                                      "does not exist." %
                                                      timezone))
+
+            if (p['path'] == '/latitude' or p['path'] == '/longitude'):
+                if p['value'] is not None:
+                    if len(p['value']) > 30:
+                        raise wsme.exc.ClientSideError("Geolocation coordinates can not be "
+                                                       "longer than 30 characters")
 
             if p['path'] == '/sdn_enabled':
                 sdn_enabled = p['value'].lower()
@@ -435,6 +493,14 @@ class SystemController(rest.RestController):
         except api_utils.JSONPATCH_EXCEPTIONS as e:
             raise exception.PatchError(patch=patch, reason=e)
 
+        if 'system_mode' in updates:
+            # Update capabilities if system mode is changed from simplex to
+            # duplex after the initial config is complete
+            if (cutils.is_initial_config_complete() and
+                    rpc_isystem.system_mode == constants.SYSTEM_MODE_SIMPLEX and
+                    new_system_mode == constants.SYSTEM_MODE_DUPLEX):
+                patched_system['capabilities']['simplex_to_duplex_migration'] = True
+
         if 'sdn_enabled' in updates:
             if sdn_enabled != rpc_isystem['capabilities']['sdn_enabled']:
                 self._check_hosts()
@@ -451,12 +517,12 @@ class SystemController(rest.RestController):
             # while 'ssl' cert is managed by cert-manager, return error
             # (Otherwise, cert-mon will turn https back on during cert-renewal process)
             managed_by_cm = self._kube_op.kube_get_secret(
-                    constants.PLATFORM_CERT_SECRET_NAME,
+                    constants.RESTAPI_CERT_SECRET_NAME,
                     constants.CERT_NAMESPACE_PLATFORM_CERTS)
             if https_enabled == 'false' and managed_by_cm is not None:
                 msg = "Certificate is currently being managed by cert-manager. " \
                     "Remove %s Certificate and Secret before disabling https." % \
-                    constants.PLATFORM_CERT_SECRET_NAME
+                    constants.RESTAPI_CERT_SECRET_NAME
                 raise wsme.exc.ClientSideError(_(msg))
 
             if https_enabled != rpc_isystem['capabilities']['https_enabled']:
@@ -518,10 +584,12 @@ class SystemController(rest.RestController):
         capabilities = {}
         distributed_cloud_role = ""
         security_feature = ""
+        delta_fields = {}
 
         for field in objects.system.fields:
             if rpc_isystem[field] != patched_system[field]:
                 rpc_isystem[field] = patched_system[field]
+                delta_fields[field] = patched_system[field]
                 if field == 'name':
                     name = rpc_isystem[field]
                 if field == 'contact':
@@ -542,6 +610,11 @@ class SystemController(rest.RestController):
         delta = rpc_isystem.obj_what_changed()
         delta_handle = list(delta)
         rpc_isystem.save()
+
+        pecan.request.rpcapi.evaluate_apps_reapply(
+            pecan.request.context,
+            trigger={'type': constants.APP_EVALUATE_REAPPLY_TYPE_SYSTEM_MODIFY,
+                     'delta_fields': delta_fields})
 
         if name:
             LOG.info("update system name")

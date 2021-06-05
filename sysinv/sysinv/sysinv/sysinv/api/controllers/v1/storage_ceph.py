@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 import copy
@@ -169,6 +169,9 @@ class StorageCeph(base.APIBase):
     confirmed = types.boolean
     "Represent confirmation that the backend operation should proceed"
 
+    network = wtypes.text
+    "The network for backend components"
+
     def __init__(self, **kwargs):
         defaults = {'uuid': uuidutils.generate_uuid(),
                     'state': constants.SB_STATE_CONFIGURING,
@@ -223,7 +226,8 @@ class StorageCeph(base.APIBase):
                                            'object_gateway',
                                            'ceph_total_space_gib',
                                            'tier_name',
-                                           'tier_uuid'])
+                                           'tier_uuid',
+                                           'network'])
 
         stor_ceph.links =\
             [link.Link.make_link('self', pecan.request.host_url,
@@ -427,7 +431,7 @@ def _discover_and_validate_backend_config_data(caps_dict, confirmed):
     # TODO(oponcea): remove condition once ceph_mon code is refactored.
     if confirmed:
         try:
-            StorageBackendConfig.get_ceph_mon_ip_addresses(pecan.request.dbapi)
+            pecan.request.dbapi.ceph_mon_get_list()
         except exception.IncompleteCephMonNetworkConfig as e:
             LOG.exception(e)
             raise wsme.exc.ClientSideError(_('Ceph Monitor configuration is '
@@ -620,6 +624,20 @@ def _check_backend_ceph(req, storage_ceph, confirmed=False):
     #                                    "the %s backend" %
     #                                    (req, constants.SB_TYPE_CEPH))
 
+    # Check network type
+    if storage_ceph['network'] not in \
+            constants.SB_SUPPORTED_NETWORKS[constants.SB_TYPE_CEPH]:
+        raise wsme.exc.ClientSideError(
+            _("Backend %s not allowed on network %s"
+              % (constants.SB_TYPE_CEPH, storage_ceph['network'])))
+
+    # Check network exists
+    networks = pecan.request.dbapi.networks_get_by_type(storage_ceph['network'])
+    if not len(networks):
+        raise wsme.exc.ClientSideError(
+            _("Make sure network %s exists"
+              % (storage_ceph['network'])))
+
     # Check for confirmation
     if not confirmed and api_helper.is_primary_ceph_tier(tier.name):
         _options_str = _get_options_string(storage_ceph)
@@ -799,6 +817,7 @@ def _set_defaults(storage_ceph):
         'object_pool_gib': None,
         'kube_pool_gib': None,
         'object_gateway': False,
+        'network': constants.NETWORK_TYPE_MGMT,
     }
 
     sc = api_helper.set_backend_data(storage_ceph,
@@ -1264,7 +1283,9 @@ def _patch(storceph_uuid, patch):
                           'ephemeral_pool_gib',
                           'object_pool_gib',
                           'kube_pool_gib',
-                          'object_gateway']
+                          'object_gateway',
+                          'network']
+
     # TODO(CephPoolsDecouple): remove variable
     quota_attributes = ['cinder_pool_gib', 'glance_pool_gib',
                         'ephemeral_pool_gib', 'object_pool_gib',
@@ -1314,6 +1335,7 @@ def _patch(storceph_uuid, patch):
     # TODO(CephPoolsDecouple): remove variable
     quota_only_update = True
     replication_only_update = False
+    network_update = False
     for d in delta:
         if d not in allowed_attributes:
             raise wsme.exc.ClientSideError(
@@ -1378,6 +1400,13 @@ def _patch(storceph_uuid, patch):
                                           constants.CEPH_BACKEND_MIN_REPLICATION_CAP in new_cap):
                     replication_only_update = True
 
+        elif d == 'network':
+            if cutils.is_initial_config_complete():
+                raise wsme.exc.ClientSideError(
+                    _("Cannot modify the network after the initial "
+                      "configuration completed."))
+            network_update = True
+
     LOG.info("SYS_I orig    storage_ceph: %s " % ostorceph.as_dict())
     LOG.info("SYS_I patched storage_ceph: %s " % storceph_config.as_dict())
 
@@ -1413,7 +1442,8 @@ def _patch(storceph_uuid, patch):
         # TODO(CephPoolsDecouple): rework - remove quota_only_update
         if ((not quota_only_update and
              not fast_config and
-             not replication_only_update) or
+             not replication_only_update and
+             not network_update) or
                 (storceph_config.state == constants.SB_STATE_CONFIG_ERR)):
             # Enable the backend changes:
             _apply_backend_changes(constants.SB_API_OP_MODIFY,

@@ -15,7 +15,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 """SQLAlchemy storage backend."""
@@ -2328,6 +2328,7 @@ class Connection(api.Connection):
 
     @objects.objectify(objects.interface)
     def iinterface_update(self, iinterface_id, values):
+        self._interface_ratelimit_encode(values)
         with _session_for_write() as session:
             query = model_query(models.Interfaces, read_deleted="no",
                                 session=session)
@@ -2353,10 +2354,21 @@ class Connection(api.Connection):
     def iinterface_destroy(self, iinterface_id):
         return self._interface_destroy(models.Interfaces, iinterface_id)
 
+    def _interface_ratelimit_encode(self, values):
+        # we need to use 'ifcapabilities' dict to save ratelimit info
+        if values.get('max_tx_rate') is not None:
+            capabilities = {'max_tx_rate': values['max_tx_rate']}
+            if values.get('ifcapabilities') is not None:
+                values['ifcapabilities'].update(capabilities)
+            else:
+                values['ifcapabilities'] = capabilities
+
     def _interface_create(self, obj, forihostid, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
         values['forihostid'] = int(forihostid)
+
+        self._interface_ratelimit_encode(values)
 
         is_profile = values.get('interface_profile', False)
         with _session_for_write() as session:
@@ -3418,145 +3430,6 @@ class Connection(api.Connection):
                     filter_by(id=ipv_id).\
                     delete()
 
-    @objects.objectify(objects.trapdest)
-    def itrapdest_create(self, values):
-        if not values.get('uuid'):
-            values['uuid'] = uuidutils.generate_uuid()
-        itrapdest = models.itrapdest()
-        itrapdest.update(values)
-        with _session_for_write() as session:
-            try:
-                session.add(itrapdest)
-                session.flush()
-            except db_exc.DBDuplicateEntry:
-                raise exception.TrapDestAlreadyExists(uuid=values['uuid'])
-
-            return itrapdest
-
-    @objects.objectify(objects.trapdest)
-    def itrapdest_get(self, iid):
-        query = model_query(models.itrapdest)
-        query = add_identity_filter(query, iid)
-
-        try:
-            result = query.one()
-        except NoResultFound:
-            raise exception.NotFound(iid)
-
-        return result
-
-    @objects.objectify(objects.trapdest)
-    def itrapdest_get_list(self, limit=None, marker=None,
-                           sort_key=None, sort_dir=None):
-
-        query = model_query(models.itrapdest)
-
-        return _paginate_query(models.itrapdest, limit, marker,
-                               sort_key, sort_dir, query)
-
-    @objects.objectify(objects.trapdest)
-    def itrapdest_get_by_ip(self, ip):
-        result = model_query(models.itrapdest, read_deleted="no").\
-            filter_by(ip_address=ip).\
-            first()
-
-        if not result:
-            raise exception.NotFound(ip)
-
-        return result
-
-    @objects.objectify(objects.trapdest)
-    def itrapdest_update(self, iid, values):
-        with _session_for_write() as session:
-            query = model_query(models.itrapdest, session=session)
-            query = add_identity_filter(query, iid)
-
-            count = query.update(values, synchronize_session='fetch')
-            if count != 1:
-                raise exception.NotFound(iid)
-            return query.one()
-
-    def itrapdest_destroy(self, ip):
-        with _session_for_write() as session:
-            query = model_query(models.itrapdest, session=session)
-            query = add_identity_filter(query, ip, use_ipaddress=True)
-
-            try:
-                query.one()
-            except NoResultFound:
-                raise exception.NotFound(ip)
-
-            query.delete()
-
-    @objects.objectify(objects.community)
-    def icommunity_create(self, values):
-        if not values.get('uuid'):
-            values['uuid'] = uuidutils.generate_uuid()
-        icommunity = models.icommunity()
-        icommunity.update(values)
-        with _session_for_write() as session:
-            try:
-                session.add(icommunity)
-                session.flush()
-            except db_exc.DBDuplicateEntry:
-                raise exception.CommunityAlreadyExists(uuid=values['uuid'])
-            return icommunity
-
-    @objects.objectify(objects.community)
-    def icommunity_get(self, iid):
-        query = model_query(models.icommunity)
-        query = add_identity_filter(query, iid)
-
-        try:
-            result = query.one()
-        except NoResultFound:
-            raise exception.NotFound(iid)
-
-        return result
-
-    @objects.objectify(objects.community)
-    def icommunity_get_list(self, limit=None, marker=None,
-                            sort_key=None, sort_dir=None):
-
-        query = model_query(models.icommunity)
-
-        return _paginate_query(models.icommunity, limit, marker,
-                               sort_key, sort_dir, query)
-
-    @objects.objectify(objects.community)
-    def icommunity_get_by_name(self, name):
-        result = model_query(models.icommunity, read_deleted="no").\
-            filter_by(community=name).\
-            first()
-
-        if not result:
-            raise exception.NotFound(name)
-
-        return result
-
-    @objects.objectify(objects.community)
-    def icommunity_update(self, iid, values):
-        with _session_for_write() as session:
-            query = model_query(models.icommunity, session=session)
-            query = add_identity_filter(query, iid)
-
-            count = query.update(values, synchronize_session='fetch')
-            if count != 1:
-                raise exception.NotFound(iid)
-            return query.one()
-
-    def icommunity_destroy(self, name):
-        with _session_for_write() as session:
-            query = model_query(models.icommunity, session=session)
-            query = add_identity_filter(query, name, use_community=True)
-
-            try:
-                query.one()
-            except NoResultFound:
-                raise exception.NotFound(name)
-
-            query.delete()
-
     def _user_get(self, server):
         # server may be passed as a string. It may be uuid or Int.
         # server = int(server)
@@ -4195,6 +4068,8 @@ class Connection(api.Connection):
             backend = models.StorageLvm()
         elif values['backend'] == constants.SB_TYPE_EXTERNAL:
             backend = models.StorageExternal()
+        elif values['backend'] == constants.SB_TYPE_CEPH_ROOK:
+            backend = models.StorageCephRook()
         else:
             raise exception.InvalidParameterValue(
                 err="Invalid backend setting: %s" % values['backend'])
@@ -4271,6 +4146,8 @@ class Connection(api.Connection):
             return objects.storage_lvm.from_db_object(result)
         elif result['backend'] == constants.SB_TYPE_EXTERNAL:
             return objects.storage_external.from_db_object(result)
+        elif result['backend'] == constants.SB_TYPE_CEPH_ROOK:
+            return objects.storage_ceph_rook.from_db_object(result)
         else:
             return objects.storage_backend.from_db_object(result)
 
@@ -4307,6 +4184,9 @@ class Connection(api.Connection):
                                                   marker, sort_key, sort_dir)
         elif backend_type == constants.SB_TYPE_EXTERNAL:
             return self._storage_backend_get_list(models.StorageExternal, limit,
+                                                  marker, sort_key, sort_dir)
+        elif backend_type == constants.SB_TYPE_CEPH_ROOK:
+            return self._storage_backend_get_list(models.StorageCephRook, limit,
                                                   marker, sort_key, sort_dir)
         else:
             entity = with_polymorphic(models.StorageBackend, '*')
@@ -4358,6 +4238,8 @@ class Connection(api.Connection):
                 return self._storage_backend_update(models.StorageLvm, storage_backend_id, values)
             elif result.backend == constants.SB_TYPE_EXTERNAL:
                 return self._storage_backend_update(models.StorageExternal, storage_backend_id, values)
+            elif result.backend == constants.SB_TYPE_CEPH_ROOK:
+                return self._storage_backend_update(models.StorageCephRook, storage_backend_id, values)
             else:
                 return self._storage_backend_update(models.StorageBackend, storage_backend_id, values)
 
@@ -4528,6 +4410,34 @@ class Connection(api.Connection):
     def storage_ceph_external_destroy(self, storage_ceph_external_id):
         return self._storage_backend_destroy(models.StorageCephExternal,
                                              storage_ceph_external_id)
+
+    @objects.objectify(objects.storage_ceph_rook)
+    def storage_ceph_rook_create(self, values):
+        backend = models.StorageCephRook()
+        return self._storage_backend_create(backend, values)
+
+    @objects.objectify(objects.storage_ceph_rook)
+    def storage_ceph_rook_get(self, storage_ceph_rook_id):
+        return self._storage_backend_get_by_cls(models.StorageCephRook,
+                                                storage_ceph_rook_id)
+
+    @objects.objectify(objects.storage_ceph_rook)
+    def storage_ceph_rook_get_list(self, limit=None, marker=None,
+                              sort_key=None, sort_dir=None):
+        return self._storage_backend_get_list(models.StorageCephRook, limit,
+                                              marker,
+                                              sort_key, sort_dir)
+
+    @objects.objectify(objects.storage_ceph_rook)
+    def storage_ceph_rook_update(self, storage_ceph_rook_id, values):
+        return self._storage_backend_update(models.StorageCephRook,
+                                            storage_ceph_rook_id,
+                                            values)
+
+    @objects.objectify(objects.storage_ceph_rook)
+    def storage_ceph_rook_destroy(self, storage_ceph_rook_id):
+        return self._storage_backend_destroy(models.StorageCephRook,
+                                             storage_ceph_rook_id)
 
     def _drbdconfig_get(self, server):
         query = model_query(models.drbdconfig)
@@ -7806,7 +7716,7 @@ class Connection(api.Connection):
 
             count = query.update(values, synchronize_session='fetch')
             if count == 0:
-                raise exception.KubeAppNotFound(values['name'])
+                raise exception.KubeAppNotFound(name=values.get('name'))
             return query.one()
 
     def kube_app_destroy(self, name, version=None, inactive=False):
@@ -8796,3 +8706,79 @@ class Connection(api.Connection):
             else:
                 query = query.filter_by(status=status)
         return query.all()
+
+    def _restore_get(self, id):
+        query = model_query(models.Restore)
+        if utils.is_uuid_like(id):
+            query = query.filter_by(uuid=id)
+        else:
+            query = query.filter_by(id=id)
+
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.RestoreNotFound(uuid=id)
+
+        return result
+
+    @objects.objectify(objects.restore)
+    def restore_create(self, values):
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+        restore = models.Restore()
+        restore.update(values)
+        with _session_for_write() as session:
+            try:
+                session.add(restore)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                raise exception.RestoreAlreadyExists(uuid=values['uuid'])
+
+            return restore
+
+    @objects.objectify(objects.restore)
+    def restore_get(self, id):
+        return self._restore_get(id)
+
+    @objects.objectify(objects.restore)
+    def restore_get_list(self, limit=None, marker=None,
+                         sort_key=None, sort_dir=None):
+        query = model_query(models.Restore)
+
+        return _paginate_query(models.Restore, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @objects.objectify(objects.restore)
+    def restore_get_one(self, filters):
+        query = model_query(models.Restore)
+
+        for key in filters if filters else {}:
+            query = query.filter(getattr(models.Restore, key).in_([filters[key]]))
+
+        try:
+            return query.one()
+        except NoResultFound:
+            raise exception.NotFound()
+
+    @objects.objectify(objects.restore)
+    def restore_update(self, uuid, values):
+        with _session_for_write() as session:
+            query = model_query(models.Restore, session=session)
+            query = query.filter_by(uuid=uuid)
+
+            count = query.update(values, synchronize_session='fetch')
+            if count != 1:
+                raise exception.RestoreNotFound(uuid=uuid)
+            return query.one()
+
+    def restore_destroy(self, id):
+        with _session_for_write() as session:
+            query = model_query(models.Restore, session=session)
+            query = query.filter_by(uuid=id)
+
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.RestoreNotFound(uuid=id)
+
+            query.delete()

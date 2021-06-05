@@ -1,6 +1,6 @@
 # sim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2019-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -20,9 +20,20 @@ from sysinv.openstack.common import context
 import tempfile
 import threading
 import psutil
+import retrying
 
 LOG = logging.getLogger(__name__)
 
+
+# TODO(agrosu):
+# There is a lot of duplicate code just to execute a helm command
+# in a subshel.
+# We should either move to a Helm API or, at least, move all this
+# suprocess calling and error handling into a common function/object.
+# python3 supports a 'timeout' parameter for +communicate() which
+# will raise a subprocess.TimeoutExpired.
+# When python3 migration is finished, the explicit timer should
+# be removed.
 
 def kill_process_and_descendants(proc):
     # function to kill a process and its children processes
@@ -46,16 +57,7 @@ def refresh_helm_repo_information():
     rpcapi.refresh_helm_repo_information(context.get_admin_context())
 
 
-def retrieve_helm_releases():
-    """Retrieve the deployed helm releases from tiller
-
-    Get the name, namespace and version for the deployed releases
-    by querying helm tiller
-    :return: a dict of deployed helm releases
-    """
-    deployed_releases = {}
-
-    # Helm v3 releases
+def retrieve_helm_v3_releases():
     helm_list = subprocess.Popen(
         ['helm', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
          'list', '--all-namespaces', '--output', 'yaml'],
@@ -63,34 +65,42 @@ def retrieve_helm_releases():
     timer = threading.Timer(20, kill_process_and_descendants, [helm_list])
 
     try:
-        releases = {}
-
         timer.start()
         out, err = helm_list.communicate()
-        if out and not err:
-            releases = yaml.safe_load(out)
-        elif err and not out:
+        if helm_list.returncode != 0:
+            if err:
+                raise exception.HelmTillerFailure(reason=err)
+
+            # killing the subprocesses with +kill() when timer expires returns EBADF
+            # because the pipe is closed, but no error string on stderr.
+            if helm_list.returncode == -9:
+                raise exception.HelmTillerFailure(
+                    reason="helm list operation timed out after "
+                           "20 seconds. Terminated by threading timer.")
             raise exception.HelmTillerFailure(
-                reason="Failed to retrieve releases: %s" % err)
-        elif not err and not out:
-            err_msg = "Failed to retrieve releases. " \
-                      "Helm tiller response timeout."
-            raise exception.HelmTillerFailure(reason=err_msg)
+                reason="helm list operation failed without error "
+                       "message, errno=%s" % helm_list.returncode)
 
-        for r in releases:
-            r_name = r.get('name')
-            r_version = r.get('revision')
-            r_namespace = r.get('namespace')
+        deployed_releases = {}
+        if out:
+            releases = yaml.safe_load(out)
+            for r in releases:
+                r_name = r.get('name')
+                r_version = r.get('revision')
+                r_namespace = r.get('namespace')
 
-            deployed_releases.setdefault(r_name, {}).update(
-                {r_namespace: r_version})
+                deployed_releases.setdefault(r_name, {}).update(
+                    {r_namespace: r_version})
+
+        return deployed_releases
     except Exception as e:
         raise exception.HelmTillerFailure(
-            reason="Failed to retrieve releases: %s" % e)
+            reason="Failed to retrieve helmv3 releases: %s" % e)
     finally:
         timer.cancel()
 
-    # Helm v2 releases
+
+def retrieve_helm_v2_releases():
     env = os.environ.copy()
     env['PATH'] = '/usr/local/sbin:' + env['PATH']
     env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
@@ -102,33 +112,53 @@ def retrieve_helm_releases():
     timer = threading.Timer(20, kill_process_and_descendants, [helm_list])
 
     try:
-        releases = {}
-
         timer.start()
         out, err = helm_list.communicate()
-        if out and not err:
-            output = yaml.safe_load(out)
-            releases = output.get('Releases', None)
-        elif err and not out:
+        if helm_list.returncode != 0:
+            if err:
+                raise exception.HelmTillerFailure(reason=err)
+
+            # killing the subprocesses with +kill() when timer expires returns EBADF
+            # because the pipe is closed, but no error string on stderr.
+            if helm_list.returncode == -9:
+                raise exception.HelmTillerFailure(
+                    reason="helmv2-cli -- helm list operation timed out after "
+                           "20 seconds. Terminated by threading timer.")
             raise exception.HelmTillerFailure(
-                reason="Failed to retrieve releases: %s" % err)
-        elif not err and not out:
-            err_msg = "Failed to retrieve releases. " \
-                      "Helm tiller response timeout."
-            raise exception.HelmTillerFailure(reason=err_msg)
+                reason="helmv2-cli -- helm list operation failed without "
+                       "error message, errno=%s" % helm_list.returncode)
 
-        for r in releases:
-            r_name = r.get('Name')
-            r_version = r.get('Revision')
-            r_namespace = r.get('Namespace')
+        deployed_releases = {}
+        if out:
+            output = yaml.safe_load(out)
+            releases = output.get('Releases', {})
+            for r in releases:
+                r_name = r.get('Name')
+                r_version = r.get('Revision')
+                r_namespace = r.get('Namespace')
 
-            deployed_releases.setdefault(r_name, {}).update(
-                {r_namespace: r_version})
+                deployed_releases.setdefault(r_name, {}).update(
+                    {r_namespace: r_version})
+
+        return deployed_releases
     except Exception as e:
         raise exception.HelmTillerFailure(
-            reason="Failed to retrieve releases: %s" % e)
+            reason="Failed to retrieve helmv2 releases: %s" % e)
     finally:
         timer.cancel()
+
+
+def retrieve_helm_releases():
+    """Retrieve the deployed helm releases from tiller
+
+    Get the name, namespace and version for the deployed releases
+    by querying helm tiller
+    :return: a dict of deployed helm releases
+    """
+    deployed_releases = {}
+
+    deployed_releases.update(retrieve_helm_v3_releases())
+    deployed_releases.update(retrieve_helm_v2_releases())
 
     return deployed_releases
 
@@ -179,6 +209,37 @@ def delete_helm_release(release):
         timer.cancel()
 
 
+def _retry_on_HelmTillerFailure(ex):
+    LOG.info('Caught HelmTillerFailure exception. Resetting tiller and retrying... '
+            'Exception: {}'.format(ex))
+    env = os.environ.copy()
+    env['PATH'] = '/usr/local/sbin:' + env['PATH']
+    env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
+    helm_reset = subprocess.Popen(
+        ['helmv2-cli', '--',
+         'helm', 'reset', '--force'],
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    timer = threading.Timer(20, kill_process_and_descendants, [helm_reset])
+
+    try:
+        timer.start()
+        out, err = helm_reset.communicate()
+        if helm_reset.returncode == 0:
+            return isinstance(ex, exception.HelmTillerFailure)
+        elif err:
+            raise exception.HelmTillerFailure(reason=err)
+        else:
+            err_msg = "helmv2-cli -- helm reset operation failed."
+            raise exception.HelmTillerFailure(reason=err_msg)
+    except Exception as e:
+        raise exception.HelmTillerFailure(
+            reason="Failed to reset tiller: %s" % e)
+    finally:
+        timer.cancel()
+
+
+@retrying.retry(stop_max_attempt_number=2,
+                retry_on_exception=_retry_on_HelmTillerFailure)
 def get_openstack_pending_install_charts():
     env = os.environ.copy()
     env['PATH'] = '/usr/local/sbin:' + env['PATH']

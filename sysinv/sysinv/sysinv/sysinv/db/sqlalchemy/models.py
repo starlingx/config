@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -99,6 +99,8 @@ class isystem(Base):
     capabilities = Column(JSONEncodedDict)
     contact = Column(String(255))
     location = Column(String(255))
+    latitude = Column(String(30))
+    longitude = Column(String(30))
     services = Column(Integer, default=72)
     software_version = Column(String(255))
     timezone = Column(String(255))
@@ -413,6 +415,7 @@ class AeInterfaces(EthernetCommon, Interfaces):
     aedict = Column(JSONEncodedDict)  # e.g. 802.3ad parameters
     txhashpolicy = Column(String(255))  # e.g. L2, L2L3, L3L4
     schedpolicy = Column(String(255))
+    primary_reselect = Column(String(32))  # e.g. always, better, failure
 
     __mapper_args__ = {
         'polymorphic_identity': 'ae',
@@ -718,46 +721,6 @@ class journal(Base):
     foristorid = Column(Integer, ForeignKey('i_istor.id', ondelete='CASCADE'))
 
 
-class itrapdest(Base):
-
-    snmpEnum = Enum('snmpv2c_trap',
-                    'reserve1',
-                    'reserve2',
-                    name='snmpVersionEnum')
-
-    transportEnum = Enum('udp',
-                         'reserve1',
-                         'reserve2',
-                         name='snmpTransportType')
-
-    __tablename__ = 'i_trap_destination'
-    id = Column(Integer, primary_key=True)
-    uuid = Column(String(36), unique=True)
-
-    ip_address = Column(String(255), unique=True, index=True)
-    community = Column(String(255))
-    port = Column(Integer, default=162)
-    type = Column(snmpEnum, default='snmpv2c_trap')
-    transport = Column(transportEnum, default='udp')
-
-
-class icommunity(Base):
-
-    accessEnum = Enum('ro',
-                      'rw',
-                      'reserve1',
-                      'reserve2',
-                      name='accessEnum')
-
-    __tablename__ = 'i_community'
-    id = Column(Integer, primary_key=True)
-    uuid = Column(String(36), unique=True)
-
-    community = Column(String(255), unique=True, index=True)
-    view = Column(String(255), default='.1')
-    access = Column(accessEnum, default='ro')
-
-
 class iuser(Base):
     __tablename__ = 'i_user'
 
@@ -882,6 +845,7 @@ class StorageCeph(StorageBackend):
     object_pool_gib = Column(Integer)
     kube_pool_gib = Column(Integer)
     object_gateway = Column(Boolean, default=False)
+    network = Column(String(255), default=constants.NETWORK_TYPE_MGMT)
     tier_id = Column(Integer,
                      ForeignKey('storage_tiers.id'))
 
@@ -937,6 +901,18 @@ class StorageCephExternal(StorageBackend):
 
     __mapper_args__ = {
         'polymorphic_identity': 'ceph-external',
+    }
+
+
+class StorageCephRook(StorageBackend):
+    __tablename__ = 'storage_ceph_rook'
+
+    id = Column(Integer, ForeignKey('storage_backend.id'), primary_key=True,
+                nullable=False)
+    ceph_conf = Column(JSONEncodedDict)
+
+    __mapper_args__ = {
+        'polymorphic_identity': 'ceph-rook',
     }
 
 
@@ -1644,6 +1620,15 @@ class SoftwareUpgrade(Base):
                            foreign_keys=[to_load])
 
 
+class Restore(Base):
+    __tablename__ = 'backup_restore'
+
+    id = Column('id', Integer, primary_key=True, nullable=False)
+    uuid = Column('uuid', String(36), unique=True)
+    state = Column('state', String(128), nullable=False)
+    capabilities = Column(JSONEncodedDict)
+
+
 class HostUpgrade(Base):
     __tablename__ = 'host_upgrade'
 
@@ -1883,6 +1868,7 @@ class KubeApp(Base):
     active = Column(Boolean, nullable=False, default=False)
     recovery_attempts = Column(Integer, nullable=False, default=0)
     mode = Column(String(255), nullable=True)
+    app_metadata = Column(JSONEncodedDict)
     UniqueConstraint('name', 'app_version', name='u_app_name_version')
 
 

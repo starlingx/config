@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 import pecan
@@ -101,6 +101,10 @@ class StorageBackend(base.APIBase):
     confirmed = types.boolean
     "Represent confirmation that the backend operation should proceed"
 
+    # Network parameter: [API-only field for some backends]
+    network = wtypes.text
+    "The network for backend components"
+
     def __init__(self, **kwargs):
         defaults = {'uuid': uuidutils.generate_uuid(),
                     'state': constants.SB_STATE_CONFIGURING,
@@ -114,6 +118,11 @@ class StorageBackend(base.APIBase):
         # 'confirmed' is not part of objects.storage_backend.fields
         # (it's an API-only attribute)
         self.fields.append('confirmed')
+
+        # 'network' is not part of objects.storage_backend.fields
+        # (it's an API-only attribute passed to specific backend
+        # implementation such as storage_ceph)
+        self.fields.append('network')
 
         for k in self.fields:
             setattr(self, k, kwargs.get(k, defaults.get(k)))
@@ -133,6 +142,17 @@ class StorageBackend(base.APIBase):
                                                  'task',
                                                  'services',
                                                  'capabilities'])
+
+        try:
+            if storage_backend.backend == constants.SB_TYPE_CEPH:
+                rpc_storage_ceph = objects.storage_ceph.get_by_uuid(
+                    pecan.request.context,
+                    storage_backend.uuid)
+                setattr(storage_backend, 'network', rpc_storage_ceph.network)
+            else:
+                setattr(storage_backend, 'network', wsme.Unset)
+        except Exception:
+            pass
 
         # never expose the isystem_id attribute
         storage_backend.isystem_id = wtypes.Unset

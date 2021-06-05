@@ -32,6 +32,7 @@ DELAY_SEC=70
 CONTROLLER_UPGRADE_STARTED_FILE="$(basename ${CONTROLLER_UPGRADE_STARTED_FLAG})"
 IMA_POLICY=/etc/ima.policy
 PUPPET_CACHE=/etc/puppet/cache
+PUPPET_CACHE_TMP=/etc/puppet/cache.tmp
 ACTIVE_CONTROLLER_NOT_FOUND_FLAG="/var/run/.active_controller_not_found"
 
 fatal_error()
@@ -297,6 +298,60 @@ start()
         fi
     fi
 
+    if [ -e $CONFIG_DIR/etcd/etcd-server.crt ]
+    then
+        cp $CONFIG_DIR/etcd/etcd-server.crt /etc/etcd/etcd-server.crt
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy $CONFIG_DIR/etcd/etcd-server.crt"
+        fi
+    fi
+
+    if [ -e $CONFIG_DIR/etcd/etcd-server.key ]
+    then
+        cp $CONFIG_DIR/etcd/etcd-server.key /etc/etcd/etcd-server.key
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy $CONFIG_DIR/etcd/etcd-server.key"
+        fi
+    fi
+
+    if [ -e $CONFIG_DIR/etcd/etcd-client.crt ]
+    then
+        cp $CONFIG_DIR/etcd/etcd-client.crt /etc/etcd/etcd-client.crt
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy $CONFIG_DIR/etcd/etcd-client.crt"
+        fi
+    fi
+
+    if [ -e $CONFIG_DIR/etcd/etcd-client.key ]
+    then
+        cp $CONFIG_DIR/etcd/etcd-client.key /etc/etcd/etcd-client.key
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy $CONFIG_DIR/etcd/etcd-client.key"
+        fi
+    fi
+
+    if [ -e $CONFIG_DIR/etcd/ca.crt ]
+    then
+        cp $CONFIG_DIR/etcd/ca.crt /etc/etcd/ca.crt
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy $CONFIG_DIR/etcd/ca.crt"
+        fi
+    fi
+
+    if [ -e $CONFIG_DIR/etcd/ca.key ]
+    then
+        cp $CONFIG_DIR/etcd/ca.key /etc/etcd/ca.key
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy $CONFIG_DIR/etcd/ca.key"
+        fi
+    fi
+
     if [ -e $CONFIG_DIR/registry-cert.key ]
     then
         cp $CONFIG_DIR/registry-cert.key /etc/ssl/private/registry-cert.key
@@ -331,15 +386,6 @@ start()
         if [ $? -ne 0 ]
         then
             fatal_error "Unable to copy $CONFIG_DIR/registry-cert.crt to docker dir for central registry"
-        fi
-    fi
-
-    if [ -e $CONFIG_DIR/admin-ep-cert.pem ]
-    then
-        cp $CONFIG_DIR/admin-ep-cert.pem /etc/ssl/private/
-        if [ $? -ne 0 ]
-        then
-            fatal_error "Unable to copy $CONFIG_DIR/admin-ep-cert.pem to certificates dir"
         fi
     fi
 
@@ -493,13 +539,26 @@ start()
             fatal_error "Unable to copy .conf files to /etc/postgresql"
         fi
 
-        # Copy the hieradata to cache directory
-        rm -rf ${PUPPET_CACHE}
-        cp -R ${PUPPET_PATH} ${PUPPET_CACHE}
+        # rsync the hieradata to temp cache directory
+        rm -rf ${PUPPET_CACHE_TMP}
+        rsync -a "${PUPPET_PATH}/hieradata" "${PUPPET_CACHE_TMP}"
         if [ $? -ne 0 ]
         then
             umount_platform_dir
-            fatal_error "Failed to copy puppet directory ${PUPPET_PATH} into cache dir ${PUPPET_CACHE}"
+            fatal_error "Failed to rsync puppet hieradata from ${PUPPET_PATH} to temp cache directory ${PUPPET_CACHE_TMP}"
+        fi
+
+        # flush data to persistent storage and rename the temp puppet cache
+        # directory to final cache directory. This is more atomic than straight
+        # copy and minimize the chance to have incomplete or corrupted cached
+        # hieradata.
+        sync
+        rm -rf ${PUPPET_CACHE}
+        mv "${PUPPET_CACHE_TMP}" "${PUPPET_CACHE}"
+        if [ $? -ne 0 ]
+        then
+            umount_platform_dir
+            fatal_error "Failed to rename puppet temp cache directory ${PUPPET_CACHE_TMP} to cache directory ${PUPPET_CACHE}"
         fi
 
         # Copy the staging secured vault
@@ -520,7 +579,7 @@ start()
 
     if [ -f ${HOST_HIERA} ]; then
         echo "$0: Running puppet manifest apply"
-        puppet-manifest-apply.sh ${HIERADATA_PATH} ${IPADDR} controller
+        puppet-manifest-apply.sh ${HIERADATA_PATH} ${IPADDR} ${subfunction}
         RC=$?
         if [ $RC -ne 0 ]
         then

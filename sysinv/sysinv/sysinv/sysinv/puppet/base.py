@@ -5,6 +5,7 @@
 #
 
 import abc
+import keyring
 import six
 
 from sqlalchemy.orm.exc import NoResultFound
@@ -74,6 +75,23 @@ class BasePuppet(object):
     @staticmethod
     def _generate_random_password(length=16):
         return utils.generate_random_password(length=length)
+
+    def _get_database_password(self, service):
+        passwords = self.context.setdefault('_database_passwords', {})
+        if service not in passwords:
+            passwords[service] = self._get_keyring_password(service,
+                                                            'database')
+        return passwords[service]
+
+    def _get_database_username(self, service):
+        return 'admin-%s' % service
+
+    def _get_keyring_password(self, service, user):
+        password = keyring.get_password(service, user)
+        if not password:
+            password = self._generate_random_password()
+            keyring.set_password(service, user, password)
+        return password
 
     def _get_system(self):
         system = self.context.get('_system', None)

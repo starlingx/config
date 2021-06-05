@@ -54,11 +54,11 @@ CONF.register_opts(cert_mon_opts, 'certmon')
 class CertificateMonManager(periodic_task.PeriodicTasks):
     def __init__(self):
         super(CertificateMonManager, self).__init__(CONF)
-        self.dc_mon_thread = None
-        self.platcert_mon_thread = None
+        self.mon_threads = []
         self.audit_thread = None
         self.dc_monitor = None
-        self.platcert_monitor = None
+        self.restapicert_monitor = None
+        self.registrycert_monitor = None
         self.reattempt_tasks = []
         self.subclouds_to_audit = []
 
@@ -166,6 +166,11 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         # Failed tasks that need to be reattempted will be taken care here
         max_attempts = CONF.certmon.max_retry
         tasks = self.reattempt_tasks[:]
+
+        num_tasks = len(tasks)
+        if num_tasks > 0:
+            LOG.info('%s failed tasks to reattempt in queue.' % num_tasks)
+
         for task in tasks:
             if task.run():
                 self.reattempt_tasks.remove(task)
@@ -190,17 +195,22 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         self.dc_monitor.initialize(
             audit_subcloud=lambda subcloud_name: self.requeue_audit(subcloud_name))
 
-    def init_platformcert_monitor(self):
-        self.platcert_monitor = watcher.PlatCert_CertWatcher()
-        self.platcert_monitor.initialize()
+    def init_restapicert_monitor(self):
+        self.restapicert_monitor = watcher.RestApiCert_CertWatcher()
+        self.restapicert_monitor.initialize()
+
+    def init_registrycert_monitor(self):
+        self.registrycert_monitor = watcher.RegistryCert_CertWatcher()
+        self.registrycert_monitor.initialize()
 
     def start_monitor(self):
         utils.init_keystone_auth_opts()
         dc_role = utils.get_dc_role()
         while True:
             try:
-                # init platformcert monitor
-                self.init_platformcert_monitor()
+                # init platform cert monitors
+                self.init_restapicert_monitor()
+                self.init_registrycert_monitor()
 
                 # init dc monitor only if running in DC role
                 if (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER or
@@ -213,20 +223,17 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
                 break
 
         # spawn threads (DC thread spawned only if running in DC role)
-        self.platcert_mon_thread = greenthread.spawn(self.platcert_monitor_cert)
+        self.mon_threads.append(greenthread.spawn(self.monitor_cert, self.restapicert_monitor))
+        self.mon_threads.append(greenthread.spawn(self.monitor_cert, self.registrycert_monitor))
 
         if (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER or
                 dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
-            self.dc_mon_thread = greenthread.spawn(self.dc_monitor_cert)
+            self.mon_threads.append(greenthread.spawn(self.monitor_cert, self.dc_monitor))
 
     def stop_monitor(self):
-        if self.dc_mon_thread:
-            self.dc_mon_thread.kill()
-            self.dc_mon_thread.wait()
-
-        if self.platcert_mon_thread:
-            self.platcert_mon_thread.kill()
-            self.platcert_mon_thread.wait()
+        for mon_thread in self.mon_threads:
+            mon_thread.kill()
+            mon_thread.wait()
 
     def stop_audit(self):
         if self.audit_thread:
@@ -243,26 +250,11 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             except Exception as e:
                 LOG.exception(e)
 
-    def dc_monitor_cert(self):
+    def monitor_cert(self, monitor):
         while True:
             # never exit until exit signal received
             try:
-                self.dc_monitor.start_watch(
-                    on_success=lambda task_id: self._purge_reattempt_task(task_id),
-                    on_error=lambda task: self._add_reattempt_task(task),
-                )
-            except greenlet.GreenletExit:
-                break
-            except Exception as e:
-                # A bug somewhere?
-                # It shouldn't fall to here, but log and restart if it did
-                LOG.exception(e)
-
-    def platcert_monitor_cert(self):
-        while True:
-            # never exit until exit signal received
-            try:
-                self.platcert_monitor.start_watch(
+                monitor.start_watch(
                     on_success=lambda task_id: self._purge_reattempt_task(task_id),
                     on_error=lambda task: self._add_reattempt_task(task),
                 )

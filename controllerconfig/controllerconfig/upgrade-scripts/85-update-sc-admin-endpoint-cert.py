@@ -9,7 +9,6 @@
 # This script can be removed in the release that follows stx.5.0
 #
 
-from shutil import copyfile
 import socket
 import subprocess
 import sys
@@ -83,7 +82,7 @@ def execute_command(cmd):
     stdout, stderr = sub.communicate()
     if sub.returncode != 0:
         LOG.error('Command failed:\n %s\n. %s\n%s' % (cmd, stdout, stderr))
-        raise Exception('Failed to update certificate')
+        raise Exception('Failed to execute command: %s' % cmd)
     return stdout
 
 
@@ -111,31 +110,6 @@ def update_sc_admin_endpoint_cert(to_release):
         break
     else:
         raise Exception('Command failed after retries: %s' % cmd)
-
-    # Extract subcloud admin endpoint certificate
-    cmd = "kubectl --kubeconfig=/etc/kubernetes/admin.conf get secret \
-           sc-adminep-certificate -n sc-cert -o=jsonpath='{.data.tls\.crt}' \
-           | base64 --decode"
-    cert = execute_command(cmd)
-
-    # Extract subcloud admin endpoint private key
-    cmd = "kubectl --kubeconfig=/etc/kubernetes/admin.conf get secret \
-           sc-adminep-certificate -n sc-cert -o=jsonpath='{.data.tls\.key}' \
-           | base64 --decode"
-    key = execute_command(cmd)
-
-    # Create haproxy tls certificate
-    cert_file = "/etc/ssl/private/admin-ep-cert.pem"
-    with open(cert_file, 'w') as f:
-        f.write(key + cert)
-
-    # Copy admin endpoint certficates to the shared filesystem directory
-    shared_file = "/opt/platform/config/%s/admin-ep-cert.pem" % to_release
-    copyfile(cert_file, shared_file)
-
-    # Restart haproxy to take the new cert
-    cmd = "sm-restart service haproxy"
-    execute_command(cmd)
 
     LOG.info('Subcloud admin endpoint certificate updated successfully')
 

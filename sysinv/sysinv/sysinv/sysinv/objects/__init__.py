@@ -12,7 +12,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 
@@ -24,7 +24,6 @@ from sysinv.objects import address_pool
 from sysinv.objects import ceph_mon
 from sysinv.objects import certificate
 from sysinv.objects import cluster
-from sysinv.objects import community
 from sysinv.objects import controller_fs
 from sysinv.objects import cpu
 from sysinv.objects import datanetwork
@@ -88,7 +87,6 @@ from sysinv.objects import storage_backend
 from sysinv.objects import storage_ceph
 from sysinv.objects import storage_lvm
 from sysinv.objects import system
-from sysinv.objects import trapdest
 from sysinv.objects import user
 from sysinv.objects import service
 from sysinv.objects import tpmconfig
@@ -97,7 +95,9 @@ from sysinv.objects import storage_file
 from sysinv.objects import storage_external
 from sysinv.objects import storage_tier
 from sysinv.objects import storage_ceph_external
+from sysinv.objects import storage_ceph_rook
 from sysinv.objects import host_fs
+from sysinv.objects import restore
 
 
 def objectify(klass):
@@ -149,8 +149,6 @@ storage = storage.Storage
 journal = journal.Journal
 lvg = lvg.LVG
 pv = pv.PV
-trapdest = trapdest.TrapDest
-community = community.Community
 user = user.User
 dns = dns.DNS
 ntp = ntp.NTP
@@ -191,6 +189,7 @@ storage_file = storage_file.StorageFile
 storage_external = storage_external.StorageExternal
 storage_tier = storage_tier.StorageTier
 storage_ceph_external = storage_ceph_external.StorageCephExternal
+storage_ceph_rook = storage_ceph_rook.StorageCephRook
 helm_overrides = helm_overrides.HelmOverrides
 label = label.Label
 kube_app = kube_app.KubeApp
@@ -205,6 +204,7 @@ device_image_label = device_image_label.DeviceImageLabel
 device_image_state = device_image_state.DeviceImageState
 device_label = device_label.DeviceLabel
 fpga_device = fpga_device.FPGADevice
+restore = restore.Restore
 
 __all__ = ("system",
            "cluster",
@@ -226,8 +226,6 @@ __all__ = ("system",
            "journal",
            "lvg",
            "pv",
-           "trapdest",
-           "community",
            "user",
            "dns",
            "ntp",
@@ -267,6 +265,7 @@ __all__ = ("system",
            "objectify",
            "storage_file",
            "storage_external",
+           "storage_ceph_rook",
            "storage_tier",
            "storage_ceph_external",
            "helm_overrides",
@@ -282,6 +281,7 @@ __all__ = ("system",
            "device_image_label",
            "device_label",
            "fpga_device",
+           "restore",
            # alias objects for RPC compatibility
            "ihost",
            "ilvg",

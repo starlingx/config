@@ -90,6 +90,11 @@ def do_host_disk_list(cc, args):
 @utils.arg('device_name_path_uuid',
            metavar='<device name or path or UUID>',
            help='Name or uuid of disk on the host [REQUIRED]')
+@utils.arg('-s', '--skip_formatting',
+           action='store_true',
+           default=False,
+           help='Wipe the current partition information but do not add a new'
+           ' partition table.')
 @utils.arg('--confirm',
            action='store_true',
            default=False,
@@ -118,6 +123,7 @@ def do_host_disk_wipe(cc, args):
 
     fields = dict()
     fields['partition_table'] = constants.PARTITION_TABLE_GPT
+    fields['skip_formatting'] = 'True' if args.skip_formatting else 'False'
 
     patch = []
     for (k, v) in fields.items():

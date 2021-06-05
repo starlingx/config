@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2019-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -19,10 +19,6 @@ import tempfile
 from glob import glob
 from six import iteritems
 from oslo_log import log as logging
-
-from sysinv.helm import common
-from sysinv.common import constants
-from sysinv.common.storage_backend_conf import StorageBackendConfig
 
 LOG = logging.getLogger(__name__)
 
@@ -520,51 +516,3 @@ class ArmadaManifestOperator(object):
         :param mode: mode to control how to apply the application manifest
         """
         pass
-
-    def app_lifecycle_actions(self, context, conductor_obj, dbapi, operation, relative_timing):
-        """ Perform lifecycle actions for an operation
-
-        :param context: request context
-        :param conductor_obj: conductor object
-        :param dbapi: DB api object
-        :param operation: operation being performed
-        :param relative_timing: relative timing to perform action
-        """
-        pass
-
-    def app_rbd_actions(self, app_obj, dbapi, app_name, operation):
-        """ Perform rbd actions for an application based on operation
-
-        :param app_obj: AppOperator object
-        :param dbapi: dbapi
-        :param app_name: application name
-        :param operation: operation being performed
-        """
-
-        if app_name in [constants.HELM_APP_CERT_MANAGER,
-                        constants.HELM_APP_OIDC_AUTH,
-                        constants.HELM_APP_NGINX_IC]:
-            return
-
-        LOG.info("app_rbd_actions app: %s operation: %s" % (app_name, operation))
-
-        # TODO(ksmith): Further decouple this by moving this logic to the
-        # application derived class in openstack and just pass here.
-        # Since RBD provisioner requires Ceph, return false when not enabled
-        if not StorageBackendConfig.has_backend(
-            dbapi,
-            constants.SB_TYPE_CEPH
-        ):
-            rbd_provisioner_required = False
-        else:
-            rbd_provisioner_required = True
-
-        if operation == constants.APP_APPLY_OP:
-            if rbd_provisioner_required:
-                app_obj._create_rbd_provisioner_secrets(app_name)
-        elif operation == constants.APP_REMOVE_OP:
-            if rbd_provisioner_required:
-                app_obj._delete_rbd_provisioner_secrets(app_name)
-            if app_name == constants.HELM_APP_OPENSTACK:
-                app_obj._delete_ceph_persistent_volume_claim(common.HELM_NS_OPENSTACK)
-                app_obj._delete_namespace(common.HELM_NS_OPENSTACK)

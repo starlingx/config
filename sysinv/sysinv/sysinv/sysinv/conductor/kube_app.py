@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2018-2020 Wind River Systems, Inc.
+# Copyright (c) 2018-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -30,6 +30,7 @@ import time
 import zipfile
 
 from collections import namedtuple
+from distutils.util import strtobool
 from eventlet import greenpool
 from eventlet import greenthread
 from eventlet import queue
@@ -44,10 +45,11 @@ from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common.retrying import retry
 from sysinv.common import utils as cutils
-from sysinv.common.storage_backend_conf import K8RbdProvisioner
 from sysinv.conductor import openstack
 from sysinv.helm import common
 from sysinv.helm import utils as helm_utils
+from sysinv.helm.lifecycle_constants import LifecycleConstants
+from sysinv.helm.lifecycle_hook import LifecycleHookInfo
 
 
 # Log and config
@@ -69,8 +71,6 @@ MAX_DOWNLOAD_ATTEMPTS = 3
 DOWNLOAD_WAIT_BEFORE_RETRY = 30
 TARFILE_DOWNLOAD_CONNECTION_TIMEOUT = 60
 TARFILE_TRANSFER_CHUNK_SIZE = 1024 * 512
-DOCKER_REGISTRY_SECRET = 'default-registry-key'
-CHARTS_PENDING_INSTALL_ITERATIONS = 60
 
 ARMADA_LOG_MAX = 10
 ARMADA_HOST_LOG_LOCATION = '/var/log/armada'
@@ -78,11 +78,12 @@ ARMADA_CONTAINER_LOG_LOCATION = '/logs'
 ARMADA_CONTAINER_TMP = '/tmp'
 ARMADA_LOCK_GROUP = 'armada.process'
 ARMADA_LOCK_VERSION = 'v1'
-ARMADA_LOCK_NAMESPACE = 'armada'
+ARMADA_LOCK_NAMESPACE = 'kube-system'
 ARMADA_LOCK_PLURAL = 'locks'
 ARMADA_LOCK_NAME = 'lock'
 
 LOCK_NAME_APP_REAPPLY = 'app_reapply'
+LOCK_NAME_PROCESS_APP_METADATA = 'process_app_metadata'
 
 
 # Helper functions
@@ -135,14 +136,15 @@ Chart = namedtuple('Chart', 'metadata_name name namespace location release label
 
 class AppOperator(object):
     """Class to encapsulate Kubernetes App operations for System Inventory"""
+    DOCKER_REGISTRY_SECRET = 'default-registry-key'
 
-    APP_OPENSTACK_RESOURCE_CONFIG_MAP = 'ceph-etc'
     # List of in progress apps and their abort status
     abort_requested = {}
 
-    def __init__(self, dbapi, helm_op):
+    def __init__(self, dbapi, helm_op, apps_metadata):
         self._dbapi = dbapi
         self._helm = helm_op
+        self._apps_metadata = apps_metadata
         self._plugins = PluginHelper(self._dbapi, self._helm)
         self._fm_api = fm_api.FaultAPIs()
         self._docker = DockerHelper(self._dbapi)
@@ -172,21 +174,6 @@ class AppOperator(object):
         app = AppOperator.Application(rpc_app)
         return app.system_app
 
-    def _clear_armada_locks(self):
-        lock_name = "{}.{}.{}".format(ARMADA_LOCK_PLURAL,
-                                      ARMADA_LOCK_GROUP,
-                                      ARMADA_LOCK_NAME)
-        try:
-            self._kube.delete_custom_resource(ARMADA_LOCK_GROUP,
-                                              ARMADA_LOCK_VERSION,
-                                              ARMADA_LOCK_NAMESPACE,
-                                              ARMADA_LOCK_PLURAL,
-                                              lock_name)
-        except Exception:
-            # Best effort delete
-            LOG.warning("Failed to clear Armada locks.")
-            pass
-
     def _clear_stuck_applications(self):
         apps = self._dbapi.kube_app_get_all()
         for app in apps:
@@ -203,7 +190,7 @@ class AppOperator(object):
         # for a fresh start. This guarantees that a re-apply, re-update or
         # a re-remove attempt following a status reset will not fail due
         # to a lock related issue.
-        self._clear_armada_locks()
+        self._armada.clear_armada_locks()
 
     def _raise_app_alarm(self, app_name, app_action, alarm_id, severity,
                          reason_text, alarm_type, repair_action,
@@ -345,7 +332,8 @@ class AppOperator(object):
                 else:
                     op = 'application-update'
 
-                if app.name in constants.HELM_APPS_PLATFORM_MANAGED:
+                if app.name in self._apps_metadata[
+                        constants.APP_METADATA_PLATFORM_MANAGED_APPS].keys():
                     # For platform core apps, set the new status
                     # to 'uploaded'. The audit task will kick in with
                     # all its pre-requisite checks before reapplying.
@@ -353,7 +341,8 @@ class AppOperator(object):
                     self._clear_app_alarm(app.name)
 
             if (not reset_status or
-                    app.name not in constants.HELM_APPS_PLATFORM_MANAGED):
+                    app.name not in self._apps_metadata[
+                        constants.APP_METADATA_PLATFORM_MANAGED_APPS].keys()):
                 self._raise_app_alarm(
                     app.name, constants.APP_APPLY_FAILURE,
                     fm_constants.FM_ALARM_ID_APPLICATION_APPLY_FAILED,
@@ -945,143 +934,6 @@ class AppOperator(object):
             if null_labels:
                 self._update_kubernetes_labels(host.hostname, null_labels)
 
-    def _create_rbd_provisioner_secrets(self, app_name):
-        """ Provide access to the system persistent RBD provisioner.
-
-        The rbd-provsioner is installed as part of system provisioning and has
-        created secrets for all common default namespaces. Copy the secret to
-        this application's namespace(s) to provide resolution for PVCs
-
-        :param app_name: Name of the application
-        """
-
-        # Only set up a secret for the default storage pool (i.e. ignore
-        # additional storage tiers)
-        pool_secret = K8RbdProvisioner.get_user_secret_name({
-            'name': constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH]})
-        app_ns = self._helm.get_helm_application_namespaces(app_name)
-        namespaces = \
-            list(set([ns for ns_list in app_ns.values() for ns in ns_list]))
-        for ns in namespaces:
-            if (ns in [common.HELM_NS_HELM_TOOLKIT,
-                       common.HELM_NS_RBD_PROVISIONER] or
-                    self._kube.kube_get_secret(pool_secret, ns) is not None):
-                # Secret already exist
-                continue
-
-            try:
-                if not self._kube.kube_get_namespace(ns):
-                    self._kube.kube_create_namespace(ns)
-                self._kube.kube_copy_secret(
-                    pool_secret, common.HELM_NS_RBD_PROVISIONER, ns)
-            except Exception as e:
-                LOG.error(e)
-                raise
-
-    def _delete_rbd_provisioner_secrets(self, app_name):
-        """ Remove access to the system persistent RBD provisioner.
-
-        As part of launching a supported application, secrets were created to
-        allow access to the provisioner from the application namespaces. This
-        will remove those created secrets.
-
-        :param app_name: Name of the application
-        """
-
-        # Only set up a secret for the default storage pool (i.e. ignore
-        # additional storage tiers)
-        pool_secret = K8RbdProvisioner.get_user_secret_name({
-            'name': constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH]})
-        app_ns = self._helm.get_helm_application_namespaces(app_name)
-        namespaces = \
-            list(set([ns for ns_list in app_ns.values() for ns in ns_list]))
-
-        for ns in namespaces:
-            if (ns == common.HELM_NS_HELM_TOOLKIT or
-                    ns == common.HELM_NS_RBD_PROVISIONER):
-                continue
-
-            try:
-                LOG.info("Deleting Secret %s under Namespace "
-                         "%s ..." % (pool_secret, ns))
-                self._kube.kube_delete_secret(
-                    pool_secret, ns, grace_period_seconds=0)
-                LOG.info("Secret %s under Namespace %s delete "
-                         "completed." % (pool_secret, ns))
-            except Exception as e:
-                LOG.error(e)
-                raise
-
-    def _create_local_registry_secrets(self, app_name):
-        # Temporary function to create default registry secret
-        # which would be used by kubernetes to pull images from
-        # local registry.
-        # This should be removed after OSH supports the deployment
-        # with registry has authentication turned on.
-        # https://blueprints.launchpad.net/openstack-helm/+spec/
-        # support-docker-registry-with-authentication-turned-on
-        body = {
-            'type': 'kubernetes.io/dockerconfigjson',
-            'metadata': {},
-            'data': {}
-        }
-
-        app_ns = self._helm.get_helm_application_namespaces(app_name)
-        namespaces = \
-            list(set([ns for ns_list in app_ns.values() for ns in ns_list]))
-        for ns in namespaces:
-            if (ns == common.HELM_NS_HELM_TOOLKIT or
-                 self._kube.kube_get_secret(DOCKER_REGISTRY_SECRET, ns) is not None):
-                # Secret already exist
-                continue
-
-            try:
-                local_registry_auth = cutils.get_local_docker_registry_auth()
-
-                auth = '{0}:{1}'.format(local_registry_auth['username'],
-                                        local_registry_auth['password'])
-                token = '{{\"auths\": {{\"{0}\": {{\"auth\": \"{1}\"}}}}}}'.format(
-                    constants.DOCKER_REGISTRY_SERVER, base64.b64encode(auth))
-
-                body['data'].update({'.dockerconfigjson': base64.b64encode(token)})
-                body['metadata'].update({'name': DOCKER_REGISTRY_SECRET,
-                                         'namespace': ns})
-
-                if not self._kube.kube_get_namespace(ns):
-                    self._kube.kube_create_namespace(ns)
-                self._kube.kube_create_secret(ns, body)
-                LOG.info("Secret %s created under Namespace %s." % (DOCKER_REGISTRY_SECRET, ns))
-            except Exception as e:
-                LOG.error(e)
-                raise
-
-    def _delete_local_registry_secrets(self, app_name):
-        # Temporary function to delete default registry secrets
-        # which created during stx-opesntack app apply.
-        # This should be removed after OSH supports the deployment
-        # with registry has authentication turned on.
-        # https://blueprints.launchpad.net/openstack-helm/+spec/
-        # support-docker-registry-with-authentication-turned-on
-
-        app_ns = self._helm.get_helm_application_namespaces(app_name)
-        namespaces = \
-            list(set([ns for ns_list in app_ns.values() for ns in ns_list]))
-
-        for ns in namespaces:
-            if ns == common.HELM_NS_HELM_TOOLKIT:
-                continue
-
-            try:
-                LOG.info("Deleting Secret %s under Namespace "
-                         "%s ..." % (DOCKER_REGISTRY_SECRET, ns))
-                self._kube.kube_delete_secret(
-                    DOCKER_REGISTRY_SECRET, ns, grace_period_seconds=0)
-                LOG.info("Secret %s under Namespace %s delete "
-                         "completed." % (DOCKER_REGISTRY_SECRET, ns))
-            except Exception as e:
-                LOG.error(e)
-                raise
-
     def audit_local_registry_secrets(self):
         """
         local registry uses admin's username&password for authentication.
@@ -1136,7 +988,7 @@ class AppOperator(object):
             try:
                 ns_list = self._kube.kube_get_namespace_name_list()
                 for ns in ns_list:
-                    secret = self._kube.kube_get_secret(DOCKER_REGISTRY_SECRET, ns)
+                    secret = self._kube.kube_get_secret(AppOperator.DOCKER_REGISTRY_SECRET, ns)
                     if secret is None:
                         continue
 
@@ -1144,41 +996,18 @@ class AppOperator(object):
                         secret_auth_body = base64.b64decode(secret.data['.dockerconfigjson'])
                         if constants.DOCKER_REGISTRY_SERVER in secret_auth_body:
                             secret.data['.dockerconfigjson'] = base64.b64encode(token)
-                            self._kube.kube_patch_secret(DOCKER_REGISTRY_SECRET, ns, secret)
+                            self._kube.kube_patch_secret(AppOperator.DOCKER_REGISTRY_SECRET, ns, secret)
                             LOG.info("Secret %s under Namespace %s is updated"
-                                     % (DOCKER_REGISTRY_SECRET, ns))
+                                     % (AppOperator.DOCKER_REGISTRY_SECRET, ns))
                     except Exception as e:
                         LOG.error("Failed to update Secret %s under Namespace %s: %s"
-                                  % (DOCKER_REGISTRY_SECRET, ns, e))
+                                  % (AppOperator.DOCKER_REGISTRY_SECRET, ns, e))
                         continue
             except Exception as e:
                 LOG.error(e)
                 return
 
         _sync_audit_local_registry_secrets(self)
-
-    def _delete_namespace(self, namespace):
-        loop_timeout = 1
-        timeout = 300
-        try:
-            LOG.info("Deleting Namespace %s ..." % namespace)
-            self._kube.kube_delete_namespace(namespace,
-                                             grace_periods_seconds=0)
-
-            # Namespace termination timeout 5mins
-            while(loop_timeout <= timeout):
-                if not self._kube.kube_get_namespace(namespace):
-                    # Namepace has been terminated
-                    break
-                loop_timeout += 1
-                time.sleep(1)
-
-            if loop_timeout > timeout:
-                raise exception.KubeNamespaceDeleteTimeout(name=namespace)
-            LOG.info("Namespace %s delete completed." % namespace)
-        except Exception as e:
-            LOG.error(e)
-            raise
 
     def _wait_for_pod_termination(self, namespace):
         loop_timeout = 0
@@ -1198,17 +1027,6 @@ class AppOperator(object):
             if loop_timeout > timeout:
                 raise exception.KubePodTerminateTimeout(name=namespace)
             LOG.info("Pod termination in Namespace %s completed." % namespace)
-        except Exception as e:
-            LOG.error(e)
-            raise
-
-    def _delete_persistent_volume_claim(self, namespace):
-        try:
-            LOG.info("Deleting Persistent Volume Claim "
-                     "under Namespace %s ..." % namespace)
-            self._kube.kube_delete_persistent_volume_claim(namespace,
-                                                           timeout_seconds=10)
-            LOG.info("Persistent Volume Claim delete completed.")
         except Exception as e:
             LOG.error(e)
             raise
@@ -1435,21 +1253,54 @@ class AppOperator(object):
             except Exception as e:
                 LOG.exception(e)
 
-    def _get_metadata_flag(self, app, flag, default):
-        # This function gets a boolean
-        # parameter from application metadata
-        flag_result = default
+    def _get_metadata_value(self, app, key_or_keys, default=None,
+                           enforce_type=False):
+        """
+        Get application metadata value from nested dictionary.
+
+        If a default value is specified, this will enforce that
+        the value returned is of the same type.
+
+        :param app: application object
+        :param key_or_keys: single key string, or list of keys
+        :param default: default value (and type)
+        :param enforce_type: enforce type check between return value and default
+
+        :return: The value from nested dictionary D[key1][key2][...] = value
+                 assuming all keys are present, otherwise default.
+        """
+        value = default
+
+        if isinstance(key_or_keys, list):
+            keys = key_or_keys
+        else:
+            keys = [key_or_keys]
+
         metadata_file = os.path.join(app.inst_path,
                                      constants.APP_METADATA_FILE)
         if os.path.exists(metadata_file) and os.path.getsize(metadata_file) > 0:
             with open(metadata_file, 'r') as f:
                 try:
-                    y = yaml.safe_load(f)
-                    flag_result = y.get(flag, default)
+                    metadata = yaml.safe_load(f) or {}
+                    value = cutils.deep_get(metadata, keys, default=default)
+                    # TODO(jgauld): There is inconsistent treatment of YAML
+                    # boolean between the module ruamel.yaml and module yaml
+                    # in utils.py, health.py, and kube_app.py. Until these
+                    # usage variants are unified, leave the following check
+                    # as optional.
+                    if enforce_type and default is not None and value is not None:
+                        default_type = type(default)
+                        if type(value) != default_type:
+                            raise exception.SysinvException(_(
+                                "Invalid {}: {} {!r} expected value is {}."
+                                "".format(metadata_file, '.'.join(keys),
+                                          value, default_type)))
                 except KeyError:
                     # metadata file does not have the key
                     pass
-        return flag_result
+        LOG.debug('_get_metadata_value: metadata_file=%s, keys=%s, default=%r, value=%r',
+                  metadata_file, keys, default, value)
+        return value
 
     def _preserve_user_overrides(self, from_app, to_app):
         """Dump user overrides
@@ -1493,7 +1344,7 @@ class AppOperator(object):
                          "Chart %s from version %s" % (to_app.name, to_app.version,
                                                        chart.name, from_app.version))
 
-    @retry(retry_on_exception=lambda x: isinstance(x, exception.PlatformApplicationApplyFailure),
+    @retry(retry_on_exception=lambda x: isinstance(x, exception.ApplicationApplyFailure),
            stop_max_attempt_number=5, wait_fixed=30 * 1000)
     def _make_armada_request_with_monitor(self, app, request, overrides_str=None):
         """Initiate armada request with monitoring
@@ -1546,20 +1397,14 @@ class AppOperator(object):
             """ Progress monitoring task, to be run in a separate thread """
             LOG.info("Starting progress monitoring thread for app %s" % app.name)
 
-            def _progress_adjust(app):
-                helm_toolkit_app = \
-                    self._get_metadata_flag(app,
-                                            constants.APP_METADATA_HELM_TOOLKIT_REQUIRED,
-                                            True)
-
-                if helm_toolkit_app:
-                    return 1
-                else:
-                    return 0
-
             try:
+                adjust = self._get_metadata_value(app,
+                                constants.APP_METADATA_APPLY_PROGRESS_ADJUST,
+                                constants.APP_METADATA_APPLY_PROGRESS_ADJUST_DEFAULT_VALUE)
                 with Timeout(INSTALLATION_TIMEOUT,
                              exception.KubeAppProgressMonitorTimeout()):
+
+                    charts_count = len(app.charts)
                     while True:
                         try:
                             monitor_flag.get_nowait()
@@ -1569,19 +1414,27 @@ class AppOperator(object):
                         except queue.Empty:
                             last, num = _get_armada_log_stats(pattern, logfile)
                             if last:
-                                if app.system_app:
-                                    adjust = _progress_adjust(app)
-                                    percent = \
-                                        round(float(num) /
-                                              (len(app.charts) - adjust) * 100)
+                                if charts_count == 0:
+                                    percent = 100
                                 else:
-                                    percent = round(float(num) / len(app.charts) * 100)
-                                progress_str = 'processing chart: ' + str(last) +\
-                                    ', overall completion: ' + str(percent) + '%'
+                                    tadjust = 0
+                                    if app.system_app:
+                                        tadjust = adjust
+                                        if tadjust >= charts_count:
+                                            LOG.error("Application metadata key '{}'"
+                                                      "has an invalid value {} (too few charts)".
+                                                      format(constants.APP_METADATA_APPLY_PROGRESS_ADJUST,
+                                                             adjust))
+                                            tadjust = 0
+
+                                    percent = round((float(num) / (charts_count - tadjust)) * 100)
+
+                                progress_str = "processing chart: {}, overall completion: {}%".\
+                                               format(last, percent)
+
                                 if app.progress != progress_str:
                                     LOG.info("%s" % progress_str)
-                                    self._update_app_status(
-                                        app, new_progress=progress_str)
+                                    self._update_app_status(app, new_progress=progress_str)
                             greenthread.sleep(1)
             except Exception as e:
                 # timeout or subprocess error
@@ -1609,6 +1462,18 @@ class AppOperator(object):
         if AppOperator.is_app_aborted(app.name):
             return False
 
+        # TODO(dvoicule): Maybe pass a hook from outside to this function
+        # need to change perform_app_recover/rollback/update to support this.
+        # All the other hooks store the operation of the app itself (apply,
+        # remove, delete, upload, update) yet this hook stores the armada
+        # operation in the operation field. This is inconsistent behavior and
+        # should be changed the moment a hook from outside is passed here.
+        lifecycle_hook_info = LifecycleHookInfo()
+        lifecycle_hook_info.operation = request
+        lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+        lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_ARMADA_REQUEST
+        self.app_lifecycle_actions(None, None, app._kube_app, lifecycle_hook_info)
+
         mqueue = queue.Queue()
         rc = True
         logname = time.strftime(app.name + '-' + request + '_%Y-%m-%d-%H-%M-%S.log')
@@ -1630,100 +1495,40 @@ class AppOperator(object):
         mqueue.put('done')
         monitor.kill()
 
-        # In case platform-integ-apps apply fails, we raise a specific exception
-        # to be caught by the retry decorator and attempt a re-apply
-        if (not rc and request == constants.APP_APPLY_OP and
-                app.name == constants.HELM_APP_PLATFORM and
-                not AppOperator.is_app_aborted(app.name)):
-            LOG.info("%s app failed applying. Retrying." % str(app.name))
-            raise exception.PlatformApplicationApplyFailure(name=app.name)
+        # Here a manifest retry can be performed by throwing ApplicationApplyFailure
+        lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+        lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_ARMADA_REQUEST
+        lifecycle_hook_info[LifecycleConstants.EXTRA][LifecycleConstants.RETURN_CODE] = rc
+        self.app_lifecycle_actions(None, None, app._kube_app, lifecycle_hook_info)
 
         return rc
 
-    def _create_app_specific_resources(self, app_name):
-        """Add application specific k8s resources.
+    def _old_app_is_non_decoupled(self, old_app):
+        """Special case application upgrade check for STX 5.0
 
-        Some applications may need resources created outside of the existing
-        charts to properly integrate with the current capabilities of the
-        system. Create these resources here.
+        This is a special case identifier for platform application recovery of
+        non-decoupled application during application upgrade.
 
-        :param app_name: Name of the application.
-        """
-
-        if app_name == constants.HELM_APP_OPENSTACK:
-            try:
-                # Copy the latest configmap with the ceph monitor information
-                # required by the application into the application namespace
-                if self._kube.kube_get_config_map(
-                        self.APP_OPENSTACK_RESOURCE_CONFIG_MAP,
-                        common.HELM_NS_OPENSTACK):
-
-                    # Already have one. Delete it, in case it changed
-                    self._kube.kube_delete_config_map(
-                        self.APP_OPENSTACK_RESOURCE_CONFIG_MAP,
-                        common.HELM_NS_OPENSTACK)
-
-                # Copy the latest config map
-                self._kube.kube_copy_config_map(
-                    self.APP_OPENSTACK_RESOURCE_CONFIG_MAP,
-                    common.HELM_NS_RBD_PROVISIONER,
-                    common.HELM_NS_OPENSTACK)
-            except Exception as e:
-                LOG.error(e)
-                raise
-
-    def _delete_ceph_persistent_volume_claim(self, namespace):
-        self._delete_persistent_volume_claim(namespace)
-
-        try:
-            # Remove the configmap with the ceph monitor information
-            # required by the application into the application namespace
-            self._kube.kube_delete_config_map(
-                self.APP_OPENSTACK_RESOURCE_CONFIG_MAP,
-                namespace)
-        except Exception as e:
-            LOG.error(e)
-            raise
-
-    def _in_upgrade_old_app_is_non_decoupled(self, old_app):
-        """Special case application upgrade check for STX 4.0
-
-        This is a special case identifier for platform application rollbacks of
-        non-decoupled application.
-
-        In STX 4.0, helm plugins were removed and delivered as part of the
-        application tarball. During platform upgrade, platform applications are
-        updated (uploaded and applied) to the new delivered versions. In the
-        case of an apply failure the application is rolled back to restore
-        application functionality.
+        Helm plugins were removed and delivered as part of the application tarball.
+        During application update, in the case of an apply failure the application
+        is recovered to the old version to restore application functionality.
 
         The current decoupled app framework relies on the existence of a plugin
         directory to signify that it is a system knowledgeable application. The
-        prior not decoupled applications, do not have this structure. This
+        prior not decoupled applications, do not have this structure(ie.portieris
+        and nginx-ingress-controller applications are not decoupled in stx4.0).This
         function will identify them so their saved overrides can be used during
-        rollback.
-
-        Include the 'nginx-ingress-controller' app in this as well since it
-        possibly could be applied and is currently not a system aware platform
-        application.
+        recovery and plugins/operators can be reloaded after recovery is completed.
 
         NOTE: This and its call should be removed from master after branching
-        for STX 4.0 is complete. All applications post STX 4.0 will all be
+        for STX 5.0 is complete. All applications post STX 5.0 will all be
         decoupled and future application upgrades do not require this.
         """
-        try:
-            self._dbapi.software_upgrade_get_one()
-        except exception.NotFound:
-            # No upgrade in progress
-            return False
-        else:
-            if (old_app.system_app or
-                old_app.name in [constants.HELM_APP_CERT_MANAGER,
-                                 constants.HELM_APP_OIDC_AUTH,
-                                 constants.HELM_APP_PLATFORM,
-                                 constants.HELM_APP_NGINX_IC]):
-                return True
-            return False
+        if (not old_app.system_app and
+            old_app.name in [constants.HELM_APP_NGINX_IC,
+                             constants.HELM_APP_PORTIERIS]):
+            return True
+        return False
 
     def _perform_app_recover(self, old_app, new_app, armada_process_required=True):
         """Perform application recover
@@ -1740,8 +1545,22 @@ class AppOperator(object):
         :param new_app: the application object that application recovering from
         :param armada_process_required: boolean, whether armada operation is needed
         """
+
+        def _activate_old_app_plugins(old_app):
+            # Enable the old app plugins. Only reload the operators for the
+            # apps decoupled in stx5.0 but not decoupled in stx4.0, this is
+            # to make sure the correct information is loaded. This particular
+            # handling for non-decoupled apps can be removed in the stx6.0
+            if self._old_app_is_non_decoupled(old_app):
+                self._helm.discover_plugins()
+            else:
+                self._plugins.activate_plugins(old_app)
+
         LOG.info("Starting recover Application %s from version: %s to version: %s" %
                  (old_app.name, new_app.version, old_app.version))
+
+        # Ensure that the the failed app plugins are disabled prior to cleanup
+        self._plugins.deactivate_plugins(new_app)
 
         self._update_app_status(
             old_app, constants.APP_RECOVER_IN_PROGRESS,
@@ -1769,12 +1588,15 @@ class AppOperator(object):
             if armada_process_required:
                 overrides_str = ''
                 old_app.charts = self._get_list_of_charts(old_app.sync_armada_mfile)
-                if old_app.system_app or self._in_upgrade_old_app_is_non_decoupled(old_app):
+                if old_app.system_app or self._old_app_is_non_decoupled(old_app):
                     (helm_files, armada_files) = self._get_overrides_files(
                         old_app.sync_overrides_dir, old_app.charts, old_app.name, mode=None)
 
                     overrides_str = self._generate_armada_overrides_str(
                         old_app.name, old_app.version, helm_files, armada_files)
+
+                # Ensure that the old app plugins are enabled prior to armada process.
+                _activate_old_app_plugins(old_app)
 
                 if self._make_armada_request_with_monitor(old_app,
                                                           constants.APP_APPLY_OP,
@@ -1790,7 +1612,7 @@ class AppOperator(object):
                 else:
                     rc = False
 
-        except exception.PlatformApplicationApplyFailure:
+        except exception.ApplicationApplyFailure:
             rc = False
         except Exception as e:
             # ie. patch report error, cleanup application files error
@@ -1803,6 +1625,9 @@ class AppOperator(object):
                 'Please check logs for details.')
             LOG.error(e)
             return
+        finally:
+            # Ensure that the old app plugins are enabled after recovery
+            _activate_old_app_plugins(old_app)
 
         if rc:
             self._update_app_status(
@@ -1900,7 +1725,7 @@ class AppOperator(object):
         LOG.error("Application rollback aborted!")
         return False
 
-    def perform_app_upload(self, rpc_app, tarfile):
+    def perform_app_upload(self, rpc_app, tarfile, lifecycle_hook_info_app_upload, images=False):
         """Process application upload request
 
         This method validates the application manifest. If Helm charts are
@@ -1910,6 +1735,9 @@ class AppOperator(object):
 
         :param rpc_app: application object in the RPC request
         :param tarfile: location of application tarfile
+        :param lifecycle_hook_info_app_upload: LifecycleHookInfo object
+        :param images: save application images in the registry as part of app upload
+
         """
 
         app = AppOperator.Application(rpc_app)
@@ -1984,6 +1812,17 @@ class AppOperator(object):
             # System overrides will be generated here. Plugins must be activated
             # prior to scraping chart/system/armada overrides for images
             self._save_images_list(app)
+
+            if images:
+                # We need to download the images at upload_app so that subclouds
+                # may use the distributed cloud registry
+                self._update_app_status(
+                    app, new_progress=constants.APP_PROGRESS_DOWNLOAD_IMAGES)
+
+                if AppOperator.is_app_aborted(app.name):
+                    raise exception.KubeAppAbort()
+
+                self.download_images(app)
 
             if app.patch_dependencies:
                 self._utils._patch_report_app_dependencies(
@@ -2079,7 +1918,7 @@ class AppOperator(object):
                                              alarm.entity_instance_id)
         return flag_exists
 
-    def app_lifecycle_actions(self, context, conductor_obj, rpc_app, operation, relative_timing):
+    def app_lifecycle_actions(self, context, conductor_obj, rpc_app, hook_info):
         """Perform application specific lifecycle actions
 
         This method will perform any lifecycle actions necessary for the
@@ -2088,19 +1927,309 @@ class AppOperator(object):
         :param context: request context
         :param conductor_obj: conductor object
         :param rpc_app: application object in the RPC request
-        :param operation: application operation
-        :param relative_timing: relative timing of the operation
+        :param hook_info: LifecycleHookInfo object
+
         """
 
         app = AppOperator.Application(rpc_app)
 
-        LOG.info("kube_app.py lifecycle action for application %s (%s) operation %s (%s) started." %
-                  (app.name, app.version, operation, relative_timing))
+        # TODO(dvoicule): activate plugins once on upload, deactivate once during delete
+        # create another commit for this
+        self.activate_app_plugins(rpc_app)
 
-        manifest_op = self._helm.get_armada_manifest_operator(app.name)
-        manifest_op.app_lifecycle_actions(context, conductor_obj, self._dbapi, operation, relative_timing)
+        LOG.info("lifecycle hook for application {} ({}) started {}."
+                 .format(app.name, app.version, hook_info))
 
-    def perform_app_apply(self, rpc_app, mode, caller=None):
+        lifecycle_op = self._helm.get_app_lifecycle_operator(app.name)
+        lifecycle_op.app_lifecycle_actions(context, conductor_obj, self, app, hook_info)
+
+    @staticmethod
+    def recompute_app_evaluation_order(apps_metadata_dict):
+        """ Get the order of app reapplies based on dependencies
+
+        The following algorithm uses these concepts:
+        Root apps are apps that have no dependency.
+        Chain depth for an app is the number of apps that form the longest
+        chain ending in the current app.
+
+        Main logic:
+        Compute reverse graph (after_apps).
+        Determine root apps.
+        Detect cycles and abort.
+        Compute the longest dependency chain.
+        Traverse again to populate ordered list.
+
+        Assumptions:
+        In theory there is one or few root apps that are dominant vertices.
+        Other than the dominant vertices, there are very sparse vertices with
+        a degree more than one, most of the vertices are either leaves or
+        isolated.
+        Chain depth is usually 0 or 1, few apps have a chain depth of 2, 3, 4
+        The structure is a sparse digraph, or multiple separate sparse digraphs
+        with a total number of vertices equal to the number of apps.
+
+        Complexity analysis:
+        Spatial complexity O(V+E)
+        Cycle detection: O(V+E)
+
+        After cycle detection the graph is a DAG.
+        For computing the chain depth and final traversal a subgraph may be
+        revisited. Complexity would be O(V*E).
+
+        Let k = number of apps with a vertex that have the in degree > 1 and
+        that are not leaf apps. We can bind k to be 0<=k<=10000, shall we reach
+        that app number.
+
+        Each node and each vertex will be visited once O(V+E) (root apps
+        + vertex to leaf).
+        Only k nodes will trigger a revisit of a subset of vertices (k * O(E)).
+
+        Complexity now becomes O(V+(k+1)*E) = O(V+E)
+
+        Limitations:
+        If an app(current) depends only on non-existing apps, then
+        current app will not be properly ordered. It will not be present in
+        the ordered list before other apps based on it.
+        If an app(current) depends only on non platform managed apps, then
+        current app will not be properly ordered. It will not be present in
+        the ordered list before other apps based on it.
+
+        :param: apps_metadata_dict dictionary containing parsed and processed
+                metadata collection
+
+        :return: Sorted list containing the app reapply order.
+        """
+        # Apps directly after current
+        after_apps = {}
+
+        # Remember the maximum depth
+        chain_depth = {}
+
+        # Used to detect cycles
+        cycle_depth = {}
+
+        # Used for second traversal when populating ordered list
+        traverse_depth = {}
+
+        # Final result
+        ordered_apps = []
+        apps_metadata_dict[constants.APP_METADATA_ORDERED_APPS] = ordered_apps
+
+        # Initialize structures
+        for app_name in apps_metadata_dict[constants.APP_METADATA_PLATFORM_MANAGED_APPS]:
+            after_apps[app_name] = []
+            chain_depth[app_name] = 0
+            cycle_depth[app_name] = 0
+            traverse_depth[app_name] = 0
+
+        # For each app remember which apps are directly after
+        for app_name in apps_metadata_dict[constants.APP_METADATA_PLATFORM_MANAGED_APPS]:
+            app_metadata = apps_metadata_dict[constants.APP_METADATA_APPS][app_name]
+            metadata_after = app_metadata.get(constants.APP_METADATA_BEHAVIOR, None)
+
+            if metadata_after is not None:
+                metadata_after = metadata_after.get(constants.APP_METADATA_EVALUATE_REAPPLY, None)
+            if metadata_after is not None:
+                metadata_after = metadata_after.get(constants.APP_METADATA_AFTER, None)
+            if metadata_after is not None:
+                for before_app in metadata_after:
+                    # This one may be a non-existing app, need to initialize
+                    if after_apps.get(before_app, None) is None:
+                        after_apps[before_app] = []
+
+                    # Store information
+                    after_apps[before_app].append(app_name)
+
+                    # Remember that current app is before at least one
+                    chain_depth[app_name] = 1
+                    traverse_depth[app_name] = 1
+
+        # Identify root apps
+        root_apps = []
+        for app_name in apps_metadata_dict[constants.APP_METADATA_PLATFORM_MANAGED_APPS]:
+            if chain_depth.get(app_name, None) == 0:
+                root_apps.append(app_name)
+
+        # Used for cycle detection
+        stack_ = queue.LifoQueue()
+        cycle_checked = {}
+        max_depth = len(apps_metadata_dict[constants.APP_METADATA_PLATFORM_MANAGED_APPS])
+
+        # Detect cycles and abort
+        for app_name in apps_metadata_dict[constants.APP_METADATA_PLATFORM_MANAGED_APPS]:
+            # Skip already checked app
+            if cycle_checked.get(app_name, False) is True:
+                continue
+
+            # Start from this
+            stack_.put(app_name)
+
+            # Reinitialize temporary visited
+            visited = {}
+
+            # Traverse DFS to detect cycles
+            while not stack_.empty():
+                app_name = stack_.get_nowait()
+                visited[app_name] = True
+
+                # Skip already checked app
+                if cycle_checked.get(app_name, False) is True:
+                    continue
+
+                for after in after_apps[app_name]:
+                    cycle_depth[after] = max(cycle_depth[app_name] + 1, cycle_depth[after])
+                    # Detected cycle
+                    if cycle_depth[after] > max_depth:
+                        return ordered_apps
+
+                    stack_.put(after)
+
+            # Remember the temporary visited apps to skip them in the future
+            for r in visited.keys():
+                cycle_checked[r] = True
+
+        # Used for traversal
+        queue_ = queue.Queue()
+
+        # Compute the longest dependency chain starting from root apps
+        for app_name in root_apps:
+            queue_.put(app_name)
+
+        # Traverse similar to BFS to compute the longest dependency chain
+        while not queue_.empty():
+            app_name = queue_.get_nowait()
+            for after in after_apps[app_name]:
+                chain_depth[after] = max(chain_depth[app_name] + 1, chain_depth[after])
+                queue_.put(after)
+
+        # Traverse graph again similar to BFS
+        # Add to ordered list when the correct chain depth is reached
+        found = {}
+        for app_name in root_apps:
+            queue_.put(app_name)
+            found[app_name] = True
+            ordered_apps.append(app_name)
+
+        while not queue_.empty():
+            app_name = queue_.get_nowait()
+
+            for after in after_apps[app_name]:
+                traverse_depth[after] = max(traverse_depth[app_name] + 1, traverse_depth[after])
+
+                # This is the correct depth, add to ordered list
+                if traverse_depth[after] == chain_depth[after]:
+                    # Skip if already added
+                    if found.get(after, False) is True:
+                        continue
+
+                    found[after] = True
+                    ordered_apps.append(after)
+
+                queue_.put(after)
+
+        # Add apps that have dependencies on non-existing apps
+        for app_name in apps_metadata_dict[constants.APP_METADATA_PLATFORM_MANAGED_APPS]:
+            if found.get(app_name, False) is True:
+                continue
+            ordered_apps.append(app_name)
+
+        LOG.info("Applications reapply order: {}".format(ordered_apps))
+        apps_metadata_dict[constants.APP_METADATA_ORDERED_APPS] = ordered_apps
+
+    @staticmethod
+    @cutils.synchronized(LOCK_NAME_PROCESS_APP_METADATA, external=False)
+    def update_and_process_app_metadata(apps_metadata_dict, app_name, metadata, overwrite=True):
+        """ Update the cached metadata for an app
+
+        :param apps_metadata_dict: The dictionary being the cache
+        :param app_name: Name of the app
+        :param metadata: Metadata that will replace the old one
+        :param overwrite: If metadata is already present in the cache for this app,
+                          then overwrite needs to be enabled to do the replacement
+
+        """
+        if not overwrite and \
+                app_name in apps_metadata_dict[constants.APP_METADATA_APPS]:
+            LOG.info("Updating metadata for app {} skipped because metadata "
+                     "is present and overwrite is not enabled"
+                     "".format(app_name))
+            return
+
+        apps_metadata_dict[constants.APP_METADATA_APPS][app_name] = metadata
+        LOG.info("Loaded metadata for app {}: {}".format(app_name, metadata))
+
+        behavior = metadata.get(constants.APP_METADATA_BEHAVIOR, None)
+        if behavior is not None:
+            is_managed = behavior.get(constants.APP_METADATA_PLATFORM_MANAGED_APP, None)
+            desired_state = behavior.get(constants.APP_METADATA_DESIRED_STATE, None)
+
+            # Remember if the app wants to be managed by the platform
+            if cutils.is_valid_boolstr(is_managed):
+                apps_metadata_dict[
+                    constants.APP_METADATA_PLATFORM_MANAGED_APPS][app_name] = None
+                LOG.info("App {} requested to be platform managed"
+                         "".format(app_name))
+
+                # Recompute app reapply order
+                AppOperator.recompute_app_evaluation_order(apps_metadata_dict)
+
+            # Remember the desired state the app should achieve
+            if desired_state is not None:
+                apps_metadata_dict[
+                    constants.APP_METADATA_DESIRED_STATES][app_name] = desired_state
+                LOG.info("App {} requested to achieve {} state"
+                         "".format(app_name, desired_state))
+
+    def load_application_metadata_from_database(self, rpc_app):
+        """ Load the application metadata from the database
+
+        :param rpc_app: KubeApp model object
+
+        """
+        LOG.info("Loading application metadata for {} from database"
+                 "".format(rpc_app.name))
+
+        app = AppOperator.Application(rpc_app)
+        metadata = {}
+
+        # Load metadata as a dictionary from a column in the database
+        db_app = self._dbapi.kube_app_get(app.name)
+        if db_app.app_metadata:
+            metadata = db_app.app_metadata or {}
+
+        AppOperator.update_and_process_app_metadata(self._apps_metadata,
+                                                    app.name,
+                                                    metadata)
+
+    def load_application_metadata_from_file(self, rpc_app):
+        """ Load the application metadata from the metadata file of the app
+
+        :param rpc_app: data object provided in the rpc request
+
+        """
+        LOG.info("Loading application metadata for {} from file"
+                 "".format(rpc_app.name))
+
+        app = AppOperator.Application(rpc_app)
+        metadata = {}
+
+        if os.path.exists(app.sync_metadata_file):
+            with open(app.sync_metadata_file, 'r') as f:
+                # The RoundTripLoader removes the superfluous quotes by default.
+                # Set preserve_quotes=True to preserve all the quotes.
+                # The assumption here: there is just one yaml section
+                metadata = yaml.load(
+                    f, Loader=yaml.RoundTripLoader, preserve_quotes=True) or {}
+
+        AppOperator.update_and_process_app_metadata(self._apps_metadata,
+                                                    app.name,
+                                                    metadata)
+
+        # Save metadata as a dictionary in a column in the database
+        rpc_app.app_metadata = metadata
+        rpc_app.save()
+
+    def perform_app_apply(self, rpc_app, mode, lifecycle_hook_info_app_apply, caller=None):
         """Process application install request
 
         This method processes node labels per configuration and invokes
@@ -2118,8 +2247,10 @@ class AppOperator(object):
 
         :param rpc_app: application object in the RPC request
         :param mode: mode to control how to apply application manifest
+        :param lifecycle_hook_info_app_apply: LifecycleHookInfo object
         :param caller: internal caller, None if it is an RPC call,
                        otherwise apply is invoked from update method
+
         :return boolean: whether application apply was successful
         """
 
@@ -2145,18 +2276,19 @@ class AppOperator(object):
         ready = True
         try:
             app.charts = self._get_list_of_charts(app.sync_armada_mfile)
-            self._create_local_registry_secrets(app.name)
-            if app.system_app:
-                if AppOperator.is_app_aborted(app.name):
-                    raise exception.KubeAppAbort()
 
-                self._plugins.activate_plugins(app)
+            if AppOperator.is_app_aborted(app.name):
+                raise exception.KubeAppAbort()
 
-                manifest_op = self._helm.get_armada_manifest_operator(app.name)
-                manifest_op.app_rbd_actions(self, self._dbapi, app.name,
-                                            constants.APP_APPLY_OP)
+            # Perform app resources actions
+            lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RESOURCE
+            self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
 
-                self._create_app_specific_resources(app.name)
+            # Perform rbd actions
+            lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RBD
+            self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
 
             self._update_app_status(
                 app, new_progress=constants.APP_PROGRESS_GENERATE_OVERRIDES)
@@ -2209,32 +2341,10 @@ class AppOperator(object):
 
         try:
             if ready:
-                if app.name == constants.HELM_APP_OPENSTACK:
-                    # For stx-openstack app, if the apply operation was terminated
-                    # (e.g. user aborted, controller swacted, sysinv conductor
-                    # restarted) while compute-kit charts group was being deployed,
-                    # Tiller may still be processing these charts. Issuing another
-                    # manifest apply request while there are pending install of libvirt,
-                    # neutron and/or nova charts will result in reapply failure.
-                    #
-                    # Wait up to 10 minutes for Tiller to finish its transaction
-                    # from previous apply before making a new manifest apply request.
-                    LOG.info("Wait if there are openstack charts in pending install...")
-                    for i in range(CHARTS_PENDING_INSTALL_ITERATIONS):
-                        result = helm_utils.get_openstack_pending_install_charts()
-                        if not result:
-                            break
-
-                        if AppOperator.is_app_aborted(app.name):
-                            raise exception.KubeAppAbort()
-                        greenthread.sleep(10)
-                    if result:
-                        self._abort_operation(app, constants.APP_APPLY_OP)
-                        raise exception.KubeAppApplyFailure(
-                            name=app.name, version=app.version,
-                            reason="Timed out while waiting for some charts that "
-                                   "are still in pending install in previous application "
-                                   "apply to clear. Please try again later.")
+                # Perform pre apply manifest actions
+                lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+                lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_MANIFEST
+                self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
 
                 self._update_app_status(
                     app, new_progress=constants.APP_PROGRESS_APPLY_MANIFEST)
@@ -2252,10 +2362,33 @@ class AppOperator(object):
                     if not caller:
                         self._clear_app_alarm(app.name)
                     LOG.info("Application %s (%s) apply completed." % (app.name, app.version))
+
+                    # Perform post apply manifest actions
+                    lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+                    lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_MANIFEST
+                    lifecycle_hook_info_app_apply[LifecycleConstants.EXTRA][LifecycleConstants.MANIFEST_APPLIED] = True
+                    self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
+
                     return True
         except Exception as e:
             # ex: update release version failure, user abort
             LOG.exception(e)
+
+            # Perform post apply manifest actions
+            lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+            lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_MANIFEST
+            lifecycle_hook_info_app_apply[LifecycleConstants.EXTRA][LifecycleConstants.MANIFEST_APPLIED] = False
+            self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
+
+        # Perform rbd actions
+        lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+        lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RBD
+        self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
+
+        # Perform app resources actions
+        lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+        lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RESOURCE
+        self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
 
         # If it gets here, something went wrong
         if AppOperator.is_app_aborted(app.name):
@@ -2271,7 +2404,7 @@ class AppOperator(object):
         return False
 
     def perform_app_update(self, from_rpc_app, to_rpc_app, tarfile,
-                           operation, reuse_user_overrides=None):
+                           operation, lifecycle_hook_info_app_update, reuse_user_overrides=None):
         """Process application update request
 
         This method leverages the existing application upload workflow to
@@ -2297,7 +2430,9 @@ class AppOperator(object):
                            application updating to
         :param tarfile: location of application tarfile
         :param operation: apply or rollback
+        :param lifecycle_hook_info_app_update: LifecycleHookInfo object
         :param reuse_user_overrides: (optional) True or False
+
         """
 
         from_app = AppOperator.Application(from_rpc_app)
@@ -2320,18 +2455,55 @@ class AppOperator(object):
             # application as the new plugin module will have the same name. Only
             # one version of the module can be enabled at any given moment
             self._plugins.deactivate_plugins(from_app)
-            to_app = self.perform_app_upload(to_rpc_app, tarfile)
+
+            # Note: this will not trigger the upload hooks present in conductor/manager:perform_app_upload
+            # Note: here we lose the information that this is an upload triggered by an update
+            # TODO(dvoicule): we may want to also trigger the upload hooks
+            # TODO(dvoicule): we may want to track the fact that this is called during an update
+            lifecycle_hook_info_app_update.operation = constants.APP_UPLOAD_OP
+            to_app = self.perform_app_upload(to_rpc_app, tarfile,
+                                             lifecycle_hook_info_app_upload=lifecycle_hook_info_app_update)
+            lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
+
+            # Semantic checking for N+1 app
+            try:
+                lifecycle_hook_info = copy.deepcopy(lifecycle_hook_info_app_update)
+                lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+                lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK
+                lifecycle_hook_info[LifecycleConstants.EXTRA][LifecycleConstants.TO_APP] = True
+
+                self.app_lifecycle_actions(None, None, to_rpc_app, lifecycle_hook_info)
+            except exception.LifecycleSemanticCheckException as e:
+                LOG.info("App {} rejected operation {} for reason: {}"
+                         "".format(to_app.name, constants.APP_UPDATE_OP, str(e)))
+                # lifecycle hooks not used in perform_app_recover
+                return self._perform_app_recover(from_app, to_app,
+                                                 armada_process_required=False)
+            except Exception as e:
+                LOG.error("App {} operation {} semantic check error: {}"
+                          "".format(to_app.name, constants.APP_UPDATE_OP, str(e)))
+                # lifecycle hooks not used in perform_app_recover
+                return self._perform_app_recover(from_app, to_app,
+                                                 armada_process_required=False)
+
+            self.load_application_metadata_from_file(to_rpc_app)
+
             # Check whether the new application is compatible with the current k8s version
             self._utils._check_app_compatibility(to_app.name, to_app.version)
 
             self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS)
 
+            # Get the skip_recovery flag from app metadata
+            keys = [constants.APP_METADATA_UPGRADES,
+                    constants.APP_METADATA_UPDATE_FAILURE_SKIP_RECOVERY]
+            skip_recovery = bool(strtobool(str(self._get_metadata_value(to_app, keys, False))))
+
             result = False
             if operation == constants.APP_APPLY_OP:
                 reuse_overrides = \
-                    self._get_metadata_flag(to_app,
-                                            constants.APP_METADATA_MAINTAIN_USER_OVERRIDES,
-                                            False)
+                    self._get_metadata_value(to_app,
+                                             constants.APP_METADATA_MAINTAIN_USER_OVERRIDES,
+                                             False)
                 if reuse_user_overrides is not None:
                     reuse_overrides = reuse_user_overrides
 
@@ -2341,24 +2513,51 @@ class AppOperator(object):
 
                 # The app_apply will generate new versioned overrides for the
                 # app upgrade and will enable the new plugins for that version.
-                result = self.perform_app_apply(to_rpc_app, mode=None, caller='update')
+
+                # Note: this will not trigger the apply hooks present in conductor/manager:perform_app_apply
+                # Note: here we lose the information that this is an apply triggered by an update
+                # TODO(dvoicule): we may want to also trigger the apply hooks
+                # TODO(dvoicule): we may want to track the fact that this is called during an update
+                lifecycle_hook_info_app_update.operation = constants.APP_APPLY_OP
+                result = self.perform_app_apply(to_rpc_app, mode=None,
+                                                lifecycle_hook_info_app_apply=lifecycle_hook_info_app_update,
+                                                caller='update')
+                lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
             elif operation == constants.APP_ROLLBACK_OP:
                 # The app_rollback will use the previous helm releases known to
                 # the k8s cluster. Overrides are not generated from any plugins
                 # in the case. Make sure that the enabled plugins correspond to
                 # the version expected to be activated
                 self._plugins.activate_plugins(to_app)
+
+                # lifecycle hooks not used in perform_app_rollback
                 result = self._perform_app_rollback(from_app, to_app)
 
-            if not result:
+            operation_successful = result
+
+            # If operation failed consider doing the app recovery
+            do_recovery = not operation_successful
+
+            # Here the app operation failed (do_recovery is True)
+            # but skip_recovery requested.
+            if skip_recovery and do_recovery:
+                LOG.info("Application %s (%s) has configured skip_recovery %s"
+                         ", recovery skipped.",
+                         to_app.name, to_app.version, skip_recovery)
+                do_recovery = False
+
+            # If recovery is requested stop the flow of execution here
+            if do_recovery:
                 LOG.error("Application %s update from version %s to version "
                           "%s aborted." % (to_app.name, from_app.version, to_app.version))
+
+                # lifecycle hooks not used in perform_app_recover
                 return self._perform_app_recover(from_app, to_app)
 
             self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS,
                                     "cleanup application version {}".format(from_app.version))
 
-            # App apply/rollback succeeded
+            # App apply/rollback succeeded or it failed but skip_recovery was set
             # Starting cleanup old application
             from_app.charts = self._get_list_of_charts(from_app.sync_armada_mfile)
             to_app_charts = [c.release for c in to_app.charts]
@@ -2376,12 +2575,26 @@ class AppOperator(object):
             self._utils._patch_report_app_dependencies(
                 from_app.name + '-' + from_app.version)
 
-            self._update_app_status(
-                to_app, constants.APP_APPLY_SUCCESS,
-                constants.APP_PROGRESS_UPDATE_COMPLETED.format(from_app.version,
-                                                               to_app.version))
-            LOG.info("Application %s update from version %s to version "
-                     "%s completed." % (to_app.name, from_app.version, to_app.version))
+            # The initial operation for to_app is successful
+            if operation_successful:
+                self._update_app_status(
+                    to_app, constants.APP_APPLY_SUCCESS,
+                    constants.APP_PROGRESS_UPDATE_COMPLETED.format(
+                        from_app.version, to_app.version))
+                LOG.info("Application %s update from version %s to version "
+                         "%s completed." % (to_app.name, from_app.version, to_app.version))
+
+            # The initial operation for to_app failed
+            # This is reached here only when skip_recovery is requested
+            # Need to inform the user
+            else:
+                message = \
+                    constants.APP_PROGRESS_UPDATE_FAILED_SKIP_RECOVERY.format(
+                        to_app.name, from_app.version, to_app.version)
+                self._update_app_status(
+                    to_app, constants.APP_APPLY_FAILURE, message)
+                LOG.info(message)
+
         except (exception.IncompatibleKubeVersion,
                 exception.KubeAppUploadFailure,
                 exception.KubeAppApplyFailure,
@@ -2391,6 +2604,7 @@ class AppOperator(object):
             # ie.images download/k8s resource creation failure
             # Start recovering without trigger armada process
             LOG.exception(e)
+            # lifecycle hooks not used in perform_app_recover
             return self._perform_app_recover(from_app, to_app,
                                              armada_process_required=False)
         except Exception as e:
@@ -2410,14 +2624,15 @@ class AppOperator(object):
         self._clear_app_alarm(to_app.name)
         return True
 
-    def perform_app_remove(self, rpc_app, deactivate_plugins=True):
+    def perform_app_remove(self, rpc_app, lifecycle_hook_info_app_remove):
         """Process application remove request
 
         This method invokes Armada to delete the application manifest.
         For system app, it also cleans up old test pods.
 
         :param rpc_app: application object in the RPC request
-        :param deactivate_plugins: Deactive plugins on removal
+        :param lifecycle_hook_info_app_remove: LifecycleHookInfo object
+
         :return boolean: whether application remove was successful
         """
 
@@ -2448,14 +2663,16 @@ class AppOperator(object):
                 self._dbapi.kube_app_destroy(app.name, inactive=True)
 
             try:
-                self._delete_local_registry_secrets(app.name)
-                if app.system_app:
-                    self._plugins.activate_plugins(app)
-                    manifest_op = self._helm.get_armada_manifest_operator(app.name)
-                    manifest_op.app_rbd_actions(self, self._dbapi, app.name,
-                                                constants.APP_REMOVE_OP)
-                    if deactivate_plugins:
-                        self._plugins.deactivate_plugins(app)
+                # Perform rbd actions
+                lifecycle_hook_info_app_remove.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+                lifecycle_hook_info_app_remove.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RBD
+                self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_remove)
+
+                # Perform app resources actions
+                lifecycle_hook_info_app_remove.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+                lifecycle_hook_info_app_remove.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RESOURCE
+                self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_remove)
+
             except Exception as e:
                 self._abort_operation(app, constants.APP_REMOVE_OP)
                 LOG.exception(e)
@@ -2496,7 +2713,7 @@ class AppOperator(object):
         app = AppOperator.Application(rpc_app)
         return app.active
 
-    def perform_app_abort(self, rpc_app):
+    def perform_app_abort(self, rpc_app, lifecycle_hook_info_app_abort):
         """Process application abort request
 
         This method retrieves the latest application status from the
@@ -2508,6 +2725,8 @@ class AppOperator(object):
         request to Armada.
 
         :param rpc_app: application object in the RPC request
+        :param lifecycle_hook_info_app_abort: LifecycleHookInfo object
+
         """
 
         app = AppOperator.Application(rpc_app)
@@ -2529,13 +2748,13 @@ class AppOperator(object):
             # Subsequent reapply fails since it we cannot get lock.
             with self._lock:
                 self._armada.stop_armada_request()
-                self._clear_armada_locks()
+                self._armada.clear_armada_locks()
         else:
             # Either the previous operation has completed or already failed
             LOG.info("Abort request ignored. The previous operation for app %s "
                      "has either completed or failed." % app.name)
 
-    def perform_app_delete(self, rpc_app):
+    def perform_app_delete(self, rpc_app, lifecycle_hook_info_app_delete):
         """Process application remove request
 
         This method removes the application entry from the database and
@@ -2543,18 +2762,24 @@ class AppOperator(object):
         and purge all application files from the system.
 
         :param rpc_app: application object in the RPC request
+        :param lifecycle_hook_info_app_delete: LifecycleHookInfo object
+
         """
 
         app = AppOperator.Application(rpc_app)
         try:
-            if app.system_app:
-                self._plugins.activate_plugins(app)
+            # Perform rbd actions
+            lifecycle_hook_info_app_delete.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info_app_delete.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RBD
+            self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_delete)
 
-                manifest_op = self._helm.get_armada_manifest_operator(app.name)
-                manifest_op.app_rbd_actions(self, self._dbapi, app.name,
-                                            constants.APP_DELETE_OP)
+            # Perform app resources actions
+            lifecycle_hook_info_app_delete.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+            lifecycle_hook_info_app_delete.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RESOURCE
+            self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_delete)
 
-                self._plugins.deactivate_plugins(app)
+            self._plugins.deactivate_plugins(app)
+
             self._dbapi.kube_app_destroy(app.name)
             self._cleanup(app)
             self._utils._patch_report_app_dependencies(app.name + '-' + app.version)
@@ -2616,6 +2841,9 @@ class AppOperator(object):
             self.sync_imgfile = generate_synced_images_fqpn(
                 self._kube_app.get('name'),
                 self._kube_app.get('app_version'))
+            self.sync_metadata_file = cutils.generate_synced_metadata_fqpn(
+                self._kube_app.get('name'),
+                self._kube_app.get('app_version'))
 
             # Files: FQPN formatted for the docker armada_service
             self.armada_service_mfile = generate_armada_service_manifest_fqpn(
@@ -2662,6 +2890,10 @@ class AppOperator(object):
         def mode(self):
             return self._kube_app.get('mode')
 
+        @property
+        def app_metadata(self):
+            return self._kube_app.get('app_metadata')
+
         def update_status(self, new_status, new_progress):
             self._kube_app.status = new_status
             if new_progress:
@@ -2706,6 +2938,8 @@ class AppOperator(object):
             self.sync_imgfile = generate_synced_images_fqpn(self.name, self.version)
             self.sync_overrides_dir = generate_synced_helm_overrides_dir(self.name, self.version)
             self.patch_dependencies = new_patch_dependencies
+            self.inst_plugins_dir = os.path.join(self.inst_path, 'plugins')
+            self.sync_plugins_dir = generate_synced_app_plugins_dir(new_name, new_version)
 
 
 class DockerHelper(object):
@@ -3005,7 +3239,7 @@ class ArmadaHelper(object):
                 return False
         return True
 
-    def _check_pod_ready_probe(self, pod):
+    def check_pod_ready_probe(self, pod):
         """Pod is of the form returned by self._kube.kube_get_pods_by_selector.
         Returns true if last probe shows the container is in 'Ready' state.
         """
@@ -3021,9 +3255,24 @@ class ArmadaHelper(object):
         for pod in pods:
             if pod.status.phase == 'Running' and \
                     pod.metadata.deletion_timestamp is None and \
-                    self._check_pod_ready_probe(pod):
+                    self.check_pod_ready_probe(pod):
                 return pod
         return pods[0]
+
+    def clear_armada_locks(self):
+        lock_name = "{}.{}.{}".format(ARMADA_LOCK_PLURAL,
+                                      ARMADA_LOCK_GROUP,
+                                      ARMADA_LOCK_NAME)
+        try:
+            self._kube.delete_custom_resource(ARMADA_LOCK_GROUP,
+                                              ARMADA_LOCK_VERSION,
+                                              ARMADA_LOCK_NAMESPACE,
+                                              ARMADA_LOCK_PLURAL,
+                                              lock_name)
+        except Exception:
+            # Best effort delete
+            LOG.warning("Failed to clear Armada locks.")
+            pass
 
     def _start_armada_service(self):
         """Armada pod is managed by Kubernetes / Helm.
@@ -3048,8 +3297,12 @@ class ArmadaHelper(object):
 
         # Wait for armada to be ready for cmd execution.
         # NOTE: make_armada_requests() also has retry mechanism
-        timeout = 30
-        while True:
+        TIMEOUT_DELTA = 5
+        TIMEOUT_SLEEP = 5
+        TIMEOUT_START_VALUE = 30
+
+        timeout = TIMEOUT_START_VALUE
+        while timeout > 0:
             try:
                 pods = self._kube.kube_get_pods_by_selector(
                     ARMADA_NAMESPACE,
@@ -3066,7 +3319,7 @@ class ArmadaHelper(object):
                             ARMADA_NAMESPACE, pod.metadata.name)
 
                 if pod and pod.status.phase == 'Running' and \
-                        self._check_pod_ready_probe(pod):
+                        self.check_pod_ready_probe(pod):
                     # Test that we can copy files into armada-api container
                     src = '/etc/build.info'
                     dest_dir = '{}:{}'.format(pod.metadata.name, '/tmp')
@@ -3077,20 +3330,42 @@ class ArmadaHelper(object):
                         LOG.error("Failed to copy %s to %s, error: %s",
                                   src, dest_dir, stderr)
                         raise RuntimeError('armada pod not ready')
-                    else:
-                        return True
-                    return True
+                    break
 
             except Exception as e:
                 LOG.info("Could not get Armada service : %s " % e)
 
-            if timeout <= 0:
-                break
-            time.sleep(5)
-            timeout -= 5
+            time.sleep(TIMEOUT_SLEEP)
+            timeout -= TIMEOUT_DELTA
 
-        LOG.error("Failed to get Armada service after 30 seconds.")
-        return False
+        if timeout <= 0:
+            LOG.error("Failed to get Armada service after {seconds} seconds.".
+                      format(seconds=TIMEOUT_START_VALUE))
+            return False
+
+        # We don't need to loop through the code that checks the pod's status
+        # again. Once the previous loop exits with pod 'Running' we can test
+        # the connectivity to the tiller postgres backend:
+        timeout = TIMEOUT_START_VALUE
+        while timeout > 0:
+            try:
+                _ = helm_utils.retrieve_helm_v2_releases()
+                break
+            except exception.HelmTillerFailure:
+                LOG.warn("Could not query Helm/Tiller releases")
+                time.sleep(TIMEOUT_SLEEP)
+                timeout -= TIMEOUT_DELTA
+                continue
+            except Exception as ex:
+                LOG.error("Unhandled exception : {error}".format(error=str(ex)))
+                return False
+
+        if timeout <= 0:
+            LOG.error("Failed to query Helm/Tiller for {seconds} seconds.".
+                      format(seconds=TIMEOUT_START_VALUE))
+            return False
+
+        return True
 
     def stop_armada_request(self):
         """A simple way to cancel an on-going manifest apply/rollback/delete
@@ -3208,6 +3483,8 @@ class ArmadaHelper(object):
                         LOG.error("Failed to apply application manifest %s "
                                   "with exit code %s. See %s for details." %
                                   (manifest_file, p.returncode, logfile))
+                        if p.returncode == CONTAINER_ABNORMAL_EXIT_CODE:
+                            self.clear_armada_locks()
                     else:
                         LOG.info("Application manifest %s was successfully "
                                  "applied/re-applied." % manifest_file)
@@ -3249,6 +3526,8 @@ class ArmadaHelper(object):
                             LOG.error("Failed to rollback release %s "
                                       "with exit code %s. See %s for details." %
                                       (release, p.returncode, logfile))
+                            if p.returncode == CONTAINER_ABNORMAL_EXIT_CODE:
+                                self.clear_armada_locks()
                             break
                     if rc:
                         LOG.info("Application releases %s were successfully "
@@ -3284,6 +3563,8 @@ class ArmadaHelper(object):
                         LOG.error("Failed to delete application manifest %s "
                                   "with exit code %s. See %s for details." %
                                   (manifest_file, p.returncode, logfile))
+                        if p.returncode == CONTAINER_ABNORMAL_EXIT_CODE:
+                            self.clear_armada_locks()
                     else:
                         LOG.info("Application charts were successfully "
                                  "deleted with manifest %s." % manifest_delete_file)
@@ -3297,6 +3578,7 @@ class ArmadaHelper(object):
                 LOG.error("Armada service failed to start/restart")
         except Exception as e:
             rc = False
+            self.clear_armada_locks()
             LOG.error("Armada request %s for manifest %s failed: %s " %
                       (request, manifest_file, e))
         return rc
@@ -3654,7 +3936,12 @@ class PluginHelper(object):
 
             # Clean up the working set
             for distribution in plugin_distributions:
-                del pkg_resources.working_set.by_key[distribution]
+                try:
+                    del pkg_resources.working_set.by_key[distribution]
+                except KeyError:
+                    LOG.warn("Plugin distribution %s not enabled for version %s"
+                             ", but expected to be. Continuing with plugin "
+                             "deactivation." % (distribution, app.version))
             del pkg_resources.working_set.entry_keys[app.sync_plugins_dir]
             pkg_resources.working_set.entries.remove(app.sync_plugins_dir)
 

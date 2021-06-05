@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2015 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 import netaddr
@@ -136,6 +136,7 @@ class PciSriov(Network):
         super(PciSriov, self).__init__(node, constants.NETWORK_TYPE_PCI_SRIOV)
         self.virtualFunctions = int(node.get('virtualFunctions'))
         self.virtualFunctionDriver = node.get('virtualFunctionDriver')
+        self.maxTxRate = node.get('maxTxRate')
 
 
 class Interface(object):
@@ -150,6 +151,7 @@ class Interface(object):
         self.routes = []
         self.virtualFunctions = 0
         self.virtualFunctionDriver = None
+        self.maxTxRate = None
         networksNode = ifNode.find('networks')
         if networksNode is not None:
             for netNode in networksNode:
@@ -171,6 +173,7 @@ class Interface(object):
             elif network.networkType == constants.NETWORK_TYPE_PCI_SRIOV:
                 self.virtualFunctions = network.virtualFunctions
                 self.virtualFunctionDriver = network.virtualFunctionDriver
+                self.maxTxRate = network.maxTxRate
 
             if isinstance(network, Network):
                 self.providerNetworks = network.providerNetworks
@@ -304,12 +307,15 @@ class AeInterface(Interface):
         if node.tag == 'activeStandby':
             self.aeMode = 'activeStandby'
             self.txPolicy = None
+            self.primary_reselect = node.get('primary_reselect')
         elif node.tag == 'balanced':
             self.aeMode = 'balanced'
             self.txPolicy = node.get('txPolicy')
+            self.primary_reselect = None
         elif node.tag == 'ieee802.3ad':
             self.aeMode = '802.3ad'
             self.txPolicy = node.get('txPolicy')
+            self.primary_reselect = None
 
         node = ifNode.find('interfaces')
         if node:

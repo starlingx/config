@@ -4,8 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 from oslo_log import log
-from sysinv.api.controllers.v1.rest_api import rest_api_request
-from sysinv.api.controllers.v1.rest_api import get_token
+from sysinv.common.rest_api import get_token
+from sysinv.common.rest_api import rest_api_request
 
 LOG = log.getLogger(__name__)
 

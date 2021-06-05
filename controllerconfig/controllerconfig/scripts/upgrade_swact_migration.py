@@ -5,21 +5,22 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # This script will perform upgrade preparation and migration operations for
-# host-swact to controller-1.
+# host-swact to controller-0.
 #
 
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import yaml
 
-from oslo_log import log
+from controllerconfig.common import log
 
-LOG = log.getLogger(__name__)
+LOG = log.get_logger(__name__)
 
 ETCD_PATH = "/opt/etcd"
-UPGRADE_CONTROLLER_1_FILE = "/etc/platform/.upgrade_swact_controller_1"
+UPGRADE_ETCD_FILE = os.path.join(ETCD_PATH, ".upgrade_etcd")
 
 
 def main():
@@ -40,6 +41,11 @@ def main():
             return 1
         arg += 1
 
+    log.configure()
+
+    LOG.info("upgrade_swact_migration called with action: %s from_release: %s "
+             "to_release: %s" % (action, from_release, to_release))
+
     if action == "migrate_etcd":
         try:
             migrate_etcd_on_swact()
@@ -48,6 +54,8 @@ def main():
             return 1
     elif action == "prepare_swact":
         upgrade_prepare_swact(from_release, to_release)
+
+    LOG.info("upgrade_swact_migration complete")
     return 0
 
 
@@ -56,12 +64,21 @@ def upgrade_prepare_swact(from_release, to_release):
         'from_release': from_release,
         'to_release': to_release
     }
-    with open(UPGRADE_CONTROLLER_1_FILE, 'w') as f:
+    with open(UPGRADE_ETCD_FILE, 'w') as f:
         yaml.dump(migrate_data, f, default_flow_style=False)
 
 
 def migrate_etcd_on_swact():
-    with open(UPGRADE_CONTROLLER_1_FILE, 'r') as f:
+    if not os.path.isfile(UPGRADE_ETCD_FILE):
+        LOG.info("Skipping etcd migration, no request %s" %
+                 UPGRADE_ETCD_FILE)
+        return
+
+    if socket.gethostname() != 'controller-0':
+        LOG.info("Skipping etcd migration, not running on controller-0")
+        return
+
+    with open(UPGRADE_ETCD_FILE, 'r') as f:
         document = yaml.safe_load(f)
 
     from_release = document.get('from_release')
@@ -69,23 +86,22 @@ def migrate_etcd_on_swact():
 
     dest_etcd = os.path.join(ETCD_PATH, to_release)
 
-    if os.path.exists(dest_etcd):
-        # The dest_etcd must not have already been created,
-        # however this can occur on a forced host-swact
-        LOG.info("skipping etcd migration %s already exists" %
-                 dest_etcd)
-        return
+    if os.path.islink(dest_etcd):
+        LOG.info("Unlinking destination etcd directory: %s " % dest_etcd)
+        os.unlink(dest_etcd)
 
-    if not os.path.isfile(UPGRADE_CONTROLLER_1_FILE):
-        LOG.info("skipping etcd migration, no request %s" %
-                 UPGRADE_CONTROLLER_1_FILE)
+    if os.path.exists(dest_etcd):
+        # The directory was already copied but somehow the upgrade file exists
+        LOG.info("Skipping etcd migration %s already exists" %
+                 dest_etcd)
+        os.remove(UPGRADE_ETCD_FILE)
         return
 
     source_etcd = os.path.join(ETCD_PATH, from_release)
     try:
         shutil.copytree(os.path.join(source_etcd),
                         os.path.join(dest_etcd))
-        os.remove(UPGRADE_CONTROLLER_1_FILE)
+        os.remove(UPGRADE_ETCD_FILE)
     except subprocess.CalledProcessError:
         LOG.exception("Failed to migrate %s" % source_etcd)
         raise

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -28,6 +28,7 @@ class StorageCeph(storage_backend.StorageBackend):
         'tier_id': utils.int_or_none,
         'tier_name': utils.str_or_none,
         'tier_uuid': utils.str_or_none,
+        'network': utils.str_or_none,
     }, **storage_backend.StorageBackend.fields)
 
     _foreign_fields = dict({

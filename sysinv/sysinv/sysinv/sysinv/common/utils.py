@@ -18,7 +18,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 
@@ -49,10 +49,12 @@ import os
 import pwd
 import random
 import re
+import rfc3986
 import shutil
 import signal
 import six
 import socket
+import stat
 import string
 import tempfile
 import time
@@ -61,7 +63,6 @@ import uuid
 import wsme
 import yaml
 
-from django.core.validators import URLValidator
 from eventlet.green import subprocess
 from eventlet import greenthread
 import netaddr
@@ -71,6 +72,8 @@ from oslo_config import cfg
 from oslo_log import log as logging
 
 from fm_api import constants as fm_constants
+
+from six.moves import range
 
 from sysinv._i18n import _
 from sysinv.common import exception
@@ -1034,16 +1037,14 @@ def get_required_platform_reserved_memory(dbapi, ihost, numa_node, low_core=Fals
         required_reserved += \
             constants.DISTRIBUTED_CLOUD_CONTROLLER_MEMORY_RESERVED_MIB // numa_node_count
     elif host_has_function(ihost, constants.WORKER):
-        # Engineer 2G per numa node for disk IO RSS overhead
+        # Engineer reserve per numa node for disk IO RSS overhead
         required_reserved += constants.DISK_IO_RESIDENT_SET_SIZE_MIB
         if numa_node == 0:
-            # Engineer 2G for worker to give some headroom;
-            # typically requires 650 MB PSS
+            # Engineer platform reserve for worker
             required_reserved += \
                 constants.PLATFORM_CORE_MEMORY_RESERVED_MIB
             if host_has_function(ihost, constants.CONTROLLER):
-                # Over-engineer controller memory.
-                # Typically require 5GB PSS; accommodate 2GB headroom.
+                # If AIO, reserve additional memory for controller function.
                 # Controller memory usage depends on number of workers.
                 if low_core:
                     required_reserved += \
@@ -1052,8 +1053,7 @@ def get_required_platform_reserved_memory(dbapi, ihost, numa_node, low_core=Fals
                     required_reserved += \
                         constants.COMBINED_NODE_CONTROLLER_MEMORY_RESERVED_MIB
             else:
-                # If not a controller,
-                # add overhead for metadata and vrouters
+                # If not a controller, add overhead for metadata and vrouters
                 required_reserved += \
                     constants.NETWORK_METADATA_OVERHEAD_MIB
     elif ihost['personality'] == constants.CONTROLLER:
@@ -1209,6 +1209,18 @@ def get_interface_os_ifname(interface, interfaces, ports):
         return interface['ifname']
 
 
+def get_sriov_vf_index(addr, addrs):
+    """
+    Returns vf index of specified pci addr of the vf
+    Returns None if not found
+    """
+    try:
+        return addrs.index(addr)
+    except ValueError:
+        LOG.error("Index not found for this addr %s." % addr)
+        return None
+
+
 def get_dhcp_cid(hostname, network_type, mac):
     """Create the CID for use with dnsmasq. We use a unique identifier for a
     client since different networks can operate over the same device (and hence
@@ -1269,25 +1281,25 @@ def bytes_to_MiB(bytes_number):
 
 
 def check_lock_path():
-    if os.path.isdir(constants.SYSINV_LOCK_PATH):
+    if os.path.isdir(constants.SYSINV_VOLATILE_PATH):
         return
     try:
         uid = pwd.getpwnam(constants.SYSINV_USERNAME).pw_uid
         gid = grp.getgrnam(constants.SYSINV_GRPNAME).gr_gid
-        os.makedirs(constants.SYSINV_LOCK_PATH)
-        os.chown(constants.SYSINV_LOCK_PATH, uid, gid)
+        os.makedirs(constants.SYSINV_VOLATILE_PATH)
+        os.chown(constants.SYSINV_VOLATILE_PATH, uid, gid)
         LOG.info("Created directory=%s" %
-                 constants.SYSINV_LOCK_PATH)
+                 constants.SYSINV_VOLATILE_PATH)
 
     except OSError as e:
         LOG.exception("makedir %s OSError=%s encountered" %
-                      (constants.SYSINV_LOCK_PATH, e))
+                      (constants.SYSINV_VOLATILE_PATH, e))
 
 
 def synchronized(name, external=True):
     if external:
         check_lock_path()
-        lock_path = constants.SYSINV_LOCK_PATH
+        lock_path = constants.SYSINV_VOLATILE_PATH
     else:
         lock_path = None
     return lockutils.synchronized(name,
@@ -1358,6 +1370,60 @@ def _get_cinder_device_info(dbapi, forihostid):
     return cinder_device, cinder_size_gib
 
 
+def acquire_shared_nb_flock(lockfd, max_retry=5, wait_interval=5):
+    """
+    This method is to acquire a Shared Non-blocking lock for the
+    given file descriptor to avoid conflict with other processes
+    trying accessing the same file.
+
+    :returns: fd of the lock, if successful. 0 on error.
+    """
+    return _acquire_file_lock(lockfd, fcntl.LOCK_SH | fcntl.LOCK_NB,
+                              max_retry, wait_interval)
+
+
+def acquire_exclusive_nb_flock(lockfd, max_retry=5, wait_interval=5):
+    """
+    This method is to acquire a Exclusive Non-blocking lock for the
+    given file descriptor to avoid conflict with other processes
+    trying accessing the same file.
+
+    :returns: fd of the lock, if successful. 0 on error.
+    """
+    return _acquire_file_lock(lockfd, fcntl.LOCK_EX | fcntl.LOCK_NB,
+                              max_retry, wait_interval)
+
+
+def release_flock(lockfd):
+    """
+    This method is used to release the file lock acquired by the process.
+    """
+    if lockfd:
+        fcntl.flock(lockfd, fcntl.LOCK_UN)
+
+
+def _acquire_file_lock(lockfd, operation, max_retry, wait_interval):
+    count = 1
+    while count <= max_retry:
+        try:
+            fcntl.flock(lockfd, operation)
+            LOG.debug("Successfully acquired lock (fd={})".format(lockfd))
+            return lockfd
+        except IOError as e:
+            # raise on unrelated IOErrors
+            if e.errno != errno.EAGAIN:
+                raise
+            else:
+                LOG.info("Could not acquire lock({}): {} ({}/{}), "
+                         "will retry".format(lockfd, str(e),
+                                             count, max_retry))
+                time.sleep(wait_interval)
+                count += 1
+
+    LOG.error("Failed to acquire lock (fd={}). Stopped trying.".format(lockfd))
+    return 0
+
+
 def skip_udev_partition_probe(function):
     def wrapper(*args, **kwargs):
         """Decorator to skip partition rescanning in udev
@@ -1385,14 +1451,17 @@ def skip_udev_partition_probe(function):
         device_node = kwargs.get('device_node', None)
         if device_node:
             with open(device_node, 'r') as f:
-                fcntl.flock(f, fcntl.LOCK_SH | fcntl.LOCK_NB)
-                try:
-                    return function(*args, **kwargs)
-                finally:
-                    # Since events are asynchronous we have to wait for udev
-                    # to pick up the change.
-                    time.sleep(0.1)
-                    fcntl.flock(f, fcntl.LOCK_UN)
+                if acquire_shared_nb_flock(f):
+                    try:
+                        return function(*args, **kwargs)
+                    finally:
+                        # Since events are asynchronous we have to wait for udev
+                        # to pick up the change.
+                        time.sleep(0.1)
+                        release_flock(f)
+                else:
+                    LOG.error("Failed to acquire lock (fd={}). Could not call decorated function {}"
+                        .format(f, str(function)))
         else:
             return function(*args, **kwargs)
     return wrapper
@@ -1719,6 +1788,20 @@ def get_disk_capacity_mib(device_node):
     return int(size_mib)
 
 
+def parse_range_set(range_string):
+    """ Return a non-sorted list specified by a range string."""
+    # TODO: add UTs for this.
+
+    # Parse a range string as specified by format_range_set() below
+    # Be generous dealing with duplicate entries in the specification.
+    if not range_string:
+        return []
+    ranges = [
+        (lambda sublist: range(sublist[0], sublist[-1] + 1))
+        (list(map(int, subrange.split('-')))) for subrange in range_string.split(',')]
+    return list(set([y for x in ranges for y in x]))
+
+
 def format_range_set(items):
     # Generate a pretty-printed value of ranges, such as 3-6,8-9,12-17
     ranges = []
@@ -1786,11 +1869,17 @@ def is_openstack_applied(dbapi):
 
 
 def is_url(url_str):
+    uri = rfc3986.uri_reference(url_str)
+    validator = rfc3986.validators.Validator().require_presence_of(
+        'scheme', 'host',
+    ).check_validity_of(
+        'scheme', 'host', 'path',
+    )
     try:
-        URLValidator()(url_str)
-        return True
-    except Exception:
+        validator.validate(uri)
+    except rfc3986.exceptions.RFC3986Exception:
         return False
+    return True
 
 
 def is_valid_domain(url_str):
@@ -1866,17 +1955,26 @@ def verify_checksum(path):
     return rc
 
 
-def find_metadata_file(path, metadata_file):
+def find_metadata_file(path, metadata_file, upgrade_from_release=None):
     """ Find and validate the metadata file in a given directory.
 
     Valid keys for metadata file are defined in the following format:
 
     app_name: <name>
     app_version: <version>
-    patch_dependencies:
-    - <patch.1>
-    - <patch.2>
-    ...
+    upgrades:
+      update_failure_no_rollback: <true/false/yes/no>
+      from_versions:
+      - <version.1>
+      - <version.2>
+    supported_k8s_version:
+      minimum: <version>
+      maximum: <version>
+    supported_releases:
+      <release>:
+      - <patch.1>
+      - <patch.2>
+      ...
     repo: <helm repo> - optional: defaults to HELM_REPO_FOR_APPS
     disabled_charts: - optional: charts default to enabled
     - <chart name>
@@ -1885,6 +1983,40 @@ def find_metadata_file(path, metadata_file):
     maintain_user_overrides: <true|false>
       - optional: defaults to false. Over an app update any user overrides are
         preserved for the new version of the application
+    ...
+    behavior: - optional: describes the app behavior
+        platform_managed_app: <true/false/yes/no> - optional: when absent behaves as false
+        desired_state: <uploaded/applied> - optional: state the app should reach
+        evaluate_reapply: - optional: describe the reapply evaluation behaviour
+            after: - optional: list of apps that should be evaluated before the current one
+              - <app_name.1>
+              - <app_name.2>
+            triggers: - optional: list of what triggers the reapply evaluation
+              - type: <key in APP_EVALUATE_REAPPLY_TRIGGER_TO_METADATA_MAP>
+                filters: - optional: list of field:value, that aid filtering
+                    of the trigger events. All pairs in this list must be
+                    present in trigger dictionary that is passed in
+                    the calls (eg. trigger[field_name1]==value_name1 and
+                    trigger[field_name2]==value_name2).
+                    Function evaluate_apps_reapply takes a dictionary called
+                    'trigger' as parameter. Depending on trigger type this
+                    may contain custom information used by apps, for example
+                    a field 'personality' corresponding to node personality.
+                    It is the duty of the app developer to enhance existing
+                    triggers with the required information.
+                    Hard to obtain information should be passed in the trigger.
+                    To use existing information it is as simple as defining
+                    the metadata.
+                  - <field_name.1>: <value_name.1>
+                  - <field_name.2>: <value_name.2>
+                filter_field: <field_name> - optional: field name in trigger
+                              dictionary. If specified the filters are applied
+                              to trigger[filter_field] sub-dictionary instead
+                              of the root trigger dictionary.
+    apply_progress_adjust: - optional: Positive integer value by which to adjust the
+                                       percentage calculations for the progress of
+                                       a monitoring task.
+                                       Default value is zero (no adjustment)
     """
     app_name = ''
     app_version = ''
@@ -1896,21 +2028,261 @@ def find_metadata_file(path, metadata_file):
                 doc = yaml.safe_load(f)
                 app_name = doc['app_name']
                 app_version = doc['app_version']
-                patches = doc['patch_dependencies']
             except KeyError:
                 # metadata file does not have the key(s)
                 pass
 
-        if (app_name is None or
-                app_version is None):
-            raise exception.SysinvException(_(
-                "Invalid %s: app_name or/and app_version "
-                "is/are None." % metadata_file))
+            if (app_name is None or
+                    app_version is None):
+                raise exception.SysinvException(_(
+                    "Invalid %s: app_name or/and app_version "
+                    "is/are None." % metadata_file))
 
-        if not isinstance(patches, list):
-            raise exception.SysinvException(_(
-                "Invalid %s: patch_dependencies should "
-                "be a list." % metadata_file))
+            behavior = None
+            evaluate_reapply = None
+            triggers = None
+
+            try:
+                behavior = doc[constants.APP_METADATA_BEHAVIOR]
+                if not isinstance(behavior, dict):
+                    raise exception.SysinvException(_(
+                        "Invalid {}: {} should be a dict."
+                        "".format(metadata_file,
+                                  constants.APP_METADATA_BEHAVIOR)))
+            except KeyError:
+                pass
+
+            if behavior:
+                try:
+                    platform_managed_app = behavior[constants.APP_METADATA_PLATFORM_MANAGED_APP]
+                    if not is_valid_boolstr(platform_managed_app):
+                        raise exception.SysinvException(_(
+                            "Invalid {}: {} expected value is a boolean string."
+                            "".format(metadata_file,
+                                      constants.APP_METADATA_PLATFORM_MANAGED_APP)))
+                except KeyError:
+                    pass
+
+                try:
+                    desired_state = behavior[constants.APP_METADATA_DESIRED_STATE]
+                    if not isinstance(desired_state, six.string_types):
+                        raise exception.SysinvException(_(
+                            "Invalid {}: {} should be {}."
+                            "".format(metadata_file,
+                                      constants.APP_METADATA_DESIRED_STATE,
+                                      six.string_types)))
+                except KeyError:
+                    pass
+
+                try:
+                    evaluate_reapply = behavior[constants.APP_METADATA_EVALUATE_REAPPLY]
+                    if not isinstance(evaluate_reapply, dict):
+                        raise exception.SysinvException(_(
+                            "Invalid {}: {} should be a dict."
+                            "".format(metadata_file,
+                                      constants.APP_METADATA_EVALUATE_REAPPLY)))
+                except KeyError:
+                    pass
+
+            if evaluate_reapply:
+                try:
+                    after = evaluate_reapply[constants.APP_METADATA_AFTER]
+                    if not isinstance(after, list):
+                        raise exception.SysinvException(_(
+                            "Invalid {}: {} should be a list."
+                            "".format(metadata_file,
+                                      constants.APP_METADATA_AFTER)))
+                except KeyError:
+                    pass
+
+                try:
+                    triggers = evaluate_reapply[constants.APP_METADATA_TRIGGERS]
+                    if not isinstance(triggers, list):
+                        raise exception.SysinvException(_(
+                            "Invalid {}: {} should be a list."
+                            "".format(metadata_file,
+                                      constants.APP_METADATA_TRIGGERS)))
+                except KeyError:
+                    pass
+
+            if triggers:
+                for trigger in triggers:
+                    if not isinstance(trigger, dict):
+                        raise exception.SysinvException(_(
+                            "Invalid {}: element of {} should be a dict."
+                            "".format(metadata_file,
+                                      constants.APP_METADATA_TRIGGERS)))
+
+                    try:
+                        type = trigger[constants.APP_METADATA_TYPE]
+                        if not isinstance(type, six.string_types):
+                            raise exception.SysinvException(_(
+                                "Invalid {}: {} should be {}."
+                                "".format(metadata_file,
+                                          constants.APP_METADATA_TYPE,
+                                          six.string_types)))
+                    except KeyError:
+                        pass
+
+                    try:
+                        filter_field = trigger[constants.APP_METADATA_FILTER_FIELD]
+                        if not isinstance(filter_field, six.string_types):
+                            raise exception.SysinvException(_(
+                                "Invalid {}: {} should be {}."
+                                "".format(metadata_file,
+                                          constants.APP_METADATA_TYPE,
+                                          six.string_types)))
+                    except KeyError:
+                        pass
+
+                    try:
+                        filters = trigger[constants.APP_METADATA_FILTERS]
+                        if not isinstance(filters, list):
+                            raise exception.SysinvException(_(
+                                "Invalid {}: {} should be a list."
+                                "".format(metadata_file,
+                                          constants.APP_METADATA_TYPE)))
+                    except KeyError:
+                        pass
+
+            try:
+                apply_progress_adjust_value = doc[constants.APP_METADATA_APPLY_PROGRESS_ADJUST]
+                if not isinstance(apply_progress_adjust_value, six.integer_types):
+                    raise exception.SysinvException(_(
+                                "Invalid {}: {} should be {}."
+                                "".format(metadata_file,
+                                          constants.APP_METADATA_APPLY_PROGRESS_ADJUST,
+                                          six.integer_types)))
+                if apply_progress_adjust_value < 0:
+                    raise exception.SysinvException(_(
+                                "Invalid {}: {} should be greater or equal to zero."
+                                "".format(metadata_file,
+                                          constants.APP_METADATA_APPLY_PROGRESS_ADJUST)))
+
+            except KeyError:
+                pass
+
+        upgrades = None
+        from_versions = []
+
+        try:
+            upgrades = doc[constants.APP_METADATA_UPGRADES]
+            if not isinstance(upgrades, dict):
+                raise exception.SysinvException(_(
+                    "Invalid {}: {} should be a dict."
+                    "".format(metadata_file,
+                              constants.APP_METADATA_UPGRADES)))
+        except KeyError:
+            pass
+
+        if upgrades:
+            try:
+                skip_recovery = \
+                    upgrades[constants.APP_METADATA_UPDATE_FAILURE_SKIP_RECOVERY]
+                if not is_valid_boolstr(skip_recovery):
+                    raise exception.SysinvException(_(
+                        "Invalid {}: {} expected value is a boolean string."
+                        "".format(metadata_file,
+                                  constants.APP_METADATA_UPDATE_FAILURE_SKIP_RECOVERY)))
+            except KeyError:
+                pass
+
+            try:
+                from_versions = upgrades[constants.APP_METADATA_FROM_VERSIONS]
+                if not isinstance(from_versions, list):
+                    raise exception.SysinvException(_(
+                        "Invalid {}: {} should be a dict."
+                        "".format(metadata_file,
+                                  constants.APP_METADATA_FROM_VERSIONS)))
+            except KeyError:
+                pass
+
+            for version in from_versions:
+                if not isinstance(version, six.string_types):
+                    raise exception.SysinvException(_(
+                        "Invalid {}: {} each version should be {}."
+                        "".format(metadata_file,
+                                  constants.APP_METADATA_FROM_VERSIONS,
+                                  six.string_types)))
+
+        k8s_version = None
+
+        try:
+            k8s_version = doc[constants.APP_METADATA_SUPPORTED_K8S_VERSION]
+            if not isinstance(k8s_version, dict):
+                raise exception.SysinvException(_(
+                    "Invalid {}: {} should be a dict."
+                    "".format(metadata_file,
+                              constants.APP_METADATA_SUPPORTED_K8S_VERSION)))
+        except KeyError:
+            pass
+
+        if k8s_version:
+            try:
+                _minimum = k8s_version[constants.APP_METADATA_MINIMUM]
+                if not isinstance(_minimum, six.string_types):
+                    raise exception.SysinvException(_(
+                        "Invalid {}: {} should be {}."
+                        "".format(metadata_file,
+                                  constants.constants.APP_METADATA_MINIMUM,
+                                  six.string_types)))
+            except KeyError:
+                pass
+
+            try:
+                _maximum = k8s_version[constants.APP_METADATA_MAXIMUM]
+                if not isinstance(_maximum, six.string_types):
+                    raise exception.SysinvException(_(
+                        "Invalid {}: {} should be {}."
+                        "".format(metadata_file,
+                                  constants.constants.APP_METADATA_MAXIMUM,
+                                  six.string_types)))
+            except KeyError:
+                pass
+
+        supported_releases = {}
+        try:
+            supported_releases = doc[constants.APP_METADATA_SUPPORTED_RELEASES]
+            if not isinstance(supported_releases, dict):
+                raise exception.SysinvException(_(
+                    "Invalid {}: {} should be a dict."
+                    "".format(metadata_file,
+                              constants.APP_METADATA_SUPPORTED_RELEASES)))
+        except KeyError:
+            pass
+
+        if upgrade_from_release is None:
+            check_release = get_sw_version()
+        else:
+            check_release = upgrade_from_release
+        for release, release_patches in supported_releases.items():
+            if not isinstance(release, six.string_types):
+                raise exception.SysinvException(_(
+                    "Invalid {}: {} release key should be {}."
+                    "".format(metadata_file,
+                              constants.APP_METADATA_SUPPORTED_RELEASES,
+                              six.string_types)))
+            if not isinstance(release_patches, list):
+                raise exception.SysinvException(_(
+                    "Invalid {}: {} <release>: [<patch>, ...] "
+                    "patches should be a list."
+                    "".format(metadata_file,
+                              constants.APP_METADATA_SUPPORTED_RELEASES)))
+            for patch in release_patches:
+                if not isinstance(patch, six.string_types):
+                    raise exception.SysinvException(_(
+                        "Invalid {}: {} <release>: [<patch>, ...] "
+                        "each patch should be {}."
+                        "".format(metadata_file,
+                                  constants.APP_METADATA_SUPPORTED_RELEASES,
+                                  six.string_types)))
+            if release == check_release:
+                patches.extend(release_patches)
+                LOG.info('{}, application {} ({}), '
+                         'check_release {}, requires patches {}'
+                         ''.format(metadata_file, app_name, app_version,
+                                   check_release, release_patches))
+
     return app_name, app_version, patches
 
 
@@ -2059,6 +2431,12 @@ def generate_synced_armada_manifest_fqpn(app_name, app_version, manifest_filenam
     return os.path.join(
         constants.APP_SYNCED_ARMADA_DATA_PATH, app_name, app_version,
         app_name + '-' + manifest_filename)
+
+
+def generate_synced_metadata_fqpn(app_name, app_version):
+    return os.path.join(
+        constants.APP_SYNCED_ARMADA_DATA_PATH, app_name, app_version,
+        'metadata.yaml')
 
 
 def is_chart_enabled(dbapi, app_name, chart_name, namespace):
@@ -2459,3 +2837,43 @@ def generate_random_password(length=16):
     if six.PY2:
         password = password.decode()
     return password
+
+
+def get_upgradable_hosts(dbapi):
+    """
+    Get hosts that could be upgraded.
+    """
+    all_hosts = dbapi.ihost_get_list()
+    # TODO:(mingyuan) Exclude edgeworker host from upgradable hosts
+    # until the final phase of the edgeworker feature completed
+    hosts = [i for i in all_hosts if i.personality != constants.EDGEWORKER]
+
+    return hosts
+
+
+def deep_get(nested_dict, keys, default=None):
+    """Get a value from nested dictionary."""
+    if not isinstance(nested_dict, dict):
+        raise exception.SysinvException(_(
+            "Expected a dictionary, cannot get keys {}.".format(keys)))
+
+    def _reducer(d, key):
+        if isinstance(d, dict):
+            return d.get(key, default)
+        return default
+
+    return functools.reduce(_reducer, keys, nested_dict)
+
+
+@contextlib.contextmanager
+def TempDirectory():
+    tmpdir = tempfile.mkdtemp()
+    os.chmod(tmpdir, stat.S_IRWXU)
+    try:
+        yield tmpdir
+    finally:
+        try:
+            LOG.debug("Cleaning up temp directory %s" % tmpdir)
+            shutil.rmtree(tmpdir)
+        except OSError as e:
+            LOG.error(_('Could not remove tmpdir: %s'), str(e))

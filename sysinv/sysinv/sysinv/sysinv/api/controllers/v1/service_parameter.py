@@ -649,6 +649,16 @@ class ServiceParameterController(rest.RestController):
                     % constants.SERVICE_TYPE_HTTP)
             raise wsme.exc.ClientSideError(msg)
 
+        # check if a device image update operation is in progress
+        alarms = fm.get_faults_by_id(fm_constants.
+                                     FM_ALARM_ID_DEVICE_IMAGE_UPDATE_IN_PROGRESS)
+        if alarms is not None:
+            msg = _("Unable to apply %s service parameters. "
+                    "A device image update operation is in progress. "
+                    "Please try again later when the operation is complete."
+                    % constants.SERVICE_TYPE_HTTP)
+            raise wsme.exc.ClientSideError(msg)
+
         # check if all hosts are unlocked/enabled
         hosts = pecan.request.dbapi.ihost_get_list()
         for host in hosts:

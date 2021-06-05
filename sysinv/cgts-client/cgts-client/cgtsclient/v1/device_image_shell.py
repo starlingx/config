@@ -15,7 +15,7 @@ def _print_device_image_show(obj):
               'name', 'description', 'image_version',
               'applied', 'applied_labels']
 
-    if type(obj) is dict:
+    if isinstance(obj, dict):
         data = [(f, obj.get(f, '')) for f in fields]
     else:
         data = [(f, getattr(obj, f, '')) for f in fields]

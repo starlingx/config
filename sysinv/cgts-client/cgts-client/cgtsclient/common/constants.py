@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2017 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -34,9 +34,10 @@ SB_TYPE_LVM = 'lvm'
 SB_TYPE_CEPH = 'ceph'
 SB_TYPE_CEPH_EXTERNAL = 'ceph-external'
 SB_TYPE_EXTERNAL = 'external'
+SB_TYPE_CEPH_ROOK = 'ceph-rook'
 
 SB_SUPPORTED = [SB_TYPE_FILE, SB_TYPE_LVM, SB_TYPE_CEPH, SB_TYPE_CEPH_EXTERNAL,
-                SB_TYPE_EXTERNAL]
+                SB_TYPE_EXTERNAL, SB_TYPE_CEPH_ROOK]
 # Storage backend state
 SB_STATE_CONFIGURED = 'configured'
 SB_STATE_CONFIGURING = 'configuring'
@@ -109,3 +110,11 @@ PARTITION_STATUS_MSG = {
 # Partition table types.
 PARTITION_TABLE_GPT = "gpt"
 PARTITION_TABLE_MSDOS = "msdos"
+
+# Network definitions
+NETWORK_TYPE_MGMT = 'mgmt'
+NETWORK_TYPE_CLUSTER_HOST = 'cluster-host'
+
+SB_SUPPORTED_NETWORKS = {
+    SB_TYPE_CEPH: [NETWORK_TYPE_MGMT, NETWORK_TYPE_CLUSTER_HOST]
+}

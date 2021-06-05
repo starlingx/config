@@ -30,6 +30,7 @@ Requires: python2-keystonemiddleware
 Requires: python2-kubernetes
 Requires: python2-netaddr
 Requires: python2-paste
+Requires: python2-rfc3986
 Requires: python2-pyudev
 Requires: python2-pbr
 Requires: python2-psutil
@@ -41,12 +42,12 @@ Requires: python2-WSME
 Requires: python2-six
 Requires: python2-sqlalchemy
 Requires: python2-stevedore
-Requires: python2-mox3
 Requires: python2-oslo.i18n
 Requires: python2-oslo.config
 Requires: python2-oslo.concurrency
 Requires: python2-oslo.db
 Requires: python2-oslo.log
+Requires: python2-oslo.rootwrap
 Requires: python2-oslo.serialization
 Requires: python2-oslo.service
 Requires: python2-oslo.utils

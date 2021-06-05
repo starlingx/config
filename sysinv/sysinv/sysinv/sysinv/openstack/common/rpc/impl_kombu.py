@@ -82,6 +82,9 @@ kombu_opts = [
                default=0,
                help='maximum retries with trying to connect to RabbitMQ '
                     '(the default of 0 implies an infinite retry count)'),
+    cfg.IntOpt('rabbit_connect_timeout',
+               default=10,
+               help='Timeout in seconds for connecting to the server'),
     cfg.BoolOpt('rabbit_durable_queues',
                 default=False,
                 help='use durable queues in RabbitMQ'),
@@ -426,6 +429,7 @@ class Connection(object):
                 'userid': self.conf.rabbit_userid,
                 'password': self.conf.rabbit_password,
                 'virtual_host': self.conf.rabbit_virtual_host,
+                'connect_timeout': self.conf.rabbit_connect_timeout,
             }
 
             for sp_key, value in server_params.items():

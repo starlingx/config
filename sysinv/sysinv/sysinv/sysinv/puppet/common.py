@@ -27,6 +27,7 @@ REPORT_FAILURE = 'report_failure'
 REPORT_INVENTORY_UPDATE = 'inventory_update'
 
 # name of manifest config operations to report back to sysinv conductor
+REPORT_UPGRADE_ACTIONS = 'upgrade_actions'
 REPORT_AIO_CINDER_CONFIG = 'aio_cinder_config'
 REPORT_DISK_PARTITON_CONFIG = 'manage_disk_partitions'
 REPORT_LVM_BACKEND_CONFIG = 'lvm_config'
@@ -38,6 +39,7 @@ REPORT_CEPH_MONITOR_CONFIG = 'ceph_monitor'
 REPORT_PCI_SRIOV_CONFIG = 'pci_sriov_config'
 REPORT_CEPH_OSD_CONFIG = 'ceph_osd'
 REPORT_CEPH_RADOSGW_CONFIG = 'ceph_radosgw'
+REPORT_CEPH_ROOK_CONFIG = 'ceph_rook_config'
 
 
 def puppet_apply_manifest(ip_address, personality,

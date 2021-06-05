@@ -25,7 +25,9 @@ class Token(object):
         if not self.expired:
             end = iso8601.parse_date(self.data['token']['expires_at'])
             now = iso8601.parse_date(datetime.datetime.utcnow().isoformat())
-            delta = abs(end - now).seconds
+            # don't use .seconds here since it will be only the 'seconds' part
+            # of the timedelta
+            delta = (end - now).total_seconds()
             return delta <= within_seconds
         return True
 

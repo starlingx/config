@@ -322,9 +322,21 @@ class KubernetesPuppet(base.BasePuppet):
         # determine reserved sets of logical cpus in a string range set format
         # to pass as options to kubelet
         k8s_platform_cpuset = utils.format_range_set(platform_cpuset)
-        k8s_all_reserved_cpuset = utils.format_range_set(platform_cpuset |
-                                                         vswitch_cpuset |
-                                                         isol_cpuset)
+
+        # determine whether to reserve isolated CPUs
+        reserve_isolcpus = True
+        labels = self.dbapi.label_get_by_host(host.uuid)
+        for label in labels:
+            if label.label_key == constants.KUBE_IGNORE_ISOL_CPU_LABEL:
+                reserve_isolcpus = False
+                break
+        if reserve_isolcpus:
+            k8s_all_reserved_cpuset = utils.format_range_set(platform_cpuset |
+                                                             vswitch_cpuset |
+                                                             isol_cpuset)
+        else:
+            k8s_all_reserved_cpuset = utils.format_range_set(platform_cpuset |
+                                                             vswitch_cpuset)
 
         # determine platform reserved memory
         k8s_reserved_mem = 0
@@ -447,7 +459,7 @@ class KubernetesPuppet(base.BasePuppet):
             driver = port['driver']
         return driver
 
-    def _get_pcidp_fpga_driver(self, device):
+    def _get_pcidp_fec_driver(self, device):
         sriov_vf_driver = device.get('sriov_vf_driver', None)
         if (sriov_vf_driver and
                 constants.SRIOV_DRIVER_TYPE_VFIO in sriov_vf_driver):
@@ -513,8 +525,32 @@ class KubernetesPuppet(base.BasePuppet):
                     driver_list.append(driver)
 
                 pf_name_list = resource['selectors']['pfNames']
-                if port['name'] not in pf_name_list:
-                    pf_name_list.append(port['name'])
+                if ifclass == constants.INTERFACE_CLASS_PCI_SRIOV:
+                    # In sriov case, we need specify each VF for resource pool
+                    # Get VF addresses assigned to this logical VF interface
+                    vf_addr_list = []
+                    all_vf_addr_list = []
+                    vf_addrs = port.get('sriov_vfs_pci_address', None)
+                    if vf_addrs:
+                        all_vf_addr_list = vf_addrs.split(',')
+                        vf_addr_list = interface.get_sriov_interface_vf_addrs(
+                            self.context, iface, all_vf_addr_list)
+
+                    vfnolst = [utils.get_sriov_vf_index(addr, all_vf_addr_list)
+                                   for addr in vf_addr_list]
+                    vfnolst = [str(vfno) for vfno in vfnolst]
+                    vfnolist_str = ",".join(vfnolst)
+                    if vfnolist_str:
+                        # concat into the form of 'ens785f0#0,2,7,9'
+                        pfname_with_vfs = "%s#%s" % (port['name'], vfnolist_str)
+                        pf_name_list.append(pfname_with_vfs)
+                    else:
+                        # error case, cannot find the vf numbers in sriov case
+                        LOG.error("Failed to get vf numbers for pci device %s", port['name'])
+                        continue
+                else:
+                    if port['name'] not in pf_name_list:
+                        pf_name_list.append(port['name'])
 
                 if interface.is_a_mellanox_device(self.context, iface):
                     resource['selectors']['isRdma'] = True
@@ -523,13 +559,17 @@ class KubernetesPuppet(base.BasePuppet):
 
         return list(resources.values())
 
-    def _get_pcidp_fpga_resources(self, host):
+    def _get_pcidp_fec_resources(self, host):
         resources = {}
-        fec_name = "intel_fpga_fec"
 
-        for d in self.dbapi.pci_device_get_by_host(host.id):
-            if (d['pclass_id'] == dconstants.PCI_DEVICE_CLASS_FPGA
-                    and d['pdevice_id'] == dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF):
+        for ddevid in dconstants.ACCLR_FEC_RESOURCES:
+
+            fec_name = dconstants.ACCLR_FEC_RESOURCES[ddevid]['fec_name']
+
+            for d in self.dbapi.pci_device_get_by_host(host.id):
+                if d['pdevice_id'] != ddevid:
+                    continue
+
                 resource = resources.get(fec_name, None)
                 if not resource:
                     resource = {
@@ -544,17 +584,20 @@ class KubernetesPuppet(base.BasePuppet):
 
                 vendor = d.get('pvendor_id', None)
                 if not vendor:
-                    LOG.error("Failed to get vendor id for pci device %s", d['pciaddr'])
+                    LOG.error("Failed to get vendor id for pci device %s",
+                              d['pciaddr'])
                     continue
 
                 device = d.get('sriov_vf_pdevice_id', None)
                 if not device:
-                    LOG.error("Failed to get device id for pci device %s", d['pciaddr'])
+                    LOG.error("Failed to get device id for pci device %s",
+                              d['pciaddr'])
                     continue
 
-                driver = self._get_pcidp_fpga_driver(d)
+                driver = self._get_pcidp_fec_driver(d)
                 if not driver:
-                    LOG.error("Failed to get driver for pci device %s", d['pciaddr'])
+                    LOG.error("Failed to get driver for pci device %s",
+                              d['pciaddr'])
                     continue
 
                 vendor_list = resource['selectors']['vendors']
@@ -580,5 +623,5 @@ class KubernetesPuppet(base.BasePuppet):
             constants.INTERFACE_CLASS_PCI_SRIOV)
         pcipt_resources = self._get_pcidp_network_resources_by_ifclass(
             constants.INTERFACE_CLASS_PCI_PASSTHROUGH)
-        fpga_resources = self._get_pcidp_fpga_resources(host)
-        return json.dumps({'resourceList': sriov_resources + pcipt_resources + fpga_resources})
+        fec_resources = self._get_pcidp_fec_resources(host)
+        return json.dumps({'resourceList': sriov_resources + pcipt_resources + fec_resources})

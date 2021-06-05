@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -25,7 +25,6 @@ from sysinv.api.controllers.v1 import address_pool
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import ceph_mon
 from sysinv.api.controllers.v1 import cluster
-from sysinv.api.controllers.v1 import community
 from sysinv.api.controllers.v1 import controller_fs
 from sysinv.api.controllers.v1 import cpu
 from sysinv.api.controllers.v1 import device_image
@@ -42,6 +41,7 @@ from sysinv.api.controllers.v1 import health
 from sysinv.api.controllers.v1 import helm_charts
 from sysinv.api.controllers.v1 import host
 from sysinv.api.controllers.v1 import kube_app
+from sysinv.api.controllers.v1 import kube_cluster
 from sysinv.api.controllers.v1 import kube_host_upgrade
 from sysinv.api.controllers.v1 import kube_upgrade
 from sysinv.api.controllers.v1 import kube_version
@@ -85,8 +85,8 @@ from sysinv.api.controllers.v1 import storage_file
 from sysinv.api.controllers.v1 import storage_external
 from sysinv.api.controllers.v1 import storage_tier
 from sysinv.api.controllers.v1 import storage_ceph_external
+from sysinv.api.controllers.v1 import storage_ceph_rook
 from sysinv.api.controllers.v1 import system
-from sysinv.api.controllers.v1 import trapdest
 from sysinv.api.controllers.v1 import upgrade
 from sysinv.api.controllers.v1 import user
 from sysinv.api.controllers.v1 import host_fs
@@ -136,12 +136,6 @@ class V1(base.APIBase):
     iprofile = [link.Link]
     "Links to the iprofile resource"
 
-    itrapdest = [link.Link]
-    "Links to the itrapdest node cluster resource"
-
-    icommunity = [link.Link]
-    "Links to the icommunity node cluster resource"
-
     iuser = [link.Link]
     "Links to the iuser resource"
 
@@ -180,6 +174,9 @@ class V1(base.APIBase):
 
     storage_ceph_external = [link.Link]
     "Links to the storage exteral ceph resource"
+
+    storage_ceph_rook = [link.Link]
+    "Links to the storage rook ceph resource"
 
     ceph_mon = [link.Link]
     "Links to the ceph mon resource"
@@ -255,6 +252,9 @@ class V1(base.APIBase):
 
     host_fs = [link.Link]
     "Links to the host_fs resource"
+
+    kube_clusters = [link.Link]
+    "Links to the kube_cluster resource"
 
     kube_versions = [link.Link]
     "Links to the kube_version resource"
@@ -418,22 +418,6 @@ class V1(base.APIBase):
                                        bookmark=True)
                    ]
 
-        v1.itrapdest = [link.Link.make_link('self', pecan.request.host_url,
-                                            'itrapdest', ''),
-                       link.Link.make_link('bookmark',
-                                           pecan.request.host_url,
-                                           'itrapdest', '',
-                                           bookmark=True)
-                        ]
-
-        v1.icommunity = [link.Link.make_link('self', pecan.request.host_url,
-                                             'icommunity', ''),
-                       link.Link.make_link('bookmark',
-                                           pecan.request.host_url,
-                                           'icommunity', '',
-                                           bookmark=True)
-                         ]
-
         v1.iuser = [link.Link.make_link('self', pecan.request.host_url,
                                         'iuser', ''),
                       link.Link.make_link('bookmark',
@@ -534,6 +518,16 @@ class V1(base.APIBase):
             link.Link.make_link('bookmark',
                                 pecan.request.host_url,
                                 'storage_ceph_external', '',
+                                bookmark=True)
+        ]
+
+        v1.storage_ceph_rook = [
+            link.Link.make_link('self',
+                                pecan.request.host_url,
+                                'storage_ceph_rook', ''),
+            link.Link.make_link('bookmark',
+                                pecan.request.host_url,
+                                'storage_ceph_rook', '',
                                 bookmark=True)
         ]
 
@@ -803,6 +797,13 @@ class V1(base.APIBase):
                                           'host_fs', '',
                                           bookmark=True)]
 
+        v1.kube_clusters = [link.Link.make_link('self', pecan.request.host_url,
+                                               'kube_clusters', ''),
+                            link.Link.make_link('bookmark',
+                                                pecan.request.host_url,
+                                                'kube_clusters', '',
+                                                bookmark=True)]
+
         v1.kube_versions = [link.Link.make_link('self', pecan.request.host_url,
                                                'kube_versions', ''),
                             link.Link.make_link('bookmark',
@@ -874,8 +875,6 @@ class Controller(rest.RestController):
     idisks = disk.DiskController()
     partitions = partition.PartitionController()
     iprofile = profile.ProfileController()
-    itrapdest = trapdest.TrapDestController()
-    icommunity = community.CommunityController()
     iuser = user.UserController()
     idns = dns.DNSController()
     intp = ntp.NTPController()
@@ -890,6 +889,8 @@ class Controller(rest.RestController):
     storage_tiers = storage_tier.StorageTierController()
     storage_ceph_external = \
         storage_ceph_external.StorageCephExternalController()
+    storage_ceph_rook = \
+        storage_ceph_rook.StorageCephRookController()
     ceph_mon = ceph_mon.CephMonController()
     drbdconfig = drbdconfig.drbdconfigsController()
     addresses = address.AddressController()
@@ -921,6 +922,7 @@ class Controller(rest.RestController):
     datanetworks = datanetwork.DataNetworkController()
     interface_datanetworks = interface_datanetwork.InterfaceDataNetworkController()
     host_fs = host_fs.HostFsController()
+    kube_clusters = kube_cluster.KubeClusterController()
     kube_versions = kube_version.KubeVersionController()
     kube_upgrade = kube_upgrade.KubeUpgradeController()
     kube_host_upgrades = kube_host_upgrade.KubeHostUpgradeController()

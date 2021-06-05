@@ -21,6 +21,7 @@ from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import patch_api
 from sysinv.api.controllers.v1 import types
 from sysinv.common import constants
+from sysinv.common import dc_api
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
@@ -187,6 +188,7 @@ class KubeUpgradeController(rest.RestController):
         """Create a new Kubernetes Upgrade and start upgrade."""
 
         force = body.get('force', False) is True
+        alarm_ignore_list = body.get('alarm_ignore_list')
 
         # There must not be a platform upgrade in progress
         try:
@@ -247,7 +249,10 @@ class KubeUpgradeController(rest.RestController):
 
         # The system must be healthy
         success, output = pecan.request.rpcapi.get_system_health(
-            pecan.request.context, force=force, kube_upgrade=True)
+            pecan.request.context,
+            force=force,
+            kube_upgrade=True,
+            alarm_ignore_list=alarm_ignore_list)
         if not success:
             LOG.info("Health query failure during kubernetes upgrade start: %s"
                      % output)
@@ -378,6 +383,12 @@ class KubeUpgradeController(rest.RestController):
 
             LOG.info("Completed kubernetes upgrade to version: %s" %
                 kube_upgrade_obj.to_version)
+
+            # If applicable, notify dcmanager upgrade is complete
+            system = pecan.request.dbapi.isystem_get_one()
+            role = system.get('distributed_cloud_role')
+            if role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+                dc_api.notify_dcmanager_kubernetes_upgrade_completed()
             return KubeUpgrade.convert_with_links(kube_upgrade_obj)
 
         else:

@@ -13,10 +13,10 @@ BuildRequires: python3-setuptools
 BuildRequires: python3-pbr
 BuildRequires: python3-pip
 BuildRequires: python3-wheel
+Requires: bash-completion
 Requires: python3-httplib2
 Requires: python3-prettytable
 Requires: bash-completion
-Requires: python3-dateutil
 Requires: python3-keystoneclient
 Requires: python3-oslo-i18n
 Requires: python3-oslo-serialization

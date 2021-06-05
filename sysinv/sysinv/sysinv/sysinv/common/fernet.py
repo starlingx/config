@@ -7,6 +7,7 @@
 from eventlet.green import subprocess
 import os
 import shutil
+import stat
 from grp import getgrnam
 from pwd import getpwnam
 
@@ -74,11 +75,6 @@ class FernetOperator(object):
         """Create a tmp key file."""
 
         self._set_user_group()
-        old_umask = os.umask(0o177)
-        old_egid = os.getegid()
-        old_euid = os.geteuid()
-        os.setegid(self.keystone_group_id)
-        os.seteuid(self.keystone_user_id)
 
         temp_key_file = os.path.join(self.key_repository, str(id) + '.tmp')
         real_key_file = os.path.join(self.key_repository, str(id))
@@ -88,15 +84,13 @@ class FernetOperator(object):
                 f.write(key)
                 f.flush()
                 create = True
+            os.chmod(temp_key_file, stat.S_IRUSR | stat.S_IWUSR)
+            os.chown(temp_key_file, self.keystone_user_id, self.keystone_group_id)
         except IOError:
             LOG.error('Failed to create new temporary key: %s' %
                         temp_key_file)
             raise
         finally:
-            # restore the umask, user and group identifiers
-            os.umask(old_umask)
-            os.seteuid(old_euid)
-            os.setegid(old_egid)
             if not create and os.access(temp_key_file, os.F_OK):
                 os.remove(temp_key_file)
                 return False

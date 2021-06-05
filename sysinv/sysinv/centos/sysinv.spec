@@ -26,8 +26,8 @@ Requires: python3-kubernetes
 Requires: python3-netaddr
 Requires: python3-paste
 Requires: python3-pbr
-Requires: python3-psutil
 Requires: python3-pyudev
+Requires: python3-psutil
 Requires: python3-requests
 Requires: python3-retrying
 Requires: python3-sqlalchemy
@@ -36,13 +36,13 @@ Requires: python3-webob
 Requires: python3-webtest
 Requires: python3-wsme
 Requires: python3-six
-Requires: python3-django
-Requires: python3-mox3
+Requires: python3-rfc3986
 Requires: python3-oslo-i18n
 Requires: python3-oslo-config
 Requires: python3-oslo-concurrency
 Requires: python3-oslo-db
 Requires: python3-oslo-log
+Requires: python3-oslo-rootwrap
 Requires: python3-oslo-serialization
 Requires: python3-oslo-service
 Requires: python3-oslo-utils
@@ -116,6 +116,7 @@ install -p -D -m 755 scripts/validate-platform-backup.sh %{buildroot}%{local_bin
 install -p -D -m 755 scripts/manage-partitions %{buildroot}%{local_bindir}/manage-partitions
 install -p -D -m 755 scripts/query_pci_id %{buildroot}%{local_bindir}/query_pci_id
 install -p -D -m 700 scripts/kube-cert-rotation.sh %{buildroot}%{local_bindir}/kube-cert-rotation.sh
+install -p -D -m 755 scripts/ceph_k8s_update_monitors.sh %{buildroot}%{local_bindir}/ceph_k8s_update_monitors.sh
 
 %clean
 echo "CLEAN CALLED"

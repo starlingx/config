@@ -38,7 +38,7 @@ def upgrade(migrate_engine):
                     capabilities['device_function'] == 'cinder_device'):
                 capabilities['cinder_gib'] = cinder_gib
 
-                i_idisk.update().where(
+                i_idisk.update().where(  # pylint: disable=no-value-for-parameter
                     i_idisk.c.uuid == idisk['uuid']).values(
                     {'capabilities': json.dumps(capabilities)}).execute()
 

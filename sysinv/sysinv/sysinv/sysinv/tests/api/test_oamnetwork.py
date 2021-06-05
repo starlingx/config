@@ -362,6 +362,31 @@ class TestPatchMixin(OAMNetworkTestCase):
         self._test_patch_fail(patch_obj, http_client.BAD_REQUEST,
                               error_message)
 
+    def test_patch_oam_simplex_to_duplex(self):
+        system_dict = self.system.as_dict()
+        system_dict['capabilities'].update({'simplex_to_duplex_migration': True})
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        oam_floating_ip = self.oam_subnet[2] + 100
+        oam_c0_ip = self.oam_subnet[3] + 100
+        oam_c1_ip = self.oam_subnet[4] + 100
+        patch_obj = {
+            'oam_floating_ip': str(oam_floating_ip),
+            'oam_c0_ip': str(oam_c0_ip),
+            'oam_c1_ip': str(oam_c1_ip),
+        }
+        addresses = {a['name']: a for a in
+                     self.dbapi.addresses_get_all()}
+
+        self.assertIn('%s-%s' % (constants.CONTROLLER_0_HOSTNAME,
+                                 constants.NETWORK_TYPE_OAM),
+                      addresses.keys())
+        self.assertIn('%s-%s' % (constants.CONTROLLER_1_HOSTNAME,
+                                 constants.NETWORK_TYPE_OAM),
+                      addresses.keys())
+
+        self._test_patch_success(patch_obj)
+
 
 class IPv4TestDelete(TestDeleteMixin,
                      OAMNetworkTestCase):

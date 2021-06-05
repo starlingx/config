@@ -16,7 +16,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 
@@ -1617,100 +1617,6 @@ class Connection(object):
         """
 
     @abc.abstractmethod
-    def itrapdest_create(self, values):
-        """Create a trap destination entry.
-
-        param values: A dict containing several items used to identify
-                      a trap destination
-        :returns: An itrapdest.
-       """
-
-    @abc.abstractmethod
-    def itrapdest_get(self, iid):
-        """Return an itrapdest.
-
-        :param iid: The id of an itrapdest.
-        :returns: An itrapdest.
-        """
-
-    @abc.abstractmethod
-    def itrapdest_get_list(self, limit=None, marker=None,
-                         sort_key=None, sort_dir=None):
-        """Return a list of itrapdest.
-        """
-
-    @abc.abstractmethod
-    def itrapdest_get_by_ip(self, ip):
-        """Return an itrapdest.
-         :param ip: The ip address of an itrapdest.
-        :returns: An itrapdest.
-        """
-
-    @abc.abstractmethod
-    def itrapdest_update(self, iid, values):
-        """Update properties of an itrapdest.
-
-        :param node: The id of an itrapdest.
-        :param values: Dict of values to update.
-
-        :returns: An itrapdest.
-        """
-
-    @abc.abstractmethod
-    def itrapdest_destroy(self, ip):
-        """Destroy an itrapdest.
-
-        :param ip: The ip address of an itrapdest.
-        """
-
-    @abc.abstractmethod
-    def icommunity_create(self, values):
-        """Create a community entry.
-
-        param values: A dict containing several items used to identify
-                      a community entry
-        :returns: An icommunity.
-       """
-
-    @abc.abstractmethod
-    def icommunity_get(self, uuid):
-        """Return an icommunity.
-
-        :param uuid: The id of an icommunity.
-        :returns: An icommunity.
-        """
-
-    @abc.abstractmethod
-    def icommunity_get_list(self, limit=None, marker=None,
-                            sort_key=None, sort_dir=None):
-        """Return a list of icommunity.
-        """
-
-    @abc.abstractmethod
-    def icommunity_get_by_name(self, name):
-        """Return an icommunity.
-         :param name: The community name of an icommunity.
-        :returns: An icommunity.
-        """
-
-    @abc.abstractmethod
-    def icommunity_update(self, iid, values):
-        """Update properties of an icommunity.
-
-        :param node: The id of an icommunity.
-        :param values: Dict of values to update.
-
-        :returns: An icommunity.
-        """
-
-    @abc.abstractmethod
-    def icommunity_destroy(self, name):
-        """Destroy an icommunity.
-
-        :param name: The name of an icommunity.
-        """
-
-    @abc.abstractmethod
     def iuser_create(self, values):
         """Create a new iuser for an isystem
 
@@ -2581,6 +2487,45 @@ class Connection(object):
                         'ceph_conf': '3p_ceph1.conf'
                        }
         :returns: An external ceph storage backend.
+        """
+
+    @abc.abstractmethod
+    def storage_ceph_rook_create(self, values):
+        """Create a new storage_ceph_rook
+
+        :param values: A dict containing several items used to identify
+                       and track the storage_ceph_rook.
+        :returns: An storage_ceph_rook.
+        """
+
+    @abc.abstractmethod
+    def storage_ceph_rook_get(self, storage_ceph_rook_id):
+        """Return a storage_ceph_rook.
+
+        :param storage_ceph_rook_id: The id or uuid of an storage_ceph_rook.
+        :returns: A storage_ceph_rook.
+        """
+
+    @abc.abstractmethod
+    def storage_ceph_rook_get_list(self, limit=None, marker=None,
+                                   sort_key=None, sort_dir=None):
+        """Return a list of storage_ceph_rook.
+
+        :param limit: Maximum number of storage_ceph_rook to return.
+        :param marker: the last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted.
+        :param sort_dir: direction in which results should be sorted.
+                         (asc, desc)
+        """
+
+    @abc.abstractmethod
+    def storage_ceph_rook_update(self, stor_ceph_rook_id, values):
+        """Update properties of a storage_ceph_rook.
+
+        :param storage_ceph_rook: The id or uuid of an storage_ceph_rook.
+        :param values: Dict of values to update. May be a partial list.
+        :returns: A storage_ceph_rook.
         """
 
     @abc.abstractmethod
@@ -4581,4 +4526,70 @@ class Connection(object):
         """Destroy an kube_upgrade.
 
         :param upgrade_id: The id or uuid of a kube_upgrade.
+        """
+
+    @abc.abstractmethod
+    def restore_create(self, values):
+        """Create a new restore entry
+
+        :param values: A dict containing several items used to identify
+                       and track the entry.
+
+                        {
+                         'uuid': uuidutils.generate_uuid(),
+                        }
+        :returns: A restore record.
+        """
+
+    @abc.abstractmethod
+    def restore_get(self, id):
+        """Return a restore entry for a given id
+
+        :param _id: The id or uuid of a restore entry
+        :returns: a restore entry
+        """
+
+    @abc.abstractmethod
+    def restore_get_list(self, limit=None, marker=None,
+                         sort_key=None, sort_dir=None):
+        """Return a list of restore entries.
+
+        :param limit: Maximum number of restore entries to return.
+        :param marker: the last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted.
+        :param sort_dir: direction in which results should be sorted.
+                         (asc, desc)
+        """
+
+    @abc.abstractmethod
+    def restore_get_one(self, filters):
+        """Return exactly one restore.
+
+        :param filters: A dict of filters to apply on the query.
+                        The key of the entry is the column to search in.
+                        The value of the entry is the value to search for.
+                        Capable of simple filtering equivalent to `value in [values]`.
+                        Eg: filters={'state': 'some-state-value'} is equivalent to
+                            `model.MyModel.state in ['some-state-value']`
+
+        :returns: A restore.
+        """
+
+    @abc.abstractmethod
+    def restore_update(self, uuid, values):
+        """Update properties of a restore.
+
+        :param node: The uuid of a restore entry.
+        :param values: Dict of values to update.
+                       {'state': constants.RESTORE_STATE_COMPLETED
+                       }
+        :returns: A restore entry.
+        """
+
+    @abc.abstractmethod
+    def restore_destroy(self, id):
+        """Destroy a restore entry.
+
+        :param id: The id or uuid of a restore entry.
         """

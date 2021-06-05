@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 """
@@ -566,6 +566,38 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('update_sriov_config',
                                                 host_uuid=host_uuid))
 
+    def update_sriov_vf_config(self, context, host_uuid):
+        """Synchronously, have a conductor configure sriov vf config.
+
+        Does the following tasks:
+        - sends a message to conductor
+        - who sends a message to all inventory agents
+        - who each apply the network manifest
+
+        :param context: request context.
+        :param host_uuid: the host unique uuid
+        """
+        LOG.debug("ConductorApi.update_sriov_vf_config: sending "
+                  "update_sriov_vf_config to conductor")
+        return self.call(context, self.make_msg('update_sriov_vf_config',
+                                                host_uuid=host_uuid))
+
+    def update_pcidp_config(self, context, host_uuid):
+        """Synchronously, have a conductor configure pcidp config.
+
+        Does the following tasks:
+        - sends a message to conductor
+        - who sends a message to all inventory agents
+        - who, upon receipt with matching host_uuid, applies the pcidp manifest
+
+        :param context: request context.
+        :param host_uuid: the host unique uuid
+        """
+        LOG.debug("ConductorApi.update_pcidp_config: sending "
+                  "update_pcidp_config to conductor")
+        return self.call(context, self.make_msg('update_pcidp_config',
+                                                host_uuid=host_uuid))
+
     def update_distributed_cloud_role(self, context):
         """Synchronously, have a conductor configure the distributed cloud
            role of the system.
@@ -791,6 +823,14 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('update_security_feature_config'))
 
+    def initialize_oam_config(self, context, host):
+        """Synchronously, have the conductor create an OAM configuration.
+
+        :param context: request context.
+        :param host: an ihost object.
+        """
+        return self.call(context, self.make_msg('initialize_oam_config', host=host))
+
     def update_oam_config(self, context):
         """Synchronously, have the conductor update the OAM configuration.
 
@@ -804,6 +844,14 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param context: request context.
         """
         return self.call(context, self.make_msg('update_user_config'))
+
+    def update_controller_rollback_flag(self, context):
+        """Synchronously, have a conductor update controller rollback flag
+
+        :param context: request context
+         """
+        return self.call(context,
+                         self.make_msg('update_controller_rollback_flag'))
 
     def update_controller_upgrade_flag(self, context):
         """Synchronously, have a conductor update controller upgrade flag
@@ -987,6 +1035,18 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context,
                          self.make_msg('update_ceph_external_config',
+                                       sb_uuid=sb_uuid,
+                                       services=services))
+
+    def update_ceph_rook_config(self, context, sb_uuid, services):
+        """Synchronously, have the conductor update Rook Ceph on a controller
+
+        :param context: request context
+        :param sb_uuid: uuid of the storage backend to apply the rook ceph config
+        :param services: list of services using Ceph.
+        """
+        return self.call(context,
+                         self.make_msg('update_ceph_rook_config',
                                        sb_uuid=sb_uuid,
                                        services=services))
 
@@ -1336,7 +1396,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                                 success=success))
 
     def get_system_health(self, context, force=False, upgrade=False,
-                          kube_upgrade=False):
+                          kube_upgrade=False, alarm_ignore_list=None):
         """
         Performs a system health check.
 
@@ -1345,11 +1405,14 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param upgrade: set to true to perform an upgrade health check
         :param kube_upgrade: set to true to perform a kubernetes upgrade health
                              check
+        :param alarm_ignore_list: list of alarm ids to ignore when performing
+                                  a health check
         """
         return self.call(context,
                          self.make_msg('get_system_health',
                                        force=force, upgrade=upgrade,
-                                       kube_upgrade=kube_upgrade))
+                                       kube_upgrade=kube_upgrade,
+                                       alarm_ignore_list=alarm_ignore_list))
 
     def reserve_ip_for_first_storage_node(self, context):
         """
@@ -1783,6 +1846,17 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('get_fernet_keys',
                                                 key_id=key_id))
 
+    def evaluate_apps_reapply(self, context, trigger):
+        """Synchronously, determine whether an application
+        re-apply is needed, and if so, raise the re-apply flag.
+
+        :param context: request context.
+        :param trigger: dictionary containing at least the 'type' field
+
+        """
+        return self.call(context, self.make_msg('evaluate_apps_reapply',
+                                                trigger=trigger))
+
     def evaluate_app_reapply(self, context, app_name):
         """Synchronously, determine whether an application
         re-apply is needed, and if so, raise the re-apply flag.
@@ -1793,47 +1867,74 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('evaluate_app_reapply',
                                                 app_name=app_name))
 
-    def app_lifecycle_actions(self, context, rpc_app, operation, relative_timing):
+    def mtc_action_apps_semantic_checks(self, context, action):
+        """Synchronously, call apps semantic check for maintenance actions
+
+        :param context: request context.
+        :param action: maintenance action
+        """
+        return self.call(context, self.make_msg('mtc_action_apps_semantic_checks',
+                                                action=action))
+
+    def app_lifecycle_actions(self, context, rpc_app, hook_info):
         """Synchronously, perform any lifecycle actions required
         for the operation
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
-        :param operation: operation being performed
-        :param relative_timing: relative timing of operation
+        :param hook_info: LifecycleHookInfo object
+
         """
         return self.call(context, self.make_msg('app_lifecycle_actions',
                                                 rpc_app=rpc_app,
-                                                operation=operation,
-                                                relative_timing=relative_timing))
+                                                hook_info=hook_info))
 
-    def perform_app_upload(self, context, rpc_app, tarfile):
+    def backup_restore_lifecycle_actions(self, context, operation, success):
+        """Synchronously, perform any lifecycle actions required
+        for backup and restore operations
+        :param context: request context.
+        :param operation: what operation to notify about.
+        :param success: True if the operation was successful, False if it fails.
+                        used in post-*-action to indicate that an operation in progress failed.
+        """
+        return self.call(context, self.make_msg('backup_restore_lifecycle_actions',
+                                                operation=operation, success=success))
+
+    def perform_app_upload(self, context, rpc_app, tarfile, lifecycle_hook_info, images=False):
         """Handle application upload request
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
-        :param tafile: location of application tarfile to be extracted
+        :param tarfile: location of application tarfile to be extracted
+        :param lifecycle_hook_info: LifecycleHookInfo object
+        :param images: save application images in the registry as part of app upload
+
         """
         return self.cast(context,
                          self.make_msg('perform_app_upload',
                                        rpc_app=rpc_app,
-                                       tarfile=tarfile))
+                                       tarfile=tarfile,
+                                       lifecycle_hook_info_app_upload=lifecycle_hook_info,
+                                       images=images))
 
-    def perform_app_apply(self, context, rpc_app, mode):
+    def perform_app_apply(self, context, rpc_app, mode, lifecycle_hook_info):
         """Handle application apply request
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
         :param mode: mode to control how to apply application manifest
+        :param lifecycle_hook_info: LifecycleHookInfo object
+
         """
         return self.cast(context,
                          self.make_msg(
                              'perform_app_apply',
                              rpc_app=rpc_app,
-                             mode=mode))
+                             mode=mode,
+                             lifecycle_hook_info_app_apply=lifecycle_hook_info))
 
     def perform_app_update(self, context, from_rpc_app, to_rpc_app, tarfile,
-                           operation, reuse_user_overrides=None):
+                           operation, lifecycle_hook_info, reuse_user_overrides=None):
         """Handle application update request
 
         :param context: request context.
@@ -1843,6 +1944,8 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                            application update to
         :param tarfile: location of application tarfile to be extracted
         :param operation: apply or rollback
+        :param lifecycle_hook_info: LifecycleHookInfo object
+
         :param reuse_user_overrides: (optional) True or False
         """
         return self.cast(context,
@@ -1851,40 +1954,47 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        to_rpc_app=to_rpc_app,
                                        tarfile=tarfile,
                                        operation=operation,
+                                       lifecycle_hook_info_app_update=lifecycle_hook_info,
                                        reuse_user_overrides=reuse_user_overrides))
 
-    def perform_app_remove(self, context, rpc_app):
+    def perform_app_remove(self, context, rpc_app, lifecycle_hook_info):
         """Handle application remove request
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
+        :param lifecycle_hook_info: LifecycleHookInfo object
 
         """
         return self.cast(context,
                          self.make_msg('perform_app_remove',
-                                       rpc_app=rpc_app))
+                                       rpc_app=rpc_app,
+                                       lifecycle_hook_info_app_remove=lifecycle_hook_info))
 
-    def perform_app_abort(self, context, rpc_app):
+    def perform_app_abort(self, context, rpc_app, lifecycle_hook_info):
         """Handle application abort request
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
+        :param lifecycle_hook_info: LifecycleHookInfo object
 
         """
         return self.call(context,
                          self.make_msg('perform_app_abort',
-                                       rpc_app=rpc_app))
+                                       rpc_app=rpc_app,
+                                       lifecycle_hook_info_app_abort=lifecycle_hook_info))
 
-    def perform_app_delete(self, context, rpc_app):
+    def perform_app_delete(self, context, rpc_app, lifecycle_hook_info):
         """Handle application delete request
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
+        :param lifecycle_hook_info: LifecycleHookInfo object
 
         """
         return self.call(context,
                          self.make_msg('perform_app_delete',
-                                       rpc_app=rpc_app))
+                                       rpc_app=rpc_app,
+                                       lifecycle_hook_info_app_delete=lifecycle_hook_info))
 
     def reconfigure_service_endpoints(self, context, host):
         """Synchronously, reconfigure service endpoints upon the creation of
@@ -2086,3 +2196,25 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param context: request context.
         """
         return self.call(context, self.make_msg('get_restore_state'))
+
+    def update_ldap_client_config(self, context):
+        """Synchronously, have a conductor configure LDAP client configureation
+
+        Does the following tasks:
+        - Update puppet hiera configuration file and apply run time manifest.
+
+        :param context: request context.
+        """
+        return self.call(context,
+                         self.make_msg('update_ldap_client_config'))
+
+    def update_dnsmasq_config(self, context):
+        """Synchronously, have a conductor configure the DNS configuration
+
+        Does the following tasks:
+        - Update puppet hiera configuration file and apply run time manifest.
+
+        :param context: request context.
+        """
+        return self.call(context,
+                         self.make_msg('update_dnsmasq_config'))

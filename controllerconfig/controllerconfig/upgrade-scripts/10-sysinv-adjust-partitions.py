@@ -375,7 +375,12 @@ def adjust_user_partitions():
 
                         increased_partition_number = \
                             installed_lvm_device['partition_number'] + 2
-                        for device, partition in six.iteritems(partition_map):
+                        # partition_map is not an ordered dictionary, we
+                        # need to sort partition_map by its key(device node)
+                        # to ensure the adjustments for user created partitions
+                        # are correct
+                        for device, partition in sorted(
+                                six.iteritems(partition_map)):
                             # Adjust the device node/path of user created
                             # partitions. The start/end/size of the partitions
                             # will not be changed.
@@ -401,7 +406,9 @@ def adjust_user_partitions():
                                 update_db_pvs.append(pv)
 
                         # Reverse the updating order. The partitions that
-                        # moving backwards need to updated first.
+                        # moving backwards need to updated first because of
+                        # the UniqueConstraint "u_partition_path_host_id"
+                        # for partition table
                         update_db_partitions = update_db_partitions[::-1]
                     else:
                         # The primary LVM partition for cgts-vg in new release

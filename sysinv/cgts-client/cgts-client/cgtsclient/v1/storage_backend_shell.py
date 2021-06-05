@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -10,6 +10,7 @@
 
 import argparse
 
+from cgtsclient.common import constants
 from cgtsclient.common import utils
 from cgtsclient.v1 import storage_backend as storage_backend_utils
 
@@ -57,7 +58,7 @@ def do_storage_backend_show(cc, args):
 
 @utils.arg('backend',
            metavar='<backend>',
-           choices=['ceph', 'ceph-external', 'file', 'lvm', 'external'],
+           choices=['ceph', 'ceph-external', 'file', 'lvm', 'external', 'ceph-rook'],
            help='The storage backend to add [REQUIRED]')
 @utils.arg('-s', '--services',
            metavar='<services>',
@@ -88,6 +89,10 @@ def do_storage_backend_show(cc, args):
 @utils.arg('--ceph-mon-gib',
            metavar='<ceph-mon-gib>',
            help='The ceph-mon-lv size in GiB')
+@utils.arg('--network',
+           metavar='<network>',
+           choices=constants.SB_SUPPORTED_NETWORKS[constants.SB_TYPE_CEPH],
+           help='Desired network to be used by the backend.')
 def do_storage_backend_add(cc, args):
     """Add a storage backend."""
 

@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2019 Wind River Systems, Inc.
+# Copyright (c) 2017-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -9,6 +9,7 @@
 
 import netaddr
 import pecan
+import re
 import wsme
 
 from oslo_log import log
@@ -22,6 +23,7 @@ LOG = log.getLogger(__name__)
 
 SERVICE_PARAMETER_DATA_FORMAT_ARRAY = 'array'
 SERVICE_PARAMETER_DATA_FORMAT_BOOLEAN = 'boolean'
+SERVICE_PARAMETER_DATA_FORMAT_DICT = 'dict'
 SERVICE_PARAMETER_DATA_FORMAT_SKIP = 'skip'
 
 IDENTITY_CONFIG_TOKEN_EXPIRATION_MIN = 3600
@@ -155,6 +157,56 @@ def _validate_oidc_issuer_url(name, value):
     if not parsed_value.netloc or not cutils.is_valid_domain_or_ip(parsed_value.netloc):
         raise wsme.exc.ClientSideError(_(
             "Parameter '%s' must be a valid address or domain." % name))
+
+
+def _validate_cri_class_format(name, value):
+    """
+    Validate string into cri runtimeClassName:runtimeBinary format,
+    criHandler format: Alphanumeric plus underscore,
+    criBinary format: Portable filename plus '/'.
+    For example:
+      "my_runtimeClassName:/usr/bin/my-runtimeBinary"
+    """
+
+    msg_example = "Example: my_runtimeClassName:/usr/bin/my-runtimeBinary\n"
+    msg_format = " format: runtimeClassName:runtimeBinaryName\n"
+    msg_runtimeBinaryName = "runtimeBinary: Portable filename plus \'/\'\n"
+    msg_runtimeClassName = "runtimeClassName: Alphanumeric and underscore\n"
+
+    if len(value) == 0:
+        raise wsme.exc.ClientSideError(_(
+            "syntax: custom_container_runtime=runtimeClassName:runtimeBinary"))
+    for cri in value.split(','):
+        try:
+            criHandler, criBinary = cri.split(':')
+        except ValueError:
+            raise wsme.exc.ClientSideError(_(
+                 "Parameter ValueError in %s"
+                 % (name + msg_format + msg_runtimeClassName +
+                     msg_runtimeBinaryName + msg_example)))
+
+        if (len(criHandler) == 0 or
+               (len(criBinary) == 0 or len(criBinary) > 4095)):
+                    raise wsme.exc.ClientSideError(_(
+                        "Parameter %s"
+                        % (name + msg_format + msg_runtimeClassName +
+                           msg_runtimeBinaryName + msg_example)))
+
+        # criHandler format: Alphanumeric and underscore
+        if len(re.findall(r"[^\w+]", criHandler)):
+            raise wsme.exc.ClientSideError(_(
+                "Parameter %s "
+                % (name + msg_format + msg_runtimeClassName +
+                   "Invalid Characters in runtimeClassName: " + criHandler +
+                   "\n" + msg_example)))
+
+        # criBinary format: Absolute path, portable filename
+        if len(re.findall(r"^[^/]|[^a-zA-Z0-9-_./]|\/\.|\/$", criBinary)):
+            raise wsme.exc.ClientSideError(_(
+                "Parameter %s "
+                % (name + msg_format + msg_runtimeBinaryName +
+                   "Invalid Characters in runtimeBinaryName: " + criBinary +
+                   "\n" + msg_example)))
 
 
 def _get_network_pool_from_ip_address(ip, networks):
@@ -337,6 +389,13 @@ def _validate_admission_plugins(name, value):
                 "Invalid admission plugin: '%s'" % plugin))
 
 
+def _validate_pod_max_pids(name, value):
+    """Check if specified value is supported"""
+    _validate_range(name, value,
+                    constants.SERVICE_PARAM_KUBERNETES_POD_MAX_PIDS_MIN,
+                    constants.SERVICE_PARAM_KUBERNETES_POD_MAX_PIDS_MAX)
+
+
 PLATFORM_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL,
 ]
@@ -395,6 +454,25 @@ PLATFORM_MTCE_PARAMETER_MANDATORY = [
 ]
 
 PLATFORM_SYSINV_PARAMETER_PROTECTED = ['firewall_rules_id']
+
+PLATFORM_CRI_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_PLATFORM_CRI_RUNTIME_CLASS,
+]
+
+PLATFORM_CRI_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_PLATFORM_CRI_RUNTIME_CLASS:
+        _validate_cri_class_format,
+}
+
+PLATFORM_CRI_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_PLATFORM_CRI_RUNTIME_CLASS:
+        'platform::containerd::params::custom_container_runtime',
+}
+
+PLATFORM_CRI_PARAMETER_DATA_FORMAT = {
+    constants.SERVICE_PARAM_NAME_PLATFORM_CRI_RUNTIME_CLASS:
+        SERVICE_PARAMETER_DATA_FORMAT_DICT,
+}
 
 SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT_MIN = 720
 SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT_MAX = 1800
@@ -559,6 +637,19 @@ KUBERNETES_CERTIFICATES_PARAMETER_DATA_FORMAT = {
     constants.SERVICE_PARAM_NAME_KUBERNETES_API_SAN_LIST: SERVICE_PARAMETER_DATA_FORMAT_ARRAY,
 }
 
+KUBERNETES_CONFIG_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_KUBERNETES_POD_MAX_PIDS,
+]
+
+KUBERNETES_CONFIG_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_KUBERNETES_POD_MAX_PIDS: _validate_pod_max_pids,
+}
+
+KUBERNETES_CONFIG_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_KUBERNETES_POD_MAX_PIDS:
+        'platform::kubernetes::params::k8s_pod_max_pids',
+}
+
 KUBERNETES_APISERVER_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_OIDC_ISSUER_URL,
     constants.SERVICE_PARAM_NAME_OIDC_CLIENT_ID,
@@ -643,6 +734,7 @@ SERVICE_PARAM_READONLY = 'readonly'
 SERVICE_PARAM_PROTECTED = 'protected'
 SERVICE_VALUE_PROTECTION_MASK = "****"
 
+
 SERVICE_PARAMETER_SCHEMA = {
     constants.SERVICE_TYPE_IDENTITY: {
         constants.SERVICE_PARAM_SECTION_IDENTITY_CONFIG: {
@@ -665,6 +757,12 @@ SERVICE_PARAMETER_SCHEMA = {
         },
         constants.SERVICE_PARAM_SECTION_PLATFORM_SYSINV: {
             SERVICE_PARAM_PROTECTED: PLATFORM_SYSINV_PARAMETER_PROTECTED,
+        },
+        constants.SERVICE_PARAM_SECTION_PLATFORM_CRI_RUNTIME_CLASS: {
+            SERVICE_PARAM_OPTIONAL: PLATFORM_CRI_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: PLATFORM_CRI_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_DATA_FORMAT: PLATFORM_CRI_PARAMETER_DATA_FORMAT,
+            SERVICE_PARAM_RESOURCE: PLATFORM_CRI_PARAMETER_RESOURCE,
         },
     },
     constants.SERVICE_TYPE_HORIZON: {
@@ -726,6 +824,11 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: KUBERNETES_APISERVER_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: KUBERNETES_APISERVER_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: KUBERNETES_APISERVER_PARAMETER_RESOURCE,
+        },
+        constants.SERVICE_PARAM_SECTION_KUBERNETES_CONFIG: {
+            SERVICE_PARAM_OPTIONAL: KUBERNETES_CONFIG_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: KUBERNETES_CONFIG_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: KUBERNETES_CONFIG_PARAMETER_RESOURCE,
         },
     },
     constants.SERVICE_TYPE_PTP: {

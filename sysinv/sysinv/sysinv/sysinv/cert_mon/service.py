@@ -58,12 +58,17 @@ class CertificateMonitorService(service.Service):
 
             self._rpc_server = rpc_messaging.get_rpc_server(self.target, self)
             self._rpc_server.start()
+        elif dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+            self.manager.start_audit()
 
     def stop(self):
         dc_role = utils.get_dc_role()
         if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
             self._stop_rpc_server()
             self.manager.stop_audit()
+        elif dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+            self.manager.stop_audit()
+
         self.manager.stop_monitor()
         super(CertificateMonitorService, self).stop()
         rpc_messaging.cleanup()

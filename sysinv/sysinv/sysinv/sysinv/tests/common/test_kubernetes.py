@@ -71,6 +71,8 @@ FAKE_POD_STATUS = kubernetes.client.V1PodStatus(
     ],
 )
 
+FAKE_SERVICE_ACCOUNT_TOKEN = 'c3VwZXJzZWNyZXR0b2tlbgo='
+
 
 def mock_get_kube_versions():
     return FAKE_KUBE_VERSIONS
@@ -622,6 +624,30 @@ class TestKubeOperator(base.TestCase):
                 namespace="kube-system"),
         )
 
+        self.service_account_result = kubernetes.client.V1ServiceAccount(
+            api_version="v1",
+            kind="ServiceAccount",
+            metadata=kubernetes.client.V1ObjectMeta(
+                name="test-service-account-1",
+                namespace="kube-system"),
+            secrets=[kubernetes.client.V1ObjectReference(
+                kind="Secret",
+                namespace="kube-system",
+                name="test-service-account-secret-1"
+            )]
+        )
+
+        self.service_account_token_result = kubernetes.client.V1Secret(
+            api_version="v1",
+            kind="Secret",
+            metadata=kubernetes.client.V1ObjectMeta(
+                name="test-service-account-secret-1",
+                namespace="kube-system"),
+            data={
+                'token': FAKE_SERVICE_ACCOUNT_TOKEN
+            }
+        )
+
     def setUp(self):
         super(TestKubeOperator, self).setUp()
 
@@ -671,6 +697,20 @@ class TestKubeOperator(base.TestCase):
             mock_read_namespaced_config_map)
         self.mocked_read_namespaced_config_map.start()
 
+        def mock_read_namespaced_service_account(obj, name, namespace):
+            return self.read_namespaced_service_account_result
+        self.mocked_read_namespaced_service_account = mock.patch(
+            'kubernetes.client.CoreV1Api.read_namespaced_service_account',
+            mock_read_namespaced_service_account)
+        self.mocked_read_namespaced_service_account.start()
+
+        def mock_read_namespaced_secret(obj, name, namespace):
+            return self.read_namespaced_secret_result
+        self.mocked_read_namespaced_secret = mock.patch(
+            'kubernetes.client.CoreV1Api.read_namespaced_secret',
+            mock_read_namespaced_secret)
+        self.mocked_read_namespaced_secret.start()
+
         self.kube_operator = kube.KubeOperator()
 
     def tearDown(self):
@@ -680,6 +720,8 @@ class TestKubeOperator(base.TestCase):
         self.mocked_list_pod_for_all_namespaces.stop()
         self.mocked_list_node.stop()
         self.mocked_read_namespaced_config_map.stop()
+        self.mocked_read_namespaced_service_account.stop()
+        self.mocked_read_namespaced_secret.stop()
 
     def test_kube_get_image_by_pod_name(self):
 
@@ -890,6 +932,27 @@ class TestKubeOperator(base.TestCase):
 
         result = self.kube_operator.kube_get_kubernetes_version()
         assert result is None
+
+    def test_kube_get_service_account_token(self):
+
+        self.read_namespaced_service_account_result = \
+            self.service_account_result
+
+        self.read_namespaced_secret_result = \
+            self.service_account_token_result
+
+        result = self.kube_operator.kube_get_service_account_token(
+            'test-service-account-1', kube.NAMESPACE_KUBE_SYSTEM)
+        self.assertEqual(result, FAKE_SERVICE_ACCOUNT_TOKEN)
+
+    def test_kube_get_service_account_token_not_found(self):
+
+        self.read_namespaced_service_account_result = None
+        self.read_namespaced_secret_result = None
+
+        result = self.kube_operator.kube_get_service_account_token(
+            'test-service-account-1', kube.NAMESPACE_KUBE_SYSTEM)
+        self.assertEqual(result, None)
 
 
 class TestKubernetesUtilities(base.TestCase):

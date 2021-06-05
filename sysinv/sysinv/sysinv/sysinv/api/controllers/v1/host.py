@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -94,6 +94,8 @@ from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.common import health
+
+from sysinv.openstack.common.rpc import common as rpc_common
 
 LOG = log.getLogger(__name__)
 KEYRING_BM_SERVICE = "BM"
@@ -231,7 +233,8 @@ class HostStatesController(rest.RestController):
         Example:
         capabilities=[{'function': 'platform', 'sockets': [{'0': 1}, {'1': 0}]},
                       {'function': 'vswitch', 'sockets': [{'0': 2}]},
-                      {'function': 'shared', 'sockets': [{'0': 1}, {'1': 1}]}]
+                      {'function': 'shared', 'sockets': [{'0': 1}, {'1': 1}]},
+                      {'function': 'application-isolated', 'cpulist': '3-5,6'}]
         """
         LOG.info("host_cpus_modify host_uuid=%s capabilities=%s" %
                  (host_uuid, capabilities))
@@ -242,16 +245,28 @@ class HostStatesController(rest.RestController):
         ihost.nodes = pecan.request.dbapi.inode_get_by_ihost(ihost.uuid)
         num_nodes = len(ihost.nodes)
 
+        # Query the database to get the current set of CPUs
+        ihost.cpus = pecan.request.dbapi.icpu_get_by_ihost(ihost.uuid)
+
         # Perform basic sanity on the input
         for icap in capabilities:
             specified_function = icap.get('function', None)
-            specified_sockets = icap.get('sockets', None)
-            if not specified_function or not specified_sockets:
+            specified_sockets = icap.get('sockets', [])
+            specified_cpulist = icap.get('cpulist', None)
+
+            if specified_sockets and specified_cpulist:
                 raise wsme.exc.ClientSideError(
-                    _('host %s:  cpu function=%s or socket=%s not specified '
-                      'for host %s.') % (host_uuid,
-                                         specified_function,
-                                         specified_sockets))
+                    _('host %s:  socket=%s and cpulist=%s may not both be specified') %
+                    (host_uuid, specified_sockets, specified_cpulist))
+
+            if not specified_function or not (specified_sockets or specified_cpulist):
+                raise wsme.exc.ClientSideError(
+                    _('host %s:  cpu function=%s or (socket=%s and cpulist=%s) '
+                      'not specified') % (host_uuid,
+                                          specified_function,
+                                          specified_sockets,
+                                          specified_cpulist))
+
             for specified_socket in specified_sockets:
                 socket, value = specified_socket.items()[0]
                 if int(socket) >= num_nodes:
@@ -262,22 +277,35 @@ class HostStatesController(rest.RestController):
                     raise wsme.exc.ClientSideError(
                         _('Specified cpu values must be non-negative.'))
 
-        # Query the database to get the current set of CPUs and then
-        # organize the data by socket and function for convenience.
-        ihost.cpus = pecan.request.dbapi.icpu_get_by_ihost(ihost.uuid)
+            # Ensure that the cpulist is valid if set
+            if specified_cpulist:
+                # make a list of CPU numbers (which are not necessarily contiguous)
+                host_cpus = [ihost_cpu.cpu for ihost_cpu in ihost.cpus]
+                cpulist = cutils.parse_range_set(specified_cpulist)
+                if max(cpulist) > max(host_cpus):
+                    raise wsme.exc.ClientSideError(
+                        _('Specified cpulist contains nonexistant CPUs.'))
+
+        # organize the cpus by socket and function for convenience.
         cpu_utils.restructure_host_cpu_data(ihost)
 
         # Get the CPU counts for each socket and function for this host
         cpu_counts = cpu_utils.get_cpu_counts(ihost)
 
-        # Update the CPU counts based on the provided values
+        cpu_lists = {}
+
+        # Update the CPU counts and cpulists based on the provided values
         for cap in capabilities:
             function = cap.get('function', None)
             # Normalize the function input
             for const_function in constants.CPU_FUNCTIONS:
                 if const_function.lower() == function.lower():
                     function = const_function
-            sockets = cap.get('sockets', None)
+            sockets = cap.get('sockets', [])
+            # If this function is specified via cpulist, reset count to zero.
+            if not sockets:
+                for numa_node in cpu_counts:
+                    cpu_counts[numa_node][function] = 0
             for numa in sockets:
                 numa_node, value = numa.items()[0]
                 numa_node = int(numa_node)
@@ -286,11 +314,18 @@ class HostStatesController(rest.RestController):
                     value *= 2
                 cpu_counts[numa_node][function] = value
 
+            # Store the cpu ranges per CPU function as well if any exist
+            cpu_range = cap.get('cpulist', None)
+            cpu_list = cutils.parse_range_set(cpu_range)
+            # Uncomment the following line to add any missing HT siblings
+            # cpu_list = cpu_utils.append_ht_sibling(ihost, cpu_list)
+            cpu_lists[function] = cpu_list
+
         # Semantic check to ensure the minimum/maximum values are enforced
-        cpu_utils.check_core_allocations(ihost, cpu_counts)
+        cpu_utils.check_core_allocations(ihost, cpu_counts, cpu_lists)
 
         # Update cpu assignments to new values
-        cpu_utils.update_core_allocations(ihost, cpu_counts)
+        cpu_utils.update_core_allocations(ihost, cpu_counts, cpu_lists)
 
         for cpu in ihost.cpus:
             function = cpu_utils.get_cpu_function(ihost, cpu)
@@ -2068,17 +2103,6 @@ class HostController(rest.RestController):
             ihost_ret = pecan.request.rpcapi.configure_ihost(
                 pecan.request.context, ihost_obj)
 
-            # Trigger a system app reapply if the host has been unlocked.
-            # Only trigger the reapply if it is not during restore and the
-            # openstack app is applied
-            if (cutils.is_openstack_applied(pecan.request.dbapi) and
-                    not os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG) and
-                    patched_ihost.get('action') in
-                    [constants.UNLOCK_ACTION, constants.FORCE_UNLOCK_ACTION]):
-                pecan.request.rpcapi.evaluate_app_reapply(
-                    pecan.request.context,
-                    constants.HELM_APP_OPENSTACK)
-
             pecan.request.dbapi.ihost_update(
                 ihost_obj['uuid'], {'capabilities': ihost_obj['capabilities']})
 
@@ -2086,6 +2110,18 @@ class HostController(rest.RestController):
             ihost_obj['mgmt_ip'] = ihost_ret.mgmt_ip
 
             hostupdate.notify_mtce = True
+
+        # Evaluate app reapply on lock/unlock/swact/reinstall
+        if (not os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG) and
+                patched_ihost.get('action') in
+                [constants.LOCK_ACTION, constants.FORCE_LOCK_ACTION,
+                 constants.UNLOCK_ACTION, constants.FORCE_UNLOCK_ACTION,
+                 constants.SWACT_ACTION, constants.FORCE_SWACT_ACTION,
+                 constants.REINSTALL_ACTION]):
+            pecan.request.rpcapi.evaluate_apps_reapply(
+                pecan.request.context,
+                trigger={'type': patched_ihost.get('action'),
+                         'configure_required': True if hostupdate.configure_required else False})
 
         pecan.request.dbapi.ihost_update(ihost_obj['uuid'],
                                          {'capabilities': ihost_obj['capabilities']})
@@ -2120,6 +2156,11 @@ class HostController(rest.RestController):
                     new_ihost_mtc['action'] = constants.UNLOCK_ACTION
 
                 if new_ihost_mtc['operation'] == 'add':
+                    # Evaluate apps reapply on new host
+                    pecan.request.rpcapi.evaluate_apps_reapply(
+                        pecan.request.context,
+                        trigger={'type': constants.APP_EVALUATE_REAPPLY_TYPE_HOST_ADD})
+
                     mtc_response = mtce_api.host_add(
                         self._api_token, self._mtc_address, self._mtc_port,
                         new_ihost_mtc,
@@ -2450,12 +2491,14 @@ class HostController(rest.RestController):
                     ceph_mons[0].uuid, {'device_path': None}
                 )
 
+        remove_from_cluster = True if ihost.invprovision == constants.PROVISIONED else False
+
         # Delete the stor entries associated with this host
         istors = pecan.request.dbapi.istor_get_by_ihost(ihost['uuid'])
 
         for stor in istors:
             try:
-                self.istors.delete_stor(stor.uuid)
+                self.istors.delete_stor(stor.uuid, remove_from_cluster)
             except Exception as e:
                 # Do not destroy the ihost if the stor cannot be deleted.
                 LOG.exception(e)
@@ -2529,19 +2572,12 @@ class HostController(rest.RestController):
 
         pecan.request.dbapi.ihost_destroy(ihost_id)
 
-        # Check if platform apps need to be reapplied
-        if personality == constants.CONTROLLER:
-            for app_name in constants.HELM_APPS_PLATFORM_MANAGED:
-                if cutils.is_app_applied(pecan.request.dbapi, app_name):
-                    pecan.request.rpcapi.evaluate_app_reapply(
-                        pecan.request.context, app_name)
-
-        # If the host being removed was an openstack worker node, check to see
-        # if a reapply is needed
-        if openstack_worker and cutils.is_app_applied(
-                pecan.request.dbapi, constants.HELM_APP_OPENSTACK):
-            pecan.request.rpcapi.evaluate_app_reapply(
-                pecan.request.context, constants.HELM_APP_OPENSTACK)
+        # Check if platform apps need to be reapplied after host delete
+        pecan.request.rpcapi.evaluate_apps_reapply(
+            pecan.request.context,
+            trigger={'type': constants.APP_EVALUATE_REAPPLY_TYPE_HOST_DELETE,
+                     'openstack_worker': True if openstack_worker else False,
+                     'personality': personality})
 
     def _notify_mtce_host_delete(self, ihost):
 
@@ -2621,6 +2657,11 @@ class HostController(rest.RestController):
         loads = pecan.request.dbapi.load_get_list()
         new_target_load = cutils.get_imported_load(loads)
         rpc_ihost = objects.host.get_by_uuid(pecan.request.context, uuid)
+
+        if rpc_ihost.personality == constants.EDGEWORKER:
+            raise wsme.exc.ClientSideError(_(
+                "host-upgrade rejected: Not supported for EDGEWORKER node."))
+
         simplex = (utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX)
         # If this is a simplex system skip this check, there's no other nodes
         if simplex:
@@ -2701,6 +2742,10 @@ class HostController(rest.RestController):
         new_target_load = cutils.get_active_load(loads)
         rpc_ihost = objects.host.get_by_uuid(pecan.request.context, uuid)
 
+        if rpc_ihost.personality == constants.EDGEWORKER:
+            raise wsme.exc.ClientSideError(_(
+                "host-downgrade rejected: Not supported for EDGEWORKER node."))
+
         disable_storage_monitor = False
 
         simplex = (utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX)
@@ -2724,8 +2769,14 @@ class HostController(rest.RestController):
                 self._semantic_check_rollback()
                 if StorageBackendConfig.has_backend_configured(
                         pecan.request.dbapi, constants.CINDER_BACKEND_CEPH):
-                    disable_storage_monitor = True
-                open(tsc.UPGRADE_ROLLBACK_FLAG, "w").close()
+                    # elif block ensures this is a duplex env.
+                    # We do not set disable_storage_monitor True for AIO-DX
+                    if not cutils.is_aio_duplex_system(pecan.request.dbapi):
+                        disable_storage_monitor = True
+                # the upgrade rollback flag can only be created by root so
+                # send an rpc request to sysinv-conductor to create the flag
+                pecan.request.rpcapi.update_controller_rollback_flag(
+                    pecan.request.context)
             elif rpc_ihost.hostname == constants.CONTROLLER_1_HOSTNAME:
                 self._check_host_load(constants.CONTROLLER_0_HOSTNAME,
                                       new_target_load)
@@ -2761,24 +2812,6 @@ class HostController(rest.RestController):
                         "host-downgrade rejected: Upgrade not in %s state." %
                         constants.UPGRADE_ABORTING))
 
-                if rpc_ihost.hostname == constants.CONTROLLER_1_HOSTNAME:
-                    # Clear upgrade flags so controller-1 will not upgrade
-                    # after install. This flag is guaranteed to be written on
-                    # controller-0, since controller-1 must be locked to run
-                    # the host-downgrade command.
-                    try:
-                        os.remove(tsc.CONTROLLER_UPGRADE_FLAG)
-                    except OSError:
-                        LOG.exception("Failed to remove upgrade flag")
-                    try:
-                        os.remove(tsc.CONTROLLER_UPGRADE_COMPLETE_FLAG)
-                    except OSError:
-                        LOG.exception("Failed to remove upgrade complete flag")
-                    try:
-                        os.remove(tsc.CONTROLLER_UPGRADE_FAIL_FLAG)
-                    except OSError:
-                        LOG.exception("Failed to remove upgrade fail flag")
-
         # Check for new hardware since upgrade-start
         force = body.get('force', False) is True
         self._semantic_check_downgrade_refresh(upgrade, rpc_ihost, force)
@@ -2791,6 +2824,11 @@ class HostController(rest.RestController):
             # controller-1.
             pecan.request.rpcapi.kill_ceph_storage_monitor(
                     pecan.request.context)
+
+        # Remove the host manifest. This is similar to the process taken
+        # during host-reinstall. The manifest needs to be removed to prevent
+        # the host from running kubeadm prematurely.
+        pecan.request.rpcapi.remove_host_config(pecan.request.context, uuid)
 
         self._update_load(uuid, body, new_target_load)
 
@@ -3007,7 +3045,9 @@ class HostController(rest.RestController):
 
     def _validate_hostname(self, hostname, personality):
 
-        if personality and personality == constants.WORKER:
+        if personality and \
+                (personality == constants.WORKER or
+                 personality == constants.EDGEWORKER):
             # Fix of invalid hostnames
             err_tl = 'Name restricted to at most 255 characters.'
             err_ic = 'Name may only contain letters, ' \
@@ -3357,41 +3397,61 @@ class HostController(rest.RestController):
 
         self._check_sriovdp_interface_datanets(interface)
 
-    def _semantic_check_fpga_fec_device(self, host, dev, force_unlock=False):
+    def _semantic_check_acclr_fec_device(self, host, dev, force_unlock=False):
         """
-        Perform semantic checks on an FPGA FEC device.
+        Perform semantic checks on an FEC device.
         """
         if (force_unlock or
-                dev.pdevice_id != device.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF):
+           dev.pdevice_id not in device.SRIOV_ENABLED_FEC_DEVICE_IDS):
             return
 
-        sriov_numvfs = dev.sriov_numvfs
-        if not sriov_numvfs:
-            return
-        if (dev.sriov_vfs_pci_address and
-                sriov_numvfs == len(dev.sriov_vfs_pci_address.split(','))):
+        try:
+            sriov_numvfs = int(dev.sriov_numvfs)
+        except TypeError:
+            sriov_numvfs = 0
+
+        if dev.extra_info:
+            extra_info = ast.literal_eval(dev.extra_info)
+            expected_numvfs = int(extra_info['expected_numvfs'])
+            if sriov_numvfs != expected_numvfs:
+                msg = (_("Expecting sriov_numvfs=%d for FEC device pciaddr=%s. "
+                         "Please wait a few minutes for inventory update and "
+                         "retry host-unlock." % (expected_numvfs, dev.pciaddr)))
+                LOG.info(msg)
+                pecan.request.rpcapi.update_sriov_config(
+                    pecan.request.context,
+                    host['uuid'])
+                raise wsme.exc.ClientSideError(msg)
+
+        if not dev.sriov_vfs_pci_address or len(dev.sriov_vfs_pci_address) == 0:
+            sriov_vfs_pci_address = []
+        else:
+            sriov_vfs_pci_address = dev.sriov_vfs_pci_address.split(',')
+
+        if sriov_numvfs == len(sriov_vfs_pci_address):
+            if sriov_numvfs > 0:
                 LOG.info("check sriov_numvfs=%s sriov_vfs_pci_address=%s" %
                          (sriov_numvfs, dev.sriov_vfs_pci_address))
         else:
-            msg = (_("Expecting number of FPGA device sriov_numvfs=%s. "
-                     "Please wait a few minutes for inventory update and "
-                     "retry host-unlock." %
-                     sriov_numvfs))
+            msg = (_("Expecting sriov_vfs_pci_address length=%d for FEC "
+                     "device pciaddr=%s. Please wait a few minutes for "
+                     "inventory update and retry host-unlock." %
+                     (sriov_numvfs, dev.pciaddr)))
             LOG.info(msg)
             pecan.request.rpcapi.update_sriov_config(
                 pecan.request.context,
                 host['uuid'])
             raise wsme.exc.ClientSideError(msg)
 
-    def _semantic_check_fpga_device(self, host, dev, force_unlock=False):
+    def _semantic_check_acclr_device(self, host, dev, force_unlock=False):
         """
-        Perform semantic checks on an FPGA device.
+        Perform semantic checks on an FEC device.
         """
         if dev.pclass_id != device.PCI_DEVICE_CLASS_FPGA:
             return
 
-        if dev.pdevice_id == device.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF:
-            self._semantic_check_fpga_fec_device(host, dev, force_unlock)
+        if dev.pdevice_id in device.SRIOV_ENABLED_FEC_DEVICE_IDS:
+            self._semantic_check_acclr_fec_device(host, dev, force_unlock)
 
     def _semantic_check_devices(self, host, force_unlock=False):
         """
@@ -3401,7 +3461,7 @@ class HostController(rest.RestController):
             pecan.request.dbapi.pci_device_get_by_host(host['uuid']))
         for dev in devices:
             if dev.pclass_id == device.PCI_DEVICE_CLASS_FPGA:
-                self._semantic_check_fpga_device(host, dev, force_unlock)
+                self._semantic_check_acclr_device(host, dev, force_unlock)
 
     def _semantic_check_unlock_kube_upgrade(self, ihost, force_unlock=False):
         """
@@ -3446,6 +3506,29 @@ class HostController(rest.RestController):
 
         # Check for new hardware since upgrade-start
         self._semantic_check_upgrade_refresh(upgrade, ihost, force_unlock)
+
+    @staticmethod
+    def _semantic_check_duplex_oam_config(ihost):
+        system = pecan.request.dbapi.isystem_get_one()
+        if system.capabilities.get('simplex_to_duplex_migration'):
+            network = pecan.request.dbapi.network_get_by_type(constants.NETWORK_TYPE_OAM)
+            address_names = {'oam_c0_ip': '%s-%s' % (constants.CONTROLLER_0_HOSTNAME,
+                                                     constants.NETWORK_TYPE_OAM),
+                             'oam_c1_ip': '%s-%s' % (constants.CONTROLLER_1_HOSTNAME,
+                                                     constants.NETWORK_TYPE_OAM)}
+            addresses = {a['name']: a for a in
+                         pecan.request.dbapi.addresses_get_by_pool_uuid(network.pool_uuid)}
+
+            # check if controller-0-oam and controller-1-oam entries exist
+            for key, name in address_names.items():
+                if addresses.get(name) is None:
+                    msg = _("Can not unlock controller on a duplex without "
+                            "configuring %s." % key)
+                    raise wsme.exc.ClientSideError(msg)
+                if addresses[name].address is None:
+                    msg = _("Can not unlock controller on a duplex without "
+                            "configuring a unit IP for %s." % key)
+                    raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
     def _semantic_check_oam_interface(ihost):
@@ -3576,6 +3659,8 @@ class HostController(rest.RestController):
 
         # Make adjustment to 2M and 1G hugepages to accomodate an
         # increase in platform reserved memory.
+        # Also, consider the available memory on the calculation
+        # hupeages shall not be decreased if there is memory available
         for m in mems:
             # ignore updates when no change required
             if m.platform_reserved_mib is None or \
@@ -3589,45 +3674,68 @@ class HostController(rest.RestController):
                 continue
 
             # start with current measured hugepage
+            n_total_hp_size = 0
+            if m.vswitch_hugepages_reqd is not None:
+                n_total_hp_size += m.vswitch_hugepages_reqd \
+                    * m.vswitch_hugepages_size_mib
+            else:
+                n_total_hp_size += m.vswitch_hugepages_nr \
+                    * m.vswitch_hugepages_size_mib
             if m.vm_hugepages_nr_2M is not None:
                 n_2M = m.vm_hugepages_nr_2M
+                n_total_hp_size += n_2M * constants.MIB_2M
             else:
                 n_2M = None
             if m.vm_hugepages_nr_1G is not None:
                 n_1G = m.vm_hugepages_nr_1G
+                n_total_hp_size += n_1G * constants.MIB_1G
             else:
                 n_1G = None
 
-            # adjust current measurements
-            d_MiB = reserved - m.platform_reserved_mib
-            d_2M = int(d_MiB / constants.MIB_2M)
-            d_1G = int((d_MiB + 512) / constants.MIB_1G)
-            if n_2M is not None and n_2M - d_2M > 0:
-                d_1G = 0
-                n_2M -= d_2M
-            else:
-                d_2M = 0
-                if n_1G is not None and n_1G - d_1G > 0:
-                    n_1G -= d_1G
-                else:
-                    d_1G = 0
-
-            # override with pending values
-            if m.vm_hugepages_nr_2M_pending is not None:
-                n_2M = m.vm_hugepages_nr_2M_pending
-            if m.vm_hugepages_nr_1G_pending is not None:
-                n_1G = m.vm_hugepages_nr_1G_pending
-
+            # adjust current hugepage measurements based on the available
+            # memory
+            hp_mem_avail_mib = m.node_memtotal_mib - reserved \
+                - int(n_total_hp_size)
             values = {}
             values.update({'platform_reserved_mib': reserved})
-            if n_2M is not None:
-                values.update({'vm_hugepages_nr_2M_pending': n_2M})
-            if n_1G is not None:
-                values.update({'vm_hugepages_nr_1G_pending': n_1G})
-            LOG.info("%s auto_adjust_memory numa_node=%d, "
-                     "+2M=%d, +1G=%d, values=%s"
-                     % (ihost['hostname'], node['numa_node'],
-                        -d_2M, -d_1G, values))
+
+            # Only adjust the number of hugepages if the memory available is
+            # less than 50% of the total memory
+            if (hp_mem_avail_mib < int(0.5 * m.node_memtotal_mib)):
+                d_MiB = reserved - m.platform_reserved_mib
+                d_2M = int(d_MiB / constants.MIB_2M)
+                d_1G = int((d_MiB + 512) / constants.MIB_1G)
+                if n_2M is not None and n_2M - d_2M > 0:
+                    d_1G = 0
+                    n_2M -= d_2M
+                else:
+                    d_2M = 0
+                    if n_1G is not None and n_1G - d_1G > 0:
+                        n_1G -= d_1G
+                    else:
+                        d_1G = 0
+
+                # override with pending values
+                if m.vm_hugepages_nr_2M_pending is not None:
+                    n_2M = m.vm_hugepages_nr_2M_pending
+                if m.vm_hugepages_nr_1G_pending is not None:
+                    n_1G = m.vm_hugepages_nr_1G_pending
+
+                if n_2M is not None:
+                    values.update({'vm_hugepages_nr_2M_pending': n_2M})
+                if n_1G is not None:
+                    values.update({'vm_hugepages_nr_1G_pending': n_1G})
+                LOG.info("%s auto_adjust_memory numa_node=%d, "
+                        "+2M=%d, +1G=%d, values=%s"
+                        % (ihost['hostname'], node['numa_node'],
+                            -d_2M, -d_1G, values))
+            else:
+                LOG.info("%s auto_adjust_memory numa_node=%d, "
+                        "number of app hugepages preserved: "
+                        "2M=%d, 1G=%d, values=%s, "
+                        "available memory (MB): %d"
+                        % (ihost['hostname'], node['numa_node'],
+                            n_2M, n_1G, values, hp_mem_avail_mib))
             pecan.request.dbapi.imemory_update(m.uuid, values)
 
         return None
@@ -4419,6 +4527,23 @@ class HostController(rest.RestController):
                     pecan.request.rpcapi.configure_ttys_dcd(
                         pecan.request.context, ihost['uuid'], ttys_dcd)
 
+    def mtc_action_apps_semantic_checks(self, action):
+        """ Enhance semantic checks from this class.
+        Let apps run semantic checks.
+
+        :param action: maintenance action
+
+        """
+        try:
+            pecan.request.rpcapi.mtc_action_apps_semantic_checks(
+                pecan.request.context, action)
+        except rpc_common.RemoteError as e:
+            raise wsme.exc.ClientSideError(_(
+                "{} action semantic check failed by app: {}"
+                "".format(action.capitalize(), str(e.value))))
+
+        return True
+
     def action_check(self, action, hostupdate):
         """Performs semantic checks related to action"""
 
@@ -4489,8 +4614,13 @@ class HostController(rest.RestController):
                     pecan.request.dbapi.ihost_update(hostupdate.ihost_orig['uuid'],
                                                      hostupdate.ihost_val_prenotify)
                     raise
+
+                if not force_unlock:
+                    self.mtc_action_apps_semantic_checks(action)
+
         elif action == constants.LOCK_ACTION:
-            if self.check_lock(hostupdate):
+            if self.check_lock(hostupdate) and \
+                    self.mtc_action_apps_semantic_checks(action):
                 rc = self.update_ihost_action(action, hostupdate)
         elif action == constants.FORCE_LOCK_ACTION:
             if self.check_force_lock(hostupdate):
@@ -5042,6 +5172,9 @@ class HostController(rest.RestController):
                 cutils.is_aio_duplex_system(pecan.request.dbapi):
             return
 
+        if personality == constants.EDGEWORKER:
+            return
+
         if (utils.SystemHelper.get_product_build() ==
                     constants.TIS_AIO_BUILD):
             msg = _("Personality [%s] for host is not compatible "
@@ -5508,6 +5641,8 @@ class HostController(rest.RestController):
         # If HTTPS is enabled then we may be in TPM configuration mode
         if utils.get_https_enabled():
             self._semantic_check_tpm_config(hostupdate.ihost_orig)
+        if utils.get_system_mode() == constants.SYSTEM_MODE_DUPLEX:
+            self._semantic_check_duplex_oam_config(hostupdate.ihost_orig)
 
     def check_unlock_worker(self, hostupdate, force_unlock=False):
         """Check semantics on  host-unlock of a worker."""
@@ -5833,6 +5968,18 @@ class HostController(rest.RestController):
                 _("Swact action not allowed. Upgrade state must be %s") %
                 (constants.UPGRADE_DATA_MIGRATION_COMPLETE))
 
+        activating_states = [constants.UPGRADE_ACTIVATION_REQUESTED,
+                             constants.UPGRADE_ACTIVATING]
+        if upgrade.state in activating_states and not force_swact:
+            # Block swacts during activation to prevent interrupting the
+            # upgrade scripts.
+            # Allow swacts during UPGRADE_ACTIVATING_HOSTS as the active
+            # controller may need a lock/unlock if a runtime manifest fails.
+            # Allow force swacts for recovery in edge cases.
+            raise wsme.exc.ClientSideError(
+                _("Swact action not allowed. Wait until the upgrade-activate "
+                  "command completes"))
+
         if upgrade.state in [constants.UPGRADE_ABORTING,
                              constants.UPGRADE_ABORTING_ROLLBACK]:
             if to_host_load_id == upgrade.to_load:
@@ -5937,22 +6084,29 @@ class HostController(rest.RestController):
                 self._check_swact_device_image_update(hostupdate.ihost_orig,
                                                       ihost_ctr, force_swact)
 
-                if ihost_ctr.config_target:
-                    if ihost_ctr.config_target != ihost_ctr.config_applied:
-                        try:
-                            upgrade = \
-                                pecan.request.dbapi.software_upgrade_get_one()
-                        except exception.NotFound:
-                            upgrade = None
-                        if upgrade and upgrade.state == \
-                                constants.UPGRADE_ABORTING_ROLLBACK:
-                            pass
-                        else:
-                            raise wsme.exc.ClientSideError(
-                                _("%s target Config %s not yet applied."
-                                  " Apply target Config via Lock/Unlock prior"
-                                  " to Swact") %
-                                (ihost_ctr.hostname, ihost_ctr.config_target))
+                if ihost_ctr.config_target and\
+                        ihost_ctr.config_target != ihost_ctr.config_applied:
+                    try:
+                        upgrade = \
+                            pecan.request.dbapi.software_upgrade_get_one()
+                    except exception.NotFound:
+                        upgrade = None
+                    if upgrade and upgrade.state == \
+                            constants.UPGRADE_ABORTING_ROLLBACK:
+                        pass
+                    elif not utils.is_host_active_controller(ihost_ctr):
+                        # This condition occurs when attempting to host-swact
+                        # away from "active" (platform services) controller.
+                        #
+                        # Since api (sysinv, sm) allows for host-swact
+                        # services away from a "standby" controller, this enforcement
+                        # is not required for host-swact to the already
+                        # active controller.
+                        raise wsme.exc.ClientSideError(
+                            _("%s target Config %s not yet applied."
+                              " Apply target Config via Lock/Unlock prior"
+                              " to Swact") %
+                            (ihost_ctr.hostname, ihost_ctr.config_target))
 
                 self._semantic_check_swact_upgrade(hostupdate.ihost_orig,
                                                    ihost_ctr,
@@ -5979,6 +6133,14 @@ class HostController(rest.RestController):
         if response and "0" != response['error_code']:
             raise wsme.exc.ClientSideError(
                 _("%s" % response['error_details']))
+
+        # Check no app apply is in progress
+        # Skip if it is a force swact
+        if force_swact is False:
+            for _app in pecan.request.dbapi.kube_app_get_all():
+                if _app.status == constants.APP_APPLY_IN_PROGRESS:
+                    raise wsme.exc.ClientSideError(
+                        _("Swact action not allowed. %s apply is in progress." % _app.name))
 
     def check_lock_storage(self, hostupdate, force=False):
         """Pre lock semantic checks for storage"""

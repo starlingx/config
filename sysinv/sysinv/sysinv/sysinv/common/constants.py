@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -17,8 +17,9 @@ SYSINV_CONFIG_FILE_LOCAL = '/etc/sysinv/sysinv.conf'
 SYSINV_CONF_DEFAULT_FILE = 'sysinv.conf.default'
 SYSINV_CONF_DEFAULT_PATH = os.path.join(SYSINV_CONFIG_PATH,
                                         SYSINV_CONF_DEFAULT_FILE)
-SYSINV_RESTORE_FLAG = os.path.join(SYSINV_CONFIG_PATH,
-                                   ".restore_in_progress")
+
+SYSINV_CONDUCTOR_ACTIVE_PATH = os.path.join(SYSINV_CONFIG_PATH,
+                                            '.sysinv_conductor_active')
 
 HTTPS_CONFIG_REQUIRED = os.path.join(tsc.CONFIG_PATH, '.https_config_required')
 ADMIN_ENDPOINT_CONFIG_REQUIRED = os.path.join(tsc.CONFIG_PATH, '.admin_endpoint_config_required')
@@ -115,8 +116,9 @@ CONFIG_ACTIONS = [SUBFUNCTION_CONFIG_ACTION,
 CONTROLLER = 'controller'
 STORAGE = 'storage'
 WORKER = 'worker'
+EDGEWORKER = 'edgeworker'
 
-PERSONALITIES = [CONTROLLER, STORAGE, WORKER]
+PERSONALITIES = [CONTROLLER, STORAGE, WORKER, EDGEWORKER]
 
 # SUBFUNCTION FEATURES
 SUBFUNCTIONS = 'subfunctions'
@@ -240,7 +242,7 @@ PLATFORM_CORE_MEMORY_RESERVED_MIB_VBOX = 1100
 PLATFORM_CORE_MEMORY_RESERVED_MIB_VBOX_WORKER = 2000
 
 # For AIO config, memory reserved for controller in MiB
-COMBINED_NODE_CONTROLLER_MEMORY_RESERVED_MIB = 4000
+COMBINED_NODE_CONTROLLER_MEMORY_RESERVED_MIB = 5000
 COMBINED_NODE_CONTROLLER_MEMORY_RESERVED_MIB_VBOX = 3000
 COMBINED_NODE_CONTROLLER_MEMORY_RESERVED_MIB_XEOND = 3000
 
@@ -348,14 +350,15 @@ DEFAULT_SMALL_DISK_SIZE = 240
 # ETCD_STOR_SIZE                                        5
 # CEPH_MON_SIZE                                        20
 # KUBELET_STOR_SIZE                                    10
+# DC_VAULT_SIZE                                        15
 # buffer inside VG for LV creation                      1
 # platform backup partition (created in kickstarts)    10
 # root partition (created in kickstarts)               20
 # boot/EFI partition (created in kickstarts)            1
 # buffer for partition creation                         1
 # -------------------------------------------------------
-#                                                     181
-MINIMUM_SMALL_DISK_SIZE = 181
+#                                                     196
+MINIMUM_SMALL_DISK_SIZE = 196
 
 # The minimum tiny disk size needed to create all partitions
 # Value based on the following calculation:
@@ -420,12 +423,14 @@ SB_TYPE_LVM = 'lvm'
 SB_TYPE_CEPH = 'ceph'
 SB_TYPE_CEPH_EXTERNAL = 'ceph-external'
 SB_TYPE_EXTERNAL = 'external'
+SB_TYPE_CEPH_ROOK = 'ceph-rook'
 
 SB_SUPPORTED = [SB_TYPE_FILE,
                 SB_TYPE_LVM,
                 SB_TYPE_CEPH,
                 SB_TYPE_CEPH_EXTERNAL,
-                SB_TYPE_EXTERNAL]
+                SB_TYPE_EXTERNAL,
+                SB_TYPE_CEPH_ROOK]
 
 # Storage backend default names
 SB_DEFAULT_NAME_SUFFIX = "-store"
@@ -434,6 +439,7 @@ SB_DEFAULT_NAMES = {
     SB_TYPE_LVM: SB_TYPE_LVM + SB_DEFAULT_NAME_SUFFIX,
     SB_TYPE_CEPH: SB_TYPE_CEPH + SB_DEFAULT_NAME_SUFFIX,
     SB_TYPE_CEPH_EXTERNAL: SB_TYPE_CEPH_EXTERNAL + SB_DEFAULT_NAME_SUFFIX,
+    SB_TYPE_CEPH_ROOK: SB_TYPE_CEPH_ROOK + SB_DEFAULT_NAME_SUFFIX,
     SB_TYPE_EXTERNAL: 'shared_services'
 }
 
@@ -455,6 +461,7 @@ SB_CEPH_SVCS_SUPPORTED = [SB_SVC_GLANCE, SB_SVC_CINDER, SB_SVC_SWIFT,
                           SB_SVC_NOVA, SB_SVC_RBD_PROVISIONER]
 SB_CEPH_EXTERNAL_SVCS_SUPPORTED = [SB_SVC_CINDER, SB_SVC_GLANCE, SB_SVC_NOVA]
 SB_EXTERNAL_SVCS_SUPPORTED = [SB_SVC_CINDER, SB_SVC_GLANCE]
+SB_CEPH_ROOK_SVCS_SUPPORTED = [SB_SVC_GLANCE, SB_SVC_CINDER, SB_SVC_NOVA]
 
 # Storage backend: Service specific backend nomenclature
 CINDER_BACKEND_CEPH = SB_TYPE_CEPH
@@ -726,6 +733,13 @@ VALID_AEMODE_LIST = [AE_MODE_ACTIVE_STANDBY,
                      AE_MODE_BALANCED,
                      AE_MODE_LACP]
 
+PRIMARY_RESELECT_ALWAYS = 'always'
+PRIMARY_RESELECT_BETTER = 'better'
+PRIMARY_RESELECT_FAILURE = 'failure'
+VALID_PRIMARY_RESELECT_LIST = [PRIMARY_RESELECT_ALWAYS,
+                               PRIMARY_RESELECT_BETTER,
+                               PRIMARY_RESELECT_FAILURE]
+
 SM_MULTICAST_MGMT_IP_NAME = "sm-mgmt-ip"
 MTCE_MULTICAST_MGMT_IP_NAME = "mtce-mgmt-ip"
 PATCH_CONTROLLER_MULTICAST_MGMT_IP_NAME = "patch-controller-mgmt-ip"
@@ -747,6 +761,9 @@ LOOPBACK_IFNAME = 'lo'
 LINK_SPEED_1G = 1000
 LINK_SPEED_10G = 10000
 LINK_SPEED_25G = 25000
+
+# VF rate limit
+VF_TOTAL_RATE_RATIO = 0.9
 
 # DRBD engineering limits.
 # Link Util values are in Percentage.
@@ -1016,6 +1033,10 @@ SERVICE_PARAM_SECTION_PLATFORM_MAINTENANCE = 'maintenance'
 SERVICE_PARAM_SECTION_PLATFORM_SYSINV = 'sysinv'
 SERVICE_PARAM_SECTION_PLATFORM_CONFIG = 'config'
 
+# Containerd runTimeClass CRI entries
+SERVICE_PARAM_SECTION_PLATFORM_CRI_RUNTIME_CLASS = 'container_runtime'
+SERVICE_PARAM_NAME_PLATFORM_CRI_RUNTIME_CLASS = 'custom_container_runtime'
+
 SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT = 'worker_boot_timeout'
 SERVICE_PARAM_PLAT_MTCE_CONTROLLER_BOOT_TIMEOUT = 'controller_boot_timeout'
 SERVICE_PARAM_PLAT_MTCE_HBS_PERIOD = 'heartbeat_period'
@@ -1101,6 +1122,16 @@ DEFAULT_REGISTRIES_INFO = {
 }
 
 # kubernetes parameters
+SERVICE_PARAM_SECTION_KUBERNETES_CONFIG = 'config'
+SERVICE_PARAM_NAME_KUBERNETES_POD_MAX_PIDS = 'pod_max_pids'
+# Platform pods use under 20 in steady state, but allow extra room.
+SERVICE_PARAM_KUBERNETES_POD_MAX_PIDS_MIN = 100
+# Account for uncontrolled changes in applications (e.g. stx-openstack) by
+# setting a very large number. Will document the recommended minimum value
+# for supported applications.
+SERVICE_PARAM_KUBERNETES_POD_MAX_PIDS_DEFAULT = 10000
+SERVICE_PARAM_KUBERNETES_POD_MAX_PIDS_MAX = 65535
+
 SERVICE_PARAM_SECTION_KUBERNETES_CERTIFICATES = 'certificates'
 SERVICE_PARAM_NAME_KUBERNETES_API_SAN_LIST = 'apiserver_certsan'
 
@@ -1157,6 +1188,7 @@ UPGRADE_UPGRADING_CONTROLLERS = 'upgrading-controllers'
 UPGRADE_UPGRADING_HOSTS = 'upgrading-hosts'
 UPGRADE_ACTIVATION_REQUESTED = 'activation-requested'
 UPGRADE_ACTIVATING = 'activating'
+UPGRADE_ACTIVATING_HOSTS = 'activating-hosts'
 UPGRADE_ACTIVATION_FAILED = 'activation-failed'
 UPGRADE_ACTIVATION_COMPLETE = 'activation-complete'
 UPGRADE_COMPLETING = 'completing'
@@ -1164,6 +1196,18 @@ UPGRADE_COMPLETED = 'completed'
 UPGRADE_ABORTING = 'aborting'
 UPGRADE_ABORT_COMPLETING = 'abort-completing'
 UPGRADE_ABORTING_ROLLBACK = 'aborting-reinstall'
+
+# Restore states
+RESTORE_STATE_IN_PROGRESS = 'restore-in-progress'
+RESTORE_STATE_COMPLETED = 'restore-completed'
+
+# Restore progress constants
+RESTORE_PROGRESS_ALREADY_COMPLETED = "Restore procedure already completed"
+RESTORE_PROGRESS_STARTED = "Restore procedure started"
+RESTORE_PROGRESS_ALREADY_IN_PROGRESS = "Restore procedure already in progress"
+RESTORE_PROGRESS_NOT_IN_PROGRESS = "Restore procedure is not in progress"
+RESTORE_PROGRESS_IN_PROGRESS = "Restore procedure is in progress"
+RESTORE_PROGRESS_COMPLETED = "Restore procedure completed"
 
 # LLDP
 LLDP_OVS_PORT_PREFIX = 'lldp'
@@ -1316,9 +1360,14 @@ INSTALL_STATE_COMPLETED = "completed"
 
 tox_work_dir = os.environ.get("TOX_WORK_DIR")
 if tox_work_dir:
-    SYSINV_LOCK_PATH = tox_work_dir
+    SYSINV_VOLATILE_PATH = tox_work_dir
 else:
-    SYSINV_LOCK_PATH = os.path.join(tsc.VOLATILE_PATH, "sysinv")
+    SYSINV_VOLATILE_PATH = os.path.join(tsc.VOLATILE_PATH, "sysinv")
+
+SYSINV_FIRST_REPORT_FLAG = os.path.join(SYSINV_VOLATILE_PATH,
+                                        ".sysinv_agent_first_report_sent")
+SYSINV_REPORTED = os.path.join(SYSINV_VOLATILE_PATH,
+                               ".sysinv_reported")
 
 NETWORK_CONFIG_LOCK_FILE = os.path.join(
     tsc.VOLATILE_PATH, "apply_network_config.lock")
@@ -1390,6 +1439,8 @@ CERT_MODES_SUPPORTED = [CERT_MODE_SSL,
                         CERT_MODE_OPENSTACK,
                         CERT_MODE_OPENSTACK_CA,
                         ]
+CERT_MODES_SUPPORTED_CERT_MANAGER = [CERT_MODE_SSL,
+                                     CERT_MODE_DOCKER_REGISTRY]
 
 # CONFIG file permissions
 CONFIG_FILE_PERMISSION_ROOT_READ_ONLY = 0o400
@@ -1467,6 +1518,9 @@ HELM_APP_CERT_MANAGER = 'cert-manager'
 HELM_APP_NGINX_IC = 'nginx-ingress-controller'
 HELM_APP_VAULT = 'vault'
 HELM_APP_ROOK_CEPH = 'rook-ceph-apps'
+HELM_APP_SNMP = 'snmp'
+HELM_APP_PTP_NOTIFICATION = 'ptp-notification'
+HELM_APP_PORTIERIS = 'portieris'
 
 # Apply mode for openstack app
 OPENSTACK_RESTORE_DB = 'restore_db'
@@ -1483,21 +1537,6 @@ OPENSTACK_APP_APPLY_MODES = [
 HELM_APP_APPLY_MODES = {
     HELM_APP_OPENSTACK: OPENSTACK_APP_APPLY_MODES
 }
-
-HELM_APPS_PLATFORM_MANAGED = [
-    HELM_APP_PLATFORM,
-    HELM_APP_OIDC_AUTH,
-    HELM_APP_CERT_MANAGER,
-    HELM_APP_ROOK_CEPH,
-]
-
-# The order in which apps are listed here is important.
-# They will be applied as listed below: first platform-integ-apps
-# then stx-openstack.
-HELM_APPS_WITH_REAPPLY_SUPPORT = \
-    HELM_APPS_PLATFORM_MANAGED + [
-        HELM_APP_OPENSTACK
-    ]
 
 HELM_APP_ISO_INSTALL_PATH = '/usr/local/share/applications/helm'
 
@@ -1545,14 +1584,143 @@ APP_REMOVE_OP = 'remove'
 APP_DELETE_OP = 'delete'
 APP_UPDATE_OP = 'update'
 APP_ROLLBACK_OP = 'rollback'
+APP_ABORT_OP = 'abort'
+APP_EVALUATE_REAPPLY_OP = 'evaluate-reapply'
+# Backup/Restore lifecycle actions:
+APP_BACKUP = 'backup'
+APP_ETCD_BACKUP = 'etcd-backup'
+APP_RESTORE = 'restore'
 
 # Lifecycle constants
-APP_LIFECYCLE_PRE = 'pre'
-APP_LIFECYCLE_POST = 'post'
+APP_LIFECYCLE_TIMING_PRE = 'pre'
+APP_LIFECYCLE_TIMING_POST = 'post'
+
+APP_LIFECYCLE_TYPE_SEMANTIC_CHECK = 'check'
+APP_LIFECYCLE_TYPE_OPERATION = 'operation'
+APP_LIFECYCLE_TYPE_RBD = 'rbd'
+APP_LIFECYCLE_TYPE_RESOURCE = 'resource'
+# armada manifest
+# outside the function that has the retry decorator
+APP_LIFECYCLE_TYPE_MANIFEST = 'manifest'
+# inside the function that has a retry decorator
+APP_LIFECYCLE_TYPE_ARMADA_REQUEST = 'armada-request'
+
+APP_LIFECYCLE_MODE_MANUAL = 'manual'
+APP_LIFECYCLE_MODE_AUTO = 'auto'
+APP_LIFECYCLE_FORCE_OPERATION = 'force'
+APP_LIFECYCLE_OPERATION_MTC_ACTION = 'mtc-action'
+
+BACKUP_ACTION_NOTIFY_SUCCESS = 'success'
+BACKUP_ACTION_NOTIFY_FAILURE = 'failure'
+
+BACKUP_ACTION_SEMANTIC_CHECK = 'backup-semantic-check'
+BACKUP_ACTION_PRE_BACKUP = 'pre-backup-action'
+BACKUP_ACTION_PRE_ETCD_BACKUP = 'pre-etcd-backup-action'
+BACKUP_ACTION_POST_ETCD_BACKUP = 'post-etcd-backup-action'
+BACKUP_ACTION_POST_BACKUP = 'post-backup-action'
+BACKUP_ACTION_PRE_RESTORE = 'pre-restore-action'
+BACKUP_ACTION_POST_RESTORE = 'post-restore-action'
+
+# backup/restore parameters from the command line utility:
+HOOK_PARAMETERS_MAP = {
+    BACKUP_ACTION_SEMANTIC_CHECK: [APP_LIFECYCLE_MODE_AUTO,
+                                   APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                                   APP_LIFECYCLE_TIMING_PRE,
+                                   APP_BACKUP],
+    BACKUP_ACTION_PRE_BACKUP: [APP_LIFECYCLE_MODE_AUTO,
+                               APP_LIFECYCLE_TYPE_OPERATION,
+                               APP_LIFECYCLE_TIMING_PRE,
+                               APP_BACKUP],
+    BACKUP_ACTION_POST_BACKUP: [APP_LIFECYCLE_MODE_AUTO,
+                                APP_LIFECYCLE_TYPE_OPERATION,
+                                APP_LIFECYCLE_TIMING_POST,
+                                APP_BACKUP],
+    BACKUP_ACTION_PRE_ETCD_BACKUP: [APP_LIFECYCLE_MODE_AUTO,
+                                    APP_LIFECYCLE_TYPE_OPERATION,
+                                    APP_LIFECYCLE_TIMING_PRE,
+                                    APP_ETCD_BACKUP],
+    BACKUP_ACTION_POST_ETCD_BACKUP: [APP_LIFECYCLE_MODE_AUTO,
+                                     APP_LIFECYCLE_TYPE_OPERATION,
+                                     APP_LIFECYCLE_TIMING_POST,
+                                     APP_ETCD_BACKUP],
+    BACKUP_ACTION_PRE_RESTORE: [APP_LIFECYCLE_MODE_AUTO,
+                                APP_LIFECYCLE_TYPE_OPERATION,
+                                APP_LIFECYCLE_TIMING_PRE,
+                                APP_RESTORE],
+    BACKUP_ACTION_POST_RESTORE: [APP_LIFECYCLE_MODE_AUTO,
+                                 APP_LIFECYCLE_TYPE_OPERATION,
+                                 APP_LIFECYCLE_TIMING_POST,
+                                 APP_RESTORE],
+}
 
 # Application metadata constants
 APP_METADATA_MAINTAIN_USER_OVERRIDES = 'maintain_user_overrides'
-APP_METADATA_HELM_TOOLKIT_REQUIRED = 'helm_toolkit_required'
+APP_METADATA_APPLY_PROGRESS_ADJUST = 'apply_progress_adjust'
+APP_METADATA_APPLY_PROGRESS_ADJUST_DEFAULT_VALUE = 0
+APP_METADATA_APPS = 'apps'
+APP_METADATA_BEHAVIOR = 'behavior'
+APP_METADATA_EVALUATE_REAPPLY = 'evaluate_reapply'
+APP_METADATA_AFTER = 'after'
+APP_METADATA_TRIGGERS = 'triggers'
+APP_METADATA_TYPE = 'type'
+APP_METADATA_FILTERS = 'filters'
+APP_METADATA_FILTER_FIELD = 'filter_field'
+APP_METADATA_PLATFORM_MANAGED_APP = 'platform_managed_app'
+APP_METADATA_PLATFORM_MANAGED_APPS = 'platform_managed_apps_list'
+APP_METADATA_DESIRED_STATE = 'desired_state'
+APP_METADATA_DESIRED_STATES = 'desired_states'
+APP_METADATA_FORBIDDEN_MANUAL_OPERATIONS = 'forbidden_manual_operations'
+APP_METADATA_ORDERED_APPS = 'ordered_apps'
+APP_METADATA_UPGRADES = 'upgrades'
+APP_METADATA_UPDATE_FAILURE_SKIP_RECOVERY = 'update_failure_no_rollback'
+APP_METADATA_FROM_VERSIONS = 'from_versions'
+APP_METADATA_SUPPORTED_K8S_VERSION = 'supported_k8s_version'
+APP_METADATA_SUPPORTED_RELEASES = 'supported_releases'
+APP_METADATA_MINIMUM = 'minimum'
+APP_METADATA_MAXIMUM = 'maximum'
+
+APP_EVALUATE_REAPPLY_TYPE_HOST_ADD = 'host-add'
+APP_EVALUATE_REAPPLY_TYPE_HOST_DELETE = 'host-delete'
+APP_EVALUATE_REAPPLY_TYPE_HOST_REINSTALL = REINSTALL_ACTION
+APP_EVALUATE_REAPPLY_TYPE_HOST_LOCK = LOCK_ACTION
+APP_EVALUATE_REAPPLY_TYPE_HOST_FORCE_LOCK = FORCE_LOCK_ACTION
+APP_EVALUATE_REAPPLY_TYPE_HOST_UNLOCK = UNLOCK_ACTION
+APP_EVALUATE_REAPPLY_TYPE_HOST_FORCE_UNLOCK = FORCE_UNLOCK_ACTION
+APP_EVALUATE_REAPPLY_TYPE_HOST_SWACT = SWACT_ACTION
+APP_EVALUATE_REAPPLY_TYPE_HOST_FORCE_SWACT = FORCE_SWACT_ACTION
+APP_EVALUATE_REAPPLY_TYPE_RUNTIME_APPLY_PUPPET = 'runtime-apply-puppet'
+APP_EVALUATE_REAPPLY_HOST_AVAILABILITY = 'host-availability-updated'
+APP_EVALUATE_REAPPLY_TYPE_SYSTEM_MODIFY = 'system-modify'
+APP_EVALUATE_REAPPLY_TYPE_DETECTED_SWACT = 'detected-swact'
+
+APP_EVALUATE_REAPPLY_TRIGGER_TO_METADATA_MAP = {
+    UNLOCK_ACTION:
+        APP_EVALUATE_REAPPLY_TYPE_HOST_UNLOCK,
+    FORCE_UNLOCK_ACTION:
+        APP_EVALUATE_REAPPLY_TYPE_HOST_FORCE_UNLOCK,
+    LOCK_ACTION:
+        APP_EVALUATE_REAPPLY_TYPE_HOST_LOCK,
+    FORCE_LOCK_ACTION:
+        APP_EVALUATE_REAPPLY_TYPE_HOST_FORCE_LOCK,
+    SWACT_ACTION:
+        APP_EVALUATE_REAPPLY_TYPE_HOST_SWACT,
+    FORCE_SWACT_ACTION:
+        APP_EVALUATE_REAPPLY_TYPE_HOST_FORCE_SWACT,
+    APP_EVALUATE_REAPPLY_TYPE_DETECTED_SWACT:
+        APP_EVALUATE_REAPPLY_TYPE_DETECTED_SWACT,
+    APP_EVALUATE_REAPPLY_TYPE_RUNTIME_APPLY_PUPPET:
+        APP_EVALUATE_REAPPLY_TYPE_RUNTIME_APPLY_PUPPET,
+    APP_EVALUATE_REAPPLY_HOST_AVAILABILITY:
+        APP_EVALUATE_REAPPLY_HOST_AVAILABILITY,
+    APP_EVALUATE_REAPPLY_TYPE_HOST_ADD:
+        APP_EVALUATE_REAPPLY_TYPE_HOST_ADD,
+    APP_EVALUATE_REAPPLY_TYPE_HOST_REINSTALL:
+        APP_EVALUATE_REAPPLY_TYPE_HOST_REINSTALL,
+    APP_EVALUATE_REAPPLY_TYPE_HOST_DELETE:
+        APP_EVALUATE_REAPPLY_TYPE_HOST_DELETE,
+    APP_EVALUATE_REAPPLY_TYPE_SYSTEM_MODIFY:
+        APP_EVALUATE_REAPPLY_TYPE_SYSTEM_MODIFY
+}
 
 # Progress constants
 APP_PROGRESS_ABORTED = 'operation aborted, check logs for detail'
@@ -1575,6 +1743,9 @@ APP_PROGRESS_RECOVER_COMPLETED = 'Application recover to version {} completed. '
 APP_PROGRESS_CLEANUP_FAILED = 'Application files/helm release cleanup for version {} failed.'
 APP_PROGRESS_RECOVER_IN_PROGRESS = 'recovering version {} '
 APP_PROGRESS_RECOVER_CHARTS = 'recovering helm charts'
+APP_PROGRESS_UPDATE_FAILED_SKIP_RECOVERY = "Application {} update from " \
+    "version {} to version {} failed and recovery skipped " \
+    "because skip_recovery was requested."
 
 # Auto-recovery limits
 APP_AUTO_RECOVERY_MAX_COUNT = 5
@@ -1597,6 +1768,7 @@ SRIOV_LABEL = 'sriov=enabled'
 SRIOVDP_LABEL = 'sriovdp=enabled'
 KUBE_TOPOLOGY_MANAGER_LABEL = 'kube-topology-mgr-policy'
 KUBE_CPU_MANAGER_LABEL = 'kube-cpu-mgr-policy'
+KUBE_IGNORE_ISOL_CPU_LABEL = 'kube-ignore-isol-cpus'
 
 # Accepted label values
 KUBE_TOPOLOGY_MANAGER_VALUES = [
@@ -1618,6 +1790,8 @@ ANSIBLE_BOOTSTRAP_COMPLETED_FLAG = os.path.join(tsc.CONFIG_PATH,
                                                 ".bootstrap_completed")
 UNLOCK_READY_FLAG = os.path.join(tsc.PLATFORM_CONF_PATH, ".unlock_ready")
 INVENTORY_WAIT_TIMEOUT_IN_SECS = 90
+
+ANSIBLE_RESTORE_ROOK_FLAG = os.path.join(tsc.VOLATILE_PATH, ".ansible_restore_rook")
 
 # Ansible playbooks
 ANSIBLE_KUBE_NETWORKING_PLAYBOOK = \
@@ -1693,6 +1867,7 @@ CERTIFICATE_TYPE_ADMIN_ENDPOINT_INTERMEDIATE_CA = 'intermediate-ca-cert'
 
 DC_ADMIN_ENDPOINT_SECRET_NAME = 'dc-adminep-certificate'
 SC_ADMIN_ENDPOINT_SECRET_NAME = 'sc-adminep-certificate'
+SC_INTERMEDIATE_CA_SECRET_NAME = 'sc-adminep-ca-certificate'
 
 DC_ADMIN_ROOT_CA_SECRET_NAME = 'dc-adminep-root-ca-certificate'
 
@@ -1710,5 +1885,16 @@ DC_ROOT_CA_CONFIG_PATH = \
 ADMIN_EP_CERT_FORMAT = '{tls_key}'
 
 # Platform certificates
-PLATFORM_CERT_SECRET_NAME = "system-restapi-gui-certificate"
-CERT_NAMESPACE_PLATFORM_CERTS = 'kube-system'
+RESTAPI_CERT_SECRET_NAME = "system-restapi-gui-certificate"
+REGISTRY_CERT_SECRET_NAME = "system-registry-local-certificate"
+CERT_NAMESPACE_PLATFORM_CERTS = 'deployment'
+
+CERT_MODE_TO_SECRET_NAME = {
+    CERT_MODE_SSL: RESTAPI_CERT_SECRET_NAME,
+    CERT_MODE_DOCKER_REGISTRY: REGISTRY_CERT_SECRET_NAME
+}
+
+# Storage associated networks
+SB_SUPPORTED_NETWORKS = {
+    SB_TYPE_CEPH: [NETWORK_TYPE_MGMT, NETWORK_TYPE_CLUSTER_HOST]
+}

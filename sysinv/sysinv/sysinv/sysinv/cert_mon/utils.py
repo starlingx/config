@@ -11,18 +11,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2021 Wind River Systems, Inc.
 #
 # The right to copy, distribute, modify, or otherwise make use
 # of this software may be licensed only pursuant to the terms
 # of an applicable Wind River license agreement.
 #
+import base64
 import json
 import os
 import re
 import requests
 import ssl
 import tempfile
+from eventlet.green import subprocess
 from six.moves.urllib.parse import urlparse
 from keystoneclient.v3 import client as keystone_client
 from keystoneauth1 import session
@@ -77,6 +79,65 @@ def update_admin_ep_cert(token, ca_crt, tls_crt, tls_key):
     else:
         LOG.error('Request response %s' % resp)
         raise Exception('Update admin endpoint certificate failed')
+
+
+def verify_adminep_cert_chain():
+    """
+    Verify admin endpoint certificate chain & delete if invalid
+    :param context: an admin context.
+    :return: True/False if chain is valid
+    """
+    """
+    * Retrieve ICA & AdminEP cert secrets from k8s
+    * base64 decode ICA cert (tls.crt from SC_INTERMEDIATE_CA_SECRET_NAME)
+    *   & adminep (tls.crt from SC_ADMIN_ENDPOINT_SECRET_NAME)
+    *   & store the crts in tempfiles
+    * Run openssl verify against RootCA to verify the chain
+    """
+    kube_op = sys_kube.KubeOperator()
+
+    secret_ica = kube_op.kube_get_secret(constants.SC_INTERMEDIATE_CA_SECRET_NAME,
+                                         CERT_NAMESPACE_SUBCLOUD_CONTROLLER)
+    if 'tls.crt' not in secret_ica.data:
+        raise Exception('%s tls.crt (ICA) data missing'
+                        % (constants.SC_INTERMEDIATE_CA_SECRET_NAME))
+
+    secret_adminep = kube_op.kube_get_secret(constants.SC_ADMIN_ENDPOINT_SECRET_NAME,
+                                             CERT_NAMESPACE_SUBCLOUD_CONTROLLER)
+    if 'tls.crt' not in secret_adminep.data:
+        raise Exception('%s tls.crt data missing'
+                        % (constants.SC_ADMIN_ENDPOINT_SECRET_NAME))
+
+    txt_ca_crt = base64.b64decode(secret_ica.data['tls.crt'])
+    txt_tls_crt = base64.b64decode(secret_adminep.data['tls.crt'])
+
+    with tempfile.NamedTemporaryFile() as ca_tmpfile:
+        ca_tmpfile.write(txt_ca_crt)
+        ca_tmpfile.flush()
+        with tempfile.NamedTemporaryFile() as adminep_tmpfile:
+            adminep_tmpfile.write(txt_tls_crt)
+            adminep_tmpfile.flush()
+
+            cmd = ['openssl', 'verify', '-CAfile', constants.DC_ROOT_CA_CERT_PATH,
+                   '-untrusted', ca_tmpfile.name, adminep_tmpfile.name]
+            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = proc.communicate()
+            proc.wait()
+            if 0 == proc.returncode:
+                LOG.info('verify_adminep_cert_chain passed. Valid chain')
+                return True
+            else:
+                LOG.info('verify_adminep_cert_chain: Chain is invalid\n%s\n%s'
+                         % (stdout, stderr))
+
+                res = kube_op.kube_delete_secret(constants.SC_ADMIN_ENDPOINT_SECRET_NAME,
+                                                 CERT_NAMESPACE_SUBCLOUD_CONTROLLER)
+                LOG.info('Deleting AdminEP secret due to invalid chain. %s:%s, result %s, msg %s'
+                         % (CERT_NAMESPACE_SUBCLOUD_CONTROLLER,
+                         constants.SC_ADMIN_ENDPOINT_SECRET_NAME,
+                         res.status, res.message))
+                return False
 
 
 def dc_get_subcloud_sysinv_url(subcloud_name):
@@ -361,7 +422,7 @@ def get_dc_token(region_name):
 
 
 def _get_token(auth_url, auth_project, username, password, user_domain,
-               project_domain, region_name):
+               project_domain, region_name, timeout=60):
     """
     Ask OpenStack Keystone for a token
     Returns: token object or None on failure
@@ -392,7 +453,7 @@ def _get_token(auth_url, auth_project, username, password, user_domain,
 
         request_info.add_data(payload)
 
-        request = urlopen(request_info)
+        request = urlopen(request_info, timeout=timeout)
         # Identity API v3 returns token id in X-Subject-Token
         # response header.
         token_id = request.info().getheader('X-Subject-Token')
@@ -493,7 +554,7 @@ def get_sc_intermediate_ca_secret(sc):
 
 
 def get_endpoint_certificate(endpoint):
-    url = urlparse.urlparse(endpoint)
+    url = urlparse(endpoint)
     host = url.hostname
     port = url.port
     return ssl.get_server_certificate((host, port))
@@ -557,27 +618,41 @@ def upload_request_with_data(token, url, **kwargs):
     files = {'file': ("for_upload",
                     kwargs['body'],)}
     data = kwargs.get('data')
-    req = requests.post(url, headers=headers, files=files,
-                        data=data)
+    timeout = kwargs.get('timeout')
+    try:
+        req = requests.post(url, headers=headers, files=files,
+                            data=data, timeout=timeout)
+        req.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        if 401 == e.response.status_code:
+            if token:
+                token.set_expired()
+        raise
+    except requests.exceptions.InvalidURL:
+        LOG.error("Cannot access %s" % url)
+        raise
+
     LOG.info('response from upload API = %s' % req.json())
     return req.json()
 
 
-def rest_api_upload(token, filepath, url, data=None):
+def rest_api_upload(token, filepath, url, data=None, timeout=30):
     """
     Make a rest-api upload call
     """
-    LOG.info('rest_api_upload called. filepath=%s, url=%s, data=%s' % (filepath, url, data))
+    LOG.info('rest_api_upload called. filepath=%s, url=%s, data=%s, timeout=%s'
+            % (filepath, url, data, timeout))
     try:
         file_to_upload = open(filepath, 'rb')
     except Exception as e:
         LOG.exception(e)
 
-    return upload_request_with_data(token, url, body=file_to_upload, data=data)
+    return upload_request_with_data(token, url, body=file_to_upload, data=data,
+                                    timeout=timeout)
 
 
-def update_platformcert_pemfile(tls_crt, tls_key):
-    LOG.info('Updating platformcert temporary pemfile')
+def update_pemfile(tls_crt, tls_key):
+    LOG.info('Updating temporary pemfile')
     try:
         fd, tmppath = tempfile.mkstemp(suffix='.pem')
         with open(tmppath, 'w+') as f:
@@ -593,13 +668,20 @@ def update_platformcert_pemfile(tls_crt, tls_key):
     return tmppath
 
 
-def update_platform_cert(token, pem_file_path):
-    LOG.info('Updating platform certificate. pem_file_path=%s' % pem_file_path)
+def update_platform_cert(token, cert_type, pem_file_path, force=False):
+    """Update a platform certificate using the sysinv API
+    :param token: the token to access the sysinv API
+    :param cert_type: the type of the certificate that is being updated
+    :param pem_file_path: path to the certificate file in PEM format
+    :param force: whether to bypass semantic checks and force the update,
+        defaults to False
+    """
+    LOG.info('Updating %s certificate. pem_file_path=%s' % (cert_type, pem_file_path))
     sysinv_url = token.get_service_internal_url(constants.SERVICE_TYPE_PLATFORM, constants.SYSINV_USERNAME)
     api_cmd = sysinv_url + '/certificate/certificate_install'
 
-    data = {'mode': 'ssl',
-            'force': 'true'}
+    data = {'mode': cert_type,
+            'force': str(force).lower()}
 
     response = rest_api_upload(token, pem_file_path, api_cmd, data)
     error = response.get('error')

@@ -208,6 +208,29 @@ def get_cpu_counts(host):
     return counts
 
 
+def append_ht_sibling(host, cpu_list):
+    """Append to cpu_list the hyperthread siblings for the cpus in the list"""
+    # TODO: Add UTs for this.
+
+    # There's probably a more efficient way to do this.
+    cpus_to_add = []
+    for cpu_num in cpu_list:
+        # Get node/core for specified cpu number
+        for cpu in host.cpus:
+            if cpu.cpu == cpu_num:
+                # We've found the cpu of interest, now check for siblings
+                for cpu2 in host.cpus:
+                    if cpu2.numa_node == cpu.numa_node and \
+                       cpu2.core == cpu.core and \
+                       cpu2.thread != cpu.thread:
+                        cpus_to_add.append(cpu2.cpu)
+                        break
+                break
+    # Add in the HT siblings, then remove any duplicates.
+    cpus_to_add.extend(cpu_list)
+    return list(set(cpus_to_add))
+
+
 def init_cpu_counts(host):
     """Create empty data structures to track CPU assignments by socket and
     function."""
@@ -249,8 +272,22 @@ def restructure_host_cpu_data(host):
         host.cpu_lists[cpu.numa_node].append(int(cpu.cpu))
 
 
-def check_core_allocations(host, cpu_counts):
+def check_core_allocations(host, cpu_counts, cpu_lists=None):
     """Check that minimum and maximum core values are respected."""
+
+    if cpu_lists:
+        # Verify no overlaps in cpulists for different functions. Not all
+        # functions are guaranteed to be present as keys in cpu_lists.
+        cpulist = []
+        for function in CORE_FUNCTIONS:
+            functionlist = cpu_lists.get(function, [])
+            if set(cpulist).intersection(functionlist):
+                raise wsme.exc.ClientSideError(
+                    "Some CPUs are specified for more than one function.")
+            cpulist.extend(functionlist)
+
+    # NOTE: contrary to the variable names, these are actually logical CPUs
+    # rather than cores, so if hyperthreading is enabled they're SMT siblings.
     total_platform_cores = 0
     total_vswitch_cores = 0
     total_shared_cores = 0
@@ -272,7 +309,15 @@ def check_core_allocations(host, cpu_counts):
         total_shared_cores += shared_cores
         total_isolated_cores += isolated_cores
 
-    # Validate Platform cores
+    # Add any cpus specified via ranges to the totals.
+    # Note: Can't specify by both count and range for the same function.
+    if cpu_lists:
+        total_platform_cores += len(cpu_lists.get(constants.PLATFORM_FUNCTION, []))
+        total_vswitch_cores += len(cpu_lists.get(constants.VSWITCH_FUNCTION, []))
+        total_shared_cores += len(cpu_lists.get(constants.SHARED_FUNCTION, []))
+        total_isolated_cores += len(cpu_lists.get(constants.ISOLATED_FUNCTION, []))
+
+    # Validate Platform cores (actually logical CPUs)
     if ((constants.CONTROLLER in host.subfunctions) and
             (constants.WORKER in host.subfunctions)):
         if total_platform_cores < 2:
@@ -282,7 +327,7 @@ def check_core_allocations(host, cpu_counts):
         raise wsme.exc.ClientSideError("%s must have at least one core." %
                                        constants.PLATFORM_FUNCTION)
 
-    # Validate shared cores
+    # Validate shared cores (actually logical CPUs)
     for s in range(0, len(host.nodes)):
         shared_cores = cpu_counts[s][constants.SHARED_FUNCTION]
         if host.hyperthreading:
@@ -292,7 +337,7 @@ def check_core_allocations(host, cpu_counts):
                 '%s cores are limited to 1 per processor.'
                 % constants.SHARED_FUNCTION)
 
-    # Validate vswitch cores
+    # Validate vswitch cores (actually logical CPUs)
     if total_vswitch_cores != 0:
         vswitch_type = cutils.get_vswitch_type(pecan.request.dbapi)
         if constants.VSWITCH_TYPE_NONE == vswitch_type:
@@ -308,7 +353,7 @@ def check_core_allocations(host, cpu_counts):
             "The %s function can only be assigned up to %s cores." %
             (constants.VSWITCH_FUNCTION.lower(), VSWITCH_MAX_CORES))
 
-    # Validate Isolated cores:
+    # Validate Isolated cores: (actually logical CPUs)
     #  - Prevent isolated core assignment if vswitch or shared cores are
     #    allocated.
     if total_isolated_cores > 0:
@@ -326,31 +371,57 @@ def check_core_allocations(host, cpu_counts):
             constants.APPLICATION_FUNCTION)
 
 
-def update_core_allocations(host, cpu_counts):
+def node_from_cpu(host, cpu_num):
+    for cpu in host.cpus:
+        if cpu.cpu == cpu_num:
+            return cpu.numa_node
+    raise wsme.exc.ClientSideError("Specified CPU %s is invalid." % cpu_num)
+
+
+def update_core_allocations(host, cpu_counts, cpulists=None):
     """Update the per socket/function cpu list based on the newly requested
     counts."""
     # Remove any previous assignments
     for s in range(0, len(host.nodes)):
         for f in CORE_FUNCTIONS:
             host.cpu_functions[s][f] = []
-    # Set new assignments
+
+    # Make per-numa-node lists of available CPUs
+    cpu_lists = {}
     for s in range(0, len(host.nodes)):
-        cpu_list = host.cpu_lists[s] if s in host.cpu_lists else []
+        cpu_lists[s] = list(host.cpu_lists[s]) if s in host.cpu_lists else []
+
+    # We need to reserve all of the cpulist-specified CPUs first, then
+    # reserve by counts.
+    for function in CORE_FUNCTIONS:
+        if cpulists and function in cpulists:
+            for cpu in cpulists[function]:
+                node = node_from_cpu(host, cpu)
+                host.cpu_functions[node][function].append(cpu)
+                cpu_lists[node].remove(cpu)
+
+    for s in range(0, len(host.nodes)):
         # Reserve for the platform first
         for i in range(0, cpu_counts[s][constants.PLATFORM_FUNCTION]):
             host.cpu_functions[s][constants.PLATFORM_FUNCTION].append(
-                cpu_list.pop(0))
+                cpu_lists[s].pop(0))
+
         # Reserve for the vswitch next
         for i in range(0, cpu_counts[s][constants.VSWITCH_FUNCTION]):
             host.cpu_functions[s][constants.VSWITCH_FUNCTION].append(
-                cpu_list.pop(0))
+                cpu_lists[s].pop(0))
+
         # Reserve for the shared next
         for i in range(0, cpu_counts[s][constants.SHARED_FUNCTION]):
             host.cpu_functions[s][constants.SHARED_FUNCTION].append(
-                cpu_list.pop(0))
+                cpu_lists[s].pop(0))
+
+        # Reserve for the isolated next
         for i in range(0, cpu_counts[s][constants.ISOLATED_FUNCTION]):
             host.cpu_functions[s][constants.ISOLATED_FUNCTION].append(
-                cpu_list.pop(0))
+                cpu_lists[s].pop(0))
+
         # Assign the remaining cpus to the default function for this host
-        host.cpu_functions[s][get_default_function(host)] += cpu_list
+        host.cpu_functions[s][get_default_function(host)] += cpu_lists[s]
+
     return

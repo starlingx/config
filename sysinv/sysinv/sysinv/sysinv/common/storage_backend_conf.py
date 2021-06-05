@@ -1,7 +1,7 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
 #
-# Copyright (c) 2016-2018 Wind River Systems, Inc.
+# Copyright (c) 2016-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -63,6 +63,11 @@ class StorageBackendConfig(object):
             storage_ceph_externals = api.storage_ceph_external_get_list()
             if storage_ceph_externals:
                 return storage_ceph_externals[0]
+        elif target == constants.SB_TYPE_CEPH_ROOK:
+            # Support multiple ceph rook backends
+            storage_ceph_rook = api.storage_ceph_rook_get_list()
+            if storage_ceph_rook:
+                return storage_ceph_rook[0]
 
         return None
 
@@ -206,10 +211,14 @@ class StorageBackendConfig(object):
             host = mon['hostname']
             if host not in host2ph:
                 host2ph[host] = constants.CEPH_MON_2
+
+        network_type = dbapi.storage_ceph_get_list()[
+            0].get('network', constants.NETWORK_TYPE_MGMT)
+
         # map host interface to ceph-mon ip placeholder
         hostif2ph = {}
         for host, ph in host2ph.items():
-            hostif = '%s-%s' % (host, constants.NETWORK_TYPE_MGMT)
+            hostif = '%s-%s' % (host, network_type)
             hostif2ph[hostif] = ph
         # map placeholder to ceph-mon ip address
         ph2ipaddr = {}

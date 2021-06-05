@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -13,14 +13,14 @@ from cgtsclient import exc
 CREATION_ATTRIBUTES = ['confirmed', 'name', 'services', 'capabilities',
                        'tier_uuid', 'cinder_pool_gib', 'glance_pool_gib',
                        'ephemeral_pool_gib', 'object_pool_gib',
-                       'kube_pool_gib', 'object_gateway']
+                       'kube_pool_gib', 'object_gateway', 'network']
 DISPLAY_ATTRIBUTES = ['object_gateway', 'ceph_total_space_gib',
                       'object_pool_gib', 'cinder_pool_gib',
                       'kube_pool_gib', 'glance_pool_gib', 'ephemeral_pool_gib',
-                      'tier_name', 'tier_uuid']
+                      'tier_name', 'tier_uuid', 'network']
 PATCH_ATTRIBUTES = ['object_gateway', 'object_pool_gib',
                     'cinder_pool_gib', 'glance_pool_gib',
-                    'ephemeral_pool_gib', 'kube_pool_gib']
+                    'ephemeral_pool_gib', 'kube_pool_gib', 'network']
 
 
 class StorageCeph(base.Resource):

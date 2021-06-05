@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2019 Wind River Systems, Inc.
+# Copyright (c) 2017-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -878,6 +878,8 @@ def get_bond_interface_options(iface, primary_iface):
         # Requires the active device in an active_standby LAG
         # configuration to be determined based on the lowest MAC address
         options = 'mode=active-backup miimon=100 primary={}'.format(primary_iface['ifname'])
+        if iface['primary_reselect']:
+            options += ' primary_reselect=%s' % iface['primary_reselect']
     else:
         options = 'xmit_hash_policy=%s miimon=100' % tx_hash_policy
         if ae_mode in BALANCED_AE_MODES:
@@ -1031,18 +1033,17 @@ def get_sriov_vf_config(context, iface, port, vf_config):
 
     # Calculate the VF addresses to assign to a logical VF interface,
     # taking into account any upper or lower interfaces.
-    vf_addr_list = ''
-    vf_addrs = port.get('sriov_vfs_pci_address', None)
-    if vf_addrs:
-        vf_addr_list = vf_addrs.split(',')
+    vf_addr_list = []
+    all_vf_addr_list = []
+    all_vf_addrs = port.get('sriov_vfs_pci_address', None)
+    if all_vf_addrs:
+        all_vf_addr_list = all_vf_addrs.split(',')
         vf_addr_list = interface.get_sriov_interface_vf_addrs(
-            context, iface, vf_addr_list)
-        vf_addr_list = ",".join(vf_addr_list)
+            context, iface, all_vf_addr_list)
 
     # Format the vf addresses as quoted strings in order to prevent
     # puppet from treating the address as a time/date value
-    vf_addrs = [quoted_str(addr.strip())
-        for addr in vf_addr_list.split(",") if addr]
+    vf_addrs = [quoted_str(addr.strip()) for addr in vf_addr_list if addr]
 
     # Get the user specified VF driver, if any.  If the driver is
     # None, the driver will be determined by the kernel.  That is,
@@ -1055,18 +1056,31 @@ def get_sriov_vf_config(context, iface, port, vf_config):
             vf_driver = port.get('sriov_vf_driver', None)
 
     for addr in vf_addrs:
-        vf_config.update({
-            addr: {
-                'addr': addr,
-                'driver': vf_driver
-            }
-        })
+        rate = iface.get('max_tx_rate', None)
+        if rate:
+            vfnum = utils.get_sriov_vf_index(addr, all_vf_addr_list)
+            vf_config.update({
+                addr: {
+                    'addr': addr,
+                    'driver': vf_driver,
+                    'vfnumber': vfnum,
+                    'max_tx_rate': rate
+                }
+            })
+        else:
+            vf_config.update({
+                addr: {
+                    'addr': addr,
+                    'driver': vf_driver
+                }
+            })
 
     if iface.get('used_by', None):
         upper_ifaces = iface['used_by']
         for upper_ifname in upper_ifaces:
             upper_iface = context['interfaces'][upper_ifname]
-            get_sriov_vf_config(context, upper_iface, port, vf_config)
+            if upper_iface['iftype'] == constants.INTERFACE_TYPE_VF:
+                get_sriov_vf_config(context, upper_iface, port, vf_config)
 
 
 def get_sriov_config(context, iface):

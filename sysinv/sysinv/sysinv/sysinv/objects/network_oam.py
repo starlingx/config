@@ -15,7 +15,6 @@ from sysinv.db import api as db_api
 from sysinv.objects import base
 from sysinv.objects import utils
 
-
 ADDRESS_FORMAT_ARGS = (constants.CONTROLLER_HOSTNAME,
                        constants.NETWORK_TYPE_OAM)
 
@@ -123,6 +122,71 @@ class OAMNetwork(base.SysinvObject):
                 self.dbapi.address_update(address.uuid, values)
 
         self.obj_reset_changes()
+
+    @base.remotable
+    def migrate_to_duplex(self, context):
+        """Add controller unit IPs for OAM configuration when transitioning to
+           a duplex system.
+
+        :param context: Security context
+        """
+        network = self.dbapi._network_get(self.uuid)  # pylint: disable=no-member
+        address_pool = network.address_pool
+        addresses = OAMNetwork._get_pool_addresses(address_pool)
+
+        subnet = netaddr.IPNetwork(self['oam_subnet'])
+
+        # Add address entry
+        values = {
+                'address_pool_id': address_pool.id,
+                'family': subnet.version,
+                'prefix': subnet.prefixlen,
+                'enable_dad': False
+        }
+        address_pool_values = {}
+
+        if self['oam_c0_ip']:
+            if self.address_names['oam_c0_ip'] in addresses:
+                self.dbapi.address_update(addresses.get(self.address_names['oam_c0_ip']).uuid,
+                                          {'address': self['oam_c0_ip']})
+            else:
+                # Only update the floating address entry if the controller-0
+                # unit IP is being added for the first time
+                for name, address in addresses.items():
+                    if (address.interface_id and
+                            name == self.address_names['oam_floating_ip']):
+
+                        # Clear the interface id for the floating oam address
+                        self.dbapi.address_update(address.uuid, {'interface_id': None})
+
+                        # Address values specific to controller-0
+                        c0_values = {
+                            'name': self.address_names['oam_c0_ip'],
+                            'address': self['oam_c0_ip'],
+                            'interface_id': address.interface_id
+                        }
+                        c0_values.update(values)
+                        c0_address = self.dbapi.address_create(c0_values)
+                        address_pool_values.update({'controller0_address_id': c0_address.id})
+                        break
+
+        if self['oam_c1_ip']:
+            if self.address_names['oam_c1_ip'] in addresses:
+                self.dbapi.address_update(addresses.get(self.address_names['oam_c1_ip']).uuid,
+                                          {'address': self['oam_c1_ip']})
+            else:
+                # Address values specific to controller-1
+                c1_values = {
+                    'name': self.address_names['oam_c1_ip'],
+                    'address': self['oam_c1_ip'],
+                }
+                c1_values.update(values)
+                c1_address = self.dbapi.address_create(c1_values)
+                address_pool_values.update({'controller1_address_id': c1_address.id})
+
+        # Update address pool if new address entries for controllers were added
+        if address_pool_values:
+            self.dbapi.address_pool_update(address_pool.uuid, address_pool_values)
 
     @staticmethod
     def _get_pool_addresses(pool):

@@ -84,6 +84,9 @@ class CPU(base.APIBase):
     function = wtypes.text
     "Represent the function of the icpu"
 
+    cpulist = wtypes.text
+    "The list of CPUs for this function"
+
     num_cores_on_processor0 = wtypes.text
     "The number of cores on processors 0"
 
@@ -126,6 +129,8 @@ class CPU(base.APIBase):
         # API only attributes
         self.fields.append('function')
         setattr(self, 'function', kwargs.get('function', None))
+        self.fields.append('cpulist')
+        setattr(self, 'cpulist', kwargs.get('cpulist', None))
         self.fields.append('num_cores_on_processor0')
         setattr(self, 'num_cores_on_processor0',
                         kwargs.get('num_cores_on_processor0', None))

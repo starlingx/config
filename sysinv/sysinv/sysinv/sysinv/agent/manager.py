@@ -34,9 +34,7 @@ Commands (from conductors) are received via RPC calls.
 """
 
 from __future__ import print_function
-import errno
 from eventlet.green import subprocess
-import fcntl
 import fileinput
 import os
 import retrying
@@ -94,8 +92,6 @@ CONF.register_opts(agent_opts, 'agent')
 MAXSLEEP = 300  # 5 minutes
 
 SYSINV_READY_FLAG = os.path.join(tsc.VOLATILE_PATH, ".sysinv_ready")
-SYSINV_FIRST_REPORT_FLAG = os.path.join(tsc.VOLATILE_PATH,
-                                        ".sysinv_agent_report_sent")
 
 CONFIG_APPLIED_FILE = os.path.join(tsc.PLATFORM_CONF_PATH, ".config_applied")
 CONFIG_APPLIED_DEFAULT = "install"
@@ -104,6 +100,7 @@ FIRST_BOOT_FLAG = os.path.join(
     tsc.PLATFORM_CONF_PATH, ".first_boot")
 
 PUPPET_HIERADATA_PATH = os.path.join(tsc.PUPPET_PATH, 'hieradata')
+PUPPET_HIERADATA_CACHE_PATH = '/etc/puppet/cache/hieradata'
 
 LOCK_AGENT_ACTION = 'agent-exclusive-action'
 
@@ -208,6 +205,10 @@ class AgentManager(service.PeriodicService):
         initial_reports_required = \
                 self.INVENTORY_REPORTS_REQUIRED - self._inventory_reported
         initial_reports_required.discard(self.HOST_FILESYSTEMS)
+
+        if self._inventory_reported:
+            utils.touch(constants.SYSINV_REPORTED)
+
         if initial_reports_required:
             LOG.info("_report_to_conductor initial_reports_required=%s" %
                  initial_reports_required)
@@ -217,7 +218,7 @@ class AgentManager(service.PeriodicService):
 
     def _report_to_conductor_iplatform_avail(self):
         # First report sent to conductor since boot
-        utils.touch(SYSINV_FIRST_REPORT_FLAG)
+        utils.touch(constants.SYSINV_FIRST_REPORT_FLAG)
         # Sysinv-agent ready; used also by the init script.
         utils.touch(SYSINV_READY_FLAG)
         time.sleep(1)  # give time for conductor to process
@@ -552,7 +553,7 @@ class AgentManager(service.PeriodicService):
 
         # Is this the first time since boot we are reporting to conductor?
         msg_dict.update({constants.SYSINV_AGENT_FIRST_REPORT:
-                         not os.path.exists(SYSINV_FIRST_REPORT_FLAG)})
+                         not os.path.exists(constants.SYSINV_FIRST_REPORT_FLAG)})
 
         try:
             rpcapi.iplatform_update_by_ihost(context,
@@ -580,30 +581,12 @@ class AgentManager(service.PeriodicService):
         """
         lock_file_fd = os.open(
             constants.NETWORK_CONFIG_LOCK_FILE, os.O_CREAT | os.O_RDONLY)
-        count = 1
-        delay = 5
-        max_count = 5
-        while count <= max_count:
-            try:
-                fcntl.flock(lock_file_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                return lock_file_fd
-            except IOError as e:
-                # raise on unrelated IOErrors
-                if e.errno != errno.EAGAIN:
-                    raise
-                else:
-                    LOG.info("Could not acquire lock({}): {} ({}/{}), "
-                             "will retry".format(lock_file_fd, str(e),
-                                                 count, max_count))
-                    time.sleep(delay)
-                    count += 1
-        LOG.error("Failed to acquire lock (fd={})".format(lock_file_fd))
-        return 0
+        return utils.acquire_exclusive_nb_flock(lock_file_fd)
 
     def _release_network_config_lock(self, lockfd):
         """ Release the lock guarding apply_network_config.sh """
         if lockfd:
-            fcntl.flock(lockfd, fcntl.LOCK_UN)
+            utils.release_flock(lockfd)
             os.close(lockfd)
 
     def _get_ports_inventory(self):
@@ -711,8 +694,8 @@ class AgentManager(service.PeriodicService):
         return port_list, pci_device_list, host_macs
 
     def _retry_on_missing_host_uuid(ex):  # pylint: disable=no-self-argument
-        LOG.info('Caught missing host_uuid exception. Retrying... '
-                 'Exception: {}'.format(ex))
+        LOG.info('Caught exception missing host. '
+                 'Retrying...Exception: {}'.format(ex))
         return isinstance(ex, exception.LocalHostUUIDNotFound)
 
     @retrying.retry(wait_fixed=15 * 1000, stop_max_delay=300 * 1000,
@@ -1129,39 +1112,43 @@ class AgentManager(service.PeriodicService):
             disk_size = utils.get_disk_capacity_mib(self._ihost_rootfs_device)
             disk_size = int(disk_size / 1024)
 
-            if disk_size > constants.DEFAULT_SMALL_DISK_SIZE:
-                LOG.info("Disk size for %s: %s ... large disk defaults" %
-                         (self._ihost_rootfs_device, disk_size))
+            if self._ihost_personality == constants.CONTROLLER:
+                if disk_size > constants.DEFAULT_SMALL_DISK_SIZE:
+                    LOG.info("Disk size for %s: %s ... large disk defaults" %
+                             (self._ihost_rootfs_device, disk_size))
 
-                backup_lv_size = \
-                    constants.DEFAULT_DATABASE_STOR_SIZE + \
-                    constants.DEFAULT_PLATFORM_STOR_SIZE + \
-                    constants.BACKUP_OVERHEAD
+                    backup_lv_size = \
+                        constants.DEFAULT_DATABASE_STOR_SIZE + \
+                        constants.DEFAULT_PLATFORM_STOR_SIZE + \
+                        constants.BACKUP_OVERHEAD
 
-            elif disk_size >= constants.MINIMUM_SMALL_DISK_SIZE:
-                LOG.info("Disk size for %s : %s ... small disk defaults" %
-                         (self._ihost_rootfs_device, disk_size))
+                elif disk_size >= constants.MINIMUM_SMALL_DISK_SIZE:
+                    LOG.info("Disk size for %s : %s ... small disk defaults" %
+                             (self._ihost_rootfs_device, disk_size))
 
-                # Due to the small size of the disk we can't provide the
-                # proper amount of backup space which is (database + platform_lv
-                # + BACKUP_OVERHEAD) so we are using a smaller default.
-                backup_lv_size = constants.DEFAULT_SMALL_BACKUP_STOR_SIZE
+                    # Due to the small size of the disk we can't provide the
+                    # proper amount of backup space which is (database +
+                    # platform_lv + BACKUP_OVERHEAD) so we are using a smaller
+                    # default.
+                    backup_lv_size = constants.DEFAULT_SMALL_BACKUP_STOR_SIZE
 
-            elif (disk_size >= constants.MINIMUM_TINY_DISK_SIZE and
-                  rpcapi.is_virtual_system_config(icontext) and
-                  tsc.system_type == constants.TIS_AIO_BUILD):
-                # Supports StarlingX running in QEMU/KVM VM with a tiny disk(AIO only)
-                LOG.info("Disk size for %s : %s ... tiny disk defaults "
-                         "for virtual system configuration" %
-                         (self._ihost_rootfs_device, disk_size))
-                kubelet_lv_size = constants.TINY_KUBELET_STOR_SIZE
-                docker_lv_size = constants.TINY_KUBERNETES_DOCKER_STOR_SIZE
-                backup_lv_size = constants.DEFAULT_TINY_BACKUP_STOR_SIZE
+                elif (disk_size >= constants.MINIMUM_TINY_DISK_SIZE and
+                    rpcapi.is_virtual_system_config(icontext) and
+                        tsc.system_type == constants.TIS_AIO_BUILD):
+                    # Supports StarlingX running in QEMU/KVM VM with a tiny
+                    # disk (AIO only)
+                    LOG.info("Disk size for %s : %s ... tiny disk defaults "
+                             "for virtual system configuration" %
+                             (self._ihost_rootfs_device, disk_size))
+                    kubelet_lv_size = constants.TINY_KUBELET_STOR_SIZE
+                    docker_lv_size = constants.TINY_KUBERNETES_DOCKER_STOR_SIZE
+                    backup_lv_size = constants.DEFAULT_TINY_BACKUP_STOR_SIZE
 
-            else:
-                LOG.info("Disk size for %s : %s ... disk too small" %
-                         (self._ihost_rootfs_device, disk_size))
-                raise exception.SysinvException("Disk size requirements not met.")
+                else:
+                    LOG.info("Disk size for %s : %s ... disk too small" %
+                             (self._ihost_rootfs_device, disk_size))
+                    raise exception.SysinvException(
+                        "Disk size requirements not met.")
 
             # check if the scratch fs is supported for current host
             if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_SCRATCH,
@@ -1405,22 +1392,6 @@ class AgentManager(service.PeriodicService):
             if self._ihost_personality != constants.STORAGE:
                 self._update_disk_partitions(rpcapi, icontext, self._ihost_uuid)
 
-            # Update physical volumes
-            ipv = self._ipv_operator.ipv_get(cinder_device=cinder_device)
-            if ((self._prev_pv is None) or
-                    (self._prev_pv != ipv)):
-                self._prev_pv = ipv
-                try:
-                    rpcapi.ipv_update_by_ihost(icontext,
-                                               self._ihost_uuid,
-                                               ipv)
-                    self._inventory_reported.add(self.PV)
-                except exception.SysinvException:
-                    LOG.exception("Sysinv Agent exception updating ipv"
-                                  "conductor.")
-                    self._prev_pv = None
-                    pass
-
             # Update local volume groups
             ilvg = self._ilvg_operator.ilvg_get(cinder_device=cinder_device)
             if ((self._prev_lvg is None) or
@@ -1435,6 +1406,22 @@ class AgentManager(service.PeriodicService):
                     LOG.exception("Sysinv Agent exception updating ilvg"
                                   "conductor.")
                     self._prev_lvg = None
+                    pass
+
+            # Update physical volumes
+            ipv = self._ipv_operator.ipv_get(cinder_device=cinder_device)
+            if ((self._prev_pv is None) or
+                    (self._prev_pv != ipv)):
+                self._prev_pv = ipv
+                try:
+                    rpcapi.ipv_update_by_ihost(icontext,
+                                               self._ihost_uuid,
+                                               ipv)
+                    self._inventory_reported.add(self.PV)
+                except exception.SysinvException:
+                    LOG.exception("Sysinv Agent exception updating ipv"
+                                  "conductor.")
+                    self._prev_pv = None
                     pass
 
             self._create_host_filesystems(rpcapi, icontext)
@@ -1518,7 +1505,8 @@ class AgentManager(service.PeriodicService):
             tsc.install_uuid = install_uuid
 
     def _retry_on_personality_is_none(ex):  # pylint: disable=no-self-argument
-        LOG.info('Caught exception. Retrying... Exception: {}'.format(ex))
+        LOG.info('Caught exception _retry_on_personality_is_none '
+                 'Retrying ... Exception: {}'.format(ex))
         return isinstance(ex, exception.LocalManagementPersonalityNotFound)
 
     @retrying.retry(wait_fixed=10 * 1000, stop_max_delay=300 * 1000,
@@ -1573,20 +1561,22 @@ class AgentManager(service.PeriodicService):
                         if not os.path.isfile(file_name_sysinv):
                             shutil.copy2(file_name, file_name_sysinv)
 
-                    # Remove resolv.conf file. It may have been created as a
-                    # symlink by the volatile configuration scripts.
-                    subprocess.call(["rm", "-f", file_name])  # pylint: disable=not-callable
-
                 if isinstance(file_content, dict):
                     f_content = file_content.get(file_name)
                 else:
                     f_content = file_content
 
-                os.umask(0)
                 if f_content is not None:
-                    with os.fdopen(os.open(file_name, os.O_CREAT | os.O_WRONLY,
-                               permissions), 'wb') as f:
+                    # create a temporary file to hold the runtime configuration values
+                    dirname = os.path.dirname(file_name)
+                    basename = os.path.basename(file_name)
+                    fd, tmppath = tempfile.mkstemp(dir=dirname, prefix=basename)
+                    with os.fdopen(fd, 'wb') as f:
                         f.write(f_content)
+                    if os.path.islink(file_name):
+                        os.unlink(file_name)
+                    os.rename(tmppath, file_name)
+                    os.chmod(file_name, permissions)
 
             self._update_config_applied(iconfig_uuid)
             self._report_config_applied(context)
@@ -1600,8 +1590,26 @@ class AgentManager(service.PeriodicService):
             LOG.error("report_inventory unknown request=%s" % inventory_update)
 
     def _retry_on_missing_inventory_info(ex):  # pylint: disable=no-self-argument
-        LOG.info('Caught exception. Retrying... Exception: {}'.format(ex))
+        LOG.info('Caught exception _retry_on_missing_inventory_info. '
+                 'Retrying... Exception: {}'.format(ex))
         return isinstance(ex, exception.AgentInventoryInfoNotFound)
+
+    @staticmethod
+    def _update_local_puppet_cache(hieradata_path):
+        cache_dir = PUPPET_HIERADATA_CACHE_PATH
+        cache_dir_temp = cache_dir + '.temp'
+        try:
+            if os.path.isdir(cache_dir_temp):
+                shutil.rmtree(cache_dir_temp)
+            shutil.copytree(hieradata_path, cache_dir_temp)
+            subprocess.check_call(['sync'])  # pylint: disable=not-callable
+
+            if os.path.isdir(cache_dir):
+                shutil.rmtree(cache_dir)
+            os.rename(cache_dir_temp, cache_dir)
+        except Exception:
+            LOG.exception("Failed to update local puppet cache.")
+            raise
 
     @retrying.retry(wait_fixed=15 * 1000, stop_max_delay=300 * 1000,
                     retry_on_exception=_retry_on_missing_inventory_info)
@@ -1773,6 +1781,8 @@ class AgentManager(service.PeriodicService):
         finally:
             os.close(fd)
             os.remove(tmpfile)
+            # Update local puppet cache anyway to be consistent.
+            self._update_local_puppet_cache(hieradata_path)
 
     def configure_ttys_dcd(self, context, uuid, ttys_dcd):
         """Configure the getty on the serial device.
@@ -2033,20 +2043,22 @@ class AgentManager(service.PeriodicService):
 
         return iscsi_initiator_name
 
-    def disk_format_gpt(self, context, host_uuid, idisk_dict,
-                        is_cinder_device):
-        """GPT format a disk
+    def disk_prepare(self, context, host_uuid, idisk_dict,
+                     skip_format, is_cinder_device):
+        """prepare disk for system use.
 
         :param context: an admin context
         :param host_uuid: ihost uuid unique id
         :param idisk_dict: values for idisk volume object
+        :param skip_format: bool value tells if the idisk should be GPT formatted
         :param is_cinder_device: bool value tells if the idisk is for cinder
         """
-        LOG.debug("AgentManager.format_disk_gpt: %s" % idisk_dict)
+        LOG.debug("AgentManager.disk_prepare: %s" % idisk_dict)
         if self._ihost_uuid and self._ihost_uuid == host_uuid:
-            self._idisk_operator.disk_format_gpt(host_uuid,
-                                                 idisk_dict,
-                                                 is_cinder_device)
+            self._idisk_operator.disk_prepare(host_uuid,
+                                              idisk_dict,
+                                              skip_format,
+                                              is_cinder_device)
 
     def update_host_memory(self, context, host_uuid):
         """update the host memory
@@ -2081,3 +2093,42 @@ class AgentManager(service.PeriodicService):
                 except subprocess.CalledProcessError:
                     # Just log an error. Don't stop any callers from further execution.
                     LOG.warn("Failed to update helm repo data for user sysadmin.")
+
+    def update_host_lvm(self, context, host_uuid):
+        if self._ihost_uuid and self._ihost_uuid == host_uuid:
+            rpcapi = conductor_rpcapi.ConductorAPI(
+                topic=conductor_rpcapi.MANAGER_TOPIC)
+
+            ipartition = self._ipartition_operator.ipartition_get(skip_gpt_check=True)
+            try:
+                rpcapi.ipartition_update_by_ihost(
+                    context, self._ihost_uuid, ipartition)
+            except AttributeError:
+                # safe to ignore during upgrades
+                LOG.warn("Skip updating ipartition rook conductor. "
+                         "Upgrade in progress?")
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating rook"
+                              "ipartition conductor.")
+
+            # Update local volume groups
+            ilvg = self._ilvg_operator.ilvg_get()
+            try:
+                rpcapi.ilvg_update_by_ihost(context,
+                                            self._ihost_uuid,
+                                            ilvg)
+                self._inventory_reported.add(self.LVG)
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating ilvg"
+                              "conductor.")
+
+            # Update physical volumes
+            ipv = self._ipv_operator.ipv_get()
+            try:
+                rpcapi.ipv_update_by_ihost(context,
+                                           self._ihost_uuid,
+                                           ipv)
+                self._inventory_reported.add(self.PV)
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating ipv"
+                              "conductor.")

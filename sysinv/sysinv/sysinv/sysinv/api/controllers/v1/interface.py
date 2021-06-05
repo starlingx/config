@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -144,6 +144,9 @@ class Interface(base.APIBase):
     txhashpolicy = wtypes.text
     "Represent the txhashpolicy of the interface"
 
+    primary_reselect = wtypes.text
+    "Represent the primary_reselect mode of the interface"
+
     ifcapabilities = {wtypes.text: utils.ValidTypes(wtypes.text,
                                                     six.integer_types)}
     "This interface's meta data"
@@ -193,6 +196,9 @@ class Interface(base.APIBase):
     ptp_role = wtypes.text
     "The PTP role for this interface"
 
+    max_tx_rate = int
+    "The value of configured max tx rate of VF, Mbps"
+
     def __init__(self, **kwargs):
         self.fields = list(objects.interface.fields.keys())
         for k in self.fields:
@@ -217,7 +223,8 @@ class Interface(base.APIBase):
                                            'aemode', 'schedpolicy', 'txhashpolicy',
                                            'vlan_id', 'uses', 'usesmodify', 'used_by',
                                            'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
-                                           'sriov_numvfs', 'sriov_vf_driver', 'ptp_role'])
+                                           'sriov_numvfs', 'sriov_vf_driver', 'ptp_role',
+                                           'max_tx_rate', 'primary_reselect'])
 
         # never expose the ihost_id attribute
         interface.ihost_id = wtypes.Unset
@@ -402,9 +409,6 @@ class InterfaceController(rest.RestController):
         except exception.SysinvException as e:
             LOG.exception(e)
             raise wsme.exc.ClientSideError(str(e))
-        except exception.HTTPNotFound:
-            raise wsme.exc.ClientSideError(_("Interface create failed: interface %s"
-                                             % (interface['ifname'])))
         return Interface.convert_with_links(new_interface)
 
     @cutils.synchronized(LOCK_NAME)
@@ -672,10 +676,12 @@ def _set_defaults(interface):
     defaults = {'imtu': DEFAULT_MTU,
                 'aemode': constants.AE_MODE_ACTIVE_STANDBY,
                 'txhashpolicy': None,
+                'primary_reselect': None,
                 'vlan_id': None,
                 'sriov_numvfs': 0,
                 'sriov_vf_driver': None,
-                'ptp_role': constants.INTERFACE_PTP_ROLE_NONE}
+                'ptp_role': constants.INTERFACE_PTP_ROLE_NONE,
+                'max_tx_rate': None}
 
     if interface['ifclass'] == constants.INTERFACE_CLASS_DATA:
         defaults['ipv4_mode'] = constants.IPV4_DISABLED
@@ -768,25 +774,11 @@ def _check_interface_mtu(interface, ihost, from_profile=False):
     return interface
 
 
-def _get_host_mgmt_interface(ihost):
-    for iface in pecan.request.dbapi.iinterface_get_by_ihost(ihost['id']):
-        for ni in pecan.request.dbapi.interface_network_get_by_interface(iface['id']):
-            network = pecan.request.dbapi.network_get(ni.network_id)
-            if network.type == constants.NETWORK_TYPE_MGMT:
-                return iface
-    return None
-
-
 def _check_interface_sriov(interface, ihost, from_profile=False):
     sriov_update = False
 
     if 'ifclass' in interface.keys() and not interface['ifclass']:
         return sriov_update
-
-    if (interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV and
-          _get_host_mgmt_interface(ihost) is None):
-        raise wsme.exc.ClientSideError(_("Unable to provision pci-sriov interface "
-                                         "without configured mgmt interface."))
 
     if (interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV and
             'sriov_numvfs' not in interface.keys()):
@@ -879,6 +871,11 @@ def _check_interface_class_transition(interface, existing_interface):
     ifclass = interface['ifclass']
     existing_ifclass = existing_interface['ifclass']
     if ifclass == existing_ifclass:
+        return
+    # to share single vf capable nic, we need to allow
+    # platform to pci-sriov class transition
+    if (ifclass == constants.INTERFACE_CLASS_PCI_SRIOV and
+            existing_ifclass == constants.INTERFACE_CLASS_PLATFORM):
         return
     if (ifclass and
             existing_interface[
@@ -1019,6 +1016,48 @@ def _check_network_type_and_port(interface, ihost,
             raise wsme.exc.ClientSideError(msg)
 
 
+def _check_interface_ratelimit(interface):
+    # Ensure rate limit is valid for VF interfaces
+    if interface['max_tx_rate'] is not None:
+        if not str(interface['max_tx_rate']).isdigit():
+            msg = _("max_tx_rate must be an integer value.")
+            raise wsme.exc.ClientSideError(msg)
+        if interface['iftype'] != constants.INTERFACE_TYPE_VF:
+            msg = _("max_tx_rate is only allowed to be configured for VF interfaces")
+            raise wsme.exc.ClientSideError(msg)
+
+        # check if an overcommitted config
+        max_tx_rate = interface['max_tx_rate']
+
+        ihost_uuid = interface['ihost_uuid']
+        lower_ifname = interface['uses'][0]
+        lower_iface = (
+            pecan.request.dbapi.iinterface_get(lower_ifname, ihost_uuid))
+
+        ports = pecan.request.dbapi.ethernet_port_get_by_interface(
+                                                        lower_iface['uuid'])
+        if len(ports) > 0 and ports[0]['speed'] is not None:
+            # keep 10% of the bandwidth for PF traffic
+            total_rate_for_vf = int(ports[0]['speed'] * constants.VF_TOTAL_RATE_RATIO)
+            total_rate_used = 0
+            this_interface_id = interface.get('id', 0)
+            interface_list = pecan.request.dbapi.iinterface_get_all(
+                forihostid=ihost_uuid)
+            for i in interface_list:
+                if (i['iftype'] == constants.INTERFACE_TYPE_VF and
+                        lower_ifname == i['uses'][0] and
+                        i.id != this_interface_id):
+                    if i['max_tx_rate'] is not None:
+                        total_rate_used += i['max_tx_rate'] * i['sriov_numvfs']
+
+            vfs_config = interface['sriov_numvfs']
+            if total_rate_used + (max_tx_rate * vfs_config) > total_rate_for_vf:
+                msg = _("Configured (max_tx_rate*sriov_numvfs) exceeds "
+                        "available link speed bandwidth: %d Mbps." %
+                        (total_rate_for_vf - total_rate_used))
+                raise wsme.exc.ClientSideError(msg)
+
+
 def _check_interface_ptp(interface):
     # Ensure PTP settings are valid for this interface
     # Validate PTP role value
@@ -1043,6 +1082,30 @@ def _check_interface_ptp(interface):
         if not ifclass or ifclass not in supported_ptp_classes:
             msg = (_("Invalid interface class for ptp_role: {0}. Device interface class must be one of "
                      "{1}").format(ptp_role, ', '.join(supported_ptp_classes)))
+            raise wsme.exc.ClientSideError(msg)
+
+
+def _check_ae_primary_reselect(interface):
+    ifclass = interface['ifclass']
+    iftype = interface['iftype']
+    primary_reselect = interface['primary_reselect']
+    aemode = interface['aemode']
+    if primary_reselect is not None:
+        if iftype != constants.INTERFACE_TYPE_AE:
+            msg = _("The option primary_reselect is only applicable to bonded interface. ")
+            raise wsme.exc.ClientSideError(msg)
+        if aemode != constants.AE_MODE_ACTIVE_STANDBY and primary_reselect is not None:
+            msg = _("Device interface with interface type 'aggregated ethernet' "
+                    "in '%s' mode should not specify primary_reselect option." % aemode)
+            raise wsme.exc.ClientSideError(msg)
+        if (ifclass != constants.INTERFACE_CLASS_PLATFORM and
+                primary_reselect != constants.PRIMARY_RESELECT_ALWAYS):
+            msg = _("The option primary_reselect must be 'always' for non-platform interfaces. ")
+            raise wsme.exc.ClientSideError(msg)
+        if primary_reselect not in constants.VALID_PRIMARY_RESELECT_LIST:
+            msg = _("Invalid bonding primary reselect option: '{}'. "
+                    "Valid options must be one of {}".format(primary_reselect,
+                        ', '.join(constants.VALID_PRIMARY_RESELECT_LIST)))
             raise wsme.exc.ClientSideError(msg)
 
 
@@ -1107,12 +1170,14 @@ def _check_interface_data(op, interface, ihost, existing_interface,
                 parent = pecan.request.dbapi.iinterface_get(p, ihost_uuid)
                 if (parent.uuid in interface['uses'] or
                         parent.ifname in interface['uses']):
+                    supported_type = [constants.INTERFACE_TYPE_VLAN,
+                                      constants.INTERFACE_TYPE_VF]
                     if i.iftype == constants.INTERFACE_TYPE_AE:
                         msg = _("Interface '{}' is already used by another"
                                 " AE interface '{}'".format(p, i.ifname))
                         raise wsme.exc.ClientSideError(msg)
                     elif (i.iftype == constants.INTERFACE_TYPE_VLAN and
-                            iftype != constants.INTERFACE_TYPE_VLAN):
+                              iftype not in supported_type):
                         msg = _("Interface '{}' is already used by another"
                                 " VLAN interface '{}'".format(p, i.ifname))
                         raise wsme.exc.ClientSideError(msg)
@@ -1183,6 +1248,8 @@ def _check_interface_data(op, interface, ihost, existing_interface,
         msg = _("Device interface with interface type 'aggregated ethernet' "
                 "in '%s' mode should not specify a Tx Hash Policy." % aemode)
         raise wsme.exc.ClientSideError(msg)
+
+    _check_ae_primary_reselect(interface)
 
     # Make sure interface type is valid
     supported_type = [constants.INTERFACE_TYPE_AE,
@@ -1255,7 +1322,8 @@ def _check_interface_data(op, interface, ihost, existing_interface,
 
     # check MTU
     if interface['iftype'] in [constants.INTERFACE_TYPE_VLAN,
-                               constants.INTERFACE_TYPE_VF]:
+                               constants.INTERFACE_TYPE_VF,
+                               constants.INTERFACE_TYPE_ETHERNET]:
         interface_mtu = interface['imtu']
         for name in interface['uses']:
             parent = pecan.request.dbapi.iinterface_get(name, ihost_uuid)
@@ -1263,7 +1331,7 @@ def _check_interface_data(op, interface, ihost, existing_interface,
                 msg = _("Interface MTU (%s) cannot be larger than MTU of "
                         "underlying interface (%s)" % (interface_mtu, parent['imtu']))
                 raise wsme.exc.ClientSideError(msg)
-    elif interface['used_by']:
+    if interface['used_by']:
         mtus = _get_interface_mtus(ihost_uuid, interface)
         for mtu in mtus:
             if int(interface['imtu']) < int(mtu):
@@ -1297,7 +1365,8 @@ def _check_interface_data(op, interface, ihost, existing_interface,
         for i in lower_iface['used_by']:
             if i != interface['ifname']:
                 iface = pecan.request.dbapi.iinterface_get(i, ihost_uuid)
-                avail_vfs -= iface.get('sriov_numvfs', 0)
+                if iface.get('sriov_numvfs', 0):
+                    avail_vfs -= iface.get('sriov_numvfs')
         if interface['sriov_numvfs'] > avail_vfs:
             msg = _("The number of virtual functions (%s) must be less "
                     "than or equal to the available VFs (%s) available "
@@ -1305,6 +1374,7 @@ def _check_interface_data(op, interface, ihost, existing_interface,
                     (interface['sriov_numvfs'], avail_vfs, lower_iface['ifname']))
             raise wsme.exc.ClientSideError(msg)
     _check_interface_ptp(interface)
+    _check_interface_ratelimit(interface)
 
     return interface
 
@@ -1759,6 +1829,18 @@ def _create(interface, from_profile=False):
             pecan.request.dbapi.iinterface_destroy(new_interface['uuid'])
             raise e
 
+    if (cutils.is_aio_simplex_system(pecan.request.dbapi)
+            and new_interface['iftype'] == constants.INTERFACE_TYPE_VF):
+        try:
+            pecan.request.rpcapi.update_sriov_vf_config(
+                pecan.request.context,
+                ihost['uuid'])
+        except Exception as e:
+            LOG.exception(e)
+            msg = _("Interface pci-sriov-vf creation failed: host %s if %s"
+                    % (ihost['hostname'], interface['ifname']))
+            raise wsme.exc.ClientSideError(msg)
+
     return new_interface
 
 
@@ -1766,7 +1848,21 @@ def _check(op, interface, ports=None, ifaces=None, from_profile=False,
            existing_interface=None, datanetworks=None):
     # Semantic checks
     ihost = pecan.request.dbapi.ihost_get(interface['ihost_uuid']).as_dict()
-    _check_host(ihost)
+
+    check_host = True
+    if (cutils.is_aio_simplex_system(pecan.request.dbapi)
+            and interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV):
+        if (op == 'modify' and interface['iftype'] == constants.INTERFACE_TYPE_ETHERNET
+                and existing_interface['ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV
+                and existing_interface['iftype'] == constants.INTERFACE_TYPE_ETHERNET):
+            # user can modify interface to SR-IOV PF without host lock in AIO-SX
+            check_host = False
+        elif (op == 'add' and interface['iftype'] == constants.INTERFACE_TYPE_VF):
+            # user can add interface SR-IOV VF without host lock in AIO-SX
+            check_host = False
+
+    if check_host:
+        _check_host(ihost)
     if not from_profile:
         if ports:
             _check_ports(op, interface, ihost, ports)
@@ -1777,6 +1873,22 @@ def _check(op, interface, ports=None, ifaces=None, from_profile=False,
                 # Can only have one interface associated to vlan interface type
                 raise wsme.exc.ClientSideError(
                     _("Can only have one interface for vlan type. (%s)" % ifaces))
+            if interface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
+                if len(ifaces) > 1:
+                    raise wsme.exc.ClientSideError(
+                        _("Can only have one lower interface for ethernet type."
+                            "(%s)" % ifaces))
+                lower = pecan.request.dbapi.iinterface_get(ifaces[0],
+                        interface['ihost_uuid'])
+                if not (lower['iftype'] == constants.INTERFACE_TYPE_ETHERNET
+                        and lower['ifclass'] ==
+                                        constants.INTERFACE_CLASS_PCI_SRIOV):
+                    # Can only have pci_sriov ethernet type lower interface
+                    # associated to ethernet interface type
+                    raise wsme.exc.ClientSideError(
+                        _("Can only use pci-sriov ethernet interface for "
+                            "ethernet type. (%s)" % ifaces))
+
             for i in ifaces:
                 for iface in interfaces:
                     if iface['uuid'] == i or iface['ifname'] == i:
@@ -1794,6 +1906,9 @@ def _check(op, interface, ports=None, ifaces=None, from_profile=False,
 
                         if 'txhashpolicy' not in iface:
                             iface['txhashpolicy'] = None
+
+                        if 'primary_reselect' not in iface:
+                            iface['primary_reselect'] = None
 
                         _check_interface_data(
                             "modify", iface, ihost, existing_iface, datanetworks)
@@ -1856,11 +1971,18 @@ def _delete(interface, from_profile=False):
     ihost = pecan.request.dbapi.ihost_get(interface['forihostid']).as_dict()
 
     if not from_profile:
-        # Semantic checks
-        _check_host(ihost)
+        check_host = True
+        if (cutils.is_aio_simplex_system(pecan.request.dbapi)
+                and interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV
+                and interface['iftype'] == constants.INTERFACE_TYPE_VF):
+            # user can delete interface SR-IOV VF without host lock in AIO-SX
+            check_host = False
 
-    if not from_profile and interface['iftype'] == 'ethernet':
-        msg = _("Cannot delete an ethernet interface type.")
+        if check_host:
+            _check_host(ihost)
+
+    if not from_profile and interface['iftype'] == 'ethernet' and not interface['uses']:
+        msg = _("Cannot delete a system created ethernet interface")
         raise wsme.exc.ClientSideError(msg)
 
     # Allow the removal of the virtual management interface during bootstrap.

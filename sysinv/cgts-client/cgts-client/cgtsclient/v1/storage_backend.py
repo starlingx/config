@@ -236,5 +236,5 @@ def backend_delete(cc, backend_name_or_uuid):
         raise exc.CommandError("Backend %s is not found."
                                % backend_name_or_uuid)
 
-    backend_client = getattr(cc, 'storage_' + db_backend.backend)
+    backend_client = getattr(cc, 'storage_' + db_backend.backend.replace("-", "_"))
     backend_client.delete(db_backend.uuid)

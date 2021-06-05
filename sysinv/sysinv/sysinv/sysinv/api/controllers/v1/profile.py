@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 import jsonpatch
@@ -79,7 +79,8 @@ INTERFACE_PROFILE_FIELDS = ['ifname', 'iftype', 'imtu', 'networktype',
                             'txhashpolicy', 'forihostid', 'datanetworks',
                             'vlan_id', 'ipv4_mode', 'ipv6_mode',
                             'ipv4_pool', 'ipv6_pool',
-                            'sriov_numvfs', 'sriov_vf_driver']
+                            'sriov_numvfs', 'sriov_vf_driver', 'max_tx_rate',
+                            'primary_reselect']
 
 
 class Profile(base.APIBase):
@@ -1355,6 +1356,7 @@ def _create_if_profile(profile_name, profile_node):
                      'ipv6_pool': ipv6_mode['pool'],
                      'sriov_numvfs': ethIf.virtualFunctions,
                      'sriov_vf_driver': ethIf.virtualFunctionDriver,
+                     'max_tx_rate': ethIf.maxTxRate,
                      'interface_profile': True
                      }
             newIf = interface_api._create(idict, from_profile=True)
@@ -1388,6 +1390,7 @@ def _create_if_profile(profile_name, profile_node):
                      'networktype': nt,
                      'aemode': aeIf.aeMode,
                      'txhashpolicy': aeIf.txPolicy,
+                     'primary_reselect': aeIf.primary_reselect,
                      'forihostid': iprofile_id,
                      'datanetworks': providernets,
                      'ipv4_mode': ipv4_mode,
@@ -1397,6 +1400,7 @@ def _create_if_profile(profile_name, profile_node):
                      'imtu': aeIf.mtu,
                      'sriov_numvfs': ethIf.virtualFunctions,
                      'sriov_vf_driver': ethIf.virtualFunctionDriver,
+                     'max_tx_rate': ethIf.maxTxRate,
                      'interface_profile': True
                      }
 
@@ -1425,6 +1429,7 @@ def _create_if_profile(profile_name, profile_node):
                      'imtu': vlanIf.mtu,
                      'sriov_numvfs': ethIf.virtualFunctions,
                      'sriov_vf_driver': ethIf.virtualFunctionDriver,
+                     'max_tx_rate': ethIf.maxTxRate,
                      'interface_profile': True
                      }
 

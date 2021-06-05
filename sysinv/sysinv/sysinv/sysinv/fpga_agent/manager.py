@@ -40,7 +40,6 @@ from glob import glob
 
 import os
 import shlex
-import shutil
 import time
 import urllib
 
@@ -49,6 +48,7 @@ from oslo_log import log
 from oslo_utils import uuidutils
 
 from sysinv.agent import pci
+from sysinv.common import constants as cconstants
 from sysinv.common import device as dconstants
 from sysinv.common import exception
 from sysinv.common import service
@@ -81,16 +81,9 @@ CONF.register_opts(agent_opts, 'fpga_agent')
 # This is the docker image containing the OPAE tools to access the FPGA device.
 OPAE_IMG = "registry.local:9001/docker.io/starlingx/n3000-opae:stx.4.0-v1.0.0"
 
-# This is a flag file created by puppet after doing a "docker login".
-# We need to wait for it to exist before trying to run docker images.
-DOCKER_LOGIN_FLAG = "/var/run/docker_login_done"
-
 # This is the location where we cache the device image file while
 # writing it to the hardware.
 DEVICE_IMAGE_CACHE_DIR = "/usr/local/share/applications/sysinv"
-
-# Volatile flag file so we only reset the N3000s once after bootup.
-N3000_RESET_FLAG = os.path.join(tsc.VOLATILE_PATH, ".sysinv_n3000_reset")
 
 SYSFS_DEVICE_PATH = "/sys/bus/pci/devices/"
 FME_PATH = "/fpga/intel-fpga-dev.*/intel-fpga-fme.*/"
@@ -110,7 +103,7 @@ BMC_BUILD_VER_PATH = "max10_version"
 def wait_for_docker_login():
     # TODO: add a timeout
     LOG.info("Waiting for docker login flag.")
-    while not os.path.exists(DOCKER_LOGIN_FLAG):
+    while not os.path.exists(constants.DOCKER_LOGIN_FLAG):
         time.sleep(1)
     LOG.info("Found docker login flag, continuing.")
 
@@ -127,28 +120,35 @@ def ensure_device_image_cache_exists():
             raise exception.SysinvException(msg)
 
 
+def get_http_port():
+    # Get the http_port from /etc/platform/platform.conf.
+    prefix = "http_port="
+    http_port = cconstants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT
+    if os.path.isfile(tsc.PLATFORM_CONF_FILE):
+        with open(tsc.PLATFORM_CONF_FILE, 'r') as platform_file:
+            for line in platform_file:
+                line = line.strip()
+                if line.startswith(prefix):
+                    port = line[len(prefix):]
+                    if utils.is_int_like(port):
+                        LOG.info("Agent found %s%s" % (prefix, port))
+                        http_port = port
+                        break
+                    else:
+                        LOG.info("http_port entry: %s in platform.conf "
+                                 "is not an integer" % port)
+    return http_port
+
+
 def fetch_device_image(filename):
     # Pull the image from the controller.
-    url = "http://controller:8080/device_images/" + filename
+    http_port = get_http_port()
+    url = "http://controller:{}/device_images/{}".format(http_port, filename)
     local_path = DEVICE_IMAGE_CACHE_DIR + "/" + filename
     try:
         imagefile, headers = urllib.urlretrieve(url, local_path)
     except IOError:
         msg = ("Unable to retrieve device image from %s!" % url)
-        LOG.exception(msg)
-        raise exception.SysinvException(msg)
-    return local_path
-
-
-def fetch_device_image_local(filename):
-    # This is a hack since we only support AIO for now.  Just copy the device
-    # image file into the well-known device image cache directory.
-    local_path = DEVICE_IMAGE_CACHE_DIR + "/" + filename
-    image_file_path = os.path.join(dconstants.DEVICE_IMAGE_PATH, filename)
-    try:
-        shutil.copyfile(image_file_path, local_path)
-    except (shutil.Error, IOError):
-        msg = ("Unable to retrieve device image from %s!" % image_file_path)
         LOG.exception(msg)
         raise exception.SysinvException(msg)
     return local_path
@@ -182,33 +182,6 @@ def write_device_image_n3000(filename, pci_addr):
         msg = ("Failed to update device image %s for device %s, "
                "return code is %d, command output: %s." %
                (filename, pci_addr, exc.returncode,
-                exc.output.decode('utf-8')))
-        LOG.error(msg)
-        LOG.error("Check for intel-max10 kernel logs.")
-        raise exception.SysinvException(msg)
-
-
-def reset_device_n3000(pci_addr):
-    # Reset the N3000 FPGA at the specified PCI address.
-    try:
-        # Build up the command to perform the reset.
-        # Note the hack to work around OPAE tool locale issues
-        cmd = ("docker run -t --privileged -e LC_ALL=en_US.UTF-8 "
-               "-e LANG=en_US.UTF-8 " + OPAE_IMG +
-               " rsu bmcimg " + pci_addr)
-
-        # Issue the command to perform the firmware update.
-        subprocess.check_output(shlex.split(cmd),  # pylint: disable=not-callable
-                                         stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError as exc:
-        # "docker run" return code will be:
-        #    125 if the error is with Docker daemon itself
-        #    126 if the contained command cannot be invoked
-        #    127 if the contained command cannot be found
-        #    Exit code of contained command otherwise
-        msg = ("Failed to reset device %s, "
-               "return code is %d, command output: %s." %
-               (pci_addr, exc.returncode,
                 exc.output.decode('utf-8')))
         LOG.error(msg)
         LOG.error("Check for intel-max10 kernel logs.")
@@ -340,24 +313,6 @@ def get_n3000_devices():
     return fpga_addrs
 
 
-def reset_n3000_fpgas():
-    # We only want to do this once after host startup.
-    if not os.path.exists(N3000_RESET_FLAG):
-        # Reset all N3000 FPGAs on the system.
-        # TODO: make this run in parallel if there are multiple devices.
-        LOG.info("Resetting N3000 FPGAs.")
-        got_exception = False
-        fpga_addrs = get_n3000_devices()
-        for fpga_addr in fpga_addrs:
-            try:
-                reset_device_n3000(fpga_addr)
-            except Exception:
-                got_exception = True
-        LOG.info("Done resetting N3000 FPGAs.")
-        if not got_exception:
-            utils.touch(N3000_RESET_FLAG)
-
-
 def get_n3000_pci_info():
     """ Query PCI information about N3000 PCI devices.
 
@@ -399,6 +354,8 @@ def get_n3000_pci_info():
                             'sriov_totalvfs': dev.sriov_totalvfs,
                             'sriov_numvfs': dev.sriov_numvfs,
                             'sriov_vfs_pci_address': dev.sriov_vfs_pci_address,
+                            'sriov_vf_driver': dev.sriov_vf_driver,
+                            'sriov_vf_pdevice_id': dev.sriov_vf_pdevice_id,
                             'driver': dev.driver,
                             'enabled': dev.enabled,
                             'extra_info': dev.extra_info}
@@ -458,11 +415,6 @@ class FpgaAgentManager(service.PeriodicService):
 
         # Wait for puppet to log in to the local docker registry
         wait_for_docker_login()
-
-        # Trigger reset of N3000 FPGAs.  This is needed because the PCI address
-        # changes on the first reset after boot.
-        reset_n3000_fpgas()
-
         # Wait around until someone else updates the platform.conf file
         # with our host UUID.
         self.wait_for_host_uuid()
@@ -607,15 +559,9 @@ class FpgaAgentManager(service.PeriodicService):
             LOG.info("ensure device image cache exists")
             ensure_device_image_cache_exists()
 
-            # Pull the image from the controller.
+            # Pull the image from the controller via HTTP
             LOG.info("fetch device image %s" % filename)
-            # For now, we only need to support AIO nodes, so just copy the
-            # file from where we know sysinv-conductor put it.
-            local_path = fetch_device_image_local(filename)
-
-            # TODO: when we need to support standalone workers, we'll need to
-            # pull in the image file via HTTP.
-            # local_path = fetch_device_image(filename)
+            local_path = fetch_device_image(filename)
 
             # TODO: check CSK used to sign image, ensure it hasn't been cancelled
             # TODO: check root key used to sign image, ensure it matches root key of hardware

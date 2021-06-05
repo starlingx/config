@@ -1,4 +1,4 @@
-# Copyright 2012 OpenStack LLC.
+# Copyright 2012-2020 OpenStack LLC.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -13,7 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 
@@ -35,7 +35,6 @@ from cgtsclient.v1 import fernet
 from cgtsclient.v1 import health
 from cgtsclient.v1 import helm
 from cgtsclient.v1 import host_fs
-from cgtsclient.v1 import icommunity
 from cgtsclient.v1 import icpu
 from cgtsclient.v1 import idisk
 from cgtsclient.v1 import idns
@@ -54,8 +53,8 @@ from cgtsclient.v1 import isensor
 from cgtsclient.v1 import isensorgroup
 from cgtsclient.v1 import istor
 from cgtsclient.v1 import isystem
-from cgtsclient.v1 import itrapdest
 from cgtsclient.v1 import iuser
+from cgtsclient.v1 import kube_cluster
 from cgtsclient.v1 import kube_host_upgrade
 from cgtsclient.v1 import kube_upgrade
 from cgtsclient.v1 import kube_version
@@ -81,6 +80,7 @@ from cgtsclient.v1 import sm_servicegroup
 from cgtsclient.v1 import storage_backend
 from cgtsclient.v1 import storage_ceph
 from cgtsclient.v1 import storage_ceph_external
+from cgtsclient.v1 import storage_ceph_rook
 from cgtsclient.v1 import storage_external
 from cgtsclient.v1 import storage_file
 from cgtsclient.v1 import storage_lvm
@@ -124,11 +124,10 @@ class Client(http.HTTPClient):
         self.storage_file = storage_file.StorageFileManager(self)
         self.storage_external = storage_external.StorageExternalManager(self)
         self.storage_ceph = storage_ceph.StorageCephManager(self)
+        self.storage_ceph_rook = storage_ceph_rook.StorageCephRookManager(self)
         self.ceph_mon = ceph_mon.CephMonManager(self)
         self.drbdconfig = drbdconfig.drbdconfigManager(self)
         self.iprofile = iprofile.iprofileManager(self)
-        self.icommunity = icommunity.iCommunityManager(self)
-        self.itrapdest = itrapdest.iTrapdestManager(self)
         self.port = port.PortManager(self)
         self.ethernet_port = ethernetport.EthernetPortManager(self)
         self.address = address.AddressManager(self)
@@ -166,6 +165,7 @@ class Client(http.HTTPClient):
         self.fernet = fernet.FernetManager(self)
         self.app = app.AppManager(self)
         self.host_fs = host_fs.HostFsManager(self)
+        self.kube_cluster = kube_cluster.KubeClusterManager(self)
         self.kube_version = kube_version.KubeVersionManager(self)
         self.kube_upgrade = kube_upgrade.KubeUpgradeManager(self)
         self.kube_host_upgrade = kube_host_upgrade.KubeHostUpgradeManager(self)

@@ -6,7 +6,6 @@
 # workerconfig
 workerconfig
 workerconfig-standalone
-workerconfig-subfunction
 
 # controllerconfig
 controllerconfig

@@ -16,6 +16,7 @@ Requires: psmisc
 Requires: sysinv
 Requires: systemd
 Requires: tsconfig
+Requires: python3-cryptography
 Requires: python3-iso8601
 Requires: python3-keyring
 Requires: python3-netaddr
@@ -39,8 +40,12 @@ Controller node configuration
 %define pythonroot %python3_sitearch
 %define debug_package %{nil}
 
+%global __on_box_python /usr/bin/python3
+
 %prep
 %setup
+# Change shebang in all relevant files in this directory and all subdirectories
+find -type f -exec sed -i '1s=^#!/usr/bin/\(python\|env python\)[23]\?=#!%{__on_box_python}=' {} +
 
 %build
 %{__python3} setup.py build

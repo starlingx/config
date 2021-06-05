@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # All Rights Reserved.
@@ -479,16 +479,8 @@ class StorageExternalAlreadyExists(Conflict):
     message = _("A StorageExternal with UUID %(uuid)s already exists.")
 
 
-class TrapDestAlreadyExists(Conflict):
-    message = _("A TrapDest with UUID %(uuid)s already exists.")
-
-
 class UserAlreadyExists(Conflict):
     message = _("A User with UUID %(uuid)s already exists.")
-
-
-class CommunityAlreadyExists(Conflict):
-    message = _("A Community with UUID %(uuid)s already exists.")
 
 
 class ServiceAlreadyExists(Conflict):
@@ -1142,6 +1134,10 @@ class HostLabelInvalid(Invalid):
     message = _("Host label is invalid. Reason: %(reason)s")
 
 
+class LinkSpeedInvalid(Invalid):
+    message = _("Link speed is invalid. Reason: %(reason)s")
+
+
 class PickleableException(Exception):
     """
     Pickleable Exception
@@ -1497,7 +1493,7 @@ class InvalidHelmDockerImageSource(Invalid):
     message = _("Invalid docker image source: %(source)s. Must be one of %(valid_srcs)s")
 
 
-class PlatformApplicationApplyFailure(SysinvException):
+class ApplicationApplyFailure(SysinvException):
     message = _("Failed to apply %(name)s application.")
 
 
@@ -1538,3 +1534,33 @@ class KubeVersionNotFound(NotFound):
 class KubeNotConfigured(SysinvException):
     message = _("Kubernetes is not configured. API operations "
                 "will not be available.")
+
+
+class RestoreAlreadyExists(Conflict):
+    message = _("A Restore with UUID %(uuid)s already exists.")
+
+
+class RestoreNotFound(NotFound):
+    message = _("Restore with UUID %(uuid)s not found.")
+
+
+class LifecycleSemanticCheckException(SysinvException):
+    message = _("Semantic check hook for app failed.")
+
+
+class LifecycleSemanticCheckOpererationBlocked(SysinvException):
+    message = _("%(op)s is disabled for this version of %(app)s")
+
+
+class LifecycleMissingInfo(SysinvException):
+    message = _("Lifecycle hook missing information.")
+
+
+class BackupRestoreInvalidRevertOperation(SysinvException):
+    message = _("Operation %(operation)s has no revert action associated.")
+
+
+class ApplicationLifecycleNotificationException(Exception):
+    def __init__(self, application_name, message):
+        self.application_name = application_name
+        super(ApplicationLifecycleNotificationException, self).__init__(message)

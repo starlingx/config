@@ -14,6 +14,7 @@ import os.path
 from sysinv.common import constants
 from sysinv.cert_mon import service as cert_mon
 from sysinv.cert_mon import utils as cert_mon_utils
+from sysinv.cert_mon import watcher as cert_mon_watcher
 from sysinv.openstack.common.keystone_objects import Token
 from sysinv.tests.db import base
 
@@ -42,19 +43,18 @@ class CertMonTestCase(base.DbTestCase):
     def tearDown(self):
         super(CertMonTestCase, self).tearDown()
 
-    def test_platformcert_secret_and_ns_check(self):
+    def test_platform_certs_secret_and_ns_check(self):
         self.assertEqual("system-restapi-gui-certificate",
-                            constants.PLATFORM_CERT_SECRET_NAME)
-        self.assertEqual("kube-system",
+                            constants.RESTAPI_CERT_SECRET_NAME)
+        self.assertEqual("system-registry-local-certificate",
+                            constants.REGISTRY_CERT_SECRET_NAME)
+        self.assertEqual("deployment",
                             constants.CERT_NAMESPACE_PLATFORM_CERTS)
 
     def test_update_pemfile(self):
-        reference_file = os.path.join(os.path.dirname(__file__),
-                                        "data", "cert-with-key.pem")
-        cert_filename = os.path.join(os.path.dirname(__file__),
-                                        "data", "cert.pem")
-        key_filename = os.path.join(os.path.dirname(__file__),
-                                        "data", "key.pem")
+        reference_file = self.get_data_file_path("cert-with-key.pem")
+        cert_filename = self.get_data_file_path("cert.pem")
+        key_filename = self.get_data_file_path("key.pem")
 
         with open(cert_filename, 'r') as cfile:
             tls_cert = cfile.read()
@@ -62,14 +62,14 @@ class CertMonTestCase(base.DbTestCase):
         with open(key_filename, 'r') as kfile:
             tls_key = kfile.read()
 
-        generated_file = cert_mon_utils.update_platformcert_pemfile(tls_cert, tls_key)
+        generated_file = cert_mon_utils.update_pemfile(tls_cert, tls_key)
         assert os.path.exists(generated_file)
         assert filecmp.cmp(generated_file, reference_file, shallow=False)
 
         os.remove(generated_file)
 
     def get_keystone_token(self):
-        token_file = os.path.join(os.path.dirname(__file__), "data", "keystone-token")
+        token_file = self.get_data_file_path("keystone-token")
         with open(token_file, 'r') as tfile:
             token_json = json.load(tfile)
 
@@ -78,7 +78,7 @@ class CertMonTestCase(base.DbTestCase):
         return Token(token_json, token_id, region_name)
 
     def test_get_isystems_uuid(self):
-        isystems_file = os.path.join(os.path.dirname(__file__), "data", "isystems")
+        isystems_file = self.get_data_file_path("isystems")
         with open(isystems_file, 'r') as ifile:
             self.rest_api_request_result = json.load(ifile)
 
@@ -87,7 +87,7 @@ class CertMonTestCase(base.DbTestCase):
         assert ret == 'fdc60cf3-3330-4438-859d-b0da19e9663d'
 
     def test_enable_https(self):
-        isystems_file = os.path.join(os.path.dirname(__file__), "data", "isystems")
+        isystems_file = self.get_data_file_path("isystems")
         with open(isystems_file, 'r') as ifile:
             isystems_json = json.load(ifile)
 
@@ -96,3 +96,77 @@ class CertMonTestCase(base.DbTestCase):
         token = self.keystone_token
         ret = cert_mon_utils.enable_https(token, 'fdc60cf3-3330-4438-859d-b0da19e9663d')
         assert ret is True
+
+    def test_update_platform_cert_force_true(self):
+        self.update_platform_cert(True)
+
+    def test_update_platform_cert_force_false(self):
+        self.update_platform_cert(False)
+
+    def update_platform_cert(self, force):
+        token = self.keystone_token
+        cert_type = constants.CERT_MODE_DOCKER_REGISTRY
+        pem_file_path = self.get_data_file_path('cert-with-key.pem')
+
+        patcher = mock.patch('sysinv.cert_mon.utils.rest_api_upload')
+        mocked_rest_api_upload = patcher.start()
+        self.addCleanup(patcher.stop)
+        mocked_rest_api_upload.return_value = {'error': ''}
+
+        with mock.patch('sysinv.cert_mon.utils.os') as mocked_os:
+            cert_mon_utils.update_platform_cert(token, cert_type, pem_file_path, force)
+
+            mocked_os.remove.assert_called_once_with(pem_file_path)
+
+        mocked_rest_api_upload.assert_called_once_with(token, pem_file_path, mock.ANY, mock.ANY)
+        actual_data = mocked_rest_api_upload.call_args[0][3]
+
+        self.assertEqual(actual_data['force'], str(force).lower())
+
+    def get_data_file_path(self, file_name):
+        return os.path.join(os.path.dirname(__file__), "data", file_name)
+
+    @mock.patch('sysinv.cert_mon.watcher.watch.Watch')
+    @mock.patch('sysinv.cert_mon.watcher.client')
+    @mock.patch('sysinv.cert_mon.watcher.config')
+    def test_expired_event(self, mock_config, mock_client, mock_watch):
+        expired_event = {
+            "object": {
+                "api_version": "v1",
+                "kind": "Status",
+                "metadata": {},
+            },
+            "raw_object": {
+                "apiVersion": "v1",
+                "code": 410,
+                "kind": "Status",
+                "message": "too old resource version: 3856747 (5376715)",
+                "metadata": {},
+                "reason": "Expired",
+                "status": "Failure"
+            },
+            "type": "ERROR"
+        }
+        self.check_bad_event(mock_watch, expired_event)
+
+    @mock.patch('sysinv.cert_mon.watcher.watch.Watch')
+    @mock.patch('sysinv.cert_mon.watcher.client')
+    @mock.patch('sysinv.cert_mon.watcher.config')
+    def test_unknown_event(self, mock_config, mock_client, mock_watch):
+        unknown_event = {}
+        self.check_bad_event(mock_watch, unknown_event)
+
+    def check_bad_event(self, mock_watch, event_data):
+        def stream_bad_event(*args, **kwargs):
+            yield event_data
+
+        mock_watch_instance = mock_watch.return_value
+        mock_watch_instance.stream.side_effect = stream_bad_event
+
+        cert_watcher = cert_mon_watcher.CertWatcher()
+        # start_watch will raise an exception if it fails to parse
+        # the event
+        cert_watcher.start_watch(None, None)
+
+        mock_watch_instance.stream.assert_called_once()
+        mock_watch_instance.stop.assert_called_once()

@@ -4,6 +4,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+import base64
 import os
 import re
 
@@ -102,9 +103,28 @@ def do_application_show(cc, args):
 @utils.arg('-v', '--app-version',
            metavar='<app version>',
            help='Version of the application')
+@utils.arg('-i', '--images',
+           action='store_true',
+           default=False,
+           help='Save application images in the registry as part of app'
+                ' upload. This option is normally used in the System'
+                ' Controller of a Distributed Cloud system to also upload'
+                ' the application images to the central registry when the'
+                ' app is registered within the system')
 def do_application_upload(cc, args):
     """Upload application Helm chart(s) and manifest"""
     data = _application_check(args)
+    if args.images:
+        data.update({'images': True})
+
+    if not _is_url(data["tarfile"]):
+        try:
+            with open(data["tarfile"], 'rb') as tarfile:
+                binary_data = base64.urlsafe_b64encode(tarfile.read())
+            data.update({'binary_data': binary_data})
+        except Exception:
+            raise exc.CommandError("Error: Could not open file %s." % data["tarfile"])
+
     response = cc.app.upload(data)
     _print_application_show(response)
     _print_reminder_msg(response.name)
@@ -162,10 +182,14 @@ def do_application_apply(cc, args):
 
 @utils.arg('name', metavar='<app name>',
            help='Name of the application to be uninstalled')
+@utils.arg('-f', '--force',
+           action='store_true',
+           default=False,
+           help="Force a remove operation")
 def do_application_remove(cc, args):
     """Uninstall the application"""
     try:
-        response = cc.app.remove(args.name)
+        response = cc.app.remove(args.name, args.force)
         _print_application_show(response)
         _print_reminder_msg(args.name)
     except exc.HTTPNotFound:
@@ -188,10 +212,14 @@ def do_application_abort(cc, args):
 
 @utils.arg('name', metavar='<application name>',
            help='Name of the application to be deleted')
+@utils.arg('-f', '--force',
+           action='store_true',
+           default=False,
+           help="Force a delete operation")
 def do_application_delete(cc, args):
     """Remove the uninstalled application from the system"""
     try:
-        cc.app.delete(args.name)
+        cc.app.delete(args.name, args.force)
         print('Application %s deleted.' % args.name)
     except exc.HTTPNotFound:
         raise exc.CommandError('Application not found: %s' % args.name)

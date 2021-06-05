@@ -240,6 +240,20 @@ class BaseHelm(object):
                                   constants.AVAILABILITY_DEGRADED],
                     vim_progress_status=constants.VIM_SERVICES_ENABLED)
 
+    def _num_replicas_for_platform_app(self):
+        """
+        Returns the number of replicas that should be used by
+        platform managed applications. This method will return
+        the number of provisioned controllers, with a minimum of 1.
+
+        It takes care of the case where one controller is provisioned
+        and the other is installed but not provisioned. When the second
+        controller is provisioned, the unlock will check if the
+        overrides are different and reapply platform managed
+        applications appropriately
+        """
+        return max(1, self._num_provisioned_controllers())
+
     def _get_address_by_name(self, name, networktype):
         """
         Retrieve an address entry by name and scoped by network type
@@ -261,19 +275,36 @@ class BaseHelm(object):
     def _system_mode(self):
         return self.dbapi.isystem_get_one().system_mode
 
+    def _get_filtered_ceph_monitor_ips_using_function(self, name_filter):
+        """ Extracts the ceph monitor ips to a list based on a filter
+
+        :param name_filter: A filter function returning a boolean.
+
+        :returns: List of filtered monitor ips.
+        """
+        monitors = []
+        for name, addr in StorageBackendConfig.get_ceph_mon_ip_addresses(
+                self.dbapi).items():
+            if name_filter(name):
+                monitors.append(addr)
+
+        return monitors
+
+    def _get_filtered_ceph_monitor_ips_by_name(self, name):
+        return self._get_filtered_ceph_monitor_ips_using_function(
+            lambda x: True if x == name else False)
+
     def _get_ceph_monitor_ips(self, name_filter=None):
         system = self._get_system()
         if system.system_type == constants.TIS_AIO_BUILD:
             if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-                monitors = [self._get_controller_0_management_address()]
+                # ceph monitor for controller-0
+                monitors = self._get_filtered_ceph_monitor_ips_by_name(constants.CEPH_MON_0)
             else:
-                monitors = [self._get_management_address()]
+                # ceph monitor for controller-floating
+                monitors = self._get_filtered_ceph_monitor_ips_by_name(constants.CEPH_FLOATING_MON)
         elif name_filter:
-            monitors = []
-            for name, addr in StorageBackendConfig.get_ceph_mon_ip_addresses(
-                    self.dbapi).items():
-                if name_filter(name):
-                    monitors.append(addr)
+            monitors = self._get_filtered_ceph_monitor_ips_using_function(name_filter)
         else:
             monitors = StorageBackendConfig.get_ceph_mon_ip_addresses(
                 self.dbapi).values()
@@ -290,11 +321,6 @@ class BaseHelm(object):
     def _get_management_address(self):
         address = self._get_address_by_name(
             constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_MGMT)
-        return address.address
-
-    def _get_controller_0_management_address(self):
-        address = self._get_address_by_name(
-            constants.CONTROLLER_0_HOSTNAME, constants.NETWORK_TYPE_MGMT)
         return address.address
 
     @staticmethod

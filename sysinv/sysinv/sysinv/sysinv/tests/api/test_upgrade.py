@@ -25,7 +25,8 @@ class FakeConductorAPI(object):
         self.start_upgrade = mock.MagicMock()
         self.get_system_health_return = (True, "System is super healthy")
 
-    def get_system_health(self, context, force=False, upgrade=False):
+    def get_system_health(self, context, force=False, upgrade=False,
+                          kube_upgrade=False, alarm_ignore_list=None):
         if force:
             return True, "System is healthy because I was forced to say that"
         else:

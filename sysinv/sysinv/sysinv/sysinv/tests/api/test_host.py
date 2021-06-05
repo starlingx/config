@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -38,12 +38,14 @@ class FakeConductorAPI(object):
         self.remove_host_config = mock.MagicMock()
         self.delete_barbican_secret = mock.MagicMock()
         self.iplatform_update_by_ihost = mock.MagicMock()
+        self.evaluate_apps_reapply = mock.MagicMock()
         self.evaluate_app_reapply = mock.MagicMock()
         self.update_clock_synchronization_config = mock.MagicMock()
         self.store_default_config = mock.MagicMock()
         self.kube_upgrade_control_plane = mock.MagicMock()
         self.kube_upgrade_kubelet = mock.MagicMock()
         self.create_barbican_secret = mock.MagicMock()
+        self.mtc_action_apps_semantic_checks = mock.MagicMock()
 
     def create_ihost(self, context, values):
         # Create the host in the DB as the code under test expects this
@@ -253,6 +255,35 @@ class TestPostControllerMixin(object):
         self.assertEqual(ndict['personality'], result['personality'])
         self.assertEqual(ndict['serialid'], result['serialid'])
 
+    def test_create_host_evaluate_apps_reapply(self):
+        self.skipTest("Need to allow tests to run from UNPROVISIONED"
+                      " to reach host-add evaluate")
+
+        c1 = self._create_controller_1(
+            invprovision=constants.UNPROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_DISABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        self._create_test_host_platform_interface(c1)
+
+        # Unlock
+        _ = self._patch_host(c1['hostname'],
+                             [{'path': '/action',
+                               'value': constants.UNLOCK_ACTION,
+                               'op': 'replace'},
+                              {'path': '/operational',
+                               'value': constants.OPERATIONAL_ENABLED,
+                               'op': 'replace'},
+                              {'path': '/availability',
+                               'value': constants.AVAILABILITY_ONLINE,
+                               'op': 'replace'}],
+                             'mtce')
+
+        # Verify that the apps reapply was called
+        # once for unlock and once for host-add
+        assert(self.fake_conductor_api.evaluate_apps_reapply.call_count == 2)
+
     def test_create_host_missing_mgmt_mac(self):
         # Test creation of a second node with missing management MAC
         ndict = dbutils.post_get_test_ihost(hostname='controller-1',
@@ -307,6 +338,30 @@ class TestPostWorkerMixin(object):
         self.mock_mtce_api_host_add.assert_called_once()
         # Verify that the host was added to the VIM
         self.mock_vim_api_host_add.assert_called_once()
+        # Verify that the host was created and some basic attributes match
+        result = self.get_json('/ihosts/%s' % ndict['hostname'])
+        self.assertEqual(ndict['personality'], result['personality'])
+        self.assertEqual(ndict['serialid'], result['serialid'])
+
+
+class TestPostEdgeworkerMixin(object):
+
+    def setUp(self):
+        super(TestPostEdgeworkerMixin, self).setUp()
+
+    def test_create_host_worker(self):
+        # Test creation of worker
+        ndict = dbutils.post_get_test_ihost(hostname='edgeworker-0',
+                                            personality='edgeworker',
+                                            subfunctions=None,
+                                            mgmt_ip=None,
+                                            serialid='serial2',
+                                            bm_ip="128.224.150.195")
+        self.post_json('/ihosts', ndict,
+                       headers={'User-Agent': 'sysinv-test'})
+
+        # Verify that the host was configured
+        self.fake_conductor_api.configure_ihost.assert_called_once()
         # Verify that the host was created and some basic attributes match
         result = self.get_json('/ihosts/%s' % ndict['hostname'])
         self.assertEqual(ndict['personality'], result['personality'])
@@ -1539,6 +1594,8 @@ class TestDelete(TestHost):
         self.fake_conductor_api.unconfigure_ihost.assert_called_once()
         # Verify that the host was deleted from barbican
         self.fake_conductor_api.delete_barbican_secret.assert_called_once()
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
         # Verify that the host was dropped from patching
         self.mock_patch_api_drop_host.assert_called_once()
         # Verify the host no longer exists
@@ -1877,6 +1934,8 @@ class TestPatch(TestHost):
         self.fake_conductor_api.configure_ihost.assert_called_once()
         # Verify that the app reapply was checked
         self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
         # Verify that the host was added to maintenance
         self.mock_mtce_api_host_modify.assert_called_once()
         # Verify that the host action was cleared
@@ -1910,6 +1969,8 @@ class TestPatch(TestHost):
         self.fake_conductor_api.configure_ihost.assert_called_once()
         # Verify that the app reapply was checked
         self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
         # Verify that the host was modified in maintenance
         self.mock_mtce_api_host_modify.assert_called_once()
         # Verify that the host action was cleared
@@ -1970,6 +2031,8 @@ class TestPatch(TestHost):
         self.fake_conductor_api.configure_ihost.assert_not_called()
         # Verify that the app reapply evaluate was not configured
         self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
         # Verify that the host was not modified in maintenance
         self.mock_mtce_api_host_modify.assert_not_called()
         # Verify that the host action was cleared
@@ -2056,6 +2119,8 @@ class TestPatch(TestHost):
         # Verify that the host action was cleared
         result = self.get_json('/ihosts/%s' % c1_host['hostname'])
         self.assertEqual(constants.NONE_ACTION, result['action'])
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
 
     def test_unlock_action_controller_while_upgrading_kubelet(self):
         # Create controller-0
@@ -2158,6 +2223,8 @@ class TestPatch(TestHost):
         self.fake_conductor_api.configure_ihost.assert_called_once()
         # Verify that the app reapply was checked
         self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
         # Verify that the host was added to maintenance
         self.mock_mtce_api_host_modify.assert_called_once()
         # Verify that the host action was cleared
@@ -2287,6 +2354,8 @@ class TestPatch(TestHost):
         self.fake_conductor_api.configure_ihost.assert_not_called()
         # Verify that the app reapply evaluate was not configured
         self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
         # Verify that the host was not modified in maintenance
         self.mock_mtce_api_host_modify.assert_not_called()
         # Verify that the host action was cleared
@@ -2321,7 +2390,9 @@ class TestPatchStdDuplexControllerAction(TestHost):
             invprovision=constants.PROVISIONED,
             administrative=constants.ADMIN_UNLOCKED,
             operational=constants.OPERATIONAL_ENABLED,
-            availability=constants.AVAILABILITY_ONLINE)
+            availability=constants.AVAILABILITY_ONLINE,
+            config_target=None,
+            config_applied=None)
 
         # Swact to controller-0
         response = self._patch_host_action(c1_host['hostname'],
@@ -2339,11 +2410,100 @@ class TestPatchStdDuplexControllerAction(TestHost):
         self.fake_conductor_api.configure_ihost.assert_not_called()
         # Verify that the app reapply evaluate was not configured
         self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
         # Verify that the host was modified in maintenance
         self.mock_mtce_api_host_modify.assert_called_once()
         # Verify that the host action was cleared
         result = self.get_json('/ihosts/%s' % c1_host['hostname'])
         self.assertEqual(constants.NONE_ACTION, result['action'])
+
+    def test_swact_action_config_out_of_date_on_active(self):
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            config_target='89fbefe7-7b43-4bd2-9500-663b33df2e57',
+            config_applied='f9fbefe7-7b43-4bd2-9500-663b33df2e57')
+
+        # Create controller-1
+        c1_host = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            config_target='b447d703-b581-4bf6-bcbd-f99ddcbe4663',
+            config_applied='b447d703-b581-4bf6-bcbd-f99ddcbe4663')
+
+        # controller-0 already active, per comment 'Behave as if the API is
+        # running on controller-0'; so swact from controller-1 is allowed
+        response = self._patch_host_action(c1_host['hostname'],
+                                           constants.SWACT_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_swact_action_from_config_out_of_date(self):
+        # Create active controller-0 with config out of date
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            config_target='89fbefe7-7b43-4bd2-9500-663b33df2e57',
+            config_applied='f9fbefe7-7b43-4bd2-9500-663b33df2e57')
+
+        # Create controller-1
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            config_target='b447d703-b581-4bf6-bcbd-f99ddcbe4663',
+            config_applied='b447d703-b581-4bf6-bcbd-f99ddcbe4663')
+
+        # Swact from active controller-0 to controller-1
+        response = self._patch_host_action(c0_host['hostname'],
+                                           constants.SWACT_ACTION,
+                                           'sysinv-test')
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_swact_action_to_config_out_of_date(self):
+        # Create controller-0
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            config_target='d1fd40ca-9306-44c8-a100-671f22111114',
+            config_applied='d1fd40ca-9306-44c8-a100-671f22111114')
+
+        # Create controller-1
+        c1_host = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            config_target='89fbefe7-7b43-4bd2-9500-663b33df2e57',
+            config_applied='f9fbefe7-7b43-4bd2-9500-663b33df2e57')
+
+        # controller-0 already active, swact from controller-0
+        response = self._patch_host_action(c0_host['hostname'],
+                                           constants.SWACT_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("%s target Config %s not yet applied. " % (
+                      c1_host['hostname'], c1_host['config_target']),
+                      response.json['error_message'])
 
     def test_force_swact_action(self):
         # Create controller-0 in disabled state so force swact is required
@@ -2375,6 +2535,8 @@ class TestPatchStdDuplexControllerAction(TestHost):
         self.fake_conductor_api.configure_ihost.assert_not_called()
         # Verify that the app reapply evaluate was not configured
         self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
         # Verify that the host was modified in maintenance
         self.mock_mtce_api_host_modify.assert_called_once()
         # Verify that the host action was cleared
@@ -2478,6 +2640,8 @@ class TestPatchStdDuplexControllerAction(TestHost):
         self.mock_vim_api_host_action.assert_not_called()
         # Verify that the app reapply evaluate was not configured
         self.fake_conductor_api.evaluate_app_reapply.assert_not_called()
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
         # Verify that the host was configured
         self.fake_conductor_api.configure_ihost.assert_called_once()
         # Verify that the host was modified in maintenance
@@ -3042,6 +3206,11 @@ class PostWorkerHostTestCase(TestPostWorkerMixin, TestHost,
     pass
 
 
+class PostEdgeworkerHostTestCase(TestPostEdgeworkerMixin, TestHost,
+                             dbbase.ControllerHostTestCase):
+    pass
+
+
 class PostAIOHostTestCase(TestPostControllerMixin, TestHost,
                           dbbase.AIOHostTestCase):
     pass
@@ -3082,3 +3251,69 @@ class PatchAIODuplexHostTestCase(PatchAIOHostTestCase):
 
 class PatchAIODuplexDirectHostTestCase(PatchAIOHostTestCase):
     system_mode = constants.SYSTEM_MODE_DUPLEX_DIRECT
+
+
+class RejectMaintananceActionByAppTestCase(TestHost):
+    def an_app_rejected_the_maintanance_action(self, *args):
+        from sysinv.openstack.common.rpc import common as rpc_common
+        raise rpc_common.RemoteError("")
+
+    def test_lock_rejected_action_controller(self):
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        c1_host = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Simulate an app that rejects any action it is asked for
+        self.fake_conductor_api.mtc_action_apps_semantic_checks.side_effect = \
+            self.an_app_rejected_the_maintanance_action
+
+        # Lock host
+        response = self._patch_host_action(c1_host['hostname'],
+                                           constants.LOCK_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("{} action semantic check failed by app"
+                      "".format(constants.LOCK_ACTION.capitalize()),
+                      response.json['error_message'])
+
+    def test_force_lock_not_rejected_action_controller(self):
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        c1_host = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Simulate an app that rejects any action it is asked for
+        self.fake_conductor_api.mtc_action_apps_semantic_checks.side_effect = \
+            self.an_app_rejected_the_maintanance_action
+
+        # Force lock host
+        response = self._patch_host_action(c1_host['hostname'],
+                                           constants.FORCE_LOCK_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)

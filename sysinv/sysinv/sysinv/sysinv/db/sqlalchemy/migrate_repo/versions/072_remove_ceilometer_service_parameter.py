@@ -34,7 +34,7 @@ def upgrade(migrate_engine):
                      mysql_charset=CHARSET,
                      autoload=True)
 
-        ceilometer_metering_time_to_live_delete = sp_t.delete().where(
+        ceilometer_metering_time_to_live_delete = sp_t.delete().where(  # pylint: disable=no-value-for-parameter
              sp_t.c.service == 'ceilometer')
         ceilometer_metering_time_to_live_delete.execute()
     return True
