@@ -46,6 +46,7 @@ from sysinv.common import kubernetes
 from sysinv.common.retrying import retry
 from sysinv.common import utils as cutils
 from sysinv.conductor import openstack
+from sysinv.helm import base as helm_base
 from sysinv.helm import common
 from sysinv.helm import utils as helm_utils
 from sysinv.helm.lifecycle_constants import LifecycleConstants
@@ -892,6 +893,20 @@ class AppOperator(object):
             }
         }
         body['metadata']['labels'].update(label_dict)
+        if (common.LABEL_COMPUTE_LABEL in label_dict and
+           label_dict[common.LABEL_COMPUTE_LABEL] is None):
+            host = self.dbapi.ihost_get_by_hostname(hostname)
+            app_isolated_cpus = helm_base._get_host_cpu_list(host,
+                                                             function=constants.ISOLATED_FUNCTION,
+                                                             threads=True)
+            vswitch_cpus = helm_base._get_host_cpu_list(host,
+                                                        function=constants.VSWITCH_FUNCTION,
+                                                        threads=True)
+            if len(app_isolated_cpus) > 0 and len(vswitch_cpus) > 0:
+                raise exception.SysinvException(_(
+                    "Failed to update kubernetes labels:"
+                    " Only compute nodes may have application-isolated cores"
+                    " and vswitch cores at the same time."))
         try:
             self._kube.kube_patch_node(hostname, body)
         except exception.KubeNodeNotFound:
@@ -911,7 +926,10 @@ class AppOperator(object):
                 except exception.HostLabelAlreadyExists:
                     pass
             label_dict = {k: v for k, v in (i.split('=') for i in labels)}
-            self._update_kubernetes_labels(host.hostname, label_dict)
+            try:
+                self._update_kubernetes_labels(host.hostname, label_dict)
+            except Exception as e:
+                LOG.exception(e)
 
     def _find_label(self, host_uuid, label_str):
         host_labels = self._dbapi.label_get_by_host(host_uuid)
@@ -932,7 +950,10 @@ class AppOperator(object):
                     key = lbl_obj.label_key
                     null_labels[key] = None
             if null_labels:
-                self._update_kubernetes_labels(host.hostname, null_labels)
+                try:
+                    self._update_kubernetes_labels(host.hostname, null_labels)
+                except Exception as e:
+                    LOG.exception(e)
 
     def audit_local_registry_secrets(self):
         """

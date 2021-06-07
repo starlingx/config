@@ -357,11 +357,13 @@ def check_core_allocations(host, cpu_counts, cpu_lists=None):
     #  - Prevent isolated core assignment if vswitch or shared cores are
     #    allocated.
     if total_isolated_cores > 0:
-        if total_vswitch_cores != 0 or total_shared_cores != 0:
-            raise wsme.exc.ClientSideError(
-                "%s cores can only be configured with %s and %s core types." %
-                (constants.ISOLATED_FUNCTION, constants.PLATFORM_FUNCTION,
-                 constants.APPLICATION_FUNCTION))
+        labels = pecan.request.dbapi.label_get_by_host(host.id)
+        if not cutils.has_openstack_compute(labels):
+            if total_vswitch_cores != 0 or total_shared_cores != 0:
+                raise wsme.exc.ClientSideError(
+                    "%s cores can only be configured with %s and %s core types." %
+                    (constants.ISOLATED_FUNCTION, constants.PLATFORM_FUNCTION,
+                     constants.APPLICATION_FUNCTION))
 
     reserved_for_applications = len(host.cpus) - total_platform_cores - \
                        total_vswitch_cores - total_isolated_cores
