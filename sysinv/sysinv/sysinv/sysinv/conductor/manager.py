@@ -2943,7 +2943,7 @@ class ConductorManager(service.PeriodicService):
         if constants.VSWITCH_TYPE_NONE == cutils.get_vswitch_type(self.dbapi):
             return 0
         if cutils.host_has_function(ihost, constants.WORKER) and node == 0:
-            physical_cores = (cpu_count / 2) if hyperthreading else cpu_count
+            physical_cores = (cpu_count // 2) if hyperthreading else cpu_count
             system_mode = self.dbapi.isystem_get_one().system_mode
             if system_mode == constants.SYSTEM_MODE_SIMPLEX:
                 return 1 if not hyperthreading else 2
@@ -3279,7 +3279,7 @@ class ConductorManager(service.PeriodicService):
                         # Include 4K pages in the displayed VM memtotal
                         if imem.vm_hugepages_nr_4K is not None:
                             vm_4K_mib = \
-                                (imem.vm_hugepages_nr_4K /
+                                (imem.vm_hugepages_nr_4K //
                                  constants.NUM_4K_PER_MiB)
                             mem_dict['memtotal_mib'] += vm_4K_mib
                             mem_dict['memavail_mib'] += vm_4K_mib
@@ -3921,7 +3921,7 @@ class ConductorManager(service.PeriodicService):
 
         # If the required size for the PV is larger then the available space,
         # log a warning, but use the available space for the PV partition.
-        if disk.available_mib < pv['lvm_pv_size'] / (1024 ** 2):
+        if disk.available_mib < pv['lvm_pv_size'] // (1024 ** 2):
             LOG.warning("ERROR not enough space to create the needed partition: %s < %s" %
                         (disk.available_mib, pv['lvm_pv_size']))
 
@@ -8339,7 +8339,7 @@ class ConductorManager(service.PeriodicService):
         LOG.info("Local Region Name: %s" % system.region_name)
 
         disk_size = cutils.get_disk_capacity_mib(rootfs_device)
-        disk_size = int(disk_size / 1024)
+        disk_size = int(disk_size // 1024)
 
         if disk_size > constants.DEFAULT_SMALL_DISK_SIZE:
 

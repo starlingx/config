@@ -32,10 +32,10 @@ SIZE_2M_KB = 2048
 SIZE_1G_KB = 1048576
 
 # Defines the size of 2 megabytes in megabyte units
-SIZE_2M_MB = int(SIZE_2M_KB / SIZE_KB)
+SIZE_2M_MB = int(SIZE_2M_KB // SIZE_KB)
 
 # Defines the size of 1 gigabyte in megabyte units
-SIZE_1G_MB = int(SIZE_1G_KB / SIZE_KB)
+SIZE_1G_MB = int(SIZE_1G_KB // SIZE_KB)
 
 # Defines the minimum size of memory for a controller node in megabyte units
 CONTROLLER_MIN_MB = 6000
@@ -457,7 +457,7 @@ class NodeOperator(object):
 
             # On small systems, clip memory overhead to more reasonable minimal
             # settings
-            if (total_kb / SIZE_KB - base_mem_mb) < 1000:
+            if (total_kb // SIZE_KB - base_mem_mb) < 1000:
                 if node == 0:
                     base_mem_mb = COMPUTE_MIN_MB
                     if tsc.nodetype == 'controller':
@@ -472,8 +472,8 @@ class NodeOperator(object):
 
             vm_kb = (eng_kb - vswitch_mem_kb)
 
-            max_vm_pages_2mb = vm_kb / SIZE_2M_KB
-            max_vm_pages_1gb = vm_kb / SIZE_1G_KB
+            max_vm_pages_2mb = vm_kb // SIZE_2M_KB
+            max_vm_pages_1gb = vm_kb // SIZE_1G_KB
 
             attr.update({
                 'vm_hugepages_possible_2M': max_vm_pages_2mb,
@@ -485,7 +485,7 @@ class NodeOperator(object):
                 'memtotal_mib': total_hp_mb,
                 'memavail_mib': free_hp_mb,
                 'hugepages_configured': 'True',
-                'node_memtotal_mib': node_total_kb / SIZE_KB,
+                'node_memtotal_mib': node_total_kb // SIZE_KB,
             })
 
             imemory.append(attr)

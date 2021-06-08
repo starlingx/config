@@ -3703,8 +3703,8 @@ class HostController(rest.RestController):
             # less than 50% of the total memory
             if (hp_mem_avail_mib < int(0.5 * m.node_memtotal_mib)):
                 d_MiB = reserved - m.platform_reserved_mib
-                d_2M = int(d_MiB / constants.MIB_2M)
-                d_1G = int((d_MiB + 512) / constants.MIB_1G)
+                d_2M = int(d_MiB // constants.MIB_2M)
+                d_1G = int((d_MiB + 512) // constants.MIB_1G)
                 if n_2M is not None and n_2M - d_2M > 0:
                     d_1G = 0
                     n_2M -= d_2M
@@ -3785,20 +3785,20 @@ class HostController(rest.RestController):
             if(m.vm_pending_as_percentage == "True"):
                 if m.vm_hugepages_nr_2M_pending is not None:
                     allocated += (memtotal - allocated) \
-                        * m.vm_hugepages_nr_2M_pending / 100
+                        * m.vm_hugepages_nr_2M_pending // 100
                     pending_2M_memory = True
                 elif m.vm_hugepages_2M_percentage:
                     allocated += (memtotal - allocated) \
-                        * m.vm_hugepages_2M_percentage / 100
+                        * m.vm_hugepages_2M_percentage // 100
                     pending_2M_memory = True
 
                 if m.vm_hugepages_nr_1G_pending is not None:
                     allocated += (memtotal - allocated) \
-                        * m.vm_hugepages_nr_1G_pending / 100
+                        * m.vm_hugepages_nr_1G_pending // 100
                     pending_1G_memory = True
                 elif m.vm_hugepages_1G_percentage:
                     allocated += (memtotal - allocated) \
-                        * m.vm_hugepages_1G_percentage / 100
+                        * m.vm_hugepages_1G_percentage // 100
                     pending_1G_memory = True
             else:
                 if m.vm_hugepages_nr_2M_pending is not None:
@@ -3944,9 +3944,9 @@ class HostController(rest.RestController):
 
                     # Current value might not be suitable after upgrading or
                     # patching
-                    if m.vm_pending_as_percentage == "False" and vm_hugepages_nr_2M > int((vm_mem_mib * 0.9) /
+                    if m.vm_pending_as_percentage == "False" and vm_hugepages_nr_2M > int((vm_mem_mib * 0.9) //
                             constants.MIB_2M):
-                        vm_hugepages_nr_2M = int((vm_mem_mib * 0.9) /
+                        vm_hugepages_nr_2M = int((vm_mem_mib * 0.9) //
                                                  constants.MIB_2M)
                         value.update({'vm_hugepages_nr_2M': vm_hugepages_nr_2M})
 
@@ -3959,7 +3959,7 @@ class HostController(rest.RestController):
                         (constants.NUM_4K_PER_MiB * vm_hugepages_4K)
 
                     # Clip 4K pages
-                    min_4K = 32 * constants.Ki / 4
+                    min_4K = 32 * constants.Ki // 4
                     if vm_hugepages_4K < min_4K:
                         vm_hugepages_4K = 0
 
@@ -4219,7 +4219,7 @@ class HostController(rest.RestController):
                         constants.LVG_CGTS_VG)
                 lvm_vg_used_pe = int(lvg.lvm_vg_total_pe) - int(lvg.lvm_vg_free_pe)
                 active_controller_used = (
-                    int(lvg.lvm_vg_size) * lvm_vg_used_pe / int(lvg.lvm_vg_total_pe))
+                    int(lvg.lvm_vg_size) * lvm_vg_used_pe // int(lvg.lvm_vg_total_pe))
 
         # For the standby controller the PVs are not yet allocated to the volume
         # group, so we can't get the size directly from volume-group info
