@@ -5980,14 +5980,17 @@ class HostController(rest.RestController):
                 _("Swact action not allowed. Wait until the upgrade-activate "
                   "command completes"))
 
-        if upgrade.state in [constants.UPGRADE_ABORTING,
-                             constants.UPGRADE_ABORTING_ROLLBACK]:
+        if upgrade.state == constants.UPGRADE_ABORTING:
             if to_host_load_id == upgrade.to_load:
                 # Cannot swact to new load if aborting upgrade
                 raise wsme.exc.ClientSideError(
                     _("Aborting upgrade: %s must be using load %s before this "
                       "operation can proceed. Currently using load %s.") %
                     (to_host['hostname'], from_sw_version, to_host_sw_version))
+        elif upgrade.state == constants.UPGRADE_ABORTING_ROLLBACK:
+            if from_host['software_load'] == from_sw_version and to_host.software_load == to_sw_version:
+                raise wsme.exc.ClientSideError(_("Aborting upgrade: Unable to swact from %s to %s")
+                    % (from_sw_version, to_sw_version))
         elif to_host_load_id == upgrade.from_load:
             # On CPE loads we must abort before we swact back to the old load
             # Any VMs on the active controller will be lost during the swact
