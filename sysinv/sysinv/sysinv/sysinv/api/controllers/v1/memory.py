@@ -645,7 +645,7 @@ def _check_memory(dbapi, rpc_port, ihost, platform_reserved_mib=None,
         else:
             node_memtotal_mib = rpc_port['memtotal_mib']
 
-        max_platform_reserved = node_memtotal_mib * 2 / 3
+        max_platform_reserved = node_memtotal_mib * 2 // 3
         if int(platform_reserved_mib) > max_platform_reserved:
             low_core = cutils.is_low_core_system(ihost, pecan.request.dbapi)
             required_platform_reserved = \
@@ -686,13 +686,13 @@ def _check_memory(dbapi, rpc_port, ihost, platform_reserved_mib=None,
         mem_alloc = 0
         if vm_pending_as_percentage == "True":
             if vm_hugepages_nr_2M_pending is not None:
-                mem_alloc += int(hp_mem_avail * int(vm_hugepages_nr_2M_pending) / 100)
+                mem_alloc += int(hp_mem_avail * int(vm_hugepages_nr_2M_pending) // 100)
             elif rpc_port['vm_hugepages_2M_percentage'] is not None:
-                mem_alloc += int(hp_mem_avail * int(rpc_port['vm_hugepages_2M_percentage']) / 100)
+                mem_alloc += int(hp_mem_avail * int(rpc_port['vm_hugepages_2M_percentage']) // 100)
             if vm_hugepages_nr_1G_pending is not None:
-                mem_alloc += int(hp_mem_avail * int(vm_hugepages_nr_1G_pending) / 100)
+                mem_alloc += int(hp_mem_avail * int(vm_hugepages_nr_1G_pending) // 100)
             elif rpc_port['vm_hugepages_1G_percentage'] is not None:
-                mem_alloc += int(hp_mem_avail * int(rpc_port['vm_hugepages_1G_percentage']) / 100)
+                mem_alloc += int(hp_mem_avail * int(rpc_port['vm_hugepages_1G_percentage']) // 100)
         else:
             if vm_hugepages_nr_2M_pending is not None:
                 mem_alloc += int(vm_hugepages_nr_2M_pending) * constants.MIB_2M
@@ -717,7 +717,7 @@ def _check_memory(dbapi, rpc_port, ihost, platform_reserved_mib=None,
                      "by %s MiB (2M: %s pages; 1G: %s pages). "
                      "total memory=%s MiB, allocated=%s MiB.")
                    % (platform_reserved_mib, avail,
-                      delta, delta / 2, delta / 1024,
+                      delta, delta // 2, delta // 1024,
                       node_memtotal_mib, mem_alloc))
             raise wsme.exc.ClientSideError(msg)
         else:
@@ -844,7 +844,7 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
     if(vm_pending_as_percentage == "True"):
         vm_hp_1G_reqd_mib = int((node_memtotal_mib - base_mem_mib
                              - int(new_vs_pages * vs_hp_size_mib))
-                             * new_1G_pages / 100)
+                             * new_1G_pages // 100)
     else:
         vm_hp_1G_reqd_mib = new_1G_pages * constants.MIB_1G
 
@@ -864,7 +864,7 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
                 - int(new_vs_pages * vs_hp_size_mib)
 
     if(vm_pending_as_percentage == "True"):
-        vm_hp_2M_reqd_mib = int(hp_mem_avail * new_2M_pages / 100)
+        vm_hp_2M_reqd_mib = int(hp_mem_avail * new_2M_pages // 100)
     else:
         vm_hp_2M_reqd_mib = new_2M_pages * constants.MIB_2M
 
@@ -912,9 +912,9 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
     # Make sure everything fits
     if hp_possible_mib < hp_requested_mib:
         vm_max_hp_2M = ((hp_possible_mib - vs_hp_reqd_mib - vm_hp_1G_reqd_mib)
-                        / constants.MIB_2M)
+                        // constants.MIB_2M)
         vm_max_hp_1G = ((hp_possible_mib - vs_hp_reqd_mib - vm_hp_2M_reqd_mib)
-                        / constants.MIB_1G)
+                        // constants.MIB_1G)
 
         if vm_max_hp_2M < 0:
             vm_max_hp_2M = 0

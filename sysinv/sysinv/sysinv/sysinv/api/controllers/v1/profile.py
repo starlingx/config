@@ -1634,10 +1634,10 @@ def _create_storage_profile(profile_name, profile_node):
                          ' is invalid') % profile_name, \
                        _('device path %(dev)s journal size of %(size)s'
                          ' is invalid.') % {'dev': dev_path,
-                                            'size': journal_size / 1024}, \
+                                            'size': journal_size // 1024}, \
                        _('size should be between %(min)s and '
-                         ' %(max)s.') % {'min': CONF.journal.journal_min_size / 1024,
-                                         'max': CONF.journal.journal_max_size / 1024}
+                         ' %(max)s.') % {'min': CONF.journal.journal_min_size // 1024,
+                                         'max': CONF.journal.journal_max_size // 1024}
 
         if dev_func == constants.STOR_FUNCTION_JOURNAL:
             journal_disks.append(dev_path)

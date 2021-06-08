@@ -130,7 +130,7 @@ class DiskOperator(object):
                                          avail_space_sectors_output)[0].rstrip()
 
         # Free space in MiB.
-        avail_space_mib = (int(sector_size_bytes) * int(avail_space_sectors) /
+        avail_space_mib = (int(sector_size_bytes) * int(avail_space_sectors) //
                            (1024 ** 2))
 
         # Keep 2 MiB for partition table.

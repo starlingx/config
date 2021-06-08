@@ -71,7 +71,7 @@ class CpuProfile(object):
                 cur_processor.vms += 1
 
         self.number_of_cpu = len(self.processors)
-        self.cores_per_cpu = len(cores) / self.number_of_cpu
+        self.cores_per_cpu = len(cores) // self.number_of_cpu
 
     @staticmethod
     def sort_cpu_by_numa_node(cpus, nodes):
