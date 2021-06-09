@@ -154,7 +154,8 @@ class PCIDevice(base.APIBase):
                                         'bmc_build_version', 'bmc_fw_version',
                                         'root_key', 'revoked_key_ids',
                                         'boot_page', 'bitstream_id',
-                                        'created_at', 'updated_at'])
+                                        'created_at', 'updated_at',
+                                        'extra_info'])
 
         # do not expose the id attribute
         device.host_id = wtypes.Unset
