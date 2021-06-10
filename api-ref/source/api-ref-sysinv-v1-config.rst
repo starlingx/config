@@ -2159,7 +2159,7 @@ This operation does not accept a request body.
 Creates a Ceph storage function on a specific host
 ****************************************************
 
-.. rest_method:: POST /v1/ihosts/​{host_id}​/istors
+.. rest_method:: POST /v1/istors
 
 PREREQUISITES: A 'ceph' storage backend must be configured in the
 system. If multiple storage tiers are defined then a tier_uuid must be
@@ -2179,10 +2179,9 @@ badMediaType (415)
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
-   "host_id", "URI", "csapi:UUID", "The unique identifier of an existing host."
-   "function (Optional)", "plain", "xsd:string", "This parameter specifies the Ceph storage function. Valid values are (is): ``osd`` or ``journal``."
-   "ihost_uuid (Optional)", "plain", "csapi:UUID", "This parameter specifies the storage host uuid."
-   "idisk_uuid (Optional)", "plain", "csapi:UUID", "This parameter specifies the storage disk uuid."
+   "function", "plain", "xsd:string", "This parameter specifies the Ceph storage function. Valid values are (is): ``osd`` or ``journal``."
+   "ihost_uuid", "plain", "csapi:UUID", "This parameter specifies the storage host uuid."
+   "idisk_uuid", "plain", "csapi:UUID", "This parameter specifies the storage disk uuid."
    "journal_location (Optional)", "plain", "csapi:UUID", "This parameter specifies the uuid of the journal stor on which the stor's journal will reside. Needed only for ""osd"" functions."
    "journal_size_mib (Optional)", "plain", "xsd:integer", "This parameter specifies the size of the journal. Needed only for ""osd"" functions."
 
