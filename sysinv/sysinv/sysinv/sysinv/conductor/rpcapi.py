@@ -1339,7 +1339,8 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('load_update_by_host',
                                        ihost_id=ihost_id, sw_version=version))
 
-    def update_service_config(self, context, service=None, do_apply=False):
+    def update_service_config(self, context, service=None, section=None,
+                              do_apply=False):
         """Synchronously, have the conductor update the service parameter.
 
         :param context: request context.
@@ -1347,6 +1348,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('update_service_config',
                                                 service=service,
+                                                section=section,
                                                 do_apply=do_apply))
 
     def start_upgrade(self, context, upgrade):
