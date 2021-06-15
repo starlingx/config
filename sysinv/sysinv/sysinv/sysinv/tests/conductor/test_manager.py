@@ -1761,6 +1761,131 @@ class ManagerTestCase(base.DbTestCase):
         dev = self.dbapi.pci_device_get(PCI_DEV_2['pciaddr'], host_id)
         self.assertEqual(dev['uuid'], PCI_DEV_2['uuid'])
 
+    def test_pci_device_update_n3000_by_host(self):
+        # Create compute-0 node
+        config_uuid = str(uuid.uuid4())
+        ihost = self._create_test_ihost(
+            personality=constants.WORKER,
+            hostname='compute-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        host_uuid = ihost['uuid']
+        host_id = ihost['id']
+        PCI_DEV_1 = {'uuid': str(uuid.uuid4()),
+                     'name': 'pci_dev_1',
+                     'pciaddr': '0000:0b:01.0',
+                     'pclass_id': '060100',
+                     'pvendor_id': '8086',
+                     'pdevice_id': '0443',
+                     'enabled': True,
+                     'fpga_n3000_reset': True}  # is the FPGA reset
+        PCI_DEV_2 = {'uuid': str(uuid.uuid4()),
+                     'name': 'pci_0000_b4_00_0',
+                     'pciaddr': '0000:b4:00.0',
+                     'pclass_id': '120000',
+                     'pvendor_id': '8086',
+                     'pdevice_id': '0d8f',  # N3000 FEC
+                     'enabled': True,
+                     'fpga_n3000_reset': True}  # is the FPGA reset
+
+        pci_device_dict_array = [PCI_DEV_1, PCI_DEV_2]
+
+        # create new dev
+        self.service.pci_device_update_by_host(self.context, host_uuid, pci_device_dict_array)
+
+        dev = self.dbapi.pci_device_get(PCI_DEV_1['pciaddr'], host_id)
+        for key in PCI_DEV_1:
+            self.assertEqual(dev[key], PCI_DEV_1[key])
+
+        dev = self.dbapi.pci_device_get(PCI_DEV_2['pciaddr'], host_id)
+        for key in PCI_DEV_2:
+            self.assertEqual(dev[key], PCI_DEV_2[key])
+
+        # test with fpga_n3000_reset as False
+        PCI_DEV_3 = {'uuid': str(uuid.uuid4()),
+                     'name': 'pci_dev_3',
+                     'pciaddr': '0000:0c:01.0',
+                     'pclass_id': '060100',
+                     'pvendor_id': '8086',
+                     'pdevice_id': '0443',
+                     'enabled': True,
+                     'fpga_n3000_reset': False}  # is the FPGA reset
+        PCI_DEV_4 = {'uuid': str(uuid.uuid4()),
+                     'name': 'pci_0000_b8_00_0',
+                     'pciaddr': '0000:b8:00.0',
+                     'pclass_id': '120000',
+                     'pvendor_id': '8086',
+                     'pdevice_id': '0d8f',  # N3000_FEC_PF_DEVICE
+                     'enabled': True,
+                     'fpga_n3000_reset': False}  # is the FPGA reset
+        PCI_DEV_5 = {'uuid': str(uuid.uuid4()),
+                     'name': 'pci_0000_b9_00_0',
+                     'pciaddr': '0000:b9:00.0',
+                     'pclass_id': '120000',
+                     'pvendor_id': '8086',
+                     'pdevice_id': '0b30',  # N3000_DEVICE
+                     'enabled': True,
+                     'fpga_n3000_reset': False}  # is the FPGA reset
+        PCI_DEV_6 = {'uuid': str(uuid.uuid4()),
+                     'name': 'pci_0000_b0_00_0',
+                     'pciaddr': '0000:b0:00.0',
+                     'pclass_id': '120000',
+                     'pvendor_id': '8086',
+                     'pdevice_id': '0b32',  # N3000_DEFAULT_DEVICE
+                     'enabled': True,
+                     'fpga_n3000_reset': False}  # is the FPGA reset
+
+        pci_device_dict_array2 = [PCI_DEV_3, PCI_DEV_4, PCI_DEV_5, PCI_DEV_6]
+
+        self.service.pci_device_update_by_host(self.context, host_uuid, pci_device_dict_array2)
+
+        dev = self.dbapi.pci_device_get(PCI_DEV_3['pciaddr'], host_id)
+        for key in PCI_DEV_3:
+            self.assertEqual(dev[key], PCI_DEV_3[key])
+
+        self.assertRaises(exception.ServerNotFound,
+                          self.dbapi.pci_device_get, PCI_DEV_4['pciaddr'], host_id)
+        self.assertRaises(exception.ServerNotFound,
+                          self.dbapi.pci_device_get, PCI_DEV_5['pciaddr'], host_id)
+        self.assertRaises(exception.ServerNotFound,
+                          self.dbapi.pci_device_get, PCI_DEV_6['pciaddr'], host_id)
+
+        # update existing dev
+        pci_dev_dict_update = [{'pciaddr': PCI_DEV_2['pciaddr'],
+                                'pclass_id': '060500',
+                                'pvendor_id': '8086',
+                                'pdevice_id': '0d8f',
+                                'pclass': '0600',
+                                'pvendor': '',
+                                'psvendor': '',
+                                'psdevice': 'qat',
+                                'sriov_totalvfs': 32,
+                                'sriov_numvfs': 4,
+                                'sriov_vf_driver': 'vfio-pci',
+                                'sriov_vf_pdevice_id': '0d90',
+                                'sriov_vfs_pci_address': '000:b4:00.1,0000:b4:00.2,0000:b4:00.3',
+                                'driver': 'igb_uio',
+                                'fpga_n3000_reset': True}]
+        self.service.pci_device_update_by_host(self.context, host_uuid, pci_dev_dict_update)
+        dev = self.dbapi.pci_device_get(PCI_DEV_2['pciaddr'], host_id)
+
+        for key in pci_dev_dict_update[0]:
+            self.assertEqual(dev[key], pci_dev_dict_update[0][key])
+
+        pci_dev_dict_update[0]['sriov_vfs_pci_address'] = ''
+        pci_dev_dict_update[0]['fpga_n3000_reset'] = False
+        self.service.pci_device_update_by_host(self.context, host_uuid, pci_dev_dict_update)
+        dev = self.dbapi.pci_device_get(PCI_DEV_2['pciaddr'], host_id)
+        self.assertNotEqual(dev['sriov_vfs_pci_address'],
+                            pci_dev_dict_update[0]['sriov_vfs_pci_address'])
+
     def test_inumas_update_by_ihost(self):
         # Create compute-0 node
         config_uuid = str(uuid.uuid4())
@@ -1813,14 +1938,16 @@ class ManagerTestCase(base.DbTestCase):
                      'pclass_id': '060100',
                      'pvendor_id': '8086',
                      'pdevice_id': '0443',
-                     'enabled': True}
+                     'enabled': True,
+                     'fpga_n3000_reset': True}
         PCI_DEV_2 = {'uuid': str(uuid.uuid4()),
                      'name': 'pci_dev_2',
                      'pciaddr': '0000:0c:01.0',
                      'pclass_id': '012000',
                      'pvendor_id': '8086',
                      'pdevice_id': '0b30',
-                     'enabled': True}
+                     'enabled': True,
+                     'fpga_n3000_reset': True}
         pci_device_dict_array = [PCI_DEV_1, PCI_DEV_2]
 
         # create new PCI dev

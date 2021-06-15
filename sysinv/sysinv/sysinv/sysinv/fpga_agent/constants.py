@@ -4,6 +4,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+import os
+import tsconfig.tsconfig as tsc
+
 # Currently we only support the following FPGA.  In the future we may need to
 # expand this to a list of devices, each with their own special set of
 # device-specific information.
@@ -30,3 +33,5 @@ OPAE_IMG = "registry.local:9001/docker.io/starlingx/n3000-opae:stx.4.0-v1.0.0"
 # This is a flag file created by puppet after doing a "docker login".
 # We need to wait for it to exist before trying to run docker images.
 DOCKER_LOGIN_FLAG = "/var/run/docker_login_done"
+
+N3000_RESET_FLAG = os.path.join(tsc.VOLATILE_PATH, ".sysinv_n3000_reset")

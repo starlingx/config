@@ -339,6 +339,9 @@ def get_n3000_pci_info():
             for dev in pci_dev_array:
                 pci_devs.append(pci.PCIDevice(pci_dev, **dev))
 
+        is_fpga_n3000_reset = \
+            os.path.exists(constants.N3000_RESET_FLAG)
+
         for dev in pci_devs:
             pci_dev_dict = {'name': dev.name,
                             'pciaddr': dev.pci.pciaddr,
@@ -359,7 +362,8 @@ def get_n3000_pci_info():
                             'sriov_vf_pdevice_id': dev.sriov_vf_pdevice_id,
                             'driver': dev.driver,
                             'enabled': dev.enabled,
-                            'extra_info': dev.extra_info}
+                            'extra_info': dev.extra_info,
+                            'fpga_n3000_reset': is_fpga_n3000_reset}
             LOG.debug('Sysinv FPGA Agent dev {}'.format(pci_dev_dict))
             pci_device_list.append(pci_dev_dict)
     except Exception:

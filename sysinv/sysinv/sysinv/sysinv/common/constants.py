@@ -1913,3 +1913,6 @@ KUBE_CERT_UPDATE_TRUSTNEWCA = "trust-new-ca"
 # kubernetes components secrets on rootCA update procedure
 KUBE_ROOTCA_SECRET = 'system-kube-rootca-certificate'
 KUBE_ROOTCA_ISSUER = 'system-kube-rootca-issuer'
+
+# configuration UUID reboot required flag (bit)
+CONFIG_REBOOT_REQUIRED = (1 << 127)

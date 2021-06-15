@@ -170,9 +170,6 @@ CONFIG_FAIL_FLAG = os.path.join(tsc.VOLATILE_PATH, ".config_fail")
 ACTIVE_CONFIG_REBOOT_REQUIRED = os.path.join(
     constants.SYSINV_VOLATILE_PATH, ".reboot_required")
 
-# configuration UUID reboot required flag (bit)
-CONFIG_REBOOT_REQUIRED = (1 << 127)
-
 # Types of runtime configuration applies
 CONFIG_APPLY_RUNTIME_MANIFEST = 'config_apply_runtime_manifest'
 CONFIG_UPDATE_FILE = 'config_update_file'
@@ -1571,7 +1568,7 @@ class ConductorManager(service.PeriodicService):
                 # flag after they have been applied.
                 config_uuid = self._config_update_hosts(context, personalities,
                                                         host_uuids=[host.uuid])
-                if self._config_is_reboot_required(host.config_target):
+                if utils.config_is_reboot_required(host.config_target):
                     config_uuid = self._config_set_reboot_required(config_uuid)
 
                 config_dict = {
@@ -1585,7 +1582,7 @@ class ConductorManager(service.PeriodicService):
 
             # Regenerate config target uuid, node is going for reboot!
             config_uuid = self._config_update_hosts(context, personalities)
-            if self._config_is_reboot_required(host.config_target):
+            if utils.config_is_reboot_required(host.config_target):
                 config_uuid = self._config_set_reboot_required(config_uuid)
             self._puppet.update_host_config(host, config_uuid)
 
@@ -2763,6 +2760,12 @@ class ConductorManager(service.PeriodicService):
             return
         for pci_dev in pci_device_dict_array:
             LOG.debug("Processing dev %s" % pci_dev)
+            is_n3000_dev_not_reset = False
+            if 'fpga_n3000_reset' in pci_dev.keys():
+                is_n3000_dev_not_reset = (pci_dev['pdevice_id'] in fpga_constants.N3000_DEVICES
+                    and pci_dev['pvendor_id'] == fpga_constants.N3000_VENDOR
+                    and not pci_dev['fpga_n3000_reset'])
+                del pci_dev['fpga_n3000_reset']
             try:
                 pci_dev_dict = {'host_id': host['id']}
                 pci_dev_dict.update(pci_dev)
@@ -2772,11 +2775,19 @@ class ConductorManager(service.PeriodicService):
                                                     hostid=host['id'])
                     dev_found = dev
                     if not dev:
+                        if is_n3000_dev_not_reset:
+                            LOG.info("N3000 reset not executed, skip for dev="
+                                    "%s on host %s" % (pci_dev_dict, host['id']))
+                            continue
                         LOG.info("Attempting to create new device "
                                  "%s on host %s" % (pci_dev_dict, host['id']))
                         dev = self.dbapi.pci_device_create(host['id'],
                                                            pci_dev_dict)
                 except Exception:
+                    if is_n3000_dev_not_reset:
+                        LOG.info("N3000 reset not executed, skip for dev="
+                                "%s on host %s" % (pci_dev_dict, host['id']))
+                        continue
                     LOG.info("Attempting to create new device "
                              "%s on host %s" % (pci_dev_dict, host['id']))
                     dev = self.dbapi.pci_device_create(host['id'],
@@ -2817,6 +2828,10 @@ class ConductorManager(service.PeriodicService):
                             # binding of the intended driver has not had a
                             # chance to be applied.
                             del attr['sriov_vf_driver']
+                        if is_n3000_dev_not_reset:
+                            LOG.info("N3000 reset not executed, skip for dev="
+                                    "%s on host %s" % (pci_dev_dict, host['id']))
+                            continue
                         dev = self.dbapi.pci_device_update(dev['uuid'], attr)
                     except Exception:
                         LOG.exception("Failed to update port %s" %
@@ -5159,7 +5174,7 @@ class ConductorManager(service.PeriodicService):
             # apply filesystem config changes if all controllers at target
             standby_config_target_flipped = None
             if standby_host and standby_host.config_target:
-                standby_config_target_flipped = self._config_flip_reboot_required(standby_host.config_target)
+                standby_config_target_flipped = utils.config_flip_reboot_required(standby_host.config_target)
             if not standby_host or (standby_host and
                (standby_host.config_applied == standby_host.config_target or
                standby_host.config_applied == standby_config_target_flipped)):
@@ -5183,10 +5198,10 @@ class ConductorManager(service.PeriodicService):
             # Ignore the reboot required bit for active controller when doing the comparison
             active_config_target_flipped = None
             if active_host and active_host.config_target:
-                active_config_target_flipped = self._config_flip_reboot_required(active_host.config_target)
+                active_config_target_flipped = utils.config_flip_reboot_required(active_host.config_target)
             standby_config_target_flipped = None
             if standby_host and standby_host.config_target:
-                standby_config_target_flipped = self._config_flip_reboot_required(standby_host.config_target)
+                standby_config_target_flipped = utils.config_flip_reboot_required(standby_host.config_target)
             if active_host and active_config_target_flipped and \
                active_host.config_applied == active_config_target_flipped:
                 # apply filesystem config changes if all controllers at target
@@ -6527,7 +6542,7 @@ class ConductorManager(service.PeriodicService):
                         host.administrative == constants.ADMIN_UNLOCKED and
                         host.operational == constants.OPERATIONAL_ENABLED and
                         not (self._config_out_of_date(context, host) and
-                                 self._config_is_reboot_required(host.config_target))):
+                                 utils.config_is_reboot_required(host.config_target))):
                         runtime_hosts.append(host.uuid)
 
                 if runtime_hosts:
@@ -9592,15 +9607,6 @@ class ConductorManager(service.PeriodicService):
                 ihost_obj.save(context)
 
     @staticmethod
-    def _config_is_reboot_required(config_uuid):
-        """Check if the supplied config_uuid has the reboot required flag
-
-        :param config_uuid UUID object or UUID string
-        :return True if reboot is required, False otherwise
-        """
-        return int(uuid.UUID(config_uuid)) & CONFIG_REBOOT_REQUIRED
-
-    @staticmethod
     def _config_set_reboot_required(config_uuid):
         """Set the reboot required flag for the supplied UUID
 
@@ -9609,7 +9615,7 @@ class ConductorManager(service.PeriodicService):
         :rtype str
         """
         uuid_str = str(config_uuid)
-        uuid_int = int(uuid.UUID(uuid_str)) | CONFIG_REBOOT_REQUIRED
+        uuid_int = int(uuid.UUID(uuid_str)) | constants.CONFIG_REBOOT_REQUIRED
         return str(uuid.UUID(int=uuid_int))
 
     @staticmethod
@@ -9621,19 +9627,7 @@ class ConductorManager(service.PeriodicService):
         :rtype str
         """
         uuid_str = str(config_uuid)
-        uuid_int = int(uuid.UUID(uuid_str)) & ~CONFIG_REBOOT_REQUIRED
-        return str(uuid.UUID(int=uuid_int))
-
-    @staticmethod
-    def _config_flip_reboot_required(config_uuid):
-        """flip the reboot required flag for the supplied UUID
-
-        :param config_uuid UUID object or UUID string
-        :return The modified UUID as a string
-        :rtype str
-        """
-        uuid_str = str(config_uuid)
-        uuid_int = int(uuid.UUID(uuid_str)) ^ CONFIG_REBOOT_REQUIRED
+        uuid_int = int(uuid.UUID(uuid_str)) & ~constants.CONFIG_REBOOT_REQUIRED
         return str(uuid.UUID(int=uuid_int))
 
     def _update_host_config_reinstall(self, context, ihost_obj):
@@ -9658,7 +9652,7 @@ class ConductorManager(service.PeriodicService):
                 # reboot required is still present
                 if (ihost_obj.config_target and
                         ihost_obj.config_applied != ihost_obj.config_target):
-                    if self._config_is_reboot_required(ihost_obj.config_target):
+                    if utils.config_is_reboot_required(ihost_obj.config_target):
                         config_uuid = self._config_set_reboot_required(config_uuid)
                 LOG.info("Setting config target of "
                          "host '%s' to '%s'." % (ihost_obj.hostname, config_uuid))

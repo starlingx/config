@@ -26,6 +26,7 @@ import os
 import pecan
 import re
 import socket
+import uuid
 import wsme
 
 from fm_api import constants as fm_constants
@@ -373,6 +374,27 @@ def update_address_mode(interface, family, mode, pool):
         pass
     updates = {'family': family, 'mode': mode, 'address_pool_id': pool_id}
     pecan.request.dbapi.address_mode_update(interface_id, updates)
+
+
+def config_is_reboot_required(config_uuid):
+    """Check if the supplied config_uuid has the reboot required flag
+
+    :param config_uuid UUID object or UUID string
+    :return True if reboot is required, False otherwise
+    """
+    return int(uuid.UUID(config_uuid)) & constants.CONFIG_REBOOT_REQUIRED
+
+
+def config_flip_reboot_required(config_uuid):
+    """flip the reboot required flag for the supplied UUID
+
+    :param config_uuid UUID object or UUID string
+    :return The modified UUID as a string
+    :rtype str
+    """
+    uuid_str = str(config_uuid)
+    uuid_int = int(uuid.UUID(uuid_str)) ^ constants.CONFIG_REBOOT_REQUIRED
+    return str(uuid.UUID(int=uuid_int))
 
 
 class SystemHelper(object):
