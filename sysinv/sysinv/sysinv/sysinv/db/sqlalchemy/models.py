@@ -1927,3 +1927,32 @@ class HostFs(Base):
     forihostid = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
 
     host = relationship("ihost", lazy="joined", join_depth=1)
+
+
+class KubeRootCAUpdate(Base):
+    __tablename__ = 'kube_rootca_update'
+
+    id = Column(Integer, primary_key=True)
+    uuid = Column(String(36), unique=True)
+    from_rootca_cert = Column(String(255))
+    to_rootca_cert = Column(String(255))
+    state = Column(String(255))
+    capabilities = Column(JSONEncodedDict)
+    reserved_1 = Column(String(255))
+    reserved_2 = Column(String(255))
+    reserved_3 = Column(String(255))
+
+
+class KubeRootCAHostUpdate(Base):
+    __tablename__ = 'kube_rootca_host_update'
+
+    id = Column(Integer, primary_key=True)
+    uuid = Column(String(36), unique=True)
+    effective_rootca_cert = Column(String(255))
+    target_rootca_cert = Column(String(255))
+    state = Column(String(255))
+    host_id = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
+    capabilities = Column(JSONEncodedDict)
+    reserved_1 = Column(String(255))
+    reserved_2 = Column(String(255))
+    reserved_3 = Column(String(255))

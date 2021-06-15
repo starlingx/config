@@ -295,6 +295,56 @@ def get_test_kube_host_upgrade():
     return upgrade
 
 
+def get_kube_rootca_update():
+    dbapi = db_api.get_instance()
+    return dbapi.kube_rootca_update_get_one()
+
+
+def get_test_kube_rootca_update(**kw):
+    rootca_update = {
+        'id': 1,
+        'uuid': kw.get('uuid', uuidutils.generate_uuid()),
+        "from_rootca_cert": kw.get('from_rootca_cert', 'oldCertSerial'),
+        "to_rootca_cert": kw.get('to_rootca_cert', 'newCertSerial'),
+        "state": kw.get('state', 'update-started'),
+        "capabilities": {},
+        "reserved_1": "res1",
+        "reserved_2": "res2",
+        "reserved_3": "res3",
+    }
+    return rootca_update
+
+
+def post_get_test_kube_rootca_update(**kw):
+    update = get_test_kube_rootca_update(**kw)
+    del update['id']
+    del update['uuid']
+    del update['from_rootca_cert']
+    del update['to_rootca_cert']
+    del update['state']
+    del update['capabilities']
+    del update['reserved_1']
+    del update['reserved_2']
+    del update['reserved_3']
+    return update
+
+
+def get_test_kube_rootca_host_update(**kw):
+    rootca_host_update = {
+        'id': 1,
+        'uuid': kw.get('uuid', uuidutils.generate_uuid()),
+        "target_rootca_cert": kw.get('target_rootca_cert', 'oldCertSerial'),
+        "effective_rootca_cert": kw.get('to_rootca_cert', 'newCertSerial'),
+        "state": kw.get('state', 'update-started'),
+        "host_id": kw.get('host_id', 1),
+        "capabilities": {},
+        "reserved_1": "res1",
+        "reserved_2": "res2",
+        "reserved_3": "res3",
+    }
+    return rootca_host_update
+
+
 def create_test_kube_upgrade(**kw):
     upgrade = get_test_kube_upgrade(**kw)
 
@@ -325,6 +375,35 @@ def create_test_kube_host_upgrade():
     dbapi = db_api.get_instance()
     hostid = 1
     return dbapi.kube_host_upgrade_create(hostid, upgrade)
+
+
+def create_test_kube_rootca_update(**kw):
+    update = get_test_kube_rootca_update(**kw)
+
+    # Let DB generate ID and uuid
+    if 'id' in update:
+        del update['id']
+
+    if 'uuid' in update:
+        del update['uuid']
+
+    dbapi = db_api.get_instance()
+    return dbapi.kube_rootca_update_create(update)
+
+
+def create_test_kube_rootca_host_update(**kw):
+    host_update = get_test_kube_rootca_host_update(**kw)
+
+    # Let DB generate ID, uuid and host_id
+    if 'id' in host_update:
+        del host_update['id']
+
+    if 'uuid' in host_update:
+        del host_update['uuid']
+
+    dbapi = db_api.get_instance()
+    return dbapi.kube_rootca_host_update_create(host_update['host_id'],
+                                                host_update)
 
 
 # Create test controller file system object

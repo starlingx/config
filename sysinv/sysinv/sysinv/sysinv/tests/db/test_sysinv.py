@@ -421,3 +421,39 @@ class DbNodeTestCase(base.DbTestCase):
         res = self.dbapi.kube_host_upgrade_update(
             host_upgrade['uuid'], {'status': new_status})
         self.assertEqual(new_status, res['status'])
+
+    def test_kube_rootca_updates(self):
+        # Test kube_rootca_update and kube_host_rootca_update table creation
+        update = utils.create_test_kube_rootca_update()
+        host_update = utils.create_test_kube_rootca_host_update()
+
+        # Test updating state in kube_upgrade table
+        old_state = update['state']
+        new_state = 'updating-host-trustBothCAs'
+        self.assertNotEqual(old_state, new_state)
+        self.assertNotEqual(update['created_at'], None)
+
+        res = self.dbapi.kube_rootca_update_update(
+            update['id'], {'state': new_state})
+        self.assertEqual(new_state, res['state'])
+
+        # Test updating status in kube_rootca_host_update table
+        old_status = host_update['state']
+        new_status = new_state
+        self.assertNotEqual(old_status, new_status)
+
+        res = self.dbapi.kube_rootca_host_update_update(
+            host_update['uuid'], {'state': new_status})
+        self.assertEqual(new_status, res['state'])
+
+        res = self.dbapi.kube_rootca_host_update_get(host_update['uuid'])
+        self.assertEqual(new_status, res['state'])
+
+        # Test destroying element on table kube_upgrade
+        self.dbapi.kube_rootca_update_destroy(update['id'])
+        self.assertRaises(exception.KubeRootCAUpdateNotFound, self.dbapi.kube_rootca_update_get, update['id'])
+
+        # Test destroying element on table kube_host_upgrade
+        self.dbapi.kube_rootca_host_update_destroy(host_update['id'])
+        self.assertRaises(exception.KubeRootCAHostUpdateNotFound,
+                        self.dbapi.kube_rootca_host_update_get, host_update['id'])

@@ -1564,3 +1564,19 @@ class ApplicationLifecycleNotificationException(Exception):
     def __init__(self, application_name, message):
         self.application_name = application_name
         super(ApplicationLifecycleNotificationException, self).__init__(message)
+
+
+class KubeRootCAHostUpdateAlreadyExists(Conflict):
+    message = _("A Kubernetes RootCA Host Update with id %(rootca_host_update_id)s already exists.")
+
+
+class KubeRootCAHostUpdateNotFound(NotFound):
+    message = _("Kubernetes RootCA Host Update with id %(rootca_host_update_id)s not found")
+
+
+class KubeRootCAUpdateAlreadyExists(NotFound):
+    message = _("Kubernetes RootCA Update with id %(rootca_update_id)s not found")
+
+
+class KubeRootCAUpdateNotFound(NotFound):
+    message = _("Kubernetes RootCA Update with id %(rootca_update_id)s not found")

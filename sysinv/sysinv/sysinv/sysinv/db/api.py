@@ -4593,3 +4593,101 @@ class Connection(object):
 
         :param id: The id or uuid of a restore entry.
         """
+
+    @abc.abstractmethod
+    def kube_rootca_host_update_create(self, host_id, values):
+        """Create a new kubernetes rootca update entry on host db.
+
+        :param host_id: The id or uuid of a host.
+        :param values: Some values referencing fields of the object stored on DB.
+        """
+
+    @abc.abstractmethod
+    def kube_rootca_host_update_get(self, rootca_host_update_id):
+        """ Get a kubernetes rootca update host entry
+
+        :param rootca_host_update_id:  The id or uuid of a host.
+        """
+
+    @abc.abstractmethod
+    def kube_rootca_host_update_get_list(self, limit=None, marker=None,
+                                   sort_key=None, sort_dir=None):
+        """ Return a list of kubernetes rootca update entries per host.
+            Allow users to see a complete report of the update procedure on each host.
+
+        :param limit: Maximum number of kubernetes rootca update entries to return.
+        :param marker: the last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted.
+        :param sort_dir: direction in which results should be sorted.
+                         (asc, desc)
+        """
+
+    @abc.abstractmethod
+    def kube_rootca_host_update_get_by_host(self, host_id):
+        """ List all the kube_host_rootca_update for a given ihost.
+
+        :param host_id: The id or uuid of an ihost.
+        :returns: A list of kube_host_rootca_update.
+        """
+
+    @abc.abstractmethod
+    def kube_rootca_host_update_update(self, rootca_host_update_id, values):
+        """ Update a host entry for kubernetes rootca update.
+
+        :param rootca_host_update_id: host id in which the entry is going to be updated.
+        :param values: a dictionary with the values of each field of the entry to be modified.
+        """
+
+    @abc.abstractmethod
+    def kube_rootca_host_update_destroy(self, rootca_host_update_id):
+        """ Delete a host entry for kubernetes rootca update.
+
+        :param rootca_host_update_id: host id of the host entry to be deleted
+        """
+
+    @abc.abstractmethod
+    def kube_rootca_update_create(self, values):
+        """ Create and start a procedure for kubernetes rootca update.
+
+        :param values: dictionary with fields to be stored in the database table for this procedure.
+        """
+
+    @abc.abstractmethod
+    def kube_rootca_update_get(self, rootca_update_id):
+        """ Get a kubernetes rootca update entry
+
+        :param rootca_update_id: identifier for the kubernetes rootca procedure.
+        """
+
+    @abc.abstractmethod
+    def kube_rootca_update_get_one(self):
+        """Get a rootca update entry."""
+
+    @abc.abstractmethod
+    def kube_rootca_update_get_list(self, limit=None, marker=None,
+                              sort_key=None, sort_dir=None):
+        """ Return a list of kubernetes rootca update entries.
+
+        :param limit: Maximum number of kubernetes rootca update entries to return.
+        :param marker: the last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted.
+        :param sort_dir: direction in which results should be sorted.
+                         (asc, desc)
+        """
+
+    @abc.abstractmethod
+    def kube_rootca_update_update(self, rootca_update_id, values):
+        """ Update a kubernetes rootca update procedure entry.
+
+        :param rootca_update_id:  id of the update entry on kubernetes rootca update table.
+        :param values: a dictionary with the respective fields and values to be updated in the db entry.
+        """
+
+    @abc.abstractmethod
+    def kube_rootca_update_destroy(self, rootca_update_id):
+        """ Delete a kubernetes rootca update entry.
+
+        :param rootca_update_id: id of the kubernetes rootca update entry to be deleted from database.
+        """

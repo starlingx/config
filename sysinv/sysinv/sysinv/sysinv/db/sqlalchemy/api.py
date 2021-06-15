@@ -1131,6 +1131,15 @@ def add_kube_host_upgrade_filter_by_host(query, value):
         return query.filter(models.ihost.uuid == value)
 
 
+def add_kube_rootca_host_update_filter_by_host(query, value):
+    if utils.is_int_like(value):
+        return query.filter_by(host_id=value)
+    else:
+        query = query.join(models.ihost,
+                            models.KubeRootCAHostUpdate.host_id == models.ihost.id)
+        return query.filter(models.ihost.uuid == value)
+
+
 def add_kube_host_upgrade_filter(query, value):
     """Adds an upgrade-specific filter to a query.
 
@@ -8781,4 +8790,149 @@ class Connection(api.Connection):
             except NoResultFound:
                 raise exception.RestoreNotFound(uuid=id)
 
+            query.delete()
+
+    def _kube_rootca_host_update_get(self, rootca_host_update_id):
+        query = model_query(models.KubeRootCAHostUpdate)
+        query = add_identity_filter(query, rootca_host_update_id)
+
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.KubeRootCAHostUpdateNotFound(
+                rootca_host_update_id=rootca_host_update_id)
+
+        return result
+
+    def _kube_rootca_host_update_create(self, host_id, values=None):
+        if values is None:
+            values = dict()
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+        values['host_id'] = int(host_id)
+        ca_update = models.KubeRootCAHostUpdate()
+        ca_update.update(values)
+        with _session_for_write() as session:
+            try:
+                session.add(ca_update)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                raise exception.KubeRootCAHostUpdateAlreadyExists(
+                    uuid=values['uuid'], host=host_id)
+            return self._kube_rootca_host_update_get(values['uuid'])
+
+    @objects.objectify(objects.kube_rootca_host_update)
+    def kube_rootca_host_update_create(self, host_id, values):
+        return self._kube_rootca_host_update_create(host_id, values)
+
+    @objects.objectify(objects.kube_rootca_host_update)
+    def kube_rootca_host_update_get(self, rootca_host_update_id):
+        return self._kube_rootca_host_update_get(rootca_host_update_id)
+
+    @objects.objectify(objects.kube_rootca_host_update)
+    def kube_rootca_host_update_get_list(self, limit=None, marker=None,
+                                   sort_key=None, sort_dir=None):
+        query = model_query(models.KubeRootCAHostUpdate)
+        return _paginate_query(models.KubeRootCAHostUpdate, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @objects.objectify(objects.kube_rootca_host_update)
+    def kube_rootca_host_update_get_by_host(self, host_id):
+        query = model_query(models.KubeRootCAHostUpdate)
+        query = add_kube_rootca_host_update_filter_by_host(query, host_id)
+        try:
+            return query.one()
+        except NoResultFound:
+            raise exception.NotFound()
+
+    @objects.objectify(objects.kube_rootca_host_update)
+    def kube_rootca_host_update_update(self, rootca_host_update_id, values):
+        with _session_for_write() as session:
+            query = model_query(models.KubeRootCAHostUpdate, read_deleted="no",
+                                session=session)
+            query = add_identity_filter(query, rootca_host_update_id)
+
+            count = query.update(values, synchronize_session='fetch')
+
+            if count != 1:
+                raise exception.KubeRootCAHostUpdateNotFound(
+                    rootca_host_update_id=rootca_host_update_id)
+            return query.one()
+
+    def kube_rootca_host_update_destroy(self, rootca_host_update_id):
+        with _session_for_write() as session:
+            # Delete physically since it has unique columns
+            if uuidutils.is_uuid_like(rootca_host_update_id):
+                model_query(models.KubeRootCAHostUpdate,
+                            read_deleted="no", session=session).filter_by(
+                    uuid=rootca_host_update_id).delete()
+            else:
+                model_query(models.KubeRootCAHostUpdate, read_deleted="no").\
+                    filter_by(id=rootca_host_update_id).delete()
+
+    def _kube_rootca_update_get(self, rootca_update_id):
+        query = model_query(models.KubeRootCAUpdate)
+        query = add_identity_filter(query, rootca_update_id)
+
+        try:
+            return query.one()
+        except NoResultFound:
+            raise exception.KubeRootCAUpdateNotFound(rootca_update_id=rootca_update_id)
+
+    @objects.objectify(objects.kube_rootca_update)
+    def kube_rootca_update_create(self, values):
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+        kube_rootca_update = models.KubeRootCAUpdate()
+        kube_rootca_update.update(values)
+        with _session_for_write() as session:
+            try:
+                session.add(kube_rootca_update)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                raise exception.KubeRootCAUpdateAlreadyExists(uuid=values['uuid'])
+            return self._kube_rootca_update_get(values['uuid'])
+
+    @objects.objectify(objects.kube_rootca_update)
+    def kube_rootca_update_get(self, rootca_update_id):
+        return self._kube_rootca_update_get(rootca_update_id)
+
+    @objects.objectify(objects.kube_rootca_update)
+    def kube_rootca_update_get_one(self):
+        query = model_query(models.KubeRootCAUpdate)
+
+        try:
+            return query.one()
+        except NoResultFound:
+            raise exception.NotFound()
+
+    @objects.objectify(objects.kube_rootca_update)
+    def kube_rootca_update_get_list(self, limit=None, marker=None,
+                              sort_key=None, sort_dir=None):
+
+        query = model_query(models.KubeRootCAUpdate)
+
+        return _paginate_query(models.KubeRootCAUpdate, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @objects.objectify(objects.kube_rootca_update)
+    def kube_rootca_update_update(self, rootca_update_id, values):
+        with _session_for_write() as session:
+            query = model_query(models.KubeRootCAUpdate, session=session)
+            query = add_identity_filter(query, rootca_update_id)
+
+            count = query.update(values, synchronize_session='fetch')
+            if count != 1:
+                raise exception.KubeRootCAUpdateNotFound(rootca_update_id=rootca_update_id)
+            return self._kube_rootca_update_get(rootca_update_id)
+
+    def kube_rootca_update_destroy(self, rootca_update_id):
+        with _session_for_write() as session:
+            query = model_query(models.KubeRootCAUpdate, session=session)
+            query = add_identity_filter(query, rootca_update_id)
+
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.KubeRootCAUpdateNotFound(rootca_update_id=rootca_update_id)
             query.delete()
