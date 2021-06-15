@@ -5,6 +5,8 @@
 #
 
 import collections
+from ast import literal_eval
+
 from sysinv.common import constants
 from sysinv.common import device as dconstants
 
@@ -100,9 +102,17 @@ class DevicePuppet(base.BasePuppet):
                                 }
                             })
 
+                extra_info = device.get('extra_info', None)
+                if not extra_info:
+                    num_vfs = 0
+                else:
+                    extra_params = literal_eval(extra_info)
+                    num_vfs = int(extra_params['expected_numvfs'])
+
                 pf_config = {
                     device.pciaddr: {
-                        'num_vfs': device['sriov_numvfs'],
+                        'num_vfs': num_vfs,
+                        'sriov_vfs': device['sriov_numvfs'],
                         'addr': quoted_str(device['pciaddr'].strip()),
                         'driver': device['driver'],
                         'device_id': device['pdevice_id']
