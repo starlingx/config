@@ -58,13 +58,17 @@ do
     sleep 1
 done
 
-
-res=$(docker login --password-stdin -u ${DOCKER_USERNAME} registry.local:9001 2>&1 <<< ${DOCKER_PASSWORD})
-rc=$?
-if [ ${rc} -eq 0 ]
-then
-    LOG "docker login to registry.local completed successfully"
-    touch /var/run/docker_login_done
-else
-    LOG "docker login error ${rc} ${res}"
-fi
+while true
+do
+    res=$(docker login --password-stdin -u ${DOCKER_USERNAME} registry.local:9001 2>&1 <<< ${DOCKER_PASSWORD})
+    rc=$?
+    if [ ${rc} -eq 0 ]
+    then
+        LOG "docker login to registry.local completed successfully"
+        touch /var/run/docker_login_done
+        break
+    else
+        LOG "docker login error ${rc} ${res}"
+        sleep 3
+    fi
+done
