@@ -72,10 +72,6 @@ class DevicePuppet(base.BasePuppet):
 
         for dv in dconstants.ACCLR_FEC_RESOURCES:
             for device in pci_device_list[dv]:
-                if (not device.get('driver', None) or
-                   not device.get('sriov_numvfs', None)):
-                        continue
-
                 # Pass extra parameters to puppet
                 if 'dvconf' in dconstants.ACCLR_FEC_RESOURCES[dv]:
                     acclr_config.update(
