@@ -10792,6 +10792,7 @@ class ConductorManager(service.PeriodicService):
 
     def get_system_health(self, context, force=False, upgrade=False,
                           kube_upgrade=False,
+                          kube_rootca_update=False,
                           alarm_ignore_list=None):
         """
         Performs a system health check.
@@ -10801,6 +10802,8 @@ class ConductorManager(service.PeriodicService):
         :param upgrade: set to true to perform an upgrade health check
         :param kube_upgrade: set to true to perform a kubernetes upgrade health
                              check
+        :param kube_rootca_update: set to true to perform a kubernetes root CA
+                                   update health check
         :param alarm_ignore_list: list of alarm ids to ignore when performing
                                   a health check
         """
@@ -10811,7 +10814,7 @@ class ConductorManager(service.PeriodicService):
                 context=context,
                 force=force,
                 alarm_ignore_list=alarm_ignore_list)
-        elif kube_upgrade is True:
+        elif kube_upgrade is True or kube_rootca_update is True:
             return health_util.get_system_health_kube_upgrade(
                 context=context,
                 force=force,
