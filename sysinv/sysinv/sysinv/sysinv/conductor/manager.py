@@ -7527,6 +7527,24 @@ class ConductorManager(service.PeriodicService):
                 LOG.error("No match for sysinv-agent manifest application reported! "
                           "reported_cfg: %(cfg)s status: %(status)s "
                           "iconfig: %(iconfig)s" % args)
+        # Kubernetes root CA update
+        elif reported_cfg in [puppet_common.REPORT_KUBE_CERT_UPDATE_TRUSTBOTHCAS,
+                              puppet_common.REPORT_KUBE_CERT_UPDATE_UPDATECERTS,
+                              puppet_common.REPORT_KUBE_CERT_UPDATE_TRUSTNEWCA]:
+            host_uuid = iconfig['host_uuid']
+            if status == puppet_common.REPORT_SUCCESS:
+                # Update action was successful
+                success = True
+                self.report_kube_rootca_update_success(host_uuid, reported_cfg)
+            elif status == puppet_common.REPORT_FAILURE:
+                # Update action has failed
+                self.report_kube_rootca_update_failure(host_uuid, reported_cfg,
+                                                       error)
+            else:
+                args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
+                LOG.error("No match for sysinv-agent manifest application reported! "
+                          "reported_cfg: %(cfg)s status: %(status)s "
+                          "iconfig: %(iconfig)s" % args)
         else:
             LOG.error("Reported configuration '%(cfg)s' is not handled by"
                       " report_config_status! iconfig: %(iconfig)s" %
@@ -8316,6 +8334,77 @@ class ConductorManager(service.PeriodicService):
         self.dbapi.software_upgrade_update(
             upgrade.uuid,
             {'state': constants.UPGRADE_ACTIVATION_FAILED})
+
+    def report_kube_rootca_update_success(self, host_uuid, reported_cfg):
+        """
+           Callback for Sysinv Agent on kube root CA update success
+        """
+        LOG.info("Kube root CA update phase '%s' succeeded on host: %s"
+                % (reported_cfg, host_uuid))
+
+        if reported_cfg == puppet_common.REPORT_KUBE_CERT_UPDATE_TRUSTBOTHCAS:
+            state = kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTBOTHCAS
+        elif reported_cfg == puppet_common.REPORT_KUBE_CERT_UPDATE_UPDATECERTS:
+            state = kubernetes.KUBE_ROOTCA_UPDATED_HOST_UPDATECERTS
+        elif reported_cfg == puppet_common.REPORT_KUBE_CERT_UPDATE_TRUSTNEWCA:
+            state = kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA
+        else:
+            LOG.info("Not supported reported_cfg: %s" % reported_cfg)
+            raise exception.SysinvException(_(
+                "Not supported reported_cfg: %s" % reported_cfg))
+
+        # Update host 'update state'
+        h_update = self.dbapi.kube_rootca_host_update_get_by_host(host_uuid)
+        self.dbapi.kube_rootca_host_update_update(h_update.id,
+                                                  {'state': state})
+
+        # Update cluster 'update state'
+        hosts = self.dbapi.ihost_get_list()
+        h_updates = self.dbapi.kube_rootca_host_update_get_list()
+
+        # Look to see if there are other hosts not successfully updated yet
+        for host in hosts:
+            if host.uuid == host_uuid:
+                continue
+            for h_update in h_updates:
+                # This host has been updated successfully
+                if host.id == h_update.host_id and h_update.state == state:
+                    break
+            else:
+                # This host has not been updated successfully
+                break
+        else:
+            # All other hosts has been updated successfully
+            c_update = self.dbapi.kube_rootca_update_get_one()
+            self.dbapi.kube_rootca_update_update(c_update.id, {'state': state})
+
+    def report_kube_rootca_update_failure(self, host_uuid, reported_cfg,
+                                          error):
+        """
+           Callback for Sysinv Agent on kube root CA update failure
+        """
+        LOG.info("Kube root CA update phase '%s' failed on host: %s, error: %s"
+                % (reported_cfg, host_uuid, error))
+
+        if reported_cfg == puppet_common.REPORT_KUBE_CERT_UPDATE_TRUSTBOTHCAS:
+            state = kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS_FAILED
+        elif reported_cfg == puppet_common.REPORT_KUBE_CERT_UPDATE_UPDATECERTS:
+            state = kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS_FAILED
+        elif reported_cfg == puppet_common.REPORT_KUBE_CERT_UPDATE_TRUSTNEWCA:
+            state = kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA_FAILED
+        else:
+            LOG.info("Not supported reported_cfg: %s" % reported_cfg)
+            raise exception.SysinvException(_(
+                "Not supported reported_cfg: %s" % reported_cfg))
+
+        # Update host 'update state'
+        h_update = self.dbapi.kube_rootca_host_update_get_by_host(host_uuid)
+        self.dbapi.kube_rootca_host_update_update(h_update.id,
+                                                  {'state': state})
+
+        # Update cluster 'update state'
+        c_update = self.dbapi.kube_rootca_update_get_one()
+        self.dbapi.kube_rootca_update_update(c_update.id, {'state': state})
 
     def create_controller_filesystems(self, context, rootfs_device):
         """ Create the storage config based on disk size for database, platform,
@@ -13926,6 +14015,47 @@ class ConductorManager(service.PeriodicService):
                 LOG.error("App {} maintance action {} semantic check error: {}"
                           "".format(app.name, action, str(e)))
                 raise
+
+    def kube_certificate_update_by_host(self, context, host_uuid, phase):
+        """Update the kube certificate for a host"""
+
+        try:
+            host = self.dbapi.ihost_get(host_uuid)
+        except exception.ServerNotFound:
+            # This really shouldn't happen.
+            LOG.exception("Invalid host_uuid %s" % host_uuid)
+            return
+
+        config_uuid = self._config_update_hosts(context,
+                                                personalities=host.personality,
+                                                host_uuids=[host.uuid])
+
+        LOG.info("kube_certificate_update_by_host config_uuid=%s"
+                 % config_uuid)
+
+        if host.personality == constants.CONTROLLER:
+            puppet_class = [
+                'platform::kubernetes::master::rootca::' + phase.replace('-', '') + '::runtime',
+            ]
+        elif host.personality == constants.WORKER:
+            puppet_class = [
+                'platform::kubernetes::worker::rootca::' + phase.replace('-', '') + '::runtime',
+            ]
+        else:
+            raise exception.SysinvException(_(
+                "Invalid personality %s to update kube certificate." %
+                host.personality))
+
+        config_dict = {
+            "personalities": host.personality,
+            "classes": puppet_class,
+            "host_uuids": [host.uuid],
+            puppet_common.REPORT_STATUS_CFG: phase,
+        }
+
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid,
+                                            config_dict)
 
 
 def device_image_state_sort_key(dev_img_state):

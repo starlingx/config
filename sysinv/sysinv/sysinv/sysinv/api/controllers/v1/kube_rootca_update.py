@@ -25,12 +25,14 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
+from sysinv._i18n import _
 from wsme import types as wtypes
 
 
 LOG = log.getLogger(__name__)
 LOCK_KUBE_ROOTCA_UPLOAD_CONTROLLER = 'KubeRootCAUploadController'
 LOCK_KUBE_ROOTCA_UPDATE_CONTROLLER = 'KubeRootCAUpdateController'
+LOCK_KUBE_ROOTCA_HOST_UPDATE_CONTROLLER = 'KubeRootCAHostUpdateController'
 
 
 class KubeRootCAUploadController(rest.RestController):
@@ -110,6 +112,60 @@ class KubeRootCAUpdate(base.APIBase):
                                 bookmark=True)
                          ]
         return kube_rootca_update
+
+
+class KubeRootCAHostUpdate(base.APIBase):
+    """API representation of a Kubernetes RootCA Host Update."""
+
+    id = int
+    "Unique ID for this entry"
+
+    uuid = types.uuid
+    "Unique UUID for this entry"
+
+    target_rootca_cert = wtypes.text
+    "The target certificate for the kubernetes rootCA host update"
+
+    effective_rootca_cert = wtypes.text
+    "The current certificate of the kubernetes rootCA on this host"
+
+    state = wtypes.text
+    "Kubernetes rootCA host update state"
+
+    capabilities = {wtypes.text: utils.ValidTypes(wtypes.text,
+                                                  six.integer_types)}
+    "Additional properties to be used in kube_rootca_host_update operations"
+
+    links = [link.Link]
+    "A list containing a self link and associated kubernetes rootca host "
+    "update links"
+
+    def __init__(self, **kwargs):
+        self.fields = objects.kube_rootca_host_update.fields.keys()
+        for k in self.fields:
+            if not hasattr(self, k):
+                continue
+            setattr(self, k, kwargs.get(k, wtypes.Unset))
+
+    @classmethod
+    def convert_with_links(cls, kube_rootca_host_update, expand=True):
+        kube_rootca_host_update = KubeRootCAHostUpdate(
+            **kube_rootca_host_update.as_dict())
+        if not expand:
+            kube_rootca_host_update.unset_fields_except(['uuid',
+                'target_rootca_cert', 'effective_rootca_cert', 'state'])
+
+        kube_rootca_host_update.links = [
+            link.Link.make_link('self', pecan.request.host_url,
+                                'kube_rootca_host_update',
+                                kube_rootca_host_update.uuid),
+            link.Link.make_link('bookmark',
+                                pecan.request.host_url,
+                                'kube_rootca_host_update',
+                                kube_rootca_host_update.uuid,
+                                bookmark=True)
+                        ]
+        return kube_rootca_host_update
 
 
 class KubeRootCAUpdateController(rest.RestController):
@@ -202,3 +258,156 @@ class KubeRootCAUpdateController(rest.RestController):
         rpc_kube_rootca_update = objects.kube_rootca_update.get_by_uuid(
             pecan.request.context, uuid)
         return KubeRootCAUpdate.convert_with_links(rpc_kube_rootca_update)
+
+
+class KubeRootCAHostUpdateController(rest.RestController):
+    """REST controller for kube host root CA certificate."""
+
+    def __init__(self, from_ihosts=False):
+        self._from_ihosts = from_ihosts
+
+    def _precheck_trustbothcas(self, cluster_update, ihost):
+        """ Pre checking if conditions met for phase trust-both-cas """
+
+        # Get all the host update state
+        host_updates = pecan.request.dbapi.kube_rootca_host_update_get_list()
+
+        if len(host_updates) == 0:
+            # No hosts start update yet
+            if cluster_update.state not in \
+                    [kubernetes.KUBE_ROOTCA_UPDATE_CERT_UPLOADED,
+                     kubernetes.KUBE_ROOTCA_UPDATE_CERT_GENERATED]:
+                raise wsme.exc.ClientSideError(_(
+                    "kube-rootca-host-update rejected: No new certificate "
+                    "available"))
+        else:
+            # Not allowed if any host updates are in progress
+            for host_update in host_updates:
+                if host_update.state == \
+                        kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS:
+                    host_name = pecan.request.dbapi.ihost_get(
+                                host_update.host_id).hostname
+                    raise wsme.exc.ClientSideError(_(
+                        "kube-rootca-host-update rejected: update in progess "
+                        "on host %s" % host_name))
+
+            # Check if this host update ever started
+            for host_update in host_updates:
+                if ihost.id == host_update.host_id:
+                    update_ever_started = host_update
+                    break
+            else:
+                update_ever_started = None
+
+            if update_ever_started is None:
+                # Update never started on this host.
+                # Allow start only if overall update state is correct.
+                if cluster_update.state not in \
+                        [kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS]:
+                    raise wsme.exc.ClientSideError(_(
+                        "kube-rootca-host-update rejected: not "
+                        "allowed when cluster update is in state: %s. "
+                        "(only allowed when in state: %s)"
+                        % (cluster_update.state,
+                        kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS)))
+            else:
+                # Update ever started on this host.
+                if update_ever_started.state in \
+                        [kubernetes.
+                        KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS_FAILED]:
+                    # Allowed retry only if update on this host ever failed
+                    pass
+                elif update_ever_started.state in \
+                        [kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTBOTHCAS]:
+                    # Return error indicating update on this host already
+                    # completed.
+                    raise wsme.exc.ClientSideError(_(
+                        "kube-rootca-host-update rejected: update already "
+                        "completed on host %s" % ihost.hostname))
+                else:
+                    # This could be the case where the cluster update already
+                    # passes trust-both-cas (eg. in updateCerts phase), but
+                    # client tries to make an update call of phase
+                    # trust-both-cas.
+                    raise wsme.exc.ClientSideError(_(
+                        "kube-rootca-host-update rejected: not allowed when "
+                        "cluster update is in state: %s. "
+                        "(only allowed when in state: %s)"
+                        % (cluster_update.state,
+                        kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS)))
+
+    @cutils.synchronized(LOCK_KUBE_ROOTCA_HOST_UPDATE_CONTROLLER)
+    @wsme_pecan.wsexpose(KubeRootCAHostUpdate, types.uuid, body=six.text_type)
+    def post(self, host_uuid, body):
+        """Update the kubernetes root CA certificate on this host"""
+
+        # Check cluster update status
+        try:
+            update = pecan.request.dbapi.kube_rootca_update_get_one()
+        except exception.NotFound:
+            raise wsme.exc.ClientSideError(_(
+                "kube-rootca-host-update rejected: No update in progress."))
+
+        # Check if the new root CA cert secret exists, in case the secret
+        # is deleted unexpectly.
+        kube_operator = kubernetes.KubeOperator()
+        try:
+            cert_secret = kube_operator.kube_get_secret(
+                constants.KUBE_ROOTCA_SECRET,
+                kubernetes.NAMESPACE_DEPLOYMENT,
+            )
+        except Exception:
+            raise wsme.exc.ClientSideError(_(
+                "kube-rootca-host-update rejected: failed to get new root CA "
+                "cert secret from kubernetes."))
+
+        if cert_secret is None:
+            raise wsme.exc.ClientSideError(_(
+                "kube-rootca-host-update rejected: no new root CA cert found."))
+
+        ihost = pecan.request.dbapi.ihost_get(host_uuid)
+
+        if body['phase'].lower() == constants.KUBE_CERT_UPDATE_TRUSTBOTHCAS:
+            # kube root CA update on host phase trust-both-cas
+            self._precheck_trustbothcas(update, ihost)
+            update_state = kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS
+        else:
+            raise wsme.exc.ClientSideError(_(
+                "kube-rootca-host-update rejected: not supported phase."))
+
+        # Update the cluster update state
+        c_values = dict()
+        c_values['state'] = update_state
+        c_update = pecan.request.dbapi.kube_rootca_update_get_one()
+        pecan.request.dbapi.kube_rootca_update_update(c_update.id, c_values)
+
+        # Create or update "update state" on this host
+        h_values = dict()
+        h_values['state'] = update_state
+        h_values['effective_rootca_cert'] = c_update.from_rootca_cert
+        h_values['target_rootca_cert'] = c_update.to_rootca_cert
+        try:
+            h_update = pecan.request.dbapi.kube_rootca_host_update_get_by_host(
+                ihost.id)
+            h_update = pecan.request.dbapi.kube_rootca_host_update_update(
+                h_update.id, h_values)
+        except exception.NotFound:
+            h_update = pecan.request.dbapi.kube_rootca_host_update_create(
+                ihost.id, h_values)
+
+        phase = body['phase'].lower()
+        if phase not in [constants.KUBE_CERT_UPDATE_TRUSTBOTHCAS,
+                         constants.KUBE_CERT_UPDATE_UPDATECERTS,
+                         constants.KUBE_CERT_UPDATE_TRUSTNEWCA]:
+            raise exception.SysinvException(_(
+                "Invalid phase %s to update kube certificate." %
+                phase))
+
+        # perform rpc to conductor to perform config apply
+        pecan.request.rpcapi.kube_certificate_update_by_host(
+            pecan.request.context, host_uuid, body['phase'])
+
+        LOG.info("Kubernetes rootca update started on host: %s"
+                 % ihost.hostname)
+
+        return KubeRootCAHostUpdate.convert_with_links(h_update)

@@ -37,6 +37,10 @@ CERTIFICATE_KEY_USER = "certificate-key"
 # kubeadm configuration option
 KUBECONFIG = "--kubeconfig=%s" % kubernetes.KUBERNETES_ADMIN_CONF
 
+# kubernetes root CA certificate params
+KUBE_ROOTCA_CERT_NS = 'deployment'
+KUBE_ROOTCA_CERT_SECRET = 'system-kube-rootca-certificate'
+
 
 class KubernetesPuppet(base.BasePuppet):
     """Class to encapsulate puppet operations for kubernetes configuration"""
@@ -118,6 +122,43 @@ class KubernetesPuppet(base.BasePuppet):
         })
 
         return config
+
+    def get_secure_system_config(self):
+        """Update the hiera configuration secure data"""
+
+        config = {}
+
+        cert, key = self._get_kubernetes_rootca_cert_key()
+        config.update({
+            'platform::kubernetes::params::rootca_cert': cert,
+            'platform::kubernetes::params::rootca_key': key,
+        })
+
+        return config
+
+    @staticmethod
+    def _get_kubernetes_rootca_cert_key():
+        """"Get kubernetes root CA certficate secret from cert-manager"""
+
+        try:
+            kube_operator = kubernetes.KubeOperator()
+            secret = kube_operator.kube_get_secret(KUBE_ROOTCA_CERT_SECRET,
+                                                    KUBE_ROOTCA_CERT_NS)
+
+            # The root CA cert/key are not stored in kubernetes yet
+            if not secret:
+                return 'undef', 'undef'
+            if hasattr(secret, 'data') and secret.data:
+                cert = secret.data.get('tls.crt', None)
+                key = secret.data.get('tls.key', None)
+                if cert and key:
+                    return cert, key
+            raise Exception('Failed to get secret %s\\%s' % (
+                            KUBE_ROOTCA_CERT_NS, KUBE_ROOTCA_CERT_SECRET))
+        except exception.KubeNotConfigured:
+            # During ansible bootstrap, kubernetes is not configured.
+            # Set the cert and key to 'undef'
+            return 'undef', 'undef'
 
     @staticmethod
     def _get_active_kubernetes_version():
