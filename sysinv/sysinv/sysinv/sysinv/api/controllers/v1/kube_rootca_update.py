@@ -14,6 +14,7 @@ import wsmeext.pecan as wsme_pecan
 from fm_api import fm_api
 from fm_api import constants as fm_constants
 from oslo_log import log
+from pecan import expose
 from pecan import rest
 from sysinv import objects
 from sysinv.api.controllers.v1 import base
@@ -28,7 +29,37 @@ from wsme import types as wtypes
 
 
 LOG = log.getLogger(__name__)
-LOCK_NAME = 'KubeRootCAUpdateController'
+LOCK_KUBE_ROOTCA_UPLOAD_CONTROLLER = 'KubeRootCAUploadController'
+LOCK_KUBE_ROOTCA_UPDATE_CONTROLLER = 'KubeRootCAUpdateController'
+
+
+class KubeRootCAUploadController(rest.RestController):
+
+    @cutils.synchronized(LOCK_KUBE_ROOTCA_UPLOAD_CONTROLLER)
+    @expose('json')
+    def post(self):
+        fileitem = pecan.request.POST['file']
+
+        if not fileitem.filename:
+            raise wsme.exc.ClientSideError(("Error: No file uploaded"))
+
+        try:
+            fileitem.file.seek(0, os.SEEK_SET)
+            pem_contents = fileitem.file.read()
+        except Exception:
+            return dict(
+                success="",
+                error=("No kube rootca certificate have been added, invalid PEM document"))
+
+        try:
+            output = pecan.request.rpcapi.save_kubernetes_rootca_cert(
+                pecan.request.context,
+                pem_contents
+            )
+        except Exception:
+            msg = "Conductor call for new kube rootca upload failed"
+            return dict(success="", error=msg)
+        return output
 
 
 class KubeRootCAUpdate(base.APIBase):
@@ -84,10 +115,12 @@ class KubeRootCAUpdate(base.APIBase):
 class KubeRootCAUpdateController(rest.RestController):
     """REST controller for kubernetes rootCA updates."""
 
+    upload = KubeRootCAUploadController()
+
     def __init__(self):
         self.fm_api = fm_api.FaultAPIs()
 
-    @cutils.synchronized(LOCK_NAME)
+    @cutils.synchronized(LOCK_KUBE_ROOTCA_UPDATE_CONTROLLER)
     @wsme_pecan.wsexpose(KubeRootCAUpdate, body=six.text_type)
     def post(self, body):
         """Create a new Kubernetes RootCA Update and start update."""
@@ -138,7 +171,9 @@ class KubeRootCAUpdateController(rest.RestController):
                     "System is not in a valid state for kubernetes rootca update. "
                     "Run system health-query for more details."))
 
-        create_obj = {'state': kubernetes.KUBE_ROOTCA_UPDATE_STARTED}
+        create_obj = {'state': kubernetes.KUBE_ROOTCA_UPDATE_STARTED,
+                      'from_rootca_cert': body.get('from_rootca_cert')
+                      }
         new_update = pecan.request.dbapi.kube_rootca_update_create(create_obj)
 
         entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,
@@ -158,7 +193,6 @@ class KubeRootCAUpdateController(rest.RestController):
                 service_affecting=False)
         self.fm_api.set_fault(fault)
         LOG.info("Started kubernetes rootca update")
-
         return KubeRootCAUpdate.convert_with_links(new_update)
 
     @wsme_pecan.wsexpose(KubeRootCAUpdate, types.uuid)

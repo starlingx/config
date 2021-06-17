@@ -2220,3 +2220,12 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context,
                          self.make_msg('update_dnsmasq_config'))
+
+    def save_kubernetes_rootca_cert(self, context, certificate_file):
+        """Save the new uploaded k8s root CA certificate
+
+        :param context: request context.
+        :certificate_file: the new rootca PEM file
+        """
+        return self.call(context, self.make_msg('save_kubernetes_rootca_cert',
+                                             ca_file=certificate_file))

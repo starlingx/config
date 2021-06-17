@@ -27,6 +27,9 @@ import os.path
 import tsconfig.tsconfig as tsc
 import uuid
 
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
+
 from sysinv.agent import rpcapi as agent_rpcapi
 from sysinv.common import constants
 from sysinv.common import device as dconstants
@@ -67,6 +70,25 @@ class FakePopen(object):
 
 
 class ManagerTestCase(base.DbTestCase):
+
+    @staticmethod
+    def extract_certs_from_pem_file(certfile):
+        """ extract certificates from a X509 PEM file
+        """
+        marker = b'-----BEGIN CERTIFICATE-----'
+        with open(certfile, 'rb') as f:
+            pem_contents = f.read()
+            start = 0
+            certs = []
+            while True:
+                index = pem_contents.find(marker, start)
+                if index == -1:
+                    break
+                cert = x509.load_pem_x509_certificate(pem_contents[index::],
+                                                      default_backend())
+                certs.append(cert)
+                start = index + len(marker)
+        return certs
 
     def setUp(self):
         super(ManagerTestCase, self).setUp()
@@ -125,6 +147,13 @@ class ManagerTestCase(base.DbTestCase):
         self.mock_ready_to_apply_runtime_config.return_value = \
             self._ready_to_apply_runtime_config
         self.addCleanup(self.ready_to_apply_runtime_config_patcher.stop)
+
+        # Mock check_cert_validity
+        def mock_cert_validity(obj):
+            return None
+        self.mocked_cert_validity = mock.patch.object(cutils, 'check_cert_validity', mock_cert_validity)
+        self.mocked_cert_validity.start()
+        self.addCleanup(self.mocked_cert_validity.stop)
 
         # Mock agent config_apply_runtime_manifest
         def mock_agent_config_apply_runtime_manifest(obj, context, config_uuid,
@@ -1839,6 +1868,124 @@ class ManagerTestCase(base.DbTestCase):
         dev = self.dbapi.fpga_device_get(FPGA_DEV_1['pciaddr'], host_id)
         for key in fpga_dev_dict_update:
             self.assertEqual(dev[key], fpga_dev_dict_update[key])
+
+    def test_upload_rootca(self):
+        mock_kube_create_secret = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_create_secret',
+            mock_kube_create_secret)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_kube_create_issuer = mock.MagicMock()
+        q = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.apply_custom_resource',
+            mock_kube_create_issuer)
+        q.start()
+        self.addCleanup(q.stop)
+
+        mock_get_current_kube_rootca = mock.MagicMock()
+        z = mock.patch(
+            'sysinv.conductor.manager.ConductorManager._get_current_kube_rootca',
+            mock_get_current_kube_rootca
+        )
+        self.mock_current_kube_rootca = z.start()
+        self.mock_current_kube_rootca.return_value = 'test'
+        self.addCleanup(z.stop)
+
+        mock_get_secret = mock.MagicMock()
+        l = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_get_secret',
+            mock_get_secret
+        )
+        self.mock_kube_get_secret = l.start()
+        self.addCleanup(l.stop)
+
+        mock_delete_secret = mock.MagicMock()
+        w = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_delete_secret',
+            mock_delete_secret
+        )
+        self.mock_secret_delete = w.start()
+        self.addCleanup(w.stop)
+
+        utils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
+        file = os.path.join(os.path.dirname(__file__), "../api", "data",
+                                'rootca-with-key.pem')
+        with open(file, 'rb') as certfile:
+            certfile.seek(0, os.SEEK_SET)
+            f = certfile.read()
+            resp = self.service.save_kubernetes_rootca_cert(self.context, f)
+
+        self.assertTrue(resp.get('success'))
+        self.assertFalse(resp.get('error'))
+
+    def test_upload_rootca_only_key(self):
+        mock_get_current_kube_rootca = mock.MagicMock()
+        z = mock.patch(
+            'sysinv.conductor.manager.ConductorManager._get_current_kube_rootca',
+            mock_get_current_kube_rootca
+        )
+        self.mock_current_kube_rootca = z.start()
+        self.mock_current_kube_rootca.return_value = 'test'
+        self.addCleanup(z.stop)
+
+        utils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
+        file = os.path.join(os.path.dirname(__file__), "../api", "data",
+                                'only_key.pem')
+
+        with open(file, 'rb') as certfile:
+            certfile.seek(0, os.SEEK_SET)
+            f = certfile.read()
+            resp = self.service.save_kubernetes_rootca_cert(self.context, f)
+
+        self.assertTrue(resp.get('error'))
+        self.assertIn("Failed to extract certificate from file", resp.get('error'))
+
+    def test_upload_rootca_not_ca_certificate(self):
+        mock_get_current_kube_rootca = mock.MagicMock()
+        z = mock.patch(
+            'sysinv.conductor.manager.ConductorManager._get_current_kube_rootca',
+            mock_get_current_kube_rootca
+        )
+        self.mock_current_kube_rootca = z.start()
+        self.mock_current_kube_rootca.return_value = 'test'
+        self.addCleanup(z.stop)
+
+        utils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
+
+        file = os.path.join(os.path.dirname(__file__), "../api", "data", 'cert-with-key-SAN.pem')
+        with open(file, 'rb') as certfile:
+            certfile.seek(0, os.SEEK_SET)
+            f = certfile.read()
+            resp = self.service.save_kubernetes_rootca_cert(self.context, f)
+        self.assertTrue(resp.get('error'))
+        self.assertIn("certificate in the file is not a CA certificate", resp.get('error'))
+
+    def test_upload_rootca_not_in_progress(self):
+        file = os.path.join(os.path.dirname(__file__), "../api", "data",
+                                'rootca-with-key.pem')
+
+        with open(file, 'rb') as certfile:
+            certfile.seek(0, os.SEEK_SET)
+            f = certfile.read()
+            resp = self.service.save_kubernetes_rootca_cert(self.context, f)
+
+        self.assertTrue(resp.get('error'))
+        self.assertIn("Kubernetes root CA update not started", resp.get('error'))
+
+    def test_upload_rootca_advanced_state(self):
+        utils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTBOTHCAS)
+        file = os.path.join(os.path.dirname(__file__), "../api", "data",
+                                'rootca-with-key.pem')
+
+        with open(file, 'rb') as certfile:
+            certfile.seek(0, os.SEEK_SET)
+            f = certfile.read()
+            resp = self.service.save_kubernetes_rootca_cert(self.context, f)
+
+        self.assertTrue(resp.get('error'))
+        self.assertIn("new root CA certificate already exists", resp.get('error'))
 
     def test_device_update_image_status(self):
 

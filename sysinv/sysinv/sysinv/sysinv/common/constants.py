@@ -1898,3 +1898,17 @@ CERT_MODE_TO_SECRET_NAME = {
 SB_SUPPORTED_NETWORKS = {
     SB_TYPE_CEPH: [NETWORK_TYPE_MGMT, NETWORK_TYPE_CLUSTER_HOST]
 }
+
+BEGIN_CERTIFICATE_MARKER = b"-----BEGIN CERTIFICATE-----\n"
+END_CERTIFICATE_MARKER = b"\n-----END CERTIFICATE-----\n"
+BEGIN_PRIVATE_KEY_MARKER = b"-----BEGIN PRIVATE KEY-----\n"
+END_PRIVATE_KEY_MARKER = b"\n-----END PRIVATE KEY-----\n"
+
+# Kubernetes root CA certficate update phases
+KUBE_CERT_UPDATE_TRUSTBOTHCAS = "trust-both-cas"
+KUBE_CERT_UPDATE_UPDATECERTS = "update-certs"
+KUBE_CERT_UPDATE_TRUSTNEWCA = "trust-new-ca"
+
+# kubernetes components secrets on rootCA update procedure
+KUBE_ROOTCA_SECRET = 'system-kube-rootca-certificate'
+KUBE_ROOTCA_ISSUER = 'system-kube-rootca-issuer'

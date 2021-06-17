@@ -881,6 +881,10 @@ class CertificateTypeNotFound(NotFound):
     message = _("No certificate type of %(certtype)s")
 
 
+class InvalidKubernetesCA(Invalid):
+    message = _("Invalid certificate for kubernetes rootca")
+
+
 class DockerRegistryCredentialNotFound(NotFound):
     message = _("Credentials to access local docker registry "
                 "for user %(name)s could not be found.")
