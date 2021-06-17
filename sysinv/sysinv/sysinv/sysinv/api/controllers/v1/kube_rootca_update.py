@@ -38,6 +38,13 @@ LOG = log.getLogger(__name__)
 LOCK_KUBE_ROOTCA_CONTROLLER = 'KubeRootCAController'
 
 
+class KubeRootCAUpdatePatchType(types.JsonPatchType):
+
+    @staticmethod
+    def mandatory_attrs():
+        return ['/state']
+
+
 class KubeRootCAGenerateController(rest.RestController):
     """ API representation of a Kubernetes Generate Root CA Certificate"""
 
@@ -372,9 +379,9 @@ class KubeRootCAHostUpdateListController(rest.RestController):
 class KubeRootCAUpdateController(rest.RestController):
     """REST controller for kubernetes rootCA updates."""
 
-    # Controller for /kube_rootca_update/upload, upload new root CA
+    # Controller for /kube_rootca_update/upload_cert, upload new root CA
     # certificate.
-    upload = KubeRootCAUploadController()
+    upload_cert = KubeRootCAUploadController()
     # Controller for /kube_rootca_update/generate_cert, generates a new root CA
     generate_cert = KubeRootCAGenerateController()
     # Controller for /kube_rootca_update/pods, update pods certificates.
@@ -386,6 +393,14 @@ class KubeRootCAUpdateController(rest.RestController):
         self.fm_api = fm_api.FaultAPIs()
         self.alarm_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,
                                             constants.CONTROLLER_HOSTNAME)
+
+    def _get_updates(self, patch):
+        """Retrieve the updated attributes from the patch request."""
+        updates = {}
+        for p in patch:
+            attribute = p['path'] if p['path'][0] != '/' else p['path'][1:]
+            updates[attribute] = p['value']
+        return updates
 
     def _check_cluster_health(self, command_name, alarm_ignore_list=None, force=False):
         healthy, output = pecan.request.rpcapi.get_system_health(
@@ -434,20 +449,24 @@ class KubeRootCAUpdateController(rest.RestController):
             secret_list=secret_list)
 
     @cutils.synchronized(LOCK_KUBE_ROOTCA_CONTROLLER)
-    @wsme_pecan.wsexpose(KubeRootCAUpdate, body=six.text_type)
-    def post(self, body):
+    @wsme_pecan.wsexpose(KubeRootCAUpdate, wtypes.text, body=six.text_type)
+    def post(self, force, body):
         """Create a new Kubernetes RootCA Update and start update."""
 
-        force = body.get('force', False) is True
-        alarm_ignore_list = body.get('alarm_ignore_list')
+        force = force == 'True'
+        alarm_ignore_list = body.get('alarm_ignore_list', [])
+        alarm_ignore_list.append(fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_ABORTED)
 
         try:
-            pecan.request.dbapi.kube_rootca_update_get_one()
+            update = pecan.request.dbapi.kube_rootca_update_get_one()
         except exception.NotFound:
             pass
         else:
-            raise wsme.exc.ClientSideError(_(
-                "A kubernetes rootca update is already in progress"))
+            if update.state == kubernetes.KUBE_ROOTCA_UPDATE_ABORTED:
+                pecan.request.dbapi.kube_rootca_update_destroy(update.id)
+            else:
+                raise wsme.exc.ClientSideError((
+                    "A kubernetes rootca update is already in progress"))
 
         # There must not be a platform upgrade in progress
         try:
@@ -497,6 +516,13 @@ class KubeRootCAUpdateController(rest.RestController):
                 pecan.request.dbapi.kube_rootca_host_update_create(host.id,
                                                                    {'effective_rootca_cert': from_rootca_cert})
 
+        # clear update aborted alarm if there is one
+        if self.fm_api.get_fault(fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_ABORTED,
+                                self.alarm_instance_id):
+            self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_ABORTED,
+                                    self.alarm_instance_id)
+
+        # raise update in progess alarm
         fault = fm_api.Fault(
                 alarm_id=fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_IN_PROGRESS,
                 alarm_state=fm_constants.FM_ALARM_STATE_SET,
@@ -511,6 +537,7 @@ class KubeRootCAUpdateController(rest.RestController):
                 proposed_repair_action="Wait for kubernetes rootca procedure to complete",
                 service_affecting=False)
         self.fm_api.set_fault(fault)
+
         LOG.info("Started kubernetes rootca update")
         return KubeRootCAUpdate.convert_with_links(new_update)
 
@@ -528,20 +555,34 @@ class KubeRootCAUpdateController(rest.RestController):
         rpc_kube_rootca_update = pecan.request.dbapi.kube_rootca_update_get_list()
         return KubeRootCAUpdateCollection.convert_with_links(rpc_kube_rootca_update)
 
-    @wsme_pecan.wsexpose(KubeRootCAUpdate, wtypes.text)
-    def patch(self, force=None):
+    @cutils.synchronized(LOCK_KUBE_ROOTCA_CONTROLLER)
+    @wsme.validate(wtypes.text, [KubeRootCAUpdatePatchType])
+    @wsme_pecan.wsexpose(KubeRootCAUpdate, wtypes.text, body=[KubeRootCAUpdatePatchType])
+    def patch(self, force, patch):
         """Completes the kubernetes rootca, clearing both tables and alarm"""
-
         force = force == 'True'
+        updates = self._get_updates(patch)
+        update_state = updates['state']
+
+        if update_state not in [kubernetes.KUBE_ROOTCA_UPDATE_COMPLETED,
+                                    kubernetes.KUBE_ROOTCA_UPDATE_ABORTED]:
+            raise wsme.exc.ClientSideError(_(
+                "Invalid state %s supplied" % update_state))
 
         # Check if there is an update in progress and the current state
         try:
             rpc_kube_rootca_update = pecan.request.dbapi.kube_rootca_update_get_one()
-            if rpc_kube_rootca_update.state != kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA:
+            if update_state == kubernetes.KUBE_ROOTCA_UPDATE_COMPLETED \
+                    and rpc_kube_rootca_update.state != kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA:
                 raise wsme.exc.ClientSideError(_(
                     "kube-rootca-update-complete rejected: Expect to find cluster update state %s, "
                     "not allowed when cluster update state is %s."
                     % (kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA, rpc_kube_rootca_update.state)))
+            elif update_state == kubernetes.KUBE_ROOTCA_UPDATE_ABORTED \
+                    and rpc_kube_rootca_update.state == kubernetes.KUBE_ROOTCA_UPDATE_ABORTED:
+                raise wsme.exc.ClientSideError(_(
+                    "kube-rootca-update-complete rejected: The update has already been aborted."))
+
         except exception.NotFound:
             raise wsme.exc.ClientSideError(_(
                 "kube-rootca-update-complete rejected: No kubernetes root CA update in progress."))
@@ -558,22 +599,54 @@ class KubeRootCAUpdateController(rest.RestController):
         hostnames = [host.hostname for host in rpc_host_update_list]
         self._clear_kubernetes_resources(hostnames)
 
-        pecan.request.dbapi.kube_rootca_update_destroy(rpc_kube_rootca_update.id)
+        # cleanup kube_rootca_host_update table
         pecan.request.dbapi.kube_rootca_host_update_destroy_all()
 
-        app_alarms = self.fm_api.get_faults(self.alarm_instance_id)
-        self.fm_api.clear_fault(app_alarms[0].alarm_id, app_alarms[0].entity_instance_id)
+        # if update is in the list of states, abort will be the same as complete
+        if update_state == kubernetes.KUBE_ROOTCA_UPDATE_ABORTED \
+                and rpc_kube_rootca_update.state in [kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA]:
+            update_state = kubernetes.KUBE_ROOTCA_UPDATE_COMPLETED
 
-        rpc_kube_rootca_update.state = kubernetes.KUBE_ROOTCA_UPDATE_COMPLETED
-        rpc_kube_rootca_update.updated_at = datetime.datetime.utcnow().isoformat()
+        values = dict()
+        values['state'] = update_state
+        update = \
+            pecan.request.dbapi.kube_rootca_update_update(rpc_kube_rootca_update.id, values)
 
-        # If applicable, notify dcmanager that the update is completed
-        system = pecan.request.dbapi.isystem_get_one()
-        role = system.get('distributed_cloud_role')
-        if role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-            dc_api.notify_dcmanager_kube_rootca_update_completed()
+        # cleanup kube_rootca_update table for completion
+        if update_state == kubernetes.KUBE_ROOTCA_UPDATE_COMPLETED:
+            pecan.request.dbapi.kube_rootca_update_destroy(rpc_kube_rootca_update.id)
 
-        return KubeRootCAUpdate.convert_with_links(rpc_kube_rootca_update)
+            # If applicable, notify dcmanager that the update is completed
+            system = pecan.request.dbapi.isystem_get_one()
+            role = system.get('distributed_cloud_role')
+            if role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+                dc_api.notify_dcmanager_kube_rootca_update_completed()
+
+        # clear update in progess alarm
+        if self.fm_api.get_fault(fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_IN_PROGRESS,
+                                self.alarm_instance_id):
+            self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_IN_PROGRESS,
+                                    self.alarm_instance_id)
+
+        # raise update aborted alarm if this is an abort
+        if update_state == kubernetes.KUBE_ROOTCA_UPDATE_ABORTED:
+            fault = fm_api.Fault(
+                    alarm_id=fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_ABORTED,
+                    alarm_state=fm_constants.FM_ALARM_STATE_SET,
+                    entity_type_id=fm_constants.FM_ENTITY_TYPE_HOST,
+                    entity_instance_id=self.alarm_instance_id,
+                    severity=fm_constants.FM_ALARM_SEVERITY_MINOR,
+                    reason_text="Kubernetes root CA update aborted, certificates may not be fully updated.",
+                    # environmental
+                    alarm_type=fm_constants.FM_ALARM_TYPE_5,
+                    # unspecified-reason
+                    probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_65,
+                    proposed_repair_action="Fully update certificates by a new root CA update.",
+                    service_affecting=False)
+            self.fm_api.set_fault(fault)
+            LOG.info("Kubernetes rootca update aborted")
+
+        return KubeRootCAUpdate.convert_with_links(update)
 
 
 class KubeRootCAHostUpdateController(rest.RestController):

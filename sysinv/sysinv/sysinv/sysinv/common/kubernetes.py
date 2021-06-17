@@ -100,6 +100,7 @@ KUBE_ROOTCA_UPDATING_PODS_TRUSTNEWCA = 'updating-pods-trustNewCA'
 KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA = 'updated-pods-trustNewCA'
 KUBE_ROOTCA_UPDATING_PODS_TRUSTNEWCA_FAILED = 'updating-pods-trustNewCA-failed'
 KUBE_ROOTCA_UPDATE_COMPLETED = 'update-completed'
+KUBE_ROOTCA_UPDATE_ABORTED = 'update-aborted'
 
 # Kubernetes rootca host update states
 KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS = 'updating-host-trustBothCAs'
