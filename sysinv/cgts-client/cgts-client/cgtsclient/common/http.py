@@ -238,7 +238,7 @@ class HTTPClient(httplib2.Http):
             error_json = self._extract_error_json(body_str)
             raise exceptions.Forbidden(error_json.get('faultstring'))
         elif 400 <= status_code < 600:
-            _logger.warn("Request returned failure status.")
+            _logger.warn("Request returned failure status.")  # pylint: disable=deprecated-method
             error_json = self._extract_error_json(body_str)
             raise exceptions.from_response(
                 resp, error_json.get('faultstring'),

@@ -255,10 +255,10 @@ class CgtsShell(object):
         args = subcommand_parser.parse_args(argv)
 
         # Short-circuit and deal with help command right away.
-        if args.func == self.do_help:
+        if args.func == self.do_help:  # pylint: disable=comparison-with-callable
             self.do_help(args)
             return 0
-        elif args.func == self.do_bash_completion:
+        elif args.func == self.do_bash_completion:  # pylint: disable=comparison-with-callable
             self.do_bash_completion(args)
             return 0
 

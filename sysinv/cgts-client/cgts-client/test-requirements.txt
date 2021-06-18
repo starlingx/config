@@ -17,3 +17,5 @@ testtools>=1.4.0 # MIT
 testresources>=0.2.4 # Apache-2.0/BSD
 httplib2
 python-keystoneclient
+pylint<2.1.0;python_version<"3.0" # GPLv2
+pylint<2.4.0;python_version>="3.0" # GPLv2

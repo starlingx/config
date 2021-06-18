@@ -158,17 +158,17 @@ def from_response(response, message=None, traceback=None,
 
 class NoTokenLookupException(Exception):
     """DEPRECATED."""
-    pass
+    pass  # pylint: disable=unnecessary-pass
 
 
 class EndpointNotFound(Exception):
     """DEPRECATED."""
-    pass
+    pass  # pylint: disable=unnecessary-pass
 
 
 class AmbiguousAuthSystem(ClientException):
     """Could not obtain token and endpoint using provided credentials."""
-    pass
+    pass  # pylint: disable=unnecessary-pass
 
 
 class CgtsclientException(Exception):
@@ -206,7 +206,7 @@ class CgtsclientException(Exception):
 
     def format_message(self):
         if self.__class__.__name__.endswith('_Remote'):
-            return self.args[0]
+            return self.args[0]  # pylint: disable=unsubscriptable-object
         else:
             return six.text_type(self)
 
