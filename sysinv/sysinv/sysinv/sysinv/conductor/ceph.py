@@ -1082,8 +1082,8 @@ class CephOperator(object):
         target_pg_num_raw = None
         if data_pt and osds:
             # [(Target PGs per OSD) * (# OSD) * (% Data) ]/ Size
-            target_pg_num_raw = ((osds * constants.CEPH_TARGET_PGS_PER_OSD * data_pt / 100) /
-                                 replication)
+            target_pg_num_raw = ((osds * constants.CEPH_TARGET_PGS_PER_OSD *
+                data_pt // 100) // replication)
             # find next highest power of 2 via shift bit length
             target_pg_num = 1 << (int(target_pg_num_raw) - 1).bit_length()
 
@@ -1274,7 +1274,7 @@ class CephOperator(object):
                     self.set_osd_pool_quota(constants.CEPH_POOL_VOLUMES_NAME,
                                             cinder_pool_gib * 1024 ** 3)
                 else:
-                    glance_pool_gib = primary_tier_gib / 2
+                    glance_pool_gib = primary_tier_gib // 2
                     kube_pool_gib = primary_tier_gib - glance_pool_gib
 
                     # Set the quota for the glance pool.
@@ -1345,7 +1345,7 @@ class CephOperator(object):
                                       constants.CEPH_POOL_KUBE_QUOTA_GIB
                     kube_pool_gib = constants.CEPH_POOL_KUBE_QUOTA_GIB
                 else:
-                    kube_pool_gib = tier_size_gib / 2
+                    kube_pool_gib = tier_size_gib // 2
                     cinder_pool_gib = tier_size_gib - kube_pool_gib
 
             tier_pools_sum = kube_pool_gib + cinder_pool_gib

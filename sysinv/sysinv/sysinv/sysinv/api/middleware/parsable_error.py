@@ -55,7 +55,7 @@ class ParsableErrorMiddleware(object):
                     'status %s' % status
                 ))
             else:
-                if (state['status_code'] / 100) not in (2, 3):
+                if (state['status_code'] // 100) not in (2, 3):
                     # Remove some headers so we can replace them later
                     # when we have the full error message and can
                     # compute the length.
@@ -68,7 +68,7 @@ class ParsableErrorMiddleware(object):
                 return start_response(status, headers, exc_info)
 
         app_iter = self.app(environ, replacement_start_response)
-        if (state['status_code'] / 100) not in (2, 3):
+        if (state['status_code'] // 100) not in (2, 3):
             req = webob.Request(environ)
             if (req.accept.best_match(['application/json', 'application/xml']) ==
                     'application/xml'):

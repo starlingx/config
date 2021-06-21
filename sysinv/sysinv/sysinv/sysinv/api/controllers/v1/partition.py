@@ -382,11 +382,11 @@ def _partition_pre_patch_checks(partition_obj, patch_obj, host_obj):
             if int(p['value']) <= 0:
                 raise wsme.exc.ClientSideError(
                     _("Requested partition size must be an integer "
-                      "greater than 0: %s GiB") % (int(p['value']) / 1024))
+                      "greater than 0: %s GiB") % (int(p['value']) // 1024))
             if int(p['value']) <= partition_obj.size_mib:
                 raise wsme.exc.ClientSideError(
                     _("Requested partition size must be larger than current "
-                      "size: %s GiB <= %s GiB") % (int(p['value']) / 1024,
+                      "size: %s GiB <= %s GiB") % (int(p['value']) // 1024,
                       math.floor(float(partition_obj.size_mib) / 1024 * 1000) / 1000.0))
 
 
@@ -511,7 +511,7 @@ def _semantic_checks(operation, partition):
         if not _enough_avail_space_on_disk(partition.get('size_mib'), idisk):
             raise wsme.exc.ClientSideError(
                 _("Requested size %s GiB is larger than the %s GiB "
-                  "available.") % (partition['size_mib'] / 1024,
+                  "available.") % (partition['size_mib'] // 1024,
                                    math.floor(float(idisk.available_mib) / 1024 * 1000) / 1000.0))
 
         _are_partition_operations_simultaneous(ihost, partition,
@@ -591,7 +591,7 @@ def _semantic_checks(operation, partition):
         if not _enough_avail_space_on_disk(extra_size, idisk):
             raise wsme.exc.ClientSideError(
                 _("Requested extra size %s GiB is larger than the %s GiB "
-                  "available.") % (extra_size / 1024,
+                  "available.") % (extra_size // 1024,
                                    math.floor(float(idisk.available_mib) / 1024 * 1000) / 1000.0))
 
     elif operation == constants.PARTITION_CMD_DELETE:

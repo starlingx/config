@@ -695,10 +695,10 @@ class PlatformPuppet(base.BasePuppet):
 
                     total_hugepages_2M = int(int(memory.node_memtotal_mib - platform_size
                         - vswitch_pages * memory.vswitch_hugepages_size_mib)
-                        * vm_hugepages_nr_2M / 100 / constants.MIB_2M)
+                        * vm_hugepages_nr_2M // 100 // constants.MIB_2M)
                     total_hugepages_1G = int(int(memory.node_memtotal_mib - platform_size
                         - vswitch_pages * memory.vswitch_hugepages_size_mib)
-                        * vm_hugepages_nr_1G / 100 / constants.MIB_1G)
+                        * vm_hugepages_nr_1G // 100 // constants.MIB_1G)
 
                 if memory.vswitch_hugepages_size_mib == constants.MIB_2M:
                     total_hugepages_2M += vswitch_pages
@@ -822,7 +822,7 @@ class PlatformPuppet(base.BasePuppet):
             nfs_proto = 'udp'
 
         # round to the nearest 1k of the MTU
-        nfs_rw_size = (mtu / 1024) * 1024
+        nfs_rw_size = (mtu // 1024) * 1024
 
         return {
             'platform::params::nfs_rw_size': nfs_rw_size,

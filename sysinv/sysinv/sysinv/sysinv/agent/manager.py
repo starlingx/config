@@ -1110,7 +1110,7 @@ class AgentManager(service.PeriodicService):
             docker_lv_size = constants.KUBERNETES_DOCKER_STOR_SIZE
 
             disk_size = utils.get_disk_capacity_mib(self._ihost_rootfs_device)
-            disk_size = int(disk_size / 1024)
+            disk_size = int(disk_size // 1024)
 
             if self._ihost_personality == constants.CONTROLLER:
                 if disk_size > constants.DEFAULT_SMALL_DISK_SIZE:
