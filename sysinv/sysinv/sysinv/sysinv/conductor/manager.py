@@ -1188,35 +1188,6 @@ class ConductorManager(service.PeriodicService):
                     raise exception.SysinvException(_(
                         "Failed to create pxelinux.cfg file"))
 
-    def _enable_etcd_security_config(self, context):
-        """Update the manifests for etcd security
-           Note: this can be removed in the release after STX5.0
-           returns True if runtime manifests were applied
-        """
-        controllers = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
-        for host in controllers:
-            if not utils.is_host_active_controller(host):
-                # Just enable etcd security on the standby controller.
-                # Etcd security was enabled on the active controller with a
-                # migration script.
-                personalities = [constants.CONTROLLER]
-                host_uuids = [host.uuid]
-                config_uuid = self._config_update_hosts(
-                    context, personalities, host_uuids)
-                config_dict = {
-                    "personalities": personalities,
-                    "host_uuids": host_uuids,
-                    "classes": ['platform::etcd::upgrade::runtime'],
-                    puppet_common.REPORT_STATUS_CFG:
-                        puppet_common.REPORT_UPGRADE_ACTIONS
-                }
-                self._config_apply_runtime_manifest(context,
-                                                    config_uuid=config_uuid,
-                                                    config_dict=config_dict)
-                return True
-
-        return False
-
     def _remove_pxe_config(self, host):
         """Delete the PXE config file for this host.
 
@@ -10678,9 +10649,6 @@ class ConductorManager(service.PeriodicService):
                     {'state': constants.UPGRADE_ACTIVATION_FAILED})
 
         manifests_applied = False
-        if from_version == tsc.SW_VERSION_20_06:
-            # Apply etcd security puppet manifest to the standby controller.
-            manifests_applied = self._enable_etcd_security_config(context)
 
         if manifests_applied:
             LOG.info("Running upgrade activation manifests")

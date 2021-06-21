@@ -60,7 +60,7 @@ function verify_apps_are_not_recovering {
 
 log "$NAME: Starting Kubernetes application updates from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 
-if [ "$FROM_RELEASE" == "20.06" ] && [ "$ACTION" == "activate" ]; then
+if [ "$ACTION" == "activate" ]; then
     for tries in $(seq 1 $RECOVER_RESULT_ATTEMPTS); do
         if verify_apps_are_not_recovering; then
             break

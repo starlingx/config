@@ -31,7 +31,6 @@ from sysinv.puppet import common as puppet_common
 # have been applied, so only the static entries from tsconfig can be used
 # (the platform.conf file will not have been updated with dynamic values).
 from tsconfig.tsconfig import SW_VERSION
-from tsconfig.tsconfig import SW_VERSION_20_06
 from tsconfig.tsconfig import PLATFORM_PATH
 from tsconfig.tsconfig import KEYRING_PATH
 from tsconfig.tsconfig import PLATFORM_CONF_FILE
@@ -456,10 +455,8 @@ def import_databases(from_release, to_release, from_path=None, simplex=False):
 
     LOG.info("Importing databases")
     try:
-        # Backups and upgrade use different names during pg_dump
-        # This code is only needed for 20.06 and can be removed in the StX5
-        postgres_config_path = \
-            glob.glob(from_dir + '/postgres.*[Ss]ql.config')[0]
+        postgres_config_path = os.path.join(
+            from_dir, 'postgres.postgreSql.config')
         # Do postgres schema import (suppress stderr due to noise)
         subprocess.check_call(['sudo -u postgres psql -f ' +
                                postgres_config_path + ' postgres'],
@@ -473,7 +470,7 @@ def import_databases(from_release, to_release, from_path=None, simplex=False):
     import_commands = []
 
     # Do postgres data import
-    for data in glob.glob(from_dir + '/*.*[Ss]ql.data'):
+    for data in glob.glob(from_dir + '/*.*Sql.data'):
         db_elem = data.split('/')[-1].split('.')[0]
         import_commands.append((db_elem,
                                 "sudo -u postgres psql -f " + data +
@@ -755,72 +752,6 @@ def migrate_hiera_data(from_release, to_release, role=None):
         'platform::client::credentials::params::keyring_file':
             os.path.join(KEYRING_PATH, '.CREDENTIAL'),
     })
-    # Add dcmanager and sysinv user id as well as service project id to
-    # the static.yaml on subclouds
-    if (to_release == SW_VERSION_20_06 and
-            role == sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
-        dm_user_id = utils.get_keystone_user_id('dcmanager')
-        sysinv_user_id = utils.get_keystone_user_id('sysinv')
-        service_project_id = utils.get_keystone_project_id('services')
-        if dm_user_id:
-            static_config.update({
-                'platform::dcmanager::bootstrap::dc_dcmanager_user_id':
-                    dm_user_id
-            })
-        if sysinv_user_id:
-            static_config.update({
-                'platform::sysinv::bootstrap::dc_sysinv_user_id':
-                    sysinv_user_id
-            })
-        if service_project_id:
-            static_config.update({
-                'openstack::keystone::bootstrap::dc_services_project_id':
-                    service_project_id
-            })
-    # Just for upgrade from STX4.0 to STX5.0
-    if (from_release == SW_VERSION_20_06 and etcd_security_config):
-        static_config.update(etcd_security_config)
-
-    if from_release == SW_VERSION_20_06:
-        # The helm db is new in the release stx5.0 and requires
-        # a password to be generated and a new user to access the DB.
-        # This is required for all types of system upgrade. Should
-        # removed in the release that follows stx5.0
-        static_config.update({
-            'platform::helm::v2::db::postgresql::user': 'admin-helmv2'
-        })
-
-        helmv2_db_pw = utils.get_password_from_keyring('helmv2', 'database')
-        if not helmv2_db_pw:
-            helmv2_db_pw = utils.set_password_in_keyring('helmv2', 'database')
-
-        secure_static_file = os.path.join(
-            constants.HIERADATA_PERMDIR, "secure_static.yaml")
-        with open(secure_static_file, 'r') as yaml_file:
-            secure_static_config = yaml.load(yaml_file)
-        secure_static_config.update({
-            'platform::helm::v2::db::postgresql::password': helmv2_db_pw
-        })
-
-        # update below static secure config
-        #   sysinv::certmon::local_keystone_password
-        #   sysinv::certmon::dc_keystone_password
-        sysinv_pass = utils.get_password_from_keyring('sysinv', 'services')
-        secure_static_config.update({
-            'sysinv::certmon::local_keystone_password': sysinv_pass
-        })
-
-        dc_pass = ''
-        if role == sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-            dc_pass = utils.get_password_from_keyring('dcmanager', 'services')
-
-        secure_static_config.update({
-            'sysinv::certmon::dc_keystone_password': dc_pass
-        })
-
-        with open(secure_static_file, 'w') as yaml_file:
-            yaml.dump(secure_static_config, yaml_file,
-                      default_flow_style=False)
 
     with open(static_file, 'w') as yaml_file:
         yaml.dump(static_config, yaml_file, default_flow_style=False)
