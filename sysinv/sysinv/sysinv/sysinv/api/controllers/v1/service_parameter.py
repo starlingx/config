@@ -387,7 +387,7 @@ class ServiceParameterController(rest.RestController):
 
         try:
             pecan.request.rpcapi.update_service_config(
-                pecan.request.context, service)
+                pecan.request.context, service, section=section)
         except rpc_common.RemoteError as e:
             # rollback create service parameters
             for p in svc_params:
@@ -473,7 +473,7 @@ class ServiceParameterController(rest.RestController):
 
         try:
             pecan.request.rpcapi.update_service_config(
-                pecan.request.context, service)
+                pecan.request.context, service, section=section)
         except rpc_common.RemoteError as e:
             # rollback create service parameters
             for p in svc_params:
@@ -512,7 +512,8 @@ class ServiceParameterController(rest.RestController):
         try:
             pecan.request.rpcapi.update_service_config(
                 pecan.request.context,
-                parameter['service'])
+                parameter['service'],
+                section=parameter['section'])
         except rpc_common.RemoteError as e:
             # rollback service parameter update
             try:
@@ -555,7 +556,8 @@ class ServiceParameterController(rest.RestController):
         try:
             pecan.request.rpcapi.update_service_config(
                 pecan.request.context,
-                parameter['service'])
+                parameter['service'],
+                section=parameter['section'])
         except rpc_common.RemoteError as e:
             # rollback service parameter update
             try:
@@ -599,7 +601,8 @@ class ServiceParameterController(rest.RestController):
         try:
             pecan.request.rpcapi.update_service_config(
                 pecan.request.context,
-                parameter.service)
+                parameter.service,
+                section=parameter.section)
         except rpc_common.RemoteError as e:
             # rollback destroy service parameter
             try:

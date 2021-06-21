@@ -8646,40 +8646,54 @@ class ConductorManager(service.PeriodicService):
                 data['name'], data['logical_volume'], data['size']))
             self.dbapi.controller_fs_create(data)
 
-    def update_service_config(self, context, service=None, do_apply=False):
+    def update_service_config(self, context, service=None, do_apply=False,
+                              section=None):
         """Update the service parameter configuration"""
 
         LOG.info("Updating parameters configuration for service: %s" % service)
 
         config_uuid = None
+        # All other services
+        personalities = [constants.CONTROLLER]
+        reboot = False
         # On service parameter add just update the host profile
         # for personalities pertinent to that service
         if service == constants.SERVICE_TYPE_HTTP:
-            config_uuid = self._config_update_hosts(context,
-                                                    [constants.CONTROLLER,
-                                                     constants.WORKER,
-                                                     constants.STORAGE])
+            personalities = [constants.CONTROLLER,
+                             constants.WORKER,
+                             constants.STORAGE]
         elif service == constants.SERVICE_TYPE_OPENSTACK:
             # Do nothing. Does not need to update target config of any hosts
-            pass
+            personalities = None
         elif service == constants.SERVICE_TYPE_PTP:
             self._update_ptp_host_configs(context, do_apply=do_apply)
+            personalities = None
         elif service == constants.SERVICE_TYPE_DOCKER:
-            config_uuid = self._config_update_hosts(context,
-                                                    [constants.CONTROLLER],
-                                                    reboot=True)
+            reboot = True
+            if section == constants.SERVICE_PARAM_SECTION_DOCKER_PROXY:
+                reboot = False
         elif service == constants.SERVICE_TYPE_KUBERNETES:
+            reboot = True
+            # kube apiserver service parameters can be applied without a reboot
+            if section == constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER:
+                reboot = False
             # The KUBERNETES_POD_MAX_PIDS affects workers.
             # A smarter way would be for update_service_config to receive the
             # diff list or dict, to only target required personalities.
+            if section == constants.SERVICE_PARAM_SECTION_KUBERNETES_CONFIG:
+                personalities = [constants.CONTROLLER, constants.WORKER]
+
+        # we should not set the reboot flag on operations that are not
+        # reboot required. An apply of a service parameter is not reboot
+        # required. If we set the flag, we could accidentally clear
+        # config out-of-date alarms.
+        if do_apply:
+            reboot = False
+
+        if personalities is not None:
             config_uuid = self._config_update_hosts(context,
-                                                    [constants.CONTROLLER,
-                                                     constants.WORKER],
-                                                    reboot=True)
-        else:
-            # All other services
-            personalities = [constants.CONTROLLER]
-            config_uuid = self._config_update_hosts(context, personalities)
+                                                    personalities,
+                                                    reboot=reboot)
 
         if do_apply:
             if service == constants.SERVICE_TYPE_IDENTITY:
@@ -8753,6 +8767,13 @@ class ConductorManager(service.PeriodicService):
                 }
                 self._config_apply_runtime_manifest(context, config_uuid,
                                                     config_dict)
+            elif service == constants.SERVICE_TYPE_DOCKER:
+                personalities = [constants.CONTROLLER]
+                config_dict = {
+                    "personalities": personalities,
+                    "classes": ['platform::docker::runtime']
+                }
+                self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
     def update_security_feature_config(self, context):
         """Update the kernel options configuration"""
