@@ -531,10 +531,17 @@ class FpgaAgentManager(service.PeriodicService):
             if pci_device_list:
                 LOG.info("reporting N3000 PCI devices for host %s: %s" %
                          (host_uuid, pci_device_list))
+
+                # Don't ask conductor to cleanup stale entries while worker
+                # manifest is not complete. For N3000 device, it could get rid
+                # of a valid entry with a different PCI address but restored
+                # from previous database backup
+                cleanup_stale = \
+                    os.path.exists(tsc.VOLATILE_WORKER_CONFIG_COMPLETE)
                 rpcapi.pci_device_update_by_host(context,
                                                  host_uuid,
                                                  pci_device_list,
-                                                 cleanup_stale=True)
+                                                 cleanup_stale)
         except Exception:
             LOG.exception("Exception updating n3000 PCI devices, "
                           "this will likely cause problems.")
