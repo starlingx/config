@@ -46,7 +46,9 @@ def apply_mandatory_psp_policies():
           "bringup-essential-services/files/psp-policies.yaml"
 
     sub = subprocess.Popen(cmd, shell=True,
-                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                           stdout=subprocess.PIPE,
+                           stderr=subprocess.PIPE,
+                           universal_newlines=True)
 
     stdout, stderr = sub.communicate()
     if sub.returncode != 0:

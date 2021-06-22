@@ -56,14 +56,16 @@ def _command(arguments1, arguments2=None):
     process = subprocess.Popen(
         arguments1,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE)
+        stderr=subprocess.PIPE,
+        universal_newlines=True)
 
     if arguments2:
         process2 = subprocess.Popen(
             arguments2,
             stdin=process.stdout,
             stdout=subprocess.PIPE,
-            shell=False)
+            shell=False,
+            universal_newlines=True)
         process.stdout.close()
         process = process2
 
@@ -108,7 +110,8 @@ def get_sgdisk_info(device_path):
     try:
         sgdisk_process = subprocess.Popen(sgdisk_command,
                                           stdout=subprocess.PIPE,
-                                          shell=True)
+                                          shell=True,
+                                          universal_newlines=True)
     except Exception as e:
         LOG.exception("Could not retrieve partition information: %s" % e)
         raise

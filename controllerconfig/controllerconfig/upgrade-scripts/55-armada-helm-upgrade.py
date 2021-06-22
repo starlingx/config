@@ -51,7 +51,8 @@ def is_containerized_armada_installed():
               "--namespace armada --filter armada --output json " \
               "--kubeconfig {} ".format(KUBERNETES_ADMIN_CONF)
         result = subprocess.check_output(cmd, shell=True,
-                                         stderr=subprocess.STDOUT)
+                                         stderr=subprocess.STDOUT,
+                                         universal_newlines=True)
         if not json.loads(result):
             return False
         return True
@@ -65,7 +66,9 @@ def update_armada_helmv3():
     upgrade_script = 'upgrade-k8s-armada-helm.yml'
     cmd = 'ansible-playbook {}/{}'.format(playbooks_root, upgrade_script)
     sub = subprocess.Popen(cmd, shell=True,
-                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                           stdout=subprocess.PIPE,
+                           stderr=subprocess.PIPE,
+                           universal_newlines=True)
 
     stdout, stderr = sub.communicate()
 

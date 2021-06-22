@@ -102,7 +102,9 @@ def update_dc_root_ca():
           "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f -" % \
           resource
     sub = subprocess.Popen(cmd, shell=True,
-                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                           stdout=subprocess.PIPE,
+                           stderr=subprocess.PIPE,
+                           universal_newlines=True)
 
     stdout, stderr = sub.communicate()
     if sub.returncode != 0:

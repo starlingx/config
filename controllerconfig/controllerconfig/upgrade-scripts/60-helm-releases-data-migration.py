@@ -58,7 +58,9 @@ def main():
 
 def execute_command(cmd):
     sub = subprocess.Popen(cmd, shell=True,
-                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                           stdout=subprocess.PIPE,
+                           stderr=subprocess.PIPE,
+                           universal_newlines=True)
 
     stdout, stderr = sub.communicate()
     if sub.returncode != 0:
