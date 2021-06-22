@@ -1733,7 +1733,7 @@ def _create_storage_profile(profile_name, profile_node):
                             sdict['journal_location'] = location_uuid
                         else:
                             # get the first journal
-                            journal = journals[journals.keys()[0]]
+                            journal = journals[list(journals.keys())[0]]
                             sdict['journal_location'] = journal
                     else:
                         # journal is collocated

@@ -89,7 +89,7 @@ class Node(base.APIBase):
     "Links to the collection of ports on this node"
 
     def __init__(self, **kwargs):
-        self.fields = objects.node.fields.keys()
+        self.fields = list(objects.node.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

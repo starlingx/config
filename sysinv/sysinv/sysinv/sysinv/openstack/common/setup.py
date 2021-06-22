@@ -244,7 +244,7 @@ def get_cmdclass():
                 for pkg in self.distribution.packages:
                     if '.' not in pkg:
                         os.path.walk(pkg, _find_modules, modules)
-                module_list = modules.keys()
+                module_list = list(modules.keys())
                 module_list.sort()
                 autoindex_filename = os.path.join(source_dir, 'autoindex.rst')
                 with open(autoindex_filename, 'w') as autoindex:

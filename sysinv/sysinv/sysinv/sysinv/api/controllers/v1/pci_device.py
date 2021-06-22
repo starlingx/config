@@ -133,7 +133,7 @@ class PCIDevice(base.APIBase):
     "Represent a list containing a self link and associated device links"
 
     def __init__(self, **kwargs):
-        self.fields = objects.pci_device.fields.keys()
+        self.fields = list(objects.pci_device.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

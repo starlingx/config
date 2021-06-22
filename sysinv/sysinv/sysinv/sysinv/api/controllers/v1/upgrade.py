@@ -73,7 +73,7 @@ class Upgrade(base.APIBase):
     "The load version that software upgrading to"
 
     def __init__(self, **kwargs):
-        self.fields = objects.software_upgrade.fields.keys()
+        self.fields = list(objects.software_upgrade.fields.keys())
         for k in self.fields:
             if not hasattr(self, k):
                 continue

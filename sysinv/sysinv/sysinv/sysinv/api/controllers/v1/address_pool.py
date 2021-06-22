@@ -151,7 +151,7 @@ class AddressPool(base.APIBase):
     "List of start-end pairs of IP address"
 
     def __init__(self, **kwargs):
-        self.fields = objects.address_pool.fields.keys()
+        self.fields = list(objects.address_pool.fields.keys())
         for k in self.fields:
             if not hasattr(self, k):
                 # Skip fields that we choose to hide

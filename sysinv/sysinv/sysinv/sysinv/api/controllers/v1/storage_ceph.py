@@ -914,7 +914,7 @@ def _capabilities_semantic_checks(caps_dict):
 
     # Raise exception if unsupported capabilities are passed
     invalid_data = set(caps_dict.keys()) - set(valid_data.keys())
-    if valid_data.keys() != caps_dict.keys():
+    if list(valid_data.keys()) != list(caps_dict.keys()):
         # Build short customer message to help with supported capabilities
         # he can then search for them in the manual.
         params = "    backend: %s\n" % ", ".join(CAPABILITIES['backend'])

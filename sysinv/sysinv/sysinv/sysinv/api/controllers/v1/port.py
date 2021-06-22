@@ -139,7 +139,7 @@ class Port(base.APIBase):
     "Links to the collection of LldpNeighbours on this port"
 
     def __init__(self, **kwargs):
-        self.fields = objects.port.fields.keys()
+        self.fields = list(objects.port.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

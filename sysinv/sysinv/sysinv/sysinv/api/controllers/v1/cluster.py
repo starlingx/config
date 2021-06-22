@@ -114,7 +114,7 @@ class Cluster(base.APIBase):
     "Links to the collection of storage tiers on this cluster"
 
     def __init__(self, **kwargs):
-        self.fields = objects.cluster.fields.keys()
+        self.fields = list(objects.cluster.fields.keys())
         for k in self.fields:
             if not hasattr(self, k):
                 # Skip fields that we choose to hide

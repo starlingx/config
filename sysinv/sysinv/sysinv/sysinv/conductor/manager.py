@@ -12866,7 +12866,7 @@ class ConductorManager(service.PeriodicService):
             self._log_applications_not_reverted(constants.BACKUP_ACTION_PRE_ETCD_BACKUP)
             self._log_applications_not_reverted(constants.BACKUP_ACTION_PRE_BACKUP)
 
-        actions_list = self._backup_action_map.keys()
+        actions_list = list(self._backup_action_map.keys())
         self._backup_actions_log = dict(zip(actions_list, [OrderedDict()] * len(actions_list)))
 
     def _revert_backup_operation(self, operation):

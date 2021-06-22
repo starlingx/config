@@ -62,7 +62,7 @@ class KubeUpgrade(base.APIBase):
     "A list containing a self link and associated kubernetes upgrade links"
 
     def __init__(self, **kwargs):
-        self.fields = objects.kube_upgrade.fields.keys()
+        self.fields = list(objects.kube_upgrade.fields.keys())
         for k in self.fields:
             if not hasattr(self, k):
                 continue

@@ -107,7 +107,7 @@ class SDNController(base.APIBase):
     "A list containing a self link and associated SDN controller links"
 
     def __init__(self, **kwargs):
-        self.fields = objects.sdn_controller.fields.keys()
+        self.fields = list(objects.sdn_controller.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

@@ -92,7 +92,7 @@ class Load(base.APIBase):
     "A list of the patches required to upgrade to this load"
 
     def __init__(self, **kwargs):
-        self.fields = objects.load.fields.keys()
+        self.fields = list(objects.load.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

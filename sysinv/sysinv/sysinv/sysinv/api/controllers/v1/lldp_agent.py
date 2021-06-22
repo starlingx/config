@@ -123,7 +123,7 @@ class LLDPAgent(base.APIBase):
     "Represent the 802.3 maximum frame size of the lldp agent"
 
     def __init__(self, **kwargs):
-        self.fields = objects.lldp_agent.fields.keys()
+        self.fields = list(objects.lldp_agent.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

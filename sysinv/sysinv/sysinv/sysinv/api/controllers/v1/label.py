@@ -61,7 +61,7 @@ class Label(base.APIBase):
     "The uuid of the host this label belongs to"
 
     def __init__(self, **kwargs):
-        self.fields = objects.label.fields.keys()
+        self.fields = list(objects.label.fields.keys())
         for k in self.fields:
             if not hasattr(self, k):
                 continue

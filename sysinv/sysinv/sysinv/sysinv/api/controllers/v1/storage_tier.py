@@ -100,7 +100,7 @@ class StorageTier(base.APIBase):
     "Links to the collection of OSDs on this storage tier"
 
     def __init__(self, **kwargs):
-        self.fields = objects.storage_tier.fields.keys()
+        self.fields = list(objects.storage_tier.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

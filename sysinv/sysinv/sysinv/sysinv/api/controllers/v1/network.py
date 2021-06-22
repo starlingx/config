@@ -82,7 +82,7 @@ class Network(base.APIBase):
     "The UUID of the address pool associated with the network"
 
     def __init__(self, **kwargs):
-        self.fields = objects.network.fields.keys()
+        self.fields = list(objects.network.fields.keys())
         for k in self.fields:
             if not hasattr(self, k):
                 continue
