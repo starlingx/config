@@ -62,7 +62,7 @@ def check_sm_service(service, state):
     try:
         output = subprocess.check_output(["sm-query", "service", service],
                                          universal_newlines=True)
-        return state in output
+        return state in output  # pylint: disable=unsupported-membership-test
     except subprocess.CalledProcessError:
         return False
 
@@ -324,7 +324,7 @@ def is_ssh_parent():
     try:
         cmd_output = subprocess.check_output(command, shell=True,
                                              universal_newlines=True)
-        if "ssh" in cmd_output:
+        if "ssh" in cmd_output:  # pylint: disable=unsupported-membership-test
             return True
         else:
             return False
