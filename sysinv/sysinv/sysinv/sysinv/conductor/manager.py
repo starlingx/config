@@ -12579,7 +12579,7 @@ class ConductorManager(service.PeriodicService):
         current_app = None
         completed_apps = []
         operation_log = self._backup_actions_log[operation]
-        for app_name, callback in operation_log.iteritems():
+        for app_name, callback in operation_log.items():
             current_app = app_name
             LOG.info("Reverting backup of app {} : {}".format(current_app, operation))
             try:
