@@ -70,7 +70,7 @@ class InterfaceDataNetwork(base.APIBase):
     "Represents the type for the datanetwork"
 
     def __init__(self, **kwargs):
-        self.fields = objects.interface_datanetwork.fields.keys()
+        self.fields = list(objects.interface_datanetwork.fields.keys())
         for k in self.fields:
             if not hasattr(self, k):
                 continue

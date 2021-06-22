@@ -222,7 +222,7 @@ def create_host_overrides(filename):
         sys.exit(1)
 
 
-VALID_NOTIFICATION_VALUES = constants.HOOK_PARAMETERS_MAP.keys()
+VALID_NOTIFICATION_VALUES = list(constants.HOOK_PARAMETERS_MAP.keys())
 NOTIFICATION_ACTION_SUCCESS_VALUES = {'success': True,
                                       'failure': False}
 
@@ -260,7 +260,7 @@ def add_action_parsers(subparsers):
     parser.set_defaults(func=send_notification)
     parser.add_argument('operation')
     parser.add_argument('success',
-                        choices=NOTIFICATION_ACTION_SUCCESS_VALUES.keys(),
+                        choices=list(NOTIFICATION_ACTION_SUCCESS_VALUES.keys()),
                         default='success',
                         nargs='?')
 

@@ -82,7 +82,7 @@ class Service(base.APIBase):
     "Service capabilities"
 
     def __init__(self, **kwargs):
-        self.fields = objects.service.fields.keys()
+        self.fields = list(objects.service.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

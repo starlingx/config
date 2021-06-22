@@ -142,7 +142,7 @@ class LLDPNeighbour(base.APIBase):
     "Represent the neighbour time-to-live"
 
     def __init__(self, **kwargs):
-        self.fields = objects.lldp_neighbour.fields.keys()
+        self.fields = list(objects.lldp_neighbour.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

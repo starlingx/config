@@ -306,8 +306,8 @@ class BaseHelm(object):
         elif name_filter:
             monitors = self._get_filtered_ceph_monitor_ips_using_function(name_filter)
         else:
-            monitors = StorageBackendConfig.get_ceph_mon_ip_addresses(
-                self.dbapi).values()
+            monitors = list(StorageBackendConfig.get_ceph_mon_ip_addresses(
+                self.dbapi).values())
         return monitors
 
     def _get_formatted_ceph_monitor_ips(self, name_filter=None):

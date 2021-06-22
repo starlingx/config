@@ -505,7 +505,7 @@ class RootCARenew(CertificateRenew):
 
     @staticmethod
     def get_secrets_to_recreate():
-        secret_names = utils.get_subcloud_secrets().values()
+        secret_names = list(utils.get_subcloud_secrets().values())
         secret_names.insert(0, constants.DC_ADMIN_ENDPOINT_SECRET_NAME)
         return secret_names
 

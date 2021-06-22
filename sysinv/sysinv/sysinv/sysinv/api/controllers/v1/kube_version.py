@@ -41,7 +41,7 @@ class KubeVersion(base.APIBase):
     "State of this version"
 
     def __init__(self, **kwargs):
-        self.fields = objects.kube_version.fields.keys()
+        self.fields = list(objects.kube_version.fields.keys())
         for k in self.fields:
             if not hasattr(self, k):
                 continue

@@ -113,7 +113,7 @@ class System(base.APIBase):
     "Kernel arguments associated with exnabled spectre/meltdown fix features"
 
     def __init__(self, **kwargs):
-        self.fields = objects.system.fields.keys()
+        self.fields = list(objects.system.fields.keys())
 
         for k in self.fields:
             # Translate any special internal representation of data to its

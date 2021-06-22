@@ -85,7 +85,7 @@ class InterfaceNetwork(base.APIBase):
     "Represents the type for the network"
 
     def __init__(self, **kwargs):
-        self.fields = objects.interface_network.fields.keys()
+        self.fields = list(objects.interface_network.fields.keys())
         for k in self.fields:
             if not hasattr(self, k):
                 continue

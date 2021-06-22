@@ -119,7 +119,7 @@ class Disk(base.APIBase):
     "applicable for SSDs."
 
     def __init__(self, **kwargs):
-        self.fields = objects.disk.fields.keys()
+        self.fields = list(objects.disk.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

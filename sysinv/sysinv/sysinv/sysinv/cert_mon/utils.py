@@ -540,7 +540,7 @@ def get_subclouds():
     """
 
     subcloud_secrets = get_subcloud_secrets()
-    return subcloud_secrets.keys()
+    return list(subcloud_secrets.keys())
 
 
 def get_intermediate_ca_secret_name(sc):

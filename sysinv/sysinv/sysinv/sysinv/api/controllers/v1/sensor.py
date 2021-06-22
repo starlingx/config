@@ -149,7 +149,7 @@ class Sensor(base.APIBase):
     "Represent a list containing a self link and associated isensor links"
 
     def __init__(self, **kwargs):
-        self.fields = objects.sensor.fields.keys()
+        self.fields = list(objects.sensor.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

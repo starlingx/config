@@ -85,7 +85,7 @@ class Route(base.APIBase):
     "The ID of the host this interface belongs to"
 
     def __init__(self, **kwargs):
-        self.fields = objects.route.fields.keys()
+        self.fields = list(objects.route.fields.keys())
         for k in self.fields:
             if not hasattr(self, k):
                 # Skip fields that we choose to hide

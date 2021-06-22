@@ -68,7 +68,7 @@ class KubeApp(base.APIBase):
     "Represents the application is active"
 
     def __init__(self, **kwargs):
-        self.fields = objects.kube_app.fields.keys()
+        self.fields = list(objects.kube_app.fields.keys())
         for k in self.fields:
             if not hasattr(self, k):
                 continue

@@ -90,7 +90,7 @@ class Partition(base.APIBase):
     "This partition's meta data"
 
     def __init__(self, **kwargs):
-        self.fields = objects.partition.fields.keys()
+        self.fields = list(objects.partition.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

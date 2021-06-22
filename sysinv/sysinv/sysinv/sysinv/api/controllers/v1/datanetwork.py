@@ -97,7 +97,7 @@ class DataNetwork(base.APIBase):
     "Mode for this datanetwork. VxLan only"
 
     def __init__(self, **kwargs):
-        self.fields = objects.datanetwork.fields.keys()
+        self.fields = list(objects.datanetwork.fields.keys())
         for k in self.fields:
             if not hasattr(self, k):
                 continue

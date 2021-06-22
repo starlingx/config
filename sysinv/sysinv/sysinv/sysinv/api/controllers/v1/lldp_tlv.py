@@ -76,7 +76,7 @@ class LLDPTLV(base.APIBase):
     "Represent a list containing a self link and associated lldp tlv links"
 
     def __init__(self, **kwargs):
-        self.fields = objects.lldp_tlv.fields.keys()
+        self.fields = list(objects.lldp_tlv.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

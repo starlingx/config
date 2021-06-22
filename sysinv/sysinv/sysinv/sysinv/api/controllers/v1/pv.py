@@ -123,7 +123,7 @@ class PV(base.APIBase):
     "Links to the collection of partitions on this pv"
 
     def __init__(self, **kwargs):
-        self.fields = objects.pv.fields.keys()
+        self.fields = list(objects.pv.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

@@ -154,7 +154,7 @@ def _get_drivers():
         for notification_driver in CONF.notification_driver:
             add_driver(notification_driver)
 
-    return _drivers.values()
+    return list(_drivers.values())
 
 
 def add_driver(notification_driver):

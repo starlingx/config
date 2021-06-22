@@ -79,7 +79,7 @@ class ServiceParameter(base.APIBase):
     "A list containing a self link and associated links"
 
     def __init__(self, **kwargs):
-        self.fields = objects.service_parameter.fields.keys()
+        self.fields = list(objects.service_parameter.fields.keys())
         for k in self.fields:
             if not hasattr(self, k):
                 continue

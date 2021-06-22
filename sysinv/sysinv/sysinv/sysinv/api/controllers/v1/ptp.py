@@ -65,7 +65,7 @@ class PTP(base.APIBase):
     updated_at = wtypes.datetime.datetime
 
     def __init__(self, **kwargs):
-        self.fields = objects.ptp.fields.keys()
+        self.fields = list(objects.ptp.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

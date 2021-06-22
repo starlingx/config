@@ -215,7 +215,7 @@ class NodeOperator(object):
                     icpu_attrs = {}
                     continue
 
-        self.num_nodes = len(self.topology.keys())
+        self.num_nodes = len(list(self.topology.keys()))
 
         # In the case topology not detected, hard-code structures
         if self.num_nodes == 0:
@@ -265,7 +265,7 @@ class NodeOperator(object):
                         }
                         icpus.append(attrs)
                         cpu += 1
-            self.num_nodes = len(self.topology.keys())
+            self.num_nodes = len(list(self.topology.keys()))
 
         LOG.debug("inumas= %s, icpus = %s" % (inumas, icpus))
 
