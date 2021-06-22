@@ -294,7 +294,8 @@ def get_n3000_devices():
            constants.N3000_DEVICE]
 
     try:
-        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)  # pylint: disable=not-callable
+        output = subprocess.check_output(  # pylint: disable=not-callable
+            cmd, stderr=subprocess.STDOUT, universal_newlines=True)
     except subprocess.CalledProcessError as exc:
         msg = ("Failed to get pci devices with vendor %s and device %s, "
                "return code is %d, command output: %s." %
@@ -378,7 +379,9 @@ def watchdog_action(action):
         cmd = ["systemctl", action, "hostw"]
 
         # Issue the command to stop/start the watchdog
-        subprocess.check_output(cmd, stderr=subprocess.STDOUT)  # pylint: disable=not-callable
+        subprocess.check_output(  # pylint: disable=not-callable
+            cmd, stderr=subprocess.STDOUT,
+            universal_newlines=True)
     except subprocess.CalledProcessError as exc:
         msg = ("Failed to %s hostw service, "
                  "return code is %d, command output: %s." %

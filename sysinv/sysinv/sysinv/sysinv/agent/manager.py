@@ -297,7 +297,8 @@ class AgentManager(service.PeriodicService):
         active_device = 'ttyS0'
         try:
             cmd = 'cat /sys/class/tty/console/active | grep ttyS'
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True,
+                    universal_newlines=True)
             output = proc.stdout.read().strip()
             proc.communicate()[0]
             if proc.returncode != 0:

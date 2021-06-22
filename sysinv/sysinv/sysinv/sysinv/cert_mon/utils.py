@@ -121,7 +121,9 @@ def verify_adminep_cert_chain():
             cmd = ['openssl', 'verify', '-CAfile', constants.DC_ROOT_CA_CERT_PATH,
                    '-untrusted', ca_tmpfile.name, adminep_tmpfile.name]
             proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
-                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE,
+                                    universal_newlines=True)
             stdout, stderr = proc.communicate()
             proc.wait()
             if 0 == proc.returncode:

@@ -274,7 +274,7 @@ class KubernetesPuppet(base.BasePuppet):
 
             cmd = ['kubeadm', KUBECONFIG, 'token', 'create', '--print-join-command',
                    '--description', 'Bootstrap token for %s' % host.hostname]
-            join_cmd = subprocess.check_output(cmd)  # pylint: disable=not-callable
+            join_cmd = subprocess.check_output(cmd, universal_newlines=True)  # pylint: disable=not-callable
             join_cmd_additions += \
                 " --cri-socket /var/run/containerd/containerd.sock"
             join_cmd = join_cmd.strip() + join_cmd_additions

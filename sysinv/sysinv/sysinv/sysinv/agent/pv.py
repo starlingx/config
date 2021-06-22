@@ -65,7 +65,8 @@ class PVOperator(object):
         try:
             pvdisplay_process = subprocess.Popen(pvdisplay_command,
                                              stdout=subprocess.PIPE,
-                                             shell=True)
+                                             shell=True,
+                                             universal_newlnes=True)
             pvdisplay_output = pvdisplay_process.stdout.read()
         except Exception as e:
             self.handle_exception("Could not retrieve pvdisplay "
@@ -82,7 +83,8 @@ class PVOperator(object):
             try:
                 pvdisplay_process = subprocess.Popen(pvdisplay_process,
                                                      stdout=subprocess.PIPE,
-                                                     shell=True)
+                                                     shell=True,
+                                                     universal_newlines=True)
                 pvdisplay_output = pvdisplay_output + pvdisplay_process.stdout.read()
             except Exception as e:
                 self.handle_exception("Could not retrieve vgdisplay "

@@ -4370,7 +4370,7 @@ class ConductorManager(service.PeriodicService):
 
                 # Save the physical PV associated with cinder volumes for use later
                 if ipv['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES:
-                        cinder_pv_id = ipv['id']
+                    cinder_pv_id = ipv['id']
 
         # Some of the PVs may have been updated, so get them again.
         ipvs = self.dbapi.ipv_get_by_ihost(ihost_uuid)
@@ -6970,7 +6970,6 @@ class ConductorManager(service.PeriodicService):
                               reinstall_required=False,
                               reboot_required=True,
                               filesystem_list=None):
-
         """Update the storage configuration"""
         host_uuid_list = []
         if update_storage:
@@ -7025,7 +7024,6 @@ class ConductorManager(service.PeriodicService):
     def update_host_filesystem_config(self, context,
                                       host=None,
                                       filesystem_list=None):
-
         """Update the filesystem configuration for a host"""
 
         config_uuid = self._config_update_hosts(context,
@@ -9163,7 +9161,8 @@ class ConductorManager(service.PeriodicService):
         connected = False
 
         output = subprocess.check_output("drbd-overview",  # pylint: disable=not-callable
-                                         stderr=subprocess.STDOUT)
+                                         stderr=subprocess.STDOUT,
+                                         universal_newlines=True)
         output = [_f for _f in output.split('\n') if _f]
 
         for row in output:
@@ -9177,7 +9176,8 @@ class ConductorManager(service.PeriodicService):
 
     def _drbd_fs_sync(self):
         output = subprocess.check_output("drbd-overview",  # pylint: disable=not-callable
-                                         stderr=subprocess.STDOUT)
+                                         stderr=subprocess.STDOUT,
+                                         universal_newlines=True)
         output = [_f for _f in output.split('\n') if _f]
 
         fs = []
@@ -9207,7 +9207,8 @@ class ConductorManager(service.PeriodicService):
 
     def _drbd_fs_updated(self, context):
         drbd_dict = subprocess.check_output("drbd-overview",  # pylint: disable=not-callable
-                                            stderr=subprocess.STDOUT)
+                                            stderr=subprocess.STDOUT,
+                                            universal_newlines=True)
         drbd_dict = [_f for _f in drbd_dict.split('\n') if _f]
 
         drbd_patch_size = 0
@@ -9279,7 +9280,8 @@ class ConductorManager(service.PeriodicService):
         """
         cmd = "dumpe2fs -h /dev/{}".format(drbd_dev)
         dumpfs_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                       stderr=subprocess.PIPE, shell=True)
+                                       stderr=subprocess.PIPE, shell=True,
+                                       universal_newlines=True)
         dumpfs_out, dumpfs_err = dumpfs_proc.communicate()
         total_size = 0
         retcode = dumpfs_proc.returncode
@@ -9311,7 +9313,8 @@ class ConductorManager(service.PeriodicService):
         """
         cmd = "blockdev --getpbsz /dev/{}".format(drbd_dev)
         blockdev_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                         stderr=subprocess.PIPE, shell=True)
+                                         stderr=subprocess.PIPE, shell=True,
+                                         universal_newlines=True)
         blockdev_out, blockdev_err = blockdev_proc.communicate()
         total_size = 0
         retcode = blockdev_proc.returncode
@@ -9993,7 +9996,6 @@ class ConductorManager(service.PeriodicService):
                             context,
                             config_uuid,
                             config_dict):
-
         """Apply the file on all hosts affected by supplied personalities.
 
         :param context: request context.
@@ -10037,7 +10039,6 @@ class ConductorManager(service.PeriodicService):
                                        config_uuid,
                                        config_dict,
                                        force=False):
-
         """Apply manifests on all hosts affected by the supplied personalities.
            If host_uuids is set in config_dict, only update hiera data and apply
            manifests for these hosts.
@@ -11254,7 +11255,8 @@ class ConductorManager(service.PeriodicService):
         try:
             lvdisplay_process = subprocess.Popen(lvdisplay_command,
                                                  stdout=subprocess.PIPE,
-                                                 shell=True)
+                                                 shell=True,
+                                                 universal_newlines=True)
         except Exception as e:
             LOG.error("Could not retrieve lvdisplay information: %s" % e)
             return lvdisplay_dict
@@ -11274,7 +11276,7 @@ class ConductorManager(service.PeriodicService):
         try:
             pvs_process = subprocess.Popen(pvs_command,
                                            stdout=subprocess.PIPE,
-                                           shell=True)
+                                           shell=True, universal_newlines=True)
         except Exception as e:
             LOG.error("Could not retrieve pvs information: %s" % e)
             return pvs_dict
@@ -11299,7 +11301,8 @@ class ConductorManager(service.PeriodicService):
         try:
             get_size_process = subprocess.Popen(get_size_command,
                                                 stdout=subprocess.PIPE,
-                                                shell=True)
+                                                shell=True,
+                                                universal_newlines=True)
         except Exception as e:
             LOG.error("Could not retrieve device information: %s" % e)
             return partition_size
@@ -11693,7 +11696,8 @@ class ConductorManager(service.PeriodicService):
             raise exception.SysinvException(_(
                 "ERROR: Failed to install license to redundant storage."))
 
-        hostname = subprocess.check_output(["hostname"]).rstrip()  # pylint: disable=not-callable
+        hostname = subprocess.check_output(  # pylint: disable=not-callable
+                ["hostname"], universal_newlines=True).rstrip()
         validHostnames = [constants.CONTROLLER_0_HOSTNAME,
                             constants.CONTROLLER_1_HOSTNAME]
         if hostname == 'localhost':
@@ -12500,7 +12504,6 @@ class ConductorManager(service.PeriodicService):
         return overrides
 
     def app_has_system_plugins(self, context, app_name):
-
         """Determine if the application has system plugin support.
 
         :returns: True if the application has system plugins and can generate
@@ -12954,7 +12957,7 @@ class ConductorManager(service.PeriodicService):
             raise exception.ApplicationLifecycleNotificationException(app_name, str(ex))
 
     def _do_post_action(self, context, operation, success,
-                        remove_revert_operations=None): # noqa 0102
+                        remove_revert_operations=None):  # noqa 0102
         hook_info = self._make_backup_hook_info(operation, success)
 
         try:
@@ -12963,7 +12966,7 @@ class ConductorManager(service.PeriodicService):
             # if we notified all apps successfully of this POST action, then we need to
             # remove any 'revert' actions from its associated PRE action:
             for op in remove_revert_operations if remove_revert_operations is not None else []:
-                    self._backup_actions_log[op] = OrderedDict()
+                self._backup_actions_log[op] = OrderedDict()
         except Exception as ex:
             app_name = app.name if app is not None else None
             raise exception.ApplicationLifecycleNotificationException(app_name, str(ex))

@@ -35,7 +35,8 @@ def n3000_img_accessible():
     cmd = 'docker image list "%s"  --format "{{.Repository}}:{{.Tag}}"' % \
             constants.OPAE_IMG
     items = subprocess.check_output(shlex.split(cmd),  # pylint: disable=not-callable
-                                   stderr=subprocess.STDOUT)
+                                   stderr=subprocess.STDOUT,
+                                   universal_newlines=True)
     for line in items.splitlines():
         if line == constants.OPAE_IMG:
             LOG.info('%s image found' % constants.OPAE_IMG)

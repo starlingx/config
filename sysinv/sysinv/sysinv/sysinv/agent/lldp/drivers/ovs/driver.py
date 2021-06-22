@@ -24,7 +24,7 @@ class SysinvOVSAgentDriver(lldpd_driver.SysinvLldpdAgentDriver):
 
     def run_cmd(self, cmd):
         p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE)
+                             stderr=subprocess.PIPE, universal_newlines=True)
         p.wait()
         output, error = p.communicate()
         if p.returncode != 0:
