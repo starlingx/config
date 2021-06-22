@@ -42,6 +42,7 @@ class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
         json_obj = json
         p = subprocess.Popen(["lldpcli", "-f", "json", "show",
                               "configuration"],
+                             universal_newlines=True,
                              stdout=subprocess.PIPE)
         data = json_obj.loads(p.communicate()[0])
 
@@ -257,7 +258,8 @@ class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
         lldp_agents = []
 
         p = subprocess.Popen(["lldpcli", "-f", "json", "show", "interface",
-                              "detail"], stdout=subprocess.PIPE)
+                              "detail"], stdout=subprocess.PIPE,
+                              universal_newlines=True)
         data = json_obj.loads(p.communicate()[0])
 
         lldp = data['lldp'][0]
@@ -282,7 +284,8 @@ class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
         json_obj = json
         lldp_neighbours = []
         p = subprocess.Popen(["lldpcli", "-f", "json", "show", "neighbor",
-                              "detail"], stdout=subprocess.PIPE)
+                              "detail"], stdout=subprocess.PIPE,
+                              universal_newlines=True)
         data = json_obj.loads(p.communicate()[0])
 
         lldp = data['lldp'][0]
@@ -303,7 +306,7 @@ class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
 
     def lldp_update_systemname(self, systemname):
         p = subprocess.Popen(["lldpcli", "-f", "json", "show", "chassis"],
-                             stdout=subprocess.PIPE)
+                             stdout=subprocess.PIPE, universal_newlines=True)
         data = json.loads(p.communicate()[0])
 
         local_chassis = data['local-chassis'][0]

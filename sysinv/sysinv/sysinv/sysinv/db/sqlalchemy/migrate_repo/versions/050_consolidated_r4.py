@@ -68,7 +68,8 @@ def _update_ceph_mon_device_path(ceph_mon_table):
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
+            stderr=subprocess.PIPE,
+            universal_newlines=True)
         out, err = process.communicate()
         device_path = out.rstrip()
 

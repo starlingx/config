@@ -31,7 +31,8 @@ def main():
 
     cmd = 'python /usr/share/openvswitch/scripts/dpdk-pmdinfo.py ' \
           '-r /usr/sbin/ovs-vswitchd'
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True,
+            universal_newlines=True)
     out, err = p.communicate()
     result = out.split('\n')
 

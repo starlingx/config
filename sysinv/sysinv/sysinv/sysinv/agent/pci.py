@@ -273,7 +273,8 @@ class PCIOperator(object):
     def get_lspci_output_by_addr(self, pciaddr):
         with open(os.devnull, "w") as fnull:
             output = subprocess.check_output(  # pylint: disable=not-callable
-                ['lspci', '-vmmks', pciaddr], stderr=fnull)
+                ['lspci', '-vmmks', pciaddr], stderr=fnull,
+                universal_newlines=True)
         return output
 
     def get_pci_sriov_vf_driver_name(self, pciaddr, sriov_vfs_pci_address):
@@ -342,7 +343,8 @@ class PCIOperator(object):
         if vendor and device:
             option = "-d " + vendor + ":" + device
             cmd.append(option)
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                universal_newlines=True)
 
         pci_devices = []
         for line in p.stdout:
@@ -371,7 +373,8 @@ class PCIOperator(object):
 
     def inics_get(self):
 
-        p = subprocess.Popen(["lspci", "-Dmnn"], stdout=subprocess.PIPE)
+        p = subprocess.Popen(["lspci", "-Dmnn"], stdout=subprocess.PIPE,
+                universal_newlines=True)
 
         pci_inics = []
         for line in p.stdout:

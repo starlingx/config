@@ -72,6 +72,7 @@ def _command(arguments, **kwargs):
         arguments,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        universal_newlines=True,
         **kwargs)
     out, err = process.communicate()
     return out, err, process.returncode
@@ -87,6 +88,7 @@ def _command_pipe(arguments1, arguments2=None, **kwargs):
         arguments1,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        universal_newlines=True,
         **kwargs)
 
     if arguments2:
@@ -94,6 +96,7 @@ def _command_pipe(arguments1, arguments2=None, **kwargs):
             arguments2,
             stdin=process.stdout,
             stdout=subprocess.PIPE,
+            universal_newlines=True,
             shell=False)
         process.stdout.close()
         process = process2

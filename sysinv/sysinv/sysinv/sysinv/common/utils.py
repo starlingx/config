@@ -122,6 +122,7 @@ class memoized(object):
     does not provide weak references; thus would prevent the instance from
     being garbage collected.
     '''
+
     def __init__(self, func):
         self.func = func
         self.cache = {}
@@ -228,6 +229,13 @@ def execute(*cmd, **kwargs):
             obj.stdin.close()  # pylint: disable=E1101
             _returncode = obj.returncode  # pylint: disable=E1101
             LOG.debug(_('Result was %s') % _returncode)
+            if result is not None and six.PY3:
+                (stdout, stderr) = result
+                # Decode from the locale using using the surrogateescape error
+                # handler (decoding cannot fail)
+                stdout = os.fsdecode(stdout)
+                stderr = os.fsdecode(stderr)
+                result = (stdout, stderr)
             if not ignore_exit_code and _returncode not in check_exit_code:
                 (stdout, stderr) = result
                 raise exception.ProcessExecutionError(
@@ -926,7 +934,7 @@ def is_virtual():
     Determines if the system is virtualized or not
     '''
     subp = subprocess.Popen(['facter', 'is_virtual'],
-                            stdout=subprocess.PIPE)
+                            stdout=subprocess.PIPE, universal_newlines=True)
     if subp.wait():
         raise Exception("Failed to read virtualization status from facter")
     output = subp.stdout.readlines()
@@ -989,7 +997,7 @@ def get_minimum_platform_reserved_memory(dbapi, ihost, numa_node):
             constants.DISTRIBUTED_CLOUD_CONTROLLER_MEMORY_RESERVED_MIB // numa_node_count
     elif host_has_function(ihost, constants.WORKER):
             # Engineer 1G per numa node for disk IO RSS overhead
-            reserved += constants.DISK_IO_RESIDENT_SET_SIZE_MIB
+        reserved += constants.DISK_IO_RESIDENT_SET_SIZE_MIB
     elif ihost['personality'] == constants.CONTROLLER:
         # Standard controller
         reserved += constants.STANDARD_CONTROLLER_MEMORY_RESERVED_MIB // numa_node_count
@@ -1475,7 +1483,8 @@ def disk_is_gpt(device_node):
     """
     parted_command = '{} {} {}'.format('parted -s', device_node, 'print')
     parted_process = subprocess.Popen(
-        parted_command, stdout=subprocess.PIPE, shell=True)
+        parted_command, stdout=subprocess.PIPE, shell=True,
+        universal_newlines=True)
     parted_output = parted_process.stdout.read()
     if re.search('Partition Table: gpt', parted_output):
         return True
@@ -1698,7 +1707,8 @@ def get_current_fs_size(fs_name):
 
     with open(os.devnull, "w") as fnull:
         try:
-            lvdisplay_output = subprocess.check_output(args, stderr=fnull)  # pylint: disable=not-callable
+            lvdisplay_output = subprocess.check_output(  # pylint: disable=not-callable
+                    args, stderr=fnull, universal_newlines=True)
         except subprocess.CalledProcessError:
             raise Exception("Failed to get filesystem %s size" % fs_name)
 
@@ -1718,7 +1728,7 @@ def get_cgts_vg_free_space():
         vg_free_str = subprocess.check_output(  # pylint: disable=not-callable
             ['vgdisplay', '-C', '--noheadings', '--nosuffix',
              '-o', 'vg_free', '--units', 'g', 'cgts-vg'],
-            close_fds=True).rstrip()
+            close_fds=True, universal_newlines=True).rstrip()
         cgts_vg_free = int(float(vg_free_str))
     except subprocess.CalledProcessError:
         LOG.error("Command vgdisplay failed")
@@ -2732,7 +2742,8 @@ def get_admin_ep_cert(dc_role):
 def verify_ca_crt(crt):
     cmd = ['openssl', 'verify']
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            universal_newlines=True)
     proc.stdin.write(crt)
     stdout, stderr = proc.communicate()
     if 0 == proc.returncode:
@@ -2750,7 +2761,8 @@ def verify_intermediate_ca_cert(ca_crt, tls_crt):
         tmpfile.flush()
         cmd = ['openssl', 'verify', '-CAfile', tmpfile.name]
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                universal_newlines=True)
 
         stdout, stderr = proc.communicate(input=tls_crt)
         proc.wait()
@@ -2785,7 +2797,8 @@ def get_root_ca_cert():
 def run_playbook(playbook_command):
     exec_env = os.environ.copy()
     exec_env["ANSIBLE_LOG_PATH"] = "/dev/null"
-    proc = subprocess.Popen(playbook_command, stdout=subprocess.PIPE, env=exec_env)
+    proc = subprocess.Popen(playbook_command, stdout=subprocess.PIPE,
+            env=exec_env, universal_newlines=True)
     out, _ = proc.communicate()
     LOG.info("ansible-playbook: %s." % out)
     return proc.returncode
