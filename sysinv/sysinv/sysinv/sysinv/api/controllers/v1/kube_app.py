@@ -10,6 +10,7 @@ import hashlib
 import pecan
 import pwd
 from pecan import rest
+import six
 import time
 import wsme
 from wsme import types as wtypes
@@ -325,7 +326,7 @@ class KubeAppController(rest.RestController):
                                             lifecycle_hook_info)
             except Exception as e:
                 raise wsme.exc.ClientSideError(_(
-                    "Application-apply rejected: " + str(e.message)))
+                    "Application-apply rejected: " + six.text_type(e)))
 
             db_app.status = constants.APP_APPLY_IN_PROGRESS
             db_app.progress = None
@@ -366,7 +367,7 @@ class KubeAppController(rest.RestController):
                     "Application-remove rejected: " + str(e.value)))
             except Exception as e:
                 raise wsme.exc.ClientSideError(_(
-                    "Application-remove rejected: " + str(e.message)))
+                    "Application-remove rejected: " + six.text_type(e)))
 
             db_app.status = constants.APP_REMOVE_IN_PROGRESS
             db_app.progress = None
@@ -395,7 +396,7 @@ class KubeAppController(rest.RestController):
                                             lifecycle_hook_info)
             except Exception as e:
                 raise wsme.exc.ClientSideError(_(
-                    "Application-abort rejected: " + str(e.message)))
+                    "Application-abort rejected: " + six.text_type(e)))
 
             lifecycle_hook_info = LifecycleHookInfo()
             lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_MANUAL
@@ -446,7 +447,7 @@ class KubeAppController(rest.RestController):
                                         lifecycle_hook_info)
         except Exception as e:
             raise wsme.exc.ClientSideError(_(
-                "Application-update rejected: " + str(e.message)))
+                "Application-update rejected: " + six.text_type(e)))
 
         if applied_app.status == constants.APP_UPDATE_IN_PROGRESS:
             raise wsme.exc.ClientSideError(_(
@@ -558,7 +559,7 @@ class KubeAppController(rest.RestController):
                 "Application-delete rejected: " + str(e.value)))
         except Exception as e:
             raise wsme.exc.ClientSideError(_(
-                "Application-delete rejected: " + str(e.message)))
+                "Application-delete rejected: " + six.text_type(e)))
 
         lifecycle_hook_info = LifecycleHookInfo()
         lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_MANUAL

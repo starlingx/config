@@ -7,6 +7,7 @@
 from eventlet.green import subprocess
 import os
 import shutil
+import six
 import stat
 from grp import getgrnam
 from pwd import getpwnam
@@ -145,7 +146,7 @@ class FernetOperator(object):
                     LOG.info('Purge excess key: %s', key_to_purge)
                     os.remove(key_to_purge)
         except Exception as e:
-            msg = _("Failed to update fernet keys: %s") % e.message
+            msg = _("Failed to update fernet keys: %s") % six.text_type(e)
             LOG.exception(msg)
             raise exception.SysinvException(msg)
 

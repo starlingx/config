@@ -6,6 +6,7 @@
 import json
 import signal
 
+import six
 from six.moves.urllib.request import urlopen
 from six.moves.urllib.request import Request
 from six.moves.urllib.error import HTTPError
@@ -151,15 +152,15 @@ def rest_api_request(token, method, api_cmd, api_cmd_headers=None,
             response = json.loads("{}")
 
         LOG.info("HTTPError response=%s" % (response))
-        raise OpenStackRestAPIException(e.message, e.code, "%s" % e)
+        raise OpenStackRestAPIException(six.text_type(e), e.code, "%s" % e)
 
     except URLError as e:
         LOG.warn("URLError Error e=%s" % (e))
-        raise OpenStackException(e.message, "%s" % e)
+        raise OpenStackException(six.text_type(e), "%s" % e)
 
     except si_exception.SysInvSignalTimeout as e:
         LOG.warn("Timeout Error e=%s" % (e))
-        raise OpenStackException(e.message, "%s" % e)
+        raise OpenStackException(six.text_type(e), "%s" % e)
 
     finally:
         signal.alarm(0)

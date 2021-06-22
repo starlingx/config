@@ -20,6 +20,7 @@
 #
 
 import netaddr
+import six
 
 from oslo_log import log
 from sysinv._i18n import _
@@ -203,7 +204,7 @@ class Interface(object):
             for network in self.networks:
                 network.validate()
         except InvalidProfileData as e:
-            raise InvalidProfileData(_(e.message + ' Interface: %s') % self.name)
+            raise InvalidProfileData(_(six.text_type(e) + ' Interface: %s') % self.name)
 
     def getNetworks(self):
         pnets = ''
@@ -247,7 +248,8 @@ class EthInterface(Interface):
         try:
             pciAddress = EthInterface.formatPciAddress(tmp)
         except InvalidProfileData as exc:
-            raise InvalidProfileData(exc.message + _('Interface %s, pciAddress %s') % (ifNode.get('ifName'), tmp))
+            raise InvalidProfileData(six.text_type(exc) + _('Interface %s, pciAddress %s') %
+                    (ifNode.get('ifName'), tmp))
 
         pclass = portNode.get('class')
         if pclass:

@@ -37,6 +37,7 @@ from __future__ import print_function
 import errno
 from eventlet.green import subprocess
 from glob import glob
+import six
 
 import os
 import shlex
@@ -607,4 +608,4 @@ class FpgaAgentManager(service.PeriodicService):
             rpcapi.device_update_image_status(context, self.host_uuid,
                                             transaction_id,
                                             dconstants.DEVICE_IMAGE_UPDATE_FAILED,
-                                            exc.message)
+                                            six.text_type(exc))

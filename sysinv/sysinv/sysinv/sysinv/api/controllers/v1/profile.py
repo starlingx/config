@@ -1056,7 +1056,7 @@ class ProfileController(rest.RestController):
             root = et.fromstring(contents)
         except Exception as e:
             LOG.exception(e)
-            error = e.message
+            error = six.text_type(e)
             return [{'result': 'Invalid',
                      'type': '', 'name': '',
                      'msg': 'Profile is invalid',
@@ -1189,7 +1189,7 @@ def _create_cpu_profile(profile_name, profile_node):
                         raise profile_utils.InvalidProfileData("Too many core functions assigned to a processor")
 
     except profile_utils.InvalidProfileData as e:
-        return "Error", 'error: CPU profile %s is invalid' % profile_name, e.message
+        return "Error", 'error: CPU profile %s is invalid' % profile_name, six.text_type(e)
 
     try:
         ihost = pecan.request.dbapi.ihost_create(values)
@@ -1198,7 +1198,7 @@ def _create_cpu_profile(profile_name, profile_node):
         return "Warning", _('warning: CPU profile %s already exists and is not imported.') % profile_name, None
     except Exception as e:
         LOG.exception(e)
-        return "Error", _('error: importing CPU profile %s failed.') % profile_name, e.message
+        return "Error", _('error: importing CPU profile %s failed.') % profile_name, six.text_type(e)
 
     iprofile_id = ihost['id']
 
@@ -1322,7 +1322,7 @@ def _create_if_profile(profile_name, profile_node):
             vlan.validateWithIfNames(interfaceNames, aeIfMap, vlanMap, ethIfMap)
 
     except profile_utils.InvalidProfileData as ie:
-        return "Error", _('error: Interface profile %s is invalid.') % profile_name, ie.message
+        return "Error", _('error: Interface profile %s is invalid.') % profile_name, six.text_type(ie)
 
     values = {'recordtype': 'profile', 'hostname': profile_name}
     try:
@@ -1332,7 +1332,7 @@ def _create_if_profile(profile_name, profile_node):
         return "Warning", _('warning: interface profile %s already exists and is not imported.') % profile_name, None
     except Exception as e:
         LOG.exception(e)
-        return "Error", _('error: importing interface profile %s failed.') % profile_name, e.message
+        return "Error", _('error: importing interface profile %s failed.') % profile_name, six.text_type(e)
 
     iprofile_id = ihost['id']
     try:
@@ -1541,7 +1541,7 @@ def _create_mem_profile(profile_name, profile_node):
         vs_hp_nr = get_mem_assignment(profile_node, "vsHugePagesNr")
         vs_hp_sz = get_mem_assignment(profile_node, "vsHugePagesSz")
     except profile_utils.InvalidProfileData as e:
-        return "Error", _('error: CPU profile %s is invalid') % profile_name, e.message
+        return "Error", _('error: CPU profile %s is invalid') % profile_name, six.text_type(e)
 
     try:
         ihost = pecan.request.dbapi.ihost_create(values)
@@ -1550,7 +1550,7 @@ def _create_mem_profile(profile_name, profile_node):
         return "Warning", _('warning: Memory profile %s already exists and is not imported.') % profile_name, None
     except Exception as e:
         LOG.exception(e)
-        return "Error", _('error: Creating memory profile %s failed.') % profile_name, e.message
+        return "Error", _('error: Creating memory profile %s failed.') % profile_name, six.text_type(e)
 
     iprofile_id = ihost['id']
 
@@ -1672,7 +1672,7 @@ def _create_storage_profile(profile_name, profile_node):
         return "Warning", _('warning: Storage profile %s already exists and is not imported.') % profile_name, None
     except Exception as e:
         LOG.exception(e)
-        return "Error", _('error: importing storage profile %s failed.') % profile_name, e.message
+        return "Error", _('error: importing storage profile %s failed.') % profile_name, six.text_type(e)
 
     profile_id = ihost['id']
 
@@ -1816,7 +1816,7 @@ def _create_localstorage_profile(profile_name, profile_node):
     except Exception as e:
         LOG.exception(e)
         return ("Error", _('error: importing Local Storage profile %s '
-                           'failed.') % profile_name, e.message)
+                           'failed.') % profile_name, six.text_type(e))
 
     profile_id = ihost.id
     try:

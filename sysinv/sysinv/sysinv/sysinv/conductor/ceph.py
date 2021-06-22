@@ -15,6 +15,7 @@ from __future__ import absolute_import
 import os
 import uuid
 import copy
+import six
 import tsconfig.tsconfig as tsc
 from requests.exceptions import RequestException
 from requests.exceptions import ReadTimeout
@@ -1408,7 +1409,8 @@ class CephOperator(object):
                                     pool['pool_name'] = pool_name
                             except RequestException as e:
                                 LOG.warn(_('Failed to retrieve rados gateway object data pool. '
-                                           'Reason: %(reason)s') % {'reason': str(e.message)})
+                                           'Reason: %(reason)s') % {'reason':
+                                               six.text_type(e)})
                                 break
 
                     audit = [(pools_snapshot, storage_hosts)]
@@ -1431,7 +1433,7 @@ class CephOperator(object):
                                 LOG.warn(_('OSD pool %(pool_name)s audit failed. '
                                            'Reason: %(reason)s') % {
                                                'pool_name': pool['pool_name'],
-                                               'reason': str(e.message)})
+                                               'reason': six.text_type(e)})
 
     def remove_ceph_monitor(self, hostname, timeout=None):
         try:
