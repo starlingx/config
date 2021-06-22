@@ -22,19 +22,19 @@ class ConfigError(Exception):
 
 class ValidateFail(ConfigError):
     """Validation of data failed."""
-    pass
+    pass  # pylint: disable=unnecessary-pass
 
 
 class UpgradeFail(ConfigError):
     """Upgrade error."""
-    pass
+    pass  # pylint: disable=unnecessary-pass
 
 
 class KeystoneFail(ConfigError):
     """Keystone error."""
-    pass
+    pass  # pylint: disable=unnecessary-pass
 
 
 class TidyStorageFail(ConfigError):
     """Tidy storage error."""
-    pass
+    pass  # pylint: disable=unnecessary-pass
