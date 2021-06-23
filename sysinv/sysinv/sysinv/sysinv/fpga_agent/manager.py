@@ -42,11 +42,11 @@ import six
 import os
 import shlex
 import time
-import urllib
 
 from oslo_config import cfg
 from oslo_log import log
 from oslo_utils import uuidutils
+from six.moves.urllib.request import urlretrieve
 
 from sysinv.agent import pci
 from sysinv.common import constants as cconstants
@@ -143,7 +143,7 @@ def fetch_device_image(filename):
     url = "http://controller:{}/device_images/{}".format(http_port, filename)
     local_path = DEVICE_IMAGE_CACHE_DIR + "/" + filename
     try:
-        imagefile, headers = urllib.urlretrieve(url, local_path)
+        imagefile, headers = urlretrieve(url, local_path)
     except IOError:
         msg = ("Unable to retrieve device image from %s!" % url)
         LOG.exception(msg)
