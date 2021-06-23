@@ -1152,10 +1152,16 @@ def get_n3000_config(context, iface):
         if not device_id:
             return {}
 
+        vlans = []
+        for ifname in iface.get('used_by', []):
+            upper = context['interfaces'][ifname]
+            if upper['iftype'] == constants.INTERFACE_TYPE_VLAN:
+                vlans.append(get_interface_os_ifname(context, upper))
+
         config = {
             'ifname': port['name'],
             'device_id': device_id,
-            'used_by': iface['used_by'] or []
+            'used_by': vlans
         }
     return config
 
