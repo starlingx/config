@@ -3257,7 +3257,7 @@ class ArmadaHelper(object):
         """Pod is of the form returned by self._kube.kube_get_pods_by_selector.
         Returns true if last probe shows the container is in 'Ready' state.
         """
-        conditions = list(filter(lambda x: x.type == 'Ready', pod.status.conditions))
+        conditions = list([x for x in pod.status.conditions if x.type == 'Ready'])
         if not conditions:
             return False
         return conditions[0].status == 'True'
@@ -3717,7 +3717,7 @@ class AppImageParser(object):
         for k, v in six.iteritems(download_imgs_dict):
             if k == 'images':
                 try:
-                    imgs = filter(None, v['tags'].values())
+                    imgs = [_f for _f in v['tags'].values() if _f]
                     download_imgs_list.extend(imgs)
                 except (KeyError, TypeError):
                     pass
