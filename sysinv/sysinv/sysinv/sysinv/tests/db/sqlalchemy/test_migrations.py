@@ -293,7 +293,8 @@ class WalkVersionsMixin(object):
         # downgrade=False  # JKUNG so we can examing the db
 
         LOG.debug('latest version is %s' % self.REPOSITORY.latest)
-        versions = range(self.INIT_VERSION + 1, self.REPOSITORY.latest + 1)
+        versions = list(range(self.INIT_VERSION + 1, self.REPOSITORY.latest +
+            1))
 
         for version in versions:
             # upgrade -> downgrade -> upgrade
@@ -429,7 +430,8 @@ class TestWalkVersions(test_utils.BaseTestCase, WalkVersionsMixin):
         self.migration_api.db_version.assert_called_with(
             None, self.REPOSITORY)
 
-        versions = range(self.INIT_VERSION + 1, self.REPOSITORY.latest + 1)
+        versions = list(range(self.INIT_VERSION + 1, self.REPOSITORY.latest +
+            1))
         upgraded = [mock.call(None, v, with_data=True) for v in versions]
         self.assertEqual(_migrate_up.call_args_list, upgraded)
 
@@ -444,7 +446,8 @@ class TestWalkVersions(test_utils.BaseTestCase, WalkVersionsMixin):
 
         self._walk_versions(self.engine, snake_walk=True, downgrade=True)
 
-        versions = range(self.INIT_VERSION + 1, self.REPOSITORY.latest + 1)
+        versions = list(range(self.INIT_VERSION + 1, self.REPOSITORY.latest +
+            1))
         upgraded = []
         for v in versions:
             upgraded.append(mock.call(self.engine, v, with_data=True))
@@ -472,7 +475,8 @@ class TestWalkVersions(test_utils.BaseTestCase, WalkVersionsMixin):
 
         self._walk_versions(self.engine, snake_walk=True, downgrade=False)
 
-        versions = range(self.INIT_VERSION + 1, self.REPOSITORY.latest + 1)
+        versions = list(range(self.INIT_VERSION + 1, self.REPOSITORY.latest +
+            1))
 
         upgraded = []
         for v in versions:
@@ -493,7 +497,8 @@ class TestWalkVersions(test_utils.BaseTestCase, WalkVersionsMixin):
 
         self._walk_versions(self.engine, snake_walk=False, downgrade=False)
 
-        versions = range(self.INIT_VERSION + 1, self.REPOSITORY.latest + 1)
+        versions = list(range(self.INIT_VERSION + 1, self.REPOSITORY.latest +
+            1))
 
         upgraded = [
             mock.call(self.engine, v, with_data=True) for v in versions
