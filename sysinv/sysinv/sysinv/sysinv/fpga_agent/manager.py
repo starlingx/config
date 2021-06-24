@@ -78,10 +78,6 @@ agent_opts = [
 CONF = cfg.CONF
 CONF.register_opts(agent_opts, 'fpga_agent')
 
-# TODO: Make this specified in the config file.
-# This is the docker image containing the OPAE tools to access the FPGA device.
-OPAE_IMG = "registry.local:9001/docker.io/starlingx/n3000-opae:stx.4.0-v1.0.0"
-
 # This is the location where we cache the device image file while
 # writing it to the hardware.
 DEVICE_IMAGE_CACHE_DIR = "/usr/local/share/applications/sysinv"
@@ -164,7 +160,7 @@ def write_device_image_n3000(filename, pci_addr):
         # Note the hack to work around OPAE tool locale issues
         cmd = ("docker run -t --privileged -e LC_ALL=en_US.UTF-8 "
                "-e LANG=en_US.UTF-8 -v " + DEVICE_IMAGE_CACHE_DIR +
-               ":" + "/mnt/images " + OPAE_IMG +
+               ":" + "/mnt/images " + constants.OPAE_IMG +
                " fpgasupdate -y --log-level debug /mnt/images/" +
                filename + " " + pci_addr)
 
