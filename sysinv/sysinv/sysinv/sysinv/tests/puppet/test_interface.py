@@ -167,7 +167,8 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                 'mac': interface['imac'],
                 'driver': kwargs.get('driver', 'ixgbe'),
                 'dpdksupport': kwargs.get('dpdksupport', True),
-                'pdevice': "Ethernet Controller X710 for 10GbE SFP+ [1572]",
+                'pdevice': kwargs.get('pdevice',
+                                      "Ethernet Controller X710 for 10GbE SFP+ [1572]"),
                 'pciaddr': kwargs.get('pciaddr',
                                       '0000:00:00.' + str(port_id + 1)),
                 'dev_id': kwargs.get('dev_id', 0),
@@ -1138,6 +1139,15 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
         return config
 
+    def _get_fpga_config(self, portname='eth1', device_id='0d58', vlans=None):
+        config = {
+            'ifname': portname,
+            'device_id': device_id,
+            'used_by': vlans
+        }
+
+        return config
+
     def _get_loopback_config(self):
         network_config = self._get_network_config(
             ifname=interface.LOOPBACK_IFNAME, method=interface.LOOPBACK_METHOD)
@@ -1650,6 +1660,41 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             port_name="eth1",
             vf_config=expected_vf_config)
         self.assertEqual(expected, config)
+
+    def test_get_fpga_config(self):
+        port, iface = self._create_ethernet_test(
+            'n3000', constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=4,
+            iface_sriov_vf_driver=None,
+            port_sriov_vf_driver="iavf",
+            sriov_vfs_pci_address="0000:b1:02.0,0000:b1:02.1,0000:b1:02.2,0000:b1:02.3",
+            pdevice="Ethernet Controller [0d58]")
+        self._create_vf_test("vf1", 2, 'vfio', lower_iface=iface)
+        self._create_vlan_test('oam', constants.INTERFACE_CLASS_PLATFORM,
+                               constants.NETWORK_TYPE_OAM, 1, lower_iface=iface)
+        self._update_context()
+
+        config = interface.get_fpga_config(self.context, iface)
+
+        # Since the interface's fpga config is used to determine whether
+        # any upper vlan interfaces need to be brought up after an
+        # n3000 device is reset, we ensure that no virtual (VF)
+        # type interfaces are in the dict.
+        # Note: the operating system name of a vlan will be
+        # vlan<VID> regardless of the logical name.
+        expected = self._get_fpga_config(
+            portname='eth1', device_id='0d58', vlans=["vlan1"])
+        self.assertEqual(expected, config)
+
+    def test_is_an_n3000_i40_device_false(self):
+        self.assertFalse(
+            interface.is_an_n3000_i40_device(self.context, self.iface))
+
+    def test_is_an_n3000_i40_device_true(self):
+        self.port['pdevice'] = "Ethernet Controller [0d58]"
+        self._update_context()
+        self.assertTrue(
+            interface.is_an_n3000_i40_device(self.context, self.iface))
 
     def test_is_a_mellanox_cx3_device_false(self):
         self.assertFalse(
