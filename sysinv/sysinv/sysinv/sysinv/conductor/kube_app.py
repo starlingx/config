@@ -773,7 +773,8 @@ class AppOperator(object):
             if app.system_app and '/charts/helm-toolkit' in r:
                 continue
             try:
-                output = subprocess.check_output(['helm', 'lint', r])  # pylint: disable=not-callable
+                output = subprocess.check_output(  # pylint: disable=not-callable
+                    ['helm', 'lint', r], universal_newlines=True)
                 if "linted, 0 chart(s) failed" in output:
                     LOG.info("Helm chart %s validated" % os.path.basename(r))
                 else:
@@ -1373,7 +1374,9 @@ class AppOperator(object):
             p1 = subprocess.Popen(['grep', pattern, logfile],
                                    stdout=subprocess.PIPE)
             p2 = subprocess.Popen(['awk', print_chart], stdin=p1.stdout,
-                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE,
+                                   universal_newlines=True)
             p1.stdout.close()
             result, err = p2.communicate()
             if result:

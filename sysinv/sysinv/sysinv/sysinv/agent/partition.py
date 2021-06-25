@@ -49,7 +49,8 @@ class PartitionOperator(object):
         try:
             sgdisk_process = subprocess.Popen(sgdisk_command,
                                               stdout=subprocess.PIPE,
-                                              shell=True)
+                                              shell=True,
+                                              universal_newlines=True)
         except Exception as e:
             self.handle_exception("Could not retrieve partition information: "
                                   "%s" % e)

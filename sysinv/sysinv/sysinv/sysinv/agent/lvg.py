@@ -40,7 +40,7 @@ class LVGOperator(object):
                     global_filer = 'devices/global_filter=["a|' + \
                                    cinder_device + '|","r|.*|"]'
                     command = command + ['--config', global_filer]
-            output = subprocess.check_output(command)  # pylint: disable=not-callable
+            output = subprocess.check_output(command, universal_newlines=True)  # pylint: disable=not-callable
         except Exception as e:
             self.handle_exception("Could not retrieve vgdisplay "
                                   "information: %s" % e)
@@ -135,7 +135,8 @@ class LVGOperator(object):
         try:
             vgdisplay_process = subprocess.Popen(vgdisplay_command,
                                                  stdout=subprocess.PIPE,
-                                                 shell=True)
+                                                 shell=True,
+                                                 universal_newlines=True)
             vgdisplay_output = vgdisplay_process.stdout.read()
         except Exception as e:
             self.handle_exception("Could not retrieve vgdisplay "
@@ -151,7 +152,8 @@ class LVGOperator(object):
             try:
                 vgdisplay_process = subprocess.Popen(vgdisplay_command,
                                                      stdout=subprocess.PIPE,
-                                                     shell=True)
+                                                     shell=True,
+                                                     universal_newlines=True)
                 vgdisplay_output = vgdisplay_output + vgdisplay_process.stdout.read()
             except Exception as e:
                 self.handle_exception("Could not retrieve vgdisplay "

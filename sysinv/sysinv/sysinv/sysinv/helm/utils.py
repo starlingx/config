@@ -61,7 +61,8 @@ def retrieve_helm_v3_releases():
     helm_list = subprocess.Popen(
         ['helm', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
          'list', '--all-namespaces', '--output', 'yaml'],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        universal_newlines=True)
     timer = threading.Timer(20, kill_process_and_descendants, [helm_list])
 
     try:
@@ -108,7 +109,8 @@ def retrieve_helm_v2_releases():
         ['helmv2-cli', '--',
          'helm',
          'list', '--output', 'yaml', '--tiller-connection-timeout', '5'],
-        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        universal_newlines=True)
     timer = threading.Timer(20, kill_process_and_descendants, [helm_list])
 
     try:
@@ -184,7 +186,8 @@ def delete_helm_release(release):
     helm_cmd = subprocess.Popen(
         ['helmv2-cli', '--',
          'helm', 'delete', release, '--tiller-connection-timeout', '5'],
-        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        universal_newlines=True)
     timer = threading.Timer(20, kill_process_and_descendants, [helm_cmd])
 
     try:
@@ -218,7 +221,8 @@ def _retry_on_HelmTillerFailure(ex):
     helm_reset = subprocess.Popen(
         ['helmv2-cli', '--',
          'helm', 'reset', '--force'],
-        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        universal_newlines=True)
     timer = threading.Timer(20, kill_process_and_descendants, [helm_reset])
 
     try:
@@ -248,7 +252,8 @@ def get_openstack_pending_install_charts():
         ['helmv2-cli', '--',
          'helm', 'list', '--namespace', 'openstack',
          '--pending', '--tiller-connection-timeout', '5'],
-        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        universal_newlines=True)
     timer = threading.Timer(20, kill_process_and_descendants, [helm_list])
 
     try:
@@ -295,7 +300,8 @@ def install_helm_chart_with_dry_run(args=None):
         cmd.append(tmpdir)
 
         helm_install = subprocess.Popen(
-            cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            universal_newlines=True)
         timer = threading.Timer(10, kill_process_and_descendants, [helm_install])
 
         timer.start()

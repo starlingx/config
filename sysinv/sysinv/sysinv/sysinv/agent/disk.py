@@ -102,7 +102,7 @@ class DiskOperator(object):
 
         pvs_command = '{} {}'.format('pvs | grep -w ', device_node)
         pvs_process = subprocess.Popen(pvs_command, stdout=subprocess.PIPE,
-                                       shell=True)
+                                       shell=True, universal_newlines=True)
         pvs_output = pvs_process.stdout.read()
 
         if pvs_output:
@@ -119,12 +119,14 @@ class DiskOperator(object):
 
         # Get the sector size.
         sector_size_bytes_process = subprocess.Popen(
-            sector_size_bytes_cmd, stdout=subprocess.PIPE, shell=True)
+            sector_size_bytes_cmd, stdout=subprocess.PIPE, shell=True,
+            universal_newlines=True)
         sector_size_bytes = sector_size_bytes_process.stdout.read().rstrip()
 
         # Get the free space.
         avail_space_sectors_process = subprocess.Popen(
-            avail_space_sectors_cmd, stdout=subprocess.PIPE, shell=True)
+            avail_space_sectors_cmd, stdout=subprocess.PIPE, shell=True,
+            universal_newlines=True)
         avail_space_sectors_output = avail_space_sectors_process.stdout.read()
         avail_space_sectors = re.findall('\d+',
                                          avail_space_sectors_output)[0].rstrip()
@@ -295,7 +297,7 @@ class DiskOperator(object):
                     hdparm_process = subprocess.Popen(
                         hdparm_command,
                         stdout=subprocess.PIPE,
-                        shell=True)
+                        shell=True, universal_newlines=True)
                     hdparm_output = hdparm_process.communicate()[0]
                     if hdparm_process.returncode == 0:
                         second_half = hdparm_output.split(':')[1]
@@ -307,7 +309,8 @@ class DiskOperator(object):
                         lsblk_process = subprocess.Popen(
                                             lsblk_command,
                                             stdout=subprocess.PIPE,
-                                            shell=True)
+                                            shell=True,
+                                            universal_newlines=True)
                         lsblk_output = lsblk_process.communicate()[0]
                         if lsblk_process.returncode == 0:
                             model_num = lsblk_output.strip()
