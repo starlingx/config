@@ -726,9 +726,16 @@ class AgentManager(service.PeriodicService):
 
         if pci_device_list:
             try:
+                # Don't ask conductor to cleanup stale entries while worker
+                # manifest is not complete. For N3000 device, it could get rid
+                # of a valid entry with a different PCI address but restored
+                # from previous database backup
+                cleanup_stale = \
+                    os.path.exists(tsc.VOLATILE_WORKER_CONFIG_COMPLETE)
                 rpcapi.pci_device_update_by_host(context,
                                                 host_uuid,
-                                                pci_device_list)
+                                                pci_device_list,
+                                                cleanup_stale)
                 self._inventory_reported.add(self.PCI_DEVICE)
             except exception.SysinvException:
                 LOG.exception("Sysinv Agent exception updating pci_device.")
