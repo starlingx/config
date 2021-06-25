@@ -242,7 +242,8 @@ def create_simplex_backup(software_upgrade):
         'ansible-playbook',
         '-e', ' '.join(backup_vars),
         sysinv_constants.ANSIBLE_PLATFORM_BACKUP_PLAYBOOK]
-    proc = subprocess.Popen(args, stdout=subprocess.PIPE)
+    proc = subprocess.Popen(args, stdout=subprocess.PIPE,
+                            universal_newlines=True)
     out, _ = proc.communicate()
     LOG.info(out)
     if proc.returncode:

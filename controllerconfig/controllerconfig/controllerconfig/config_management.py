@@ -44,7 +44,8 @@ def configure_management():
     lldp_interface_list = list()
 
     print("Enabling interfaces... ", end=' ')
-    ip_link_output = subprocess.check_output(['ip', '-o', 'link'])
+    ip_link_output = subprocess.check_output(['ip', '-o', 'link'],
+                                             universal_newlines=True)
 
     for line in ip_link_output.splitlines():
         interface = line.split()[1].rstrip(':')
@@ -66,7 +67,8 @@ def configure_management():
 
     print("Retrieving neighbor details... ", end=' ')
     lldpcli_show_output = subprocess.check_output(
-        ['sudo', 'lldpcli', 'show', 'neighbors', 'summary', '-f', 'json'])
+        ['sudo', 'lldpcli', 'show', 'neighbors', 'summary', '-f', 'json'],
+        universal_newlines=True)
     try:
         lldp_interfaces = json.loads(
             lldpcli_show_output)['lldp'][0]['interface']

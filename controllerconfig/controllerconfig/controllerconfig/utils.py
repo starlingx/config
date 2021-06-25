@@ -60,7 +60,8 @@ def restart_service(name):
 def check_sm_service(service, state):
     """ Check whether an SM service has the supplied state """
     try:
-        output = subprocess.check_output(["sm-query", "service", service])
+        output = subprocess.check_output(["sm-query", "service", service],
+                                         universal_newlines=True)
         return state in output
     except subprocess.CalledProcessError:
         return False
@@ -321,7 +322,8 @@ def is_ssh_parent():
     """Determine if current process is started from a ssh session"""
     command = ('pstree -s %d' % (os.getpid()))
     try:
-        cmd_output = subprocess.check_output(command, shell=True)
+        cmd_output = subprocess.check_output(command, shell=True,
+                                             universal_newlines=True)
         if "ssh" in cmd_output:
             return True
         else:
