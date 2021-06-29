@@ -11886,7 +11886,7 @@ class ConductorManager(service.PeriodicService):
                         os.path.join(constants.SSL_CERT_CA_LIST_SHARED_DIR,
                                      fname)
                     with open(fname, "r") as infile:
-                        f.write(infile.read())
+                        f.write(infile.read().encode())
         except Exception as e:
             msg = "Failed to consolidate cert files: %s" % str(e)
             LOG.warn(msg)
