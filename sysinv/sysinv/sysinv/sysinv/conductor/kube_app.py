@@ -3759,7 +3759,13 @@ class PluginHelper(object):
     def _get_python_system_path(self):
         path = None
         try:
-            path = site.getsitepackages()[0]
+            if six.PY2:
+                path = site.getsitepackages()[0]
+            else:
+                for p in site.getsitepackages():
+                    if os.path.exists(p):
+                        path = p
+                        break
         except AttributeError:
             # Based on https://github.com/pypa/virtualenv/issues/737.
             # site.getsitepackages() function is not available in a virtualenv.
