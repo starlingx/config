@@ -1372,7 +1372,8 @@ class AppOperator(object):
                 print_chart = '{print $NF}'
 
             p1 = subprocess.Popen(['grep', pattern, logfile],
-                                   stdout=subprocess.PIPE)
+                                   stdout=subprocess.PIPE,
+                                   universal_newlines=True)
             p2 = subprocess.Popen(['awk', print_chart], stdin=p1.stdout,
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE,
