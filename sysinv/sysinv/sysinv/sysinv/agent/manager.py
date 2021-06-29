@@ -61,6 +61,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import service
 from sysinv.common import utils
+from sysinv.fpga_agent import constants as fpga_constants
 from sysinv.objects import base as objects_base
 from sysinv.puppet import common as puppet
 from sysinv.conductor import rpcapi as conductor_rpcapi
@@ -666,6 +667,9 @@ class AgentManager(service.PeriodicService):
 
             port_list.append(inic_dict)
 
+        is_fpga_n3000_reset = \
+            os.path.exists(fpga_constants.N3000_RESET_FLAG)
+
         for dev in pci_devs:
             pci_dev_dict = {'name': dev.name,
                             'pciaddr': dev.pci.pciaddr,
@@ -686,7 +690,8 @@ class AgentManager(service.PeriodicService):
                             'sriov_vf_pdevice_id': dev.sriov_vf_pdevice_id,
                             'driver': dev.driver,
                             'enabled': dev.enabled,
-                            'extra_info': dev.extra_info}
+                            'extra_info': dev.extra_info,
+                            'fpga_n3000_reset': is_fpga_n3000_reset}
             LOG.debug('Sysinv Agent dev {}'.format(pci_dev_dict))
 
             pci_device_list.append(pci_dev_dict)

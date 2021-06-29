@@ -26,10 +26,8 @@ from sysinv.common import utils
 from sysinv.common import exception
 from sysinv.fpga_agent.manager import get_n3000_devices
 from sysinv.fpga_agent import constants
-import tsconfig.tsconfig as tsc
 
 # Volatile flag file so we only reset the N3000s once after bootup.
-N3000_RESET_FLAG = os.path.join(tsc.VOLATILE_PATH, ".sysinv_n3000_reset")
 LOG = log.getLogger(__name__)
 
 
@@ -75,7 +73,7 @@ def reset_device_n3000(pci_addr):
 
 
 def reset_n3000_fpgas():
-    if not os.path.exists(N3000_RESET_FLAG):
+    if not os.path.exists(constants.N3000_RESET_FLAG):
         # Reset all N3000 FPGAs on the system.
         # TODO: make this run in parallel if there are multiple devices.
         LOG.info("Resetting N3000 FPGAs.")
@@ -94,7 +92,7 @@ def reset_n3000_fpgas():
 
         LOG.info("Done resetting N3000 FPGAs.")
         if not got_exception:
-            utils.touch(N3000_RESET_FLAG)
+            utils.touch(constants.N3000_RESET_FLAG)
             return True
         else:
             return False

@@ -27,7 +27,7 @@ from sysinv.agent.pci import PCIOperator
 from sysinv.agent.pci import PCI
 from sysinv.agent.manager import AgentManager
 from sysinv.tests import base
-
+from sysinv.fpga_agent import constants as fpga_constants
 import tsconfig.tsconfig as tsc
 
 FAKE_LSPCI_OUTPUT = {
@@ -234,6 +234,26 @@ class TestAgentOperator(base.TestCase):
         mock_exists.side_effect = file_exists_side_effect
 
         ports, devices, macs = self._get_ports_inventory()
+        for dev in devices:
+            assert dev['fpga_n3000_reset'] is False
+        assert len(ports) == 1
+        assert len(devices) == 1
+        assert len(macs) == 1
+
+    @mock.patch('os.path.exists')
+    def test_get_pci_inventory_n3000_reset_flag(self, mock_exists):
+        def file_exists_side_effect(filename):
+            if filename in [tsc.INITIAL_WORKER_CONFIG_COMPLETE,
+                            tsc.VOLATILE_WORKER_CONFIG_COMPLETE,
+                            fpga_constants.N3000_RESET_FLAG]:
+                return True
+            else:
+                return False
+        mock_exists.side_effect = file_exists_side_effect
+
+        ports, devices, macs = self._get_ports_inventory()
+        for dev in devices:
+            assert dev['fpga_n3000_reset'] is True
         assert len(ports) == 1
         assert len(devices) == 1
         assert len(macs) == 1
