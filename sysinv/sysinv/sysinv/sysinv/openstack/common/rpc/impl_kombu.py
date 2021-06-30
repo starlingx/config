@@ -485,7 +485,7 @@ class Connection(object):
                      "%(hostname)s:%(port)d") % params)
             try:
                 self.connection.release()
-            except self.connection.connection_errors:
+            except tuple(self.connection.connection_errors):  # pylint: disable=catching-non-exception
                 pass
             # Setting this in case the next statement fails, though
             # it shouldn't be doing any network operations, yet.
@@ -520,18 +520,22 @@ class Connection(object):
         while True:
             params = self.params_list[attempt % len(self.params_list)]
             attempt += 1
+            e = None
             try:
                 self._connect(params)
                 return
-            except (IOError, self.connection_errors) as e:  # noqa: F841
-                pass
-            except Exception as e:
+            except IOError as ex:
+                e = ex
+            except tuple(self.connection_errors) as ex:  # pylint: disable=catching-non-exception
+                e = ex
+            except Exception as ex:
                 # NOTE(comstud): Unfortunately it's possible for amqplib
                 # to return an error not covered by its transport
                 # connection_errors in the case of a timeout waiting for
                 # a protocol response.  (See paste link in LP888621)
                 # So, we check all exceptions for 'timeout' in them
                 # and try to reconnect in this case.
+                e = ex
                 if 'timeout' not in str(e):
                     raise
 
@@ -566,7 +570,16 @@ class Connection(object):
         while True:
             try:
                 return method(*args, **kwargs)
-            except (self.channel_errors, self.connection_errors, socket.timeout, IOError) as e:
+            except tuple(self.channel_errors) as e:  # pylint: disable=catching-non-exception
+                if error_callback:
+                    error_callback(e)
+            except tuple(self.connection_errors) as e:  # pylint: disable=catching-non-exception
+                if error_callback:
+                    error_callback(e)
+            except socket.timeout as e:
+                if error_callback:
+                    error_callback(e)
+            except IOError as e:
                 if error_callback:
                     error_callback(e)
             except Exception as e:
