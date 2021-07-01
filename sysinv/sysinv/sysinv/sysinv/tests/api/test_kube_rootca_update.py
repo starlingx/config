@@ -80,6 +80,9 @@ class FakeConductorAPI(object):
                             certificate_list, issuers_list, secret_list):
         return
 
+    def get_current_kube_rootca_cert_id(self, context):
+        return 'current_cert_serial'
+
 
 class TestKubeRootCAUpdate(base.FunctionalTest):
 
@@ -184,7 +187,14 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
         self.assertEqual(result.json['state'],
                         kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
         self.assertNotEqual(result.json['from_rootca_cert'], None)
-        self.assertEqual(result.json['from_rootca_cert'], 'oldCertSerial')
+        self.assertEqual(result.json['from_rootca_cert'], 'current_cert_serial')
+
+        # Verify that host update list return all hosts
+        host_updates = self.dbapi.kube_rootca_host_update_get_list()
+        self.assertEqual(len(host_updates), 1)
+        self.assertEqual(host_updates[0]['state'], None)
+        self.assertEqual(host_updates[0]['target_rootca_cert'], None)
+        self.assertEqual(host_updates[0]['effective_rootca_cert'], 'current_cert_serial')
 
     def test_create_rootca_update_unhealthy_from_alarms(self):
         """ Test creation of kube rootca update while there are alarms"""
@@ -318,12 +328,28 @@ class TestKubeRootCAHostUpdateList(TestKubeRootCAUpdate,
                         result.json['error_message'])
 
     def test_update_list_with_no_host_update_in_progress(self):
-        """ Should return warning message if no update has been stared on hosts"""
-        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS)
+        """ Should return updates for all the nodes """
+        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATE_CERT_GENERATED)
+
+        dbutils.create_test_kube_rootca_host_update(host_id=self.host.id,
+            state=None, target_rootca_cert=None, effective_rootca_cert='current_cert_serial')
+        dbutils.create_test_kube_rootca_host_update(host_id=self.host2.id,
+            state=None, target_rootca_cert=None, effective_rootca_cert='current_cert_serial')
 
         result = self.get_json(self.url)
         updates = result['kube_host_updates']
-        self.assertEqual(len(updates), 0)
+
+        self.assertEqual(len(updates), 2)
+        self.assertEqual(updates[0]['state'], None)
+        self.assertEqual(updates[1]['state'], None)
+        self.assertEqual(updates[0]['personality'], constants.CONTROLLER)
+        self.assertEqual(updates[1]['personality'], constants.CONTROLLER)
+        self.assertEqual(updates[0]['hostname'], 'controller-0')
+        self.assertEqual(updates[1]['hostname'], 'controller-1')
+        self.assertEqual(updates[0]['target_rootca_cert'], None)
+        self.assertEqual(updates[1]['target_rootca_cert'], None)
+        self.assertEqual(updates[0]['effective_rootca_cert'], 'current_cert_serial')
+        self.assertEqual(updates[1]['effective_rootca_cert'], 'current_cert_serial')
 
 
 class TestKubeRootCAUpdateComplete(TestKubeRootCAUpdate,

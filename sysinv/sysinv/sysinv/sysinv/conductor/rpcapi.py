@@ -2239,6 +2239,14 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('generate_kubernetes_rootca_cert'))
 
+    def get_current_kube_rootca_cert_id(self, context):
+        """Get current kubernetes root CA certificate ID
+
+        :param context: request context.
+        """
+        return self.call(context,
+            self.make_msg('get_current_kube_rootca_cert_id'))
+
     def kube_certificate_update_by_host(self, context, host, phase):
         """
         Asynchronously, have the conductor update the host's kube certificates.

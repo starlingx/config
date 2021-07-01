@@ -8818,7 +8818,7 @@ class Connection(api.Connection):
                 session.flush()
             except db_exc.DBDuplicateEntry:
                 raise exception.KubeRootCAHostUpdateAlreadyExists(
-                    uuid=values['uuid'], host=host_id)
+                    rootca_host_update_id=values['uuid'], host_id=host_id)
             return self._kube_rootca_host_update_get(values['uuid'])
 
     @objects.objectify(objects.kube_rootca_host_update)
@@ -8888,7 +8888,7 @@ class Connection(api.Connection):
                 session.add(kube_rootca_update)
                 session.flush()
             except db_exc.DBDuplicateEntry:
-                raise exception.KubeRootCAUpdateAlreadyExists(uuid=values['uuid'])
+                raise exception.KubeRootCAUpdateAlreadyExists(rootca_update_id=values['uuid'])
             return self._kube_rootca_update_get(values['uuid'])
 
     @objects.objectify(objects.kube_rootca_update)

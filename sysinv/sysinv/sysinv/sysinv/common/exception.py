@@ -1584,7 +1584,8 @@ class ApplicationLifecycleNotificationException(Exception):
 
 
 class KubeRootCAHostUpdateAlreadyExists(Conflict):
-    message = _("A Kubernetes RootCA Host Update with id %(rootca_host_update_id)s already exists.")
+    message = _("A Kubernetes RootCA Host Update %(rootca_host_update_id)s "
+                "on host %(host_id)s already exists.")
 
 
 class KubeRootCAHostUpdateNotFound(NotFound):
@@ -1592,7 +1593,7 @@ class KubeRootCAHostUpdateNotFound(NotFound):
 
 
 class KubeRootCAUpdateAlreadyExists(NotFound):
-    message = _("Kubernetes RootCA Update with id %(rootca_update_id)s not found")
+    message = _("Kubernetes RootCA Update with id %(rootca_update_id)s already exists")
 
 
 class KubeRootCAUpdateNotFound(NotFound):
