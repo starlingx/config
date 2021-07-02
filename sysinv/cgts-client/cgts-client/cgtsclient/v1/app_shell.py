@@ -120,7 +120,7 @@ def do_application_upload(cc, args):
     if not _is_url(data["tarfile"]):
         try:
             with open(data["tarfile"], 'rb') as tarfile:
-                binary_data = base64.urlsafe_b64encode(tarfile.read())
+                binary_data = base64.urlsafe_b64encode(tarfile.read()).decode("utf-8")
             data.update({'binary_data': binary_data})
         except Exception:
             raise exc.CommandError("Error: Could not open file %s." % data["tarfile"])
