@@ -78,13 +78,13 @@ class ShellTest(utils.BaseTestCase):
 
     def test_help_on_subcommand(self):
         required = [
-            '.*?^usage: system host-show \[--column COLUMN\] \[--format {table,yaml,value}\]'
-            '.*?<hostname or id>'
-            '',
-            ".*?^Show host attributes.",
-            '',
-            ".*?^Positional arguments:",
-            ".*?<hostname or id>      Name or ID of host",
+            r'.*?^usage: system host-show \[--column COLUMN\] \[--format {table,yaml,value}\]'
+            r'.*?<hostname or id>'
+            r'',
+            r".*?^Show host attributes.",
+            r'',
+            r".*?^Positional arguments:",
+            r".*?<hostname or id>      Name or ID of host",
         ]
         argstrings = [
             'help host-show',
