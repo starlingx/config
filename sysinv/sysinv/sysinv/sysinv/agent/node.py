@@ -387,13 +387,13 @@ class NodeOperator(object):
                         hp_attr.update({
                             'vm_hugepages_nr_1G': nr_hugepages,
                             'vm_hugepages_avail_1G': free_hugepages,
-                            'vm_hugepages_use_1G': 'True'
+                            'vm_hugepages_use_1G': True
                         })
                     else:
                         if len(subdirs) == 1:
                             # No 1G hugepage support.
                             hp_attr = {
-                                'vm_hugepages_use_1G': 'False',
+                                'vm_hugepages_use_1G': False,
                                 'vm_hugepages_nr_1G': 0,
                                 'vswitch_hugepages_size_mib': vs_hp_size,
                                 'vswitch_hugepages_nr': vs_hp_nr,
@@ -484,7 +484,7 @@ class NodeOperator(object):
                 'numa_node': node,
                 'memtotal_mib': total_hp_mb,
                 'memavail_mib': free_hp_mb,
-                'hugepages_configured': 'True',
+                'hugepages_configured': True,
                 'node_memtotal_mib': node_total_kb // SIZE_KB,
             })
 
@@ -544,7 +544,7 @@ class NodeOperator(object):
                 'numa_node': node,
                 'memtotal_mib': total_mb,
                 'memavail_mib': free_mb,
-                'hugepages_configured': 'False',
+                'hugepages_configured': False,
             }
 
             imemory.append(attr)
