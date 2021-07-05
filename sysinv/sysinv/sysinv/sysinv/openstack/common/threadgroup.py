@@ -19,7 +19,7 @@ from eventlet import greenpool
 from eventlet import greenthread
 
 from oslo_log import log as logging
-from sysinv.openstack.common import loopingcall
+from oslo_service import loopingcall
 
 LOG = logging.getLogger(__name__)
 
