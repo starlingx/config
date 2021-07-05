@@ -425,7 +425,7 @@ class NodeOperator(object):
                 pass
 
             # Get the total memory from meminfo for this node
-            re_node_memtotal = re.compile(r'^Node\s+\d+\s+\MemTotal:\s+(\d+)')
+            re_node_memtotal = re.compile(r'^Node\s+\d+\s+MemTotal:\s+(\d+)')
             total_kb = 0   # Total Memory (KB)
 
             meminfo = "/sys/devices/system/node/node%d/meminfo" % node
@@ -501,10 +501,10 @@ class NodeOperator(object):
         imemory = []
         self.total_memory_mb = 0
 
-        re_node_memtotal = re.compile(r'^Node\s+\d+\s+\MemTotal:\s+(\d+)')
-        re_node_memfree = re.compile(r'^Node\s+\d+\s+\MemFree:\s+(\d+)')
-        re_node_filepages = re.compile(r'^Node\s+\d+\s+\FilePages:\s+(\d+)')
-        re_node_sreclaim = re.compile(r'^Node\s+\d+\s+\SReclaimable:\s+(\d+)')
+        re_node_memtotal = re.compile(r'^Node\s+\d+\s+MemTotal:\s+(\d+)')
+        re_node_memfree = re.compile(r'^Node\s+\d+\s+MemFree:\s+(\d+)')
+        re_node_filepages = re.compile(r'^Node\s+\d+\s+FilePages:\s+(\d+)')
+        re_node_sreclaim = re.compile(r'^Node\s+\d+\s+SReclaimable:\s+(\d+)')
 
         for node in range(self.num_nodes):
             attr = {}
