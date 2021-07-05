@@ -423,7 +423,7 @@ class AppOperator(object):
             else:
                 filename = '/tmp/' + app.name + '.tgz'
 
-            with open(filename, 'wb') as dest:
+            with open(filename, 'w') as dest:
                 shutil.copyfileobj(remote_file, dest, TARFILE_TRANSFER_CHUNK_SIZE)
             return filename
 
@@ -653,7 +653,7 @@ class AppOperator(object):
                 version=app.version,
                 reason="charts specify no docker images.")
 
-        with open(app.sync_imgfile, 'ab') as f:
+        with open(app.sync_imgfile, 'a') as f:
             yaml.safe_dump({"download_images": images_to_download}, f,
                            default_flow_style=False)
 
@@ -693,12 +693,12 @@ class AppOperator(object):
                 if chart_images:
                     images_by_charts.update({chart.name: chart_images})
 
-        with open(app.sync_imgfile, 'wb') as f:
+        with open(app.sync_imgfile, 'w') as f:
             yaml.safe_dump(images_by_charts, f, explicit_start=True,
                            default_flow_style=False)
 
     def _retrieve_images_list(self, app_images_file):
-        with open(app_images_file, 'rb') as f:
+        with open(app_images_file, 'r') as f:
             images_list = yaml.safe_load(f)
         return images_list
 
@@ -716,7 +716,7 @@ class AppOperator(object):
                 app.sync_imgfile, app.sync_armada_mfile, app.sync_overrides_dir)
             if set(saved_download_images_list) != set(images_to_download):
                 saved_images_list.update({"download_images": images_to_download})
-                with open(app.sync_imgfile, 'wb') as f:
+                with open(app.sync_imgfile, 'w') as f:
                     yaml.safe_dump(saved_images_list, f, explicit_start=True,
                                    default_flow_style=False)
         else:
@@ -3455,7 +3455,7 @@ class ArmadaHelper(object):
                                          universal_newlines=True,
                                          stdout=subprocess.PIPE,
                                          stderr=subprocess.STDOUT)
-                    with p.stdout, open(logfile, 'wb') as log:
+                    with p.stdout, open(logfile, 'w') as log:
                         while p.poll() is None:
                             line = p.stdout.readline()
                             if line != b"":
@@ -3485,11 +3485,11 @@ class ArmadaHelper(object):
                                          universal_newlines=True,
                                          stdout=subprocess.PIPE,
                                          stderr=subprocess.STDOUT)
-                    with p.stdout, open(logfile, 'wb') as log:
+                    with p.stdout, open(logfile, 'w') as log:
                         while p.poll() is None:
                             line = p.stdout.readline()
                             if line != b"":
-                                LOG.debug('%s: %s', request, line.encode('utf-8'))
+                                LOG.debug('%s: %s', request, line)
                                 log.write(line)
                                 log.flush()
                     if p.returncode != 0:
@@ -3529,10 +3529,10 @@ class ArmadaHelper(object):
                                              universal_newlines=True,
                                              stdout=subprocess.PIPE,
                                              stderr=subprocess.STDOUT)
-                        with p.stdout, open(logfile, 'wb') as log:
+                        with p.stdout, open(logfile, 'w') as log:
                             while p.poll() is None:
                                 line = p.stdout.readline()
-                                if line != b"":
+                                if line != "":
                                     log.write(line)
                                     log.flush()
                         if p.returncode != 0:
@@ -3566,10 +3566,10 @@ class ArmadaHelper(object):
                                          universal_newlines=True,
                                          stdout=subprocess.PIPE,
                                          stderr=subprocess.STDOUT)
-                    with p.stdout, open(logfile, 'wb') as log:
+                    with p.stdout, open(logfile, 'w') as log:
                         while p.poll() is None:
                             line = p.stdout.readline()
-                            if line != b"":
+                            if line != "":
                                 log.write(line)
                                 log.flush()
                     if p.returncode != 0:
