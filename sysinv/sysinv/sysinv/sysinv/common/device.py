@@ -68,6 +68,7 @@ ACCLR_FEC_RESOURCES = {
     PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF:
     {
         'fec_name': "intel_fpga_fec",
+        'dvconf': {'platform::devices::n3000::fec::enabled': True}
     }
 }
 
