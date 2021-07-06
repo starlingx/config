@@ -1573,7 +1573,7 @@ class AgentManager(service.PeriodicService):
                     basename = os.path.basename(file_name)
                     fd, tmppath = tempfile.mkstemp(dir=dirname, prefix=basename)
                     with os.fdopen(fd, 'wb') as f:
-                        f.write(f_content)
+                        f.write(f_content.encode())
                     if os.path.islink(file_name):
                         os.unlink(file_name)
                     os.rename(tmppath, file_name)
