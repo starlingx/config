@@ -12435,9 +12435,8 @@ class ConductorManager(service.PeriodicService):
 
             if trigger['type'] in metadata_map.keys():
                 # Check if the app subscribes to this trigger type
-                if filter(lambda t: t.get('type', None) ==
-                                    metadata_map[trigger['type']],
-                          app_triggers):
+                if [t for t in app_triggers if t.get('type', None) ==
+                                    metadata_map[trigger['type']]]:
                     # Get the first trigger with a specific type in the metadata
                     app_trigger = [x for x in app_triggers if
                                    x.get(constants.APP_METADATA_TYPE, None) == metadata_map[trigger['type']]][0]
