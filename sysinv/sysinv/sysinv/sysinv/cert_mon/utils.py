@@ -287,10 +287,10 @@ def update_subcloud_status(token, subcloud_name, status):
     resp = rest_api_request(token, "PATCH", api_cmd, json.dumps(api_cmd_payload))
 
     if 'result' in resp and resp['result'] == 'OK':
-        LOG.info('Update admin endpoint request succeed')
+        LOG.info('Successfully updated subcloud %s status: %s' % (subcloud_name, status))
     else:
-        LOG.error('Request response %s' % resp)
-        raise Exception('Update %s admin endpoint failed')
+        LOG.error('Failed to update subcloud %s status to %s, resp=%s' % (subcloud_name, status, resp))
+        raise Exception('Update subcloud status failed, subcloud=%s' % subcloud_name)
 
 
 def rest_api_request(token, method, api_cmd,
@@ -573,7 +573,7 @@ def get_dc_role():
         if len(res) == 1:
             system = res[0]
             dc_role = system['distributed_cloud_role']
-            LOG.info('Result %s' % system)
+            LOG.debug('DC role: %s' % system)
         else:
             raise Exception('Failed to access system data')
 
