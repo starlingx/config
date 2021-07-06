@@ -171,6 +171,7 @@ class HostTest(test_shell.ShellTest):
 
     def test_kube_host_upgrade_control_plane(self):
         self.make_env()
+        self.ihost_manager_list_result = [ihost(None, FAKE_IHOST_2, True)]
         self.kube_host_upgrade_manager_list_result = [
             KubeHostUpgrade(None, FAKE_KUBE_HOST_UPGRADE, True),
             KubeHostUpgrade(None, FAKE_KUBE_HOST_UPGRADE_2, True),
@@ -196,6 +197,7 @@ class HostTest(test_shell.ShellTest):
 
     def test_kube_host_upgrade_kubelet(self):
         self.make_env()
+        self.ihost_manager_list_result = [ihost(None, FAKE_IHOST_2, True)]
         self.kube_host_upgrade_manager_list_result = [
             KubeHostUpgrade(None, FAKE_KUBE_HOST_UPGRADE, True),
             KubeHostUpgrade(None, FAKE_KUBE_HOST_UPGRADE_2, True),

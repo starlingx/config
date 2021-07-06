@@ -760,6 +760,7 @@ def do_host_bulk_export(cc, args):
            help="Force the downgrade operation ")
 def do_host_downgrade(cc, args):
     """Perform software downgrade for the specified host."""
+    ihost_utils._find_ihost(cc, args.hostid)
     system_type, system_mode = utils._get_system_info(cc)
     simplex = system_mode == constants.SYSTEM_MODE_SIMPLEX
 
@@ -789,6 +790,7 @@ def do_host_downgrade(cc, args):
            help="Force the upgrade operation ")
 def do_host_upgrade(cc, args):
     """Perform software upgrade for a host."""
+    ihost_utils._find_ihost(cc, args.hostid)
     system_type, system_mode = utils._get_system_info(cc)
     simplex = system_mode == constants.SYSTEM_MODE_SIMPLEX
 
@@ -822,6 +824,7 @@ def do_host_upgrade(cc, args):
            help="Force the kubernetes upgrade operation ")
 def do_kube_host_upgrade(cc, args):
     """Perform kubernetes upgrade for a host."""
+    ihost_utils._find_ihost(cc, args.hostid)
 
     if args.component == 'control-plane':
         host = cc.ihost.kube_upgrade_control_plane(args.hostid, args.force)
