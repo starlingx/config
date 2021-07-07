@@ -17,11 +17,11 @@
 # of this software may be licensed only pursuant to the terms
 # of an applicable Wind River license agreement.
 #
-import base64
 from eventlet import greenthread
 import greenlet
 from oslo_config import cfg
 from oslo_log import log
+from oslo_serialization import base64
 from oslo_service import periodic_task
 import time
 
@@ -124,9 +124,9 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
                         raise Exception('%s certificate data missing %s'
                                         % (subcloud_name, item))
 
-                txt_ssl_cert = base64.b64decode(secret.data['tls.crt'])
-                txt_ssl_key = base64.b64decode(secret.data['tls.key'])
-                txt_ca_cert = base64.b64decode(secret.data['ca.crt'])
+                txt_ssl_cert = base64.decode_as_text(secret.data['tls.crt'])
+                txt_ssl_key = base64.decode_as_text(secret.data['tls.key'])
+                txt_ca_cert = base64.decode_as_text(secret.data['ca.crt'])
             except Exception as e:
                 LOG.error('Cannot audit ssl certificate on %s' % subcloud_name)
                 LOG.exception(e)

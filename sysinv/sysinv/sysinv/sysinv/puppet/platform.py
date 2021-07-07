@@ -6,6 +6,7 @@
 import keyring
 import os
 
+from oslo_serialization import base64
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
@@ -522,7 +523,7 @@ class PlatformPuppet(base.BasePuppet):
                     # convert these back to their native encoding
                     encoded_files = tpm_data.pop("base64_encoded_files", [])
                     for binary in encoded_files:
-                        tpm_data[binary] = tpm_data[binary].decode('base64')
+                        tpm_data[binary] = base64.decode_as_text(tpm_data[binary])
                     config.update({
                         'platform::tpm::tpm_data': tpm_data
                     })
