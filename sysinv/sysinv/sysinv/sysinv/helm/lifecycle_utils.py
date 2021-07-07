@@ -6,10 +6,10 @@
 # All Rights Reserved.
 #
 
-import base64
 import time
 
 from oslo_log import log as logging
+from oslo_serialization import base64
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
@@ -239,8 +239,8 @@ def create_local_registry_secrets(app_op, app, hook_info):
                 auth = '{0}:{1}'.format(local_registry_auth['username'],
                                         local_registry_auth['password'])
                 token = '{{\"auths\": {{\"{0}\": {{\"auth\": \"{1}\"}}}}}}'.format(
-                    constants.DOCKER_REGISTRY_SERVER, base64.b64encode(auth))
-                body['data'].update({'.dockerconfigjson': base64.b64encode(token)})
+                    constants.DOCKER_REGISTRY_SERVER, base64.encode_as_text(auth))
+                body['data'].update({'.dockerconfigjson': base64.encode_as_text(token)})
 
             body['metadata'].update({'name': app_op.DOCKER_REGISTRY_SECRET,
                                      'namespace': ns})
