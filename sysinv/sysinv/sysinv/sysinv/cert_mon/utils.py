@@ -31,6 +31,7 @@ from keystoneauth1 import session
 from keystoneclient.auth.identity import v3
 from oslo_config import cfg
 from oslo_log import log
+from oslo_utils import encodeutils
 from six.moves.urllib.request import Request
 from six.moves.urllib.error import HTTPError
 from six.moves.urllib.error import URLError
@@ -317,7 +318,7 @@ def rest_api_request(token, method, api_cmd,
                 request_info.add_header(header_type, header_value)
 
         if api_cmd_payload is not None:
-            request_info.data = api_cmd_payload
+            request_info.data = encodeutils.safe_encode(api_cmd_payload)
 
         request = None
         try:
@@ -367,7 +368,7 @@ def get_system(token, method, api_cmd, api_cmd_headers=None,
                 request_info.add_header(header_type, header_value)
 
         if api_cmd_payload is not None:
-            request_info.data = api_cmd_payload
+            request_info.data = encodeutils.safe_encode(api_cmd_payload)
 
         request = urlopen(request_info, timeout=timeout)
         response = request.read()
@@ -453,7 +454,7 @@ def _get_token(auth_url, auth_project, username, password, user_domain,
                         "domain": {"name": project_domain}
                     }}}})
 
-        request_info.data = payload
+        request_info.data = encodeutils.safe_encode(payload)
 
         request = urlopen(request_info, timeout=timeout)
         # Identity API v3 returns token id in X-Subject-Token
