@@ -469,7 +469,7 @@ def _get_token(auth_url, auth_project, username, password, user_domain,
         request = urlopen(request_info, timeout=timeout)
         # Identity API v3 returns token id in X-Subject-Token
         # response header.
-        token_id = request.info().getheader('X-Subject-Token')
+        token_id = request.headers.get('X-Subject-Token')
         response = json.loads(request.read())
         request.close()
         # save the region name for service url lookup
