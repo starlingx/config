@@ -22,7 +22,6 @@
 
 """Test class for Sysinv ManagerService."""
 
-import base64
 import mock
 import os.path
 import tsconfig.tsconfig as tsc
@@ -31,6 +30,7 @@ import uuid
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 
+from oslo_serialization import base64
 from sysinv.agent import rpcapi as agent_rpcapi
 from sysinv.common import constants
 from sysinv.common import device as dconstants
@@ -48,7 +48,7 @@ from sysinv.tests.db import utils
 class FakeSecret(object):
 
     def __init__(self, crt):
-        self.data = {'tls.crt': base64.b64encode(crt)}
+        self.data = {'tls.crt': base64.encode_as_text(crt)}
 
 
 class FakeCephOperator(object):

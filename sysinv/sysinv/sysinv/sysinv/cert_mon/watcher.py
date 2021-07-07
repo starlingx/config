@@ -17,7 +17,6 @@
 # of this software may be licensed only pursuant to the terms
 # of an applicable Wind River license agreement.
 #
-import base64
 import re
 import hashlib
 from datetime import datetime
@@ -29,6 +28,7 @@ from kubernetes import config
 import os
 from oslo_config import cfg
 from oslo_log import log
+from oslo_serialization import base64
 from six.moves.urllib.error import URLError
 
 from sysinv.cert_mon import utils
@@ -93,11 +93,11 @@ class CertUpdateEventData(object):
         self.tls_crt = None
         self.tls_key = None
         try:
-            self.ca_crt = base64.b64decode(data['ca.crt']).strip() \
+            self.ca_crt = base64.decode_as_text(data['ca.crt']).strip() \
                 if 'ca.crt' in data else ''
-            self.tls_crt = base64.b64decode(data['tls.crt']).strip() \
+            self.tls_crt = base64.decode_as_text(data['tls.crt']).strip() \
                 if 'tls.crt' in data else ''
-            self.tls_key = base64.b64decode(data['tls.key']).strip() \
+            self.tls_key = base64.decode_as_text(data['tls.key']).strip() \
                 if 'tls.key' in data else ''
         except TypeError:
             LOG.error('Invalid secret data.')

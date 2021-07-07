@@ -4,10 +4,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import base64
 import keyring
 import requests
 
+from oslo_serialization import base64
 from sysinv.common import constants
 from sysinv.common import exception
 
@@ -68,7 +68,7 @@ def docker_registry_authenticate(www_authenticate):
     # make a request to the token server
     # the credentials are passed as a header while the rest
     # are passed as params
-    auth_string = base64.b64encode("%s:%s" % (REGISTRY_USERNAME, get_registry_password()))
+    auth_string = base64.encode_as_text("%s:%s" % (REGISTRY_USERNAME, get_registry_password()))
     token_server_request_headers = {"authorization": "Basic %s" % auth_string}
     # we need try twice.
     # SYSTEM_CERT_PATH if the docker registry cert is signed by a trusted CA

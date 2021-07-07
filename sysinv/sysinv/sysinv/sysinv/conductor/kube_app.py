@@ -9,7 +9,6 @@
 
 """ System Inventory Kubernetes Application Operator."""
 
-import base64
 import copy
 import docker
 from eventlet.green import subprocess
@@ -38,6 +37,7 @@ from eventlet import Timeout
 from fm_api import constants as fm_constants
 from fm_api import fm_api
 from oslo_log import log as logging
+from oslo_serialization import base64
 from sysinv._i18n import _
 from sysinv.api.controllers.v1 import kube_app
 from sysinv.common import constants
@@ -983,12 +983,12 @@ class AppOperator(object):
                 secret = self._kube.kube_get_secret("registry-local-secret", kubernetes.NAMESPACE_KUBE_SYSTEM)
                 if secret is None:
                     return
-                secret_auth_body = base64.b64decode(secret.data['.dockerconfigjson'])
+                secret_auth_body = base64.decode_as_text(secret.data['.dockerconfigjson'])
                 secret_auth_info = (secret_auth_body.split('auth":')[1]).split('"')[1]
                 registry_auth = cutils.get_local_docker_registry_auth()
                 registry_auth_info = '{0}:{1}'.format(registry_auth['username'],
                                                       registry_auth['password'])
-                if secret_auth_info == base64.b64encode(registry_auth_info):
+                if secret_auth_info == base64.encode_as_text(registry_auth_info):
                     LOG.debug("Auth info is the same, no update is needed for k8s secret.")
                     return
             except Exception as e:
@@ -997,8 +997,8 @@ class AppOperator(object):
             try:
                 # update secret with new auth info
                 token = '{{\"auths\": {{\"{0}\": {{\"auth\": \"{1}\"}}}}}}'.format(
-                        constants.DOCKER_REGISTRY_SERVER, base64.b64encode(registry_auth_info))
-                secret.data['.dockerconfigjson'] = base64.b64encode(token)
+                        constants.DOCKER_REGISTRY_SERVER, base64.encode_as_text(registry_auth_info))
+                secret.data['.dockerconfigjson'] = base64.encode_as_text(token)
                 self._kube.kube_patch_secret("registry-local-secret", kubernetes.NAMESPACE_KUBE_SYSTEM, secret)
                 LOG.info("Secret registry-local-secret under Namespace kube-system is updated")
             except Exception as e:
@@ -1015,9 +1015,9 @@ class AppOperator(object):
                         continue
 
                     try:
-                        secret_auth_body = base64.b64decode(secret.data['.dockerconfigjson'])
+                        secret_auth_body = base64.decode_as_text(secret.data['.dockerconfigjson'])
                         if constants.DOCKER_REGISTRY_SERVER in secret_auth_body:
-                            secret.data['.dockerconfigjson'] = base64.b64encode(token)
+                            secret.data['.dockerconfigjson'] = base64.encode_as_text(token)
                             self._kube.kube_patch_secret(AppOperator.DOCKER_REGISTRY_SECRET, ns, secret)
                             LOG.info("Secret %s under Namespace %s is updated"
                                      % (AppOperator.DOCKER_REGISTRY_SECRET, ns))

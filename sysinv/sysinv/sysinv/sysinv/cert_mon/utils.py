@@ -17,7 +17,6 @@
 # of this software may be licensed only pursuant to the terms
 # of an applicable Wind River license agreement.
 #
-import base64
 import json
 import os
 import re
@@ -32,6 +31,7 @@ from keystoneclient.auth.identity import v3
 from oslo_config import cfg
 from oslo_log import log
 from oslo_utils import encodeutils
+from oslo_serialization import base64
 from six.moves.urllib.request import Request
 from six.moves.urllib.error import HTTPError
 from six.moves.urllib.error import URLError
@@ -109,8 +109,8 @@ def verify_adminep_cert_chain():
         raise Exception('%s tls.crt data missing'
                         % (constants.SC_ADMIN_ENDPOINT_SECRET_NAME))
 
-    txt_ca_crt = base64.b64decode(secret_ica.data['tls.crt'])
-    txt_tls_crt = base64.b64decode(secret_adminep.data['tls.crt'])
+    txt_ca_crt = base64.decode_as_text(secret_ica.data['tls.crt'])
+    txt_tls_crt = base64.decode_as_text(secret_adminep.data['tls.crt'])
 
     with tempfile.NamedTemporaryFile() as ca_tmpfile:
         ca_tmpfile.write(txt_ca_crt)
