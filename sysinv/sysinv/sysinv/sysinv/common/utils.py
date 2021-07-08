@@ -2882,6 +2882,53 @@ def build_cert_identifier(cert):
     return cert_id
 
 
+def add_certificate_subject(subject, spec):
+    """ Utility method to build a subject data structure along
+        k8s Certificate resources. This method supports addition of
+        Organization (O), OrganizationalUnits (OU), Country (C) and
+        State/Province (ST).
+
+        :param subject: a dictionary with keys respective to the
+        subject fields mentioned above.
+        :param spec: a dicitionary specifying the Certificate.spec that
+        is going to be used on the resource creation.
+    """
+    certificate_subject = {}
+    # the template we're using to build Certificate resource doesn't
+    # accept fields with None or empty values. We just add fields below
+    # if they are specified by the user, otherwise we simply ignore them.
+    if subject.get('O'):
+        spec['organization'] = [subject.get('O')]
+    if subject.get('CN'):
+        spec['commonName'] = subject.get('CN')
+    if subject.get('OU'):
+        certificate_subject['organizationalUnits'] = [subject.get('OU')]
+    if subject.get('C'):
+        certificate_subject['countries'] = [subject.get('C')]
+    if subject.get('ST'):
+        certificate_subject['provinces'] = [subject.get('ST')]
+    if subject.get('L'):
+        certificate_subject['localities'] = [subject.get('L')]
+    spec['subject'] = certificate_subject
+    return spec
+
+
+def calculate_k8s_component_certificate_duration():
+    """ Calculate the duration to be set in the Certificates of various
+    k8s components in kube rootca update procedure. The default
+    standard duration is 1 year, but if the new root CA has less than 1 year
+    of validation, these certificates will be set to have the same duration as
+    the root CA certificate.
+    """
+    year_period = 8760  # number of hours in 1 year period
+    new_rootca_cert = get_certificate_from_file(kubernetes.KUBERNETES_NEW_ROOTCA_CERT)
+    validation_period = new_rootca_cert.not_valid_after - new_rootca_cert.not_valid_before
+    duration = validation_period.days * 24
+    if duration > year_period:
+        duration = year_period
+    return duration
+
+
 def format_image_filename(device_image):
     """ Format device image filename """
     return "{}-{}-{}-{}.bit".format(device_image.bitstream_type,

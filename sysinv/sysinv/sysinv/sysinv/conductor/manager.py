@@ -14180,7 +14180,7 @@ class ConductorManager(service.PeriodicService):
         r = self.dbapi.kube_rootca_update_update(update.id, update_obj)
         return dict(success=r.to_rootca_cert, error="")
 
-    def generate_kubernetes_rootca_cert(self, context):
+    def generate_kubernetes_rootca_cert(self, context, subject, duration=None):
         """ Generate a new k8s root CA
             this will consist on 5 steps:
                 1. Pre-check to assure all conditions are OK for the cert generation
@@ -14219,13 +14219,14 @@ class ConductorManager(service.PeriodicService):
             msg = "Not able to get the current kube rootca"
             return dict(success="", error=msg)
 
-        # extract validation period from current cert
-        # the generated one will have the same period of validity
-        validation_period = current_cert.not_valid_after - \
-                            current_cert.not_valid_before
+        if duration is None:
+            # extract validation period from current cert
+            # the generated one will have the same period of validity
+            validation_period = current_cert.not_valid_after - \
+                                current_cert.not_valid_before
 
-        # extract duration in hours to apply in resource spec
-        duration = validation_period.days * 24
+            # convert duration into hours to apply in resource spec
+            duration = validation_period.days * 24
 
         # Step 2: Generating a self-signed issuer
         kube_operator = kubernetes.KubeOperator()
@@ -14258,6 +14259,20 @@ class ConductorManager(service.PeriodicService):
 
         # Step 3: Generating a self-signed CA from issuer
         rootca_certificate_name = constants.KUBE_ROOTCA_SECRET
+        spec = {
+            'isCA': True,
+            'duration': str(duration) + 'h',
+            'renewBefore': constants.K8S_CERTIFICATE_MINIMAL_DURATION,
+            'commonName': 'kubernetes',
+            'secretName': rootca_certificate_name,
+            'issuerRef': {
+                'name': selfsigned_issuer_name,
+                'kind': 'Issuer'
+            },
+            'keyEncoding': 'pkcs8'
+        }
+
+        spec = cutils.add_certificate_subject(subject, spec)
 
         rootca_certificate = {
             'apiVersion': api_version,
@@ -14266,17 +14281,7 @@ class ConductorManager(service.PeriodicService):
                 'name': rootca_certificate_name,
                 'namespace': kubernetes.NAMESPACE_DEPLOYMENT
             },
-            'spec': {
-                'commonName': 'kubernetes',
-                'isCA': True,
-                'duration': str(duration) + 'h',
-                'secretName': rootca_certificate_name,
-                'issuerRef': {
-                    'name': selfsigned_issuer_name,
-                    'kind': 'Issuer'
-                },
-                'keyEncoding': 'pkcs8'
-            }
+            'spec': spec
         }
 
         try:
@@ -14316,8 +14321,8 @@ class ConductorManager(service.PeriodicService):
                                                      'issuers',
                                                      certificate_issuer_name,
                                                      certificate_issuer)
-        except Exception:
-            msg = ("Failed to create root CA issuer in cert-manager")
+        except Exception as e:
+            msg = ("Failed to create root CA issuer in cert-manager: %s" % e)
             LOG.error(msg)
             return dict(success="", error=msg)
 
@@ -14430,12 +14435,13 @@ class ConductorManager(service.PeriodicService):
 
         kube_operator = kubernetes.KubeOperator()
 
-        # Read apiserver cert to extract SAN and validy duration information
-        # as a standard. For this procedure we're going to set the same duration
-        # for all certificates created.
-        apiserver_cert = cutils.get_certificate_from_file(kubernetes.KUBERNETES_APISERVER_CERT)
-        validation_period = apiserver_cert.not_valid_after - apiserver_cert.not_valid_before
-        duration = validation_period.days * 24
+        # Set the validity duration for each certificate that's going
+        # to be created in this method
+        duration = cutils.calculate_k8s_component_certificate_duration()
+
+        # placeholder to set a time for the renewBefore
+        # Certificate.spec parameter
+        renew_before = constants.K8S_CERTIFICATE_MINIMAL_DURATION
 
         LOG.info("Creating secrets for %s kubernetes control plane components "
                  "due to rootCA update" % host.hostname)
@@ -14461,6 +14467,7 @@ class ConductorManager(service.PeriodicService):
                     'secretName': admin_certificate_name,
                     'commonName': 'kubernetes-admin',
                     'duration': str(duration) + 'h',
+                    'renewBefore': renew_before,
                     'organization': ['system:masters'],
                     'usages': usages,
                     'issuerRef': issuer_reference
@@ -14485,6 +14492,7 @@ class ConductorManager(service.PeriodicService):
         # Create apiserver server certificate/key
         # for this one the SAN should maintain the same addresses
         # as the apiserver actually running
+        apiserver_cert = cutils.get_certificate_from_file(kubernetes.KUBERNETES_APISERVER_CERT)
         dns_names = cutils.get_cert_DNSNames(apiserver_cert)
         ip_addresses = cutils.get_cert_IPAddresses(apiserver_cert)
 
@@ -14500,6 +14508,7 @@ class ConductorManager(service.PeriodicService):
                 'secretName': apiserver_certificate_name,
                 'commonName': 'kube-apiserver',
                 'duration': str(duration) + 'h',
+                'renewBefore': renew_before,
                 'dnsNames': dns_names,
                 'ipAddresses': ip_addresses,
                 'usages': ['digital signature', 'key encipherment', 'server auth'],
@@ -14535,6 +14544,7 @@ class ConductorManager(service.PeriodicService):
                 'secretName': apiserver_kubelet_client_certificate_name,
                 'commonName': 'kube-apiserver-kubelet-client',
                 'duration': str(duration) + 'h',
+                'renewBefore': renew_before,
                 'organization': ['system:masters'],
                 'usages': usages,
                 'issuerRef': issuer_reference
@@ -14571,6 +14581,7 @@ class ConductorManager(service.PeriodicService):
                 'secretName': kube_scheduler_certificate_name,
                 'commonName': 'system:kube-scheduler',
                 'duration': str(duration) + 'h',
+                'renewBefore': renew_before,
                 'usages': usages,
                 'issuerRef': issuer_reference
             }
@@ -14605,6 +14616,7 @@ class ConductorManager(service.PeriodicService):
                 'secretName': controller_manager_certificate_name,
                 'commonName': 'system:kube-controller-manager',
                 'duration': str(duration) + 'h',
+                'renewBefore': renew_before,
                 'usages': usages,
                 'issuerRef': issuer_reference
             }
@@ -14639,6 +14651,7 @@ class ConductorManager(service.PeriodicService):
                 'secretName': kubelet_certificate_name,
                 'commonName': 'system:node:' + host.hostname,
                 'duration': str(duration) + 'h',
+                'renewBefore': renew_before,
                 'organization': ['system:nodes'],
                 'usages': usages,
                 'issuerRef': issuer_reference
@@ -14667,9 +14680,11 @@ class ConductorManager(service.PeriodicService):
         # Read apiserver cert duration information as a standard. For this
         # procedure we're going to set the same duration for all certificates
         # created.
-        apiserver_cert = cutils.get_certificate_from_file(kubernetes.KUBERNETES_APISERVER_CERT)
-        validation_period = apiserver_cert.not_valid_after - apiserver_cert.not_valid_before
-        duration = validation_period.days * 24
+        duration = cutils.calculate_k8s_component_certificate_duration()
+
+        # placeholder to set a time for the renewBefore
+        # Certificate.spec parameter
+        renew_before = constants.K8S_CERTIFICATE_MINIMAL_DURATION
 
         LOG.info("Creating secrets for %s kubernetes control plane components "
                  "due to rootCA update" % host.hostname)
@@ -14687,6 +14702,7 @@ class ConductorManager(service.PeriodicService):
                 'secretName': kubelet_certificate_name,
                 'commonName': 'system:node:' + host.hostname,
                 'duration': str(duration) + 'h',
+                'renewBefore': renew_before,
                 'organization': ['system:nodes'],
                 'usages': usages,
                 'issuerRef': issuer_reference

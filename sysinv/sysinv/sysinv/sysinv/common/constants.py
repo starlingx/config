@@ -1931,5 +1931,8 @@ KUBE_SCHEDULER_CERT = 'system-kube-scheduler-{}-client-certificate'
 KUBE_CONTROLLER_MANAGER_CERT = 'system-kube-controller-manager-{}-client-certificate'
 KUBE_KUBELET_CERT = 'system-kube-kubelet-{}-client-certificate'
 
+# minimum k8s certificate duration
+K8S_CERTIFICATE_MINIMAL_DURATION = '24h'
+
 # configuration UUID reboot required flag (bit)
 CONFIG_REBOOT_REQUIRED = (1 << 127)
