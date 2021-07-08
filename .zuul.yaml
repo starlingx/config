@@ -16,6 +16,10 @@
         - controllerconfig-tox-py36
         - controllerconfig-tox-flake8
         - controllerconfig-tox-pylint
+        - tsconfig-tox-pylint
+        - tsconfig-tox-py27
+        - tsconfig-tox-py36
+        - tsconfig-tox-flake8
         - cgtsclient-tox-py27
         - cgtsclient-tox-py36
         - cgtsclient-tox-pep8
@@ -32,6 +36,10 @@
         - controllerconfig-tox-py36
         - controllerconfig-tox-flake8
         - controllerconfig-tox-pylint
+        - config-tox-pylint
+        - config-tox-py27
+        - config-tox-py36
+        - config-tox-flake8
         - cgtsclient-tox-py27
         - cgtsclient-tox-py36
         - cgtsclient-tox-pep8
@@ -161,6 +169,51 @@
     vars:
       tox_envlist: pylint
       tox_extra_args: -c controllerconfig/controllerconfig/tox.ini
+
+- job:
+    name: config-tox-pylint
+    parent: tox
+    nodeset: ubuntu-xenial
+    description: Run pylint tests for tsconfig
+    files:
+      - tsconfig/*
+    vars:
+      tox_envlist: pylint
+      tox_extra_args: -c tsconfig/tsconfig/tox.ini
+
+- job:
+    name: config-tox-py27
+    parent: tox
+    nodeset: ubuntu-xenial
+    description: Run py27 tests for tsconfig
+    files:
+      - tsconfig/*
+    vars:
+      tox_envlist: py27
+      tox_extra_args: -c tsconfig/tsconfig/tox.ini
+
+- job:
+    name: config-tox-py36
+    parent: tox
+    description: Run py36 tests for tsconfig
+    nodeset: ubuntu-bionic
+    files:
+      - tsconfig/*
+    vars:
+      tox_envlist: py36
+      tox_extra_args: -c tsconfig/tsconfig/tox.ini
+
+- job:
+    name: config-tox-flake8
+    parent: tox
+    description: Run flake8 tests for tsconfig
+    nodeset: ubuntu-bionic
+    files:
+      - tsconfig/*
+    vars:
+      tox_envlist: flake8
+      tox_extra_args: -c tsconfig/tsconfig/tox.ini
+
 
 - job:
     name: flock-devstack-config
