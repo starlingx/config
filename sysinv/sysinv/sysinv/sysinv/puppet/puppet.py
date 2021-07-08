@@ -9,6 +9,7 @@
 from __future__ import absolute_import
 
 import eventlet
+import io
 import os
 import tempfile
 import yaml
@@ -172,7 +173,8 @@ class PuppetOperator(object):
             target_load,
             'hieradata')
 
-        with open(os.path.join(path, filename), 'r') as yaml_file:
+        with io.open(os.path.join(path, filename), 'r',
+                     encoding='utf-8') as yaml_file:
             host_config = yaml.load(yaml_file)
 
         host_config.update(config)

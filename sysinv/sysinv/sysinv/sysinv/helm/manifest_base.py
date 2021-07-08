@@ -10,6 +10,7 @@
 """ System inventory Armada manifest operator."""
 
 import abc
+import io
 import os
 import json
 import ruamel.yaml as yaml
@@ -89,7 +90,7 @@ class ArmadaManifestOperator(object):
         summary_fqpn = os.path.join(path, SUMMARY_FILE)
         if os.path.exists(summary_fqpn):
             self.manifest_path = os.path.dirname(summary_fqpn)
-            with open(summary_fqpn, 'r') as f:
+            with io.open(summary_fqpn, 'r', encoding='utf-8') as f:
                 # The RoundTripLoader removes the superfluous quotes by default,
                 # resulting the dumped out charts not readable in Armada.
                 # Set preserve_quotes=True to preserve all the quotes.
@@ -109,7 +110,7 @@ class ArmadaManifestOperator(object):
             # Save the name for a delete manifest
             self.delete_manifest = "%s-del%s" % os.path.splitext(manifest_fqpn)
 
-            with open(manifest_fqpn, 'r') as f:
+            with io.open(manifest_fqpn, 'r', encoding='utf-8') as f:
                 # The RoundTripLoader removes the superfluous quotes by default,
                 # resulting the dumped out charts not readable in Armada.
                 # Set preserve_quotes=True to preserve all the quotes.
