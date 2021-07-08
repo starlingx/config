@@ -96,7 +96,7 @@ class Database(fixtures.Fixture):
             "'reserve2', 'edgeworker'))"
         results = self.engine.execute("SELECT sql FROM sqlite_master \
             WHERE type='table' AND name='i_host'")
-        create_i_host = results.first().values()[0]
+        create_i_host = list(results.first().values())[0]
         create_i_host = create_i_host.replace(personality_check_old,
                                                personality_check_new)
         self.engine.execute("ALTER TABLE i_host RENAME TO i_host_bak")
