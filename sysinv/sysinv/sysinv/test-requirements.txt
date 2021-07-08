@@ -18,3 +18,4 @@ testtools!=1.2.0,>=0.9.36
 isort<5;python_version>="3.0"
 pylint<2.1.0;python_version<"3.0" # GPLv2
 pylint<2.4.0;python_version>="3.0" # GPLv2
+pycryptodomex
