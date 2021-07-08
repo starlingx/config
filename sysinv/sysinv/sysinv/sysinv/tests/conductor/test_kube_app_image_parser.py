@@ -9,6 +9,7 @@
 """Test class for Sysinv Kube App Image Parser."""
 
 import copy
+import io
 import ruamel.yaml as yaml
 import os
 
@@ -61,7 +62,7 @@ class TestKubeAppImageParser(base.TestCase):
     def test_find_images_in_dict(self):
         yaml_file = os.path.join(os.path.dirname(__file__),
                                  "data", "chart_values_sample.yaml")
-        with open(yaml_file, 'r') as f:
+        with io.open(yaml_file, 'r', encoding='utf-8') as f:
             values = yaml.safe_load(f)
 
         expected = copy.deepcopy(IMAGES_RESOURCE)

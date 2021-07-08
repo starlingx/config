@@ -7,6 +7,7 @@
 """Test class for Sysinv Kube App Metadata operations."""
 
 import copy
+import io
 import os
 import ruamel.yaml as yaml
 
@@ -30,7 +31,7 @@ class TestKubeAppMetadata(base.TestCase):
 
         yaml_file = os.path.join(os.path.dirname(__file__),
                                  "data", "metadata_app_reapply_1.yaml")
-        with open(yaml_file, 'r') as f:
+        with io.open(yaml_file, 'r', encoding='utf-8') as f:
             metadata_collection = yaml.safe_load_all(f)
 
             for metadata in metadata_collection:
@@ -62,7 +63,7 @@ class TestKubeAppMetadata(base.TestCase):
 
         yaml_file = os.path.join(os.path.dirname(__file__),
                                  "data", "metadata_app_reapply_non_existing_1.yaml")
-        with open(yaml_file, 'r') as f:
+        with io.open(yaml_file, 'r', encoding='utf-8') as f:
             metadata_collection = yaml.safe_load_all(f)
 
             for metadata in metadata_collection:
@@ -100,7 +101,7 @@ class TestKubeAppMetadata(base.TestCase):
 
         yaml_file = os.path.join(os.path.dirname(__file__),
                                  "data", "metadata_app_reapply_non_existing_2.yaml")
-        with open(yaml_file, 'r') as f:
+        with io.open(yaml_file, 'r', encoding='utf-8') as f:
             metadata_collection = yaml.safe_load_all(f)
 
             for metadata in metadata_collection:
@@ -135,7 +136,7 @@ class TestKubeAppMetadata(base.TestCase):
 
         yaml_file = os.path.join(os.path.dirname(__file__),
                                  "data", "metadata_app_reapply_non_managed_1.yaml")
-        with open(yaml_file, 'r') as f:
+        with io.open(yaml_file, 'r', encoding='utf-8') as f:
             metadata_collection = yaml.safe_load_all(f)
 
             for metadata in metadata_collection:
@@ -173,7 +174,7 @@ class TestKubeAppMetadata(base.TestCase):
 
         yaml_file = os.path.join(os.path.dirname(__file__),
                                  "data", "metadata_app_reapply_not_cycle_1_non_managed.yaml")
-        with open(yaml_file, 'r') as f:
+        with io.open(yaml_file, 'r', encoding='utf-8') as f:
             metadata_collection = yaml.safe_load_all(f)
 
             for metadata in metadata_collection:
@@ -211,7 +212,7 @@ class TestKubeAppMetadata(base.TestCase):
 
         yaml_file = os.path.join(os.path.dirname(__file__),
                                  "data", "metadata_app_reapply_not_cycle_2.yaml")
-        with open(yaml_file, 'r') as f:
+        with io.open(yaml_file, 'r', encoding='utf-8') as f:
             metadata_collection = yaml.safe_load_all(f)
 
             for metadata in metadata_collection:
@@ -265,7 +266,7 @@ class TestKubeAppMetadata(base.TestCase):
 
         yaml_file = os.path.join(os.path.dirname(__file__),
                                  "data", "metadata_app_reapply_cycle_1.yaml")
-        with open(yaml_file, 'r') as f:
+        with io.open(yaml_file, 'r', encoding='utf-8') as f:
             metadata_collection = yaml.safe_load_all(f)
 
             for metadata in metadata_collection:
@@ -283,7 +284,7 @@ class TestKubeAppMetadata(base.TestCase):
 
         yaml_file = os.path.join(os.path.dirname(__file__),
                                  "data", "metadata_app_reapply_cycle_2.yaml")
-        with open(yaml_file, 'r') as f:
+        with io.open(yaml_file, 'r', encoding='utf-8') as f:
             metadata_collection = yaml.safe_load_all(f)
 
             for metadata in metadata_collection:
@@ -301,7 +302,7 @@ class TestKubeAppMetadata(base.TestCase):
 
         yaml_file = os.path.join(os.path.dirname(__file__),
                                  "data", "metadata_app_reapply_cycle_3.yaml")
-        with open(yaml_file, 'r') as f:
+        with io.open(yaml_file, 'r', encoding='utf-8') as f:
             metadata_collection = yaml.safe_load_all(f)
 
             for metadata in metadata_collection:

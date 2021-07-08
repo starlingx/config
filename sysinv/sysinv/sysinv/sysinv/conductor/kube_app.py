@@ -15,6 +15,7 @@ from eventlet.green import subprocess
 import glob
 import grp
 import functools
+import io
 import os
 import pkg_resources
 import pwd
@@ -520,11 +521,11 @@ class AppOperator(object):
         manifest_update_required = False
 
         if os.path.exists(app_images_file):
-            with open(app_images_file, 'r') as f:
+            with io.open(app_images_file, 'r', encoding='utf-8') as f:
                 images_file = yaml.safe_load(f)
 
         if os.path.exists(app_manifest_file):
-            with open(app_manifest_file, 'r') as f:
+            with io.open(app_manifest_file, 'r', encoding='utf-8') as f:
                 # The RoundTripLoader removes the superfluous quotes by default,
                 # resulting the dumped out charts not readable in Armada.
                 # Set preserve_quotes=True to preserve all the quotes.
@@ -547,7 +548,7 @@ class AppOperator(object):
                 app_overrides_file = os.path.join(overrides_dir, overrides)
                 overrides_file = {}
                 if os.path.exists(app_overrides_file):
-                    with open(app_overrides_file, 'r') as f:
+                    with io.open(app_overrides_file, 'r', encoding='utf-8') as f:
                         overrides_file = yaml.safe_load(f)
 
                 override_imgs = self._image.find_images_in_dict(
@@ -685,7 +686,7 @@ class AppOperator(object):
 
             chart_path = os.path.join(chart_name, 'values.yaml')
             if os.path.exists(chart_path):
-                with open(chart_path, 'r') as f:
+                with io.open(chart_path, 'r', encoding='utf-8') as f:
                     y = yaml.safe_load(f)
 
                 chart_images = self._image.find_images_in_dict(y)
@@ -697,7 +698,7 @@ class AppOperator(object):
                            default_flow_style=False)
 
     def _retrieve_images_list(self, app_images_file):
-        with open(app_images_file, 'r') as f:
+        with io.open(app_images_file, 'r', encoding='utf-8') as f:
             images_list = yaml.safe_load(f)
         return images_list
 
@@ -804,7 +805,7 @@ class AppOperator(object):
         lfile = os.path.join(app.inst_path, constants.APP_METADATA_FILE)
 
         if os.path.exists(lfile) and os.path.getsize(lfile) > 0:
-            with open(lfile, 'r') as f:
+            with io.open(lfile, 'r', encoding='utf-8') as f:
                 try:
                     y = yaml.safe_load(f)
                     repo = y.get('helm_repo', common.HELM_REPO_FOR_APPS)
@@ -1056,7 +1057,7 @@ class AppOperator(object):
         chart_groups = []
         armada_charts = {}
 
-        with open(manifest_file, 'r') as f:
+        with io.open(manifest_file, 'r', encoding='utf-8') as f:
             docs = yaml.safe_load_all(f)
             for doc in docs:
                 # iterative docs in the manifest file to get required
@@ -1280,7 +1281,7 @@ class AppOperator(object):
         metadata_file = os.path.join(app.inst_path,
                                      constants.APP_METADATA_FILE)
         if os.path.exists(metadata_file) and os.path.getsize(metadata_file) > 0:
-            with open(metadata_file, 'r') as f:
+            with io.open(metadata_file, 'r', encoding='utf-8') as f:
                 try:
                     metadata = yaml.safe_load(f) or {}
                     value = cutils.deep_get(metadata, keys, default=default)
@@ -2218,7 +2219,7 @@ class AppOperator(object):
         metadata = {}
 
         if os.path.exists(app.sync_metadata_file):
-            with open(app.sync_metadata_file, 'r') as f:
+            with io.open(app.sync_metadata_file, 'r', encoding='utf-8') as f:
                 # The RoundTripLoader removes the superfluous quotes by default.
                 # Set preserve_quotes=True to preserve all the quotes.
                 # The assumption here: there is just one yaml section
