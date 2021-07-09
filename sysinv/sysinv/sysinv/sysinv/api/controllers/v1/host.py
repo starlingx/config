@@ -268,7 +268,7 @@ class HostStatesController(rest.RestController):
                                           specified_cpulist))
 
             for specified_socket in specified_sockets:
-                socket, value = specified_socket.items()[0]
+                socket, value = list(specified_socket.items())[0]
                 if int(socket) >= num_nodes:
                     raise wsme.exc.ClientSideError(
                         _('There is no Processor (Socket) '
@@ -307,7 +307,7 @@ class HostStatesController(rest.RestController):
                 for numa_node in cpu_counts:
                     cpu_counts[numa_node][function] = 0
             for numa in sockets:
-                numa_node, value = numa.items()[0]
+                numa_node, value = list(numa.items())[0]
                 numa_node = int(numa_node)
                 value = int(value)
                 if ihost.hyperthreading:
