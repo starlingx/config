@@ -25,7 +25,6 @@
 """Utilities and helper functions."""
 
 import ast
-import base64
 import boto3
 from botocore.config import Config
 import collections
@@ -70,6 +69,7 @@ import netaddr
 from oslo_concurrency import lockutils
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_serialization import base64
 
 from fm_api import constants as fm_constants
 
@@ -1759,7 +1759,7 @@ def read_filtered_directory_content(dirpath, *filters):
             # they can be transferred over RPC and stored in DB
             content.decode('utf-8')
         except UnicodeError:
-            content = content.encode('base64')
+            content = base64.encode_as_text(content)
             content_dict['base64_encoded_files'] = \
                 content_dict.get("base64_encoded_files", []) + [filename]
 
@@ -2566,7 +2566,7 @@ def get_aws_ecr_registry_credentials(dbapi, registry, username, password):
 
         response = client.get_authorization_token()
         token = response['authorizationData'][0]['authorizationToken']
-        username, password = token.decode('base64').split(':')
+        username, password = base64.decode_as_text(token).split(':')
     except Exception as e:
         raise exception.SysinvException(_(
             "Failed to get AWS ECR credentials: %s" % e))
@@ -2709,8 +2709,8 @@ def get_admin_ep_cert(dc_role):
         raise Exception("Invalid admin endpoint certificate data.")
 
     try:
-        tls_crt = base64.b64decode(data['tls.crt'])
-        tls_key = base64.b64decode(data['tls.key'])
+        tls_crt = base64.decode_as_text(data['tls.crt'])
+        tls_key = base64.decode_as_text(data['tls.key'])
     except TypeError:
         raise Exception('admin endpoint secret is invalid %s' %
                         endpoint_cert_secret_name)
@@ -2729,7 +2729,7 @@ def get_admin_ep_cert(dc_role):
             LOG.error('Cannot read DC root CA certificate %s' % e)
     elif dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
         try:
-            ca_crt = base64.b64decode(data['ca.crt'])
+            ca_crt = base64.decode_as_text(data['ca.crt'])
         except TypeError:
             raise Exception('admin endpoint secret is invalid %s' %
                             endpoint_cert_secret_name)
@@ -2786,7 +2786,7 @@ def get_root_ca_cert():
 
     data = secret.data
     try:
-        ca_crt = base64.b64decode(data['ca.crt'])
+        ca_crt = base64.decode_as_text(data['ca.crt'])
     except TypeError:
         raise Exception('Secret is invalid %s' % secret_name)
 

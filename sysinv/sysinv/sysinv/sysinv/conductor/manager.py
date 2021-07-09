@@ -29,7 +29,6 @@ collection of inventory data for each host.
 
 """
 
-import base64
 import errno
 import filecmp
 import fnmatch
@@ -68,6 +67,7 @@ from netaddr import IPAddress
 from netaddr import IPNetwork
 from oslo_config import cfg
 from oslo_log import log
+from oslo_serialization import base64
 from oslo_serialization import jsonutils
 from oslo_utils import excutils
 from oslo_utils import timeutils
@@ -12114,8 +12114,8 @@ class ConductorManager(service.PeriodicService):
                 sc_endpoint_cert_secret_ns, sc_intermediate_ca_secret_name
             ))
 
-        tls_key = base64.b64encode(sc_ca_key)
-        tls_crt = base64.b64encode(sc_ca_cert)
+        tls_key = base64.encode_as_text(sc_ca_key)
+        tls_crt = base64.encode_as_text(sc_ca_cert)
         if tls_key == secret.data['tls.key'] and tls_crt == secret.data['tls.crt']:
             LOG.info('Intermediate CA cert is not changed')
             return
