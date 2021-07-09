@@ -2540,7 +2540,7 @@ class ConductorManager(service.PeriodicService):
             if not db_port:
                 LOG.debug("Could not find port for agent %s",
                           agent['name_or_uuid'])
-                return
+                continue
 
             hostid = db_host['id']
             portid = db_port['id']
@@ -2647,7 +2647,7 @@ class ConductorManager(service.PeriodicService):
             if not db_port:
                 LOG.debug("Could not find port for neighbour %s",
                           neighbour['name_or_uuid'])
-                return
+                continue
 
             LOG.debug("Processing lldp neighbour %s" % neighbour)
 
