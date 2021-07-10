@@ -29,6 +29,7 @@ import os
 from oslo_config import cfg
 from oslo_log import log
 from oslo_serialization import base64
+from oslo_utils import encodeutils
 from six.moves.urllib.error import URLError
 
 from sysinv.cert_mon import utils
@@ -130,7 +131,7 @@ class CertUpdateEventData(object):
     @staticmethod
     def hash(data):
         m = hashlib.md5()
-        m.update(data)
+        m.update(encodeutils.safe_encode(data))
         return m.hexdigest()
 
 
@@ -469,7 +470,7 @@ class RootCARenew(CertificateRenew):
             crt = f.read()
 
         m = hashlib.md5()
-        m.update(event_data.ca_crt)
+        m.update(encodeutils.safe_encode(event_data.ca_crt))
         md5sum = m.hexdigest()
 
         if crt.strip() != event_data.ca_crt:
