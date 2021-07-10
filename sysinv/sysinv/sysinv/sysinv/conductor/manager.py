@@ -71,6 +71,7 @@ from oslo_config import cfg
 from oslo_log import log
 from oslo_serialization import base64
 from oslo_serialization import jsonutils
+from oslo_utils import encodeutils
 from oslo_utils import excutils
 from oslo_utils import timeutils
 from oslo_utils import uuidutils
@@ -12368,8 +12369,8 @@ class ConductorManager(service.PeriodicService):
         if update_required:
             m = hashlib.md5()
             if ca_crt is not None:
-                m.update(ca_crt)
-            m.update(admin_ep_cert)
+                m.update(encodeutils.safe_encode(ca_crt))
+            m.update(encodeutils.safe_encode(admin_ep_cert))
             md5sum = m.hexdigest()
 
             LOG.info('Updating admin endpoint cert, md5sum %s' % md5sum)
