@@ -9,8 +9,10 @@
         - openstack-tox-linters
         - sysinv-tox-py27
         - sysinv-tox-py36
-        - sysinv-tox-flake8
-        - sysinv-tox-pylint
+        - sysinv-tox-flake8-py27
+        - sysinv-tox-flake8-py36
+        - sysinv-tox-pylint-py27
+        - sysinv-tox-pylint-py36
         - sysinv-tox-bandit
         - controllerconfig-tox-py27
         - controllerconfig-tox-py36
@@ -25,8 +27,10 @@
         - openstack-tox-linters
         - sysinv-tox-py27
         - sysinv-tox-py36
-        - sysinv-tox-flake8
-        - sysinv-tox-pylint
+        - sysinv-tox-flake8-py27
+        - sysinv-tox-flake8-py36
+        - sysinv-tox-pylint-py27
+        - sysinv-tox-pylint-py36
         - sysinv-tox-bandit
         - controllerconfig-tox-py27
         - controllerconfig-tox-py36
@@ -60,7 +64,7 @@
     name: sysinv-tox-py36
     parent: tox
     description: |
-      Run py36 test for sysinv
+      Run py36 test for sysinv in Python 3.6 env
     nodeset: ubuntu-bionic
     required-projects:
       - starlingx/fault
@@ -73,22 +77,34 @@
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
 
 - job:
-    name: sysinv-tox-flake8
+    name: sysinv-tox-flake8-py27
     parent: tox
     description: |
-      Run flake8 test for sysinv
+      Run flake8 test for sysinv in Python 2.7 env
     nodeset: ubuntu-bionic
     files:
       - sysinv/sysinv/*
     vars:
-      tox_envlist: flake8
+      tox_envlist: flake8-py27
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
 
 - job:
-    name: sysinv-tox-pylint
+    name: sysinv-tox-flake8-py36
     parent: tox
     description: |
-      Run pylint test for sysinv
+      Run flake8 test for sysinv in Python 3.6 env
+    nodeset: ubuntu-bionic
+    files:
+      - sysinv/sysinv/*
+    vars:
+      tox_envlist: flake8-py36
+      tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
+
+- job:
+    name: sysinv-tox-pylint-py27
+    parent: tox
+    description: |
+      Run pylint test for sysinv in Pyhton 2.7 env
     nodeset: ubuntu-bionic
     required-projects:
       - starlingx/fault
@@ -97,7 +113,23 @@
     files:
       - sysinv/sysinv/*
     vars:
-      tox_envlist: pylint
+      tox_envlist: pylint-py27
+      tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
+
+- job:
+    name: sysinv-tox-pylint-py36
+    parent: tox
+    description: |
+      Run pylint test for sysinv in Python 3.6 env
+    nodeset: ubuntu-bionic
+    required-projects:
+      - starlingx/fault
+      - starlingx/update
+      - starlingx/utilities
+    files:
+      - sysinv/sysinv/*
+    vars:
+      tox_envlist: pylint-py36
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
 
 - job:
