@@ -35,6 +35,7 @@ import filecmp
 import fnmatch
 import glob
 import hashlib
+import io
 import math
 import os
 import re
@@ -49,6 +50,7 @@ import uuid
 import xml.etree.ElementTree as ElementTree
 from contextlib import contextmanager
 from datetime import datetime
+from distutils.util import strtobool
 from copy import deepcopy
 
 import tsconfig.tsconfig as tsc
@@ -175,12 +177,12 @@ CONFIG_APPLY_RUNTIME_MANIFEST = 'config_apply_runtime_manifest'
 CONFIG_UPDATE_FILE = 'config_update_file'
 
 LOCK_NAME_UPDATE_CONFIG = 'update_config_'
-LOCK_AUTO_APPLY = 'AutoApplyLock'
+LOCK_APP_AUTO_MANAGE = 'AppAutoManageLock'
 
 
 AppTarBall = namedtuple(
     'AppTarBall',
-    "tarball_name app_name app_version manifest_name manifest_file")
+    "tarball_name app_name app_version manifest_name manifest_file metadata")
 
 
 class ConductorManager(service.PeriodicService):
@@ -5619,7 +5621,12 @@ class ConductorManager(service.PeriodicService):
             LOG.exception(e)
             return
 
-        tarball = self._check_tarfile(app_name)
+        tarfile = self._search_tarfile(app_name)
+        if tarfile is None:
+            # Skip if no tarball or multiple tarballs found
+            return
+
+        tarball = self._check_tarfile(app_name, tarfile)
         if ((tarball.manifest_name is None) or
                 (tarball.manifest_file is None)):
             app.status = constants.APP_UPLOAD_FAILURE
@@ -5674,7 +5681,148 @@ class ConductorManager(service.PeriodicService):
 
         self._inner_sync_auto_apply(context, app_name)
 
-    def _check_tarfile(self, app_name):
+    def _auto_update_managed_app(self, context, app_name):
+        """Auto update the platform managed applications"""
+        try:
+            app = kubeapp_obj.get_by_name(context, app_name)
+        except exception.KubeAppNotFound as e:
+            LOG.exception(e)
+            return
+
+        if app.status != constants.APP_APPLY_SUCCESS:
+            # In case the previous re-apply fails
+            return
+
+        try:
+            hook_info = LifecycleHookInfo()
+            hook_info.init(constants.APP_LIFECYCLE_MODE_AUTO,
+                           constants.APP_LIFECYCLE_TYPE_SEMANTIC_CHECK,
+                           constants.APP_LIFECYCLE_TIMING_PRE,
+                           constants.APP_UPDATE_OP)
+            hook_info[LifecycleConstants.EXTRA][LifecycleConstants.FROM_APP] = True
+            self.app_lifecycle_actions(context, app, hook_info)
+        except exception.LifecycleSemanticCheckException as e:
+            LOG.info("Auto-update failed prerequisites for {}: {}".format(app.name, e))
+            return
+        except exception.LifecycleSemanticCheckOperationNotSupported as e:
+            LOG.debug(e)
+            return
+        except Exception as e:
+            LOG.exception("Automatic operation:{} "
+                          "for app {} failed with: {}".format(hook_info,
+                                                              app.name,
+                                                              e))
+            return
+
+        if self._patching_operation_is_occurring():
+            return
+
+        LOG.debug("Platform managed application %s: Checking "
+                  "for update ..." % app_name)
+        tarfile = self._search_tarfile(app_name)
+        if tarfile is None:
+            # Skip if no tarball or multiple tarballs found
+            return
+
+        applied_app = '{}-{}'.format(app.name, app.app_version)
+        if applied_app in tarfile:
+            # Skip if the tarfile version is already applied
+            return
+
+        LOG.info("Found new tarfile version for %s: %s"
+                 % (app.name, tarfile))
+        tarball = self._check_tarfile(app_name, tarfile,
+                                      preserve_metadata=True)
+        if ((tarball.app_name is None) or
+            (tarball.app_version is None) or
+             (tarball.manifest_name is None) or
+              (tarball.manifest_file is None)):
+            # Skip if tarball check fails
+            return
+
+        if not tarball.metadata:
+            # Skip if app doesn't have metadata
+            return
+
+        auto_update = tarball.metadata.get(
+            constants.APP_METADATA_UPGRADES, {}).get(
+            constants.APP_METADATA_AUTO_UPDATE, False)
+        if not bool(strtobool(str(auto_update))):
+            # Skip if app is not set to auto_update
+            return
+
+        if tarball.app_version in \
+            app.app_metadata.get(
+                constants.APP_METADATA_UPGRADES, {}).get(
+                constants.APP_METADATA_FAILED_VERSIONS, []):
+            # Skip if this version was previously failed to
+            # be updated
+            LOG.error("Application %s with version %s was previously "
+                      "failed to be updated from version %s by auto-update"
+                      % (app.name, tarball.app_version, app.app_version))
+            return
+
+        self._inner_sync_auto_update(context, app, tarball)
+
+    @cutils.synchronized(LOCK_APP_AUTO_MANAGE)
+    def _inner_sync_auto_update(self, context, applied_app, tarball):
+        # Check no other app is in progress of apply/update/recovery
+        for other_app in self.dbapi.kube_app_get_all():
+            if other_app.status in [constants.APP_APPLY_IN_PROGRESS,
+                                    constants.APP_UPDATE_IN_PROGRESS,
+                                    constants.APP_RECOVER_IN_PROGRESS]:
+                LOG.info("%s requires update but %s "
+                         "is in progress of apply/update/recovery. "
+                         "Will retry on next audit",
+                         applied_app.name, other_app.name)
+                return
+
+        # Set the status for the current applied app to inactive
+        applied_app.status = constants.APP_INACTIVE_STATE
+        applied_app.progress = None
+        applied_app.save()
+
+        try:
+            target_app = kubeapp_obj.get_inactive_app_by_name_version(
+                context, tarball.app_name, tarball.app_version)
+            target_app.status = constants.APP_UPDATE_IN_PROGRESS
+            target_app.save()
+            if cutils.is_aio_simplex_system(self.dbapi):
+                operation = constants.APP_APPLY_OP
+            else:
+                operation = constants.APP_ROLLBACK_OP
+        except exception.KubeAppInactiveNotFound:
+            target_app_data = {
+                'name': tarball.app_name,
+                'app_version': tarball.app_version,
+                'manifest_name': tarball.manifest_name,
+                'manifest_file': os.path.basename(tarball.manifest_file),
+                'status': constants.APP_UPDATE_IN_PROGRESS,
+                'active': True
+            }
+            operation = constants.APP_APPLY_OP
+
+            try:
+                target_db_app = self.dbapi.kube_app_create(target_app_data)
+                target_app = kubeapp_obj.get_by_name(context, target_db_app.name)
+            except exception.KubeAppAlreadyExists as e:
+                applied_app.status = constants.APP_APPLY_SUCCESS
+                applied_app.progress = constants.APP_PROGRESS_COMPLETED
+                applied_app.save()
+                LOG.exception(e)
+                return
+
+        LOG.info("Platform managed application %s: "
+                 "Auto updating..." % target_app.name)
+        hook_info = LifecycleHookInfo()
+        hook_info.mode = constants.APP_LIFECYCLE_MODE_AUTO
+        greenthread.spawn(self.perform_app_update, context, applied_app,
+                          target_app, tarball.tarball_name, operation, hook_info)
+
+    def _search_tarfile(self, app_name):
+        """Search a specified application tarfile from the directory
+           containing apps bundled with the iso"""
+
         tarfiles = []
         for f in os.listdir(constants.HELM_APP_ISO_INSTALL_PATH):
             if fnmatch.fnmatch(f, '{}-*'.format(app_name)):
@@ -5682,24 +5830,35 @@ class ConductorManager(service.PeriodicService):
 
         if not tarfiles:
             LOG.error("Failed to find an application tarball for {}.".format(app_name))
-            return AppTarBall(None, None, None, None, None)
+            return None
         elif len(tarfiles) > 1:
             LOG.error("Found multiple application tarballs for {}.".format(app_name))
-            return AppTarBall(None, None, None, None, None)
+            return None
 
         tarball_name = '{}/{}'.format(
             constants.HELM_APP_ISO_INSTALL_PATH, tarfiles[0])
+        return tarball_name
+
+    def _check_tarfile(self, app_name, tarball_name, preserve_metadata=False):
+        """Extract/Verify a given application tarfile
+
+        :params app_name: application name
+        :params tarball_name: absolute path of app tarfile
+        :params preserve_metadata: preserve app metadata in the
+                                   returned tuple when true
+        :returns: a namedtuple
+        """
 
         with cutils.TempDirectory() as app_path:
             if not cutils.extract_tarfile(app_path, tarball_name):
                 LOG.error("Failed to extract tar file {}.".format(
                     os.path.basename(tarball_name)))
-                return AppTarBall(tarball_name, None, None, None, None)
+                return AppTarBall(tarball_name, None, None, None, None, None)
 
             # If checksum file is included in the tarball, verify its contents.
             if not cutils.verify_checksum(app_path):
                 LOG.error("Checksum validation failed for %s." % app_name)
-                return AppTarBall(tarball_name, None, None, None, None)
+                return AppTarBall(tarball_name, None, None, None, None, None)
 
             try:
                 name, version, patches = \
@@ -5711,11 +5870,24 @@ class ConductorManager(service.PeriodicService):
             except exception.SysinvException as e:
                 LOG.error("Extracting tarfile for %s failed: %s." % (
                     app_name, str(e)))
-                return AppTarBall(tarball_name, None, None, None, None)
+                return AppTarBall(tarball_name, None, None, None, None, None)
+
+            if preserve_metadata:
+                metadata_file = os.path.join(app_path,
+                                             constants.APP_METADATA_FILE)
+                if os.path.exists(metadata_file):
+                    with io.open(metadata_file, 'r', encoding='utf-8') as f:
+                        # The RoundTripLoader removes the superfluous quotes by default.
+                        # Set preserve_quotes=True to preserve all the quotes.
+                        # The assumption here: there is just one yaml section
+                        metadata = yaml.load(
+                                f, Loader=yaml.RoundTripLoader, preserve_quotes=True)
+                        return AppTarBall(tarball_name, name, version,
+                                          manifest_name, manifest_file, metadata)
 
             LOG.debug("Tar file of application %s verified." % app_name)
             return AppTarBall(tarball_name, name, version,
-                                manifest_name, manifest_file)
+                                manifest_name, manifest_file, None)
 
     def _patching_operation_is_occurring(self):
         # Makes sure a patching operation is not currently underway. We want
@@ -6051,15 +6223,9 @@ class ConductorManager(service.PeriodicService):
             elif status == constants.APP_APPLY_FAILURE:
                 self._auto_recover_managed_app(context, app_name)
             elif status == constants.APP_APPLY_SUCCESS:
-                # Action: do nothing -> done
+                self.check_pending_app_reapply(context)
+                self._auto_update_managed_app(context, app_name)
 
-                # TODO(rchurch): Check to see if an existing application needs
-                # upgrading. Wait for the proper application versioning
-                # support to the determine proper action.
-
-                pass
-
-        self.check_pending_app_reapply(context)
         LOG.debug("Periodic Task: _k8s_application_audit: Finished")
 
     def check_pending_app_reapply(self, context):
@@ -6096,7 +6262,7 @@ class ConductorManager(service.PeriodicService):
 
         self._inner_sync_auto_apply(context, app_name, status_constraints=[constants.APP_APPLY_SUCCESS])
 
-    @cutils.synchronized(LOCK_AUTO_APPLY)
+    @cutils.synchronized(LOCK_APP_AUTO_MANAGE)
     def _inner_sync_auto_apply(self, context, app_name, status_constraints=None):
 
         # Check no other app apply is in progress

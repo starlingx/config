@@ -1963,6 +1963,7 @@ def find_metadata_file(path, metadata_file, upgrade_from_release=None):
     app_name: <name>
     app_version: <version>
     upgrades:
+      auto_update: <true/false/yes/no>
       update_failure_no_rollback: <true/false/yes/no>
       from_versions:
       - <version.1>
@@ -2184,6 +2185,17 @@ def find_metadata_file(path, metadata_file, upgrade_from_release=None):
                         "Invalid {}: {} expected value is a boolean string."
                         "".format(metadata_file,
                                   constants.APP_METADATA_UPDATE_FAILURE_SKIP_RECOVERY)))
+            except KeyError:
+                pass
+
+            try:
+                auto_update = \
+                    upgrades[constants.APP_METADATA_AUTO_UPDATE]
+                if not is_valid_boolstr(auto_update):
+                    raise exception.SysinvException(_(
+                        "Invalid {}: {} expected value is a boolean string."
+                        "".format(metadata_file,
+                                  constants.APP_METADATA_AUTO_UPDATE)))
             except KeyError:
                 pass
 
