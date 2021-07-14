@@ -144,8 +144,8 @@ class CertUpdateEvent(object):
         try:
             self.listener.notify_changed(self.event_data)
         except Exception as e:
-            LOG.error('%s Reattempt failed %s. %s' %
-                      (self.number_of_reattempt, e, self.event_data))
+            LOG.error('Reattempt failed [#%s]: %s, event: %s'
+                      % (self.number_of_reattempt, e, self.event_data))
 
             if not isinstance(e, URLError):
                 LOG.exception(e)
@@ -237,7 +237,7 @@ class CertWatcher(object):
                     if listener.notify_changed(event_data):
                         on_success(update_event.get_id())
                 except Exception as e:
-                    LOG.error('Monitoring action %s failed. %s' % (event_data, e))
+                    LOG.error("Monitoring action in namespace=%s failed: %s,  %s" % (self.namespace, event_data, e))
                     if not isinstance(e, URLError):
                         LOG.exception(e)
                     on_error(update_event)
@@ -320,7 +320,7 @@ class CertificateRenew(CertWatcherListener):
         pass
 
     def do_action(self, event_data):
-        LOG.info('%s' % event_data)
+        LOG.info('%s do_action: %s' % (self.__class__.__name__, event_data))
         # here is a workaround for replacing private key when renewing certficate.
         # when secret is deleted, the cert-manager will recreate the secret with
         # new private key.
@@ -473,16 +473,18 @@ class RootCARenew(CertificateRenew):
         md5sum = m.hexdigest()
 
         if crt.strip() != event_data.ca_crt:
-            LOG.info('root ca certificate has changed. md5sum %s' % md5sum)
+            LOG.info('%s check_filter[%s]: root ca certificate has changed. md5sum %s'
+                     % (self.__class__.__name__, event_data.secret_name, md5sum))
             # a root CA update, all required secrets needs to be recreated
             self.secrets_to_recreate = []
             return True
         else:
-            LOG.info('root ca certificate remains the same. md5sum %s' % md5sum)
+            LOG.info('%s check_filter[%s]: root ca certificate remains the same. md5sum %s'
+                     % (self.__class__.__name__, event_data.secret_name, md5sum))
             return False
 
     def do_action(self, event_data):
-        LOG.info('%s' % event_data)
+        LOG.info('%s do_action: %s' % (self.__class__.__name__, event_data))
         if len(self.secrets_to_recreate) == 0:
             self.update_certificate(event_data)
 
@@ -537,8 +539,10 @@ class PlatformCertRenew(CertificateRenew):
         LOG.info('%s init with secretname: %s' % (self.__class__.__name__, self.secret_name))
 
     def check_filter(self, event_data):
-        LOG.info('%s: Received event_data %s' % (self.secret_name, event_data))
+        LOG.debug('%s: Received event_data %s' % (self.secret_name, event_data))
         if self.secret_name == event_data.secret_name:
+            LOG.info('%s check_filter[%s]: proceed on event_data: %s'
+                     % (self.__class__.__name__, self.secret_name, event_data))
             return self.certificate_is_ready(event_data)
         else:
             return False

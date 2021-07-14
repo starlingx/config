@@ -68,14 +68,17 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
 
     @periodic_task.periodic_task(spacing=CONF.certmon.audit_interval)
     def audit_sc_cert_start(self, context):
+        """Kicks an audit of all subclouds.
+        This task runs every very long period of time, such as 24 hours.
+        """
         # auditing subcloud certificate
-        # this task runs every very long period of time, such as 24 hours
         dc_role = utils.get_dc_role()
         if dc_role != constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
             # Do nothing if it is not systemcontroller
             return
 
         self.subclouds_to_audit = utils.get_subclouds()[:]
+        LOG.info("Periodic: begin subcloud certificate audit: %d subclouds" % len(self.subclouds_to_audit))
 
     def on_start_audit(self):
         """
@@ -87,6 +90,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             # Do nothing if it is not systemcontroller
             return
 
+        LOG.info("Service start: begin subcloud certificate audit")
         number_of_sc_to_audit = 0
         token = utils.get_token()
         subclouds = utils.get_subclouds_from_dcmanager(token)
@@ -111,7 +115,11 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
                 self.subclouds_to_audit.pop(0)
                 return
 
-            LOG.info('Auditing %s' % subcloud_name)
+            num_pause_tasks = self.subclouds_to_audit.count(TASK_NAME_PAUSE_AUDIT)
+            LOG.info('Auditing subcloud %s [#subclouds: %d #pause: %d]'
+                     % (subcloud_name,
+                        len(self.subclouds_to_audit) - num_pause_tasks,
+                        num_pause_tasks))
 
             try:
                 subcloud_sysinv_url = utils.dc_get_subcloud_sysinv_url(subcloud_name)
@@ -121,7 +129,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
                 check_list = ['ca.crt', 'tls.crt', 'tls.key']
                 for item in check_list:
                     if item not in secret.data:
-                        raise Exception('%s certificate data missing %s'
+                        raise Exception('%s certificate data missing: %s'
                                         % (subcloud_name, item))
 
                 txt_ssl_cert = base64.b64decode(secret.data['tls.crt'])
@@ -169,7 +177,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
 
         num_tasks = len(tasks)
         if num_tasks > 0:
-            LOG.info('%s failed tasks to reattempt in queue.' % num_tasks)
+            LOG.info('Starting retry_task: #tasks in reattempt queue: %s' % num_tasks)
 
         for task in tasks:
             if task.run():
@@ -255,7 +263,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             # never exit until exit signal received
             try:
                 monitor.start_watch(
-                    on_success=lambda task_id: self._purge_reattempt_task(task_id),
+                    on_success=lambda task_id: self._purge_reattempt_task(task_id, 'on success'),
                     on_error=lambda task: self._add_reattempt_task(task),
                 )
             except greenlet.GreenletExit:
@@ -267,14 +275,14 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
 
     def _add_reattempt_task(self, task):
         id = task.get_id()
-        self._purge_reattempt_task(id)
+        self._purge_reattempt_task(id, 'for new reattempt')
         self.reattempt_tasks.append(task)
 
-    def _purge_reattempt_task(self, id):
+    def _purge_reattempt_task(self, id, reason_msg):
         for t in self.reattempt_tasks:
             if t.get_id() == id:
                 self.reattempt_tasks.remove(t)
-                LOG.info('Older task %s is removed for new operation' % id)
+                LOG.info('Purging reattempt task %s: %s' % (reason_msg, id))
                 break
 
     def requeue_audit(self, subcloud_name):
