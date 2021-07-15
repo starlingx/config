@@ -12668,10 +12668,11 @@ class ConductorManager(service.PeriodicService):
                 elif not filter_active:
                     ordered_apps.append(app)
 
-            LOG.info("Apps reapply order: {}".format([app.name for app in ordered_apps]))
+            LOG.info("Apps reapply order: {}".format(
+                [app_.name for app_ in ordered_apps]))
 
             if name_only:
-                ordered_apps = [app.name for app in ordered_apps]
+                ordered_apps = [app_.name for app_ in ordered_apps]
         except Exception as e:
             LOG.error("Error while ordering apps for reapply {}".format(str(e)))
             ordered_apps = []
