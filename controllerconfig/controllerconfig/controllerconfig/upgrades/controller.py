@@ -714,24 +714,6 @@ def migrate_hiera_data(from_release, to_release, role=None):
                                    "hieradata")
     to_hiera_path = constants.HIERADATA_PERMDIR
 
-    # For simplex upgrade, we already set etcd security config during
-    # apply-bootstrap-manifest. Need to get it and update to target
-    # static.yaml.
-    static_file = os.path.join(to_hiera_path, "static.yaml")
-    etcd_security_config = {}
-
-    if os.path.exists(static_file):
-        with open(static_file, 'r') as yaml_file:
-            static_config = yaml.load(yaml_file)
-
-        if 'platform::etcd::params::security_enabled' in static_config.keys():
-            etcd_security_config['platform::etcd::params::security_enabled'] = \
-                static_config['platform::etcd::params::security_enabled']
-            etcd_security_config['platform::etcd::params::bind_address'] = \
-                static_config['platform::etcd::params::bind_address']
-            etcd_security_config['platform::etcd::params::bind_address_version'] = \
-                static_config['platform::etcd::params::bind_address_version']
-
     shutil.rmtree(to_hiera_path, ignore_errors=True)
     os.makedirs(to_hiera_path)
 
