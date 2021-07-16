@@ -1556,6 +1556,10 @@ class LifecycleSemanticCheckOpererationBlocked(SysinvException):
     message = _("%(op)s is disabled for this version of %(app)s")
 
 
+class LifecycleSemanticCheckOperationNotSupported(SysinvException):
+    message = _("%(mode)s-%(op)s is not supported for application %(name)s")
+
+
 class LifecycleMissingInfo(SysinvException):
     message = _("Lifecycle hook missing information.")
 

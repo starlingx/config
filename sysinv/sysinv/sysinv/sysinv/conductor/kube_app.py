@@ -1524,6 +1524,23 @@ class AppOperator(object):
 
         return rc
 
+    def _record_auto_update_failed_versions(self, from_app, to_app):
+        """Record the new application version in the old application
+           metadata when the new application fails to be updated"""
+
+        new_metadata = copy.deepcopy(from_app.app_metadata)
+        try:
+            failed_versions = new_metadata[constants.APP_METADATA_UPGRADES][
+                constants.APP_METADATA_FAILED_VERSIONS]
+            if to_app.version not in failed_versions:
+                failed_versions.append(to_app.version)
+        except KeyError:
+            new_metadata.setdefault(constants.APP_METADATA_UPGRADES, {}).update(
+                {constants.APP_METADATA_FAILED_VERSIONS: [to_app.version]})
+
+        with self._lock:
+            from_app.update_app_metadata(new_metadata)
+
     def _perform_app_recover(self, old_app, new_app, armada_process_required=True):
         """Perform application recover
 
@@ -1616,6 +1633,7 @@ class AppOperator(object):
         finally:
             # Ensure that the old app plugins are enabled after recovery
             _activate_old_app_plugins(old_app)
+            self._record_auto_update_failed_versions(old_app, new_app)
 
         if rc:
             self._update_app_status(
@@ -2881,6 +2899,11 @@ class AppOperator(object):
         @property
         def app_metadata(self):
             return self._kube_app.get('app_metadata')
+
+        def update_app_metadata(self, new_metadata):
+            if self.app_metadata != new_metadata:
+                self._kube_app.app_metadata = new_metadata
+                self._kube_app.save()
 
         def update_status(self, new_status, new_progress):
             self._kube_app.status = new_status
