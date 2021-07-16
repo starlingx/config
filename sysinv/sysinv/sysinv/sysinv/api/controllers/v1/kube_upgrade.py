@@ -4,6 +4,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+from fm_api import constants as fm_constants
+from fm_api import fm_api
+
 import pecan
 from pecan import rest
 import os
@@ -275,6 +278,23 @@ class KubeUpgradeController(rest.RestController):
         for kube_host_upgrade in kube_host_upgrades:
             pecan.request.dbapi.kube_host_upgrade_update(kube_host_upgrade.id,
                                                          update_values)
+        # Raise alarm to show a kubernetes upgrade is in progress
+        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,
+                                        constants.CONTROLLER_HOSTNAME)
+        fault = fm_api.Fault(
+            alarm_id=fm_constants.FM_ALARM_ID_KUBE_UPGRADE_IN_PROGRESS,
+            alarm_state=fm_constants.FM_ALARM_STATE_SET,
+            entity_type_id=fm_constants.FM_ENTITY_TYPE_HOST,
+            entity_instance_id=entity_instance_id,
+            severity=fm_constants.FM_ALARM_SEVERITY_MINOR,
+            reason_text="Kubernetes upgrade in progress.",
+            # operational
+            alarm_type=fm_constants.FM_ALARM_TYPE_7,
+            # congestion
+            probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_8,
+            proposed_repair_action="No action required.",
+            service_affecting=False)
+        fm_api.FaultAPIs().set_fault(fault)
 
         LOG.info("Started kubernetes upgrade from version: %s to version: %s"
                  % (current_kube_version, to_version))
@@ -416,3 +436,10 @@ class KubeUpgradeController(rest.RestController):
 
         # Delete the upgrade
         pecan.request.dbapi.kube_upgrade_destroy(kube_upgrade_obj.id)
+
+        # Clear the kubernetes upgrade alarm
+        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,
+                                        constants.CONTROLLER_HOSTNAME)
+        fm_api.FaultAPIs().clear_fault(
+            fm_constants.FM_ALARM_ID_KUBE_UPGRADE_IN_PROGRESS,
+            entity_instance_id)
