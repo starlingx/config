@@ -1,0 +1,3 @@
+filter f_certalarm { facility(local6) and program(cert-alarm); };
+destination d_certalarm { file("/var/log/cert-alarm.log"); };
+log { source(s_src); filter(f_certalarm); destination(d_certalarm); };

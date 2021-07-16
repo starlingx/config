@@ -159,6 +159,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/sysinv-helm
 %{_bindir}/sysinv-utils
 %{_bindir}/cert-mon
+%{_bindir}/cert-alarm
 
 %package wheels
 Summary: %{name} wheels

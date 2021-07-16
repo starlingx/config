@@ -1,0 +1,15 @@
+[Unit]
+Description=Certificate Alarm
+After=network-online.target syslog-ng.service config.service
+
+[Service]
+Type=simple
+RemainAfterExit=yes
+User=root
+Environment=OCF_ROOT=/usr/lib/ocf
+ExecStart=/usr/lib/ocf/resource.d/platform/cert-alarm start
+ExecStop=/usr/lib/ocf/resource.d/platform/cert-alarm stop
+PIDFile=/var/run/cert-alarm.pid
+
+[Install]
+WantedBy=multi-user.target

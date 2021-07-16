@@ -1,0 +1,374 @@
+#!/bin/sh
+#
+# Copyright (c) 2021 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+#
+# Support: www.windriver.com
+#
+#######################################################################
+# Initialization:
+
+: ${OCF_FUNCTIONS_DIR=${OCF_ROOT}/lib/heartbeat}
+. ${OCF_FUNCTIONS_DIR}/ocf-shellfuncs
+
+binname="cert-alarm"
+
+#######################################################################
+
+# Fill in some defaults if no values are specified
+OCF_RESKEY_binary_default=${binname}
+OCF_RESKEY_dbg_default="false"
+OCF_RESKEY_user_default="root"
+OCF_RESKEY_pid_default="/var/run/${binname}.pid"
+OCF_RESKEY_config_default="/etc/sysinv/cert-alarm.conf"
+
+: ${OCF_RESKEY_binary=${OCF_RESKEY_binary_default}}
+: ${OCF_RESKEY_dbg=${OCF_RESKEY_dbg_default}}
+: ${OCF_RESKEY_user=${OCF_RESKEY_user_default}}
+: ${OCF_RESKEY_pid=${OCF_RESKEY_pid_default}}
+: ${OCF_RESKEY_config=${OCF_RESKEY_config_default}}
+: ${OCF_RESKEY_client_binary=${OCF_RESKEY_client_binary_default}}
+
+mydaemon="/usr/bin/${OCF_RESKEY_binary}"
+TMP_DIR=/var/run/cert-alarm_tmp
+
+#######################################################################
+
+usage() {
+    cat <<UEND
+
+usage: $0 (start|stop|status|reload|monitor|validate-all|meta-data)
+
+$0 manages the Platform's System Certificate Alarm (cert-alarm) process as an HA resource
+
+   The 'start' .....  operation starts the cert-alarm service in the active state.
+   The 'stop' ......  operation stops the cert-alarm service.
+   The 'reload' ....  operation stops and then starts the cert-alarm service.
+   The 'status' ....  operation checks the status of the cert-alarm service.
+   The 'monitor' .... operation indicates the in-service status of the cert-alarm service.
+   The 'validate-all' operation reports whether the parameters are valid.
+   The 'meta-data' .. operation reports the cert-alarm's meta-data information.
+
+UEND
+}
+
+#######################################################################
+
+meta_data() {
+   if [ ${OCF_RESKEY_dbg} = "true" ] ; then
+      ocf_log info "${binname}:meta_data"
+   fi
+
+cat <<END
+<?xml version="1.0"?>
+<!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
+<resource-agent name="cert-alarm">
+<version>1.0</version>
+
+<longdesc lang="en">
+This 'cert-alarm' is an OCF Compliant Resource Agent that manages start, stop
+and in-service monitoring of the Certificate Alarm Process
+</longdesc>
+
+<shortdesc lang="en">
+Manages the Certificate Alarm (cert-alarm) process
+</shortdesc>
+
+
+<parameters>
+
+<parameter name="dbg" unique="0" required="0">
+<longdesc lang="en">
+dbg = false  ... info, warn and err logs sent to output stream (default)
+dbg = true   ... Additional debug logs are also sent to the output stream
+</longdesc>
+<shortdesc lang="en">Service Debug Control Option</shortdesc>
+<content type="boolean" default="${OCF_RESKEY_dbg_default}"/>
+</parameter>
+
+<parameter name="user" unique="0" required="0">
+<longdesc lang="en">
+User running Certificate Alarm Service (cert-alarm)
+</longdesc>
+<shortdesc lang="en">Certificate Alarm Service (cert-alarm) user</shortdesc>
+<content type="string" default="${OCF_RESKEY_user_default}" />
+</parameter>
+
+</parameters>
+
+
+<actions>
+<action name="start"        timeout="10s" />
+<action name="stop"         timeout="10s" />
+<action name="monitor"      timeout="10s" interval="10m" />
+<action name="meta-data"    timeout="10s" />
+<action name="validate-all" timeout="10s" />
+</actions>
+</resource-agent>
+END
+   return ${OCF_SUCCESS}
+}
+
+cert_alarm_tmpdir() {
+    local rc
+
+    if [ ! -d "$TMP_DIR" ]; then
+        mkdir -p "$TMP_DIR"
+        rc=$?
+        if [ $rc -ne 0 ]; then
+            ocf_log err "Certificate Monitor Service (${OCF_RESKEY_binary}) failed to create temp dir (rc=${rc})"
+            return "${OCF_ERR_GENERIC}"
+        fi
+        chown "${OCF_RESKEY_user_default}:${OCF_RESKEY_user_default}" "$TMP_DIR"
+    fi
+    export TMPDIR="$TMP_DIR"
+    return "${OCF_SUCCESS}"
+}
+
+cert_alarm_validate() {
+
+    local rc
+
+    proc="${binname}:validate"
+    if [ ${OCF_RESKEY_dbg} = "true" ] ; then
+        ocf_log info "${proc}"
+    fi
+
+    check_binary ${OCF_RESKEY_binary}
+
+    if [ ! -f ${OCF_RESKEY_config} ] ; then
+        ocf_log err "${OCF_RESKEY_binary} ini file missing (${OCF_RESKEY_config})"
+        return ${OCF_ERR_CONFIGURED}
+    fi
+
+    getent passwd $OCF_RESKEY_user >/dev/null 2>&1
+    rc=$?
+    if [ $rc -ne 0 ]; then
+        ocf_log err "User $OCF_RESKEY_user doesn't exist"
+        return ${OCF_ERR_CONFIGURED}
+    fi
+
+    return ${OCF_SUCCESS}
+}
+
+cert_alarm_status() {
+    local pid
+    local rc
+
+    proc="${binname}:status"
+    if [ ${OCF_RESKEY_dbg} = "true" ] ; then
+        ocf_log info "${proc}"
+    fi
+
+    if [ ! -f $OCF_RESKEY_pid ]; then
+        ocf_log info "${binname}:Certificate Alarm (cert-alarm) is not running"
+        return $OCF_NOT_RUNNING
+    else
+        pid=`cat $OCF_RESKEY_pid`
+    fi
+
+    ocf_run -warn kill -s 0 $pid
+    rc=$?
+    if [ $rc -eq 0 ]; then
+        return $OCF_SUCCESS
+    else
+        ocf_log info "${binname}:Old PID file found, but Certificate Alarm Service (cert-alarm) is not running"
+        rm -f $OCF_RESKEY_pid
+        return $OCF_NOT_RUNNING
+    fi
+}
+
+cert_alarm_monitor () {
+    local rc
+
+    cert_alarm_status
+    rc=$?
+    # If status returned anything but success, return that immediately
+    if [ $rc -ne $OCF_SUCCESS ]; then
+        return $rc
+    fi
+
+    ocf_log debug "Certificate Alarm Service (cert-alarm) monitor succeeded"
+
+    return $OCF_SUCCESS
+}
+
+cert_alarm_start () {
+    local rc
+
+    cert_alarm_status
+    rc=$?
+    if [ $rc -ne ${OCF_SUCCESS} ] ; then
+        ocf_log err "${proc} ping test failed (rc=${rc})"
+        cert_alarm_stop
+    else
+        return ${OCF_SUCCESS}
+    fi
+
+    if [ ${OCF_RESKEY_dbg} = "true" ] ; then
+        RUN_OPT_DEBUG="--debug"
+    else
+        RUN_OPT_DEBUG=""
+    fi
+
+    su ${OCF_RESKEY_user} -s /bin/sh -c "${OCF_RESKEY_binary} --config-file=${OCF_RESKEY_config} ${RUN_OPT_DEBUG}"' >> /dev/null 2>&1 & echo $!' > $OCF_RESKEY_pid
+    rc=$?
+    if [ ${rc} -ne ${OCF_SUCCESS} ] ; then
+        ocf_log err "${proc} failed ${mydaemon} daemon (rc=$rc)"
+        return ${OCF_ERR_GENERIC}
+    else
+        if [ -f ${OCF_RESKEY_pid} ] ; then
+            pid=`cat ${OCF_RESKEY_pid}`
+            ocf_log info "${proc} running with pid ${pid}"
+        else
+            ocf_log info "${proc} with no pid file"
+        fi
+    fi
+
+    # Record success or failure and return status
+    if [ ${rc} -eq $OCF_SUCCESS ] ; then
+        ocf_log info "Certificate Alarm Service (${OCF_RESKEY_binary}) started (pid=${pid})"
+    else
+        ocf_log err "Certificate Alarm (${OCF_RESKEY_binary}) failed to start (rc=${rc})"
+        rc=${OCF_NOT_RUNNING}
+    fi
+
+    return ${rc}
+}
+
+cert_alarm_confirm_stop() {
+    local my_bin
+    local my_processes
+
+    my_binary=`which ${OCF_RESKEY_binary}`
+    my_processes=`pgrep -l -f "^(python|/usr/bin/python|/usr/bin/python2|/usr/bin/python3) ${my_binary}([^\w-]|$)"`
+
+    if [ -n "${my_processes}" ]
+    then
+        ocf_log info "About to SIGKILL the following: ${my_processes}"
+        pkill -KILL -f "^(python|/usr/bin/python|/usr/bin/python2|/usr/bin/python3) ${my_binary}([^\w-]|$)"
+    fi
+}
+
+cert_alarm_stop () {
+    local rc
+    local pid
+
+    cert_alarm_status
+    rc=$?
+    if [ $rc -eq $OCF_NOT_RUNNING ]; then
+        ocf_log info "${proc} Certificate Alarm (cert-alarm) already stopped"
+        cert_alarm_confirm_stop
+        return ${OCF_SUCCESS}
+    fi
+
+    # Try SIGTERM
+    pid=`cat $OCF_RESKEY_pid`
+    ocf_run kill -s TERM $pid
+    rc=$?
+    if [ $rc -ne 0 ]; then
+        ocf_log err "${proc} Certificate Alarm (cert-alarm) couldn't be stopped"
+        cert_alarm_confirm_stop
+        exit $OCF_ERR_GENERIC
+    fi
+
+    # stop waiting
+    shutdown_timeout=15
+    if [ -n "$OCF_RESKEY_CRM_meta_timeout" ]; then
+        shutdown_timeout=$((($OCF_RESKEY_CRM_meta_timeout/1000)-5))
+    fi
+    count=0
+    while [ $count -lt $shutdown_timeout ]; do
+        cert_alarm_status
+        rc=$?
+        if [ $rc -eq $OCF_NOT_RUNNING ]; then
+            break
+        fi
+        count=`expr $count + 1`
+        sleep 1
+        ocf_log info "${proc} Certificate Alarm (cert-alarm) still hasn't stopped yet. Waiting ..."
+    done
+
+    cert_alarm_status
+    rc=$?
+    if [ $rc -ne $OCF_NOT_RUNNING ]; then
+        # SIGTERM didn't help either, try SIGKILL
+        ocf_log info "${proc} Certificate Alarm (cert-alarm) failed to stop after ${shutdown_timeout}s using SIGTERM. Trying SIGKILL ..."
+        ocf_run kill -s KILL $pid
+    fi
+    cert_alarm_confirm_stop
+
+    ocf_log info "${proc} Certificate Alarm (cert-alarm) stopped."
+
+    rm -f $OCF_RESKEY_pid
+
+    return $OCF_SUCCESS
+
+}
+
+cert_alarm_reload () {
+    local rc
+
+    proc="${binname}:reload"
+    if [ ${OCF_RESKEY_dbg} = "true" ] ; then
+        ocf_log info "${proc}"
+    fi
+
+    cert_alarm_stop
+    rc=$?
+    if [ $rc -eq ${OCF_SUCCESS} ] ; then
+        #sleep 1
+        cert_alarm_start
+        rc=$?
+        if [ $rc -eq ${OCF_SUCCESS} ] ; then
+            ocf_log info "Certificate Alarm (${OCF_RESKEY_binary}) process restarted"
+        fi
+    fi
+
+    if [ ${rc} -ne ${OCF_SUCCESS} ] ; then
+        ocf_log err "Certificate Alarm (${OCF_RESKEY_binary}) process failed to restart (rc=${rc})"
+    fi
+
+    return ${rc}
+}
+
+case ${__OCF_ACTION} in
+    meta-data)   meta_data
+                 exit ${OCF_SUCCESS}
+                 ;;
+    usage|help)  usage
+                 exit ${OCF_SUCCESS}
+                 ;;
+esac
+
+# Anything except meta-data and help must pass validation
+cert_alarm_validate || exit $?
+
+# Set up tmpfiles directory to avoid temp files being
+# cleaned up by systemd tmpfiles clean service.
+cert_alarm_tmpdir || exit $?
+
+if [ ${OCF_RESKEY_dbg} = "true" ] ; then
+    ocf_log info "${binname}:${__OCF_ACTION} action"
+fi
+
+case ${__OCF_ACTION} in
+
+    start)        cert_alarm_start
+                  ;;
+    stop)         cert_alarm_stop
+                  ;;
+    status)       cert_alarm_status
+                  ;;
+    reload)       cert_alarm_reload
+                  ;;
+    monitor)      cert_alarm_monitor
+                  ;;
+    validate-all) cert_alarm_validate
+                  ;;
+    *)            usage
+                  exit ${OCF_ERR_UNIMPLEMENTED}
+                  ;;
+esac
