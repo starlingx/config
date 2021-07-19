@@ -2791,15 +2791,16 @@ class ConductorManager(service.PeriodicService):
                         if (host['administrative'] == constants.ADMIN_LOCKED
                                 and pci_dev['pdevice_id'] in
                                 dconstants.SRIOV_ENABLED_FEC_DEVICE_IDS):
-                            # For the FPGA FEC device, the actual VF driver
-                            # is only updated on an unlocked host. The set
+                            # For the FEC devices, the actual drivers
+                            # are only updated on an unlocked host. The set
                             # of VF PCI addresses may not be known when the
                             # value of sriov_numvfs changes and is applied
                             # to create the VFs on a puppet runtime manifest
-                            # apply.  This prevents the intended VF driver
+                            # apply. This prevents the intended drivers
                             # from being reported as None (reset) when the
                             # binding of the intended driver has not had a
                             # chance to be applied.
+                            del attr['driver']
                             del attr['sriov_vf_driver']
                         if is_n3000_dev_not_reset:
                             LOG.info("N3000 reset not executed, skip for dev="
