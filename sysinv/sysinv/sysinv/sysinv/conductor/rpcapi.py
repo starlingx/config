@@ -2254,3 +2254,17 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                 phase=phase
             )
         )
+
+    def kube_certificate_update_for_pods(self, context, phase):
+        """
+        Asynchronously, have the conductor update certificates for pods.
+
+        :param context: request context.
+        :param phase: the phase of the update.
+        """
+        return self.cast(
+            context, self.make_msg(
+                'kube_certificate_update_for_pods',
+                phase=phase
+            )
+        )

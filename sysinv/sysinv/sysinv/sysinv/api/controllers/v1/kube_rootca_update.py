@@ -183,11 +183,81 @@ class KubeRootCAHostUpdate(base.APIBase):
         return kube_rootca_host_update
 
 
+class KubeRootCAPodsUpdateController(rest.RestController):
+
+    def _precheck_trustbothcas(self, cluster_update):
+        # Pre checking if conditions met for phase trustBothCAs
+        if cluster_update.state not in \
+                [kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTBOTHCAS,
+                 kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTBOTHCAS_FAILED]:
+            raise wsme.exc.ClientSideError(_(
+                "kube-rootca-pods-update phase trust-both-cas rejected: "
+                "not allowed when cluster update is in state: %s. "
+                "(only allowed when in state: %s or %s)"
+                % (cluster_update.state,
+                kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTBOTHCAS,
+                kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTBOTHCAS_FAILED)))
+
+    def _precheck_trustnewca(self, cluster_update):
+        # Pre checking if conditions met for phase trustNewCA
+        if cluster_update.state not in \
+                [kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA,
+                 kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTNEWCA_FAILED]:
+            raise wsme.exc.ClientSideError(_(
+                "kube-rootca-pods-update phase trust-new-ca rejected: "
+                "not allowed when cluster update is in state: %s. "
+                "(only allowed when in state: %s or %s)"
+                % (cluster_update.state,
+                kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA,
+                kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTNEWCA_FAILED)))
+
+    @cutils.synchronized(LOCK_KUBE_ROOTCA_CONTROLLER)
+    @wsme_pecan.wsexpose(KubeRootCAUpdate, body=six.text_type)
+    def post(self, body):
+        # Check cluster update status
+        try:
+            update = pecan.request.dbapi.kube_rootca_update_get_one()
+        except exception.NotFound:
+            raise wsme.exc.ClientSideError(_(
+                "kube-rootca-pods-update rejected: No update in progress."))
+
+        phase = body['phase'].lower()
+
+        if phase == constants.KUBE_CERT_UPDATE_TRUSTBOTHCAS:
+            # kube root CA update for pods phase trustBothCAs
+            self._precheck_trustbothcas(update)
+            update_state = kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTBOTHCAS
+        elif phase == constants.KUBE_CERT_UPDATE_TRUSTNEWCA:
+            # kube root CA update for pods phase trustNewCA
+            self._precheck_trustnewca(update)
+            update_state = kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTNEWCA
+        else:
+            raise wsme.exc.ClientSideError(_(
+                "kube-rootca-pods-update rejected: phase %s not supported."
+                % (phase)))
+
+        # Update the cluster update state
+        values = dict()
+        values['state'] = update_state
+        update = \
+            pecan.request.dbapi.kube_rootca_update_update(update.id, values)
+
+        # perform rpc to conductor to perform config apply
+        pecan.request.rpcapi.kube_certificate_update_for_pods(
+            pecan.request.context, phase)
+
+        return KubeRootCAUpdate.convert_with_links(update)
+
+
 class KubeRootCAUpdateController(rest.RestController):
     """REST controller for kubernetes rootCA updates."""
 
+    # Controller for /kube_rootca_update/upload, upload new root CA
+    # certificate.
     upload = KubeRootCAUploadController()
     generate_cert = KubeRootCAGenerateController()
+    # Controller for /kube_rootca_update/pods, update pods certificates.
+    pods = KubeRootCAPodsUpdateController()
 
     def __init__(self):
         self.fm_api = fm_api.FaultAPIs()

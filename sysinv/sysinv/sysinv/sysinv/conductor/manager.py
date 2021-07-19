@@ -7675,7 +7675,7 @@ class ConductorManager(service.PeriodicService):
                 LOG.error("No match for sysinv-agent manifest application reported! "
                           "reported_cfg: %(cfg)s status: %(status)s "
                           "iconfig: %(iconfig)s" % args)
-        # Kubernetes root CA update
+        # Kubernetes root CA host update
         elif reported_cfg in [puppet_common.REPORT_KUBE_CERT_UPDATE_TRUSTBOTHCAS,
                               puppet_common.REPORT_KUBE_CERT_UPDATE_UPDATECERTS,
                               puppet_common.REPORT_KUBE_CERT_UPDATE_TRUSTNEWCA]:
@@ -7688,6 +7688,23 @@ class ConductorManager(service.PeriodicService):
                 # Update action has failed
                 self.report_kube_rootca_update_failure(host_uuid, reported_cfg,
                                                        error)
+            else:
+                args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
+                LOG.error("No match for sysinv-agent manifest application reported! "
+                          "reported_cfg: %(cfg)s status: %(status)s "
+                          "iconfig: %(iconfig)s" % args)
+        # Kubernetes root CA pods update
+        elif reported_cfg in \
+                [puppet_common.REPORT_KUBE_CERT_UPDATE_PODS_TRUSTBOTHCAS,
+                 puppet_common.REPORT_KUBE_CERT_UPDATE_PODS_TRUSTNEWCA]:
+            if status == puppet_common.REPORT_SUCCESS:
+                # Update action was successful
+                success = True
+                self.report_kube_rootca_pods_update_success(reported_cfg)
+            elif status == puppet_common.REPORT_FAILURE:
+                # Update action has failed
+                self.report_kube_rootca_pods_update_failure(reported_cfg,
+                                                            error)
             else:
                 args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
                 LOG.error("No match for sysinv-agent manifest application reported! "
@@ -8549,6 +8566,50 @@ class ConductorManager(service.PeriodicService):
         h_update = self.dbapi.kube_rootca_host_update_get_by_host(host_uuid)
         self.dbapi.kube_rootca_host_update_update(h_update.id,
                                                   {'state': state})
+
+        # Update cluster 'update state'
+        c_update = self.dbapi.kube_rootca_update_get_one()
+        self.dbapi.kube_rootca_update_update(c_update.id, {'state': state})
+
+    def report_kube_rootca_pods_update_success(self, reported_cfg):
+        """
+           Callback for Sysinv Agent on kube root CA pods update success
+        """
+        LOG.info("Kube root CA update phase '%s' succeeded for pods"
+                % (reported_cfg))
+
+        if reported_cfg == \
+                puppet_common.REPORT_KUBE_CERT_UPDATE_PODS_TRUSTBOTHCAS:
+            state = kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTBOTHCAS
+        elif reported_cfg == \
+                puppet_common.REPORT_KUBE_CERT_UPDATE_PODS_TRUSTNEWCA:
+            state = kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA
+        else:
+            LOG.info("Not supported reported_cfg: %s" % reported_cfg)
+            raise exception.SysinvException(_(
+                "Not supported reported_cfg: %s" % reported_cfg))
+
+        # Update cluster 'update state'
+        c_update = self.dbapi.kube_rootca_update_get_one()
+        self.dbapi.kube_rootca_update_update(c_update.id, {'state': state})
+
+    def report_kube_rootca_pods_update_failure(self, reported_cfg, error):
+        """
+           Callback for Sysinv Agent on kube root CA pods update failure
+        """
+        LOG.info("Kube root CA update phase '%s' failed for pods, error: %s"
+                % (reported_cfg, error))
+
+        if reported_cfg == \
+                puppet_common.REPORT_KUBE_CERT_UPDATE_PODS_TRUSTBOTHCAS:
+            state = kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTBOTHCAS_FAILED
+        elif reported_cfg == \
+                puppet_common.REPORT_KUBE_CERT_UPDATE_PODS_TRUSTNEWCA:
+            state = kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTNEWCA_FAILED
+        else:
+            LOG.info("Not supported reported_cfg: %s" % reported_cfg)
+            raise exception.SysinvException(_(
+                "Not supported reported_cfg: %s" % reported_cfg))
 
         # Update cluster 'update state'
         c_update = self.dbapi.kube_rootca_update_get_one()
@@ -14370,6 +14431,41 @@ class ConductorManager(service.PeriodicService):
             "classes": puppet_class,
             "host_uuids": [host.uuid],
             puppet_common.REPORT_STATUS_CFG: phase,
+        }
+
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid,
+                                            config_dict)
+
+    def kube_certificate_update_for_pods(self, context, phase):
+        """Update the kube certificate for pods"""
+
+        # Updating pods' certificates is only needed to run once on active
+        # controller
+        host = self.dbapi.ihost_get(self.host_uuid)
+        config_uuid = self._config_update_hosts(context,
+                                                personalities=host.personality,
+                                                host_uuids=[host.uuid])
+
+        LOG.info("kube_certificate_update_for_pods config_uuid=%s"
+                 % config_uuid)
+
+        phase = phase.lower()
+        if phase not in [constants.KUBE_CERT_UPDATE_TRUSTBOTHCAS,
+                         constants.KUBE_CERT_UPDATE_TRUSTNEWCA]:
+            raise exception.SysinvException(_(
+                "Invalid phase %s to update kube certificate for pods." %
+                phase))
+
+        puppet_class = [
+            'platform::kubernetes::master::rootca::pods::' + phase.replace('-', '') + '::runtime',
+        ]
+
+        config_dict = {
+            "personalities": host.personality,
+            "classes": puppet_class,
+            "host_uuids": [host.uuid],
+            puppet_common.REPORT_STATUS_CFG: 'pods_' + phase,
         }
 
         self._config_apply_runtime_manifest(context,

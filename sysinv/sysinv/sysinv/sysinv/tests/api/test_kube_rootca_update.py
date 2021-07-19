@@ -67,6 +67,9 @@ class FakeConductorAPI(object):
     def kube_certificate_update_by_host(self, context, host_uuid, phase):
         return
 
+    def kube_certificate_update_for_pods(self, context, phase):
+        return
+
 
 class TestKubeRootCAUpdate(base.FunctionalTest):
 
@@ -290,6 +293,94 @@ class TestKubeRootCAGenerate(TestKubeRootCAUpdate,
         self.assertTrue(resp.get('success'))
         self.assertEqual(resp.get('success'), fake_save_rootca_return.get('success'))
         self.assertFalse(resp.get('error'))
+
+
+class TestKubeRootCAPodsUpdateTrustBothCAs(TestKubeRootCAUpdate,
+                        dbbase.ProvisionedControllerHostTestCase):
+    def setUp(self):
+        super(TestKubeRootCAPodsUpdateTrustBothCAs, self).setUp()
+        self.phase = constants.KUBE_CERT_UPDATE_TRUSTBOTHCAS
+        self.post_url = '/kube_rootca_update/pods'
+        self.headers = {'User-Agent': 'sysinv-test'}
+
+    def test_rootca_update_pods(self):
+        # Test kube root CA update for pods
+        create_dict = {'phase': self.phase}
+
+        dbutils.create_test_kube_rootca_update(
+            state=kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTBOTHCAS)
+
+        result = self.post_json(self.post_url, create_dict,
+                                headers=self.headers)
+
+        # Verify that the rootca update pods has the expected attributes
+        self.assertEqual(result.json['state'],
+                        kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTBOTHCAS)
+
+    def test_rootca_update_pods_reject_wrong_state(self):
+        # Test kube root CA update for pods - rejected, not in right state
+        create_dict = {'phase': self.phase}
+
+        # The cluster update state is in updating hosts
+        dbutils.create_test_kube_rootca_update(
+            state=kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS)
+
+        result = self.post_json(self.post_url, create_dict,
+                                headers=self.headers,
+                                expect_errors=True)
+
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertIn("kube-rootca-pods-update phase trust-both-cas rejected: "
+                "not allowed when cluster update is in state: %s. "
+                "(only allowed when in state: %s or %s)"
+                % (kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS,
+                kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTBOTHCAS,
+                kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTBOTHCAS_FAILED),
+                result.json['error_message'])
+
+
+class TestKubeRootCAPodsUpdateTrustNewCA(TestKubeRootCAUpdate,
+                        dbbase.ProvisionedControllerHostTestCase):
+    def setUp(self):
+        super(TestKubeRootCAPodsUpdateTrustNewCA, self).setUp()
+        self.phase = constants.KUBE_CERT_UPDATE_TRUSTNEWCA
+        self.post_url = '/kube_rootca_update/pods'
+        self.headers = {'User-Agent': 'sysinv-test'}
+
+    def test_rootca_update_pods(self):
+        # Test kube root CA update for pods
+        create_dict = {'phase': self.phase}
+
+        dbutils.create_test_kube_rootca_update(
+            state=kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA)
+
+        result = self.post_json(self.post_url, create_dict,
+                                headers=self.headers)
+
+        # Verify that the rootca update pods has the expected attributes
+        self.assertEqual(result.json['state'],
+                        kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTNEWCA)
+
+    def test_rootca_update_pods_reject_wrong_state(self):
+        # Test kube root CA update for pods - rejected, not in right state
+        create_dict = {'phase': self.phase}
+
+        # The cluster update state is in updating hosts
+        dbutils.create_test_kube_rootca_update(
+            state=kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTBOTHCAS)
+
+        result = self.post_json(self.post_url, create_dict,
+                                headers=self.headers,
+                                expect_errors=True)
+
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertIn("kube-rootca-pods-update phase trust-new-ca rejected: "
+                "not allowed when cluster update is in state: %s. "
+                "(only allowed when in state: %s or %s)"
+                % (kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTBOTHCAS,
+                kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA,
+                kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTNEWCA_FAILED),
+                result.json['error_message'])
 
 
 class TestKubeRootCAHostUpdate(base.FunctionalTest):
