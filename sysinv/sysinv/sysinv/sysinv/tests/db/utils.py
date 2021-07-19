@@ -333,8 +333,8 @@ def get_test_kube_rootca_host_update(**kw):
     rootca_host_update = {
         'id': 1,
         'uuid': kw.get('uuid', uuidutils.generate_uuid()),
-        "target_rootca_cert": kw.get('target_rootca_cert', 'oldCertSerial'),
-        "effective_rootca_cert": kw.get('to_rootca_cert', 'newCertSerial'),
+        "target_rootca_cert": kw.get('target_rootca_cert', 'newCertSerial'),
+        "effective_rootca_cert": kw.get('to_rootca_cert', 'oldCertSerial'),
         "state": kw.get('state', 'update-started'),
         "host_id": kw.get('host_id', 1),
         "capabilities": {},

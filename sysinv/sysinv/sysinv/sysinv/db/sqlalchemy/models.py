@@ -1956,3 +1956,5 @@ class KubeRootCAHostUpdate(Base):
     reserved_1 = Column(String(255))
     reserved_2 = Column(String(255))
     reserved_3 = Column(String(255))
+
+    host = relationship("ihost", lazy="joined", join_depth=1)
