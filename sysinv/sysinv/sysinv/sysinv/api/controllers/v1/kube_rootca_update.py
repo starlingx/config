@@ -30,14 +30,29 @@ from wsme import types as wtypes
 
 
 LOG = log.getLogger(__name__)
-LOCK_KUBE_ROOTCA_UPLOAD_CONTROLLER = 'KubeRootCAUploadController'
-LOCK_KUBE_ROOTCA_UPDATE_CONTROLLER = 'KubeRootCAUpdateController'
-LOCK_KUBE_ROOTCA_HOST_UPDATE_CONTROLLER = 'KubeRootCAHostUpdateController'
+
+LOCK_KUBE_ROOTCA_CONTROLLER = 'KubeRootCAController'
+
+
+class KubeRootCAGenerateController(rest.RestController):
+    """ API representation of a Kubernetes Generate Root CA Certificate"""
+
+    @expose('json')
+    @cutils.synchronized(LOCK_KUBE_ROOTCA_CONTROLLER)
+    def post(self):
+        try:
+            output = pecan.request.rpcapi.generate_kubernetes_rootca_cert(
+                pecan.request.context)
+        except Exception:
+            msg = "Conductor call to generate new k8s rootca failed"
+            return dict(success="", error=msg)
+        return output
 
 
 class KubeRootCAUploadController(rest.RestController):
+    """ API representation of a Kubernetes Upload Root CA Certificate"""
 
-    @cutils.synchronized(LOCK_KUBE_ROOTCA_UPLOAD_CONTROLLER)
+    @cutils.synchronized(LOCK_KUBE_ROOTCA_CONTROLLER)
     @expose('json')
     def post(self):
         fileitem = pecan.request.POST['file']
@@ -172,11 +187,12 @@ class KubeRootCAUpdateController(rest.RestController):
     """REST controller for kubernetes rootCA updates."""
 
     upload = KubeRootCAUploadController()
+    generate_cert = KubeRootCAGenerateController()
 
     def __init__(self):
         self.fm_api = fm_api.FaultAPIs()
 
-    @cutils.synchronized(LOCK_KUBE_ROOTCA_UPDATE_CONTROLLER)
+    @cutils.synchronized(LOCK_KUBE_ROOTCA_CONTROLLER)
     @wsme_pecan.wsexpose(KubeRootCAUpdate, body=six.text_type)
     def post(self, body):
         """Create a new Kubernetes RootCA Update and start update."""
@@ -336,7 +352,7 @@ class KubeRootCAHostUpdateController(rest.RestController):
                         % (cluster_update.state,
                         kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS)))
 
-    @cutils.synchronized(LOCK_KUBE_ROOTCA_HOST_UPDATE_CONTROLLER)
+    @cutils.synchronized(LOCK_KUBE_ROOTCA_CONTROLLER)
     @wsme_pecan.wsexpose(KubeRootCAHostUpdate, types.uuid, body=six.text_type)
     def post(self, host_uuid, body):
         """Update the kubernetes root CA certificate on this host"""
@@ -367,7 +383,9 @@ class KubeRootCAHostUpdateController(rest.RestController):
 
         ihost = pecan.request.dbapi.ihost_get(host_uuid)
 
-        if body['phase'].lower() == constants.KUBE_CERT_UPDATE_TRUSTBOTHCAS:
+        phase = body['phase'].lower()
+
+        if phase == constants.KUBE_CERT_UPDATE_TRUSTBOTHCAS:
             # kube root CA update on host phase trust-both-cas
             self._precheck_trustbothcas(update, ihost)
             update_state = kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS
@@ -395,7 +413,6 @@ class KubeRootCAHostUpdateController(rest.RestController):
             h_update = pecan.request.dbapi.kube_rootca_host_update_create(
                 ihost.id, h_values)
 
-        phase = body['phase'].lower()
         if phase not in [constants.KUBE_CERT_UPDATE_TRUSTBOTHCAS,
                          constants.KUBE_CERT_UPDATE_UPDATECERTS,
                          constants.KUBE_CERT_UPDATE_TRUSTNEWCA]:
