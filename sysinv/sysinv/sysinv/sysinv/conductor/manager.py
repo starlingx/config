@@ -13781,19 +13781,6 @@ class ConductorManager(service.PeriodicService):
             self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_DEVICE_IMAGE_UPDATE_IN_PROGRESS,
                                     entity_instance_id)
 
-    def _get_current_kube_rootca(self):
-        """ Extract current k8s rootca"""
-        try:
-            with open(kubernetes.KUBERNETES_ROOTCA_CERT, 'rb') as current_rootca:
-                current_rootca.seek(0, os.SEEK_SET)
-                read_ca = current_rootca.read()
-                current_rootca_cert = cutils.extract_certs_from_pem(read_ca)[0]
-        except Exception:
-            LOG.error("Not able to extract information about CA at %s"
-                      % kubernetes.KUBERNETES_ROOTCA_CERT)
-            return None
-        return current_rootca_cert
-
     def fpga_device_update_by_host(self, context,
                                   host_uuid, fpga_device_dict_array):
         """Create FPGA devices for an ihost with the supplied data.
@@ -14064,13 +14051,16 @@ class ConductorManager(service.PeriodicService):
             return msg
 
     def _precheck_save_kubernetes_rootca_cert(self, update, temp_pem_contents):
-        """ This method intends to do a series of validations to allow the upload
-            of a new rootca for kubernetes. These validations are respective to the
-            procedure itself or the new ca file that is being uploaded.
+        """ This method intends to do a series of validations to allow the
+            upload of a new rootca for kubernetes. These validations are
+            respective to the procedure itself or the new ca file that is
+            being uploaded.
 
         :param update: actual entry of kube rootca update procedure from DB
-        :param temp_pem_contents: content of the file uploaded to update kube rootca
-        :return: A dictionaire with a new_cert if successful and eventual error message
+        :param temp_pem_contents: content of the file uploaded
+        to update kube rootca
+        :return: A dictionary with a new_cert if successful and eventual
+        error message
         """
 
         if update.state != kubernetes.KUBE_ROOTCA_UPDATE_STARTED:
@@ -14095,7 +14085,8 @@ class ConductorManager(service.PeriodicService):
             return dict(success="", error=msg)
 
         # extract current k8s rootca
-        current_cert = self._get_current_kube_rootca()
+        current_cert = \
+            cutils.get_certificate_from_file(kubernetes.KUBERNETES_ROOTCA_CERT)
         if not current_cert:
             msg = "Not able to get the current kube rootca"
             return dict(success="", error=msg)
@@ -14116,7 +14107,8 @@ class ConductorManager(service.PeriodicService):
         try:
             new_cert_id = cutils.build_cert_identifier(cert)
         except Exception:
-            msg = "Failed to extract subject and serial number from new root CA"
+            msg = "Failed to extract subject and serial number" \
+                  "from new root CA"
             LOG.error(msg)
             return dict(success="", error=msg)
 
@@ -14142,7 +14134,9 @@ class ConductorManager(service.PeriodicService):
             LOG.error(msg)
             return dict(success="", error=msg)
 
-        result = self._precheck_save_kubernetes_rootca_cert(update, temp_pem_contents)
+        result = \
+            self._precheck_save_kubernetes_rootca_cert(update,
+                                                       temp_pem_contents)
         if result.get("error"):
             msg = result.get("error")
             return dict(success="", error=msg)
@@ -14150,7 +14144,8 @@ class ConductorManager(service.PeriodicService):
             new_cert = result.get("success")
 
         # extract current k8s rootca
-        current_cert = self._get_current_kube_rootca()
+        current_cert = \
+            cutils.get_certificate_from_file(kubernetes.KUBERNETES_ROOTCA_CERT)
         if not current_cert:
             msg = "Not able to get the current kube rootca"
             return dict(success="", error=msg)
@@ -14220,7 +14215,7 @@ class ConductorManager(service.PeriodicService):
 
         # extract current k8s rootca identifier
         current_cert = \
-            self._get_current_kube_rootca()
+            cutils.get_certificate_from_file(kubernetes.KUBERNETES_ROOTCA_CERT)
         if not current_cert:
             msg = "Not able to get the current kube rootca"
             return dict(success="", error=msg)
@@ -14397,35 +14392,385 @@ class ConductorManager(service.PeriodicService):
                           "".format(app.name, action, str(e)))
                 raise
 
-    def kube_certificate_update_by_host(self, context, host_uuid, phase):
-        """Update the kube certificate for a host"""
+    def __wait_secret_creation(self, secret_name, host):
+        """ Wait for secret to be created and information regarding crt/key to be stored
+
+        It will wait until tls.crt and tls.key contents are available to read
+        In case this wait timeouts it will save the update state on db and
+        raise a SysinvException
+
+        :param secret_name: the name of the secret to wait
+        :param host: the host that triggered the resource creation
+        """
+        kube_operator = kubernetes.KubeOperator()
+        secret = kube_operator.get_cert_secret(secret_name, kubernetes.NAMESPACE_DEPLOYMENT, max_retries=2)
+        if secret is None:
+            msg = "Secret %s creation timeout" % secret_name
+            LOG.error(msg)
+            raise exception.SysinvException(_(msg))
+
+    def _build_k8s_controller_certificates(self, host, api_version, issuer_reference, usages):
+        """ Build k8s resources to get certificates for the control plane components
+            to be updated
+
+            - admin Certificate
+            - apiserver Certificate
+            - apiserver kubelet client Certificate
+            - kube scheduler Certificate
+            - controller manager Certificate
+            - kubelet Certificate
+        """
+
+        kube_operator = kubernetes.KubeOperator()
+
+        # Read apiserver cert to extract SAN and validy duration information
+        # as a standard. For this procedure we're going to set the same duration
+        # for all certificates created.
+        apiserver_cert = cutils.get_certificate_from_file(kubernetes.KUBERNETES_APISERVER_CERT)
+        validation_period = apiserver_cert.not_valid_after - apiserver_cert.not_valid_before
+        duration = validation_period.days * 24
+
+        LOG.info("Creating secrets for %s kubernetes control plane components "
+                 "due to rootCA update" % host.hostname)
+
+        # Create admin.conf cert/key.
+        # the admin cert/key will be the same for all controller hosts.
+        # This way we need to check if it is already created
+        # or if we'll have to generate a new Certificate resource
+        # to issue a new pair cert/key
+
+        admin_certificate_name = constants.KUBE_ADMIN_CERT
+        admin_secret = kube_operator.get_cert_secret(admin_certificate_name, kubernetes.NAMESPACE_DEPLOYMENT)
+        if admin_secret is None:
+            # Create k8s admin certificate/key
+            admin_certificate = {
+                'apiVersion': api_version,
+                'kind': 'Certificate',
+                'metadata': {
+                    'name': admin_certificate_name,
+                    'namespace': kubernetes.NAMESPACE_DEPLOYMENT
+                },
+                'spec': {
+                    'secretName': admin_certificate_name,
+                    'commonName': 'kubernetes-admin',
+                    'duration': str(duration) + 'h',
+                    'organization': ['system:masters'],
+                    'usages': usages,
+                    'issuerRef': issuer_reference
+                }
+            }
+
+            try:
+                kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                                    kubernetes.V1_ALPHA_2,
+                                                    kubernetes.NAMESPACE_DEPLOYMENT,
+                                                    'certificates',
+                                                    admin_certificate_name,
+                                                    admin_certificate)
+            except Exception:
+                LOG.error("Failed to create %s resource" % admin_certificate_name)
+                raise
+
+            self._wait_secret_creation(admin_certificate_name, host)
+
+            LOG.info("%s Secret successfully created and populated with cert/key data" % admin_certificate_name)
+
+        # Create apiserver server certificate/key
+        # for this one the SAN should maintain the same addresses
+        # as the apiserver actually running
+        dns_names = cutils.get_cert_DNSNames(apiserver_cert)
+        ip_addresses = cutils.get_cert_IPAddresses(apiserver_cert)
+
+        apiserver_certificate_name = constants.KUBE_APISERVER_CERT.format(host.hostname)
+        apiserver_certificate = {
+            'apiVersion': api_version,
+            'kind': 'Certificate',
+            'metadata': {
+                'name': apiserver_certificate_name,
+                'namespace': kubernetes.NAMESPACE_DEPLOYMENT
+            },
+            'spec': {
+                'secretName': apiserver_certificate_name,
+                'commonName': 'kube-apiserver',
+                'duration': str(duration) + 'h',
+                'dnsNames': dns_names,
+                'ipAddresses': ip_addresses,
+                'usages': ['digital signature', 'key encipherment', 'server auth'],
+                'issuerRef': issuer_reference
+            }
+        }
 
         try:
-            host = self.dbapi.ihost_get(host_uuid)
-        except exception.ServerNotFound:
-            # This really shouldn't happen.
-            LOG.exception("Invalid host_uuid %s" % host_uuid)
-            return
+            kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                                    kubernetes.V1_ALPHA_2,
+                                                    kubernetes.NAMESPACE_DEPLOYMENT,
+                                                    'certificates',
+                                                    apiserver_certificate_name,
+                                                    apiserver_certificate)
+        except Exception:
+            LOG.error("Failed to create %s resource" % apiserver_certificate_name)
+            raise
 
-        config_uuid = self._config_update_hosts(context,
-                                                personalities=host.personality,
-                                                host_uuids=[host.uuid])
+        self._wait_secret_creation(apiserver_certificate_name, host)
 
-        LOG.info("kube_certificate_update_by_host config_uuid=%s"
-                 % config_uuid)
+        LOG.info("%s Secret successfully created and populated with cert/key data" % apiserver_certificate_name)
+
+        # Create apiserver server kubelet client certificate/key
+        apiserver_kubelet_client_certificate_name = constants.KUBE_APISERVER_KUBELET_CERT.format(host.hostname)
+        apiserver_kubelet_client_certificate = {
+            'apiVersion': api_version,
+            'kind': 'Certificate',
+            'metadata': {
+                'name': apiserver_kubelet_client_certificate_name,
+                'namespace': kubernetes.NAMESPACE_DEPLOYMENT
+            },
+            'spec': {
+                'secretName': apiserver_kubelet_client_certificate_name,
+                'commonName': 'kube-apiserver-kubelet-client',
+                'duration': str(duration) + 'h',
+                'organization': ['system:masters'],
+                'usages': usages,
+                'issuerRef': issuer_reference
+            }
+        }
+
+        try:
+            kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                                    kubernetes.V1_ALPHA_2,
+                                                    kubernetes.NAMESPACE_DEPLOYMENT,
+                                                    'certificates',
+                                                    apiserver_kubelet_client_certificate_name,
+                                                    apiserver_kubelet_client_certificate)
+        except Exception:
+            LOG.error("Failed to create %s resource" % apiserver_kubelet_client_certificate_name)
+            raise
+
+        self._wait_secret_creation(apiserver_kubelet_client_certificate_name, host)
+
+        LOG.info("%s Secret successfully created and populated with cert/key data" %
+        apiserver_kubelet_client_certificate_name)
+
+        # Create scheduler certificate/key
+        kube_scheduler_certificate_name = constants.KUBE_SCHEDULER_CERT.format(host.hostname)
+
+        kube_scheduler_certificate = {
+            'apiVersion': api_version,
+            'kind': 'Certificate',
+            'metadata': {
+                'name': kube_scheduler_certificate_name,
+                'namespace': kubernetes.NAMESPACE_DEPLOYMENT
+            },
+            'spec': {
+                'secretName': kube_scheduler_certificate_name,
+                'commonName': 'system:kube-scheduler',
+                'duration': str(duration) + 'h',
+                'usages': usages,
+                'issuerRef': issuer_reference
+            }
+        }
+
+        try:
+            kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                                    kubernetes.V1_ALPHA_2,
+                                                    kubernetes.NAMESPACE_DEPLOYMENT,
+                                                    'certificates',
+                                                    kube_scheduler_certificate_name,
+                                                    kube_scheduler_certificate)
+        except Exception:
+            LOG.error("Failed to create %s resource" % kube_scheduler_certificate_name)
+            raise
+
+        self._wait_secret_creation(kube_scheduler_certificate_name, host)
+
+        LOG.info("%s Secret successfully created and populated with cert/key data" %
+        kube_scheduler_certificate_name)
+
+        # Create controller manager certificate/key
+        controller_manager_certificate_name = constants.KUBE_CONTROLLER_MANAGER_CERT.format(host.hostname)
+        controller_manager_certificate = {
+            'apiVersion': api_version,
+            'kind': 'Certificate',
+            'metadata': {
+                'name': controller_manager_certificate_name,
+                'namespace': kubernetes.NAMESPACE_DEPLOYMENT
+            },
+            'spec': {
+                'secretName': controller_manager_certificate_name,
+                'commonName': 'system:kube-controller-manager',
+                'duration': str(duration) + 'h',
+                'usages': usages,
+                'issuerRef': issuer_reference
+            }
+        }
+
+        try:
+            kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                                    kubernetes.V1_ALPHA_2,
+                                                    kubernetes.NAMESPACE_DEPLOYMENT,
+                                                    'certificates',
+                                                    controller_manager_certificate_name,
+                                                    controller_manager_certificate)
+        except Exception:
+            LOG.error("Failed to create %s resource" % controller_manager_certificate_name)
+            raise
+
+        self._wait_secret_creation(controller_manager_certificate_name, host)
+
+        LOG.info("%s Secret successfully created and populated with cert/key data" %
+        controller_manager_certificate_name)
+
+        # Create kubelet client certificate/key
+        kubelet_certificate_name = constants.KUBE_KUBELET_CERT.format(host.hostname)
+        kubelet_certificate = {
+            'apiVersion': api_version,
+            'kind': 'Certificate',
+            'metadata': {
+                'name': kubelet_certificate_name,
+                'namespace': kubernetes.NAMESPACE_DEPLOYMENT
+            },
+            'spec': {
+                'secretName': kubelet_certificate_name,
+                'commonName': 'system:node:' + host.hostname,
+                'duration': str(duration) + 'h',
+                'organization': ['system:nodes'],
+                'usages': usages,
+                'issuerRef': issuer_reference
+            }
+        }
+
+        try:
+            kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                                    kubernetes.V1_ALPHA_2,
+                                                    kubernetes.NAMESPACE_DEPLOYMENT,
+                                                    'certificates',
+                                                    kubelet_certificate_name,
+                                                    kubelet_certificate)
+        except Exception:
+            LOG.error("Failed to create %s resource" % kubelet_certificate_name)
+            raise
+
+        self._wait_secret_creation(kubelet_certificate_name, host)
+
+        LOG.info("%s Secret successfully created and populated with cert/key data" %
+        kubelet_certificate_name)
+
+    def _build_k8s_worker_certificates(self, host, api_version, issuer_reference, usages):
+        kube_operator = kubernetes.KubeOperator()
+
+        # Read apiserver cert duration information as a standard. For this
+        # procedure we're going to set the same duration for all certificates
+        # created.
+        apiserver_cert = cutils.get_certificate_from_file(kubernetes.KUBERNETES_APISERVER_CERT)
+        validation_period = apiserver_cert.not_valid_after - apiserver_cert.not_valid_before
+        duration = validation_period.days * 24
+
+        LOG.info("Creating secrets for %s kubernetes control plane components "
+                 "due to rootCA update" % host.hostname)
+
+        # Create kubelet client certificate/key
+        kubelet_certificate_name = constants.KUBE_KUBELET_CERT.format(host.hostname)
+        kubelet_certificate = {
+            'apiVersion': api_version,
+            'kind': 'Certificate',
+            'metadata': {
+                'name': kubelet_certificate_name,
+                'namespace': kubernetes.NAMESPACE_DEPLOYMENT
+            },
+            'spec': {
+                'secretName': kubelet_certificate_name,
+                'commonName': 'system:node:' + host.hostname,
+                'duration': str(duration) + 'h',
+                'organization': ['system:nodes'],
+                'usages': usages,
+                'issuerRef': issuer_reference
+            }
+        }
+
+        try:
+            kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                                    kubernetes.V1_ALPHA_2,
+                                                    kubernetes.NAMESPACE_DEPLOYMENT,
+                                                    'certificates',
+                                                    kubelet_certificate_name,
+                                                    kubelet_certificate)
+        except Exception:
+            LOG.error("Failed to create %s resource" % kubelet_certificate)
+            raise
+
+        self._wait_secret_creation(kubelet_certificate_name, host)
+
+    def _failed_update_certs(self, host):
+        # Change host table entry
+        # for KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS_FAILED state
+        h_update = self.dbapi.kube_rootca_host_update_get_by_host(host.id)
+        self.dbapi.kube_rootca_host_update_update(h_update.id,
+                                                {'state':
+                                                kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS_FAILED})
+        cluster_rootca_procedure = self.dbapi.kube_rootca_update_get_one()
+        # Change cluster table entry
+        # for KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS_FAILED state
+        self.dbapi.kube_rootca_update_update(cluster_rootca_procedure.id,
+                                                {'state':
+                                                kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS_FAILED})
+
+    def kube_certificate_update_by_host(self, context, host, phase):
+        """Update the kube certificate for a host"""
+        phase = phase.lower()
+        update_certs = False
+        if phase == constants.KUBE_CERT_UPDATE_UPDATECERTS:
+            kube_operator = kubernetes.KubeOperator()
+            api_version = "%s/%s" % (kubernetes.CERT_MANAGER_GROUP,
+                                    kubernetes.V1_ALPHA_2)
+            try:
+                issuer = kube_operator.get_custom_resource(kubernetes.CERT_MANAGER_GROUP,
+                                                        kubernetes.V1_ALPHA_2,
+                                                        kubernetes.NAMESPACE_DEPLOYMENT,
+                                                        'issuers',
+                                                        constants.KUBE_ROOTCA_ISSUER)
+            except Exception as e:
+                LOG.error("root CA issuer could not be found: %s" % e)
+
+            if not issuer:
+                self._failed_update_certs(host)
+                raise exception.SysinvException(_("CA issuer not found"))
+
+            issuer_reference = {'name': constants.KUBE_ROOTCA_ISSUER, 'kind': 'Issuer'}
+            usages = ['digital signature', 'key encipherment', 'client auth']
+            update_certs = True
+
+        if phase not in [constants.KUBE_CERT_UPDATE_TRUSTBOTHCAS,
+                         constants.KUBE_CERT_UPDATE_UPDATECERTS,
+                         constants.KUBE_CERT_UPDATE_TRUSTNEWCA]:
+            raise exception.SysinvException(_(
+                "Invalid phase %s to update kube certificate." %
+                phase))
 
         if host.personality == constants.CONTROLLER:
+            if update_certs:
+                try:
+                    self._build_k8s_controller_certificates(host, api_version, issuer_reference, usages)
+                except Exception:
+                    self._failed_update_certs(host)
+                    raise exception.SysinvException(_(
+                        "resource creation for update kubernetes components in phase %s failed" %
+                        phase))
+
             puppet_class = [
                 'platform::kubernetes::master::rootca::' + phase.replace('-', '') + '::runtime',
             ]
-        elif host.personality == constants.WORKER:
+        else:
+            if update_certs:
+                try:
+                    self._build_k8s_worker_certificates(host, api_version, issuer_reference, usages)
+                except Exception:
+                    self._failed_update_certs(host)
+                    raise exception.SysinvException(_(
+                        "resource creation for update kubernetes worker "
+                        "components in phase %s failed" % phase))
+
             puppet_class = [
                 'platform::kubernetes::worker::rootca::' + phase.replace('-', '') + '::runtime',
             ]
-        else:
-            raise exception.SysinvException(_(
-                "Invalid personality %s to update kube certificate." %
-                host.personality))
 
         config_dict = {
             "personalities": host.personality,
@@ -14433,6 +14778,13 @@ class ConductorManager(service.PeriodicService):
             "host_uuids": [host.uuid],
             puppet_common.REPORT_STATUS_CFG: phase,
         }
+
+        config_uuid = self._config_update_hosts(context,
+                                        personalities=host.personality,
+                                        host_uuids=[host.uuid])
+
+        LOG.info("kube_certificate_update_by_host config_uuid=%s"
+                 % config_uuid)
 
         self._config_apply_runtime_manifest(context,
                                             config_uuid,

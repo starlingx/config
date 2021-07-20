@@ -2747,6 +2747,36 @@ def get_cert_serial(cert):
     return serial_number
 
 
+def get_cert_IPAddresses(cert):
+    """ Given a cert, extracts the IP addresses listed in SAN
+
+    :param cert: a x509 certificate which is going to be used
+    :return: a list of strings representing the respective IP addresses
+    """
+    try:
+        ext = cert.extensions.get_extension_for_oid(x509.oid.ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
+        addresses = ext.value.get_values_for_type(x509.IPAddress)
+    except Exception:
+        raise exception.SysinvException(_(
+            "Failed to get certificate SAN's IPAddresses."))
+    return [format(ips) for ips in addresses]
+
+
+def get_cert_DNSNames(cert):
+    """ Given a cert, extracts the DNS names listed in SAN
+
+    :param cert: a x509 certificate which is going to be used
+    :return: a list of strings representing the respective DNS names
+    """
+    try:
+        ext = cert.extensions.get_extension_for_oid(x509.oid.ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
+        dns_names = ext.value.get_values_for_type(x509.DNSName)
+    except Exception:
+        raise exception.SysinvException(_(
+            "Failed to get certificate SAN's DNSNames."))
+    return dns_names
+
+
 def get_cert_subject_hash(cert):
     """
     Get the hash value of the cert's subject DN
@@ -2801,6 +2831,25 @@ def get_cert_subject_string_hash(cert):
             "Failed to get certificate subject hash."))
 
     return hashed_attributes
+
+
+def get_certificate_from_file(file_path):
+    """ Extract certificate from a specific file
+
+    :param file_path: the absolute path of the file which has the certificate
+    :returns: a x509.Certificate object that will store information regarding this certificate
+    """
+    LOG.debug("extracting information of certificate in %s" % file_path)
+    try:
+        with open(file_path, 'rb') as file_data:
+            file_data.seek(0, os.SEEK_SET)
+            read_file = file_data.read()
+            certificate = extract_certs_from_pem(read_file)[0]
+    except Exception as e:
+        LOG.warning("No certificate was extracted from file %s"
+                    "due to %s" % (file_path, e))
+        return None
+    return certificate
 
 
 def build_cert_identifier(cert):
