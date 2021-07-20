@@ -28,7 +28,7 @@ N3000_DEVICES = [
 
 # TODO: Make this specified in the config file.
 # This is the docker image containing the OPAE tools to access the FPGA device.
-OPAE_IMG = "registry.local:9001/docker.io/starlingx/n3000-opae:stx.4.0-v1.0.0"
+OPAE_IMG = "registry.local:9001/docker.io/starlingx/n3000-opae:stx.6.0-v1.0.1"
 
 # This is a flag file created by puppet after doing a "docker login".
 # We need to wait for it to exist before trying to run docker images.
