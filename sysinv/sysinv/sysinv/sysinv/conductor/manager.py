@@ -14825,6 +14825,46 @@ class ConductorManager(service.PeriodicService):
                                             config_uuid,
                                             config_dict)
 
+    def clear_kubernetes_rootca_update_resources(self, context, certificate_list,
+                                                 issuers_list, secret_list):
+
+        kube_operator = kubernetes.KubeOperator()
+        namespace = kubernetes.NAMESPACE_DEPLOYMENT
+        group = kubernetes.CERT_MANAGER_GROUP
+        version = kubernetes.V1_ALPHA_2
+
+        deleted_resources = []
+        for certificate_name in certificate_list:
+            try:
+                kube_operator.delete_custom_resource(group, version, namespace,
+                                                     'certificates', certificate_name)
+                deleted_resources.append(certificate_name)
+            except Exception:
+                pass
+
+        LOG.info('Deleted k8s certificates:\n %s' % deleted_resources)
+
+        deleted_resources = []
+        for issuer_name in issuers_list:
+            try:
+                kube_operator.delete_custom_resource(group, version, namespace,
+                                                     'issuers', issuer_name)
+                deleted_resources.append(certificate_name)
+            except Exception:
+                pass
+
+        LOG.info('Deleted k8s issuers:\n %s' % deleted_resources)
+
+        deleted_resources = []
+        for secret_name in secret_list:
+            try:
+                kube_operator.kube_delete_secret(secret_name, namespace)
+                deleted_resources.append(secret_name)
+            except Exception:
+                pass
+
+        LOG.info('Deleted k8s secrets:\n %s' % deleted_resources)
+
 
 def device_image_state_sort_key(dev_img_state):
     if dev_img_state.bitstream_type == dconstants.BITSTREAM_TYPE_ROOT_KEY:

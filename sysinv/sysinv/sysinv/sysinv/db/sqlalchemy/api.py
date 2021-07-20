@@ -8863,6 +8863,11 @@ class Connection(api.Connection):
                 model_query(models.KubeRootCAHostUpdate, read_deleted="no").\
                     filter_by(id=rootca_host_update_id).delete()
 
+    def kube_rootca_host_update_destroy_all(self):
+        with _session_for_write() as session:
+            query = model_query(models.KubeRootCAHostUpdate, session=session)
+            query.delete()
+
     def _kube_rootca_update_get(self, rootca_update_id):
         query = model_query(models.KubeRootCAUpdate)
         query = add_identity_filter(query, rootca_update_id)

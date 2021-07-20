@@ -7,6 +7,7 @@ import mock
 import os
 from six.moves import http_client
 from sysinv.common import constants
+from sysinv.common import exception
 from sysinv.common import health
 from sysinv.common import kubernetes
 from sysinv.conductor.manager import ConductorManager
@@ -17,12 +18,14 @@ from sysinv.tests.db import base as dbbase
 
 
 class FakeAlarm(object):
-    def __init__(self, alarm_id, mgmt_affecting):
+    def __init__(self, alarm_id, mgmt_affecting, instance_id=None):
         self.alarm_id = alarm_id
         self.mgmt_affecting = mgmt_affecting
+        self.entity_instance_id = instance_id
 
 
 FAKE_MGMT_ALARM = FakeAlarm('900.401', "True")
+FAKE_ROOTCA_UPDATE_ALARM = FakeAlarm('900.008', "True", 123)
 # FAKE_NON_MGMT_AFFECTING_ALARM = FakeAlarm('900.400', "False")
 
 # API_HEADERS are a generic header passed to most API calls
@@ -73,6 +76,10 @@ class FakeConductorAPI(object):
     def kube_certificate_update_for_pods(self, context, phase):
         return
 
+    def clear_kubernetes_rootca_update_resources(self, context,
+                            certificate_list, issuers_list, secret_list):
+        return
+
 
 class TestKubeRootCAUpdate(base.FunctionalTest):
 
@@ -87,6 +94,16 @@ class TestKubeRootCAUpdate(base.FunctionalTest):
         self.mock_conductor_api = p.start()
         self.mock_conductor_api.return_value = self.fake_conductor_api
         self.headers = API_HEADERS
+        self.addCleanup(p.stop)
+
+        # Mock FM API
+        p = mock.patch('sysinv.api.controllers.v1.kube_rootca_update.fm_api.FaultAPIs.get_faults')
+        self.mock_get_fault = p.start()
+        self.mock_get_fault.return_value = [FAKE_ROOTCA_UPDATE_ALARM]
+        self.addCleanup(p.stop)
+
+        p = mock.patch('sysinv.api.controllers.v1.kube_rootca_update.fm_api.FaultAPIs.clear_fault')
+        self.mock_clear_fault = p.start()
         self.addCleanup(p.stop)
 
         self.setup_health_mocked_calls()
@@ -142,9 +159,14 @@ class TestKubeRootCAUpdate(base.FunctionalTest):
     def _patch_current(self, bool_val=True):
         return {
             'data': [
-                {'hostname': 'controller-0',
-                 'patch_current': bool_val,
-                 },
+                {
+                    'hostname': 'controller-0',
+                    'patch_current': bool_val,
+                },
+                {
+                    'hostname': 'controller-1',
+                    'patch_current': bool_val,
+                },
             ]
         }
 
@@ -180,10 +202,7 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
         # Verify that the rootca update has the expected attributes
         self.assertEqual(result.content_type, 'application/json')
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        # The error should contain the following:
-        #   System is not in a valid state for kubernetes rootca update.
-        #   Run system health-query-kube-rootca-update for more details.
-        self.assertIn("System is not in a valid state",
+        self.assertIn("System is not healthy. Run system health-query for more details.",
                       result.json['error_message'])
 
     def test_create_rootca_update_exists(self):
@@ -305,6 +324,105 @@ class TestKubeRootCAHostUpdateList(TestKubeRootCAUpdate,
         result = self.get_json(self.url)
         updates = result['kube_host_updates']
         self.assertEqual(len(updates), 0)
+
+
+class TestKubeRootCAUpdateComplete(TestKubeRootCAUpdate,
+                        dbbase.ProvisionedAIODuplexSystemTestCase):
+
+    def setUp(self):
+        super(TestKubeRootCAUpdateComplete, self).setUp()
+        self.url = '/kube_rootca_update'
+
+    def test_update_complete_update_exists(self):
+        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
+        dbutils.create_test_kube_rootca_host_update(host_id=self.host.id,
+            state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
+        dbutils.create_test_kube_rootca_host_update(host_id=self.host2.id,
+            state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
+        self.fake_fm_client.alarm.list.return_value = [FAKE_ROOTCA_UPDATE_ALARM]
+
+        result = self.patch_json(self.url, {})
+        result = result.json
+
+        self.assertEqual(result['state'], kubernetes.KUBE_ROOTCA_UPDATE_COMPLETED)
+        self.assertEqual(result['from_rootca_cert'], 'oldCertSerial')
+        self.assertEqual(result['to_rootca_cert'], 'newCertSerial')
+
+        # Verify that the DB is cleared, an not found exception is raised
+        try:
+            self.dbapi.kube_rootca_update_get_one()
+        except exception.NotFound:
+            update_list_is_empty = True
+        self.assertEqual(update_list_is_empty, True)
+
+        host_updates = self.dbapi.kube_rootca_host_update_get_list()
+        self.assertEqual(len(host_updates), 0)
+
+    def test_update_complete_force_update_exists(self):
+        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
+        dbutils.create_test_kube_rootca_host_update(host_id=self.host.id,
+            state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
+        dbutils.create_test_kube_rootca_host_update(host_id=self.host2.id,
+            state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
+        self.fake_fm_client.alarm.list.return_value = [FAKE_ROOTCA_UPDATE_ALARM, FakeAlarm('900.401', "False")]
+
+        result = self.patch_json(self.url + '?force=True', {})
+        result = result.json
+
+        self.assertEqual(result['state'], kubernetes.KUBE_ROOTCA_UPDATE_COMPLETED)
+        self.assertEqual(result['from_rootca_cert'], 'oldCertSerial')
+        self.assertEqual(result['to_rootca_cert'], 'newCertSerial')
+
+        # Verify that the DB is cleared, an not found exception is raised
+        try:
+            self.dbapi.kube_rootca_update_get_one()
+        except exception.NotFound:
+            update_list_is_empty = True
+        self.assertEqual(update_list_is_empty, True)
+
+        host_updates = self.dbapi.kube_rootca_host_update_get_list()
+        self.assertEqual(len(host_updates), 0)
+
+    def test_update_complete_invalid_health(self):
+        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
+        dbutils.create_test_kube_rootca_host_update(host_id=self.host.id,
+            state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
+        dbutils.create_test_kube_rootca_host_update(host_id=self.host2.id,
+            state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
+        self.fake_fm_client.alarm.list.return_value = [FAKE_MGMT_ALARM]
+
+        result = self.patch_json(self.url, {}, expect_errors=True)
+
+        self.assertEqual(result.status_int, http_client.BAD_REQUEST)
+        self.assertIn("System is not healthy. Run system health-query for more details.",
+            result.json['error_message'])
+        # Checks that DB is unmodified
+        update_entry = self.dbapi.kube_rootca_update_get_one()
+        self.assertNotEqual(update_entry, None)
+        host_update_list = self.dbapi.kube_rootca_host_update_get_list()
+        self.assertEqual(len(host_update_list), 2)
+
+    def test_update_complete_no_update(self):
+        result = self.patch_json(self.url, {}, expect_errors=True)
+
+        self.assertEqual(result.status_int, http_client.BAD_REQUEST)
+        self.assertIn("kube-rootca-update-complete rejected: No kubernetes root CA update in progress.",
+            result.json['error_message'])
+
+    def test_update_complete_invalid_phase(self):
+        dbutils.create_test_kube_rootca_update()
+
+        result = self.patch_json(self.url, {}, expect_errors=True)
+
+        self.assertEqual(result.status_int, http_client.BAD_REQUEST)
+        self.assertIn("kube-rootca-update-complete rejected: Expect to find cluster update"
+            " state %s, not allowed when cluster update state is %s."
+            % (kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA,
+            kubernetes.KUBE_ROOTCA_UPDATE_STARTED),
+            result.json['error_message'])
+        # Checks that DB is unmodified
+        update_entry = self.dbapi.kube_rootca_update_get_one()
+        self.assertNotEqual(update_entry, None)
 
 
 class TestKubeRootCAUpload(TestKubeRootCAUpdate,

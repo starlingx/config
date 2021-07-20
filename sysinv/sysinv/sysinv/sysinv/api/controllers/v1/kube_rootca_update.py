@@ -5,6 +5,7 @@
 #
 
 
+import datetime
 import os
 import pecan
 import six
@@ -325,6 +326,54 @@ class KubeRootCAUpdateController(rest.RestController):
 
     def __init__(self):
         self.fm_api = fm_api.FaultAPIs()
+        self.alarm_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,
+                                            constants.CONTROLLER_HOSTNAME)
+
+    def _check_cluster_health(self, command_name, alarm_ignore_list=None, force=False):
+        healthy, output = pecan.request.rpcapi.get_system_health(
+            pecan.request.context,
+            force=force,
+            kube_rootca_update=True,
+            alarm_ignore_list=alarm_ignore_list)
+        if not healthy:
+            LOG.info("Health query failure for %s:\n%s"
+                     % (command_name, output))
+            if os.path.exists(constants.SYSINV_RUNNING_IN_LAB):
+                LOG.info("Running in lab, ignoring health errors.")
+            else:
+                raise wsme.exc.ClientSideError(_(
+                    "System is not healthy. Run system health-query for more details."))
+
+    def _clear_kubernetes_resources(self, hostnames):
+        """Clears secrets and issuers created during the update process
+        If a resource is not found a warning is logged and the operation continues"""
+
+        secret_list = [
+            constants.KUBE_ADMIN_CERT,
+            constants.KUBE_ROOTCA_SECRET,
+        ]
+
+        for hostname in hostnames:
+            secret_list.append(constants.KUBE_APISERVER_CERT.format(hostname))
+            secret_list.append(constants.KUBE_APISERVER_KUBELET_CERT.format(hostname))
+            secret_list.append(constants.KUBE_SCHEDULER_CERT.format(hostname))
+            secret_list.append(constants.KUBE_CONTROLLER_MANAGER_CERT.format(hostname))
+            secret_list.append(constants.KUBE_KUBELET_CERT.format(hostname))
+
+        certificate_list = []
+        # Certificates and secrets share the same name
+        certificate_list.extend(secret_list)
+
+        issuers_list = [
+            constants.KUBE_SELFSIGNED_ISSUER,
+            constants.KUBE_ROOTCA_ISSUER,
+        ]
+
+        pecan.request.rpcapi.clear_kubernetes_rootca_update_resources(
+            context=pecan.request.context,
+            certificate_list=certificate_list,
+            issuers_list=issuers_list,
+            secret_list=secret_list)
 
     @cutils.synchronized(LOCK_KUBE_ROOTCA_CONTROLLER)
     @wsme_pecan.wsexpose(KubeRootCAUpdate, body=six.text_type)
@@ -362,33 +411,22 @@ class KubeRootCAUpdateController(rest.RestController):
                 "is in progress"))
 
         # The system must be healthy
-        healthy, output = pecan.request.rpcapi.get_system_health(
-            pecan.request.context,
+        self._check_cluster_health(
+            command_name="kube-rootca-update-start",
+            alarm_ignore_list=alarm_ignore_list,
             force=force,
-            kube_rootca_update=True,
-            alarm_ignore_list=alarm_ignore_list)
-        if not healthy:
-            LOG.info("Health query failure during kubernetes rootca update start: %s"
-                     % output)
-            if os.path.exists(constants.SYSINV_RUNNING_IN_LAB):
-                LOG.info("Running in lab, ignoring health errors.")
-            else:
-                raise wsme.exc.ClientSideError((
-                    "System is not in a valid state for kubernetes rootca update. "
-                    "Run system health-query for more details."))
+        )
 
         create_obj = {'state': kubernetes.KUBE_ROOTCA_UPDATE_STARTED,
                       'from_rootca_cert': body.get('from_rootca_cert')
                       }
         new_update = pecan.request.dbapi.kube_rootca_update_create(create_obj)
 
-        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,
-                                        constants.CONTROLLER_HOSTNAME)
         fault = fm_api.Fault(
                 alarm_id=fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_IN_PROGRESS,
                 alarm_state=fm_constants.FM_ALARM_STATE_SET,
                 entity_type_id=fm_constants.FM_ENTITY_TYPE_HOST,
-                entity_instance_id=entity_instance_id,
+                entity_instance_id=self.alarm_instance_id,
                 severity=fm_constants.FM_ALARM_SEVERITY_MINOR,
                 reason_text="Kubernetes rootca update in progress",
                 # environmental
@@ -414,6 +452,44 @@ class KubeRootCAUpdateController(rest.RestController):
         """Retrieve kubernetes rootca update status."""
         rpc_kube_rootca_update = pecan.request.dbapi.kube_rootca_update_get_list()
         return KubeRootCAUpdateCollection.convert_with_links(rpc_kube_rootca_update)
+
+    @wsme_pecan.wsexpose(KubeRootCAUpdate, wtypes.text)
+    def patch(self, force=None):
+        """Completes the kubernetes rootca, clearing both tables and alarm"""
+
+        force = force == 'True'
+
+        # Check if there is an update in progress and the current state
+        try:
+            rpc_kube_rootca_update = pecan.request.dbapi.kube_rootca_update_get_one()
+            if rpc_kube_rootca_update.state != kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA:
+                raise wsme.exc.ClientSideError(_(
+                    "kube-rootca-update-complete rejected: Expect to find cluster update state %s, "
+                    "not allowed when cluster update state is %s."
+                    % (kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA, rpc_kube_rootca_update.state)))
+        except exception.NotFound:
+            raise wsme.exc.ClientSideError(_(
+                "kube-rootca-update-complete rejected: No kubernetes root CA update in progress."))
+
+        self._check_cluster_health(
+            command_name="kube-rootca-update-complete",
+            alarm_ignore_list=[fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_IN_PROGRESS],
+            force=force,
+        )
+
+        rpc_host_update_list = pecan.request.dbapi.kube_rootca_host_update_get_list()
+        hostnames = [host.hostname for host in rpc_host_update_list]
+        self._clear_kubernetes_resources(hostnames)
+
+        pecan.request.dbapi.kube_rootca_update_destroy(rpc_kube_rootca_update.id)
+        pecan.request.dbapi.kube_rootca_host_update_destroy_all()
+
+        app_alarms = self.fm_api.get_faults(self.alarm_instance_id)
+        self.fm_api.clear_fault(app_alarms[0].alarm_id, app_alarms[0].entity_instance_id)
+
+        rpc_kube_rootca_update.state = kubernetes.KUBE_ROOTCA_UPDATE_COMPLETED
+        rpc_kube_rootca_update.updated_at = datetime.datetime.utcnow().isoformat()
+        return KubeRootCAUpdate.convert_with_links(rpc_kube_rootca_update)
 
 
 class KubeRootCAHostUpdateController(rest.RestController):
@@ -465,7 +541,7 @@ class KubeRootCAHostUpdateController(rest.RestController):
 
         # if is the first host to be update on this phase we need
         # to assure that cluster_update state is what we expect
-        # that is the state where all pods were restarted and running successfuly
+        # that is the state where all pods were restarted and running successfully
         else:
             if cluster_update.state != kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTBOTHCAS:
                 raise wsme.exc.ClientSideError(_(
