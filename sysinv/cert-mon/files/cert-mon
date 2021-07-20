@@ -32,6 +32,7 @@ OCF_RESKEY_config_default="/etc/sysinv/cert-mon.conf"
 : ${OCF_RESKEY_client_binary=${OCF_RESKEY_client_binary_default}}
 
 mydaemon="/usr/bin/${OCF_RESKEY_binary}"
+TMP_DIR=/var/run/cert-mon_tmp
 
 #######################################################################
 
@@ -108,6 +109,22 @@ User running Certificate Monitor Service (cert-mon)
 </resource-agent>
 END
    return ${OCF_SUCCESS}
+}
+
+cert_mon_tmpdir() {
+    local rc
+
+    if [ ! -d "$TMP_DIR" ]; then
+        mkdir -p "$TMP_DIR"
+        rc=$?
+        if [ $rc -ne 0 ]; then
+            ocf_log err "Certificate Monitor Service (${OCF_RESKEY_binary}) failed to create temp dir (rc=${rc})"
+            return "${OCF_ERR_GENERIC}"
+        fi
+        chown "${OCF_RESKEY_user_default}:${OCF_RESKEY_user_default}" "$TMP_DIR"
+    fi
+    export TMPDIR="$TMP_DIR"
+    return "${OCF_SUCCESS}"
 }
 
 cert_mon_validate() {
@@ -328,6 +345,10 @@ esac
 
 # Anything except meta-data and help must pass validation
 cert_mon_validate || exit $?
+
+# Set up tmpfiles directory to avoid temp files being
+# cleaned up by systemd tmpfiles clean service.
+cert_mon_tmpdir || exit $?
 
 if [ ${OCF_RESKEY_dbg} = "true" ] ; then
     ocf_log info "${binname}:${__OCF_ACTION} action"
