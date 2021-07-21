@@ -7732,11 +7732,14 @@ class ConductorManager(service.PeriodicService):
             raise exception.SysinvException(_("Platform upgrade in progress."))
 
         try:
-            self.dbapi.kube_upgrade_get_one()
+            kube_upgrade = self.dbapi.kube_upgrade_get_one()
+            if kube_upgrade.state == kubernetes.KUBE_UPGRADE_COMPLETE:
+                return
         except exception.NotFound:
             pass
         else:
-            raise exception.SysinvException(_("Kubernetes upgrade in progress."))
+            raise exception.SysinvException(_(
+                "Kubernetes upgrade is in progress and not completed."))
 
     def report_partition_mgmt_success(self, host_uuid, idisk_uuid,
                                       partition_uuid):
