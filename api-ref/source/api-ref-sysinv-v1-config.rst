@@ -9710,10 +9710,10 @@ badMediaType (415)
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
-   "name (Optional)", "plain", "xsd:string", "This parameter specifies the unique name of the storage tier."
+   "name", "plain", "xsd:string", "This parameter specifies the unique name of the storage tier."
    "type (Optional)", "plain", "xsd:string", "The type of storage tier. This corresponds to the backend type that will be attached to the tier. Currently only a tier type of ``ceph`` is supported."
    "backend_uuid (Optional)", "plain", "csapi:UUID", "The UUID of the backend that is attached to this tier. The backend is attached to enable service(s) to use the storage tier resources."
-   "cluster_uuid (Optional)", "plain", "csapi:UUID", "For tier type of ``ceph``, this provides the cluster_uuid that this tier is associated."
+   "cluster_uuid", "plain", "csapi:UUID", "For tier type of ``ceph``, this provides the cluster_uuid that this tier is associated."
 
 **Response parameters**
 
