@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2015-2016 Wind River Systems, Inc.
+# Copyright (c) 2015-2021 Wind River Systems, Inc.
 #
 
 import jsonpatch
@@ -43,6 +43,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
+from sysinv.openstack.common import rpc
 from sysinv.openstack.common.rpc import common
 import tsconfig.tsconfig as tsc
 
@@ -271,6 +272,14 @@ class LoadController(rest.RestController):
                 while n >= size:
                     s = os.read(src, size)
                     n = os.write(dst, s)
+                    # Write might not throw an exception when there is no space available
+                    if n < s:
+                        LOG.error("Failed to upload load file %s, check /scratch partition space" % fn)
+                        if dst:
+                            os.close(dst)
+                        os.remove(fn)
+                        return None
+
                 os.close(dst)
             else:
                 # Small signature file
@@ -279,6 +288,7 @@ class LoadController(rest.RestController):
         except Exception:
             if dst:
                 os.close(dst)
+                os.remove(fn)
             LOG.exception("Failed to upload load file %s" % file_item.filename)
             return None
 
@@ -355,10 +365,11 @@ class LoadController(rest.RestController):
                     pecan.request.context,
                     load_files[constants.LOAD_ISO],
                     new_load)
-        except common.RemoteError as e:
+        except (rpc.common.Timeout, common.RemoteError) as e:
             if os.path.isdir(constants.LOAD_FILES_STAGING_DIR):
                 shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
-            raise wsme.exc.ClientSideError(e.value)
+            error = e.value if hasattr(e, 'value') else str(e)
+            raise wsme.exc.ClientSideError(error)
 
         load_data = new_load.as_dict()
         LOG.info("Load import request validated, returning new load data: %s"
