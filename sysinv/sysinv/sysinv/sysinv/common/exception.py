@@ -235,6 +235,11 @@ class CephPoolSetParamFailure(CephFailure):
                 "Reason: %(reason)s")
 
 
+class CephCommandUnsupported(CephFailure):
+    # 503 means service unavailable which seems appropriate for commands that are unsupported
+    code = 503
+
+
 class InvalidCPUInfo(Invalid):
     message = _("Unacceptable CPU info") + ": %(reason)s"
 
