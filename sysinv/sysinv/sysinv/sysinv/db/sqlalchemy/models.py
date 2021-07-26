@@ -1958,3 +1958,13 @@ class KubeRootCAHostUpdate(Base):
     reserved_3 = Column(String(255))
 
     host = relationship("ihost", lazy="joined", join_depth=1)
+
+
+class KubeCmdVersions(Base):
+    __tablename__ = 'kube_cmd_versions'
+
+    id = Column(Integer, primary_key=True)
+    kubeadm_version = Column(String(255), nullable=False)
+    kubelet_version = Column(String(255), nullable=False)
+    UniqueConstraint('kubeadm_version', 'kubelet_version',
+                     name='u_kubeadm_version_kubelet_version')

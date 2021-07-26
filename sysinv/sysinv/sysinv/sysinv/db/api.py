@@ -4691,3 +4691,14 @@ class Connection(object):
 
         :param rootca_update_id: id of the kubernetes rootca update entry to be deleted from database.
         """
+
+    @abc.abstractmethod
+    def kube_cmd_version_get(self):
+        """ Get the kubernetes cmd version entry"""
+
+    @abc.abstractmethod
+    def kube_cmd_version_update(self, values):
+        """ Update the kubernetes cmd version entry.
+
+        :param values: a dictionary with the respective fields and values to be updated in the db entry.
+        """

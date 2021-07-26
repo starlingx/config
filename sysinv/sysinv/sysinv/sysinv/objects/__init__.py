@@ -45,6 +45,7 @@ from sysinv.objects import kube_app_releases
 from sysinv.objects import kube_host_upgrade
 from sysinv.objects import kube_upgrade
 from sysinv.objects import kube_version
+from sysinv.objects import kube_cmd_version
 from sysinv.objects import interface
 from sysinv.objects import interface_ae
 from sysinv.objects import interface_ethernet
@@ -199,6 +200,7 @@ kube_app_releases = kube_app_releases.KubeAppReleases
 kube_host_upgrade = kube_host_upgrade.KubeHostUpgrade
 kube_upgrade = kube_upgrade.KubeUpgrade
 kube_version = kube_version.KubeVersion
+kube_cmd_version = kube_cmd_version.KubeCmdVersion
 datanetwork = datanetwork.DataNetwork
 host_fs = host_fs.HostFS
 device_image = device_image.DeviceImage
@@ -278,6 +280,7 @@ __all__ = ("system",
            "kube_host_upgrade",
            "kube_upgrade",
            "kube_version",
+           "kube_cmd_version",
            "datanetwork",
            "interface_network",
            "host_fs",

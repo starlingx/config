@@ -110,6 +110,9 @@ KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA = 'updating-host-trustNewCA'
 KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA = 'updated-host-trustNewCA'
 KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA_FAILED = 'updating-host-trustNewCA-failed'
 
+# Kubeadm and Kubelet default versions
+KUBERNETES_DEFAULT_VERSION = '1.18.1'
+
 # Kubernetes constants
 MANIFEST_APPLY_TIMEOUT = 60 * 15
 MANIFEST_APPLY_INTERVAL = 10

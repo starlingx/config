@@ -8941,3 +8941,20 @@ class Connection(api.Connection):
             except NoResultFound:
                 raise exception.KubeRootCAUpdateNotFound(rootca_update_id=rootca_update_id)
             query.delete()
+
+    @objects.objectify(objects.kube_cmd_version)
+    def kube_cmd_version_get(self):
+        query = model_query(models.KubeCmdVersions)
+        try:
+            return query.one()
+        except NoResultFound:
+            raise exception.NotFound()
+
+    @objects.objectify(objects.kube_cmd_version)
+    def kube_cmd_version_update(self, values):
+        with _session_for_write() as session:
+            query = model_query(models.KubeCmdVersions, session=session)
+            count = query.update(values)
+            if count != 1:
+                raise exception.NotFound()
+            return query.one()

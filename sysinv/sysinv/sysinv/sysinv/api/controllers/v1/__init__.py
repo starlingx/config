@@ -46,6 +46,7 @@ from sysinv.api.controllers.v1 import kube_host_upgrade
 from sysinv.api.controllers.v1 import kube_rootca_update
 from sysinv.api.controllers.v1 import kube_upgrade
 from sysinv.api.controllers.v1 import kube_version
+from sysinv.api.controllers.v1 import kube_cmd_version
 from sysinv.api.controllers.v1 import label
 from sysinv.api.controllers.v1 import interface
 from sysinv.api.controllers.v1 import interface_network
@@ -259,6 +260,9 @@ class V1(base.APIBase):
 
     kube_versions = [link.Link]
     "Links to the kube_version resource"
+
+    kube_cmd_versions = [link.Link]
+    "Links to the kube_cmd_version resource"
 
     kube_upgrade = [link.Link]
     "Links to the kube_upgrade resource"
@@ -815,6 +819,13 @@ class V1(base.APIBase):
                                                 'kube_versions', '',
                                                 bookmark=True)]
 
+        v1.kube_cmd_versions = [link.Link.make_link('self', pecan.request.host_url,
+                                                    'kube_cmd_versions', ''),
+                                link.Link.make_link('bookmark',
+                                                    pecan.request.host_url,
+                                                    'kube_cmd_versions', '',
+                                                    bookmark=True)]
+
         v1.kube_upgrade = [link.Link.make_link('self', pecan.request.host_url,
                                                'kube_upgrade', ''),
                            link.Link.make_link('bookmark',
@@ -935,6 +946,7 @@ class Controller(rest.RestController):
     host_fs = host_fs.HostFsController()
     kube_clusters = kube_cluster.KubeClusterController()
     kube_versions = kube_version.KubeVersionController()
+    kube_cmd_versions = kube_cmd_version.KubeCmdVersionController()
     kube_upgrade = kube_upgrade.KubeUpgradeController()
     kube_rootca_update = kube_rootca_update.KubeRootCAUpdateController()
     kube_host_upgrades = kube_host_upgrade.KubeHostUpgradeController()
