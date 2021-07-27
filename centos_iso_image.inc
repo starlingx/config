@@ -16,6 +16,9 @@ storageconfig
 # cert-mon
 cert-mon
 
+# cert-alarm
+cert-alarm
+
 # cgts-client
 cgts-client
 
