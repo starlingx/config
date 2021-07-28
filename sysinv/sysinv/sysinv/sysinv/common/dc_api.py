@@ -16,6 +16,7 @@ from sysinv.common.rest_api import rest_api_request
 # well-known dcmanager upgrade completed events
 DC_EVENT_PLATFORM_UPGRADE_COMPLETED = 'platform-upgrade-completed'
 DC_EVENT_K8S_UPGRADE_COMPLETED = 'k8s-upgrade-completed'
+DC_EVENT_KUBE_ROOTCA_UPDATE_COMPLETED = 'kube-rootca-update-completed'
 
 
 LOG = logging.getLogger(__name__)
@@ -46,3 +47,8 @@ def notify_dcmanager_platform_upgrade_completed():
 def notify_dcmanager_kubernetes_upgrade_completed():
     """Send the k8s-upgrade-completed event to dcmanager."""
     notify_dcmanager([DC_EVENT_K8S_UPGRADE_COMPLETED])
+
+
+def notify_dcmanager_kube_rootca_update_completed():
+    """Send the kube-rootca-update-completed event to dcmanager."""
+    notify_dcmanager([DC_EVENT_KUBE_ROOTCA_UPDATE_COMPLETED])

@@ -25,6 +25,7 @@ from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
+from sysinv.common import dc_api
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
@@ -547,7 +548,9 @@ class KubeRootCAUpdateController(rest.RestController):
 
         self._check_cluster_health(
             "kube-rootca-update-complete",
-            alarm_ignore_list=[fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_IN_PROGRESS],
+            alarm_ignore_list=[
+                fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_IN_PROGRESS,
+                fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_AUTO_APPLY_INPROGRESS],
             force=force,
         )
 
@@ -563,6 +566,13 @@ class KubeRootCAUpdateController(rest.RestController):
 
         rpc_kube_rootca_update.state = kubernetes.KUBE_ROOTCA_UPDATE_COMPLETED
         rpc_kube_rootca_update.updated_at = datetime.datetime.utcnow().isoformat()
+
+        # If applicable, notify dcmanager that the update is completed
+        system = pecan.request.dbapi.isystem_get_one()
+        role = system.get('distributed_cloud_role')
+        if role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+            dc_api.notify_dcmanager_kube_rootca_update_completed()
+
         return KubeRootCAUpdate.convert_with_links(rpc_kube_rootca_update)
 
 

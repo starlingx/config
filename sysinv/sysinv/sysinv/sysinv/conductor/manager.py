@@ -14417,7 +14417,6 @@ class ConductorManager(service.PeriodicService):
         raise a SysinvException
 
         :param secret_name: the name of the secret to wait
-        :param host: the host that triggered the resource creation
         """
         kube_operator = kubernetes.KubeOperator()
         secret = kube_operator.get_cert_secret(secret_name, kubernetes.NAMESPACE_DEPLOYMENT, max_retries=2)
