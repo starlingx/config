@@ -1174,6 +1174,10 @@ SERVICE_PARAM_HTTP_PORT_HTTPS_DEFAULT = 8443
 SERVICE_PARAM_SECTION_OPENSTACK_HELM = 'helm'
 SERVICE_PARAM_NAME_ENDPOINT_DOMAIN = "endpoint_domain"
 
+# Collectd Service Parameters
+SERVICE_PARAM_SECTION_COLLECTD = 'collectd'
+SERVICE_PARAM_COLLECTD_NETWORK_SERVERS = 'network_servers'
+
 # TIS part number, CPE = combined load, STD = standard load
 TIS_STD_BUILD = 'Standard'
 TIS_AIO_BUILD = 'All-in-one'

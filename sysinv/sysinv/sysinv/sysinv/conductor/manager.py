@@ -8900,6 +8900,12 @@ class ConductorManager(service.PeriodicService):
             # diff list or dict, to only target required personalities.
             if section == constants.SERVICE_PARAM_SECTION_KUBERNETES_CONFIG:
                 personalities = [constants.CONTROLLER, constants.WORKER]
+        elif service == constants.SERVICE_TYPE_PLATFORM:
+            if section == constants.SERVICE_PARAM_SECTION_COLLECTD:
+                reboot = True
+                personalities = [constants.CONTROLLER,
+                                 constants.WORKER,
+                                 constants.STORAGE]
 
         # we should not set the reboot flag on operations that are not
         # reboot required. An apply of a service parameter is not reboot
