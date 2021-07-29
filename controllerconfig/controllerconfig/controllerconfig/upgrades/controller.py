@@ -756,6 +756,20 @@ def migrate_hiera_data(from_release, to_release, role=None):
     with open(static_file, 'w') as yaml_file:
         yaml.dump(static_config, yaml_file, default_flow_style=False)
 
+    secure_static_file = os.path.join(
+        constants.HIERADATA_PERMDIR, "secure_static.yaml")
+    with open(secure_static_file, 'r') as yaml_file:
+        secure_static_config = yaml.load(yaml_file)
+
+    # This code can be removed in the release that follows StX 6.0
+    sysinv_pass = utils.get_password_from_keyring('sysinv', 'services')
+    secure_static_config.update({
+        'sysinv::certalarm::local_keystone_password': sysinv_pass
+    })
+
+    with open(secure_static_file, 'w') as yaml_file:
+        yaml.dump(secure_static_config, yaml_file, default_flow_style=False)
+
 
 def apply_sriov_config(db_credentials, hostname):
     # If controller-1 has any FEC devices or sriov vfs configured, apply the
