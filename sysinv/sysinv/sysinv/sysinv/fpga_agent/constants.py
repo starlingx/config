@@ -35,3 +35,6 @@ OPAE_IMG = "registry.local:9001/docker.io/starlingx/n3000-opae:stx.6.0-v1.0.1"
 DOCKER_LOGIN_FLAG = "/var/run/docker_login_done"
 
 N3000_RESET_FLAG = os.path.join(tsc.VOLATILE_PATH, ".sysinv_n3000_reset")
+
+# This flag is set if the N3000 requires a second reset
+N3000_RETIMER_FLAG = os.path.join(tsc.PLATFORM_CONF_PATH, ".sysinv_n3000_retimer")

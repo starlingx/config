@@ -81,6 +81,9 @@ class DeviceImage(base.APIBase):
     image_version = wtypes.text
     "The version of the device image"
 
+    retimer_included = bool
+    "Retimer firmware included in BMC firmware binary"
+
     applied = bool
     "Represent current status: created or applied"
 
@@ -109,7 +112,7 @@ class DeviceImage(base.APIBase):
                 ['id', 'uuid', 'bitstream_type', 'pci_vendor', 'pci_device',
                  'bitstream_id', 'key_signature', 'revoke_key_id',
                  'name', 'description', 'image_version',
-                 'applied', 'applied_labels'])
+                 'applied', 'applied_labels', 'retimer_included'])
 
         # insert applied labels for this device image if they exist
         device_image = _get_applied_labels(device_image)
@@ -246,7 +249,7 @@ class DeviceImageController(rest.RestController):
 
         field_list = ['uuid', 'bitstream_type', 'pci_vendor', 'pci_device',
                       'bitstream_id', 'key_signature', 'revoke_key_id',
-                      'name', 'description', 'image_version']
+                      'name', 'description', 'image_version', 'retimer_included']
         data = dict((k, v) for (k, v) in pecan.request.POST.items()
                 if k in field_list and not (v is None))
         msg = _validate_syntax(data)
@@ -431,6 +434,9 @@ def _validate_bitstream_type(dev_img):
     elif (dev_img['bitstream_type'] == dconstants.BITSTREAM_TYPE_KEY_REVOCATION and
           'revoke_key_id' not in dev_img):
         msg = _("revoke_key_id is required for key revocation bitstream type")
+    elif (dev_img['bitstream_type'] != dconstants.BITSTREAM_TYPE_FUNCTIONAL and
+          'retimer_included' in dev_img.keys()):
+        msg = _("retimer_included option is only applicable to functional BMC image")
     return msg
 
 
@@ -476,6 +482,10 @@ def _validate_syntax(device_image):
     if ('uuid' in device_image.keys() and
             not cutils.is_uuid_like(device_image['uuid'])):
         msg = _("uuid must be a valid UUID")
+        return msg
+    if ('retimer_included' in device_image.keys() and
+            not cutils.is_valid_boolstr(device_image['retimer_included'])):
+        msg = _("Parameter retimer_included must be a valid bool string")
         return msg
     msg = _validate_hexadecimal_fields(device_image)
     if not msg:

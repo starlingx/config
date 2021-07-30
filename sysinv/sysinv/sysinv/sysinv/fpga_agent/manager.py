@@ -551,7 +551,8 @@ class FpgaAgentManager(service.PeriodicService):
                           "this will likely cause problems.")
             pass
 
-    def device_update_image(self, context, pci_addr, filename, transaction_id):
+    def device_update_image(self, context, pci_addr, filename, transaction_id,
+                            retimer_included):
         """Write the device image to the device at the specified address.
 
         Transaction is the transaction ID as specified by sysinv-conductor.
@@ -612,6 +613,9 @@ class FpgaAgentManager(service.PeriodicService):
                 os.remove(local_path)
                 # start the watchdog service again
                 start_watchdog()
+                # If device image contains c827 retimer firmware, set the retimer flag
+                if retimer_included:
+                    utils.touch(constants.N3000_RETIMER_FLAG)
 
         except exception.SysinvException as exc:
             LOG.info("setting transaction id %s as failed" % transaction_id)
