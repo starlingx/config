@@ -2580,17 +2580,31 @@ def extract_ca_private_key_bytes_from_pem(pem_content):
     """ Extract key from the PEM file bytes
 
     :param pem_content: bytes from PEM file where we'll get the key
+    from. It could be pkcs1 or pkcs8 encoded.
     :return base64_crt: extracted key base64 encoded
     """
-    begin_search = pem_content.find(constants.BEGIN_PRIVATE_KEY_MARKER)
-    if begin_search < 0:
+    found_marker = False
+    for begin_marker in [constants.BEGIN_PRIVATE_KEY_MARKER,
+                         constants.BEGIN_RSA_PRIVATE_KEY_MARKER]:
+        begin_search = pem_content.find(begin_marker)
+        if begin_search >= 0:
+            found_marker = True
+            break
+
+    if not found_marker:
         raise exception.InvalidKubernetesCA
 
-    end_search = pem_content.find(constants.END_PRIVATE_KEY_MARKER)
-    if end_search < 0:
-        LOG.info(pem_content)
+    found_marker = False
+    for end_marker in [constants.END_PRIVATE_KEY_MARKER,
+                       constants.END_RSA_PRIVATE_KEY_MARKER]:
+        end_search = pem_content.find(end_marker)
+        if end_search >= 0:
+            found_marker = True
+            end_search += len(end_marker)
+            break
+
+    if not found_marker:
         raise exception.InvalidKubernetesCA
-    end_search += len(constants.END_PRIVATE_KEY_MARKER)
 
     base64_key = base64.b64encode(pem_content[begin_search:end_search])
     return base64_key

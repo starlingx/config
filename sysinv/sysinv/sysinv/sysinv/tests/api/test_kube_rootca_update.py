@@ -522,12 +522,12 @@ class TestKubeRootCAPodsUpdateTrustBothCAs(TestKubeRootCAUpdate,
 
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
         self.assertIn("kube-rootca-pods-update phase trust-both-cas rejected: "
-                "not allowed when cluster update is in state: %s. "
-                "(only allowed when in state: %s or %s)"
-                % (kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS,
-                kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTBOTHCAS,
-                kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTBOTHCAS_FAILED),
-                result.json['error_message'])
+                      "not allowed when cluster update is in state: %s. "
+                      "(only allowed when in state: %s or %s)"
+                      % (kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS,
+                         kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTBOTHCAS,
+                         kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTBOTHCAS_FAILED),
+                      result.json['error_message'])
 
 
 class TestKubeRootCAPodsUpdateTrustNewCA(TestKubeRootCAUpdate,
@@ -566,12 +566,12 @@ class TestKubeRootCAPodsUpdateTrustNewCA(TestKubeRootCAUpdate,
 
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
         self.assertIn("kube-rootca-pods-update phase trust-new-ca rejected: "
-                "not allowed when cluster update is in state: %s. "
-                "(only allowed when in state: %s or %s)"
-                % (kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTBOTHCAS,
-                kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA,
-                kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTNEWCA_FAILED),
-                result.json['error_message'])
+                      "not allowed when cluster update is in state: %s. "
+                      "(only allowed when in state: %s or %s)"
+                      % (kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTBOTHCAS,
+                         kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA,
+                         kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTNEWCA_FAILED),
+                      result.json['error_message'])
 
 
 class TestKubeRootCAHostUpdate(base.FunctionalTest):
@@ -691,12 +691,12 @@ class TestKubeRootCAHostUpdateTrustBothCAs(TestKubeRootCAHostUpdate,
                                 headers=self.headers)
         # Verify that the rootca host update has the expected attributes
         self.assertEqual(result.json['state'],
-                        kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS)
+                         kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS)
 
         # Verify that the overall rootca update has the expected attributes
         result = dbutils.get_kube_rootca_update()
         self.assertEqual(result.state,
-                        kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS)
+                         kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS)
 
     def test_create_failed_update_not_started(self):
         # Test creation failed since update not started yet
@@ -707,8 +707,9 @@ class TestKubeRootCAHostUpdateTrustBothCAs(TestKubeRootCAHostUpdate,
                                 expect_errors=True)
 
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("kube-rootca-host-update rejected: "
-                    "No update in progress", result.json['error_message'])
+        self.assertIn("kube-rootca-host-update phase trust-both-cas "
+                      "rejected: No update in progress.",
+                      result.json['error_message'])
 
     def test_create_failed_no_cert_available(self):
         # Test creation failed since no new cert uploaded or generated
@@ -722,8 +723,9 @@ class TestKubeRootCAHostUpdateTrustBothCAs(TestKubeRootCAHostUpdate,
                                 expect_errors=True)
 
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("kube-rootca-host-update rejected: No new certificate "
-                    "available", result.json['error_message'])
+        self.assertIn("kube-rootca-host-update phase trust-both-cas "
+                      "rejected: No new certificate available",
+                      result.json['error_message'])
 
     def test_create_failed_host_update_completed(self):
         # Test creation failed since this host already updated
@@ -742,9 +744,10 @@ class TestKubeRootCAHostUpdateTrustBothCAs(TestKubeRootCAHostUpdate,
                                 expect_errors=True)
 
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("kube-rootca-host-update rejected: update already "
-                    "completed on host %s" % self.host.hostname,
-                    result.json['error_message'])
+        self.assertIn("kube-rootca-host-update phase trust-both-cas "
+                      "rejected: procedure phase already completed "
+                      "on host %s" % self.host.hostname,
+                      result.json['error_message'])
 
     def test_create_failed_hosts_update_in_progress(self):
         # Test creation failed since there is update in progess on a host
@@ -763,9 +766,9 @@ class TestKubeRootCAHostUpdateTrustBothCAs(TestKubeRootCAHostUpdate,
                                 expect_errors=True)
 
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("kube-rootca-host-update rejected: update in progress "
-                    "on host %s" % self.host2.hostname,
-                    result.json['error_message'])
+        self.assertIn("kube-rootca-host-update phase trust-both-cas "
+                      "rejected: procedure phase in progress on host %s"
+                      % self.host2.hostname, result.json['error_message'])
 
     def test_create_failed_hosts_update_failed(self):
         # Test creation failed since there is host update failed on a host
@@ -784,10 +787,11 @@ class TestKubeRootCAHostUpdateTrustBothCAs(TestKubeRootCAHostUpdate,
                                 expect_errors=True)
 
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("kube-rootca-host-update rejected: not allowed when "
-                    "cluster update is in state: %s"
-                    % kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS_FAILED,
-                    result.json['error_message'])
+        self.assertIn("kube-rootca-host-update phase trust-both-cas rejected: "
+                      "procedure phase not allowed when cluster update is in "
+                      "state: %s"
+                      % kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS_FAILED,
+                      result.json['error_message'])
 
     def test_create_failed_not_in_correct_state_updatecerts_failed(self):
         # Test creation failed when user tries this phase after the overall
@@ -808,10 +812,11 @@ class TestKubeRootCAHostUpdateTrustBothCAs(TestKubeRootCAHostUpdate,
 
         # but client make a call to perform update phase trust-both-cas
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("kube-rootca-host-update rejected: not allowed when "
-                    "cluster update is in state: %s"
-                    % kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS_FAILED,
-                    result.json['error_message'])
+        self.assertIn("kube-rootca-host-update phase trust-both-cas "
+                      "rejected: procedure phase not allowed when "
+                      "cluster update is in state: %s"
+                      % kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS_FAILED,
+                      result.json['error_message'])
 
     def test_create_failed_not_in_correct_state_updatecerts_in_progress(self):
         # Test creation failed when user tries this phase after the overall
@@ -832,10 +837,11 @@ class TestKubeRootCAHostUpdateTrustBothCAs(TestKubeRootCAHostUpdate,
                                 expect_errors=True)
 
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("kube-rootca-host-update rejected: not allowed when "
-                    "cluster update is in state: %s"
-                    % kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS,
-                    result.json['error_message'])
+        self.assertIn("kube-rootca-host-update phase trust-both-cas "
+                      "rejected: procedure phase not allowed when "
+                      "cluster update is in state: %s"
+                      % kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS,
+                      result.json['error_message'])
 
 
 class TestKubeRootCAHostUpdateUpdateCerts(TestKubeRootCAHostUpdate,
@@ -880,7 +886,9 @@ class TestKubeRootCAHostUpdateUpdateCerts(TestKubeRootCAHostUpdate,
                                 expect_errors=True)
 
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("kube-rootca-host-update rejected: update in progress", result.json['error_message'])
+        self.assertIn("kube-rootca-host-update phase update-certs "
+                      "rejected: procedure phase in progress on host %s"
+                      % self.host.hostname, result.json['error_message'])
 
     def test_updatecerts_host_update_failed_cluster_in_advanced_state(self):
         create_dict = {'phase': self.phase}
@@ -898,12 +906,12 @@ class TestKubeRootCAHostUpdateUpdateCerts(TestKubeRootCAHostUpdate,
 
         # but client make a call to perform update phase updatecerts
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("kube-rootca-host-update rejected: not "
-                        "allowed when cluster update is in state: %s. "
-                        "(only allowed when in state: %s)"
-                        % (kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA,
-                        kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTBOTHCAS),
-            result.json['error_message'])
+        self.assertIn("kube-rootca-host-update phase update-certs rejected: "
+                      "procedure phase not allowed when cluster update is "
+                      "in state: %s (only allowed when in state: %s)."
+                      % (kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA,
+                         kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTBOTHCAS),
+                      result.json['error_message'])
 
     def test_updatecerts_host_update_failed_already_completed(self):
         create_dict = {'phase': self.phase}
@@ -919,8 +927,9 @@ class TestKubeRootCAHostUpdateUpdateCerts(TestKubeRootCAHostUpdate,
                                 headers=self.headers,
                                 expect_errors=True)
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("kube-rootca-host-update rejected: update already "
-                        "completed on host %s" % self.host.hostname, result.json['error_message'])
+        self.assertIn("kube-rootca-host-update phase update-certs rejected: "
+                      "procedure phase already completed on host %s"
+                      % self.host.hostname, result.json['error_message'])
 
     def test_updatecerts_host_update_in_past_state(self):
         create_dict = {'phase': self.phase}
@@ -937,12 +946,12 @@ class TestKubeRootCAHostUpdateUpdateCerts(TestKubeRootCAHostUpdate,
                                 expect_errors=True)
 
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("kube-rootca-host-update rejected: not "
-                        "allowed when cluster update is in state: %s. "
-                        "(only allowed when in state: %s)"
-                        % (kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS,
-                        kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTBOTHCAS),
-            result.json['error_message'])
+        self.assertIn("kube-rootca-host-update phase update-certs rejected: "
+                      "procedure phase not allowed when cluster update is "
+                      "in state: %s (only allowed when in state: %s)."
+                      % (kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS,
+                         kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTBOTHCAS),
+                      result.json['error_message'])
 
     def test_updatecerts_host_update_failed_host(self):
         create_dict = {'phase': self.phase}
@@ -962,9 +971,9 @@ class TestKubeRootCAHostUpdateUpdateCerts(TestKubeRootCAHostUpdate,
                                 expect_errors=True)
 
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("kube-rootca-host-update rejected: update failed "
-                            "on host %s" % self.host2.hostname,
-                            result.json['error_message'])
+        self.assertIn("kube-rootca-host-update phase update-certs rejected: "
+                      "procedure phase failed on host %s"
+                      % self.host2.hostname, result.json['error_message'])
 
 
 class TestKubeRootCAHostUpdateTrustNewCA(TestKubeRootCAHostUpdate,
@@ -1044,9 +1053,9 @@ class TestKubeRootCAHostUpdateTrustNewCA(TestKubeRootCAHostUpdate,
                                 expect_errors=True)
 
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("kube-rootca-host-update rejected: update in progress "
-                      "on host %s" % self.host.hostname,
-                      result.json['error_message'])
+        self.assertIn("kube-rootca-host-update phase trust-new-ca "
+                      "rejected: procedure phase in progress on host %s"
+                      % self.host.hostname, result.json['error_message'])
 
     def test_trustnewca_host_update_failed_cluster_in_advanced_state(self):
         create_dict = {'phase': self.phase}
@@ -1064,12 +1073,13 @@ class TestKubeRootCAHostUpdateTrustNewCA(TestKubeRootCAHostUpdate,
 
         # but client make a call to perform host update phase trustNewCA
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("kube-rootca-host-update rejected: not "
-                        "allowed when cluster update is in state: %s. "
-                        "(only allowed when in state: %s)"
-                        % (kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTNEWCA,
-                        kubernetes.KUBE_ROOTCA_UPDATED_HOST_UPDATECERTS),
-            result.json['error_message'])
+        self.assertIn("kube-rootca-host-update phase trust-new-ca "
+                      "rejected: not allowed when cluster update "
+                      "is in state: %s (only allowed when in "
+                      "state: %s)."
+                      % (kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTNEWCA,
+                         kubernetes.KUBE_ROOTCA_UPDATED_HOST_UPDATECERTS),
+                      result.json['error_message'])
 
     def test_trustnewca_host_update_failed_already_completed(self):
         create_dict = {'phase': self.phase}
@@ -1086,8 +1096,9 @@ class TestKubeRootCAHostUpdateTrustNewCA(TestKubeRootCAHostUpdate,
                                 headers=self.headers,
                                 expect_errors=True)
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("kube-rootca-host-update rejected: update already "
-                      "completed on host %s" % self.host.hostname,
+        self.assertIn("kube-rootca-host-update phase trust-new-ca "
+                      "rejected: procedure phase already completed "
+                      "on host %s" % self.host.hostname,
                       result.json['error_message'])
 
     def test_trustnewca_host_update_failed_in_past_state(self):
@@ -1106,12 +1117,12 @@ class TestKubeRootCAHostUpdateTrustNewCA(TestKubeRootCAHostUpdate,
                                 expect_errors=True)
 
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("kube-rootca-host-update rejected: not "
-                        "allowed when cluster update is in state: %s. "
-                        "(only allowed when in state: %s)"
-                        % (kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS,
-                        kubernetes.KUBE_ROOTCA_UPDATED_HOST_UPDATECERTS),
-            result.json['error_message'])
+        self.assertIn("kube-rootca-host-update phase trust-new-ca "
+                      "rejected: not allowed when cluster update is "
+                      "in state: %s (only allowed when in state: %s)."
+                      % (kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS,
+                         kubernetes.KUBE_ROOTCA_UPDATED_HOST_UPDATECERTS),
+                      result.json['error_message'])
 
     def test_trustnewca_host_update_failed_other_host_failed(self):
         create_dict = {'phase': self.phase}
@@ -1132,6 +1143,7 @@ class TestKubeRootCAHostUpdateTrustNewCA(TestKubeRootCAHostUpdate,
                                 expect_errors=True)
 
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("kube-rootca-host-update rejected: update failed "
-                            "on host %s" % self.host2.hostname,
-                            result.json['error_message'])
+        self.assertIn("kube-rootca-host-update phase trust-new-ca "
+                      "rejected: procedure phase failed on host %s"
+                      % self.host2.hostname,
+                      result.json['error_message'])

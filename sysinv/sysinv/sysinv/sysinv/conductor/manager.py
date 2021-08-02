@@ -14297,7 +14297,8 @@ class ConductorManager(service.PeriodicService):
                 'issuerRef': {
                     'name': selfsigned_issuer_name,
                     'kind': 'Issuer'
-                }
+                },
+                'keyEncoding': 'pkcs8'
             }
         }
 
@@ -14406,7 +14407,7 @@ class ConductorManager(service.PeriodicService):
                           "".format(app.name, action, str(e)))
                 raise
 
-    def __wait_secret_creation(self, secret_name, host):
+    def _wait_secret_creation(self, secret_name):
         """ Wait for secret to be created and information regarding crt/key to be stored
 
         It will wait until tls.crt and tls.key contents are available to read
@@ -14485,7 +14486,7 @@ class ConductorManager(service.PeriodicService):
                 LOG.error("Failed to create %s resource" % admin_certificate_name)
                 raise
 
-            self._wait_secret_creation(admin_certificate_name, host)
+            self._wait_secret_creation(admin_certificate_name)
 
             LOG.info("%s Secret successfully created and populated with cert/key data" % admin_certificate_name)
 
@@ -14525,7 +14526,7 @@ class ConductorManager(service.PeriodicService):
             LOG.error("Failed to create %s resource" % apiserver_certificate_name)
             raise
 
-        self._wait_secret_creation(apiserver_certificate_name, host)
+        self._wait_secret_creation(apiserver_certificate_name)
 
         LOG.info("%s Secret successfully created and populated with cert/key data" % apiserver_certificate_name)
 
@@ -14559,7 +14560,7 @@ class ConductorManager(service.PeriodicService):
             LOG.error("Failed to create %s resource" % apiserver_kubelet_client_certificate_name)
             raise
 
-        self._wait_secret_creation(apiserver_kubelet_client_certificate_name, host)
+        self._wait_secret_creation(apiserver_kubelet_client_certificate_name)
 
         LOG.info("%s Secret successfully created and populated with cert/key data" %
         apiserver_kubelet_client_certificate_name)
@@ -14594,7 +14595,7 @@ class ConductorManager(service.PeriodicService):
             LOG.error("Failed to create %s resource" % kube_scheduler_certificate_name)
             raise
 
-        self._wait_secret_creation(kube_scheduler_certificate_name, host)
+        self._wait_secret_creation(kube_scheduler_certificate_name)
 
         LOG.info("%s Secret successfully created and populated with cert/key data" %
         kube_scheduler_certificate_name)
@@ -14628,7 +14629,7 @@ class ConductorManager(service.PeriodicService):
             LOG.error("Failed to create %s resource" % controller_manager_certificate_name)
             raise
 
-        self._wait_secret_creation(controller_manager_certificate_name, host)
+        self._wait_secret_creation(controller_manager_certificate_name)
 
         LOG.info("%s Secret successfully created and populated with cert/key data" %
         controller_manager_certificate_name)
@@ -14663,7 +14664,7 @@ class ConductorManager(service.PeriodicService):
             LOG.error("Failed to create %s resource" % kubelet_certificate_name)
             raise
 
-        self._wait_secret_creation(kubelet_certificate_name, host)
+        self._wait_secret_creation(kubelet_certificate_name)
 
         LOG.info("%s Secret successfully created and populated with cert/key data" %
         kubelet_certificate_name)
@@ -14711,7 +14712,7 @@ class ConductorManager(service.PeriodicService):
             LOG.error("Failed to create %s resource" % kubelet_certificate)
             raise
 
-        self._wait_secret_creation(kubelet_certificate_name, host)
+        self._wait_secret_creation(kubelet_certificate_name)
 
     def _failed_update_certs(self, host):
         # Change host table entry
