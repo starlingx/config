@@ -38,6 +38,8 @@ from sysinv.common import disk_utils
 from sysinv.conductor import rpcapi as conductor_rpcapi
 from sysinv.openstack.common import context
 
+from functools import cmp_to_key
+
 CONF = cfg.CONF
 LOG = log.getLogger(__name__)
 
@@ -837,7 +839,7 @@ def check_partitions(data, mode, pfile):
         sortable_partitions = [p for p in partitions if p.get('start_mib') is not None]
 
         for p in sorted(sortable_partitions,
-                        lambda p, q: p.get('start_mib') - q.get('start_mib')):
+                        key=cmp_to_key(lambda p, q: p.get('start_mib') - q.get('start_mib'))):
             disk = _get_disk_device_path(p.get('device_path'))
             if _partition_exists(p.get('device_path')):
                 print('Partition {} already exists on disk {}'.format(
