@@ -12,6 +12,8 @@ from six.moves import cStringIO as StringIO
 import sys
 from testtools import matchers
 
+import keystoneauth1
+
 from cgtsclient import exc
 from cgtsclient import shell as cgts_shell
 from cgtsclient.tests import utils
@@ -28,6 +30,9 @@ FAKE_ENV = {'OS_USERNAME': 'username',
 class ShellTest(utils.BaseTestCase):
     re_options = re.DOTALL | re.MULTILINE
 
+    mock_endpoint_patcher = mock.patch.object(keystoneauth1.session.Session,
+                                              'get_endpoint')
+
     # Patch os.environ to avoid required auth info.
     def make_env(self, exclude=None):
         env = dict((k, v) for k, v in FAKE_ENV.items() if k != exclude)
@@ -35,9 +40,11 @@ class ShellTest(utils.BaseTestCase):
 
     def setUp(self):
         super(ShellTest, self).setUp()
+        self.mock_endpoint = self.mock_endpoint_patcher.start()
 
     def tearDown(self):
         super(ShellTest, self).tearDown()
+        self.mock_endpoint_patcher.stop()
 
     def shell(self, argstr):
         orig = sys.stdout
@@ -100,11 +107,8 @@ class ShellTest(utils.BaseTestCase):
         self.test_help()
 
     @mock.patch('cgtsclient.v1.ihost.ihostManager.list')
-    @mock.patch('cgtsclient.client._get_ksclient')
-    @mock.patch('cgtsclient.client._get_endpoint')
-    def test_host_list(self, mock_get_endpoint, mock_get_client, mock_list):
+    def test_host_list(self, mock_list):
         # This unit test mocks returning a single controller-0 host through host-list
-        mock_get_endpoint.return_value = 'http://fakelocalhost:6385/v1'
         fake_controller = {'id': '0',
                            'hostname': 'controller-0',
                            'personality': 'controller',

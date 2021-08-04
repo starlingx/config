@@ -19,11 +19,7 @@ class KubeUpgradeTest(test_shell.ShellTest):
         super(KubeUpgradeTest, self).tearDown()
 
     @mock.patch('cgtsclient.v1.kube_upgrade.KubeUpgradeManager.list')
-    @mock.patch('cgtsclient.client._get_ksclient')
-    @mock.patch('cgtsclient.client._get_endpoint')
-    def test_kube_upgrade_show(self, mock_get_endpoint, mock_get_client,
-                               mock_list):
-        mock_get_endpoint.return_value = 'http://fakelocalhost:6385/v1'
+    def test_kube_upgrade_show(self, mock_list):
         fake_kube_upgrade = {'from_version': 'v1.42.1',
                              'to_version': 'v1.42.2',
                              'state': 'upgrade-started',
@@ -45,11 +41,7 @@ class KubeUpgradeTest(test_shell.ShellTest):
 
     @mock.patch('cgtsclient.v1.kube_upgrade.KubeUpgradeManager.create')
     @mock.patch('cgtsclient.v1.kube_upgrade.KubeUpgradeManager.get')
-    @mock.patch('cgtsclient.client._get_ksclient')
-    @mock.patch('cgtsclient.client._get_endpoint')
-    def test_kube_upgrade_start(self, mock_get_endpoint, mock_get_client,
-                                mock_get, mock_create):
-        mock_get_endpoint.return_value = 'http://fakelocalhost:6385/v1'
+    def test_kube_upgrade_start(self, mock_get, mock_create):
         fake_kube_upgrade = {'from_version': 'v1.42.1',
                              'to_version': 'v1.42.2',
                              'state': 'upgrade-started',
@@ -72,11 +64,7 @@ class KubeUpgradeTest(test_shell.ShellTest):
 
     @mock.patch('cgtsclient.v1.kube_upgrade.KubeUpgradeManager.create')
     @mock.patch('cgtsclient.v1.kube_upgrade.KubeUpgradeManager.get')
-    @mock.patch('cgtsclient.client._get_ksclient')
-    @mock.patch('cgtsclient.client._get_endpoint')
-    def test_kube_upgrade_start_force(self, mock_get_endpoint, mock_get_client,
-                                      mock_get, mock_create):
-        mock_get_endpoint.return_value = 'http://fakelocalhost:6385/v1'
+    def test_kube_upgrade_start_force(self, mock_get, mock_create):
         fake_kube_upgrade = {'from_version': 'v1.42.1',
                              'to_version': 'v1.42.2',
                              'state': 'upgrade-started',
@@ -98,12 +86,7 @@ class KubeUpgradeTest(test_shell.ShellTest):
         self.assertIn(fake_kube_upgrade['updated_at'], results)
 
     @mock.patch('cgtsclient.v1.kube_upgrade.KubeUpgradeManager.update')
-    @mock.patch('cgtsclient.client._get_ksclient')
-    @mock.patch('cgtsclient.client._get_endpoint')
-    def test_kube_upgrade_download_images(self, mock_get_endpoint,
-                                          mock_get_client,
-                                          mock_update):
-        mock_get_endpoint.return_value = 'http://fakelocalhost:6385/v1'
+    def test_kube_upgrade_download_images(self, mock_update):
         fake_kube_upgrade = {'from_version': 'v1.42.1',
                              'to_version': 'v1.42.2',
                              'state': 'downloading-images',
@@ -123,11 +106,7 @@ class KubeUpgradeTest(test_shell.ShellTest):
         self.assertIn(fake_kube_upgrade['updated_at'], results)
 
     @mock.patch('cgtsclient.v1.kube_upgrade.KubeUpgradeManager.update')
-    @mock.patch('cgtsclient.client._get_ksclient')
-    @mock.patch('cgtsclient.client._get_endpoint')
-    def test_kube_upgrade_networking(self, mock_get_endpoint, mock_get_client,
-                                     mock_update):
-        mock_get_endpoint.return_value = 'http://fakelocalhost:6385/v1'
+    def test_kube_upgrade_networking(self, mock_update):
         fake_kube_upgrade = {'from_version': 'v1.42.1',
                              'to_version': 'v1.42.2',
                              'state': 'upgrading-networking',
@@ -147,11 +126,7 @@ class KubeUpgradeTest(test_shell.ShellTest):
         self.assertIn(fake_kube_upgrade['updated_at'], results)
 
     @mock.patch('cgtsclient.v1.kube_upgrade.KubeUpgradeManager.update')
-    @mock.patch('cgtsclient.client._get_ksclient')
-    @mock.patch('cgtsclient.client._get_endpoint')
-    def test_kube_upgrade_complete(self, mock_get_endpoint, mock_get_client,
-                                   mock_update):
-        mock_get_endpoint.return_value = 'http://fakelocalhost:6385/v1'
+    def test_kube_upgrade_complete(self, mock_update):
         fake_kube_upgrade = {'from_version': 'v1.42.1',
                              'to_version': 'v1.42.2',
                              'state': 'upgrade-complete',
@@ -171,12 +146,7 @@ class KubeUpgradeTest(test_shell.ShellTest):
         self.assertIn(fake_kube_upgrade['updated_at'], results)
 
     @mock.patch('cgtsclient.v1.kube_upgrade.KubeUpgradeManager.delete')
-    @mock.patch('cgtsclient.client._get_ksclient')
-    @mock.patch('cgtsclient.client._get_endpoint')
-    def test_kube_upgrade_delete(self, mock_get_endpoint, mock_get_client,
-                                 mock_delete):
-        mock_get_endpoint.return_value = 'http://fakelocalhost:6385/v1'
-
+    def test_kube_upgrade_delete(self, mock_delete):
         self.make_env()
         results = self.shell("kube-upgrade-delete")
         self.assertIn("Kubernetes upgrade deleted", results)

@@ -57,11 +57,7 @@ class KubeRootCAUpdateTest(test_shell.ShellTest):
 
     @mock.patch('cgtsclient.v1.kube_rootca_update.KubeRootCAUpdateManager.create')
     @mock.patch('cgtsclient.v1.kube_rootca_update.KubeRootCAUpdateManager.get')
-    @mock.patch('cgtsclient.client._get_ksclient')
-    @mock.patch('cgtsclient.client._get_endpoint')
-    def test_kube_rootca_update_start(self, mock_get_endpoint, mock_get_client,
-                                      mock_get, mock_create):
-        mock_get_endpoint.return_value = self.mock_get_endpoint_return_value
+    def test_kube_rootca_update_start(self, mock_get, mock_create):
         mock_create.return_value = KubeRootCAUpdate(None, self.fake_kube_rootca_update, True)
         mock_get.return_value = KubeRootCAUpdate(None, self.fake_kube_rootca_update, True)
 
@@ -71,11 +67,9 @@ class KubeRootCAUpdateTest(test_shell.ShellTest):
 
     @mock.patch('cgtsclient.v1.kube_rootca_update.KubeRootCAUpdateManager.create')
     @mock.patch('cgtsclient.v1.kube_rootca_update.KubeRootCAUpdateManager.get_list')
-    @mock.patch('cgtsclient.client._get_ksclient')
-    @mock.patch('cgtsclient.client._get_endpoint')
-    def test_kube_rootca_update_show_current_update(self, mock_get_endpoint, mock_get_client,
-                                                    mock_get_list, mock_create):
-        mock_get_endpoint.return_value = self.mock_get_endpoint_return_value
+    def test_kube_rootca_update_show_current_update(self,
+                                                    mock_get_list,
+                                                    mock_create):
         mock_create.return_value = KubeRootCAUpdate(None, self.fake_kube_rootca_update, True)
         mock_get_list.return_value = [KubeRootCAUpdate(None, self.fake_kube_rootca_update, True)]
 
@@ -84,11 +78,7 @@ class KubeRootCAUpdateTest(test_shell.ShellTest):
         self._check_rootca_update(self.fake_kube_rootca_update, results)
 
     @mock.patch('cgtsclient.v1.kube_rootca_update.KubeRootCAUpdateManager.host_update_list')
-    @mock.patch('cgtsclient.client._get_ksclient')
-    @mock.patch('cgtsclient.client._get_endpoint')
-    def test_kube_rootca_update_list_current_update(self, mock_get_endpoint, mock_get_client,
-                                                    mock_update_list):
-        mock_get_endpoint.return_value = self.mock_get_endpoint_return_value
+    def test_kube_rootca_update_list_current_update(self, mock_update_list):
         mock_update_list.return_value = [KubeRootCAUpdate(None, self.fake_kube_rootca_host_update, True)]
         self.make_env()
         results = self.shell("kube-rootca-host-update-list")
@@ -98,12 +88,8 @@ class KubeRootCAUpdateTest(test_shell.ShellTest):
 
     @mock.patch('cgtsclient.v1.kube_rootca_update.KubeRootCAUpdateManager.create')
     @mock.patch('cgtsclient.v1.kube_rootca_update.KubeRootCAUpdateManager.rootCA_pods_update')
-    @mock.patch('cgtsclient.client._get_ksclient')
-    @mock.patch('cgtsclient.client._get_endpoint')
-    def test_kube_rootca_pods_update(self, mock_get_endpoint, mock_get_client,
-                                     mock_pods_update, mock_create):
+    def test_kube_rootca_pods_update(self, mock_pods_update, mock_create):
         self.fake_kube_rootca_update['state'] = 'updated-host-trust-both-cas'
-        mock_get_endpoint.return_value = self.mock_get_endpoint_return_value
         mock_create.return_value = KubeRootCAUpdate(None, self.fake_kube_rootca_update, True)
         self.fake_kube_rootca_update['state'] = 'updating-pods-trust-both-cas'
         mock_pods_update.return_value = KubeRootCAUpdate(None, self.fake_kube_rootca_update, True)
@@ -115,10 +101,10 @@ class KubeRootCAUpdateTest(test_shell.ShellTest):
     @mock.patch('cgtsclient.v1.kube_rootca_update.KubeRootCAUpdateManager.create')
     @mock.patch('cgtsclient.v1.ihost.ihostManager.kube_update_rootca')
     @mock.patch('cgtsclient.v1.ihost._find_ihost')
-    @mock.patch('cgtsclient.client._get_ksclient')
-    @mock.patch('cgtsclient.client._get_endpoint')
-    def test_kube_rootca_host_update(self, mock_get_endpoint, mock_get_client,
-                                     mock_get_host, mock_host_update, mock_create):
+    def test_kube_rootca_host_update(self,
+                                     mock_get_host,
+                                     mock_host_update,
+                                     mock_create):
         fake_controller = {'id': '0',
                            'uuid': '1127ea5e-067b-11ec-9a03-0242ac130003',
                            'hostname': 'fake-hostname',
@@ -128,7 +114,6 @@ class KubeRootCAUpdateTest(test_shell.ShellTest):
                            'availability': 'available'}
         self.fake_kube_rootca_host_update['state'] = 'updating-host-trust-both-cas'
         mock_get_host.return_value = ihost(None, fake_controller, True)
-        mock_get_endpoint.return_value = self.mock_get_endpoint_return_value
         mock_create.return_value = KubeRootCAUpdate(None, self.fake_kube_rootca_update, True)
         mock_host_update.return_value = KubeRootCAUpdate(None, self.fake_kube_rootca_host_update, True)
 
@@ -138,12 +123,10 @@ class KubeRootCAUpdateTest(test_shell.ShellTest):
 
     @mock.patch('cgtsclient.v1.kube_rootca_update.KubeRootCAUpdateManager.create')
     @mock.patch('cgtsclient.v1.kube_rootca_update.KubeRootCAUpdateManager.update_complete')
-    @mock.patch('cgtsclient.client._get_ksclient')
-    @mock.patch('cgtsclient.client._get_endpoint')
-    def test_kube_rootca_update_complete(self, mock_get_endpoint, mock_get_client,
-                                         mock_update_complete, mock_create):
+    def test_kube_rootca_update_complete(self,
+                                         mock_update_complete,
+                                         mock_create):
         self.fake_kube_rootca_update['state'] = 'updated-pods-trust-new-ca'
-        mock_get_endpoint.return_value = self.mock_get_endpoint_return_value
         mock_create.return_value = KubeRootCAUpdate(None, self.fake_kube_rootca_update, True)
         self.fake_kube_rootca_update['state'] = 'update-completed'
         mock_update_complete.return_value = KubeRootCAUpdate(None, self.fake_kube_rootca_update, True)
@@ -154,11 +137,9 @@ class KubeRootCAUpdateTest(test_shell.ShellTest):
 
     @mock.patch('cgtsclient.v1.kube_rootca_update.KubeRootCAUpdateManager.create')
     @mock.patch('cgtsclient.v1.kube_rootca_update.KubeRootCAUpdateManager.update_complete')
-    @mock.patch('cgtsclient.client._get_ksclient')
-    @mock.patch('cgtsclient.client._get_endpoint')
-    def test_kube_rootca_update_abort(self, mock_get_endpoint, mock_get_client,
-                                      mock_update_complete, mock_create):
-        mock_get_endpoint.return_value = self.mock_get_endpoint_return_value
+    def test_kube_rootca_update_abort(self,
+                                      mock_update_complete,
+                                      mock_create):
         mock_create.return_value = KubeRootCAUpdate(None, self.fake_kube_rootca_update, True)
         self.fake_kube_rootca_update['state'] = 'update-aborted'
         mock_update_complete.return_value = KubeRootCAUpdate(None, self.fake_kube_rootca_update, True)

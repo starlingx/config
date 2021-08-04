@@ -131,11 +131,7 @@ class KubeClusterTest(test_shell.ShellTest):
         super(KubeClusterTest, self).tearDown()
 
     @mock.patch('cgtsclient.v1.kube_cluster.KubeClusterManager.list')
-    @mock.patch('cgtsclient.client._get_ksclient')
-    @mock.patch('cgtsclient.client._get_endpoint')
-    def test_kube_cluster_list(self, mock_get_endpoint, mock_get_client,
-                               mock_list):
-        mock_get_endpoint.return_value = 'http://fakelocalhost:6385/v1'
+    def test_kube_cluster_list(self, mock_list):
         mock_list.return_value = [KubeCluster(None, FAKE_CLUSTER, True)]
         self.make_env()
         cluster_results = self.shell("kube-cluster-list")
@@ -144,11 +140,7 @@ class KubeClusterTest(test_shell.ShellTest):
         self.assertIn(FAKE_CLUSTER['cluster_api_endpoint'], cluster_results)
 
     @mock.patch('cgtsclient.v1.kube_cluster.KubeClusterManager.get')
-    @mock.patch('cgtsclient.client._get_ksclient')
-    @mock.patch('cgtsclient.client._get_endpoint')
-    def test_kube_cluster_show(self, mock_get_endpoint, mock_get_client,
-                               mock_get):
-        mock_get_endpoint.return_value = 'http://fakelocalhost:6385/v1'
+    def test_kube_cluster_show(self, mock_get):
         mock_get.return_value = KubeCluster(None, FAKE_CLUSTER, True)
         self.make_env()
         cluster_results = self.shell("kube-cluster-show {}".format(
