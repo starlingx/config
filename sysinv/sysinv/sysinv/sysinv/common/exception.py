@@ -1480,6 +1480,10 @@ class KubePodDeleteUnexpected(SysinvException):
     message = "Pod %(namespace)/%(name)s was unexpectedly deleted."
 
 
+class KubeVersionUnavailable(NotFound):
+    message = "Getting kubeadm and kubelet versions failed"
+
+
 class HelmTillerFailure(SysinvException):
     message = _("Helm operation failure: %(reason)s")
 

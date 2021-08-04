@@ -11,6 +11,7 @@ import uuid
 from sysinv.common import utils
 from sysinv.common import constants
 from sysinv.common import device as dconstants
+from sysinv.common.kubernetes import KUBERNETES_DEFAULT_VERSION
 from sysinv.puppet import interface
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
@@ -258,3 +259,12 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
                 json.dumps({'resourceList': []})
         }
         self.assertEqual(expected, actual)
+
+    def test_kubernetes_versions_in_hieradata(self):
+        config = self.operator.kubernetes._get_kubeadm_kubelet_version()
+
+        kubeadm_version = config.get("platform::kubernetes::params::kubeadm_version")
+        kubelet_version = config.get("platform::kubernetes::params::kubelet_version")
+
+        self.assertEqual(kubeadm_version, KUBERNETES_DEFAULT_VERSION)
+        self.assertEqual(kubelet_version, KUBERNETES_DEFAULT_VERSION)

@@ -88,6 +88,9 @@ class KubernetesPuppet(base.BasePuppet):
         # Get kubernetes certificates config for this host
         config.update(self._get_host_k8s_certificates_config(host))
 
+        # Get the kubernetes version for this host
+        config.update(self._get_kubeadm_kubelet_version())
+
         return config
 
     def get_host_config_upgrade(self, host):
@@ -347,6 +350,23 @@ class KubernetesPuppet(base.BasePuppet):
                 LOG.warning("Unable to retrieve kubernetes version")
 
         config.update({'platform::kubernetes::params::version': version})
+
+        return config
+
+    def _get_kubeadm_kubelet_version(self):
+        config = {}
+        kubeadm_version = None
+        kubelet_version = None
+
+        try:
+            kube_version = self.dbapi.kube_cmd_version_get()
+            kubeadm_version = kube_version.kubeadm_version
+            kubelet_version = kube_version.kubelet_version
+            config.update({'platform::kubernetes::params::kubeadm_version': kubeadm_version})
+            config.update({'platform::kubernetes::params::kubelet_version': kubelet_version})
+        except Exception:
+            raise exception.KubeVersionUnavailable()
+
         return config
 
     def _get_host_cluster_address(self, host):
