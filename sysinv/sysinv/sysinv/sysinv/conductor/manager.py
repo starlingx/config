@@ -1996,39 +1996,39 @@ class ConductorManager(service.PeriodicService):
                 pass
 
     def _update_dependent_interfaces(self, interface, ihost,
-                                     phy_intf, newmac, depth=1):
+                                     phy_intf, oldmac, newmac, depth=1):
         """ Updates the MAC address for dependent logical interfaces.
 
         :param interface: interface object
         :param ihost: host object
         :param phy_intf: physical interface name
+        :oldmac: previous MAC address
         :newmac: MAC address to be updated
         """
         if depth > 5:
             # be safe! dont loop for cyclic DB entries
             LOG.error("Looping? [{}] {}:{}".format(depth, phy_intf, newmac))
             return
-        label = constants.CLONE_ISO_MAC + ihost['hostname'] + phy_intf
         if hasattr(interface, 'used_by'):
             LOG.info("clone_mac_update: {} used_by {} on {}".format(
                 interface['ifname'], interface['used_by'], ihost['hostname']))
             for i in interface['used_by']:
                 used_by_if = self.dbapi.iinterface_get(i, ihost['uuid'])
                 if used_by_if:
-                    LOG.debug("clone_mac_update: Found used_by_if: {} {} --> {} [{}]"
+                    LOG.debug("mac_update: Found used_by_if: {} {} --> {} [{}]"
                               .format(used_by_if['ifname'],
                                 used_by_if['imac'],
-                                newmac, label))
-                    if label in used_by_if['imac']:
+                                newmac, oldmac))
+                    if oldmac in used_by_if['imac']:
                         updates = {'imac': newmac}
                         self.dbapi.iinterface_update(used_by_if['uuid'], updates)
-                        LOG.info("clone_mac_update: MAC updated: {} {} --> {} [{}]"
+                        LOG.info("mac_update: MAC updated: {} {} --> {} [{}]"
                                  .format(used_by_if['ifname'],
                                     used_by_if['imac'],
-                                    newmac, label))
+                                    newmac, oldmac))
                 # look for dependent interfaces of this one.
                 self._update_dependent_interfaces(used_by_if, ihost, phy_intf,
-                                                  newmac, depth + 1)
+                                                  oldmac, newmac, depth + 1)
 
     def validate_cloned_interfaces(self, ihost_uuid):
         """Check if all the cloned interfaces are reported by the host.
@@ -2051,6 +2051,63 @@ class ConductorManager(service.PeriodicService):
                          .format(interface['ifname'], interface['id']))
                 raise exception.SysinvException(_(
                         "Missing interface on the cloned host"))
+
+    def _update_interface_mac(self, inic, ifname, interface, ihost, oldmac):
+        """ Updates the MAC address for logical interfaces.
+
+        :param inic: NIC data reported
+        :param interface: interface object
+        :param ifname: interface name
+        :param ihost: host object
+        :param oldmac: previous MAC address
+        """
+        # Not checking for "interface['ifname'] == ifname",
+        # as it could be data0, bond0.100
+        updates = {'imac': inic['mac']}
+        self.dbapi.iinterface_update(interface['uuid'], updates)
+        LOG.info("mac_update: updated if mac {} {} --> {}"
+            .format(ifname, interface['imac'], inic['mac']))
+        ports = self.dbapi.ethernet_port_get_by_interface(
+                                                interface['uuid'])
+        for p in ports:
+            # Update the corresponding ports too
+            LOG.debug("mac_update: port={} mac={} for intf: {}"
+                .format(p['id'], p['mac'], interface['uuid']))
+            if oldmac in p['mac']:
+                updates = {'mac': inic['mac']}
+                self.dbapi.ethernet_port_update(p['id'], updates)
+                LOG.info("mac_update: updated port: {} {}-->{}"
+                    .format(p['id'], p['mac'], inic['mac']))
+        # See if there are dependent interfaces.
+        # If yes, update them too.
+        self._update_dependent_interfaces(interface, ihost,
+                                            ifname, oldmac, inic['mac'])
+        if (oldmac in ihost['mgmt_mac']):
+            LOG.info("mac_update: mgmt_mac {}:{}"
+                        .format(ihost['mgmt_mac'], inic['mac']))
+            values = {'mgmt_mac': inic['mac']}
+            self.dbapi.ihost_update(ihost['uuid'], values)
+
+    def _get_interface_mac_update_dict(self, ihost, inic_dict_array, interface_mac_update):
+        """ Get port list of altered MACs if vendor and device-id is the same on a PCI address.
+
+        :param ihost: host object
+        :param inic_dict_array: NIC data array reported by sysinv-agent
+        :param interface_mac_update: output dict containing MAC update info
+        """
+        inic_pciaddr_dict = dict()
+        for inic in inic_dict_array:
+            inic_pciaddr_dict[inic['pciaddr']] = inic
+
+        eth_ports = self.dbapi.ethernet_port_get_by_host(ihost['uuid'])
+        for port in eth_ports:
+            if port.pciaddr in inic_pciaddr_dict.keys():
+                if (inic_pciaddr_dict[port.pciaddr]['pvendor'] == port.pvendor
+                        and inic_pciaddr_dict[port.pciaddr]['pdevice'] == port.pdevice
+                        and inic_pciaddr_dict[port.pciaddr]['mac'] != port.mac
+                        and port.mac != ihost['mgmt_mac']):  # for now avoid mgmt interface
+                    LOG.debug('add interface for mac update %s' % vars(port))
+                    interface_mac_update[port.interface_uuid] = port.pciaddr
 
     def iport_update_by_ihost(self, context,
                               ihost_uuid, inic_dict_array):
@@ -2088,9 +2145,11 @@ class ConductorManager(service.PeriodicService):
             iinterfaces = self.dbapi.iinterface_get_by_ihost(ihost_uuid,
                                                              expunge=True)
 
-        for i in iinterfaces:
-            if constants.NETWORK_TYPE_MGMT in i.networktypelist:
-                break
+        interface_mac_update = dict()
+        if (cutils.is_aio_simplex_system(self.dbapi)):
+            # If AIO-SX, we can update the NIC's MAC with the same vendor, device-id and PCI address
+            # For other system configuration the correct procedure is to perform host reinstall
+            self._get_interface_mac_update_dict(ihost, inic_dict_array, interface_mac_update)
 
         cloning = False
         for inic in inic_dict_array:
@@ -2132,7 +2191,7 @@ class ConductorManager(service.PeriodicService):
 
                 clone_mac_updated = False
                 for interface in iinterfaces:
-                    LOG.debug("Checking interface %s" % interface)
+                    LOG.debug("Checking interface %s" % vars(interface))
                     if interface['imac'] == inic['mac']:
                         # append to port attributes as well
                         inic_dict.update({
@@ -2146,39 +2205,28 @@ class ConductorManager(service.PeriodicService):
                                   (interface['imac'], inic_dict,
                                    interface_exists))
                         break
+                    elif (interface.uuid in interface_mac_update.keys()
+                            and interface_mac_update[interface.uuid] == inic['pciaddr']):
+                        # append to port attributes as well
+                        inic_dict.update({
+                            'interface_id': interface['id'], 'bootp': bootp
+                        })
+                        # interface already exists so don't create another
+                        interface_exists = True
+                        self._update_interface_mac(inic, ifname, interface, ihost, interface.imac)
+                        LOG.info("interface mac update inic mac %s, inic_dict "
+                                  "%s, interface_exists %s" %
+                                  (interface['imac'], inic_dict,
+                                   interface_exists))
                     # If there are interfaces with clone labels as MAC addresses,
                     # this is a install-from-clone scenario. Update MAC addresses.
                     elif ((constants.CLONE_ISO_MAC + ihost['hostname'] + inic['pname']) ==
                           interface['imac']):
-                        # Not checking for "interface['ifname'] == ifname",
-                        # as it could be data0, bond0.100
-                        updates = {'imac': inic['mac']}
-                        self.dbapi.iinterface_update(interface['uuid'], updates)
                         LOG.info("clone_mac_update: updated if mac {} {} --> {}"
                             .format(ifname, interface['imac'], inic['mac']))
-                        ports = self.dbapi.ethernet_port_get_by_interface(
-                                                              interface['uuid'])
-                        for p in ports:
-                            # Update the corresponding ports too
-                            LOG.debug("clone_mac_update: port={} mac={} for intf: {}"
-                                .format(p['id'], p['mac'], interface['uuid']))
-                            if constants.CLONE_ISO_MAC in p['mac']:
-                                updates = {'mac': inic['mac']}
-                                self.dbapi.ethernet_port_update(p['id'], updates)
-                                LOG.info("clone_mac_update: updated port: {} {}-->{}"
-                                    .format(p['id'], p['mac'], inic['mac']))
-                        # See if there are dependent interfaces.
-                        # If yes, update them too.
-                        self._update_dependent_interfaces(interface, ihost,
-                                                          ifname, inic['mac'])
+                        oldmac = constants.CLONE_ISO_MAC + ihost['hostname'] + ifname
+                        self._update_interface_mac(inic, ifname, interface, ihost, oldmac)
                         clone_mac_updated = True
-
-                        if ((constants.CLONE_ISO_MAC + ihost['hostname'] + inic['pname'])
-                                in ihost['mgmt_mac']):
-                            LOG.info("clone_mac_update: mgmt_mac {}:{}"
-                                     .format(ihost['mgmt_mac'], inic['mac']))
-                            values = {'mgmt_mac': inic['mac']}
-                            self.dbapi.ihost_update(ihost['uuid'], values)
 
                 if clone_mac_updated:
                     # no need create any interfaces or ports for cloning scenario
@@ -2196,7 +2244,7 @@ class ConductorManager(service.PeriodicService):
 
                     # autocreate untagged interface
                     try:
-                        LOG.debug("Attempting to create new interface %s" %
+                        LOG.debug("Attempting to create new untagged interface %s" %
                                   interface_dict)
                         new_interface = self.dbapi.iinterface_create(
                                           ihost['id'],
@@ -2222,9 +2270,9 @@ class ConductorManager(service.PeriodicService):
                                     "Failed to create interface %s "
                                     "network %s association" %
                                     (new_interface['id'], network['id']))
-                    except Exception:
-                        LOG.exception("Failed to create new interface %s" %
-                                      inic['mac'])
+                    except Exception as ex:
+                        LOG.exception("Failed to create new untagged interface %s exception: %s" %
+                                      (inic['mac'], type(ex).__name__))
                         pass  # at least create the port
 
                     if create_tagged_interface:
@@ -2242,7 +2290,7 @@ class ConductorManager(service.PeriodicService):
                         }
 
                         try:
-                            LOG.debug("Attempting to create new interface %s" %
+                            LOG.debug("Attempting to create new vlan interface %s" %
                                       interface_dict)
                             new_interface = self.dbapi.iinterface_create(
                                 ihost['id'], interface_dict
@@ -2270,7 +2318,7 @@ class ConductorManager(service.PeriodicService):
                             pass  # at least create the port
 
                 try:
-                    LOG.debug("Attempting to create new port %s on host %s" %
+                    LOG.debug("Attempting to create/update port %s on host %s" %
                               (inic_dict, ihost['id']))
 
                     port = self.dbapi.ethernet_port_get_by_mac(inic['mac'])
@@ -2299,8 +2347,9 @@ class ConductorManager(service.PeriodicService):
                         # change. This will update the db to reflect that
                         if port['name'] != inic['pname']:
                             self._update_port_name(port, inic['pname'])
-                    except Exception:
-                        LOG.exception("Failed to update port %s" % inic['mac'])
+                    except Exception as ex:
+                        LOG.exception("Failed to update port %s, exception: %s" %
+                                (inic['mac'], type(ex).__name__))
                         pass
 
                 except Exception:

@@ -1043,6 +1043,7 @@ def get_test_ethernet_port(**kw):
         'interface_uuid': kw.get('interface_uuid'),
         'pciaddr': kw.get('pciaddr'),
         'pdevice': kw.get('pdevice'),
+        'pvendor': kw.get('pvendor'),
         'dpdksupport': kw.get('dpdksupport'),
         'dev_id': kw.get('dev_id'),
         'sriov_totalvfs': kw.get('sriov_totalvfs'),
