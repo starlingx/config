@@ -19,9 +19,9 @@
 #
 from oslo_config import cfg
 from oslo_log import log as logging
-# import oslo_messaging
 from oslo_service import service
-# from sysinv.common import constants
+
+from sysinv.cert_alarm.certificate_alarm_manager import CertificateAlarmManager
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
@@ -32,3 +32,12 @@ class CertificateAlarmService(service.Service):
 
     def __init__(self):
         super(CertificateAlarmService, self).__init__()
+        self.manager = CertificateAlarmManager()
+
+    def start(self):
+        super(CertificateAlarmService, self).start()
+        self.manager.start_audits()
+
+    def stop(self):
+        self.manager.stop_audits()
+        super(CertificateAlarmService, self).stop()
