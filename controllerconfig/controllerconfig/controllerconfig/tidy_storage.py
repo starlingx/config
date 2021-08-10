@@ -205,7 +205,8 @@ def tidy_storage(result_file):
                  "ls",
                  "--pool",
                  "images"],
-                stderr=subprocess.STDOUT)
+                stderr=subprocess.STDOUT,
+                universal_newlines=True)
         except subprocess.CalledProcessError:
             LOG.error("Failed to access rbd images pool")
             raise TidyStorageFail("Failed to access rbd images pool")
@@ -229,7 +230,8 @@ def tidy_storage(result_file):
                 ["grep",
                  "fsid",
                  "/etc/ceph/ceph.conf"],
-                stderr=subprocess.STDOUT)
+                stderr=subprocess.STDOUT,
+                universal_newlines=True)
 
             ceph_cluster = [i.strip() for i in output.split('=')
                             if i.find('fsid') == -1]
@@ -239,7 +241,9 @@ def tidy_storage(result_file):
             try:
                 img_file = 'rbd:images/{}'.format(image)
                 output = subprocess.check_output(
-                    ["qemu-img", "info", img_file], stderr=subprocess.STDOUT)
+                    ["qemu-img", "info", img_file],
+                    stderr=subprocess.STDOUT,
+                    universal_newlines=True)
 
                 fields['disk_format'] = 'qcow2'
                 for line in output.split('\n'):
@@ -281,7 +285,8 @@ def tidy_storage(result_file):
             try:
                 output = subprocess.check_output(
                     ["rbd", "ls", "--pool", "cinder-volumes"],
-                    stderr=subprocess.STDOUT)
+                    stderr=subprocess.STDOUT,
+                    universal_newlines=True)
             except subprocess.CalledProcessError:
                 LOG.error("Failed to access rbd cinder-volumes pool")
                 raise TidyStorageFail(
@@ -298,7 +303,8 @@ def tidy_storage(result_file):
                 try:
                     output = subprocess.check_output(
                         ["rbd", "snap", "list", volume],
-                        stderr=subprocess.STDOUT)
+                        stderr=subprocess.STDOUT,
+                        universal_newlines=True)
 
                     keep_snap = False
                     for line in output.split('\n'):
@@ -358,7 +364,8 @@ def tidy_storage(result_file):
         try:
             output = subprocess.check_output(
                 ["rbd", "ls", "--pool", "cinder-volumes"],
-                stderr=subprocess.STDOUT)
+                stderr=subprocess.STDOUT,
+                universal_newlines=True)
         except subprocess.CalledProcessError:
             LOG.error("Failed to access rbd cinder-volumes pool")
             raise TidyStorageFail("Failed to access rbd cinder-volumes pool")
@@ -383,7 +390,8 @@ def tidy_storage(result_file):
                 # Find out if the volume is a bootable one
                 output = subprocess.check_output(
                     ["rbd", "info", volume],
-                    stderr=subprocess.STDOUT)
+                    stderr=subprocess.STDOUT,
+                    universal_newlines=True)
 
                 bootable = False
                 for line in output.split('\n'):
@@ -394,7 +402,9 @@ def tidy_storage(result_file):
                 # Find out if the volume has any snapshots.
                 print("Checking if volume %s has snapshots...\n" % vol_id)
                 output = subprocess.check_output(
-                    ["rbd", "snap", "list", volume], stderr=subprocess.STDOUT)
+                    ["rbd", "snap", "list", volume],
+                    stderr=subprocess.STDOUT,
+                    universal_newlines=True)
 
                 snap_l = [item.strip() for item in output.split(' ')
                           if item.find('snapshot-') != -1]
@@ -428,11 +438,13 @@ def tidy_storage(result_file):
                         del_snap = '{}@{}'.format(volume, snap)
                         output = subprocess.check_output(
                             ["rbd", "snap", "unprotect", del_snap],
-                            stderr=subprocess.STDOUT)
+                            stderr=subprocess.STDOUT,
+                            universal_newlines=True)
 
                         output = subprocess.check_output(
                             ["rbd", "snap", "rm", del_snap],
-                            stderr=subprocess.STDOUT)
+                            stderr=subprocess.STDOUT,
+                            universal_newlines=True)
 
                 except Exception as e:
                     LOG.exception(e)
@@ -468,7 +480,8 @@ def tidy_storage(result_file):
                 print("Checking if volume %s has snapshots...\n" % vol_id)
                 output = subprocess.check_output(
                     ["rbd", "snap", "list", volume],
-                    stderr=subprocess.STDOUT)
+                    stderr=subprocess.STDOUT,
+                    universal_newlines=True)
 
                 snap_l = [item.strip() for item in output.split(' ')
                           if item.find('snapshot-') != -1]
