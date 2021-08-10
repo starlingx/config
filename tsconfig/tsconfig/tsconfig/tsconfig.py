@@ -1,14 +1,16 @@
 """
-Copyright (c) 2014-2019 Wind River Systems, Inc.
+Copyright (c) 2014-2021 Wind River Systems, Inc.
 
 SPDX-License-Identifier: Apache-2.0
 
 """
 
-import os
-from six.moves import configparser
 import io
 import logging
+import os
+import six
+
+from six.moves import configparser
 
 SW_VERSION = ""
 
@@ -55,7 +57,17 @@ def _load():
     ini_str = u'[build_info]\n' + open(build_info, 'r').read()
     ini_fp = io.StringIO(ini_str)
 
-    config = configparser.SafeConfigParser()
+    # In python3 configparser uses strict mode by default. It doesn't
+    # agree duplicate keys, and will throw an error
+    # In python2 the strict argument is missing
+    # TODO(dvoicule): the logic branching here can be removed once # pylint: disable=fixme
+    # https://bugs.launchpad.net/starlingx/+bug/1931529 is fixed, allowing
+    # python3 parser to work in strict mode.
+    if six.PY2:
+        config = configparser.SafeConfigParser()
+    elif six.PY3:
+        config = configparser.SafeConfigParser(strict=False)  # pylint: disable=unexpected-keyword-arg
+
     config.readfp(ini_fp)
 
     try:
