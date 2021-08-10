@@ -275,6 +275,17 @@ def get_subclouds_from_dcmanager(token):
     return load_subclouds(resp)
 
 
+def is_subcloud_online(subcloud_name, token=None):
+    """Check if subcloud is online"""
+    if not token:
+        token = get_token()
+    subcloud_info = get_subcloud(token, subcloud_name)
+    if not subcloud_info:
+        LOG.error('Cannot find subcloud %s' % subcloud_name)
+        return False
+    return subcloud_info['availability-status'] == AVAILABILITY_ONLINE
+
+
 def update_subcloud_status(token, subcloud_name, status):
     service_name = 'dcmanager'
     api_url = dc_get_service_endpoint_url(constants.SYSTEM_CONTROLLER_REGION,

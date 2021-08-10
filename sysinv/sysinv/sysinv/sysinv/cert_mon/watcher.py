@@ -413,7 +413,7 @@ class AdminEndpointRenew(CertificateRenew):
 
         role = self.context.dc_role
         utils.update_admin_ep_cert(token, event_data.ca_crt, event_data.tls_crt,
-                                event_data.tls_key)
+                                   event_data.tls_key)
 
         # In subclouds, it was observed that sometimes old ICA was used
         # to sign adminep-cert. Here we run a verification to confirm that
@@ -431,6 +431,19 @@ class DCIntermediateCertRenew(CertificateRenew):
     def check_filter(self, event_data):
         m = self.secret_pattern.search(event_data.secret_name)
         if m and m.start() > 0:
+            # Ensure subcloud is online (watch events can fire
+            # for secrets before the subcloud first comes online)
+            subcloud_name = self._get_subcloud_name(event_data)
+            try:
+                if not utils.is_subcloud_online(subcloud_name,
+                                                token=self.context.get_token()):
+                    LOG.info('%s check_filter[%s]: subcloud is not online' %
+                             (self.__class__.__name__, subcloud_name))
+                    return False
+            except Exception:
+                LOG.exception('Failed to check subcloud availability: %s'
+                              % subcloud_name)
+                return False
             return self.certificate_is_ready(event_data)
         else:
             return False
@@ -441,7 +454,7 @@ class DCIntermediateCertRenew(CertificateRenew):
 
     def update_certificate(self, event_data):
         subcloud_name = self._get_subcloud_name(event_data)
-        LOG.info('subcloud %s %s' % (subcloud_name, event_data))
+        LOG.info('update_certificate: subcloud %s %s' % (subcloud_name, event_data))
 
         token = self.context.get_dc_token(subcloud_name)
         subcloud_sysinv_url = utils.dc_get_subcloud_sysinv_url(subcloud_name)
@@ -586,7 +599,7 @@ class PlatformCertRenew(CertificateRenew):
     def check_filter(self, event_data):
         LOG.debug('%s: Received event_data %s' % (self.secret_name, event_data))
         if self.secret_name == event_data.secret_name:
-            LOG.info('%s check_filter[%s]: proceed on event_data: %s'
+            LOG.info('%s check_filter[%s], proceed on event_data: %s'
                      % (self.__class__.__name__, self.secret_name, event_data))
             return self.certificate_is_ready(event_data)
         else:
