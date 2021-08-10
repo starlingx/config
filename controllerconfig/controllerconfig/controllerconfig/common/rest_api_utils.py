@@ -35,7 +35,7 @@ def rest_api_request(token, method, api_cmd, api_cmd_headers=None,
 
         if api_cmd_payload is not None:
             request_info.add_header("Content-type", "application/json")
-            request_info.add_data(api_cmd_payload)
+            request_info.data = api_cmd_payload
 
         request = urlrequest.urlopen(request_info)
         response = request.read()
@@ -94,7 +94,7 @@ def get_token(auth_url, auth_project, auth_user, auth_password,
                         "domain": {"name": project_domain}
                     }}}})
 
-        request_info.add_data(payload)
+        request_info.data = payload
 
         request = urlrequest.urlopen(request_info)
         # Identity API v3 returns token id in X-Subject-Token
