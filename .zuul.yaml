@@ -9,6 +9,7 @@
         - openstack-tox-linters
         - sysinv-tox-py27
         - sysinv-tox-py36
+        - sysinv-tox-py39
         - sysinv-tox-flake8
         - sysinv-tox-pylint
         - sysinv-tox-bandit
@@ -30,6 +31,7 @@
         - openstack-tox-linters
         - sysinv-tox-py27
         - sysinv-tox-py36
+        - sysinv-tox-py39
         - sysinv-tox-flake8
         - sysinv-tox-pylint
         - sysinv-tox-bandit
@@ -80,6 +82,24 @@
       - sysinv/sysinv/*
     vars:
       tox_envlist: py36
+      tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
+
+- job:
+    name: sysinv-tox-py39
+    parent: tox-py39
+    description: |
+      Run py39 test for sysinv
+    nodeset: debian-bullseye
+    required-projects:
+      - starlingx/fault
+      - starlingx/update
+      - starlingx/utilities
+      - starlingx/root
+    files:
+      - sysinv/sysinv/*
+    vars:
+      tox_envlist: py39
+      python_version: 3.9
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
 
 - job:
