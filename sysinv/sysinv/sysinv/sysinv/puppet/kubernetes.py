@@ -89,7 +89,7 @@ class KubernetesPuppet(base.BasePuppet):
         config.update(self._get_host_k8s_certificates_config(host))
 
         # Get the kubernetes version for this host
-        config.update(self._get_kubeadm_kubelet_version())
+        config.update(self._get_kubeadm_kubelet_version(host))
 
         return config
 
@@ -353,18 +353,40 @@ class KubernetesPuppet(base.BasePuppet):
 
         return config
 
-    def _get_kubeadm_kubelet_version(self):
+    def _get_kubeadm_kubelet_version(self, host):
         config = {}
         kubeadm_version = None
         kubelet_version = None
+        kube_upgrade_state = None
+
+        # Grab the upgrade state if any.
+        try:
+            kube_upgrade_obj = objects.kube_upgrade.get_one(
+                self.context)
+            kube_upgrade_state = kube_upgrade_obj.state
+        except exception.NotFound:
+            pass
 
         try:
             kube_version = self.dbapi.kube_cmd_version_get()
+
+            # kubeadm version is system-wide
             kubeadm_version = kube_version.kubeadm_version
+            # default kubelet version is system-wide
             kubelet_version = kube_version.kubelet_version
+
+            # If there's a k8s upgrade in progress the kubelet version
+            # is determined by the upgrade state of the host.
+            if kube_upgrade_state:
+                kube_host_upgrade = objects.kube_host_upgrade.get_by_host_id(
+                    self.context, host.id)
+                if kube_host_upgrade.status == kubernetes.KUBE_HOST_UPGRADING_KUBELET:
+                    kubelet_version = kube_host_upgrade.target_version.lstrip('v')
+
             config.update({'platform::kubernetes::params::kubeadm_version': kubeadm_version})
             config.update({'platform::kubernetes::params::kubelet_version': kubelet_version})
         except Exception:
+            LOG.exception("Exception getting kubeadm kubelet version")
             raise exception.KubeVersionUnavailable()
 
         return config

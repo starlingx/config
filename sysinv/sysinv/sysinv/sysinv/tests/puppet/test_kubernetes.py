@@ -11,10 +11,12 @@ import uuid
 from sysinv.common import utils
 from sysinv.common import constants
 from sysinv.common import device as dconstants
-from sysinv.common.kubernetes import KUBERNETES_DEFAULT_VERSION
+from sysinv.common import kubernetes
 from sysinv.puppet import interface
+from sysinv.puppet import puppet
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
+from sysinv.tests.puppet import base
 from sysinv.tests.puppet import test_interface
 
 
@@ -260,11 +262,66 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
         }
         self.assertEqual(expected, actual)
 
+
+class KubeVersionTestCase(base.PuppetTestCaseMixin, dbbase.BaseHostTestCase):
+
+    def setUp(self):
+        super(KubeVersionTestCase, self).setUp()
+
+        # Create a host
+        self.host = self._create_test_host(constants.WORKER)
+
+        self._update_context()
+
+    @puppet.puppet_context
+    def _update_context(self):
+        self.context = {}
+
     def test_kubernetes_versions_in_hieradata(self):
-        config = self.operator.kubernetes._get_kubeadm_kubelet_version()
+        config = self.operator.kubernetes._get_kubeadm_kubelet_version(self.host)
 
         kubeadm_version = config.get("platform::kubernetes::params::kubeadm_version")
         kubelet_version = config.get("platform::kubernetes::params::kubelet_version")
 
-        self.assertEqual(kubeadm_version, KUBERNETES_DEFAULT_VERSION)
-        self.assertEqual(kubelet_version, KUBERNETES_DEFAULT_VERSION)
+        self.assertEqual(kubeadm_version, kubernetes.KUBERNETES_DEFAULT_VERSION)
+        self.assertEqual(kubelet_version, kubernetes.KUBERNETES_DEFAULT_VERSION)
+
+    def test_kubernetes_versions_in_hieradata_upgrade_started(self):
+        dbutils.create_test_kube_upgrade(
+            from_version=kubernetes.KUBERNETES_DEFAULT_VERSION,
+            to_version='v1.19.13',
+            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
+        )
+
+        dbutils.update_kube_host_upgrade(
+            target_version='v1.19.13',
+            status=kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE,
+        )
+
+        config = self.operator.kubernetes._get_kubeadm_kubelet_version(self.host)
+
+        kubeadm_version = config.get("platform::kubernetes::params::kubeadm_version")
+        kubelet_version = config.get("platform::kubernetes::params::kubelet_version")
+
+        self.assertEqual(kubeadm_version, '1.19.13')
+        self.assertEqual(kubelet_version, kubernetes.KUBERNETES_DEFAULT_VERSION)
+
+    def test_kubernetes_versions_in_hieradata_upgrade_kubelet(self):
+        dbutils.create_test_kube_upgrade(
+            from_version=kubernetes.KUBERNETES_DEFAULT_VERSION,
+            to_version='v1.19.13',
+            state=kubernetes.KUBE_UPGRADING_KUBELETS,
+        )
+
+        dbutils.update_kube_host_upgrade(
+            target_version='v1.19.13',
+            status=kubernetes.KUBE_HOST_UPGRADING_KUBELET,
+        )
+
+        config = self.operator.kubernetes._get_kubeadm_kubelet_version(self.host)
+
+        kubeadm_version = config.get("platform::kubernetes::params::kubeadm_version")
+        kubelet_version = config.get("platform::kubernetes::params::kubelet_version")
+
+        self.assertEqual(kubeadm_version, '1.19.13')
+        self.assertEqual(kubelet_version, '1.19.13')

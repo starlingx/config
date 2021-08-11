@@ -345,6 +345,14 @@ def get_test_kube_rootca_host_update(**kw):
     return rootca_host_update
 
 
+def update_kube_host_upgrade(**kw):
+    dbapi = db_api.get_instance()
+    host_upgrade = dbapi.kube_host_upgrade_get_by_host(1)
+    host_upgrade = dbapi.kube_host_upgrade_update(
+        host_upgrade.id, kw)
+    return host_upgrade
+
+
 def create_test_kube_upgrade(**kw):
     upgrade = get_test_kube_upgrade(**kw)
 
@@ -356,7 +364,11 @@ def create_test_kube_upgrade(**kw):
         del upgrade['uuid']
 
     dbapi = db_api.get_instance()
-    return dbapi.kube_upgrade_create(upgrade)
+    kube_upgrade = dbapi.kube_upgrade_create(upgrade)
+    # Also update the kubeadm version like the API would do.
+    dbapi.kube_cmd_version_update(
+        {"kubeadm_version": kube_upgrade.to_version.lstrip("v")})
+    return kube_upgrade
 
 
 def create_test_kube_host_upgrade():

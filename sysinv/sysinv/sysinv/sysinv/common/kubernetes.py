@@ -52,6 +52,7 @@ KUBERNETES_ADMIN_USER = "kubernetes-admin"
 
 # Possible states for each supported kubernetes version
 KUBE_STATE_AVAILABLE = 'available'
+KUBE_STATE_UNAVAILABLE = 'unavailable'
 KUBE_STATE_ACTIVE = 'active'
 KUBE_STATE_PARTIAL = 'partial'
 
@@ -125,6 +126,24 @@ def get_kube_versions():
     return [
         {'version': 'v1.18.1',
          'upgrade_from': [],
+         'downgrade_to': [],
+         'applied_patches': [],
+         'available_patches': [],
+         },
+        {'version': 'v1.19.13',
+         'upgrade_from': ['v1.18.1'],
+         'downgrade_to': [],
+         'applied_patches': [],
+         'available_patches': [],
+         },
+        {'version': 'v1.20.9',
+         'upgrade_from': ['v1.19.13'],
+         'downgrade_to': [],
+         'applied_patches': [],
+         'available_patches': [],
+         },
+        {'version': 'v1.21.3',
+         'upgrade_from': ['v1.20.9'],
          'downgrade_to': [],
          'applied_patches': [],
          'available_patches': [],
@@ -732,7 +751,8 @@ class KubeOperator(object):
 
         # Set counts to 0
         version_counts = dict()
-        for version in get_kube_versions():
+        kube_versions = get_kube_versions()
+        for version in kube_versions:
             version_counts[version['version']] = 0
 
         # Count versions running on control plane
@@ -762,11 +782,17 @@ class KubeOperator(object):
                 active_candidates.append(version)
             else:
                 # This version is not running anywhere
-                version_states[version] = KUBE_STATE_AVAILABLE
+                version_states[version] = KUBE_STATE_UNAVAILABLE
 
         # If only a single version is running, then mark it as active
         if len(active_candidates) == 1:
-            version_states[active_candidates[0]] = KUBE_STATE_ACTIVE
+            active_version = active_candidates[0]
+            version_states[active_version] = KUBE_STATE_ACTIVE
+
+            # mark the versions who can upgrade_from the active one as available
+            for version in kube_versions:
+                if active_version in version['upgrade_from']:
+                    version_states[version['version']] = KUBE_STATE_AVAILABLE
 
         return version_states
 

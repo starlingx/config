@@ -296,6 +296,14 @@ class KubeUpgradeController(rest.RestController):
             service_affecting=False)
         fm_api.FaultAPIs().set_fault(fault)
 
+        # Set the new kubeadm version in the DB.
+        # This will not actually change the bind mounts until we apply a
+        # puppet manifest that makes use of it.
+        kube_cmd_versions = objects.kube_cmd_version.get(
+            pecan.request.context)
+        kube_cmd_versions.kubeadm_version = to_version.lstrip('v')
+        kube_cmd_versions.save()
+
         LOG.info("Started kubernetes upgrade from version: %s to version: %s"
                  % (current_kube_version, to_version))
 
@@ -396,6 +404,12 @@ class KubeUpgradeController(rest.RestController):
                     kubernetes.KUBE_STATE_ACTIVE:
                 raise wsme.exc.ClientSideError(_(
                     "Kubernetes to_version must be active to complete"))
+
+            # Set the new kubelet version in the DB.
+            kube_cmd_versions = objects.kube_cmd_version.get(
+                pecan.request.context)
+            kube_cmd_versions.kubelet_version = kube_upgrade_obj.to_version.lstrip('v')
+            kube_cmd_versions.save()
 
             # All is well, mark the upgrade as complete
             kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_COMPLETE

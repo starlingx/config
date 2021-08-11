@@ -866,12 +866,12 @@ class TestKubeOperator(base.TestCase):
 
         result = self.kube_operator.kube_get_version_states()
 
-        assert result == {'v1.41.3': 'available',
-                          'v1.42.0': 'available',
+        assert result == {'v1.41.3': 'unavailable',
+                          'v1.42.0': 'unavailable',
                           'v1.42.1': 'partial',
-                          'v1.42.3': 'available',
+                          'v1.42.3': 'unavailable',
                           'v1.42.4': 'partial',
-                          'v1.43.1': 'available'}
+                          'v1.43.1': 'unavailable'}
 
     def test_kube_get_version_states_active(self):
 
@@ -881,12 +881,12 @@ class TestKubeOperator(base.TestCase):
             "v1.42.1"
 
         result = self.kube_operator.kube_get_version_states()
-        assert result == {'v1.41.3': 'available',
-                          'v1.42.0': 'available',
+        assert result == {'v1.41.3': 'unavailable',
+                          'v1.42.0': 'unavailable',
                           'v1.42.1': 'active',
                           'v1.42.3': 'available',
                           'v1.42.4': 'available',
-                          'v1.43.1': 'available'}
+                          'v1.43.1': 'unavailable'}
 
     def test_kube_get_version_states_multi_node(self):
 
@@ -894,12 +894,12 @@ class TestKubeOperator(base.TestCase):
         self.list_node_result = self.multi_node_result
 
         result = self.kube_operator.kube_get_version_states()
-        assert result == {'v1.41.3': 'available',
-                          'v1.42.0': 'available',
+        assert result == {'v1.41.3': 'unavailable',
+                          'v1.42.0': 'unavailable',
                           'v1.42.1': 'partial',
                           'v1.42.3': 'partial',
                           'v1.42.4': 'partial',
-                          'v1.43.1': 'available'}
+                          'v1.43.1': 'unavailable'}
 
     def test_kube_get_version_states_ignore_unknown_version(self):
 
@@ -911,12 +911,12 @@ class TestKubeOperator(base.TestCase):
             "v1.49.1"
 
         result = self.kube_operator.kube_get_version_states()
-        assert result == {'v1.41.3': 'available',
-                          'v1.42.0': 'available',
+        assert result == {'v1.41.3': 'unavailable',
+                          'v1.42.0': 'unavailable',
                           'v1.42.1': 'active',
                           'v1.42.3': 'available',
                           'v1.42.4': 'available',
-                          'v1.43.1': 'available'}
+                          'v1.43.1': 'unavailable'}
 
     def test_kube_get_kubernetes_version(self):
 
