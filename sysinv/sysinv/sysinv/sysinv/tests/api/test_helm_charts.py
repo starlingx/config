@@ -172,6 +172,8 @@ class ApiHelmChartShowTestSuiteMixin(ApiHelmChartTestCaseMixin):
 
     def test_no_system_override(self):
         self.fake_system_app.return_value = False
+        self.fake_merge_overrides.return_value = {}
+
         url = self.get_single_url_helm_override('platform-integ-apps',
                                     'ceph-pools-audit', 'kube-system')
         response = self.get_json(url)
@@ -264,6 +266,7 @@ class ApiHelmChartShowTestSuiteMixin(ApiHelmChartTestCaseMixin):
         self.fake_helm_apps.return_value = ['platform-integ-apps']
         # Return helm chart overrides
         self.fake_override.return_value = {"enabled": True}
+        self.fake_merge_overrides.return_value = {}
 
         url = self.get_single_url_helm_override('platform-integ-apps',
                         'ceph-pools-audit', 'kube-system')
@@ -294,6 +297,7 @@ class ApiHelmChartDeleteTestSuiteMixin(ApiHelmChartTestCaseMixin):
     # Test that a valid DELETE operation is successful
     def test_delete_helm_override_success(self):
         self.fake_system_app.return_value = False
+        self.fake_merge_overrides.return_value = {}
 
         # Verify that user override exists initially
         url = self.get_single_url_helm_override('platform-integ-apps',
@@ -502,6 +506,8 @@ class ApiHelmChartPatchTestSuiteMixin(ApiHelmChartTestCaseMixin):
                                     headers=self.API_HEADERS,
                                     expect_errors=True)
         self.fake_system_app.return_value = False
+        self.fake_merge_overrides.return_value = {}
+
         response = self.get_json(url, expect_errors=True)
         self.assertEqual(response.status_code, http_client.OK)
         # Verify the values of the response with the values in database

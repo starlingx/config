@@ -83,7 +83,8 @@ class HelmChartsController(rest.RestController):
             try:
                 system_overrides = pecan.request.rpcapi.get_helm_chart_overrides(
                     pecan.request.context, app_name, name, namespace)
-                system_overrides = yaml.safe_dump(system_overrides) \
+                system_overrides = yaml.safe_dump(system_overrides,
+                                                  default_flow_style=None) \
                     if system_overrides else None
             except Exception as e:
                 raise wsme.exc.ClientSideError(_("Unable to get the helm chart overrides "
