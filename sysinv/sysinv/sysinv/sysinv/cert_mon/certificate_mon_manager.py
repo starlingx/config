@@ -121,6 +121,11 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
                         len(self.subclouds_to_audit) - num_pause_tasks,
                         num_pause_tasks))
 
+            if not utils.is_subcloud_online(subcloud_name):
+                LOG.info("Subcloud is not online, aborting audit: %s" % subcloud_name)
+                self.subclouds_to_audit.pop(0)
+                return
+
             try:
                 subcloud_sysinv_url = utils.dc_get_subcloud_sysinv_url(subcloud_name)
                 sc_ssl_cert = utils.get_endpoint_certificate(subcloud_sysinv_url)
