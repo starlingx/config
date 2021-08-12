@@ -276,6 +276,25 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
         self.assertIn("revoke_key_id is required for key revocation bitstream"
                       " type", str(result))
 
+    def test_create_non_functional_image_with_retimer(self):
+        # Test creation of device image
+        bitstream_file = os.path.join(os.path.dirname(__file__), "data",
+                                'bitstream.bit')
+        data = {
+            'bitstream_type': dconstants.BITSTREAM_TYPE_KEY_REVOCATION,
+            'pci_vendor': fpga_constants.N3000_VENDOR,
+            'pci_device': fpga_constants.N3000_DEVICE,
+            'revoke_key_id': '12345',
+            'retimer_included': True,
+        }
+        upload_file = [('file', bitstream_file)]
+        result = self.post_with_files('/device_images', data,
+                                      upload_files=upload_file,
+                                      headers=self.API_HEADERS,
+                                      expect_errors=True)
+        self.assertIn("retimer_included option is only applicable to"
+                      " functional BMC image", str(result))
+
     def test_create_bitstream_type_invalid(self):
         # Test creation of device image
         bitstream_file = os.path.join(os.path.dirname(__file__), "data",

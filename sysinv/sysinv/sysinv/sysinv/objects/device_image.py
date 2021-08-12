@@ -27,6 +27,7 @@ class DeviceImage(base.SysinvObject):
               'image_version': utils.str_or_none,
               'applied': utils.bool_or_none,
               'capabilities': utils.dict_or_none,
+              'retimer_included': utils.bool_or_none,
               }
 
     _optional_fields = {'bitstream_id',
@@ -34,7 +35,8 @@ class DeviceImage(base.SysinvObject):
                         'revoke_key_id',
                         'name',
                         'description',
-                        'image_version'}
+                        'image_version',
+                        'retimer_included'}
 
     @base.remotable_classmethod
     def get_by_uuid(cls, context, uuid):

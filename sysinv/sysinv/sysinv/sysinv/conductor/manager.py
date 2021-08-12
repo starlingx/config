@@ -13704,7 +13704,8 @@ class ConductorManager(service.PeriodicService):
                      (host.hostname, pci_device.pciaddr, filename, device_image_state.id))
             fpga_rpcapi = fpga_agent_rpcapi.AgentAPI()
             fpga_rpcapi.host_device_update_image(
-                context, host.hostname, pci_device.pciaddr, filename, device_image_state.id)
+                context, host.hostname, pci_device.pciaddr, filename, device_image_state.id,
+                device_image.retimer_included)
             # We've kicked off a device image update, so exit the function.
             return
         LOG.info("no more device images to process")

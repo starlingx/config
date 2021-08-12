@@ -13,7 +13,7 @@ def _print_device_image_show(obj):
               'pci_vendor', 'pci_device',
               'bitstream_id', 'key_signature', 'revoke_key_id',
               'name', 'description', 'image_version',
-              'applied', 'applied_labels']
+              'applied', 'applied_labels', 'retimer_included']
 
     if isinstance(obj, dict):
         data = [(f, obj.get(f, '')) for f in fields]
@@ -37,11 +37,11 @@ def do_device_image_list(cc, args):
 
     labels = ['uuid', 'bitstream_type', 'pci_vendor', 'pci_device',
               'bitstream_id', 'key_signature', 'revoke_key_id',
-              'name', 'description', 'image_version',
+              'name', 'description', 'image_version', 'retimer_included',
               'applied', 'applied_labels']
     fields = ['uuid', 'bitstream_type', 'pci_vendor', 'pci_device',
               'bitstream_id', 'key_signature', 'revoke_key_id',
-              'name', 'description', 'image_version',
+              'name', 'description', 'image_version', 'retimer_included',
               'applied', 'applied_labels']
     device_images = cc.device_image.list()
     utils.print_list(device_images, fields, labels, sortby=1)
@@ -81,6 +81,9 @@ def do_device_image_list(cc, args):
 @utils.arg('-u', '--uuid',
            metavar='<uuid>',
            help='UUID of the device image')
+@utils.arg('--retimer-included',
+           metavar='<true/false>',
+           help='Retimer firmware included in BMC FW binary')
 def do_device_image_upload(cc, args):
     """Upload a device image."""
 
@@ -90,7 +93,7 @@ def do_device_image_upload(cc, args):
 
     field_list = ['uuid', 'bitstream_type', 'pci_vendor', 'pci_device',
                   'bitstream_id', 'key_signature', 'revoke_key_id',
-                  'name', 'description', 'image_version']
+                  'name', 'description', 'image_version', 'retimer_included']
 
     # Prune input fields down to required/expected values
     user_fields = dict((k, v) for (k, v) in vars(args).items()
