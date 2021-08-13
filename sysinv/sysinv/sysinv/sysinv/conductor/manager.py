@@ -12758,7 +12758,7 @@ class ConductorManager(service.PeriodicService):
                     # the evaluation
                     for filter_ in trigger_filters:
                         # Each filter is a single entry dict
-                        k = filter_.keys()[0]
+                        k = list(filter_.keys())[0]
                         if k not in target_for_filters:
                             LOG.info("Evaluate reapply for {} rejected: "
                                      "trigger field {} absent".format(app.name, k))
