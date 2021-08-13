@@ -387,6 +387,7 @@ class KubernetesPuppet(base.BasePuppet):
         labels = self.dbapi.label_get_by_host(host.uuid)
         host_label_keys = []
         for label in labels:
+            host_label_keys.append(label.label_key + "=" + label.label_value)
             host_label_keys.append(label.label_key)
         config.update(
             {'platform::kubernetes::params::host_labels': host_label_keys})
