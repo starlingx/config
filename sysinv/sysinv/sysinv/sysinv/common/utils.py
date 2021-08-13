@@ -40,6 +40,7 @@ import fcntl
 import glob
 import grp
 import hashlib
+import io
 import itertools as it
 import json
 import keyring
@@ -2034,7 +2035,7 @@ def find_metadata_file(path, metadata_file, upgrade_from_release=None):
     patches = []
     metadata_path = os.path.join(path, metadata_file)
     if os.path.isfile(metadata_path):
-        with open(metadata_path, 'r') as f:
+        with io.open(metadata_path, 'r', encoding='utf-8') as f:
             try:
                 doc = yaml.safe_load(f)
                 app_name = doc['app_name']
@@ -2311,7 +2312,7 @@ def find_metadata_file(path, metadata_file, upgrade_from_release=None):
 def find_manifest_file(path):
     """ Find all manifest files in a given directory. """
     def _is_manifest(yaml_file):
-        with open(yaml_file, 'r') as f:
+        with io.open(yaml_file, 'r', encoding='utf-8') as f:
             docs = yaml.load_all(f)
             for doc in docs:
                 try:
@@ -2498,7 +2499,7 @@ def get_app_supported_kube_version(app_name, app_version):
     kube_max_version = None
     if (os.path.exists(app_metadata_path) and
             os.path.getsize(app_metadata_path) > 0):
-        with open(app_metadata_path, 'r') as f:
+        with io.open(app_metadata_path, 'r', encoding='utf-8') as f:
             y = yaml.safe_load(f)
             supported_kube_version = y.get('supported_k8s_version', {})
             kube_min_version = supported_kube_version.get('minimum', None)

@@ -5982,7 +5982,7 @@ class ConductorManager(service.PeriodicService):
                 metadata_file = os.path.join(app_path,
                                              constants.APP_METADATA_FILE)
                 if os.path.exists(metadata_file):
-                    with open(metadata_file, 'r') as f:
+                    with io.open(metadata_file, 'r', encoding='utf-8') as f:
                         # The RoundTripLoader removes the superfluous quotes by default.
                         # Set preserve_quotes=True to preserve all the quotes.
                         # The assumption here: there is just one yaml section
