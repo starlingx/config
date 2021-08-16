@@ -417,10 +417,27 @@ class KubeRootCAUpdateController(rest.RestController):
             force=force,
         )
 
+        # Get current kubernetes root CA certificate ID
+        try:
+            from_rootca_cert = \
+                pecan.request.rpcapi.get_current_kube_rootca_cert_id(
+                    context=pecan.request.context)
+        except Exception:
+            raise wsme.exc.ClientSideError(
+                "Failed to get the current kubernetes root CA certificate ID")
+
         create_obj = {'state': kubernetes.KUBE_ROOTCA_UPDATE_STARTED,
-                      'from_rootca_cert': body.get('from_rootca_cert')
+                      'from_rootca_cert': from_rootca_cert
                       }
         new_update = pecan.request.dbapi.kube_rootca_update_create(create_obj)
+
+        # create update entries for each of the nodes
+        hosts = pecan.request.dbapi.ihost_get_list()
+        for host in hosts:
+            if host.personality in [constants.CONTROLLER,
+                                    constants.WORKER]:
+                pecan.request.dbapi.kube_rootca_host_update_create(host.id,
+                                                                   {'effective_rootca_cert': from_rootca_cert})
 
         fault = fm_api.Fault(
                 alarm_id=fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_IN_PROGRESS,
@@ -556,7 +573,14 @@ class KubeRootCAHostUpdateController(rest.RestController):
         """ Pre checking if conditions met for phase trust-both-cas """
 
         # Get all the host update state
-        host_updates = pecan.request.dbapi.kube_rootca_host_update_get_list()
+        host_updates_temp = []
+        try:
+            host_updates_temp = \
+                pecan.request.dbapi.kube_rootca_host_update_get_list()
+        except exception.NotFound:
+            pass
+        host_updates = [host_update for host_update in host_updates_temp
+                        if host_update.state is not None]
 
         if len(host_updates) == 0:
             # No hosts start update yet

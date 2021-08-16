@@ -14162,20 +14162,6 @@ class ConductorManager(service.PeriodicService):
         else:
             new_cert = result.get("success")
 
-        # extract current k8s rootca
-        current_cert = \
-            cutils.get_certificate_from_file(kubernetes.KUBERNETES_ROOTCA_CERT)
-        if not current_cert:
-            msg = "Not able to get the current kube rootca"
-            return dict(success="", error=msg)
-        try:
-            current_cert_identifier = cutils.build_cert_identifier(current_cert)
-        except Exception:
-            msg = "Failed to extract issuer and serial number from " \
-                  "current k8s root CA"
-            LOG.error(msg)
-            return dict(success="", error=msg)
-
         try:
             certificate = cutils.extract_ca_crt_bytes_from_pem(temp_pem_contents)
         except exception.InvalidKubernetesCA:
@@ -14194,7 +14180,6 @@ class ConductorManager(service.PeriodicService):
 
         # update db
         update_obj = {'state': kubernetes.KUBE_ROOTCA_UPDATE_CERT_UPLOADED,
-                      'from_rootca_cert': current_cert_identifier,
                       'to_rootca_cert': new_cert}
 
         r = self.dbapi.kube_rootca_update_update(update.id, update_obj)
@@ -14237,14 +14222,6 @@ class ConductorManager(service.PeriodicService):
             cutils.get_certificate_from_file(kubernetes.KUBERNETES_ROOTCA_CERT)
         if not current_cert:
             msg = "Not able to get the current kube rootca"
-            return dict(success="", error=msg)
-
-        try:
-            current_cert_identifier = cutils.build_cert_identifier(current_cert)
-        except Exception:
-            msg = "Failed to extract issuer and serial number from " \
-                  "current k8s root CA"
-            LOG.error(msg)
             return dict(success="", error=msg)
 
         # extract validation period from current cert
@@ -14374,11 +14351,26 @@ class ConductorManager(service.PeriodicService):
 
         # update db
         update_obj = {'state': kubernetes.KUBE_ROOTCA_UPDATE_CERT_GENERATED,
-                      'from_rootca_cert': current_cert_identifier,
                       'to_rootca_cert': new_cert}
 
         r = self.dbapi.kube_rootca_update_update(update.id, update_obj)
         return dict(success=r.to_rootca_cert, error="")
+
+    def get_current_kube_rootca_cert_id(self, context):
+        # extract current k8s rootca
+        cert = cutils.get_certificate_from_file(kubernetes.KUBERNETES_ROOTCA_CERT)
+        if not cert:
+            LOG.error("Failed to get current kube root CA cert")
+            raise exception.SysinvException(_("Failed to get current kube root CA cert"))
+
+        # build the identifier of the current root CA cert
+        try:
+            cert_id = cutils.build_cert_identifier(cert)
+        except Exception:
+            LOG.error("Failed to calculate the ID of current kube root CA cert")
+            raise exception.SysinvException(_(
+                "Failed to calculate the ID of current kube root CA cert"))
+        return cert_id
 
     def mtc_action_apps_semantic_checks(self, context, action):
         """Call semantic check for maintenance actions of each app.
