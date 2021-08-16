@@ -1,0 +1,2 @@
+lib/systemd/system/worker-config-gate.service
+usr/sbin/wait_for_worker_config_init.sh
