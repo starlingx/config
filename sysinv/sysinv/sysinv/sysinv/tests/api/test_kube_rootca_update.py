@@ -2,6 +2,7 @@
 Tests for the API /kube_rootca_update/ methods.
 """
 
+import datetime
 import json
 import mock
 import os
@@ -61,7 +62,7 @@ class FakeConductorAPI(object):
     def fake_config_certificate(self, context, pem):
         return self.config_certificate_return
 
-    def fake_generate_rootca(self, context):
+    def fake_generate_rootca(self, context, duration, subject):
         return self.generate_rootca_return
 
     def setup_config_certificate(self, data):
@@ -491,22 +492,109 @@ class TestKubeRootCAGenerate(TestKubeRootCAUpdate,
         super(TestKubeRootCAGenerate, self).setUp()
         self.fake_conductor_api.service.dbapi = self.dbapi
 
-    def test_generate_rootca(self):
+    def test_generate_rootca_expiry_date_fail(self):
+        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
+        d = datetime.timedelta(hours=12)
+        expiry_date = datetime.datetime.now() + d
+        create_dict = {'expiry_date': expiry_date.strftime("%Y-%m-%d"),
+                       'subject': None}
+
+        response = self.post_json('/kube_rootca_update/generate_cert', create_dict,
+                                  headers=self.headers, expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("New k8s rootCA should have at least 24 hours "
+                      "of validation before expiry.",
+                      response.json['error_message'])
+
+    def test_generate_rootca_expiry_date_success(self):
         dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
         fake_save_rootca_return = {'success': '137813-123', 'error': ''}
-
+        d = datetime.timedelta(days=40)
+        expiry_date = datetime.datetime.now() + d
+        create_dict = {'expiry_date': expiry_date.strftime("%Y-%m-%d"),
+                       'subject': None}
         self.fake_conductor_api.\
             setup_generate_rootca(fake_save_rootca_return)
 
-        response = self.post_json('/kube_rootca_update/generate_cert', {},
-                                headers=self.headers,
-                                expect_errors=True)
+        response = self.post_json('/kube_rootca_update/generate_cert', create_dict,
+                                  headers=self.headers, expect_errors=True)
 
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
-
         resp = json.loads(response.body)
+        self.assertTrue(resp.get('success'))
+        self.assertEqual(resp.get('success'), fake_save_rootca_return.get('success'))
+        self.assertFalse(resp.get('error'))
 
+    def test_generate_rootca_subject_success(self):
+        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
+        fake_save_rootca_return = {'success': '137813-123', 'error': ''}
+        create_dict = {'expiry_date': None,
+                       'subject': 'C=US O=Company CN=Some common name ST=State L=Some locality'}
+        self.fake_conductor_api.\
+            setup_generate_rootca(fake_save_rootca_return)
+
+        response = self.post_json('/kube_rootca_update/generate_cert', create_dict,
+                                  headers=self.headers, expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+        resp = json.loads(response.body)
+        self.assertTrue(resp.get('success'))
+        self.assertEqual(resp.get('success'), fake_save_rootca_return.get('success'))
+        self.assertFalse(resp.get('error'))
+
+    def test_generate_rootca_subject_fail(self):
+        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
+        fake_save_rootca_return = {'success': '137813-123', 'error': ''}
+        create_dict = {'expiry_date': None,
+                       'subject': 'C=US O=Company CN=Some common name A=test fail'}
+        self.fake_conductor_api.\
+            setup_generate_rootca(fake_save_rootca_return)
+
+        response = self.post_json('/kube_rootca_update/generate_cert', create_dict,
+                                  headers=self.headers, expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("There are parameters not supported "
+                      "for the certificate subject specification. "
+                      "The subject parameter has to be in the "
+                      "format of 'C=<Country> ST=<State/Province> "
+                      "L=<Locality> O=<Organization> OU=<OrganizationUnit> "
+                      "CN=<commonName>", response.json['error_message'])
+
+    def test_generate_rootca_subject_fail_no_CN(self):
+        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
+        fake_save_rootca_return = {'success': '137813-123', 'error': ''}
+        create_dict = {'expiry_date': None,
+                       'subject': 'C=US O=Company'}
+        self.fake_conductor_api.\
+            setup_generate_rootca(fake_save_rootca_return)
+
+        response = self.post_json('/kube_rootca_update/generate_cert', create_dict,
+                                  headers=self.headers, expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("The CN=<commonName> parameter is required to be "
+                      "specified in subject argument", response.json['error_message'])
+
+    def test_generate_rootca(self):
+        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
+        fake_save_rootca_return = {'success': '137813-123', 'error': ''}
+        create_dict = {'expiry_date': None, 'subject': None}
+        self.fake_conductor_api.\
+            setup_generate_rootca(fake_save_rootca_return)
+
+        response = self.post_json('/kube_rootca_update/generate_cert', create_dict,
+                                  headers=self.headers)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+        resp = json.loads(response.body)
         self.assertTrue(resp.get('success'))
         self.assertEqual(resp.get('success'), fake_save_rootca_return.get('success'))
         self.assertFalse(resp.get('error'))

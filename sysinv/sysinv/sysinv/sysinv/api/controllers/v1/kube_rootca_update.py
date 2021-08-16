@@ -8,6 +8,7 @@
 import datetime
 import os
 import pecan
+import re
 import six
 import wsme
 import wsmeext.pecan as wsme_pecan
@@ -39,15 +40,71 @@ LOCK_KUBE_ROOTCA_CONTROLLER = 'KubeRootCAController'
 class KubeRootCAGenerateController(rest.RestController):
     """ API representation of a Kubernetes Generate Root CA Certificate"""
 
-    @expose('json')
-    @cutils.synchronized(LOCK_KUBE_ROOTCA_CONTROLLER)
-    def post(self):
+    def get_subject(self, subject):
+        """ Takes a subject formatted string and convert it to a
+        dictionary corresponding to the respective parameter to be
+        added in the certificate and its value added.
+
+        :params subject: a formatted string corresponding to subject
+        data
+        :returns: a dictionary with the key-value pair of each
+        parameter. In the case where a not supported parameter is
+        added to the string the method will throw an exception
+        indicating the error.
+        """
+        params_supported = ['C', 'OU', 'O', 'ST', 'CN', 'L']
+        if subject is None:
+            return {}
+        subject_pairs = re.findall(r"([^=]+=[^=]+)(?:\s|$)", subject)
+        subject_dict = {}
+        for pair_value in subject_pairs:
+            key, value = pair_value.split("=")
+            subject_dict[key] = value
+
+        if not all([param in params_supported for param in subject_dict.keys()]):
+            raise wsme.exc.ClientSideError(_("There are parameters not supported "
+                                            "for the certificate subject specification. "
+                                            "The subject parameter has to be in the "
+                                            "format of 'C=<Country> ST=<State/Province> "
+                                            "L=<Locality> O=<Organization> OU=<OrganizationUnit> "
+                                            "CN=<commonName>"))
+        if 'CN' not in subject_dict.keys():
+            raise wsme.exc.ClientSideError(_("The CN=<commonName> parameter is required to be "
+                                            "specified in subject argument"))
+        return subject_dict
+
+    def _calculate_duration(self, expiry_date):
+        if expiry_date is None:
+            return None
         try:
-            output = pecan.request.rpcapi.generate_kubernetes_rootca_cert(
-                pecan.request.context)
-        except Exception:
-            msg = "Conductor call to generate new k8s rootca failed"
-            return dict(success="", error=msg)
+            date = datetime.datetime.strptime(expiry_date, "%Y-%m-%d")
+        except ValueError:
+            raise wsme.exc.ClientSideError(_(
+                "expiry_date %s doesn't match format YYYY-MM-DD" % expiry_date))
+        delta = date - datetime.datetime.now()
+
+        # we sum one day (24 hours) to accomplish the certificate expiry
+        # during the day specified by the user
+        duration = (delta.days * 24 + 24)
+
+        # Cert-manager manages certificates and renew them some time
+        # before it expires. Along this procedure we set renewBefore
+        # parameter for 24h, so we are checking if the duration sent
+        # has at least this amount of time. This is needed to avoid
+        # cert-manager to block the creation of the resources.
+        if duration <= 24:
+            raise wsme.exc.ClientSideError(_(
+                "New k8s rootCA should have at least 24 hours of "
+                "validation before expiry."))
+        return duration
+
+    @cutils.synchronized(LOCK_KUBE_ROOTCA_CONTROLLER)
+    @wsme_pecan.wsexpose(wtypes.text, wtypes.text, wtypes.text)
+    def post(self, expiry_date, subject):
+        duration = self._calculate_duration(expiry_date)
+        subject_params = self.get_subject(subject)
+        output = pecan.request.rpcapi.generate_kubernetes_rootca_cert(
+            pecan.request.context, subject_params, duration)
         return output
 
 
@@ -60,7 +117,7 @@ class KubeRootCAUploadController(rest.RestController):
         fileitem = pecan.request.POST['file']
 
         if not fileitem.filename:
-            raise wsme.exc.ClientSideError(("Error: No file uploaded"))
+            raise wsme.exc.ClientSideError(_("Error: No file uploaded"))
 
         try:
             fileitem.file.seek(0, os.SEEK_SET)
@@ -388,7 +445,7 @@ class KubeRootCAUpdateController(rest.RestController):
         except exception.NotFound:
             pass
         else:
-            raise wsme.exc.ClientSideError((
+            raise wsme.exc.ClientSideError(_(
                 "A kubernetes rootca update is already in progress"))
 
         # There must not be a platform upgrade in progress
@@ -397,7 +454,7 @@ class KubeRootCAUpdateController(rest.RestController):
         except exception.NotFound:
             pass
         else:
-            raise wsme.exc.ClientSideError((
+            raise wsme.exc.ClientSideError(_(
                 "A kubernetes rootca update cannot be done while a platform upgrade is in progress"))
 
         # There must not be a kubernetes upgrade in progress
@@ -406,7 +463,7 @@ class KubeRootCAUpdateController(rest.RestController):
         except exception.NotFound:
             pass
         else:
-            raise wsme.exc.ClientSideError((
+            raise wsme.exc.ClientSideError(_(
                 "A kubernetes rootca update cannot be done while a kube upgrade "
                 "is in progress"))
 

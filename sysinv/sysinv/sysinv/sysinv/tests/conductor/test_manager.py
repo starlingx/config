@@ -2137,18 +2137,18 @@ class ManagerTestCase(base.DbTestCase):
         self.addCleanup(q.stop)
 
         utils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
-        resp = self.service.generate_kubernetes_rootca_cert(self.context)
+        resp = self.service.generate_kubernetes_rootca_cert(self.context, {}, None)
         self.assertTrue(resp.get('success'))
 
     def test_generate_rootca_not_in_progress(self):
-        resp = self.service.generate_kubernetes_rootca_cert(self.context)
+        resp = self.service.generate_kubernetes_rootca_cert(self.context, {}, None)
         self.assertFalse(resp.get('success'))
         self.assertTrue(resp.get('error'))
         self.assertIn("Kubernetes root CA update not started", resp.get('error'))
 
     def test_generate_rootca_advanced_state(self):
         utils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTBOTHCAS)
-        resp = self.service.generate_kubernetes_rootca_cert(self.context)
+        resp = self.service.generate_kubernetes_rootca_cert(self.context, {}, None)
         self.assertFalse(resp.get('success'))
         self.assertTrue(resp.get('error'))
         self.assertIn("A new root CA certificate already exists", resp.get('error'))

@@ -2232,12 +2232,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('save_kubernetes_rootca_cert',
                                              ca_file=certificate_file))
 
-    def generate_kubernetes_rootca_cert(self, context):
+    def generate_kubernetes_rootca_cert(self, context, subject, duration=None):
         """Generate new kubernetes root CA certificate
 
         :param context: request context.
         """
-        return self.call(context, self.make_msg('generate_kubernetes_rootca_cert'))
+        return self.call(context,
+                         self.make_msg('generate_kubernetes_rootca_cert',
+                                       subject=subject,
+                                       duration=duration))
 
     def get_current_kube_rootca_cert_id(self, context):
         """Get current kubernetes root CA certificate ID
