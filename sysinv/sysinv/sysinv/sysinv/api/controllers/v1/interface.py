@@ -1464,7 +1464,8 @@ def _delete_addressing(interface, family, existing_interface):
     interface_id = interface['id']
     pecan.request.dbapi.routes_destroy_by_interface(
         interface_id, family)
-    if existing_interface['ifclass'] != constants.INTERFACE_CLASS_PLATFORM:
+    if (existing_interface['ifclass'] and
+            existing_interface['ifclass'] != constants.INTERFACE_CLASS_PLATFORM):
             pecan.request.dbapi.addresses_destroy_by_interface(
                 interface_id, family)
     pecan.request.dbapi.address_modes_destroy_by_interface(
