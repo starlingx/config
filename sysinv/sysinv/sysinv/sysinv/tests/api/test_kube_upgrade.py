@@ -623,7 +623,7 @@ class TestPatch(TestKubeUpgrade,
         kube_upgrade = dbutils.create_test_kube_upgrade(
             from_version='v1.43.1',
             to_version='v1.43.2',
-            state=kubernetes.KUBE_UPGRADED_FIRST_MASTER)
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
         uuid = kube_upgrade.uuid
 
         # Update state

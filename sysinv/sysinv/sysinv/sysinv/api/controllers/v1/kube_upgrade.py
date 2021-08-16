@@ -353,7 +353,7 @@ class KubeUpgradeController(rest.RestController):
         elif updates['state'] == kubernetes.KUBE_UPGRADING_NETWORKING:
             # Make sure upgrade is in the correct state to upgrade networking
             if kube_upgrade_obj.state not in [
-                    kubernetes.KUBE_UPGRADED_FIRST_MASTER,
+                    kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
                     kubernetes.KUBE_UPGRADING_NETWORKING_FAILED]:
                 raise wsme.exc.ClientSideError(_(
                     "Kubernetes upgrade must be in %s or %s state to upgrade "

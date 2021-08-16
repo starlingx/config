@@ -69,12 +69,12 @@ KUBE_UPGRADE_STARTED = 'upgrade-started'
 KUBE_UPGRADE_DOWNLOADING_IMAGES = 'downloading-images'
 KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED = 'downloading-images-failed'
 KUBE_UPGRADE_DOWNLOADED_IMAGES = 'downloaded-images'
-KUBE_UPGRADING_FIRST_MASTER = 'upgrading-first-master'
-KUBE_UPGRADING_FIRST_MASTER_FAILED = 'upgrading-first-master-failed'
-KUBE_UPGRADED_FIRST_MASTER = 'upgraded-first-master'
 KUBE_UPGRADING_NETWORKING = 'upgrading-networking'
 KUBE_UPGRADING_NETWORKING_FAILED = 'upgrading-networking-failed'
 KUBE_UPGRADED_NETWORKING = 'upgraded-networking'
+KUBE_UPGRADING_FIRST_MASTER = 'upgrading-first-master'
+KUBE_UPGRADING_FIRST_MASTER_FAILED = 'upgrading-first-master-failed'
+KUBE_UPGRADED_FIRST_MASTER = 'upgraded-first-master'
 KUBE_UPGRADING_SECOND_MASTER = 'upgrading-second-master'
 KUBE_UPGRADING_SECOND_MASTER_FAILED = 'upgrading-second-master-failed'
 KUBE_UPGRADED_SECOND_MASTER = 'upgraded-second-master'
@@ -154,10 +154,7 @@ def get_kube_networking_upgrade_version(kube_upgrade):
             KUBE_UPGRADE_STARTED,
             KUBE_UPGRADE_DOWNLOADING_IMAGES,
             KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED,
-            KUBE_UPGRADE_DOWNLOADED_IMAGES,
-            KUBE_UPGRADING_FIRST_MASTER,
-            KUBE_UPGRADING_FIRST_MASTER_FAILED,
-            KUBE_UPGRADED_FIRST_MASTER]:
+            KUBE_UPGRADE_DOWNLOADED_IMAGES]:
         return kube_upgrade.from_version
     else:
         return kube_upgrade.to_version
