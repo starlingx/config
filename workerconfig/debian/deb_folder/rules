@@ -1,0 +1,16 @@
+#!/usr/bin/make -f
+#export DH_VERBOSE = 1
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	: # No build required
+
+override_dh_auto_install:
+	$(MAKE) INITDDIR=`pwd`/debian/tmp/etc/init.d \
+		GOENABLEDDIR=`pwd`/debian/tmp/etc/goenabled.d \
+	    SYSTEMDDIR=`pwd`/debian/tmp/lib/systemd install
+
+override_dh_installsystemd:
+	dh_installsystemd -pworkerconfig-standalone

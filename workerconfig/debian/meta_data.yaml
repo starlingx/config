@@ -1,0 +1,7 @@
+---
+debname: workerconfig
+debver: 1.0
+src_path: workerconfig
+revision:
+  dist: $STX_DIST
+  PKG_GITREVCOUNT: true
