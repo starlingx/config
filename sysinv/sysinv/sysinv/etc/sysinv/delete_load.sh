@@ -10,7 +10,7 @@
 : ${1?"Usage $0 VERSION"}
 VERSION=$1
 
-FEED_DIR=/www/pages/feed/rel-$VERSION
+FEED_DIR=/var/www/pages/feed/rel-$VERSION
 
 rm -f /pxeboot/pxelinux.cfg.files/*-$VERSION
 rm -rf /pxeboot/rel-$VERSION

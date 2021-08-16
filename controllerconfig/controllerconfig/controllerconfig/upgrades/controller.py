@@ -57,7 +57,7 @@ restore_patching_complete = '/etc/platform/.restore_patching_complete'
 restore_compute_ready = '/var/run/.restore_compute_ready'
 node_is_patched = '/var/run/node_is_patched'
 patching_permdir = '/opt/patching'
-patching_repo_permdir = '/www/pages/updates'
+patching_repo_permdir = '/var/www/pages/updates'
 
 
 def gethostaddress(hostname):
