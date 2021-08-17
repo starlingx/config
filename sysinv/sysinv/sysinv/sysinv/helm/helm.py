@@ -117,28 +117,44 @@ class HelmOperator(object):
     def purge_cache_by_location(self, install_location):
         """Purge the stevedore entry point cache."""
         for lifecycle_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_LIFECYCLE]:
-            if lifecycle_ep.dist.location == install_location:
+            lifecycle_distribution = utils.get_distribution_from_entry_point(lifecycle_ep)
+            (project_name, project_location) = \
+                utils.get_project_name_and_location_from_distribution(lifecycle_distribution)
+
+            if project_location == install_location:
                 extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_LIFECYCLE].remove(lifecycle_ep)
                 break
         else:
             LOG.info("Couldn't find endpoint distribution located at %s for "
-                     "%s" % (install_location, lifecycle_ep.dist))
+                     "%s" % (install_location, lifecycle_distribution))
 
         for armada_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_ARMADA]:
-            if armada_ep.dist.location == install_location:
+            armada_distribution = utils.get_distribution_from_entry_point(armada_ep)
+            (project_name, project_location) = \
+                utils.get_project_name_and_location_from_distribution(armada_distribution)
+
+            if project_location == install_location:
                 extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_ARMADA].remove(armada_ep)
                 break
         else:
             LOG.info("Couldn't find endpoint distribution located at %s for "
-                     "%s" % (install_location, armada_ep.dist))
+                     "%s" % (install_location, armada_distribution))
 
         for app_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS]:
-            if app_ep.dist.location == install_location:
-                namespace = app_ep.module_name
+            app_distribution = utils.get_distribution_from_entry_point(app_ep)
+            (app_project_name, app_project_location) = \
+                utils.get_project_name_and_location_from_distribution(app_distribution)
+
+            if app_project_location == install_location:
+                namespace = utils.get_module_name_from_entry_point(app_ep)
 
                 purged_list = []
                 for helm_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]:
-                    if helm_ep.dist.location != install_location:
+                    helm_distribution = utils.get_distribution_from_entry_point(helm_ep)
+                    (helm_project_name, helm_project_location) = \
+                        utils.get_project_name_and_location_from_distribution(helm_distribution)
+
+                    if helm_project_location != install_location:
                         purged_list.append(helm_ep)
 
                 if purged_list:
@@ -152,7 +168,7 @@ class HelmOperator(object):
         """Purge the stevedore entry point cache."""
         if self.STEVEDORE_APPS in extension.ExtensionManager.ENTRY_POINT_CACHE:
             for entry_point in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS]:
-                namespace = entry_point.module_name
+                namespace = utils.get_module_name_from_entry_point(entry_point)
                 try:
                     del extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]
                     LOG.debug("Deleted entry points for %s." % namespace)
@@ -201,10 +217,14 @@ class HelmOperator(object):
                 operator_name = operator.name
             operators_dict[operator_name] = operator.obj
 
+            distribution = utils.get_distribution_from_entry_point(operator.entry_point)
+            (project_name, project_location) = \
+                utils.get_project_name_and_location_from_distribution(distribution)
+
             # Extract distribution information for logging
             dist_info_dict[operator_name] = {
-                'name': operator.entry_point.dist.project_name,
-                'location': operator.entry_point.dist.location,
+                'name': project_name,
+                'location': project_location,
             }
 
         return operators_dict
@@ -240,10 +260,14 @@ class HelmOperator(object):
                 op_name = op.name
             operators_dict[op_name] = op.obj
 
+            distribution = utils.get_distribution_from_entry_point(op.entry_point)
+            (project_name, project_location) = \
+                utils.get_project_name_and_location_from_distribution(distribution)
+
             # Extract distribution information for logging
             dist_info_dict[op_name] = {
-                'name': op.entry_point.dist.project_name,
-                'location': op.entry_point.dist.location,
+                'name': project_name,
+                'location': project_location,
             }
 
         # Provide some log feedback on plugins being used
@@ -271,7 +295,8 @@ class HelmOperator(object):
             on_load_failure_callback=suppress_stevedore_errors
         )
         for entry_point in helm_applications.list_entry_points():
-            helm_application_dict[entry_point.name] = entry_point.module_name
+            helm_application_dict[entry_point.name] = \
+                utils.get_module_name_from_entry_point(entry_point)
 
         supported_helm_applications = {}
         for name, namespace in helm_application_dict.items():
@@ -280,10 +305,14 @@ class HelmOperator(object):
                 namespace=namespace, invoke_on_load=True, invoke_args=(self,))
             sorted_helm_plugins = sorted(helm_plugins.extensions, key=lambda x: x.name)
             for plugin in sorted_helm_plugins:
+                distribution = utils.get_distribution_from_entry_point(plugin.entry_point)
+                (project_name, project_location) = \
+                    utils.get_project_name_and_location_from_distribution(distribution)
+
                 LOG.debug("%s: helm plugin %s loaded from %s - %s." % (name,
                     plugin.name,
-                    plugin.entry_point.dist.project_name,
-                    plugin.entry_point.dist.location))
+                    project_name,
+                    project_location))
 
                 plugin_name = plugin.name[HELM_PLUGIN_PREFIX_LENGTH:]
                 self.chart_operators.update({plugin_name: plugin.obj})
