@@ -2640,6 +2640,13 @@ def extract_ca_crt_bytes_from_pem(pem_content):
     return base64_crt
 
 
+def get_public_bytes(cert):
+    """ Returns the PEM file text from x509 cert object
+    """
+    cert_bytes = cert.public_bytes(encoding=serialization.Encoding.PEM)
+    return cert_bytes.decode('utf-8')
+
+
 def extract_certs_from_pem(pem_contents):
     """
     Extract certificates from a pem string

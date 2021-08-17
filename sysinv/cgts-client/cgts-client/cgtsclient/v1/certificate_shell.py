@@ -90,9 +90,6 @@ def do_certificate_install(cc, args):
 
     try:
         response = cc.certificate.certificate_install(sec_file, data=data)
-        error = response.get('error')
-        if error:
-            raise exc.CommandError("%s" % error)
     except exc.HTTPNotFound:
         raise exc.CommandError('Certificate not installed %s. No response.' %
                                certificate_file)
@@ -101,13 +98,21 @@ def do_certificate_install(cc, args):
                                (certificate_file, e))
     else:
         certificates = response.get('certificates')
-        for certificate in certificates:
-            _print_certificate_show(certificate)
-        try:
-            os.remove(certificate_file)
-        except OSError:
-            raise exc.CommandError('Error: Could not remove the '
-                                   'certificate %s' % certificate_file)
+        if certificates:
+            for certificate in certificates:
+                _print_certificate_show(certificate)
+
+        error = response.get('error')
+        if error:
+            print("WARNING: Some certificates were not installed.")
+            print(error)
+        else:
+            try:
+                os.remove(certificate_file)
+            except OSError:
+                raise exc.CommandError('Error: Could not remove the '
+                                       'certificate %s' % certificate_file)
+
 
 @utils.arg('certificate_uuid', metavar='<certificate_uuid>',
            help="UUID of certificate to uninstall")
