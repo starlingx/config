@@ -78,6 +78,9 @@ renew_cert() {
 renew_cert_by_openssl() {
     local ret=0
     local time_left_s=""
+    if [ ! -f "$1/$2.crt" ]; then
+        return 255
+    fi
     time_left_s=$(time_left_s_by_openssl "$1/$2.crt")
     if [ "x${time_left_s}" != "x" ]; then
         if [ ${time_left_s} -lt ${CUTOFF_DAYS_S} ]; then
@@ -241,7 +244,7 @@ if [ ${ERR} -eq 0 ]; then
     IP.1 = ${floating_ip}
     IP.2 = 127.0.0.1
     "
-    renew_cert_by_openssl "/etc/kubernetes/pki/" "apiserver-etcd-client" "${config}"
+    renew_cert_by_openssl "/etc/kubernetes/pki" "apiserver-etcd-client" "${config}"
     result=$?
     if [ ${result} -eq 0 ]; then
         RESTART_APISERVER=1
@@ -266,7 +269,7 @@ if [ ${ERR} -eq 0 ]; then
     IP.1 = ${floating_ip}
     IP.2 = 127.0.0.1
     "
-    renew_cert_by_openssl "/etc/etcd/" "etcd-server" "${config}"
+    renew_cert_by_openssl "/etc/etcd" "etcd-server" "${config}"
     result=$?
     if [ ${result} -eq 0 ]; then
         RESTART_ETCD=1
@@ -290,7 +293,7 @@ if [ ${ERR} -eq 0 ]; then
     [alt_names]
     DNS.1 = root
     "
-    renew_cert_by_openssl "/etc/etcd/" "etcd-client" "${config}"
+    renew_cert_by_openssl "/etc/etcd" "etcd-client" "${config}"
     result=$?
     if [ ${result} -eq 1 ]; then
         ERR=1
