@@ -1,0 +1,55 @@
+Source: cgts-client
+Section: admin
+Priority: optional
+Maintainer: Starlingx Developers <StarlingX-discuss@lists.StarlingX.io>
+Build-Depends: debhelper-compat (= 13), dh-python, python3-setuptools, python3-all, python3-pbr, python3-wheel
+Build-Depends-Indep:
+ python3-keyring,
+ python3-oslo.i18n,
+ python3-oslo.serialization,
+ python3-oslo.utils,
+ python3-six,
+ python3-prettytable,
+ python3-requests-toolbelt,
+ python3-dateutil,
+ tsconfig,
+ python3-fixtures,
+ python3-mock,
+ python3-oslotest,
+ python3-stestr,
+ python3-testscenarios,
+ python3-testtools,
+ python3-testresources,
+ python3-httplib2,
+ python3-keystoneclient
+Standards-Version: 4.4.1
+Homepage: https://www.starlingx.io
+
+Package: cgts-client
+Architecture: all
+Depends: ${python3:Depends}, ${misc:Depends},
+ bash-completion,
+ python3-keystoneclient,
+ python3-httplib2,
+ python3-keyring,
+ python3-oslo.i18n,
+ python3-oslo.serialization,
+ python3-oslo.utils,
+ python3-six,
+ python3-prettytable,
+ python3-requests-toolbelt,
+ python3-dateutil,
+ tsconfig
+Description: StarlingX - sysctem client and cli
+ system client and cli
+ .
+ This is the python3 version of the package
+
+Package: cgts-client-wheel
+Architecture: all
+Depends: ${python3:Depends}, ${misc:Depends}, python3-wheel
+Description: StarlingX - system client and cli
+ Starlingx Config Info
+ .
+ This is the support package for the PEP 427 wheel version of the package,
+ required for using pip inside a virtual environment.

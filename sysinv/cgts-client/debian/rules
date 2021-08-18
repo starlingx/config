@@ -1,8 +1,0 @@
-#!/usr/bin/make -f
-
-export PYBUILD_INSTALL_ARGS=--install-data=/usr/share --prefix=/usr
-export PBR_VERSION=1.0
-
-%:
-	dh $@ --with python2 --buildsystem=pybuild
-
