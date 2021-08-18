@@ -1,3 +1,4 @@
+pathlib
 pbr>=0.5
 SQLAlchemy
 amqplib>=0.6.1
