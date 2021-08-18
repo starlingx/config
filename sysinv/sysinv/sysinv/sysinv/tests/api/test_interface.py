@@ -2527,6 +2527,58 @@ class TestAIOPatch(InterfaceTestCase):
         self.assertIn('Corresponding port has invalid driver',
             response.json['error_message'])
 
+    def test_modify_platform_class_to_none(self):
+        interface = dbutils.create_test_interface(
+            forihostid=self.controller.id,
+            ihost_uuid=self.controller.uuid,
+            ifname='lo',
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            iftype=constants.INTERFACE_TYPE_VIRTUAL)
+        with mock.patch.object(self.dbapi, "routes_destroy_by_interface") as route_mock:
+            with mock.patch.object(self.dbapi,
+                                   "addresses_destroy_by_interface") as addr_mock:
+                with mock.patch.object(self.dbapi,
+                                       "address_modes_destroy_by_interface") as addrmode_mock:
+                    # Reset interface class the first time
+                    response = self.patch_dict_json(
+                        '%s' % self._get_path(interface['uuid']),
+                        ifclass=constants.INTERFACE_CLASS_NONE)
+                    self.assertEqual('application/json', response.content_type)
+                    self.assertEqual(http_client.OK, response.status_code)
+                    route_mock.assert_called()
+                    addr_mock.assert_not_called()
+                    addrmode_mock.assert_called()
+
+                    # Reset interface class the second time
+                    response = self.patch_dict_json(
+                        '%s' % self._get_path(interface['uuid']),
+                        ifclass=constants.INTERFACE_CLASS_NONE)
+                    self.assertEqual('application/json', response.content_type)
+                    self.assertEqual(http_client.OK, response.status_code)
+                    route_mock.assert_called()
+                    addr_mock.assert_not_called()
+                    addrmode_mock.assert_called()
+
+    def test_modify_data_class_to_none(self):
+        interface = dbutils.create_test_interface(
+            forihostid=self.controller.id,
+            ihost_uuid=self.controller.uuid,
+            ifclass=constants.INTERFACE_CLASS_DATA)
+        with mock.patch.object(self.dbapi, "routes_destroy_by_interface") as route_mock:
+            with mock.patch.object(self.dbapi,
+                                   "addresses_destroy_by_interface") as addr_mock:
+                with mock.patch.object(self.dbapi,
+                                       "address_modes_destroy_by_interface") as addrmode_mock:
+                    # Reset interface class the first time
+                    response = self.patch_dict_json(
+                        '%s' % self._get_path(interface['uuid']),
+                        ifclass=constants.INTERFACE_CLASS_NONE)
+                    self.assertEqual('application/json', response.content_type)
+                    self.assertEqual(http_client.OK, response.status_code)
+                    route_mock.assert_called()
+                    addr_mock.assert_called()
+                    addrmode_mock.assert_called()
+
 
 class FakeConductorAPI(object):
 
