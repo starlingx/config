@@ -46,6 +46,7 @@ import json
 import keyring
 import math
 import os
+import pathlib
 import pwd
 import random
 import re
@@ -56,9 +57,11 @@ import six
 import socket
 import stat
 import string
+import sys
 import tempfile
 import time
 import tsconfig.tsconfig as tsc
+import types
 import uuid
 import wsme
 import yaml
@@ -87,6 +90,15 @@ try:
     from tsconfig.tsconfig import SW_VERSION
 except ImportError:
     SW_VERSION = "unknown"
+
+
+if six.PY3:
+    USE_IMPORTLIB_METADATA_STDLIB = False
+    try:
+        import importlib.metadata
+        USE_IMPORTLIB_METADATA_STDLIB = True
+    except ImportError:
+        import importlib_metadata
 
 
 utils_opts = [
@@ -3167,3 +3179,117 @@ def TempDirectory():
             shutil.rmtree(tmpdir)
         except OSError as e:
             LOG.error(_('Could not remove tmpdir: %s'), str(e))
+
+
+def get_stevedore_major_version():
+    if six.PY2:
+        # Hardcode Stevedore 1.25.0 for CentOS7 that has Python2.
+        # Support for Python2 will be dropped soon, and this removed.
+        return 1
+
+    package = 'stevedore'
+    if USE_IMPORTLIB_METADATA_STDLIB:
+        distribution = importlib.metadata.distribution
+    else:
+        distribution = importlib_metadata.distribution
+
+    return int(distribution(package).version.split('.')[0])
+
+
+def get_distribution_from_entry_point(entry_point):
+    """
+    With Stevedore 3.0.0 the entry_point object was changed.
+    https://docs.openstack.org/releasenotes/stevedore/victoria.html
+
+    This affects some of our Stevedore based logic on Debian Bullseye which
+    currently uses Stevedore 3.2.2.
+
+    In Python3.9.2 used on Debian Bullseye the EntryPoint returned by
+    importlib does not hold a reference to a Distribution object.
+    https://bugs.python.org/issue42382
+
+    Determine the missing information by parsing all modules in Python3 envs.
+    This can be removed when Python will be patched or upgraded.
+
+    :param entry_point: An EntryPoint object
+    :return: A Distribution object
+    :raises exception.SysinvException: If distribution could not be found
+    """
+    # Just a refactor on this path
+    if get_stevedore_major_version() < 3:
+        return entry_point.dist
+
+    if six.PY2:
+        raise exception.SysinvException(_(
+            "Python2 + Stevedore 3 and later support not implemented: "
+            "parsing modules in Python2 not implemented."))
+
+    loaded_entry_point = entry_point.load()
+    if isinstance(loaded_entry_point, types.ModuleType):
+        module_path = loaded_entry_point.__file__
+    else:
+        module_path = sys.modules[loaded_entry_point.__module__].__file__
+    if USE_IMPORTLIB_METADATA_STDLIB:
+        distributions = importlib.metadata.distributions
+    else:
+        distributions = importlib_metadata.distributions
+
+    for distribution in distributions():
+        try:
+            relative = pathlib.Path(module_path).relative_to(
+                distribution.locate_file("")
+            )
+        except ValueError:
+            pass
+        else:
+            if relative in distribution.files:
+                return distribution
+
+    raise exception.SysinvException(_(
+            "Distribution information for entry point {} "
+            "could not be found.".format(entry_point)))
+
+
+def get_project_name_and_location_from_distribution(distribution):
+    """
+    With Stevedore 3.0.0 the entry_point object was changed.
+    https://docs.openstack.org/releasenotes/stevedore/victoria.html
+
+    This affects some of our Stevedore based logic on Debian Bullseye which
+    currently uses Stevedore 3.2.2.
+
+    Determine the missing information by parsing the Distribution object.
+
+    :param distribution: A Distribution object
+    :return: Tuple of project name and project location. Location being
+             the parent of directory named <project name>
+    """
+    # Just a refactor on this path
+    if get_stevedore_major_version() < 3:
+        return (distribution.project_name, distribution.location)
+
+    project_name = distribution.metadata.get('Name')
+    project_location = str(distribution._path.parent)
+    return (project_name, project_location)
+
+
+def get_module_name_from_entry_point(entry_point):
+    """
+    With Stevedore 3.0.0 the entry_point object was changed.
+    https://docs.openstack.org/releasenotes/stevedore/victoria.html
+
+    This affects some of our Stevedore based logic on Debian Bullseye which
+    currently uses Stevedore 3.2.2.
+
+    :param entry_point: An EntryPoint object
+    :return: Module name
+    :raises exception.SysinvException: If module name could not be found
+    """
+    if 'module_name' in dir(entry_point):
+        return entry_point.module_name
+    elif 'module' in dir(entry_point):
+        return entry_point.module
+
+    raise exception.SysinvException(_(
+            "Module name for entry point {} "
+            "could not be determined.".format(entry_point)))
