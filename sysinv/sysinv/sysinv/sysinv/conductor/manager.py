@@ -11559,9 +11559,9 @@ class ConductorManager(service.PeriodicService):
 
         # Concatenate all the public bytes together, as the pem contents
         # may contain intermediate CA certs in it.
-        public_bytes = ''
+        public_bytes = b''
         for cert in cert_list:
-            public_bytes += cert.get('public_bytes', '')
+            public_bytes += cert.get('public_bytes', b'')
 
         return public_bytes
 
