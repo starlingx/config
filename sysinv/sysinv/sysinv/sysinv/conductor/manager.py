@@ -2105,8 +2105,7 @@ class ConductorManager(service.PeriodicService):
             if port.pciaddr in inic_pciaddr_dict.keys():
                 if (inic_pciaddr_dict[port.pciaddr]['pvendor'] == port.pvendor
                         and inic_pciaddr_dict[port.pciaddr]['pdevice'] == port.pdevice
-                        and inic_pciaddr_dict[port.pciaddr]['mac'] != port.mac
-                        and port.mac != ihost['mgmt_mac']):  # for now avoid mgmt interface
+                        and inic_pciaddr_dict[port.pciaddr]['mac'] != port.mac):
                     LOG.debug('add interface for mac update %s' % vars(port))
                     interface_mac_update[port.interface_uuid] = port.pciaddr
 
@@ -2149,7 +2148,8 @@ class ConductorManager(service.PeriodicService):
         interface_mac_update = dict()
         if (cutils.is_aio_simplex_system(self.dbapi)):
             # If AIO-SX, we can update the NIC's MAC with the same vendor, device-id and PCI address
-            # For other system configuration the correct procedure is to perform host reinstall
+            # For other system configuration the correct procedure is to perform host-delete and
+            # then host-add
             self._get_interface_mac_update_dict(ihost, inic_dict_array, interface_mac_update)
 
         cloning = False
