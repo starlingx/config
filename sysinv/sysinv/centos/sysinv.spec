@@ -26,6 +26,7 @@ Requires: python-keystonemiddleware
 Requires: python-kubernetes
 Requires: python-netaddr
 Requires: python-paste
+Requires: python-pathlib
 Requires: python-pbr
 Requires: python-pyudev
 Requires: python-psutil
