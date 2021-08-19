@@ -378,10 +378,31 @@ class CertificateController(rest.RestController):
             return dict(success="", error=msg)
 
         hash_issuers = []
+        cert_validity_error = None
         for index, cert in enumerate(certs):
             msg = self._check_cert_validity(cert)
             if msg is not True:
-                return dict(success="", error=msg)
+                # If file has only one cert fails right away
+                # if file has multiple certs continues execution for
+                # other certs and saves the error to be returned later
+                if len(certs) == 1:
+                    return dict(success="", error=msg)
+
+                msg = "Error with cert number %s in the file: " \
+                       % (index + 1) + msg
+                if cert_validity_error:
+                    cert_validity_error += "\n" + msg
+                else:
+                    cert_validity_error = msg
+
+                LOG.info(msg)
+
+                # gets certificate in PEM format
+                # removes expired certificates from pem_contents
+                pem_cert = cutils.get_public_bytes(cert)
+                pem_contents = pem_contents.replace(pem_cert, "")
+
+                continue
 
             # validation checking for ssl, tpm_mode, docker_registry
             # and openstack certficcates
@@ -514,7 +535,10 @@ class CertificateController(rest.RestController):
         log_end = cutils.timestamped("certificate_do_post_end")
         LOG.info("certificate %s" % log_end)
 
-        return dict(success="", error="", body="",
+        error = ""
+        if cert_validity_error:
+            error = cert_validity_error
+        return dict(success="", error=error, body="",
                     certificates=certificate_dicts)
 
     @wsme_pecan.wsexpose(RequestResult, body=RenewCertificate)
