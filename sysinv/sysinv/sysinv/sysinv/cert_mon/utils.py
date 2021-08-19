@@ -308,7 +308,7 @@ def update_subcloud_status(token, subcloud_name, status):
 
 
 def rest_api_request(token, method, api_cmd,
-                     api_cmd_payload=None, timeout=10):
+                     api_cmd_payload=None, timeout=30):
     """
     Make a rest-api request
     Returns: response as a dictionary
