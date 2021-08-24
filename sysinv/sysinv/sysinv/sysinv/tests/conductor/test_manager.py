@@ -2319,6 +2319,7 @@ class ManagerTestCase(base.DbTestCase):
 
         inic_dict_array[0]['mac'] = '1a:2a:3a:4a:5a:6a'
         inic_dict_array[1]['mac'] = 'c0:ca:de:ad:be:ff'
+        inic_dict_array[3]['mac'] = '20:2a:2e:2d:2e:2f'
 
         self.service.iport_update_by_ihost(self.context, ihost['uuid'], inic_dict_array[0:4])
 
