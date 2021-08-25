@@ -263,6 +263,11 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         self.assertEqual(result.json['to_version'], 'v1.43.2')
         self.assertEqual(result.json['state'],
                          kubernetes.KUBE_UPGRADE_STARTED)
+
+        # see if kubeadm_version was changed in DB
+        kube_cmd_version = self.dbapi.kube_cmd_version_get()
+        self.assertEqual(kube_cmd_version.kubeadm_version, '1.43.2')
+
         # Verify that the target version for the host was updated
         kube_host_upgrade = self.dbapi.kube_host_upgrade_get_by_host(
             self.host.id)
@@ -730,11 +735,16 @@ class TestPatch(TestKubeUpgrade,
                                      'value': new_state,
                                      'op': 'replace'}],
                                    headers={'User-Agent': 'sysinv-test'})
+
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
         self.assertEqual(response.json['from_version'], 'v1.43.1')
         self.assertEqual(response.json['to_version'], 'v1.43.2')
         self.assertEqual(response.json['state'], new_state)
+
+        # see if kubelet_version was changed in DB
+        kube_cmd_version = self.dbapi.kube_cmd_version_get()
+        self.assertEqual(kube_cmd_version.kubelet_version, '1.43.2')
 
         # Verify that the upgrade was updated with the new state
         result = self.get_json('/kube_upgrade/%s' % uuid)
