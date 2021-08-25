@@ -1,0 +1,6 @@
+etc/upgrade.d
+etc/init.d
+etc/goenabled.d
+usr/sbin
+lib/systemd/system
+

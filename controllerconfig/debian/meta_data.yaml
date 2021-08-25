@@ -1,0 +1,7 @@
+---
+debname: controllerconfig
+debver: 1.0
+src_path: controllerconfig
+revision:
+  dist: $STX_DIST
+  PKG_GITREVCOUNT: true
