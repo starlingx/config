@@ -2089,17 +2089,13 @@ class ConductorManager(service.PeriodicService):
             values = {'mgmt_mac': inic['mac']}
             self.dbapi.ihost_update(ihost['uuid'], values)
 
-    def _get_interface_mac_update_dict(self, ihost, inic_dict_array, interface_mac_update):
+    def _get_interface_mac_update_dict(self, ihost, inic_pciaddr_dict, interface_mac_update):
         """ Get port list of altered MACs if vendor and device-id is the same on a PCI address.
 
         :param ihost: host object
-        :param inic_dict_array: NIC data array reported by sysinv-agent
+        :param inic_pciaddr_dict: NIC data dict reported by sysinv-agent, key is PCI address
         :param interface_mac_update: output dict containing MAC update info
         """
-        inic_pciaddr_dict = dict()
-        for inic in inic_dict_array:
-            inic_pciaddr_dict[inic['pciaddr']] = inic
-
         eth_ports = self.dbapi.ethernet_port_get_by_host(ihost['uuid'])
         for port in eth_ports:
             if port.pciaddr in inic_pciaddr_dict.keys():
@@ -2108,6 +2104,176 @@ class ConductorManager(service.PeriodicService):
                         and inic_pciaddr_dict[port.pciaddr]['mac'] != port.mac):
                     LOG.debug('add interface for mac update %s' % vars(port))
                     interface_mac_update[port.interface_uuid] = port.pciaddr
+
+    def _set_port_report_mismatch_alarm(self, host, port, reason_text):
+        """ Alarm update for port report mismatch
+
+        This method updates the alarm if there are mismatch between data reported by sysinv-agent
+        and the database
+        :param host: host object
+        :param port: port object
+        :param reason_text: alarm reason text field
+        """
+        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_PORT,
+                                        "{}={}.{}={}".format(fm_constants.FM_ENTITY_TYPE_HOST,
+                                                             host['hostname'],
+                                                             fm_constants.FM_ENTITY_TYPE_PORT,
+                                                             port.uuid))
+
+        fault = fm_api.Fault(
+            alarm_id=fm_constants.FM_ALARM_ID_NETWORK_PORT,
+            alarm_state=fm_constants.FM_ALARM_STATE_SET,
+            entity_type_id=fm_constants.FM_ENTITY_TYPE_PORT,
+            entity_instance_id=entity_instance_id,
+            severity=fm_constants.FM_ALARM_SEVERITY_MAJOR,
+            reason_text=reason_text,
+            alarm_type=fm_constants.FM_ALARM_TYPE_4,
+            probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_45,
+            proposed_repair_action=_("Lock the host, remove any associated 'used by i/f'"
+                                     " interfaces, set the associated interface class to"
+                                     " 'none', and unlock the host."),
+            service_affecting=False)
+        self.fm_api.set_fault(fault)
+
+    def _clear_existing_port_report_mismatch_alarms(self, ihost, eth_ports, alarm_port_list):
+        port_alarms = self.fm_api.get_faults_by_id(fm_constants.FM_ALARM_ID_NETWORK_PORT)
+        if port_alarms:
+            alarmed_uuids = [port.uuid for port, reason in alarm_port_list]
+            for port in eth_ports:
+                entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_PORT,
+                                    "{}={}.{}={}".format(fm_constants.FM_ENTITY_TYPE_HOST,
+                                                            ihost['hostname'],
+                                                            fm_constants.FM_ENTITY_TYPE_PORT,
+                                                            port.uuid))
+                for alarm in port_alarms:
+                    if (entity_instance_id in alarm.entity_instance_id
+                            and port.uuid not in alarmed_uuids):
+                        self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_NETWORK_PORT,
+                                                entity_instance_id)
+
+    def _get_replaced_ports_on_pciaddr(self, ihost, inic_pciaddr_dict, replaced_ports,
+                                       unreported_ports, cannot_replace):
+        """ Get port list of replaced port device on the same on a PCI address,
+            if vendor is different or vendor is the same and device-id differs.
+            It is necessary that the associated interface to be of class "none"
+
+        :param ihost: host object
+        :param inic_pciaddr_dict: NIC data array reported by sysinv-agent, key is PCI address
+        :param replaced_ports: output list containing replaced ports on the DB
+        :param unreported_ports: output list containing unreported ports on the DB
+        :param cannot_replace: output set containing ports with configured interfaces on the DB
+        """
+        eth_ports = self.dbapi.ethernet_port_get_by_host(ihost['uuid'])
+        alarm_port_list = list()
+        for port in eth_ports:
+            iface = None
+            try:
+                iface = self.dbapi.iinterface_get(port.interface_id)
+            except Exception as ex:
+                LOG.exception("Failed to get interface %s for port %s, exception: %s" %
+                                (port.interface_id, port.name, type(ex).__name__))
+
+            if port.pciaddr in inic_pciaddr_dict.keys():
+                if (inic_pciaddr_dict[port.pciaddr]['pvendor'] != port.pvendor
+                        or (inic_pciaddr_dict[port.pciaddr]['pvendor'] == port.pvendor
+                        and inic_pciaddr_dict[port.pciaddr]['pdevice'] != port.pdevice)):
+                    if (iface and iface.ifclass is None and not iface.used_by):
+                        LOG.info('Detected port %s addr:%s replaced from "%s/%s" to "%s/%s"'
+                                % (port.name, port.pciaddr, port.pvendor, port.pdevice,
+                                  inic_pciaddr_dict[port.pciaddr]['pvendor'],
+                                  inic_pciaddr_dict[port.pciaddr]['pdevice']))
+                        replaced_ports.append(port)
+                    else:
+                        LOG.info("Cannot replace port {} at addr:{}, has interface {} "
+                                 "with class {} or is used by {}"
+                                .format(port.name, port.pciaddr, port.interface_id,
+                                 iface.ifclass, iface.used_by))
+                        cannot_replace.add(port.pciaddr)
+                        alarm_port_list.append((port, "OS reports vendor or device-id without match"
+                                                " on DB for port {}".format(port.name)))
+            else:
+                if (iface and iface.ifclass is None and not iface.used_by):
+                    LOG.info('Detected port %s addr:%s unreported and class=none on DB "%s/%s"'
+                            % (port.name, port.pciaddr, port.pvendor, port.pdevice))
+                    unreported_ports.append(port)
+                else:
+                    LOG.info("Unreported port {} at addr:{}, has interface {} with class {}"
+                             " or is used by {}".format(port.name, port.pciaddr, port.interface_id,
+                                                        iface.ifclass, iface.used_by))
+                    alarm_port_list.append((port, "Port {} on DB is no longer reported"
+                                                 " by the OS".format(port.name)))
+
+        # first clear alarms that are no longer valid
+        self._clear_existing_port_report_mismatch_alarms(ihost, eth_ports, alarm_port_list)
+        for alarm in alarm_port_list:
+            self._set_port_report_mismatch_alarm(ihost, alarm[0], alarm[1])
+
+    def _process_port_replacement(self, ihost, inic_pciaddr_dict, cannot_replace):
+        """Process NIC card replacement.
+
+        This method compares PCI devices reported by sysinv-agent and the database, searching for
+        NIC devices, using PCI address as the search key. If a replacement on the same address is
+        detected the old DB entry is erased, the new one will be created via regular processing done
+        in iport_update_by_ihost(). The search also detects for NICs no longer reported on a
+        particular PCI address.
+        If the replaced or unreported ports do not have the associated interface with class none
+        or are used by other sub-interfaces, the new reported interface is not processed until the
+        operator removes the interface configuration.
+
+        :param ihost: the host object
+        :param inic_pciaddr_dict: NIC data array reported by sysinv-agent, key is PCI address
+        :param cannot_replace: output set containing ports with configured interfaces on the DB
+        :return True if there are removed ports
+        """
+        replaced_ports = list()
+        unreported_ports = list()
+        # Get list of replaced device ports on each PCI address reported
+        self._get_replaced_ports_on_pciaddr(ihost, inic_pciaddr_dict, replaced_ports,
+                                            unreported_ports, cannot_replace)
+        # remove old port and interface, processing inic_dict_array will create the new ones
+        to_destroy = replaced_ports + unreported_ports
+        for port in to_destroy:
+            op_type = ('replaced' if (port in replaced_ports) else 'unreported')
+            try:
+                LOG.info("Delete %s port %s associated interface id:%s"
+                        % (op_type, port.name, port.interface_id))
+                self.dbapi.iinterface_destroy(port.interface_id)
+            except Exception as ex:
+                LOG.exception("Failed to delete %s interface id %s, exception %s" %
+                                (op_type, port.interface_id, type(ex)))
+            try:
+                LOG.info('Delete %s port %s addr:%s vendor:"%s" device:"%s"'
+                        % (op_type, port.name, port.pciaddr, port.pvendor, port.pdevice))
+                self.dbapi.ethernet_port_destroy(port.uuid)
+            except Exception as ex:
+                LOG.exception("Failed to delete %s port id %s, exception %s" %
+                                (op_type, port.id, type(ex)))
+        return (len(to_destroy) > 0)
+
+    def _set_ethernet_port_node_id(self, ihost, port):
+        """ Set port node_id
+
+        In case of port replacement search the current inode DB to set the correct node_id, if
+        there are no inodes created, the update will be done in inumas_update_by_ihost().
+
+        :param ihost: the host object
+        :param port: the port object
+        """
+        try:
+            # Get host numa nodes which may already be in db
+            inodes = self.dbapi.inode_get_by_ihost(ihost['uuid'])
+        except exception.NodeNotFound:
+            LOG.exception("Cannot find inodes for host %s" % ihost['uuid'])
+            return
+        for inode in inodes:
+            port_node = port['numa_node']
+            if port_node == -1:
+                port_node = 0  # special handling
+            if port_node == inode['numa_node']:
+                attr = {'node_id': inode['id']}
+                LOG.debug("update port %s uuid %s with node_id %s" %
+                          (port['name'], port['uuid'], inode['id']))
+                self.dbapi.ethernet_port_update(port['uuid'], attr)
 
     def iport_update_by_ihost(self, context,
                               ihost_uuid, inic_dict_array):
@@ -2135,6 +2301,24 @@ class ConductorManager(service.PeriodicService):
             LOG.exception("Failed to get local hostname")
             hostname = None
 
+        has_removed = False
+        cannot_replace = set()
+        interface_mac_update = dict()
+        is_aio_simplex_system = cutils.is_aio_simplex_system(self.dbapi)
+        if (is_aio_simplex_system):
+            inic_pciaddr_dict = dict()
+            for inic in inic_dict_array:
+                inic_pciaddr_dict[inic['pciaddr']] = inic
+            # If AIO-SX, we can update the NIC's MAC with the same vendor, device-id and PCI address
+            # For other system configuration the correct procedure is to perform host-delete and
+            # then host-add
+            self._get_interface_mac_update_dict(ihost, inic_pciaddr_dict, interface_mac_update)
+
+            # in AIO-SX, if the replaced or unreported ports do not have the associated interface
+            # with class none or are used by other sub-interfaces, the new reported interface is not
+            # processed until the operator removes the interface configuration.
+            has_removed = self._process_port_replacement(ihost, inic_pciaddr_dict, cannot_replace)
+
         try:
             iinterfaces = self.dbapi.iinterface_get_by_ihost(ihost_uuid,
                                                              expunge=True)
@@ -2144,13 +2328,6 @@ class ConductorManager(service.PeriodicService):
                      "iinterface_get_by_ihost %s" % ihost_uuid)
             iinterfaces = self.dbapi.iinterface_get_by_ihost(ihost_uuid,
                                                              expunge=True)
-
-        interface_mac_update = dict()
-        if (cutils.is_aio_simplex_system(self.dbapi)):
-            # If AIO-SX, we can update the NIC's MAC with the same vendor, device-id and PCI address
-            # For other system configuration the correct procedure is to perform host-delete and
-            # then host-add
-            self._get_interface_mac_update_dict(ihost, inic_dict_array, interface_mac_update)
 
         cloning = False
         for inic in inic_dict_array:
@@ -2168,6 +2345,12 @@ class ConductorManager(service.PeriodicService):
             # ignore port if no MAC address present, this will
             # occur for data port after they are configured via DPDK driver
             if not inic['mac']:
+                continue
+            # in AIO-SX, if the replaced port have the associated interface with other class than
+            # "none" we skip the processing until the operator modify the database
+            if inic['pciaddr'] in cannot_replace:
+                LOG.warning("old port's interface still configured, skip replacement for inic=%s"
+                            % inic)
                 continue
             try:
                 inic_dict = {'host_id': ihost['id']}
@@ -2273,7 +2456,7 @@ class ConductorManager(service.PeriodicService):
                                     (new_interface['id'], network['id']))
                     except Exception as ex:
                         LOG.exception("Failed to create new untagged interface %s exception: %s" %
-                                      (inic['mac'], type(ex).__name__))
+                                      (inic['mac'], type(ex)))
                         pass  # at least create the port
 
                     if create_tagged_interface:
@@ -2350,7 +2533,7 @@ class ConductorManager(service.PeriodicService):
                             self._update_port_name(port, inic['pname'])
                     except Exception as ex:
                         LOG.exception("Failed to update port %s, exception: %s" %
-                                (inic['mac'], type(ex).__name__))
+                                (inic['mac'], type(ex)))
                         pass
 
                 except Exception:
@@ -2365,12 +2548,19 @@ class ConductorManager(service.PeriodicService):
                              "on host %s" % (inic_dict, ihost.uuid))
                     port = self.dbapi.ethernet_port_create(ihost.uuid, port_dict)
 
+                    if (is_aio_simplex_system and has_removed):
+                        # In AIO-SX if a replacement has occurred it may be necessary to update
+                        # the node_id from the inode database, as inumas_update_by_ihost() updates
+                        # the ports only when is creating new inode entries
+                        self._set_ethernet_port_node_id(ihost, port)
+
             except exception.NodeNotFound:
                 raise exception.SysinvException(_(
                     "Invalid ihost_uuid: host not found: %s") %
                     ihost_uuid)
 
-            except Exception:  # this info may have been posted previously, update ?
+            except Exception as ex:  # this info may have been posted previously, update ?
+                LOG.exception("got exception: %s" % type(ex))
                 pass
 
             # Set interface ID for management address
@@ -2760,6 +2950,86 @@ class ConductorManager(service.PeriodicService):
                 raise exception.SysinvException(_(
                     "Couldn't update LLDP neighbour: %s") % e)
 
+    def _process_fec_device_replacement(self, host, pci_device_dict_array):
+        """Process FEC card replacement.
+
+        This method compares PCI devices reported by sysinv-agent and the database, searching for
+        FEC devices (N3000 or ACC100), using PCI address as the search key. If a replacement on the
+        same address is detected the old DB entry is erased, the new one will be created via
+        regular processing done in pci_device_update_by_host().
+        The search also detects for FEC devices no longer reported on a particular PCI address. On
+        this case the entry is also erased. A logic to consider the case of N3000 reset status was
+        also added.
+
+        :param host: the host object
+        :param pci_device_dict_array: PCI device report from sysinv-agent
+        """
+        # create variables for easy handling
+        fec_vendor = [dconstants.PCI_DEVICE_VENDOR_INTEL]
+        acc100_devs = [dconstants.PCI_DEVICE_ID_ACC100_INTEL_5GNR_FEC_PF]
+        fec_devs = fpga_constants.N3000_DEVICES
+        fec_devs = fec_devs + acc100_devs
+
+        # prepare report data to be indexed by pciaddr
+        pci_addr_dict = dict()
+        is_n3000_reset = False
+        is_n3000_present = False
+        for pci_dev in pci_device_dict_array:
+            pci_addr_dict[pci_dev['pciaddr']] = pci_dev
+            if (pci_dev['pvendor_id'] in fec_vendor
+                    and pci_dev['pdevice_id'] in fpga_constants.N3000_DEVICES):
+                is_n3000_reset = pci_dev['fpga_n3000_reset']
+                is_n3000_present = True
+
+        # identify FEC devices replaced and unreported
+        unreported_fec_device = list()
+        replaced_fec_device = list()
+        db_devices = self.dbapi.pci_device_get_all(hostid=host['id'])
+        for db_dev in db_devices:
+            if (db_dev.pciaddr in pci_addr_dict.keys()):
+                if (pci_addr_dict[db_dev.pciaddr]['pvendor_id'] in fec_vendor
+                        and pci_addr_dict[db_dev.pciaddr]['pdevice_id'] in fec_devs
+                        and db_dev.pvendor_id in fec_vendor
+                        and db_dev.pdevice_id in fec_devs
+                        and pci_addr_dict[db_dev.pciaddr]['pdevice_id'] != db_dev.pdevice_id):
+                    LOG.info("Detected a replaced FEC device in %s, from device_id %s to %s" %
+                                                    (db_dev.pciaddr, db_dev.pdevice_id,
+                                                    pci_addr_dict[db_dev.pciaddr]['pdevice_id']))
+                    replaced_fec_device.append(db_dev)
+            else:
+                if ((db_dev.pvendor_id in fec_vendor) and (db_dev.pdevice_id in fec_devs)):
+                    LOG.info("Detected a FEC db entry unreported by sysinv-agent dev-id:%s addr:%s"
+                          " uuid:%s" % (db_dev.pdevice_id, db_dev.pciaddr, db_dev.uuid))
+                    unreported_fec_device.append(db_dev)
+
+        # remove db entry replaced
+        for dev in replaced_fec_device:
+            try:
+                LOG.info("At %s, delete replaced device %s" % (dev.pciaddr, dev.uuid))
+                self.dbapi.pci_device_destroy(dev.uuid)
+            except Exception as ex:
+                LOG.exception("Failed to delete device uuid:%s, exception:%s" %
+                              (dev.uuid, type(ex).__name__))
+
+        # remove db entry unreported
+        for dev in unreported_fec_device:
+            destroy = False
+            if (dev.pdevice_id in fpga_constants.N3000_DEVICES and is_n3000_present
+                    and is_n3000_reset):
+                destroy = True  # the DB only accepts entries with is_n3000_reset
+            if (dev.pdevice_id in fpga_constants.N3000_DEVICES and not is_n3000_present):
+                destroy = True  # no longer in use
+            elif (dev.pdevice_id in acc100_devs):
+                destroy = True  # no longer in use
+            if destroy:
+                try:
+                    LOG.info("Delete unreported FEC device id:%s addr:%s uuid:%s"
+                        % (dev.pdevice_id, dev.pciaddr, dev.uuid))
+                    self.dbapi.pci_device_destroy(dev.uuid)
+                except Exception as ex:
+                    LOG.exception("Failed to delete device uuid:%s, exception:%s" %
+                                (dev.uuid, type(ex)))
+
     def pci_device_update_by_host(self, context,
                                   host_uuid, pci_device_dict_array,
                                   cleanup_stale=False):
@@ -2781,6 +3051,13 @@ class ConductorManager(service.PeriodicService):
         except exception.ServerNotFound:
             LOG.exception("Invalid host_uuid %s" % host_uuid)
             return
+
+        is_aio_simplex_system = cutils.is_aio_simplex_system(self.dbapi)
+        if (is_aio_simplex_system):
+            # if in AIO-SX, search replaced or unreported FEC entries on the database. If found
+            # they are deleted. The new ones will be handled by the loop below
+            self._process_fec_device_replacement(host, pci_device_dict_array)
+
         for pci_dev in pci_device_dict_array:
             LOG.debug("Processing dev %s" % pci_dev)
             is_n3000_dev_not_reset = False
@@ -2836,7 +3113,7 @@ class ConductorManager(service.PeriodicService):
                                 pci_dev.get('sriov_vf_pdevice_id', None),
                             'driver': pci_dev['driver'],
                             'extra_info': dev.get('extra_info', None)}
-                        LOG.info("attr: %s" % attr)
+                        LOG.info("update %s attr: %s" % (pci_dev['pciaddr'], attr))
 
                         if (host['administrative'] == constants.ADMIN_LOCKED
                                 and pci_dev['pdevice_id'] in
@@ -2869,8 +3146,9 @@ class ConductorManager(service.PeriodicService):
             except Exception:
                 pass
 
-        if cleanup_stale:
-            # Now clean up N3000 devices that have changed addresses.
+        if (cleanup_stale and not is_aio_simplex_system):
+            # Since we do not accept unreseted N3000 devices on the database, we still might need to
+            # clear stale entries from an upgrade for non AIO-SX setups
             self.cleanup_stale_n3000_devices(host, pci_device_dict_array)
 
     def cleanup_stale_n3000_devices(self, host, pci_device_dict_array):
