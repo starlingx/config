@@ -1,0 +1,14 @@
+#!/usr/bin/make -f
+#export DH_VERBOSE = 1
+
+ROOT := $(CURDIR)/debian/tmp
+
+%:
+	dh $@
+
+override_dh_install:
+	install -m 755 -p -D cert-mon ${ROOT}/usr/lib/ocf/resource.d/platform/cert-mon
+	install -m 644 -p -D cert-mon.service ${ROOT}/lib/systemd/system/cert-mon.service
+	install -m 644 -p -D cert-mon.syslog ${ROOT}/etc/syslog-ng/conf.d/cert-mon.conf
+	install -m 644 -p -D cert-mon.logrotate ${ROOT}/etc/logrotate.d/cert-mon.conf
+	dh_install

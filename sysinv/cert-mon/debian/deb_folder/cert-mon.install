@@ -1,0 +1,4 @@
+usr/lib/ocf/resource.d/platform/cert-mon
+lib/systemd/system/cert-mon.service
+etc/syslog-ng/conf.d/cert-mon.conf
+etc/logrotate.d/cert-mon.conf
