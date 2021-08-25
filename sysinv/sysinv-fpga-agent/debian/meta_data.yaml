@@ -1,0 +1,7 @@
+---
+debname: sysinv-fpga-agent
+debver: 1.0
+dl_hook: dl_hook
+revision:
+  dist: $STX_DIST
+  PKG_GITREVCOUNT: true
