@@ -268,15 +268,17 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             # never exit until exit signal received
             try:
                 monitor.start_watch(
-                    on_success=lambda task_id: self._purge_reattempt_task(task_id, 'on success'),
+                    on_success=lambda task_id: self._purge_reattempt_task(
+                        task_id, 'on success'),
                     on_error=lambda task: self._add_reattempt_task(task),
                 )
             except greenlet.GreenletExit:
                 break
-            except Exception as e:
+            except Exception:
                 # A bug somewhere?
                 # It shouldn't fall to here, but log and restart if it did
-                LOG.exception(e)
+                LOG.exception("Unexpected exception from start_watch")
+                time.sleep(1)
 
     def _add_reattempt_task(self, task):
         id = task.get_id()
