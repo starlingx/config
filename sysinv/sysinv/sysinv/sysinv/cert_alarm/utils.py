@@ -24,6 +24,18 @@ ANNOTATIONS = 'annotations'
 CERTMGR_CERT_NAME = "cert-manager.io/certificate-name"
 
 SNAPSHOT_KEY_EXPDATE = 'expiry_date'
+# Mode will determine how alarm constructs entity_instance_id and description
+SNAPSHOT_KEY_MODE = 'mode'
+SNAPSHOT_KEY_uuid = 'mode_uuid'
+SNAPSHOT_KEY_k8s_ns = 'mode_k8s_ns'
+SNAPSHOT_KEY_k8s_cert = 'mode_k8s_cert'
+SNAPSHOT_KEY_k8s_secret = 'mode_k8s_secret'
+
+# "mode" values can be:
+MODE_UUID = 'uuid'
+MODE_SECRET = 'secret'
+MODE_CERT_MGR = 'certmgr'
+MODE_OTHER = 'other'
 
 CERT_SNAPSHOT = {}
 """
@@ -32,10 +44,16 @@ Internal dict is expiry_date and all annotations collected via k8s secret
 {
     certname1: {
         expiry_date: date
-        alarm: enabled
-        alarm_before: 30d
-        alarm_severity: unknown
-        alarm_text: ""
+        alarm: <enabled/disabled>
+        alarm_before: <days>
+        alarm_severity: <severity>
+        alarm_text: <custom pretext>
+        mode: <mode>
+        mode_uuid: <uuid>
+        mode_k8s_ns: <namespace>
+        mode_k8s_cert: <certificate>
+        mode_k8s_secret: <secret>
+        mode_other: <other>
     }
     certname2: {
         ...
@@ -78,7 +96,7 @@ def collect_certificate_data_from_file(certname, pem_file):
     """
     Collect certificate data
     Input: certname, pem_file
-    Returns: (certname, expiration_date, annotation_data)
+    Returns: (certname, expiration_date, annotation_data, mode_metadata)
             expiration_date will be None if data missing or error
             annotation_data will be set to defaults
     """
@@ -90,12 +108,13 @@ def collect_certificate_data_from_file(certname, pem_file):
             cert_buf = f.read()
     except IOError:
         LOG.info('Certificate %s file not found' % certname)
-        return (certname, None, None)
+        return (certname, None, None, None)
 
     cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert_buf)
     expiration_date = get_cert_expiration_date(cert)
     annotation_data = get_default_annotation_values()
-    return (certname, expiration_date, annotation_data)
+    mode_metadata = get_file_mode_metadata(certname)
+    return (certname, expiration_date, annotation_data, mode_metadata)
 
 
 def is_certname_already_processed(certname):
@@ -141,6 +160,7 @@ def collect_certificate_data_from_kube_secret(secretobj):
     Returns: (certname, expiration_date, annotation_data)
             expiration_date will be None if data missing or error
             annotation_data from k8s Secret or Certificate CRD
+            mode_metadata includes details of namespace/cert/secret
     """
     certname = secretobj.metadata.name
     LOG.debug('collect_certificate_data_from_kube_secret called for %s' % certname)
@@ -152,9 +172,9 @@ def collect_certificate_data_from_kube_secret(secretobj):
     txt_crt = base64.b64decode(secretobj.data['tls.crt'])
     cert = crypto.load_certificate(crypto.FILETYPE_PEM, txt_crt)
     expiration_date = get_cert_expiration_date(cert)
-    annotation_data = get_annotation_data(secretobj)
-    LOG.debug('returning (%s, %s, %s)' % (certname, expiration_date, annotation_data))
-    return (certname, expiration_date, annotation_data)
+    annotation_data, mode_metadata = get_annotation_data(secretobj)
+    LOG.debug('returning (%s, %s, %s, %s)' % (certname, expiration_date, annotation_data, mode_metadata))
+    return (certname, expiration_date, annotation_data, mode_metadata)
 
 
 def get_annotation_data(secretobj):
@@ -171,6 +191,11 @@ def get_annotation_data(secretobj):
     annotation_dict = dict()
     patch_needed = False
 
+    mode_metadata = get_default_mode_metadata()
+    mode_metadata[SNAPSHOT_KEY_MODE] = MODE_SECRET
+    mode_metadata[SNAPSHOT_KEY_k8s_ns] = ns
+    mode_metadata[SNAPSHOT_KEY_k8s_secret] = secretobj.metadata.name
+
     cm_managed = False
     # Annotations can be None, so need a check first
     if secretobj.metadata.annotations is not None:
@@ -181,6 +206,8 @@ def get_annotation_data(secretobj):
                 certobj = kube_op.get_custom_resource(sys_kube.CERT_MANAGER_GROUP, V1_ALPHA_3,
                                                         ns, PLURAL_NAME_CERT, crd_cert_name)
                 cm_managed = True
+                mode_metadata[SNAPSHOT_KEY_MODE] = MODE_CERT_MGR
+                mode_metadata[SNAPSHOT_KEY_k8s_cert] = crd_cert_name
 
                 # Note: unlike k8s secret obj, get_custom_resource() returns a dict()
                 certobj_annotation = certobj[METADATA][ANNOTATIONS]
@@ -204,7 +231,7 @@ def get_annotation_data(secretobj):
             secretobj.metadata.annotations = annotation_dict
             kube_op.kube_patch_secret(secretobj.metadata.name, ns, secretobj)
 
-    return annotation_dict
+    return annotation_dict, mode_metadata
 
 
 def process_annotation_data(annotation_dict):
@@ -251,25 +278,47 @@ def print_cert_snapshot():
     LOG.info('Cert snapshot = %s' % CERT_SNAPSHOT)
 
 
-def add_cert_snapshot(certname, expirydate, annotation_data):
+def add_cert_snapshot(certname, expirydate, annotation_data, mode_metadata):
     global CERT_SNAPSHOT
     internaldict = dict()
     internaldict[SNAPSHOT_KEY_EXPDATE] = expirydate
-    internaldict[constants.CERT_ALARM_ANNOTATION_ALARM] = \
-                    annotation_data[constants.CERT_ALARM_ANNOTATION_ALARM]
-    internaldict[constants.CERT_ALARM_ANNOTATION_ALARM_BEFORE] = \
-                    annotation_data[constants.CERT_ALARM_ANNOTATION_ALARM_BEFORE]
-    internaldict[constants.CERT_ALARM_ANNOTATION_ALARM_SEVERITY] = \
-                    annotation_data[constants.CERT_ALARM_ANNOTATION_ALARM_SEVERITY]
-    internaldict[constants.CERT_ALARM_ANNOTATION_ALARM_TEXT] = \
-                    annotation_data[constants.CERT_ALARM_ANNOTATION_ALARM_TEXT]
+    internaldict.update(annotation_data)
+    internaldict.update(mode_metadata)
     CERT_SNAPSHOT[certname] = internaldict
 
 
 def get_default_annotation_values():
-    ret = dict()
-    ret[constants.CERT_ALARM_ANNOTATION_ALARM] = constants.CERT_ALARM_DEFAULT_ANNOTATION_ALARM
-    ret[constants.CERT_ALARM_ANNOTATION_ALARM_BEFORE] = constants.CERT_ALARM_DEFAULT_ANNOTATION_ALARM_BEFORE
-    ret[constants.CERT_ALARM_ANNOTATION_ALARM_SEVERITY] = constants.CERT_ALARM_DEFAULT_ANNOTATION_ALARM_SEVERITY
-    ret[constants.CERT_ALARM_ANNOTATION_ALARM_TEXT] = constants.CERT_ALARM_DEFAULT_ANNOTATION_ALARM_TEXT
-    return ret
+    return {
+        constants.CERT_ALARM_ANNOTATION_ALARM:
+            constants.CERT_ALARM_DEFAULT_ANNOTATION_ALARM,
+        constants.CERT_ALARM_ANNOTATION_ALARM_BEFORE:
+            constants.CERT_ALARM_DEFAULT_ANNOTATION_ALARM_BEFORE,
+        constants.CERT_ALARM_ANNOTATION_ALARM_SEVERITY:
+            constants.CERT_ALARM_DEFAULT_ANNOTATION_ALARM_SEVERITY,
+        constants.CERT_ALARM_ANNOTATION_ALARM_TEXT:
+            constants.CERT_ALARM_DEFAULT_ANNOTATION_ALARM_TEXT
+    }
+
+
+def get_default_mode_metadata():
+    return {
+        SNAPSHOT_KEY_MODE: "",
+        SNAPSHOT_KEY_uuid: "",
+        SNAPSHOT_KEY_k8s_ns: "",
+        SNAPSHOT_KEY_k8s_cert: "",
+        SNAPSHOT_KEY_k8s_secret: ""
+    }
+
+
+def get_file_mode_metadata(certname):
+    mode_metadata = get_default_mode_metadata()
+    # For k8s_root_ca and etcd, set "other". Rest should have UUID in sysinv db.
+    # In case of ssl & docker, if managed by cert_mgr, this wont be called from run_full_audit()
+    # so, can assume that we will have UUID in db
+    if certname is constants.CERT_MODE_KUBERNETES_ROOT_CA or certname is constants.CERT_MODE_ETCD:
+        mode_metadata[SNAPSHOT_KEY_MODE] = MODE_OTHER
+    else:
+        mode_metadata[SNAPSHOT_KEY_MODE] = MODE_UUID
+        # TODO() get UUID from DB
+
+    return mode_metadata

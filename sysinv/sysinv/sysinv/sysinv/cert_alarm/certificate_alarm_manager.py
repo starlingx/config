@@ -11,6 +11,7 @@ from oslo_config import cfg
 from oslo_log import log
 from oslo_service import periodic_task
 
+from sysinv.cert_alarm import fm as fm_mgr
 from sysinv.cert_alarm import utils
 from sysinv.common import constants
 
@@ -34,6 +35,7 @@ class CertificateAlarmManager(periodic_task.PeriodicTasks):
         super(CertificateAlarmManager, self).__init__(CONF)
         self.audit_thread = None
         self.active_alarm_audit_thread = None
+        self.fm_obj = fm_mgr.FaultApiMgr()
 
     def periodic_tasks(self, context, raise_on_error=False):
         """Tasks to be run at a periodic interval."""
@@ -60,11 +62,14 @@ class CertificateAlarmManager(periodic_task.PeriodicTasks):
                 LOG.info('Number of TLS secrets to process=%d' % len(all_secrets))
                 for item in all_secrets:
                     LOG.info('Processing item: %s' % item.metadata.name)
-                    (certname_secret, exp_date_secret, anno_data_secret) = \
+                    (certname_secret, exp_date_secret, anno_data_secret, mode_metadata) = \
                             utils.collect_certificate_data_from_kube_secret(item)
                     # if cert not present, exp_date will be None
                     if exp_date_secret is not None:
-                        utils.add_cert_snapshot(certname_secret, exp_date_secret, anno_data_secret)
+                        utils.add_cert_snapshot(certname_secret,
+                                                exp_date_secret,
+                                                anno_data_secret,
+                                                mode_metadata)
         except Exception as e:
             LOG.error(e)
 
@@ -75,10 +80,14 @@ class CertificateAlarmManager(periodic_task.PeriodicTasks):
             if utils.is_certname_already_processed(key) is True:
                 continue
 
-            (certname_file, exp_date_file, anno_data_file) = utils.collect_certificate_data_from_file(key, value)
+            (certname_file, exp_date_file, anno_data_file, mode_metadata_file) = \
+                    utils.collect_certificate_data_from_file(key, value)
             # if cert not present, exp_date will be None
             if exp_date_file is not None:
-                utils.add_cert_snapshot(certname_file, exp_date_file, anno_data_file)
+                utils.add_cert_snapshot(certname_file,
+                                        exp_date_file,
+                                        anno_data_file,
+                                        mode_metadata_file)
 
         # 3. Process SSL_CA certificates (special case, since there can be multiple files)
         LOG.info('Processing (3/3) ssl_ca certificate files...')
@@ -87,7 +96,7 @@ class CertificateAlarmManager(periodic_task.PeriodicTasks):
         for entry in ssl_ca_data_list:
             # if cert not present, exp_date will be None
             if entry[1] is not None:
-                utils.add_cert_snapshot(entry[0], entry[1], entry[2])
+                utils.add_cert_snapshot(entry[0], entry[1], entry[2], entry[3])
 
         utils.print_cert_snapshot()
 
@@ -109,7 +118,7 @@ class CertificateAlarmManager(periodic_task.PeriodicTasks):
         self.run_full_audit()
 
         LOG.info('Cert-alarm active alarms auditing interval %s' %
-                CONF.certalarm.active_alarm_audit_interval)
+                 CONF.certalarm.active_alarm_audit_interval)
         self.active_alarm_audit_thread = greenthread.spawn(self.active_alarm_audits)
 
     def stop_audits(self):

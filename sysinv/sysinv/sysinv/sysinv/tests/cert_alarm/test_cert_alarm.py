@@ -7,7 +7,6 @@
 """Test class for Sysinv CertAlarm"""
 
 from datetime import datetime
-from datetime import timedelta
 import os.path
 from OpenSSL import crypto
 
@@ -77,6 +76,13 @@ class CertAlarmTestCase(base.DbTestCase):
         self.assertIn(constants.CERT_ALARM_ANNOTATION_ALARM_BEFORE, annotation_data)
         self.assertIn(constants.CERT_ALARM_ANNOTATION_ALARM_SEVERITY, annotation_data)
         self.assertIn(constants.CERT_ALARM_ANNOTATION_ALARM_TEXT, annotation_data)
+        mode_metadata = ret[3]
+        self.assertIsNotNone(mode_metadata)
+        self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_MODE, mode_metadata)
+        self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_uuid, mode_metadata)
+        self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_k8s_ns, mode_metadata)
+        self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_k8s_cert, mode_metadata)
+        self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_k8s_secret, mode_metadata)
 
     def test_process_annotation_data(self):
         # 1. Test with blank dict - should return default annotations + patch_needed True
@@ -160,17 +166,16 @@ class CertAlarmTestCase(base.DbTestCase):
         certname1 = 'c1'
         certname2 = 'c2'
         now = datetime.now()
-        now2 = datetime.now() - timedelta(days=1)
-        ann_data1 = cert_alarm_utils.get_default_annotation_values()
-        ann_data2 = cert_alarm_utils.get_default_annotation_values()
-        cert_alarm_utils.add_cert_snapshot(certname1, now, ann_data1)
-        cert_alarm_utils.add_cert_snapshot(certname2, now2, ann_data2)
+        ann_data = cert_alarm_utils.get_default_annotation_values()
+        mode_metadata = cert_alarm_utils.get_default_mode_metadata()
+        cert_alarm_utils.add_cert_snapshot(certname1, now, ann_data, mode_metadata)
+        cert_alarm_utils.add_cert_snapshot(certname2, now, ann_data, mode_metadata)
 
         self.assertEqual(len(cert_alarm_utils.CERT_SNAPSHOT), 2)
         item1 = cert_alarm_utils.CERT_SNAPSHOT[certname1]
         self.assertEqual(item1[cert_alarm_utils.SNAPSHOT_KEY_EXPDATE], now)
         item2 = cert_alarm_utils.CERT_SNAPSHOT[certname2]
-        self.assertEqual(item2[cert_alarm_utils.SNAPSHOT_KEY_EXPDATE], now2)
+        self.assertEqual(item2[cert_alarm_utils.SNAPSHOT_KEY_EXPDATE], now)
 
         cert_alarm_utils.reset_cert_snapshot()
         self.assertEqual(len(cert_alarm_utils.CERT_SNAPSHOT), 0)
@@ -190,3 +195,17 @@ class CertAlarmTestCase(base.DbTestCase):
                         constants.CERT_ALARM_DEFAULT_ANNOTATION_ALARM_SEVERITY)
         self.assertEqual(data[constants.CERT_ALARM_ANNOTATION_ALARM_TEXT],
                         constants.CERT_ALARM_DEFAULT_ANNOTATION_ALARM_TEXT)
+
+    def test_get_default_mode_metadata(self):
+        data = cert_alarm_utils.get_default_mode_metadata()
+        self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_MODE, data)
+        self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_uuid, data)
+        self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_k8s_ns, data)
+        self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_k8s_cert, data)
+        self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_k8s_secret, data)
+
+        self.assertEqual(data[cert_alarm_utils.SNAPSHOT_KEY_MODE], "")
+        self.assertEqual(data[cert_alarm_utils.SNAPSHOT_KEY_uuid], "")
+        self.assertEqual(data[cert_alarm_utils.SNAPSHOT_KEY_k8s_ns], "")
+        self.assertEqual(data[cert_alarm_utils.SNAPSHOT_KEY_k8s_cert], "")
+        self.assertEqual(data[cert_alarm_utils.SNAPSHOT_KEY_k8s_secret], "")
