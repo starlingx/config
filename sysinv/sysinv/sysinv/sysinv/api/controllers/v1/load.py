@@ -22,6 +22,7 @@ import jsonpatch
 import os
 import pecan
 from pecan import rest
+import psutil
 import six
 import shutil
 import socket
@@ -30,6 +31,7 @@ import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
+from eventlet.green import subprocess
 from oslo_log import log
 from pecan import expose
 from pecan import request
@@ -264,27 +266,36 @@ class LoadController(rest.RestController):
             fn = os.path.join(staging_dir,
                               os.path.basename(file_item.filename))
             if hasattr(file_item.file, 'fileno'):
+                # Only proceed if there is space available for copying
+                file_size = os.stat(file_item.filename).st_size
+                avail_space = psutil.disk_usage('/scratch').free
+                if (avail_space < file_size):
+                    LOG.error("Failed to upload load file %s, not enough space on /scratch "
+                              "partition: %d bytes available " % (fn, avail_space))
+                    return None
+
                 # Large iso file
                 dst = os.open(fn, os.O_WRONLY | os.O_CREAT)
+                subprocess.check_call(["/usr/bin/fallocate",  # pylint: disable=not-callable
+                                       "-l " + str(file_size), fn])
                 src = file_item.file.fileno()
                 size = 64 * 1024
                 n = size
                 while n >= size:
                     s = os.read(src, size)
                     n = os.write(dst, s)
-                    # Write might not throw an exception when there is no space available
-                    if n < s:
-                        LOG.error("Failed to upload load file %s, check /scratch partition space" % fn)
-                        if dst:
-                            os.close(dst)
-                        os.remove(fn)
-                        return None
 
                 os.close(dst)
             else:
                 # Small signature file
                 with open(fn, 'wb') as sigfile:
                     sigfile.write(file_item.file.read())
+        except subprocess.CalledProcessError as e:
+            LOG.error("Failed to upload load file %s, /usr/bin/fallocate error: %s "
+                      % (fn, e.output))
+            os.close(dst)
+            os.remove(fn)
+            return None
         except Exception:
             if dst:
                 os.close(dst)
