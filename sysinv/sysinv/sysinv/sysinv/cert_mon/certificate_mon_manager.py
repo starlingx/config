@@ -95,7 +95,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         token = utils.get_token()
         subclouds = utils.get_subclouds_from_dcmanager(token)
         for sc in subclouds:
-            if sc[utils.ENDPOINT_TYPE_DC_CERT] == utils.SYNC_STATUS_OUT_OF_SYNC:
+            if sc[utils.ENDPOINT_TYPE_DC_CERT] != utils.SYNC_STATUS_IN_SYNC:
                 self.subclouds_to_audit.append(sc['name'])
                 LOG.info('%s is out-of-sync, adding it to audit.' % sc['name'])
                 number_of_sc_to_audit = number_of_sc_to_audit + 1
@@ -247,11 +247,13 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         for mon_thread in self.mon_threads:
             mon_thread.kill()
             mon_thread.wait()
+        self.mon_threads = []
 
     def stop_audit(self):
         if self.audit_thread:
             self.audit_thread.kill()
             self.audit_thread.wait()
+            self.audit_thread = None
 
     def audit_cert(self):
         while True:
