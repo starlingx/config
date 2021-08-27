@@ -11098,3 +11098,584 @@ itemNotFound (404)
    }
 
 This operation does not accept a request body.
+
+-------------------------
+Kubernetes rootca update
+-------------------------
+
+These APIs allow the renewal of kubernetes root certificate authority, dividing the whole procedure in steps to be sequentially taken, and expose 'state' to allow for management or orchestration.
+
+******************************************
+Start kubernetes root ca update procedure
+******************************************
+
+.. rest_method:: POST /v1/kube_rootca_update
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "force", "query", "xsd:boolean", "A boolean flag indicating if the API should ignore non-management affecting alarms on eventual health checks (the parameter is passed as part of the URL, ie, /v1/kube_rootca_update/?force=True)."
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "uuid", "plain", "csapi:UUID", "Unique identifier of kube_rootca_update object"
+   "state", "plain", "xsd:string", "The current state of the procedure on the cluster."
+   "from_rootca_cert", "plain", "xsd:string", "An identifier of the current kubernetes root ca to be updated on the procedure."
+   "to_rootca_cert", "plain", "xsd:string", "The target root ca to be active as new kubernetes root certificate authority at the end of the procedure."
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created."
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated."
+   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
+   "capabilities (Optional)", "plain", "xsd:string", "Additional capabilities info about kubernetes rootca procedure."
+
+::
+
+   {
+      "uuid": "ec742b42-199a-4df7-bd83-e9465a8e0e9f",
+      "links": [
+         {
+            "href": "http://192.168.204.1:6385/v1/kube_rootca_update/ec742b42-199a-4df7-bd83-e9465a8e0e9f",
+            "rel": "self"
+         },
+         {
+            "href": "http://192.168.204.1:6385/kube_rootca_update/ec742b42-199a-4df7-bd83-e9465a8e0e9f",
+            "rel": "bookmark"
+         }
+      ],
+      "to_rootca_cert": null,
+      "created_at": "2021-08-25T19:09:45.717195+00:00",
+      "from_rootca_cert": "d70efa2daaee06f8-70634176318091904949557575469846596498",
+      "updated_at": null,
+      "capabilities": {},
+      "state": "update-started",
+      "id": 24
+   }
+
+This operation does not accept a request body.
+
+********************************
+Generate new kubernetes root ca
+********************************
+
+.. rest_method:: POST /v1/kube_rootca_update/generate_cert
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "expiry_date (Optional)", "plain", "xsd:string", "An ISO 8601 (YYYY-MM-DD) string representing the date in which the certificate should expire."
+   "subject (Optional)", "plain", "xsd:string", "A string representing the subject to be set on the generated certificate. It should be given in the format <parameter_initials>=<value> and supports C(Country), ST(State/Province), L(Locality), O(Organization), OU(OrganizationalUnit) and CN(CommonName)."
+
+::
+
+   {
+      "expiry_date": "2022-03-14",
+      "subject": "CN=kubernetes C=US"
+   }
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "success", "plain", "xsd:string", "Certificate identifier composed by a combination of  <issuer_hash>-<serial_number>"
+   "error", "plain", "xsd:string", "The error message in case something wrong happen on the API execution"
+
+::
+
+   {
+      "success": "d70efa2daaee06f8-314121337707572303468615715651317888841",
+      "error": ""
+   }
+
+This operation does not accept a request body.
+
+******************************
+Upload new kubernetes root ca
+******************************
+
+.. rest_method:: POST /v1/kube_rootca_update/upload_cert
+
+Accepts a PEM file containing the X509 certificate and the corresponding private key.
+
+**Normal response codes**
+
+204
+
+**Error response codes**
+
+serviceUnavailable (503), badRequest (400), unauthorized (401),
+forbidden (403), badMethod (405), overLimit (413)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "Content-Type multipart/form-data", "plain", "xsd:string", "The content of a file. e.g. if using curl, this would be specified as: curl -F name=@full_path_of_filename <div class=""example""><pre>file=@/home/sysadmin/server-with-key.pem </pre></div>"
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "success", "plain", "xsd:string", "Certificate identifier composed by a combination of <issuer_hash>-<serial_number>"
+   "error", "plain", "xsd:string", "The error message in case something wrong happen on the API execution"
+
+::
+
+   {
+      "success": "d70efa2daaee06f8-314121337707572303468615715651317888841",
+      "error": ""
+   }
+
+****************************************************
+Update host for kubernetes root ca update procedure
+****************************************************
+
+.. rest_method:: POST /v1/ihosts/{host_uuid}/kube_update_ca
+
+**Normal response codes**
+
+204
+
+**Error response codes**
+
+serviceUnavailable (503), badRequest (400), unauthorized (401),
+forbidden (403), badMethod (405), overLimit (413)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "host_uuid", "URI", "csapi:UUID", "The UUID from the host in which the configuration will be applied."
+   "phase", "plain", "xsd:string", "An argument specifying which phase of the procedure should be applied to the host."
+
+::
+
+   {
+      "phase": "trust-both-cas"
+   }
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "uuid", "plain", "csapi:UUID", "Unique identifier of kube_rootca_update object"
+   "hostname", "plain", "xsd:string", "The host name."
+   "personality", "plain", "xsd:string", "The host personality."
+   "state", "plain", "xsd:string", "The current state of the procedure on the host."
+   "effective_rootca_cert", "plain", "xsd:string", "An identifier of the current kubernetes root ca to be updated on the procedure."
+   "target_rootca_cert", "plain", "xsd:string", "The target root ca to be active as new kubernetes root certificate authority at the end of the procedure."
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created."
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated."
+   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
+   "capabilities (Optional)", "plain", "xsd:string", "Additional capabilities info about kubernetes rootca procedure on host."
+
+::
+
+   {
+      "target_rootca_cert":"d70efa2daaee06f8-10245860497885060024",
+      "links":[
+         {
+            "href":"http://192.168.204.1:6385/v1/kube_rootca_host_update/d1c215cf-bc1d-40a1-bffd-08009781c93a",
+            "rel":"self"
+         },
+         {
+            "href":"http://192.168.204.1:6385/kube_rootca_host_update/d1c215cf-bc1d-40a1-bffd-08009781c93a",
+            "rel":"bookmark"
+         }
+      ],
+      "created_at":"2021-08-26T18:35:47.979692+00:00",
+      "hostname":"controller-0",
+      "updated_at":"2021-08-27T10:01:50.686658+00:00",
+      "capabilities":{},
+      "state":"updating-host-update-certs",
+      "personality":"controller",
+      "id":55,
+      "effective_rootca_cert":"d70efa2daaee06f8-190956970562491901425726716176051336686",
+      "uuid":"d1c215cf-bc1d-40a1-bffd-08009781c93a"
+   }
+
+***********************************
+Kubernetes root CA update for pods
+***********************************
+
+.. rest_method:: POST /v1/kube_rootca_update/pods
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "phase", "plain", "xsd:string", "An argument specifying which phase of the procedure should be applied to the host."
+
+::
+
+   {
+      "phase": "trust-both-cas"
+   }
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "uuid", "plain", "csapi:UUID", "Unique identifier of kube_rootca_update object"
+   "state", "plain", "xsd:string", "The current state of the procedure on the cluster."
+   "from_rootca_cert", "plain", "xsd:string", "An identifier of the current kubernetes root ca to be updated on the procedure."
+   "to_rootca_cert", "plain", "xsd:string", "The target root ca to be active as new kubernetes root certificate authority at the end of the procedure."
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created."
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated."
+   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
+   "capabilities (Optional)", "plain", "xsd:string", "Additional capabilities info about kubernetes rootca procedure."
+
+::
+
+   {
+      "uuid":"afdcb990-eab0-44b3-a86d-b4eb0d8565f9",
+      "links":[
+         {
+            "href":"http://192.168.204.1:6385/v1/kube_rootca_update/afdcb990-eab0-44b3-a86d-b4eb0d8565f9",
+            "rel":"self"
+         },
+         {
+            "href":"http://192.168.204.1:6385/kube_rootca_update/afdcb990-eab0-44b3-a86d-b4eb0d8565f9",
+            "rel":"bookmark"
+         }
+      ],
+      "to_rootca_cert":"d70efa2daaee06f8-10245860497885060024",
+      "created_at":"2021-08-26T18:35:47.936898+00:00",
+      "from_rootca_cert":"d70efa2daaee06f8-190956970562491901425726716176051336686",
+      "updated_at":"2021-08-27T10:19:06.987527+00:00",
+      "capabilities":{},
+      "state":"updating-pods-trust-new-ca",
+      "id":28
+   }
+
+This operation does not accept a request body.
+
+*********************************************
+Complete kubernetes root ca update procedure
+*********************************************
+
+.. rest_method:: PATCH /v1/kube_rootca_update
+
+**Normal response codes**
+
+204
+
+**Error response codes**
+
+serviceUnavailable (503), badRequest (400), unauthorized (401),
+forbidden (403), badMethod (405), overLimit (413)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "state", "plain", "xsd:string", "The new state to be set in kube_rootca_update object"
+   "force", "query", "xsd:boolean", "A boolean flag indicating if the API should ignore non-management affecting alarms on eventual health checks (the parameter is passed as part of the URL, ie, /v1/kube_rootca_update/?force=True)."
+
+::
+
+   [
+      {
+         "path": "/state",
+         "value": "update-completed",
+         "op": "replace"
+      }
+   ]
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "uuid", "plain", "csapi:UUID", "Unique identifier of kube_rootca_update object"
+   "state", "plain", "xsd:string", "The current state of the procedure on the cluster."
+   "from_rootca_cert", "plain", "xsd:string", "An identifier of the current kubernetes root ca to be updated on the procedure."
+   "to_rootca_cert", "plain", "xsd:string", "The target root ca to be active as new kubernetes root certificate authority at the end of the procedure."
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created."
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated."
+   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
+   "capabilities (Optional)", "plain", "xsd:string", "Additional capabilities info about kubernetes rootca procedure."
+
+::
+
+   {
+      "uuid":"beb28c6f-a461-4be7-8c01-c3ce82f2a1ab",
+      "links":[
+         {
+            "href":"http://192.168.204.1:6385/v1/kube_rootca_update/beb28c6f-a461-4be7-8c01-c3ce82f2a1ab",
+            "rel":"self"
+         },
+         {
+            "href":"http://192.168.204.1:6385/kube_rootca_update/beb28c6f-a461-4be7-8c01-c3ce82f2a1ab",
+            "rel":"bookmark"
+         }
+      ],
+      "to_rootca_cert":"d70efa2daaee06f8-190956970562491901425726716176051336686",
+      "created_at":"2021-08-26T17:35:57.757823+00:00",
+      "from_rootca_cert":"d70efa2daaee06f8-70634176318091904949557575469846596498",
+      "updated_at":"2021-08-26T18:25:02.759171+00:00",
+      "capabilities":{},
+      "state":"update-completed",
+      "id":27
+   }
+
+******************************************
+Abort kubernetes root ca update procedure
+******************************************
+
+.. rest_method:: PATCH /v1/kube_rootca_update
+
+**Normal response codes**
+
+204
+
+**Error response codes**
+
+serviceUnavailable (503), badRequest (400), unauthorized (401),
+forbidden (403), badMethod (405), overLimit (413)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "state", "plain", "xsd:string", "The new state to be set in kube_rootca_update object"
+   "force", "query", "xsd:boolean", "A boolean flag indicating if the API should ignore non-management affecting alarms on eventual health checks (the parameter is passed as part of the URL, ie, /v1/kube_rootca_update/?force=True)."
+
+::
+
+   [
+      {
+         "path": "/state",
+         "value": "update-aborted",
+         "op": "replace"
+      }
+   ]
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "uuid", "plain", "csapi:UUID", "Unique identifier of kube_rootca_update object"
+   "state", "plain", "xsd:string", "The current state of the procedure on the cluster."
+   "from_rootca_cert", "plain", "xsd:string", "An identifier of the current kubernetes root ca to be updated on the procedure."
+   "to_rootca_cert", "plain", "xsd:string", "The target root ca to be active as new kubernetes root certificate authority at the end of the procedure."
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created."
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated."
+   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
+   "capabilities (Optional)", "plain", "xsd:string", "Additional capabilities info about kubernetes rootca procedure."
+
+::
+
+   {
+      "uuid":"beb28c6f-a461-4be7-8c01-c3ce82f2a1ab",
+      "links":[
+         {
+            "href":"http://192.168.204.1:6385/v1/kube_rootca_update/beb28c6f-a461-4be7-8c01-c3ce82f2a1ab",
+            "rel":"self"
+         },
+         {
+            "href":"http://192.168.204.1:6385/kube_rootca_update/beb28c6f-a461-4be7-8c01-c3ce82f2a1ab",
+            "rel":"bookmark"
+         }
+      ],
+      "to_rootca_cert":"d70efa2daaee06f8-190956970562491901425726716176051336686",
+      "created_at":"2021-08-26T17:35:57.757823+00:00",
+      "from_rootca_cert":"d70efa2daaee06f8-70634176318091904949557575469846596498",
+      "updated_at":"2021-08-26T18:25:02.759171+00:00",
+      "capabilities":{},
+      "state":"update-completed",
+      "id":27
+   }
+
+*******************************************************
+Show state of kube root ca update procedure on cluster
+*******************************************************
+
+.. rest_method:: GET /v1/kube_rootca_update
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+serviceUnavailable (503), badRequest (400), unauthorized (401),
+forbidden (403), badMethod (405), overLimit (413)
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "kube_rootca_updates", "plain", "xsd:list", "The list of kube rootca updates happening on cluster."
+   "uuid", "plain", "csapi:UUID", "Unique identifier of kube_rootca_update object"
+   "state", "plain", "xsd:string", "The current state of the procedure on the host."
+   "from_rootca_cert", "plain", "xsd:string", "An identifier of the current kubernetes root ca to be updated on the procedure."
+   "to_rootca_cert", "plain", "xsd:string", "The target root ca to be active as new kubernetes root certificate authority at the end of the procedure."
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created."
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated."
+   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
+   "capabilities (Optional)", "plain", "xsd:string", "Additional capabilities info about kubernetes rootca procedure."
+
+::
+
+   {
+      "kube_rootca_updates":[
+         {
+            "uuid":"afdcb990-eab0-44b3-a86d-b4eb0d8565f9",
+            "links":[
+               {
+                  "href":"http://192.168.204.1:6385/v1/kube_rootca_update/afdcb990-eab0-44b3-a86d-b4eb0d8565f9",
+                  "rel":"self"
+               },
+               {
+                  "href":"http://192.168.204.1:6385/kube_rootca_update/afdcb990-eab0-44b3-a86d-b4eb0d8565f9",
+                  "rel":"bookmark"
+               }
+            ],
+            "to_rootca_cert":"d70efa2daaee06f8-10245860497885060024",
+            "created_at":"2021-08-26T18:35:47.936898+00:00",
+            "from_rootca_cert":"d70efa2daaee06f8-190956970562491901425726716176051336686",
+            "updated_at":"2021-08-27T09:12:00.491276+00:00",
+            "capabilities":{},
+            "state":"updated-host-trust-both-cas",
+            "id":28
+         }
+      ]
+   }
+
+This operation does not accept a request body.
+
+***************************************************
+List hosts states of kube root ca update procedure
+***************************************************
+
+.. rest_method:: GET /v1/kube_rootca_update/hosts
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+serviceUnavailable (503), badRequest (400), unauthorized (401),
+forbidden (403), badMethod (405), overLimit (413)
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "kube_host_updates", "plain", "xsd:list", "The list of kube rootca updates describing each host from its perspective."
+   "uuid", "plain", "csapi:UUID", "Unique identifier of kube_rootca_update object"
+   "hostname", "plain", "xsd:string", "The host name."
+   "personality", "plain", "xsd:string", "The host personality."
+   "state", "plain", "xsd:string", "The current state of the procedure on the host."
+   "effective_rootca_cert", "plain", "xsd:string", "An identifier of the current kubernetes root ca to be updated on the procedure."
+   "target_rootca_cert", "plain", "xsd:string", "The target root ca to be active as new kubernetes root certificate authority at the end of the procedure."
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created."
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated."
+   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
+   "capabilities (Optional)", "plain", "xsd:string", "Additional capabilities info about kubernetes rootca procedure on host."
+
+::
+
+   {
+      "kube_host_updates":[
+         {
+            "target_rootca_cert":"d70efa2daaee06f8-190956970562491901425726716176051336686",
+            "links":[
+               {
+                  "href":"http://192.168.204.1:6385/v1/kube_rootca_host_update/cba1ed8c-4142-42aa-8e98-99dfd558aefb",
+                  "rel":"self"
+               },
+               {
+                  "href":"http://192.168.204.1:6385/kube_rootca_host_update/cba1ed8c-4142-42aa-8e98-99dfd558aefb",
+                  "rel":"bookmark"
+               }
+            ],
+            "created_at":"2021-08-26T17:35:57.822617+00:00",
+            "hostname":"controller-0",
+            "updated_at":"2021-08-26T17:38:05.754691+00:00",
+            "capabilities":{},
+            "state":"updated-host-trust-both-cas",
+            "personality":"controller",
+            "id":53,
+            "effective_rootca_cert":"d70efa2daaee06f8-70634176318091904949557575469846596498",
+            "uuid":"cba1ed8c-4142-42aa-8e98-99dfd558aefb"
+         },
+         {
+            "target_rootca_cert":"d70efa2daaee06f8-190956970562491901425726716176051336686",
+            "links":[
+               {
+                  "href":"http://192.168.204.1:6385/v1/kube_rootca_host_update/a9290c32-20d7-4b18-b1b7-582f5af87ec2",
+                  "rel":"self"
+               },
+               {
+                  "href":"http://192.168.204.1:6385/kube_rootca_host_update/a9290c32-20d7-4b18-b1b7-582f5af87ec2",
+                  "rel":"bookmark"
+               }
+            ],
+            "created_at":"2021-08-26T17:35:57.846353+00:00",
+            "hostname":"controller-1",
+            "updated_at":"2021-08-26T17:38:33.028668+00:00",
+            "capabilities":{},
+            "state":"updated-host-trust-both-cas",
+            "personality":"controller",
+            "id":54,
+            "effective_rootca_cert":"d70efa2daaee06f8-70634176318091904949557575469846596498",
+            "uuid":"a9290c32-20d7-4b18-b1b7-582f5af87ec2"
+         }
+      ]
+   }
+
+This operation does not accept a request body.
