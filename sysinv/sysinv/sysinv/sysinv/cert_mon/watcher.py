@@ -19,9 +19,9 @@
 #
 import re
 import hashlib
-from datetime import datetime
 from dateutil.parser import parse
 from kubernetes import client
+from kubernetes.client.rest import ApiException
 from kubernetes import watch
 from kubernetes.client import Configuration
 from kubernetes import config
@@ -145,9 +145,9 @@ class CertUpdateEvent(object):
         try:
             self.listener.notify_changed(self.event_data)
         except Exception as e:
-            LOG.error('Reattempt failed [#%s]: %s, event: %s'
-                      % (self.number_of_reattempt, e, self.event_data))
-
+            LOG.error('%s update failed [attempt #%s]: %s, event: %s' %
+                      (self.__class__.__name__, self.number_of_reattempt, e,
+                       self.event_data))
             if not isinstance(e, URLError):
                 LOG.exception(e)
             self.number_of_reattempt = self.number_of_reattempt + 1
@@ -212,6 +212,30 @@ class CertWatcher(object):
     def register_listener(self, listener):
         return self.listeners.append(listener)
 
+    def _update_latest_resource_version(self, cc_api):
+        """Retrieve current resource_version for use in watch (re-)registration
+
+        Note from the API:
+        >  The ResourceVersion of the top-level list is what should
+        >  be used when starting a watch to observe events occurring
+        >  after that list was populated.
+
+        This method retrieves this top-level resource version.
+        """
+        try:
+            response = cc_api.list_namespaced_secret(self.namespace)
+            self.last_resource_version = \
+                response.metadata.resource_version
+            LOG.debug(
+                ("%s: update last_resource_version: %s "
+                 "for namespace: %s")
+                % (self.__class__.__name__, self.last_resource_version, self.namespace))
+        except Exception:
+            self.last_resource_version = None
+            LOG.exception(
+                "Failed to retrieve resource_version, namespace: %s"
+                % self.namespace)
+
     def start_watch(self, on_success, on_error):
         config.load_kube_config(KUBE_CONFIG_PATH)
         c = Configuration()
@@ -221,6 +245,7 @@ class CertWatcher(object):
         kube_watch = watch.Watch()
 
         kwargs = {'namespace': self.namespace}
+        self._update_latest_resource_version(ccApi)
         if self.last_resource_version is not None:
             # Include resource version in call to watch. Ensures we start watch
             # from same point of expiry. Reference:
@@ -228,65 +253,68 @@ class CertWatcher(object):
             # b4d3aad42dc23e7a6c0e5c032691f8dc385a786c/watch/watch.py#L119
             kwargs['resource_version'] = self.last_resource_version
 
-        LOG.info('Monitor secrets in %s using resource version: %s'
-                 % (self.namespace, self.last_resource_version))
+        LOG.info("%s: watching secrets in '%s' using resource version: %s"
+                 % (self.__class__.__name__,
+                    self.namespace,
+                    self.last_resource_version))
 
-        for item in kube_watch.stream(ccApi.list_namespaced_secret, **kwargs):
-            LOG.debug('Received new event: %s, %s'
-                      % (type(item.get('object')), item))
-            event_type = item.get('type')
-            if not event_type:
-                LOG.error(
-                    'Received unexpected event on watch, restarting it: %s'
-                    % item)
-                self.last_resource_version = None
-                kube_watch.stop()
-                return
-            if event_type == 'ERROR':
-                # Watch will be restarted, hopefully with the retrieved last
-                # resourceVersion
-                if 'raw_object' in item and item['raw_object'].get('code') == 410:
-                    # Expired watch. Retrieve current resource_version for use
-                    # in watch re-registration
-                    try:
-                        response = ccApi.list_namespaced_secret(self.namespace)
-                        self.last_resource_version = \
-                            response.metadata.resource_version
-                        LOG.debug(
-                            ("Setting last_resource_version: %s "
-                             "for namespace: %s")
-                            % (self.last_resource_version, self.namespace))
-                    except Exception as e:
-                        self.last_resource_version = None
-                        LOG.error(
-                            "Failed to retrieve resource_version, namespace: %s"
-                            % self.namespace)
-                        LOG.exception(e)
-
-                    LOG.info(
-                        ("Received expired event on watch '%s', "
-                         "restarting with resource_version: %s")
-                        % (self.namespace, self.last_resource_version))
-                else:
+        try:
+            for item in kube_watch.stream(ccApi.list_namespaced_secret, **kwargs):
+                LOG.debug('%s watch received new event: %s, %s'
+                          % (self.__class__.__name__, type(item.get('object')), item))
+                event_type = item.get('type')
+                if not event_type:
+                    LOG.error(("%s: received unexpected event on watch, "
+                               "restarting it: %s")
+                              % (self.__class__.__name__, item))
+                    self.last_resource_version = None
+                    kube_watch.stop()
+                    return
+                # Note: we should no longer receive event_type == 'ERROR'
+                # (see client code - it now raises an ApiException):
+                if event_type == 'ERROR':
                     # Unexpected error. Restart without resourceVersion.
                     self.last_resource_version = None
                     LOG.error(
-                        ("Received unexpected type=ERROR event on watch, "
-                         "restarting it: %s") % item)
-                kube_watch.stop()
-                return
+                        ("%s: received unexpected type=ERROR event on watch, "
+                         "restarting it: %s") % (self.__class__.__name__, item))
+                    kube_watch.stop()
+                    return
 
-            event_data = CertUpdateEventData(item)
-            for listener in self.listeners:
-                update_event = CertUpdateEvent(listener, event_data)
-                try:
-                    if listener.notify_changed(event_data):
-                        on_success(update_event.get_id())
-                except Exception as e:
-                    LOG.error("Monitoring action in namespace=%s failed: %s,  %s" % (self.namespace, event_data, e))
-                    if not isinstance(e, URLError):
-                        LOG.exception(e)
-                    on_error(update_event)
+                event_data = CertUpdateEventData(item)
+                for listener in self.listeners:
+                    update_event = CertUpdateEvent(listener, event_data)
+                    try:
+                        if listener.notify_changed(event_data):
+                            on_success(update_event.get_id())
+                    except Exception as e:
+                        LOG.error("%s: monitor action in namespace=%s failed: %s,  %s"
+                                  % (self.__class__.__name__, self.namespace, event_data, e))
+                        if not isinstance(e, URLError):
+                            LOG.exception(e)
+                        on_error(update_event)
+
+        except ApiException as ex:
+            if ex.status == 410:
+                # Expired watch. Retrieve current resource_version for use
+                # in watch re-registration, as per client API instructions
+                self._update_latest_resource_version(ccApi)
+
+                LOG.info(("%s: watch expired in '%s', "
+                          "restarting with resource_version: %s")
+                         % (self.__class__.__name__, self.namespace,
+                            self.last_resource_version))
+            else:
+                # Unexpected error. Restart without resourceVersion.
+                self.last_resource_version = None
+                LOG.exception(
+                    ("%s: received unexpected ApiException on watch, "
+                     "restarting it") % (self.__class__.__name__))
+            kube_watch.stop()
+            return
+        except Exception:
+            kube_watch.stop()
+            raise
 
 
 class DC_CertWatcher(CertWatcher):
@@ -343,7 +371,6 @@ class RegistryCert_CertWatcher(CertWatcher):
 class CertificateRenew(CertWatcherListener):
     def __init__(self, context):
         super(CertificateRenew, self).__init__(context)
-        self.monitor_start = datetime.now()
 
     def certificate_is_ready(self, event_data):
         if event_data.action in (SECRET_ACTION_TYPE_ADDED, SECRET_ACTION_TYPE_MODIFIED)\
