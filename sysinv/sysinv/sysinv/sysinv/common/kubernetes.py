@@ -960,6 +960,43 @@ class KubeOperator(object):
                        label_selector, field_selector, e)
             raise
 
+    def kube_delete_mutating_webhook_configuration(self, name, **kwargs):
+        c = self._get_kubernetesclient_admission_registration()
+        body = {}
+
+        if kwargs:
+            body.update(kwargs)
+
+        try:
+            c.delete_mutating_webhook_configuration(name, body)
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                LOG.warn("MutatingWebhookConfiguration %s "
+                         "not found." % name)
+            else:
+                LOG.error("Failed to clean up MutatingWebhookConfiguration "
+                          "%s : %s" % (name, e.body))
+                raise
+        except Exception as e:
+            LOG.error("Kubernetes exception "
+                      "in kube_delete_mutating_webhook_configuration: %s" % e)
+            raise
+
+    def kube_get_mutating_webhook_configurations_by_selector(self, label_selector, field_selector):
+        c = self._get_kubernetesclient_admission_registration()
+        try:
+            api_response = c.list_mutating_webhook_configuration(
+                label_selector="%s" % label_selector,
+                field_selector="%s" % field_selector)
+            LOG.debug("kube_get_mutating_webhook_configurations_by_selector "
+                      "Response: %s" % api_response)
+            return api_response.items
+        except ApiException as e:
+            LOG.error("Kubernetes exception in "
+                      "kube_get_mutating_webhook_configurations_by_selector %s/%s: %s",
+                       label_selector, field_selector, e)
+            raise
+
     def get_cert_secret(self, name, namespace, max_retries=4):
         for i in range(0, max_retries):
             secret = self.kube_get_secret(name, NAMESPACE_DEPLOYMENT)
