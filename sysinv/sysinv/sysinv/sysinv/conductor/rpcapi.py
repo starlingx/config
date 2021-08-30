@@ -1276,7 +1276,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        ihost_id=ihost_id))
 
     def start_import_load(self, context, path_to_iso, path_to_sig,
-                          import_active=False):
+                          import_active=False, timeout=180):
         """Synchronously, mount the ISO and validate the load for import
 
         :param context: request context.
@@ -1284,13 +1284,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param path_to_sig: the file path of the iso's detached signature on
                             this host
         :param import_active: boolean allow import of active load
+        :param timeout:       rpc call timeout in seconds
         :returns: the newly create load object.
         """
         return self.call(context,
                          self.make_msg('start_import_load',
                                        path_to_iso=path_to_iso,
                                        path_to_sig=path_to_sig,
-                                       import_active=import_active))
+                                       import_active=import_active),
+                         timeout=timeout)
 
     def import_load(self, context, path_to_iso, new_load):
         """Asynchronously, import a load and add it to the database
