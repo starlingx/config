@@ -181,7 +181,7 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
     def test_create(self):
         # Test creation of kubernetes rootca update
         create_dict = dbutils.get_test_kube_rootca_update()
-        result = self.post_json('/kube_rootca_update', create_dict,
+        result = self.post_json('/kube_rootca_update?force=False', create_dict,
                                 headers=self.headers)
 
         # Verify that the kubernetes rootca update has the expected attributes
@@ -206,7 +206,7 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
 
         # Test creation of kubernetes rootca update
         create_dict = dbutils.get_test_kube_rootca_update()
-        result = self.post_json('/kube_rootca_update', create_dict,
+        result = self.post_json('/kube_rootca_update?force=False', create_dict,
                                 headers=self.headers,
                                 expect_errors=True)
 
@@ -220,7 +220,7 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
         # Test creation of rootca update when a kubernetes rootca update already exists
         dbutils.create_test_kube_rootca_update()
         create_dict = dbutils.post_get_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATE_STARTED)
-        result = self.post_json('/kube_rootca_update', create_dict,
+        result = self.post_json('/kube_rootca_update?force=False', create_dict,
                                 headers=self.headers,
                                 expect_errors=True)
 
@@ -238,7 +238,7 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
             state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
         )
         create_dict = dbutils.post_get_test_kube_rootca_update()
-        result = self.post_json('/kube_rootca_update', create_dict,
+        result = self.post_json('/kube_rootca_update?force=False', create_dict,
                                 headers=self.headers,
                                 expect_errors=True)
 
@@ -257,7 +257,7 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
         dbutils.create_test_upgrade()
 
         create_dict = dbutils.post_get_test_kube_rootca_update()
-        result = self.post_json('/kube_rootca_update', create_dict,
+        result = self.post_json('/kube_rootca_update?force=False', create_dict,
                                 headers=self.headers,
                                 expect_errors=True)
 
@@ -368,7 +368,10 @@ class TestKubeRootCAUpdateComplete(TestKubeRootCAUpdate,
             state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
         self.fake_fm_client.alarm.list.return_value = [FAKE_ROOTCA_UPDATE_ALARM]
 
-        result = self.patch_json(self.url, {})
+        patch = [{'op': 'replace',
+                'path': '/state',
+                'value': 'update-completed'}]
+        result = self.patch_json(self.url + '?force=False', patch)
         result = result.json
 
         self.assertEqual(result['state'], kubernetes.KUBE_ROOTCA_UPDATE_COMPLETED)
@@ -385,15 +388,17 @@ class TestKubeRootCAUpdateComplete(TestKubeRootCAUpdate,
         host_updates = self.dbapi.kube_rootca_host_update_get_list()
         self.assertEqual(len(host_updates), 0)
 
-    def test_update_complete_force_update_exists(self):
+    def test_update_complete_force_pods_trustnewca_update_exists(self):
         dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
         dbutils.create_test_kube_rootca_host_update(host_id=self.host.id,
             state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
         dbutils.create_test_kube_rootca_host_update(host_id=self.host2.id,
             state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
-        self.fake_fm_client.alarm.list.return_value = [FAKE_ROOTCA_UPDATE_ALARM, FakeAlarm('900.401', "False")]
 
-        result = self.patch_json(self.url + '?force=True', {})
+        patch = [{'op': 'replace',
+                'path': '/state',
+                'value': 'update-aborted'}]
+        result = self.patch_json(self.url + '?force=False', patch)
         result = result.json
 
         self.assertEqual(result['state'], kubernetes.KUBE_ROOTCA_UPDATE_COMPLETED)
@@ -409,6 +414,32 @@ class TestKubeRootCAUpdateComplete(TestKubeRootCAUpdate,
 
         host_updates = self.dbapi.kube_rootca_host_update_get_list()
         self.assertEqual(len(host_updates), 0)
+
+    def test_update_complete_force_hosts_updatecerts_trustnewca_update_exists(self):
+        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA)
+        dbutils.create_test_kube_rootca_host_update(host_id=self.host.id,
+            state=kubernetes.KUBE_ROOTCA_UPDATED_HOST_UPDATECERTS)
+        dbutils.create_test_kube_rootca_host_update(host_id=self.host2.id,
+            state=kubernetes.KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA)
+
+        patch = [{'op': 'replace',
+                'path': '/state',
+                'value': 'update-aborted'}]
+        result = self.patch_json(self.url + '?force=False', patch)
+        result = result.json
+
+        self.assertEqual(result['state'], kubernetes.KUBE_ROOTCA_UPDATE_ABORTED)
+        self.assertEqual(result['from_rootca_cert'], 'oldCertSerial')
+        self.assertEqual(result['to_rootca_cert'], 'newCertSerial')
+
+        # Verify that the kube_rootca_update table is update with "update-aborted"
+        update_entry = self.dbapi.kube_rootca_update_get_one()
+        self.assertNotEqual(update_entry, None)
+        self.assertEqual(update_entry.state, kubernetes.KUBE_ROOTCA_UPDATE_ABORTED)
+
+        # Verify that the kube_rootca_host_update table is cleaned
+        host_list = self.dbapi.kube_rootca_host_update_get_list()
+        self.assertEqual(len(host_list), 0)
 
     def test_update_complete_invalid_health(self):
         dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
@@ -418,7 +449,11 @@ class TestKubeRootCAUpdateComplete(TestKubeRootCAUpdate,
             state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
         self.fake_fm_client.alarm.list.return_value = [FAKE_MGMT_ALARM]
 
-        result = self.patch_json(self.url, {}, expect_errors=True)
+        patch = [{'op': 'replace',
+                'path': '/state',
+                'value': 'update-completed'}]
+
+        result = self.patch_json(self.url + '?force=False', patch, expect_errors=True)
 
         self.assertEqual(result.status_int, http_client.BAD_REQUEST)
         self.assertIn("System is not healthy. Run system health-query for more details.",
@@ -430,7 +465,10 @@ class TestKubeRootCAUpdateComplete(TestKubeRootCAUpdate,
         self.assertEqual(len(host_update_list), 2)
 
     def test_update_complete_no_update(self):
-        result = self.patch_json(self.url, {}, expect_errors=True)
+        patch = [{'op': 'replace',
+                'path': '/state',
+                'value': 'update-completed'}]
+        result = self.patch_json(self.url + '?force=False', patch, expect_errors=True)
 
         self.assertEqual(result.status_int, http_client.BAD_REQUEST)
         self.assertIn("kube-rootca-update-complete rejected: No kubernetes root CA update in progress.",
@@ -439,7 +477,10 @@ class TestKubeRootCAUpdateComplete(TestKubeRootCAUpdate,
     def test_update_complete_invalid_phase(self):
         dbutils.create_test_kube_rootca_update()
 
-        result = self.patch_json(self.url, {}, expect_errors=True)
+        patch = [{'op': 'replace',
+                'path': '/state',
+                'value': 'update-completed'}]
+        result = self.patch_json(self.url + '?force=False', patch, expect_errors=True)
 
         self.assertEqual(result.status_int, http_client.BAD_REQUEST)
         self.assertIn("kube-rootca-update-complete rejected: Expect to find cluster update"
@@ -470,7 +511,7 @@ class TestKubeRootCAUpload(TestKubeRootCAUpdate,
             setup_config_certificate(fake_save_rootca_return)
 
         files = [('file', certfile)]
-        response = self.post_with_files('%s/%s' % ('/kube_rootca_update', 'upload'),
+        response = self.post_with_files('%s/%s' % ('/kube_rootca_update', 'upload_cert'),
                                   {},
                                   upload_files=files,
                                   headers=self.headers,
