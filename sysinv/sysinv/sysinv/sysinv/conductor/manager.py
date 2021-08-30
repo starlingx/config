@@ -14175,7 +14175,7 @@ class ConductorManager(service.PeriodicService):
         try:
             new_cert_id = cutils.build_cert_identifier(cert)
         except Exception:
-            msg = "Failed to extract subject and serial number" \
+            msg = "Failed to extract subject and serial number " \
                   "from new root CA"
             LOG.error(msg)
             return dict(success="", error=msg)
