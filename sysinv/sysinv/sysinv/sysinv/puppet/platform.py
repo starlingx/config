@@ -573,8 +573,13 @@ class PlatformPuppet(base.BasePuppet):
                 host, constants.VSWITCH_FUNCTION, threads=True)
             vswitch_cpuset = set([c.cpu for c in vswitch_cpus])
 
+            app_cpus = self._get_host_cpu_list(
+                host, constants.APPLICATION_FUNCTION, threads=True)
+            app_cpuset = set([c.cpu for c in app_cpus])
+            app_ranges = utils.format_range_set(app_cpuset)
+            
             # non-platform logical cpus
-            rcu_nocbs_cpuset = host_cpuset - platform_cpuset
+            rcu_nocbs_cpuset = host_cpuset - platform_cpuset - app_cpuset
             rcu_nocbs_ranges = utils.format_range_set(rcu_nocbs_cpuset)
 
             # isolated logical cpus
