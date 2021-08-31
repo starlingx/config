@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -10,17 +10,13 @@
 #
 
 from collections import OrderedDict
-import datetime
 import os
 
 from cgtsclient._i18n import _
 from cgtsclient.common import constants
 from cgtsclient.common import utils
 from cgtsclient import exc
-from cgtsclient.v1 import icpu as icpu_utils
 from cgtsclient.v1 import ihost as ihost_utils
-from cgtsclient.v1 import iinterface as iinterface_utils
-from cgtsclient.v1 import iprofile as iprofile_utils
 from cgtsclient.v1 import istor as istor_utils
 from six.moves import input
 
@@ -513,199 +509,6 @@ def _list_storage(cc, host):
                     'lvm_vg_name']
     fields = ['uuid', 'lvm_pv_name', 'disk_or_part_device_path', 'lvm_vg_name']
     utils.print_list(ipvs, fields, field_labels, sortby=0)
-
-
-"""
-NOTE (neid):
-    all three "do_host_apply_<if|stor|cpu>profile" methods can be replaced
-    with a single "do_host_apply_profile"
-    sysinv REST API checks what type of profile is being applied and acts
-    accordingly
-    this allows for profiles with multiple objects
-    (eg a profile with cpus and stors)
-    or a profile including all of cpu, stor, if
-    or a profile including all of cpu, stor, if
-"""
-
-
-@utils.arg('hostnameorid',
-           metavar='<hostname or id>',
-           help="Name or ID of host")
-@utils.arg('profilenameoruuid',
-           metavar='<if|stor|cpu profile name or uuid>',
-           help="Name or ID of the profile")
-def do_host_apply_profile(cc, args):
-    """Apply a profile to a host."""
-
-    # Assemble patch
-    profile = iprofile_utils._find_iprofile(cc, args.profilenameoruuid)
-    patch = _prepare_profile_patch(profile.uuid)
-
-    # Send patch
-    host = ihost_utils._find_ihost(cc, args.hostnameorid)
-    try:
-        host = cc.ihost.update(host.id, patch)
-    except exc.HTTPNotFound:
-        raise exc.CommandError('host not found: %s' % args.hostnameorid)
-
-    # Echo list of new host interfaces
-    iinterfaces = cc.iinterface.list(host.uuid)
-    for i in iinterfaces:
-        iinterface_utils._get_ports(cc, host, i)
-    field_labels = ['uuid', 'name', 'network type', 'type', 'vlan id', 'ports', 'uses', 'used by', 'mtu', 'provider networks']
-    fields = ['uuid', 'ifname', 'networktype', 'iftype', 'vlan_id', 'ports', 'uses', 'used_by', 'imtu', 'providernetworks']
-    utils.print_list(iinterfaces, fields, field_labels, sortby=0)
-
-    # Echo list of new host cpus
-    icpus = cc.icpu.list(host.uuid)
-    field_labels = ['uuid', 'log_core', 'processor', 'phy_core', 'thread',
-                    'processor_model', 'assigned_function']
-    fields = ['uuid', 'cpu', 'numa_node', 'core', 'thread',
-              'cpu_model', 'allocated_function']
-    utils.print_list(icpus, fields, field_labels, sortby=1,
-                     formatters={'allocated_function':
-                                 icpu_utils._cpu_function_tuple_formatter})
-
-    _list_storage(cc, host)
-
-    # Echo list of new memory
-    imemory = cc.imemory.list(host.uuid)
-    field_labels = ['uuid', 'application_hugepages_1G', 'application_hugepages_2M',
-                    'application_hugepages_2M_pending',
-                    'application_hugepages_1G_pending']
-
-    fields = ['uuid', 'vm_hugepages_nr_1G', 'vm_hugepages_nr_2M',
-              'vm_hugepages_nr_2M_pending', 'vm_hugepages_nr_1G_pending']
-    utils.print_list(imemory, fields, field_labels, sortby=0)
-
-
-@utils.arg('hostnameorid',
-           metavar='<hostname or id>',
-           help="Name or ID of host")
-@utils.arg('profilenameoruuid',
-           metavar='<ifprofile name or uuid>',
-           help="Name or ID of interface profile")
-def do_host_apply_ifprofile(cc, args):
-    """Apply an interface profile to a host."""
-
-    # Assemble patch
-    profile = iprofile_utils._find_iprofile(cc, args.profilenameoruuid)
-    patch = _prepare_profile_patch(profile.uuid)
-
-    # Send patch
-    host = ihost_utils._find_ihost(cc, args.hostnameorid)
-    try:
-        host = cc.ihost.update(host.id, patch)
-    except exc.HTTPNotFound:
-        raise exc.CommandError('host not found: %s' % args.hostnameorid)
-
-    # Echo list of new host interfaces
-    iinterfaces = cc.iinterface.list(host.uuid)
-    for i in iinterfaces:
-        iinterface_utils._get_ports(cc, host, i)
-    field_labels = ['uuid', 'name', 'network type', 'type', 'vlan id', 'ports', 'uses', 'used by', 'mtu', 'provider networks']
-    fields = ['uuid', 'ifname', 'networktype', 'iftype', 'vlan_id', 'ports', 'uses', 'used_by', 'imtu', 'providernetworks']
-    utils.print_list(iinterfaces, fields, field_labels, sortby=0)
-
-
-@utils.arg('hostnameorid',
-           metavar='<hostname or id>',
-           help="Name or ID of host")
-@utils.arg('profilenameoruuid',
-           metavar='<profile name or uuid>',
-           help="Name or ID of cpu profile")
-def do_host_apply_cpuprofile(cc, args):
-    """Apply a cpu profile to a host."""
-    # Assemble patch
-    profile = iprofile_utils._find_iprofile(cc, args.profilenameoruuid)
-    patch = _prepare_profile_patch(profile.uuid)
-
-    # Send patch
-    host = ihost_utils._find_ihost(cc, args.hostnameorid)
-    try:
-        host = cc.ihost.update(host.id, patch)
-    except exc.HTTPNotFound:
-        raise exc.CommandError('host not found: %s' % args.hostnameorid)
-
-    # Echo list of new host cpus
-    icpus = cc.icpu.list(host.uuid)
-    field_labels = ['uuid', 'log_core', 'processor', 'phy_core', 'thread',
-                    'processor_model', 'assigned_function']
-    fields = ['uuid', 'cpu', 'numa_node', 'core', 'thread',
-              'cpu_model', 'allocated_function']
-    utils.print_list(icpus, fields, field_labels, sortby=1,
-                     formatters={'allocated_function':
-                                 icpu_utils._cpu_function_tuple_formatter})
-
-
-@utils.arg('hostnameorid',
-           metavar='<hostname or id>',
-           help="Name or ID of host")
-@utils.arg('profilenameoruuid',
-           metavar='<stor profile name or uuid>',
-           help="Name or ID of stor profile")
-def do_host_apply_storprofile(cc, args):
-    """Apply a storage profile to a host."""
-    # Assemble patch
-    profile = iprofile_utils._find_iprofile(cc, args.profilenameoruuid)
-    patch = _prepare_profile_patch(profile.uuid)
-
-    host = ihost_utils._find_ihost(cc, args.hostnameorid)
-    try:
-        host = cc.ihost.update(host.id, patch)
-    except exc.HTTPNotFound:
-        raise exc.CommandError('Host not found: %s' % args.hostnameorid)
-
-    _list_storage(cc, host)
-
-
-@utils.arg('hostnameorid',
-           metavar='<hostname or id>',
-           help="Name or ID of host")
-@utils.arg('profilenameoruuid',
-           metavar='<memory profile name or uuid>',
-           help="Name or ID of stor profile")
-def do_host_apply_memprofile(cc, args):
-    """Apply a memory profile to a host."""
-    # Assemble patch
-    profile = iprofile_utils._find_iprofile(cc, args.profilenameoruuid)
-    patch = _prepare_profile_patch(profile.uuid)
-
-    # Send patch
-    host = ihost_utils._find_ihost(cc, args.hostnameorid)
-    try:
-        host = cc.ihost.update(host.id, patch)
-    except exc.HTTPNotFound:
-        raise exc.CommandError('host not found: %s' % args.hostnameorid)
-
-    # Echo list of new host memory
-    imemory = cc.imemory.list(host.uuid)
-    field_labels = ['uuid', 'application_hugepages_1G', 'application_hugepages_2M',
-                    'application_hugepages_2M_pending', 'application_hugepages_1G_pending',
-                    'vswitch_hugepages_nr', 'vswitch_hugepages_size_reqd',
-                    'vswitch_hugepages_size_mib']
-
-    fields = ['uuid', 'vm_hugepages_nr_1G', 'vm_hugepages_nr_2M',
-              'vm_hugepages_nr_2M_pending', 'vm_hugepages_nr_1G_pending',
-              'vswitch_hugepages_nr', 'vswitch_hugepages_reqd',
-              'vswitch_hugepages_size_mib']
-    utils.print_list(imemory, fields, field_labels, sortby=0)
-
-
-def _prepare_profile_patch(iprofile_uuid):
-    dict = {}
-    dict['action'] = 'apply-profile'
-    dict['iprofile_uuid'] = iprofile_uuid
-
-    patch = []
-    for (k, v) in dict.items():
-        patch.append({'op': 'replace', 'path': '/' + k, 'value': str(v)})
-
-    return patch
-
-
-def _timestamped(dname, fmt='%Y-%m-%d-%H-%M-%S_{dname}'):
-    return datetime.datetime.now().strftime(fmt).format(dname=dname)
 
 
 @utils.arg('hostnameorid',

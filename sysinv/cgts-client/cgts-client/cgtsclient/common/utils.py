@@ -1,4 +1,4 @@
-# Copyright 2013-2019 Wind River, Inc
+# Copyright 2013-2021 Wind River, Inc
 # Copyright 2012 OpenStack LLC.
 # All Rights Reserved.
 #
@@ -101,11 +101,6 @@ def _does_command_need_no_wrap(callback):
     if callback.__name__ in \
             ['donot_config_ntp_list',
              'donot_config_ptp_list',
-             'do_host_apply_memprofile',
-             'do_host_apply_cpuprofile',
-             'do_host_apply_ifprofile',
-             'do_host_apply_profile',
-             'do_host_apply_storprofile',
              'donot_config_oam_list',
              'donot_dns_list',
              'do_host_cpu_modify',
