@@ -9438,7 +9438,7 @@ class ConductorManager(service.PeriodicService):
             try:
                 if standby_host:
                     if not self._drbd_connected():
-                        return rc
+                        return rc, drbd_fs_resized
 
                 if not os.path.isfile(CFS_DRBDADM_RECONFIGURED):
                     progress = "drbdadm resize all"
@@ -9538,7 +9538,7 @@ class ConductorManager(service.PeriodicService):
                          {"cmd": ex.cmd, "stdout": ex.stdout,
                           "stderr": ex.stderr, "rc": ex.exit_code})
 
-        return (rc, drbd_fs_resized)
+        return rc, drbd_fs_resized
 
     # Retrying a few times and waiting between each retry should provide
     # enough protection in the unlikely case LVM's own locking mechanism
