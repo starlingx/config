@@ -3111,7 +3111,7 @@ class DockerHelper(object):
                 except Exception as e:
                     rc = False
                     LOG.error("Image %s download failed from public/private"
-                              "registry: %s" % (target_img_tag, e))
+                              "registry: %s" % (pub_img_tag, e))
                     return img_tag, rc
 
                 try:
