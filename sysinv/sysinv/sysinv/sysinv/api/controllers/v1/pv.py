@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2017 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 import jsonpatch
@@ -357,14 +357,14 @@ class PVController(rest.RestController):
 
 
 # This method allows creating a physical volume through a non-HTTP
-# request e.g. through profile.py while still passing
-# through physical volume semantic checks and osd configuration
+# request while still passing through physical volume semantic checks and osd
+# configuration
 # Hence, not declared inside a class
 #
 # Param:
 #       pv - dictionary of physical volume values
 #       iprofile - True when created by a storage profile
-def _create(pv, iprofile=None):
+def _create(pv):
     LOG.debug("pv._create with initial params: %s" % pv)
     # Get host
     ihostId = pv.get('forihostid') or pv.get('ihost_uuid')
@@ -427,7 +427,7 @@ def _create(pv, iprofile=None):
                                              values)
 
     # semantic check for root disk
-    if iprofile is not True and constants.WARNING_MESSAGE_INDEX in pv:
+    if constants.WARNING_MESSAGE_INDEX in pv:
         warning_message_index = pv.get(constants.WARNING_MESSAGE_INDEX)
         raise wsme.exc.ClientSideError(
             constants.PV_WARNINGS[warning_message_index])
@@ -714,11 +714,10 @@ def _check_device(new_pv, ihost):
     new_pv['disk_or_part_device_path'] = new_pv_device.device_path
 
     # Since physical volumes are reported as device nodes and not device
-    # paths, we need to translate this, but not for local storage profiles.
-    if ihost['recordtype'] != 'profile':
-        if new_pv_device.device_node:
-            new_pv['disk_or_part_device_node'] = new_pv_device.device_node
-            new_pv['lvm_pv_name'] = new_pv['disk_or_part_device_node']
+    # paths, we need to translate this
+    if new_pv_device.device_node:
+        new_pv['disk_or_part_device_node'] = new_pv_device.device_node
+        new_pv['lvm_pv_name'] = new_pv['disk_or_part_device_node']
 
     # relationship checks
     # - Only one pv for cinder-volumes
@@ -899,3 +898,4 @@ def delete_pv(pv_uuid, force=False):
 # TODO (rchurch): Fix system host-pv-add 1 cinder-volumes <disk uuid> => no error message
 # TODO (rchurch): Fix system host-pv-add -t disk 1 cinder-volumes <disk uuid> => confusing message
 # TODO (rchurch): remove the -t options and use path/node/uuid to derive the type of PV
+# TODO (pbovina): Move utils methods within PVController class

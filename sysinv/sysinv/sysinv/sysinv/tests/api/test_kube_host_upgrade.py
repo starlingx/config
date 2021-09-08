@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -144,30 +144,6 @@ class TestListKubeHostUpgrade(TestKubeHostUpgrade):
         self._create_controller_0()
         self._create_controller_1()
         worker = self._create_worker(mgmt_ip='192.168.24.12')
-        data = self.get_json('/kube_host_upgrades')
-        self.assertEqual(3, len(data['kube_host_upgrades']))
-        host_id = 1
-        for upgrade in data['kube_host_upgrades']:
-            self.assertIn('id', upgrade)
-            assert (uuidutils.is_uuid_like(upgrade['uuid']))
-            self.assertEqual(upgrade['target_version'], None)
-            self.assertEqual(upgrade['status'], None)
-            if upgrade['host_id'] == worker.id:
-                self.assertEqual(upgrade['control_plane_version'], 'N/A')
-            else:
-                self.assertEqual(upgrade['control_plane_version'], 'v1.42.1')
-            self.assertEqual(upgrade['kubelet_version'], 'v1.42.2')
-            self.assertEqual(upgrade['host_id'], host_id)
-            host_id += 1
-
-    def test_all_ignore_profile(self):
-        # Create hosts
-        self._create_controller_0()
-        self._create_controller_1()
-        worker = self._create_worker(mgmt_ip='192.168.24.12')
-        self._create_worker(mgmt_ip='192.168.24.13',
-                            unit=1,
-                            recordtype='profile')
         data = self.get_json('/kube_host_upgrades')
         self.assertEqual(3, len(data['kube_host_upgrades']))
         host_id = 1

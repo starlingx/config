@@ -69,7 +69,6 @@ from sysinv.objects import ntp
 from sysinv.objects import pci_device
 from sysinv.objects import peer
 from sysinv.objects import port
-from sysinv.objects import profile
 from sysinv.objects import ptp
 from sysinv.objects import ptp_instance
 from sysinv.objects import ptp_interface
@@ -135,7 +134,6 @@ system = system.System
 cluster = cluster.Cluster
 peer = peer.Peer
 host = host.Host
-profile = profile.Profile
 node = node.Node
 cpu = cpu.CPU
 memory = memory.Memory
@@ -222,7 +220,6 @@ __all__ = ("system",
            "cluster",
            "peer",
            "host",
-           "profile",
            "node",
            "cpu",
            "memory",

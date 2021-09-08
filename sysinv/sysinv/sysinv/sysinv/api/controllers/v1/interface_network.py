@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 import os
@@ -175,26 +175,25 @@ class InterfaceNetworkController(rest.RestController):
                                           constants.IPV4_DISABLED, None)
 
         # Assign an address to the interface
-        if host.recordtype != "profile":
-            _update_host_address(host, interface_obj, network_type)
-            if network_type == constants.NETWORK_TYPE_MGMT:
-                ethernet_port_mac = None
-                if not interface_obj.uses:
-                    # Get the ethernet port associated with the interface
-                    interface_ports = pecan.request.dbapi.ethernet_port_get_by_interface(
-                        interface_obj.uuid)
-                    for p in interface_ports:
-                        if p is not None:
-                            ethernet_port_mac = p.mac
-                            break
-                else:
-                    tmp_interface = interface_obj.as_dict()
-                    ethernet_port_mac = tmp_interface['imac']
-                _update_host_mgmt_mac(host, ethernet_port_mac)
-                cutils.perform_distributed_cloud_config(pecan.request.dbapi,
+        _update_host_address(host, interface_obj, network_type)
+        if network_type == constants.NETWORK_TYPE_MGMT:
+            ethernet_port_mac = None
+            if not interface_obj.uses:
+                # Get the ethernet port associated with the interface
+                interface_ports = pecan.request.dbapi.ethernet_port_get_by_interface(
+                    interface_obj.uuid)
+                for p in interface_ports:
+                    if p is not None:
+                        ethernet_port_mac = p.mac
+                        break
+            else:
+                tmp_interface = interface_obj.as_dict()
+                ethernet_port_mac = tmp_interface['imac']
+            _update_host_mgmt_mac(host, ethernet_port_mac)
+            cutils.perform_distributed_cloud_config(pecan.request.dbapi,
                                                         interface_id)
-            elif network_type == constants.NETWORK_TYPE_OAM:
-                pecan.request.rpcapi.initialize_oam_config(pecan.request.context, host)
+        elif network_type == constants.NETWORK_TYPE_OAM:
+            pecan.request.rpcapi.initialize_oam_config(pecan.request.context, host)
 
         return InterfaceNetwork.convert_with_links(result)
 

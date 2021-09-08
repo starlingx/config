@@ -67,7 +67,6 @@ from sysinv.api.controllers.v1 import lvg as lvg_api
 from sysinv.api.controllers.v1 import host_fs as host_fs_api
 from sysinv.api.controllers.v1 import memory
 from sysinv.api.controllers.v1 import node as node_api
-from sysinv.api.controllers.v1 import profile
 from sysinv.api.controllers.v1 import pv as pv_api
 from sysinv.api.controllers.v1 import sensor as sensor_api
 from sysinv.api.controllers.v1 import sensorgroup
@@ -460,9 +459,6 @@ class Host(base.APIBase):
     isystem_uuid = types.uuid
     "The UUID of the system this host belongs to"
 
-    iprofile_uuid = types.uuid
-    "The UUID of the iprofile to apply to host"
-
     peers = types.MultiType({dict})
     "This peers of this host in the cluster"
 
@@ -566,9 +562,6 @@ class Host(base.APIBase):
         self.fields = list(objects.host.fields.keys())
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
-
-        self.fields.append('iprofile_uuid')
-        setattr(self, 'iprofile_uuid', kwargs.get('iprofile_uuid', None))
 
         self.fields.append('peers')
         setattr(self, 'peers', kwargs.get('peers', None))
@@ -903,7 +896,6 @@ class HostUpdate(object):
         self.ihost_orig = dict(ihost_orig)
         self.ihost_patch = dict(ihost_patch)
         self._delta = list(delta)
-        self._iprofile_uuid = None
         self._ihost_val_prenotify = {}
         self._ihost_val = {}
 
@@ -945,14 +937,6 @@ class HostUpdate(object):
     @nextstep.setter
     def nextstep(self, val):
         self._nextstep = val
-
-    @property
-    def iprofile_uuid(self):
-        return self._iprofile_uuid
-
-    @iprofile_uuid.setter
-    def iprofile_uuid(self, val):
-        self._iprofile_uuid = val
 
     @property
     def configure_required(self):
@@ -1502,8 +1486,7 @@ class HostController(rest.RestController):
                     pecan.request.context, ihost_dict['rootfs_device'])
                 controller_ihost = pecan.request.rpcapi.create_ihost(
                     pecan.request.context, ihost_dict)
-                if 'recordtype' in ihost_dict and \
-                   ihost_dict['recordtype'] != "profile":
+                if 'recordtype' in ihost_dict:
                     pecan.request.rpcapi.configure_ihost(
                         pecan.request.context,
                         controller_ihost)
@@ -1756,8 +1739,7 @@ class HostController(rest.RestController):
                                         " contain(s) a management mac address"
                                         " from local network adapters")
 
-                    self._patch(ihost_obj[0]['uuid'],
-                        changed_paths, None)
+                    self._patch(ihost_obj[0]['uuid'], changed_paths)
                 else:
                     self._do_post(new_host)
 
@@ -1829,34 +1811,28 @@ class HostController(rest.RestController):
         """
         utils.validate_patch(patch)
 
-        profile_uuid = None
         optimizable = 0
         optimize_list = ['/uptime', '/location', '/serialid', '/task']
         for p in patch:
-            # Check if this patch contains a profile
             path = p['path']
-            if path == '/iprofile_uuid':
-                profile_uuid = p['value']
-                patch.remove(p)
-
             if path in optimize_list:
                 optimizable += 1
 
         if len(patch) == optimizable:
-            return self._patch(uuid, patch, profile_uuid)
+            return self._patch(uuid, patch)
         elif (pecan.request.user_agent.startswith('mtce') or
            pecan.request.user_agent.startswith('vim')):
-            return self._patch_sys(uuid, patch, profile_uuid)
+            return self._patch_sys(uuid, patch)
         else:
-            return self._patch_gen(uuid, patch, profile_uuid)
+            return self._patch_gen(uuid, patch)
 
     @cutils.synchronized(LOCK_NAME_SYS)
-    def _patch_sys(self, uuid, patch, profile_uuid):
-        return self._patch(uuid, patch, profile_uuid)
+    def _patch_sys(self, uuid, patch):
+        return self._patch(uuid, patch)
 
     @cutils.synchronized(LOCK_NAME)
-    def _patch_gen(self, uuid, patch, profile_uuid):
-        return self._patch(uuid, patch, profile_uuid)
+    def _patch_gen(self, uuid, patch):
+        return self._patch(uuid, patch)
 
     @staticmethod
     def _validate_capability_is_not_set(old, new):
@@ -1914,7 +1890,7 @@ class HostController(rest.RestController):
                           "name={}, value={}. ").format(
                               capability, new_value))
 
-    def _patch(self, uuid, patch, myprofile_uuid):
+    def _patch(self, uuid, patch):
         log_start = cutils.timestamped("ihost_patch_start")
 
         patch_obj = jsonpatch.JsonPatch(patch)
@@ -2003,8 +1979,6 @@ class HostController(rest.RestController):
                       hostupdate.notify_vim,
                       hostupdate.notify_mtce,
                       hostupdate.skip_notify_mtce))
-
-            hostupdate.iprofile_uuid = myprofile_uuid
 
             if self.stage_action(myaction, hostupdate):
                 LOG.info("%s Action staged: %s" %
@@ -2408,13 +2382,6 @@ class HostController(rest.RestController):
 
         ihost = objects.host.get_by_uuid(pecan.request.context,
                                          ihost_id)
-
-        # Do not allow profiles to be deleted by system host-delete
-        if ihost['recordtype'] == "profile":
-            LOG.error("host %s of recordtype %s cannot be deleted via "
-                      "host-delete command."
-                      % (ihost['uuid'], ihost['recordtype']))
-            raise exception.HTTPNotFound
 
         if ihost['administrative'] == constants.ADMIN_UNLOCKED:
             if ihost.hostname is None:
@@ -4641,7 +4608,6 @@ class HostController(rest.RestController):
                          constants.VIM_SERVICES_DISABLE_FAILED,
                          constants.VIM_SERVICES_DISABLE_EXTEND,
                          constants.VIM_SERVICES_DELETE_FAILED,
-                         constants.APPLY_PROFILE_ACTION,
                          constants.SUBFUNCTION_CONFIG_ACTION]
 
         if action not in valid_actions:
@@ -4727,8 +4693,6 @@ class HostController(rest.RestController):
             self.update_vim_progress_status(action, hostupdate)
         elif action == constants.VIM_SERVICES_DELETE_FAILED:
             self.update_vim_progress_status(action, hostupdate)
-        elif action == constants.APPLY_PROFILE_ACTION:
-            self._check_apply_profile(hostupdate)
         elif action == constants.SUBFUNCTION_CONFIG_ACTION:
             self._check_subfunction_config(hostupdate)
             self._semantic_check_nova_local_storage(
@@ -4782,20 +4746,6 @@ class HostController(rest.RestController):
             return True
         else:
             return False
-
-    @staticmethod
-    def _check_apply_profile(hostupdate):
-        ihost = hostupdate.ihost_orig
-        if (ihost['administrative'] == constants.ADMIN_UNLOCKED and
-           not utils.is_host_simplex_controller(ihost)):
-            raise wsme.exc.ClientSideError(
-                _("Can not apply profile to an 'unlocked' host %s; "
-                  "Please 'Lock' first." % hostupdate.displayid))
-
-        if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
-            raise wsme.exc.ClientSideError(_(
-                "Applying a profile on a simplex system is not allowed."))
-        return True
 
     @staticmethod
     def check_notify_mtce(action, hostupdate):
@@ -6636,8 +6586,6 @@ class HostController(rest.RestController):
             self._handle_vim_services_delete_failed(hostupdate)
             hostupdate.nextstep = hostupdate.EXIT_UPDATE_PREVAL
             rc = False
-        elif action == constants.APPLY_PROFILE_ACTION:
-            self._stage_apply_profile_action(hostupdate)
         elif action == constants.SUBFUNCTION_CONFIG_ACTION:
             # Not a mtc action; disable mtc checks and config
             self._stage_subfunction_config(hostupdate)
@@ -6654,18 +6602,6 @@ class HostController(rest.RestController):
                       hostupdate.delta))
 
         return rc
-
-    @staticmethod
-    def _stage_apply_profile_action(hostupdate):
-        """Stage apply profile action."""
-        LOG.info("%s _stage_apply_profile_action uuid=%s profile_uuid=%s" %
-                 (hostupdate.displayid,
-                  hostupdate.ihost_patch['uuid'],
-                  hostupdate.iprofile_uuid))
-        profile.apply_profile(hostupdate.ihost_patch['uuid'],
-                              hostupdate.iprofile_uuid)
-        hostupdate.notify_mtce = False
-        hostupdate.configure_required = False
 
     @staticmethod
     def _check_subfunction_config(hostupdate):

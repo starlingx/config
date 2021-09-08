@@ -64,7 +64,6 @@ from sysinv.api.controllers.v1 import ntp
 from sysinv.api.controllers.v1 import partition
 from sysinv.api.controllers.v1 import pci_device
 from sysinv.api.controllers.v1 import port
-from sysinv.api.controllers.v1 import profile
 from sysinv.api.controllers.v1 import ptp
 from sysinv.api.controllers.v1 import pv
 from sysinv.api.controllers.v1 import registry_image
@@ -134,9 +133,6 @@ class V1(base.APIBase):
 
     imemory = [link.Link]
     "Links to the imemory resource"
-
-    iprofile = [link.Link]
-    "Links to the iprofile resource"
 
     iuser = [link.Link]
     "Links to the iuser resource"
@@ -347,14 +343,6 @@ class V1(base.APIBase):
                                           'imemory', '',
                                           bookmark=True)
                       ]
-
-        v1.iprofile = [link.Link.make_link('self', pecan.request.host_url,
-                                        'iprofile', ''),
-                       link.Link.make_link('bookmark',
-                                        pecan.request.host_url,
-                                        'iprofile', '',
-                                        bookmark=True)
-                       ]
 
         v1.iinterfaces = [link.Link.make_link('self',
                                         pecan.request.host_url,
@@ -896,7 +884,6 @@ class Controller(rest.RestController):
     ipvs = pv.PVController()
     idisks = disk.DiskController()
     partitions = partition.PartitionController()
-    iprofile = profile.ProfileController()
     iuser = user.UserController()
     idns = dns.DNSController()
     intp = ntp.NTPController()

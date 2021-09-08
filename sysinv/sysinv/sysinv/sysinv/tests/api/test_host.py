@@ -3084,37 +3084,6 @@ class TestPatchStdDuplexControllerVIM(TestHost):
         self.assertEqual(constants.VIM_SERVICES_DELETE_FAILED,
                          result['vim_progress_status'])
 
-    def test_apply_profile_action_bad_profile_id(self):
-        # Note: Including this testcase for completeness (wanted to cover each
-        # action. The testcases in test_interface.py cover the success case.
-
-        # Create controller-0
-        self._create_controller_0(
-            invprovision=constants.PROVISIONED,
-            administrative=constants.ADMIN_UNLOCKED,
-            operational=constants.OPERATIONAL_ENABLED,
-            availability=constants.AVAILABILITY_ONLINE)
-
-        # Create controller-1
-        c1_host = self._create_controller_1(
-            invprovision=constants.PROVISIONED,
-            administrative=constants.ADMIN_LOCKED,
-            operational=constants.OPERATIONAL_ENABLED,
-            availability=constants.AVAILABILITY_ONLINE)
-
-        # Apply profile to controller-1 and verify it was rejected
-        self.assertRaises(webtest.app.AppError,
-                          self.patch_json,
-                          '/ihosts/%s' % c1_host['hostname'],
-                          [{'path': '/action',
-                            'value': constants.APPLY_PROFILE_ACTION,
-                            'op': 'replace'},
-                           {'path': '/iprofile_uuid',
-                            'value': 'notarealuuid',
-                            'op': 'replace'}
-                           ],
-                          headers={'User-Agent': 'sysinv-test'})
-
     def test_subfunction_config_action(self):
         # Create controller-0 (AIO)
         c0_host = self._create_controller_0(

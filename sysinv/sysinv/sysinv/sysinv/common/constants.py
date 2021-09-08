@@ -79,7 +79,6 @@ POWERON_ACTION = 'power-on'
 POWEROFF_ACTION = 'power-off'
 SWACT_ACTION = 'swact'
 FORCE_SWACT_ACTION = 'force-swact'
-APPLY_PROFILE_ACTION = 'apply-profile'
 SUBFUNCTION_CONFIG_ACTION = 'subfunction_config'
 VIM_SERVICES_ENABLED = 'services-enabled'
 VIM_SERVICES_DISABLED = 'services-disabled'
@@ -109,8 +108,7 @@ MTCE_ACTIONS = [REBOOT_ACTION,
 VIM_ACTIONS = [LOCK_ACTION,
                FORCE_LOCK_ACTION]
 
-CONFIG_ACTIONS = [SUBFUNCTION_CONFIG_ACTION,
-                  APPLY_PROFILE_ACTION]
+CONFIG_ACTIONS = [SUBFUNCTION_CONFIG_ACTION]
 
 # Personalities
 CONTROLLER = 'controller'
@@ -976,12 +974,6 @@ CEPH_CRUSH_MAP_APPLIED = '.crushmap_applied'
 CEPH_CRUSH_MAP_DEPTH = 3
 CEPH_CRUSH_TIER_SUFFIX = "-tier"
 
-# Profiles
-PROFILE_TYPE_CPU = 'cpu'
-PROFILE_TYPE_INTERFACE = 'if'
-PROFILE_TYPE_STORAGE = 'stor'
-PROFILE_TYPE_MEMORY = 'memory'
-PROFILE_TYPE_LOCAL_STORAGE = 'localstg'
 
 # PCI Alias types and names
 NOVA_PCI_ALIAS_GPU_NAME = "gpu"

@@ -492,14 +492,10 @@ def _set_defaults(tier):
 
 
 # This method allows creating a storage tier through a non-HTTP
-# request e.g. through profile.py while still passing
-# through physical volume semantic checks and osd configuration
-# Hence, not declared inside a class
-#
+# request
 # Param:
 #       tier - dictionary of storage tier values
-#       iprofile - True when created by a storage profile
-def _create(self, tier, iprofile=None):
+def _create(self, tier):
     LOG.info("storage_tier._create with initial params: %s" % tier)
 
     # Set defaults - before checks to allow for optional attributes

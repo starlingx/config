@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 import jsonpatch
@@ -590,7 +590,7 @@ def _check(op, lvg):
     return lvg
 
 
-def _create(lvg, iprofile=None, applyprofile=None):
+def _create(lvg):
     # Get host
     ihostId = lvg.get('forihostid') or lvg.get('ihost_uuid')
     ihost = pecan.request.dbapi.ihost_get(ihostId)
@@ -611,48 +611,41 @@ def _create(lvg, iprofile=None, applyprofile=None):
     # See if this volume group already exists
     ilvgs = pecan.request.dbapi.ilvg_get_all(forihostid=forihostid)
     lvg_in_db = False
-    if not iprofile:
-        for vg in ilvgs:
-            if vg['lvm_vg_name'] == lvg['lvm_vg_name']:
-                lvg_in_db = True
-                # User is adding again so complain
-                if (vg['vg_state'] == constants.LVG_ADD or
-                        vg['vg_state'] == constants.PROVISIONED):
-                    raise wsme.exc.ClientSideError(_("Volume Group (%s) "
-                                                     "already present" %
-                                                     vg['lvm_vg_name']))
+    for vg in ilvgs:
+        if vg['lvm_vg_name'] == lvg['lvm_vg_name']:
+            lvg_in_db = True
+            # User is adding again so complain
+            if (vg['vg_state'] == constants.LVG_ADD or
+                    vg['vg_state'] == constants.PROVISIONED):
+                raise wsme.exc.ClientSideError(_("Volume Group (%s) "
+                                                    "already present" %
+                                                    vg['lvm_vg_name']))
 
-                # Prevent re-adding so that we don't end up in a state where
-                # the cloud admin has removed a subset of the PVs rendering the
-                # VG as unusable because of LV corruption
-                if vg['vg_state'] == constants.LVG_DEL:
-                    # User changed mind and is re-adding
-                    values = {'vg_state': constants.LVG_ADD}
-                    if applyprofile:
-                        # inherit the capabilities,
-                        if 'capabilities' in lvg and lvg['capabilities']:
-                            values['capabilities'] = lvg['capabilities']
-
-                    try:
-                        LOG.info("Update ilvg values: %s" % values)
-                        pecan.request.dbapi.ilvg_update(vg.id, values)
-                    except exception.HTTPNotFound:
-                        msg = _("LVG update failed: host (%s) LVG (%s)"
-                                % (ihost['hostname'], vg['lvm_pv_name']))
-                        raise wsme.exc.ClientSideError(msg)
-                ret_lvg = vg
-                break
+            # Prevent re-adding so that we don't end up in a state where
+            # the cloud admin has removed a subset of the PVs rendering the
+            # VG as unusable because of LV corruption
+            if vg['vg_state'] == constants.LVG_DEL:
+                # User changed mind and is re-adding
+                values = {'vg_state': constants.LVG_ADD}
+                try:
+                    LOG.info("Update ilvg values: %s" % values)
+                    pecan.request.dbapi.ilvg_update(vg.id, values)
+                except exception.HTTPNotFound:
+                    msg = _("LVG update failed: host (%s) LVG (%s)"
+                            % (ihost['hostname'], vg['lvm_pv_name']))
+                    raise wsme.exc.ClientSideError(msg)
+            ret_lvg = vg
+            break
 
     if not lvg_in_db:
         # Add the default volume group parameters
-        if lvg['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES and not iprofile:
+        if lvg['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES:
             lvg_caps = lvg['capabilities']
 
-            if (constants.LVG_CINDER_PARAM_LVM_TYPE in lvg_caps) or applyprofile:
+            if (constants.LVG_CINDER_PARAM_LVM_TYPE in lvg_caps):
                 # defined from create or inherit the capabilities
-                LOG.info("%s defined from create %s applyprofile=%s" %
-                         (constants.LVG_CINDER_PARAM_LVM_TYPE, lvg_caps,
-                          applyprofile))
+                LOG.info("%s defined from create %s" %
+                         (constants.LVG_CINDER_PARAM_LVM_TYPE, lvg_caps))
             else:
                 # Default LVM type
                 lvg_caps_dict = {
