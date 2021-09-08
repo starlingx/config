@@ -1,4 +1,4 @@
-# Copyright 2012-2020 OpenStack LLC.
+# Copyright 2012-2021 OpenStack LLC.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -47,7 +47,6 @@ from cgtsclient.v1 import inode
 from cgtsclient.v1 import interface_datanetwork
 from cgtsclient.v1 import interface_network
 from cgtsclient.v1 import intp
-from cgtsclient.v1 import iprofile
 from cgtsclient.v1 import ipv
 from cgtsclient.v1 import isensor
 from cgtsclient.v1 import isensorgroup
@@ -129,7 +128,6 @@ class Client(http.HTTPClient):
         self.storage_ceph_rook = storage_ceph_rook.StorageCephRookManager(self)
         self.ceph_mon = ceph_mon.CephMonManager(self)
         self.drbdconfig = drbdconfig.drbdconfigManager(self)
-        self.iprofile = iprofile.iprofileManager(self)
         self.port = port.PortManager(self)
         self.ethernet_port = ethernetport.EthernetPortManager(self)
         self.address = address.AddressManager(self)

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -37,10 +37,6 @@ class ihostManager(base.Manager):
 
     def list(self):
         return self._list(self._path(), "ihosts")
-
-    def list_profiles(self):
-        path = "/v1/ihosts/personality_profile"
-        return self._list(self._path(path), "ihosts")
 
     def list_port(self, ihost_id):
         path = "%s/ports" % ihost_id

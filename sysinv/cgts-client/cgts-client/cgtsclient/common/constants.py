@@ -49,13 +49,6 @@ SB_TASK_RECONFIG_WORKER = 'reconfig-worker'
 SB_TASK_RESIZE_CEPH_MON_LV = 'resize-ceph-mon-lv'
 SB_TASK_ADD_OBJECT_GATEWAY = 'add-object-gateway'
 
-# Profiles
-PROFILE_TYPE_CPU = 'cpu'
-PROFILE_TYPE_INTERFACE = 'if'
-PROFILE_TYPE_STORAGE = 'stor'
-PROFILE_TYPE_MEMORY = 'memory'
-PROFILE_TYPE_LOCAL_STORAGE = 'localstg'
-
 # Board Management Region Info
 REGION_PRIMARY = "Internal"
 REGION_SECONDARY = "External"
