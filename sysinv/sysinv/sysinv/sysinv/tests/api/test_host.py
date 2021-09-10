@@ -459,7 +459,7 @@ class TestPostKubeUpgrades(TestHost):
         kube_upgrade = dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
             to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
+            state=kubernetes.KUBE_UPGRADED_NETWORKING,
         )
 
         # Upgrade the control plane
@@ -552,7 +552,7 @@ class TestPostKubeUpgrades(TestHost):
         kube_upgrade = dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
             to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
+            state=kubernetes.KUBE_UPGRADED_NETWORKING,
         )
 
         # Upgrade the control plane
@@ -598,7 +598,7 @@ class TestPostKubeUpgrades(TestHost):
         kube_upgrade = dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
             to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADED_NETWORKING,
+            state=kubernetes.KUBE_UPGRADED_FIRST_MASTER,
         )
 
         # Mark the first kube host upgrade as OK
@@ -794,7 +794,7 @@ class TestPostKubeUpgrades(TestHost):
         dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
             to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
+            state=kubernetes.KUBE_UPGRADED_NETWORKING,
         )
 
         # Fake the missing patches
@@ -843,7 +843,7 @@ class TestPostKubeUpgrades(TestHost):
         dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
             to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
+            state=kubernetes.KUBE_UPGRADED_NETWORKING,
         )
 
         # Fake the missing patches
@@ -896,7 +896,7 @@ class TestPostKubeUpgrades(TestHost):
         dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
             to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
+            state=kubernetes.KUBE_UPGRADED_NETWORKING,
         )
 
         # Upgrade the control plane
@@ -926,7 +926,7 @@ class TestPostKubeUpgrades(TestHost):
         dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
             to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
+            state=kubernetes.KUBE_UPGRADED_NETWORKING,
         )
 
         # No control plane version for this controller
@@ -961,7 +961,7 @@ class TestPostKubeUpgrades(TestHost):
         dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
             to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
+            state=kubernetes.KUBE_UPGRADED_NETWORKING,
         )
 
         # Upgrade the control plane
@@ -991,7 +991,7 @@ class TestPostKubeUpgrades(TestHost):
         dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
             to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
+            state=kubernetes.KUBE_UPGRADED_NETWORKING,
         )
 
         # Mark the kube host as already upgrading
@@ -1011,8 +1011,8 @@ class TestPostKubeUpgrades(TestHost):
         self.assertIn("control plane on this host is already being upgraded",
                       result.json['error_message'])
 
-    def test_kube_upgrade_first_control_plane_after_networking_upgraded(self):
-        # Test re-upgrading kubernetes first control plane after networking was upgraded
+    def test_kube_upgrade_first_control_plane_after_first_control_plane(self):
+        # Test re-upgrading kubernetes first control plane
 
         # Create controller-0
         self._create_controller_0(
@@ -1025,7 +1025,7 @@ class TestPostKubeUpgrades(TestHost):
         dbutils.create_test_kube_upgrade(
             from_version='v1.42.1',
             to_version='v1.42.2',
-            state=kubernetes.KUBE_UPGRADED_NETWORKING,
+            state=kubernetes.KUBE_UPGRADED_FIRST_MASTER,
         )
 
         # The control plane on this host was already upgraded

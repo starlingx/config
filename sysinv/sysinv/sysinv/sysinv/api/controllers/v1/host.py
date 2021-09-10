@@ -6922,8 +6922,8 @@ class HostController(rest.RestController):
 
         # Verify the upgrade is in the correct state
         if kube_upgrade_obj.state in [
-                kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
-                kubernetes.KUBE_UPGRADED_NETWORKING]:
+                kubernetes.KUBE_UPGRADED_NETWORKING,
+                kubernetes.KUBE_UPGRADED_FIRST_MASTER]:
             # We are upgrading a control plane
             pass
         elif kube_upgrade_obj.state in [
@@ -6956,8 +6956,8 @@ class HostController(rest.RestController):
         current_cp_version = cp_versions.get(host_obj.hostname)
         if current_cp_version == kube_upgrade_obj.to_version:
             # Make sure we are not attempting to upgrade the first upgraded
-            # control plane again after networking was upgraded
-            if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADED_NETWORKING:
+            # control plane again
+            if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADED_FIRST_MASTER:
                 raise wsme.exc.ClientSideError(_(
                     "The first control plane was already upgraded."))
 
@@ -6992,7 +6992,7 @@ class HostController(rest.RestController):
         kube_host_upgrade_obj.save()
 
         if kube_upgrade_obj.state in [
-                kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
+                kubernetes.KUBE_UPGRADED_NETWORKING,
                 kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED]:
             # Update the upgrade state
             kube_upgrade_obj.state = kubernetes.KUBE_UPGRADING_FIRST_MASTER
@@ -7042,12 +7042,12 @@ class HostController(rest.RestController):
         # Verify the upgrade is in the correct state
         if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
             if kube_upgrade_obj.state not in [
-                    kubernetes.KUBE_UPGRADED_NETWORKING,
+                    kubernetes.KUBE_UPGRADED_FIRST_MASTER,
                     kubernetes.KUBE_UPGRADING_KUBELETS]:
                 raise wsme.exc.ClientSideError(_(
                     "The kubernetes upgrade must be in the %s or %s state to "
                     "upgrade the kubelet." % (
-                        kubernetes.KUBE_UPGRADED_NETWORKING,
+                        kubernetes.KUBE_UPGRADED_FIRST_MASTER,
                         kubernetes.KUBE_UPGRADING_KUBELETS)))
         elif kube_upgrade_obj.state not in [
                 kubernetes.KUBE_UPGRADED_SECOND_MASTER,
