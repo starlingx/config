@@ -15,11 +15,13 @@
         - sysinv-tox-bandit
         - controllerconfig-tox-py27
         - controllerconfig-tox-py36
+        - controllerconfig-tox-py39
         - controllerconfig-tox-flake8
         - controllerconfig-tox-pylint
         - tsconfig-tox-pylint
         - tsconfig-tox-py27
         - tsconfig-tox-py36
+        - config-tox-py39
         - tsconfig-tox-flake8
         - cgtsclient-tox-py27
         - cgtsclient-tox-py36
@@ -37,11 +39,13 @@
         - sysinv-tox-bandit
         - controllerconfig-tox-py27
         - controllerconfig-tox-py36
+        - controllerconfig-tox-py39
         - controllerconfig-tox-flake8
         - controllerconfig-tox-pylint
         - config-tox-pylint
         - config-tox-py27
         - config-tox-py36
+        - config-tox-py39
         - config-tox-flake8
         - cgtsclient-tox-py27
         - cgtsclient-tox-py36
@@ -169,6 +173,20 @@
       tox_extra_args: -c controllerconfig/controllerconfig/tox.ini
 
 - job:
+    name: controllerconfig-tox-py39
+    parent: tox-py39
+    description: Run py39 tests for controllerconfig
+    nodeset: debian-bullseye
+    required-projects:
+      - starlingx/fault
+      - starlingx/root
+    files:
+      - controllerconfig/*
+    vars:
+      tox_envlist: py39
+      tox_extra_args: -c controllerconfig/controllerconfig/tox.ini
+
+- job:
     name: controllerconfig-tox-flake8
     parent: tox
     description: Run flake8 tests for controllerconfig
@@ -223,6 +241,17 @@
       - tsconfig/*
     vars:
       tox_envlist: py36
+      tox_extra_args: -c tsconfig/tsconfig/tox.ini
+
+- job:
+    name: config-tox-py39
+    parent: tox-py39
+    description: Run py39 tests for tsconfig
+    nodeset: debian-bullseye
+    files:
+      - tsconfig/*
+    vars:
+      tox_envlist: py39
       tox_extra_args: -c tsconfig/tsconfig/tox.ini
 
 - job:
@@ -290,11 +319,10 @@
     parent: tox-py39
     description: |
       Run py39 test for cgts-client
-    nodeset: ubuntu-focal
+    nodeset: debian-bullseye
     files:
       - sysinv/cgts-client/*
     vars:
-      bindep_profile: test py39
       python_version: 3.9
       tox_envlist: py39
       tox_extra_args: -c sysinv/cgts-client/cgts-client/tox.ini
