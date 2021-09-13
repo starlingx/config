@@ -7,8 +7,9 @@
 """Test class for Sysinv CertAlarm"""
 
 from datetime import datetime
-import os.path
+import mock
 from OpenSSL import crypto
+import os.path
 
 from sysinv.common import constants
 from sysinv.cert_alarm import service as cert_alarm
@@ -54,7 +55,8 @@ class CertAlarmTestCase(base.DbTestCase):
         days_to_expiry = exp_date - datetime.now()
         assert days_to_expiry.days < 0
 
-    def test_collect_certificate_data_from_file(self):
+    @mock.patch('sysinv.cert_alarm.utils.get_cert_uuid', return_value='unknown')
+    def test_collect_certificate_data_from_file(self, mock_get_cert_uuid):
         cert_name = 'test_cert'
 
         # If file doesn't exist, should return (certname, None, None)
@@ -79,7 +81,7 @@ class CertAlarmTestCase(base.DbTestCase):
         mode_metadata = ret[3]
         self.assertIsNotNone(mode_metadata)
         self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_MODE, mode_metadata)
-        self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_uuid, mode_metadata)
+        self.assertIn(cert_alarm_utils.UUID, mode_metadata)
         self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_k8s_ns, mode_metadata)
         self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_k8s_cert, mode_metadata)
         self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_k8s_secret, mode_metadata)
@@ -199,13 +201,17 @@ class CertAlarmTestCase(base.DbTestCase):
     def test_get_default_mode_metadata(self):
         data = cert_alarm_utils.get_default_mode_metadata()
         self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_MODE, data)
-        self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_uuid, data)
+        self.assertIn(cert_alarm_utils.UUID, data)
         self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_k8s_ns, data)
         self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_k8s_cert, data)
         self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_k8s_secret, data)
+        self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_FILE_LOC, data)
+        self.assertIn(cert_alarm_utils.SNAPSHOT_KEY_RENEW_BEFORE, data)
 
         self.assertEqual(data[cert_alarm_utils.SNAPSHOT_KEY_MODE], "")
-        self.assertEqual(data[cert_alarm_utils.SNAPSHOT_KEY_uuid], "")
+        self.assertEqual(data[cert_alarm_utils.UUID], "")
         self.assertEqual(data[cert_alarm_utils.SNAPSHOT_KEY_k8s_ns], "")
         self.assertEqual(data[cert_alarm_utils.SNAPSHOT_KEY_k8s_cert], "")
         self.assertEqual(data[cert_alarm_utils.SNAPSHOT_KEY_k8s_secret], "")
+        self.assertEqual(data[cert_alarm_utils.SNAPSHOT_KEY_FILE_LOC], "")
+        self.assertEqual(data[cert_alarm_utils.SNAPSHOT_KEY_RENEW_BEFORE], "")

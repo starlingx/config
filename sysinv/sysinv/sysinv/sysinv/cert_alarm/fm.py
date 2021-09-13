@@ -13,15 +13,14 @@ from sysinv.cert_alarm import utils
 LOG = log.getLogger(__name__)
 CONF = cfg.CONF
 
-SNAPSHOT_KEY_EXPIRING_SOON = 'EXPIRING_SOON'
-SNAPSHOT_KEY_EXPIRED = 'EXPIRED'
+EXPIRING_SOON = 'EXPIRING_SOON'
+EXPIRED = 'EXPIRED'
 
 
 class FaultApiMgr(object):
     def __init__(self):
         LOG.info('Initializing FaultApiMgr')
         self.fm_api = fm_api.FaultAPIs()
-        self.ALARMS_SNAPSHOT = {}
         """
         After an audit is completed, ALARMS_SNAPSHOT stores all active alarms
         ALARMS_SNAPSHOT is a dict of list.
@@ -30,6 +29,13 @@ class FaultApiMgr(object):
             EXPIRED: [certname7, certname8,...]
         }
         """
+        self.ALARMS_SNAPSHOT = {}
+        """
+        Entity ID to cert_name mapping
+        Due to the nature of entity_id strings generated, we need a map
+        to lookup cert_name's in utils.CERT_SNAPSHOT during audits
+        """
+        self.ENTITYID_TO_CERTNAME_MAP = {}
 
     def get_entity_instance_id(self, cert_name):
         """
@@ -42,36 +48,43 @@ class FaultApiMgr(object):
             OR
             system.certificate.k8sRootCA
         """
-        id = []
+        tmp_id = []
         if cert_name in utils.CERT_SNAPSHOT:
             snapshot = utils.CERT_SNAPSHOT[cert_name]
-            if snapshot[utils.SNAPSHOT_KEY_MODE] is utils.MODE_UUID:
-                id.append("system.certificate.mode=%s.uuid=%s" %
-                    (cert_name, snapshot[utils.SNAPSHOT_KEY_uuid]))
+            if snapshot[utils.SNAPSHOT_KEY_MODE] is utils.UUID:
+                tmp_id.append("system.certificate.mode=%s.uuid=%s" %
+                    (self.get_mode(cert_name), snapshot[utils.UUID]))
             elif snapshot[utils.SNAPSHOT_KEY_MODE] is utils.MODE_CERT_MGR:
-                id.append("namespace=%s.certificate=%s" %
+                tmp_id.append("namespace=%s.certificate=%s" %
                     (snapshot[utils.SNAPSHOT_KEY_k8s_ns], snapshot[utils.SNAPSHOT_KEY_k8s_cert]))
             elif snapshot[utils.SNAPSHOT_KEY_MODE] is utils.MODE_SECRET:
-                id.append("namespace=%s.secret=%s" %
+                tmp_id.append("namespace=%s.secret=%s" %
                     (snapshot[utils.SNAPSHOT_KEY_k8s_ns], snapshot[utils.SNAPSHOT_KEY_k8s_secret]))
             elif snapshot[utils.SNAPSHOT_KEY_MODE] is utils.MODE_OTHER:
-                id.append("system.certificate.%s" % cert_name)
+                tmp_id.append("system.certificate.%s" % cert_name)
 
-        id.append(" (%s=%s)" % (fm_constants.FM_ENTITY_TYPE_CERTIFICATE, cert_name))
-        return ''.join(id)
+        entity_id = ''.join(tmp_id)
+        self.ENTITYID_TO_CERTNAME_MAP[entity_id] = cert_name
+        return entity_id
 
     def get_cert_name_from_entity_instance_id(self, instance_id):
-        start = "(" + fm_constants.FM_ENTITY_TYPE_CERTIFICATE
-        return instance_id[instance_id.find(start) + 1:instance_id.find(")")]
+        if instance_id in self.ENTITYID_TO_CERTNAME_MAP:
+            return self.ENTITYID_TO_CERTNAME_MAP[instance_id]
+        else:
+            return 'Unknown'
+
+    @staticmethod
+    def get_mode(cert_name):
+        return 'ssl_ca' if 'ssl_ca' in cert_name else cert_name
 
     def get_reason_text(self, cert_name, expired_flag):
         txt = ["Certificate "]
         if cert_name in utils.CERT_SNAPSHOT:
             # Add entity related text
             snapshot = utils.CERT_SNAPSHOT[cert_name]
-            if snapshot[utils.SNAPSHOT_KEY_MODE] is utils.MODE_UUID:
+            if snapshot[utils.SNAPSHOT_KEY_MODE] is utils.UUID:
                 txt.append("\'system certificate-show %s\' (mode=%s) " %
-                    (snapshot[utils.SNAPSHOT_KEY_uuid], cert_name))
+                    (snapshot[utils.UUID], self.get_mode(cert_name)))
             elif snapshot[utils.SNAPSHOT_KEY_MODE] is utils.MODE_CERT_MGR:
                 txt.append("namespace=%s, certificate=%s " %
                     (snapshot[utils.SNAPSHOT_KEY_k8s_ns], snapshot[utils.SNAPSHOT_KEY_k8s_cert]))
@@ -83,10 +96,10 @@ class FaultApiMgr(object):
 
             # Add Expired or Expiring
             if expired_flag:
-                txt.append(" expired.")
+                txt.append("expired.")
             else:
                 expiry_date = snapshot[utils.SNAPSHOT_KEY_EXPDATE]
-                txt.append(" is expiring soon on ")
+                txt.append("is expiring soon on ")
                 txt.append(expiry_date.strftime("%Y-%m-%d, %H:%M:%S"))
 
         else:
@@ -149,11 +162,11 @@ class FaultApiMgr(object):
 
         # Expiring Soon alarms
         exp_soon_alarms = self.get_faults(False)
-        self.add_alarms_snapshot(SNAPSHOT_KEY_EXPIRING_SOON, exp_soon_alarms)
+        self.add_alarms_snapshot(EXPIRING_SOON, exp_soon_alarms)
 
         # Expired alarms
         exprd_alarms = self.get_faults(True)
-        self.add_alarms_snapshot(SNAPSHOT_KEY_EXPIRED, exprd_alarms)
+        self.add_alarms_snapshot(EXPIRED, exprd_alarms)
 
     def reset_alarms_snapshot(self):
         self.ALARMS_SNAPSHOT = {}
@@ -168,3 +181,9 @@ class FaultApiMgr(object):
                 cert_names.append(self.get_cert_name_from_entity_instance_id(item.entity_instance_id))
 
         self.ALARMS_SNAPSHOT[key] = cert_names
+
+    def reset_entityid_to_certname_map(self):
+        self.ENTITYID_TO_CERTNAME_MAP = {}
+
+    def print_entityid_to_certname_map(self):
+        LOG.info('Entityid_to_certname map = %s' % self.ENTITYID_TO_CERTNAME_MAP)

@@ -11,6 +11,7 @@ from datetime import datetime
 from oslo_config import cfg
 from oslo_log import log
 from OpenSSL import crypto
+from sysinv.cert_mon import utils as certmon_utils
 from sysinv.common import constants
 from sysinv.common import kubernetes as sys_kube
 
@@ -19,6 +20,7 @@ CONF = cfg.CONF
 
 V1_ALPHA_3 = 'v1alpha3'
 PLURAL_NAME_CERT = 'certificates'
+SPEC = 'spec'
 METADATA = 'metadata'
 ANNOTATIONS = 'annotations'
 CERTMGR_CERT_NAME = "cert-manager.io/certificate-name"
@@ -26,13 +28,14 @@ CERTMGR_CERT_NAME = "cert-manager.io/certificate-name"
 SNAPSHOT_KEY_EXPDATE = 'expiry_date'
 # Mode will determine how alarm constructs entity_instance_id and description
 SNAPSHOT_KEY_MODE = 'mode'
-SNAPSHOT_KEY_uuid = 'mode_uuid'
 SNAPSHOT_KEY_k8s_ns = 'mode_k8s_ns'
 SNAPSHOT_KEY_k8s_cert = 'mode_k8s_cert'
 SNAPSHOT_KEY_k8s_secret = 'mode_k8s_secret'
+SNAPSHOT_KEY_FILE_LOC = 'file_location'
+SNAPSHOT_KEY_RENEW_BEFORE = 'renewBefore'
 
 # "mode" values can be:
-MODE_UUID = 'uuid'
+UUID = 'uuid'
 MODE_SECRET = 'secret'
 MODE_CERT_MGR = 'certmgr'
 MODE_OTHER = 'other'
@@ -40,7 +43,6 @@ MODE_OTHER = 'other'
 CERT_SNAPSHOT = {}
 """
 CERT_SNAPSHOT is a dict of dict. Each entry is per certificate.
-Internal dict is expiry_date and all annotations collected via k8s secret
 {
     certname1: {
         expiry_date: date
@@ -49,11 +51,13 @@ Internal dict is expiry_date and all annotations collected via k8s secret
         alarm_severity: <severity>
         alarm_text: <custom pretext>
         mode: <mode>
-        mode_uuid: <uuid>
+        uuid: <uuid>
         mode_k8s_ns: <namespace>
         mode_k8s_cert: <certificate>
         mode_k8s_secret: <secret>
         mode_other: <other>
+        file_location: <filepath>
+        renewBefore: <renewBefore>
     }
     certname2: {
         ...
@@ -113,7 +117,7 @@ def collect_certificate_data_from_file(certname, pem_file):
     cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert_buf)
     expiration_date = get_cert_expiration_date(cert)
     annotation_data = get_default_annotation_values()
-    mode_metadata = get_file_mode_metadata(certname)
+    mode_metadata = get_file_mode_metadata(certname, pem_file)
     return (certname, expiration_date, annotation_data, mode_metadata)
 
 
@@ -210,6 +214,9 @@ def get_annotation_data(secretobj):
                 mode_metadata[SNAPSHOT_KEY_k8s_cert] = crd_cert_name
 
                 # Note: unlike k8s secret obj, get_custom_resource() returns a dict()
+                if SNAPSHOT_KEY_RENEW_BEFORE in certobj[SPEC]:
+                    mode_metadata[SNAPSHOT_KEY_RENEW_BEFORE] = certobj[SPEC][SNAPSHOT_KEY_RENEW_BEFORE]
+
                 certobj_annotation = certobj[METADATA][ANNOTATIONS]
                 annotation_dict, patch_needed = process_annotation_data(certobj_annotation)
                 if patch_needed is True:
@@ -303,22 +310,55 @@ def get_default_annotation_values():
 def get_default_mode_metadata():
     return {
         SNAPSHOT_KEY_MODE: "",
-        SNAPSHOT_KEY_uuid: "",
+        UUID: "",
         SNAPSHOT_KEY_k8s_ns: "",
         SNAPSHOT_KEY_k8s_cert: "",
-        SNAPSHOT_KEY_k8s_secret: ""
+        SNAPSHOT_KEY_k8s_secret: "",
+        SNAPSHOT_KEY_FILE_LOC: "",
+        SNAPSHOT_KEY_RENEW_BEFORE: ""
     }
 
 
-def get_file_mode_metadata(certname):
+def get_file_mode_metadata(certname, file_loc):
     mode_metadata = get_default_mode_metadata()
+    mode_metadata[SNAPSHOT_KEY_FILE_LOC] = file_loc
     # For k8s_root_ca and etcd, set "other". Rest should have UUID in sysinv db.
     # In case of ssl & docker, if managed by cert_mgr, this wont be called from run_full_audit()
     # so, can assume that we will have UUID in db
     if certname is constants.CERT_MODE_KUBERNETES_ROOT_CA or certname is constants.CERT_MODE_ETCD:
         mode_metadata[SNAPSHOT_KEY_MODE] = MODE_OTHER
     else:
-        mode_metadata[SNAPSHOT_KEY_MODE] = MODE_UUID
-        # TODO() get UUID from DB
+        mode_metadata[SNAPSHOT_KEY_MODE] = UUID
+        mode_metadata[UUID] = get_cert_uuid(certname)
 
     return mode_metadata
+
+
+def get_cert_uuid(certname):
+    token = certmon_utils._get_token(
+        CONF.keystone_authtoken.auth_url + '/v3/auth/tokens',
+        CONF.keystone_authtoken.project_name,
+        CONF.keystone_authtoken.username,
+        CONF.keystone_authtoken.password,
+        CONF.keystone_authtoken.user_domain_name,
+        CONF.keystone_authtoken.project_domain_name,
+        CONF.keystone_authtoken.region_name)
+
+    service_type = 'platform'
+    service_name = 'sysinv'
+    sysinv_url = token.get_service_internal_url(service_type,
+                                                service_name)
+    api_cmd = sysinv_url + '/certificate'
+    ret = 'unknown'
+    try:
+        res = certmon_utils.rest_api_request(token, "GET", api_cmd)
+        if len(res) == 1:
+            cert_list = res.get('certificates')
+            for item in cert_list:
+                if item['signature'] == certname:
+                    ret = item['uuid']
+                    break
+    except Exception as e:
+        LOG.exception(e)
+
+    return ret

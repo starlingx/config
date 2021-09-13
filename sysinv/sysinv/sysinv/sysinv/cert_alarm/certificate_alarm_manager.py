@@ -11,9 +11,8 @@ from oslo_config import cfg
 from oslo_log import log
 from oslo_service import periodic_task
 
-from sysinv.cert_alarm import fm as fm_mgr
-from sysinv.cert_alarm import utils
-from sysinv.common import constants
+from sysinv.cert_alarm import audit as audit_mgr
+from sysinv.cert_mon import utils as certmon_utils
 
 LOG = log.getLogger(__name__)
 
@@ -35,87 +34,27 @@ class CertificateAlarmManager(periodic_task.PeriodicTasks):
         super(CertificateAlarmManager, self).__init__(CONF)
         self.audit_thread = None
         self.active_alarm_audit_thread = None
-        self.fm_obj = fm_mgr.FaultApiMgr()
+        self.audit_obj = audit_mgr.CertAlarmAudit()
 
     def periodic_tasks(self, context, raise_on_error=False):
         """Tasks to be run at a periodic interval."""
         return self.run_periodic_tasks(context, raise_on_error=raise_on_error)
 
     @periodic_task.periodic_task(spacing=CONF.certalarm.audit_interval)
-    def periodic_full_audit(self):
+    def periodic_full_audit(self, context):
         # this task runs every CONF.certalarm.audit_interval (24 hours)
-        self.run_full_audit()
-
-    def run_full_audit(self):
-        """
-        Run full audit
-        """
-        LOG.info('Running cert-alarm full audit')
-        utils.reset_cert_snapshot()
-
-        # 1. Process all k8s secrets/certificates
-        LOG.info('Processing (1/3) k8s secret/certificates...')
-        try:
-            all_secrets = utils.get_tls_secrets_from_all_ns()
-
-            if all_secrets:
-                LOG.info('Number of TLS secrets to process=%d' % len(all_secrets))
-                for item in all_secrets:
-                    LOG.info('Processing item: %s' % item.metadata.name)
-                    (certname_secret, exp_date_secret, anno_data_secret, mode_metadata) = \
-                            utils.collect_certificate_data_from_kube_secret(item)
-                    # if cert not present, exp_date will be None
-                    if exp_date_secret is not None:
-                        utils.add_cert_snapshot(certname_secret,
-                                                exp_date_secret,
-                                                anno_data_secret,
-                                                mode_metadata)
-        except Exception as e:
-            LOG.error(e)
-
-        # 2. Process platform certs stored as pem files
-        LOG.info('Processing (2/3) platform certificate files...')
-        for key, value in constants.CERT_LOCATION_MAP.items():
-            LOG.info('Processing item: %s at location %s' % (key, value))
-            if utils.is_certname_already_processed(key) is True:
-                continue
-
-            (certname_file, exp_date_file, anno_data_file, mode_metadata_file) = \
-                    utils.collect_certificate_data_from_file(key, value)
-            # if cert not present, exp_date will be None
-            if exp_date_file is not None:
-                utils.add_cert_snapshot(certname_file,
-                                        exp_date_file,
-                                        anno_data_file,
-                                        mode_metadata_file)
-
-        # 3. Process SSL_CA certificates (special case, since there can be multiple files)
-        LOG.info('Processing (3/3) ssl_ca certificate files...')
-        ssl_ca_data_list = utils.collect_certificate_data_for_ssl_cas()
-        LOG.debug('ssl_ca_data_list=%s' % ssl_ca_data_list)
-        for entry in ssl_ca_data_list:
-            # if cert not present, exp_date will be None
-            if entry[1] is not None:
-                utils.add_cert_snapshot(entry[0], entry[1], entry[2], entry[3])
-
-        utils.print_cert_snapshot()
+        self.audit_obj.run_full_audit()
 
     @periodic_task.periodic_task(spacing=CONF.certalarm.active_alarm_audit_interval)
-    def periodic_active_alarm_audit(self):
+    def periodic_active_alarm_audit(self, context):
         # this task runs every CONF.certalarm.active_alarm_audit_interval (1 hour)
-        self.run_active_alarm_audit()
-
-    def run_active_alarm_audit(self):
-        """
-        Run audit only on active alarms
-        """
-        LOG.info('Running cert-alarm active_alarm_audit')
-        # TODO()
+        self.audit_obj.run_active_alarm_audit()
 
     def start_audits(self):
+        certmon_utils.init_keystone_auth_opts()
         LOG.info('Cert-alarm auditing interval %s' % CONF.certalarm.audit_interval)
         self.audit_thread = greenthread.spawn(self.audit_certalarms)
-        self.run_full_audit()
+        self.audit_obj.run_full_audit()
 
         LOG.info('Cert-alarm active alarms auditing interval %s' %
                  CONF.certalarm.active_alarm_audit_interval)
