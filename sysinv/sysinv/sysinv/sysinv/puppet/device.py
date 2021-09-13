@@ -108,7 +108,6 @@ class DevicePuppet(base.BasePuppet):
                 pf_config = {
                     device.pciaddr: {
                         'num_vfs': num_vfs,
-                        'sriov_vfs': device['sriov_numvfs'],
                         'addr': quoted_str(device['pciaddr'].strip()),
                         'driver': device['driver'],
                         'device_id': device['pdevice_id']
