@@ -746,6 +746,20 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(ret, [])
 
     def test_kube_download_images(self):
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
         # Create an upgrade
         utils.create_test_kube_upgrade(
             from_version='v1.42.1',
@@ -762,6 +776,20 @@ class ManagerTestCase(base.DbTestCase):
                          kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
 
     def test_kube_download_images_ansible_fail(self):
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
         # Create an upgrade
         utils.create_test_kube_upgrade(
             from_version='v1.42.1',

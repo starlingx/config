@@ -13408,6 +13408,39 @@ class ConductorManager(service.PeriodicService):
     def kube_download_images(self, context, kube_version):
         """Download the kubernetes images for this version"""
 
+        # Update the config for the controller host(s)
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities)
+
+        # Apply the runtime manifest to have the kubernetes
+        # bind mounts updated on the active controller
+        config_dict = {
+            "personalities": personalities,
+            "classes": 'platform::kubernetes::bindmounts'
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+        # Wait for the manifest(s) to be applied
+        elapsed = 0
+        while elapsed < kubernetes.MANIFEST_APPLY_TIMEOUT:
+            elapsed += kubernetes.MANIFEST_APPLY_INTERVAL
+            greenthread.sleep(kubernetes.MANIFEST_APPLY_INTERVAL)
+            controller_0 = self.dbapi.ihost_get_by_hostname(
+                constants.CONTROLLER_0_HOSTNAME)
+            if controller_0.config_target != controller_0.config_applied:
+                LOG.debug("Waiting for config apply on %s" %
+                          constants.CONTROLLER_0_HOSTNAME)
+            else:
+                LOG.info("Config was applied for %s" % constants.CONTROLLER_0_HOSTNAME)
+                break
+        else:
+            LOG.warning("Manifest apply failed for %s" % constants.CONTROLLER_0_HOSTNAME)
+            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+            kube_upgrade_obj.state = \
+                kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
+            kube_upgrade_obj.save()
+            return
+
         LOG.info("executing playbook: %s for version %s" %
                  (constants.ANSIBLE_KUBE_PUSH_IMAGES_PLAYBOOK, kube_version))
 
