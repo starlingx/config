@@ -227,8 +227,8 @@ def update_subcloud_ca_cert(
     api_cmd_payload['sc_ca_key'] = tls_key
     timeout = int(CONF.endpoint_cache.http_connect_timeout)
 
-    resp = rest_api_request(token, "POST", api_cmd, json.dumps(api_cmd_payload),
-                            timeout=timeout)
+    resp = rest_api_request(token, "POST", api_cmd,
+                            json.dumps(api_cmd_payload), timeout=timeout)
 
     if 'result' in resp and resp['result'] == 'OK':
         LOG.info('Update %s intermediate CA cert request succeed' % sc_name)
@@ -298,13 +298,16 @@ def update_subcloud_status(token, subcloud_name, status):
     api_cmd_payload = dict()
     api_cmd_payload['endpoint'] = ENDPOINT_TYPE_DC_CERT
     api_cmd_payload['status'] = status
-    resp = rest_api_request(token, "PATCH", api_cmd, json.dumps(api_cmd_payload))
+    resp = rest_api_request(token, "PATCH",
+                            api_cmd, json.dumps(api_cmd_payload))
 
     if 'result' in resp and resp['result'] == 'OK':
-        LOG.info('Successfully updated subcloud %s status: %s' % (subcloud_name, status))
+        LOG.info('Updated subcloud %s status: %s' % (subcloud_name, status))
     else:
-        LOG.error('Failed to update subcloud %s status to %s, resp=%s' % (subcloud_name, status, resp))
-        raise Exception('Update subcloud status failed, subcloud=%s' % subcloud_name)
+        LOG.error("Failed to update subcloud %s status to '%s', resp=%s"
+                  % (subcloud_name, status, resp))
+        raise Exception('Update subcloud status failed, subcloud=%s'
+                        % subcloud_name)
 
 
 def rest_api_request(token, method, api_cmd,
