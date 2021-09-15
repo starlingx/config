@@ -380,7 +380,9 @@ class KubernetesPuppet(base.BasePuppet):
             if kube_upgrade_state:
                 kube_host_upgrade = objects.kube_host_upgrade.get_by_host_id(
                     self.context, host.id)
-                if kube_host_upgrade.status == kubernetes.KUBE_HOST_UPGRADING_KUBELET:
+                if kube_host_upgrade.status in [
+                        kubernetes.KUBE_HOST_UPGRADING_KUBELET,
+                        kubernetes.KUBE_HOST_UPGRADED_KUBELET]:
                     kubelet_version = kube_host_upgrade.target_version.lstrip('v')
 
             config.update({'platform::kubernetes::params::kubeadm_version': kubeadm_version})

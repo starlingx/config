@@ -13665,7 +13665,7 @@ class ConductorManager(service.PeriodicService):
         # The kubelet update was successful
         kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
             context, host_obj.id)
-        kube_host_upgrade_obj.status = None
+        kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADED_KUBELET
         kube_host_upgrade_obj.save()
 
     def kube_upgrade_networking(self, context, kube_version):

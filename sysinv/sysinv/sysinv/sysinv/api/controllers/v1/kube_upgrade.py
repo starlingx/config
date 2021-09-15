@@ -393,7 +393,8 @@ class KubeUpgradeController(rest.RestController):
             kube_host_upgrades = \
                 pecan.request.dbapi.kube_host_upgrade_get_list()
             for kube_host_upgrade in kube_host_upgrades:
-                if kube_host_upgrade.status is not None:
+                if kube_host_upgrade.status != \
+                        kubernetes.KUBE_HOST_UPGRADED_KUBELET:
                     raise wsme.exc.ClientSideError(_(
                         "At least one host has not completed the kubernetes "
                         "upgrade"))
@@ -410,6 +411,11 @@ class KubeUpgradeController(rest.RestController):
                 pecan.request.context)
             kube_cmd_versions.kubelet_version = kube_upgrade_obj.to_version.lstrip('v')
             kube_cmd_versions.save()
+
+            # The global kubelet version is set, clear the per-host status.
+            for kube_host_upgrade in kube_host_upgrades:
+                pecan.request.dbapi.kube_host_upgrade_update(
+                    kube_host_upgrade.id, {'status': None})
 
             # All is well, mark the upgrade as complete
             kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_COMPLETE

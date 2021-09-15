@@ -88,6 +88,7 @@ KUBE_HOST_UPGRADING_CONTROL_PLANE = 'upgrading-control-plane'
 KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED = 'upgrading-control-plane-failed'
 KUBE_HOST_UPGRADING_KUBELET = 'upgrading-kubelet'
 KUBE_HOST_UPGRADING_KUBELET_FAILED = 'upgrading-kubelet-failed'
+KUBE_HOST_UPGRADED_KUBELET = 'upgraded-kubelet'
 
 # Kubernetes rootca update states
 KUBE_ROOTCA_UPDATE_STARTED = 'update-started'
