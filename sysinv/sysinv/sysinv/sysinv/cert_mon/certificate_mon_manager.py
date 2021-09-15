@@ -50,6 +50,14 @@ cert_mon_opts = [
     cfg.BoolOpt('startup_audit_all',
                 default=False,
                 help='Audit all subclouds on startup'),
+    cfg.IntOpt('network_retry_interval',
+               default=180,  # every 3 minutes
+               help='Max times to reattempt accessing external system '
+                    'if network failure occurred'),
+    cfg.IntOpt('network_max_retry',
+               default=5,
+               help='Interval to reattempt accessing external system '
+                    'if network failure occurred'),
     cfg.IntOpt('audit_batch_size',
                default=10,
                help='Batch size of subcloud audits per audit_interval'),
@@ -122,19 +130,19 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             if subcloud[utils.ENDPOINT_TYPE_DC_CERT] != utils.SYNC_STATUS_IN_SYNC:
                 subcloud_name = subcloud['name']
                 if self.sc_audit_queue.contains(subcloud_name):
-                    LOG.info('%s is not in-sync but already under audit'
+                    LOG.info("%s is not in-sync but already under audit"
                              % subcloud_name)
                 else:
-                    LOG.info('%s is not in-sync, adding it to audit'
+                    LOG.info("%s is not in-sync, adding it to audit"
                              % subcloud_name)
                     self.sc_audit_queue.enqueue(
                         subcloud_audit_queue.SubcloudAuditData(subcloud_name))
 
         if self.sc_audit_queue.qsize() > 0:
-            LOG.info('Startup audit: %d subcloud(s) to be audited' %
+            LOG.info("Startup audit: %d subcloud(s) to be audited" %
                      self.sc_audit_queue.qsize())
         else:
-            LOG.info('Startup audit: all subclouds are in-sync')
+            LOG.info("Startup audit: all subclouds are in-sync")
 
     @periodic_task.periodic_task(spacing=5)
     def audit_sc_cert_task(self, context):
@@ -198,13 +206,28 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
                 subcloud_name)
             sc_ssl_cert = utils.get_endpoint_certificate(subcloud_sysinv_url)
 
-        except Exception as e:
-            LOG.error('Cannot audit ssl certificate on %s' % subcloud_name)
-            LOG.exception(e)
-            # certificate is not ready, no reaudit. Will be picked up
-            # by certificate MODIFIED event if it comes back
-            return
+        except Exception:
+            if not utils.is_subcloud_online(subcloud_name, dc_token):
+                LOG.warn("Subcloud is not online, aborting audit: %s"
+                         % subcloud_name)
+                return
+            # Handle network-level issues
+            # Re-enqueue the subcloud for reauditing
+            max_attempts = CONF.certmon.network_max_retry
+            if sc_audit_item.audit_count < max_attempts:
+                LOG.exception("Cannot retrieve ssl certificate for %s "
+                              "via: %s (requeuing audit)"
+                              % (subcloud_name, subcloud_sysinv_url))
+                self.requeue_audit_subcloud(sc_audit_item,
+                                            CONF.certmon.network_retry_interval)
+            else:
+                LOG.exception("Cannot retrieve ssl certificate for %s via: %s; "
+                              "maximum retry limit exceeded [%d], giving up"
+                              % (subcloud_name, subcloud_sysinv_url, max_attempts))
 
+                utils.update_subcloud_status(dc_token, subcloud_name,
+                                             utils.SYNC_STATUS_OUT_OF_SYNC)
+            return
         try:
             secret = utils.get_sc_intermediate_ca_secret(subcloud_name)
             check_list = ['ca.crt', 'tls.crt', 'tls.key']
@@ -217,14 +240,14 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             txt_ssl_key = base64.decode_as_text(secret.data['tls.key'])
             txt_ca_cert = base64.decode_as_text(secret.data['ca.crt'])
         except Exception:
+            # Handle certificate-level issues
             if not utils.is_subcloud_online(subcloud_name, dc_token):
                 LOG.exception("Error getting subcloud intermediate cert. "
                               "Subcloud is not online, aborting audit: %s"
                               % subcloud_name)
                 return
-
-            # Handle certificate-level issues
-            LOG.exception('Cannot audit ssl certificate on %s' % subcloud_name)
+            LOG.exception("Cannot audit ssl certificate on %s. "
+                          "Certificate is not ready." % subcloud_name)
             # certificate is not ready, no reaudit. Will be picked up
             # by certificate MODIFIED event if it comes back
             return
@@ -232,8 +255,8 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         cert_chain = txt_ssl_cert + txt_ca_cert
         if not cutils.verify_intermediate_ca_cert(cert_chain, sc_ssl_cert):
             # The subcloud needs renewal.
-            LOG.info('Updating {} intermediate CA as it is out-of-sync'
-                     .format(subcloud_name))
+            LOG.info("Updating %s intermediate CA as it is out-of-sync" %
+                     subcloud_name)
             # reaudit this subcloud after delay
             self.requeue_audit_subcloud(sc_audit_item)
             try:
@@ -244,12 +267,12 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
                                               txt_ssl_cert,
                                               txt_ssl_key)
             except Exception:
-                LOG.exception('Failed to update intermediate CA on %s'
+                LOG.exception("Failed to update intermediate CA on %s"
                               % subcloud_name)
                 utils.update_subcloud_status(dc_token, subcloud_name,
                                              utils.SYNC_STATUS_OUT_OF_SYNC)
         else:
-            LOG.info('%s intermediate CA cert is in-sync' % subcloud_name)
+            LOG.info("%s intermediate CA cert is in-sync" % subcloud_name)
             utils.update_subcloud_status(dc_token, subcloud_name,
                                          utils.SYNC_STATUS_IN_SYNC)
 
@@ -261,7 +284,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
 
         num_tasks = len(tasks)
         if num_tasks > 0:
-            LOG.info('Start retry_monitor_task: #tasks in queue: %s' %
+            LOG.info("Start retry_monitor_task: #tasks in queue: %s" %
                      num_tasks)
 
         # NOTE: this loop can potentially retry ALL subclouds, which
@@ -272,7 +295,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
                      % (task_id, task.number_of_reattempt))
             if task.run():
                 self.reattempt_monitor_tasks.remove(task)
-                LOG.info('retry_monitor_task: %s, reattempt has succeeded'
+                LOG.info("retry_monitor_task: %s, reattempt has succeeded"
                          % task_id)
             elif task.number_of_reattempt >= max_attempts:
                 LOG.error(("retry_monitor_task: %s, maximum attempts (%s) "
@@ -286,10 +309,10 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
 
             # Pause and allow other eventlets to run
             eventlet.sleep(0.1)
-        LOG.debug('End retry_monitor_task')
+        LOG.debug("End retry_monitor_task")
 
     def start_audit(self):
-        LOG.info('Auditing interval %s' % CONF.certmon.audit_interval)
+        LOG.info("Auditing interval %s" % CONF.certmon.audit_interval)
         utils.init_keystone_auth_opts()
         self.audit_thread = eventlet.greenthread.spawn(self.audit_cert_loop)
         self.on_start_audit()
@@ -413,6 +436,6 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         for t in self.reattempt_monitor_tasks:
             if t.get_id() == id:
                 self.reattempt_monitor_tasks.remove(t)
-                LOG.info('Purging reattempt monitor task %s: %s'
+                LOG.info("Purging reattempt monitor task %s: %s"
                          % (reason_msg, id))
                 break
