@@ -302,8 +302,7 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         }
 
     def _format_ceph_mon_address(self, ip_address):
-        return utils.format_ceph_mon_address(
-            ip_address, self.SERVICE_PORT_MON)
+        return utils.format_url_address(ip_address)
 
     def _get_host_ceph_mon(self, host):
         ceph_mons = self.dbapi.ceph_mon_get_by_ihost(host.uuid)
