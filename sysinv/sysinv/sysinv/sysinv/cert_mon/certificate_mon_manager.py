@@ -77,6 +77,8 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         super(CertificateMonManager, self).__init__(CONF)
         self.mon_threads = []
         self.audit_thread = None
+        self.token_cache = utils.TokenCache()
+        self.dc_token_cache = utils.DCTokenCache()
         self.dc_monitor = None
         self.restapicert_monitor = None
         self.registrycert_monitor = None
@@ -127,8 +129,8 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
 
         LOG.info("Service start: begin subcloud certificate audit [batch: %s]"
                  % CONF.certmon.audit_batch_size)
-        token = utils.get_token()
-        all_subclouds = utils.get_subclouds_from_dcmanager(token)
+        all_subclouds = utils.get_subclouds_from_dcmanager(
+            self.token_cache.get_token())
         for subcloud in all_subclouds:
             if subcloud[utils.ENDPOINT_TYPE_DC_CERT] != utils.SYNC_STATUS_IN_SYNC:
                 subcloud_name = subcloud['name']
@@ -202,7 +204,9 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
                     sc_audit_item.audit_count,
                     self.sc_audit_queue.qsize()))
 
-        dc_token = utils.get_dc_token(subcloud_name)
+        def my_dc_token():
+            """Ensure we always have a valid token"""
+            return self.dc_token_cache.get_dc_token(subcloud_name)
 
         try:
             subcloud_sysinv_url = utils.dc_get_subcloud_sysinv_url(
@@ -210,7 +214,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             sc_ssl_cert = utils.get_endpoint_certificate(subcloud_sysinv_url)
 
         except Exception:
-            if not utils.is_subcloud_online(subcloud_name, dc_token):
+            if not utils.is_subcloud_online(subcloud_name, my_dc_token()):
                 LOG.warn("Subcloud is not online, aborting audit: %s"
                          % subcloud_name)
                 return
@@ -228,7 +232,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
                               "maximum retry limit exceeded [%d], giving up"
                               % (subcloud_name, subcloud_sysinv_url, max_attempts))
 
-                utils.update_subcloud_status(dc_token, subcloud_name,
+                utils.update_subcloud_status(my_dc_token(), subcloud_name,
                                              utils.SYNC_STATUS_OUT_OF_SYNC)
             return
         try:
@@ -244,7 +248,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             txt_ca_cert = base64.decode_as_text(secret.data['ca.crt'])
         except Exception:
             # Handle certificate-level issues
-            if not utils.is_subcloud_online(subcloud_name, dc_token):
+            if not utils.is_subcloud_online(subcloud_name, my_dc_token()):
                 LOG.exception("Error getting subcloud intermediate cert. "
                               "Subcloud is not online, aborting audit: %s"
                               % subcloud_name)
@@ -263,7 +267,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             # reaudit this subcloud after delay
             self.requeue_audit_subcloud(sc_audit_item)
             try:
-                utils.update_subcloud_ca_cert(dc_token,
+                utils.update_subcloud_ca_cert(my_dc_token(),
                                               subcloud_name,
                                               subcloud_sysinv_url,
                                               txt_ca_cert,
@@ -272,11 +276,11 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             except Exception:
                 LOG.exception("Failed to update intermediate CA on %s"
                               % subcloud_name)
-                utils.update_subcloud_status(dc_token, subcloud_name,
+                utils.update_subcloud_status(my_dc_token(), subcloud_name,
                                              utils.SYNC_STATUS_OUT_OF_SYNC)
         else:
             LOG.info("%s intermediate CA cert is in-sync" % subcloud_name)
-            utils.update_subcloud_status(dc_token, subcloud_name,
+            utils.update_subcloud_status(my_dc_token(), subcloud_name,
                                          utils.SYNC_STATUS_IN_SYNC)
 
     @periodic_task.periodic_task(spacing=CONF.certmon.retry_interval)

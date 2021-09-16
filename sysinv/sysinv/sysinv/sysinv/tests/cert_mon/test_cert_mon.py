@@ -30,6 +30,7 @@ class CertMonTestCase(base.DbTestCase):
         # Set up objects for testing
         self.service = cert_mon.CertificateMonitorService()
         self.keystone_token = self.get_keystone_token()
+        self.token_cache_num = 1
 
         # Mock rest_api_request()
         self.rest_api_request_result = None
@@ -269,3 +270,70 @@ class CertMonTestCase(base.DbTestCase):
             cmgr.audit_sc_cert_task(None)
             # It should now be drained:
             self.assertEqual(cmgr.sc_audit_queue.qsize(), 0)
+
+    def test_token_cache(self):
+        """Basic test case for TokenCache"""
+        def get_cache_test_token():
+            """This method replaces utils.get_token() for this test.
+            Increments the token id each invocation.
+            """
+            token = self.get_keystone_token()
+            token.token_id = "token{}".format(self.token_cache_num)
+            self.token_cache_num += 1
+            return token
+
+        with mock.patch("sysinv.cert_mon.utils.get_token") as mock_get_token:
+            mock_get_token.side_effect = get_cache_test_token
+            token_cache = cert_mon_utils.TokenCache()
+            token = token_cache.get_token()
+            self.assertEqual(token.get_id(), "token1")
+            self.assertFalse(token.is_expired())
+            self.assertEqual(token_cache.get_token().get_id(), "token1")
+            token.set_expired()
+            self.assertTrue(token.is_expired())
+            # should now get a new, unexpired token:
+            token = token_cache.get_token()
+            self.assertEqual(token.get_id(), "token2")
+            self.assertFalse(token.is_expired())
+            self.assertEqual(token_cache.get_token().get_id(), "token2")
+            token_cache.get_token().set_expired()
+            self.assertTrue(token.is_expired())
+
+    def test_dc_token_cache(self):
+        """Basic test case for DCTokenCache"""
+        def get_cache_test_token(region_name):
+            """Increments the token id each invocation
+            This method is called in place of utils.get_token() for this test."""
+            token = self.get_keystone_token()
+            token.token_id = "token{}".format(self.token_cache_num)
+            token.region_name = region_name
+            self.token_cache_num += 1
+            return token
+
+        with mock.patch(
+                "sysinv.cert_mon.utils.get_dc_token") as mock_get_dc_token:
+            mock_get_dc_token.side_effect = get_cache_test_token
+            token_cache = cert_mon_utils.DCTokenCache()
+            region = "RegionOne"
+            token = token_cache.get_dc_token(region)
+            self.assertEqual(token.get_id(), "token1")
+            self.assertEqual(token.region_name, "RegionOne")
+            self.assertFalse(token.is_expired())
+            self.assertEqual(token_cache.get_dc_token(region).get_id(), "token1")
+            token.set_expired()
+            self.assertTrue(token.is_expired())
+            # should now get a new, unexpired token:
+            token = token_cache.get_dc_token(region)
+            self.assertEqual(token.get_id(), "token2")
+            self.assertFalse(token.is_expired())
+            self.assertEqual(token_cache.get_dc_token(region).get_id(), "token2")
+            token_cache.get_dc_token(region).set_expired()
+            self.assertTrue(token.is_expired())
+            token = token_cache.get_dc_token(region)
+            self.assertEqual(token.get_id(), "token3")
+            self.assertFalse(token.is_expired())
+            # Test getting token for a different region:
+            region = "RegionTwo"
+            token = token_cache.get_dc_token(region)
+            self.assertEqual(token.get_id(), "token4")
+            self.assertFalse(token.is_expired())

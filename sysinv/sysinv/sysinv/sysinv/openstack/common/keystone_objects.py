@@ -75,3 +75,8 @@ class Token(object):
 
     def get_service_url(self, service_type, service_name):
         return self.get_service_admin_url(service_type, service_name)
+
+    def __str__(self):
+        return "id: {}, expired: {}, region_name: {}, expires_at: {}".format(
+            self.token_id, self.expired, self.region_name,
+            self.data['token']['expires_at'])
