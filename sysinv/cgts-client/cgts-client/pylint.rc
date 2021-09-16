@@ -20,7 +20,87 @@ load-plugins=
 # Enable the message, report, category or checker with the given id(s). You can
 # either give multiple identifier separated by comma (,) or put this option
 # multiple time.
-#enable=
+#
+# Python3 checker:
+#
+# E1601: print-statement
+# E1602: parameter-unpacking
+# E1603: unpacking-in-except
+# E1604: old-raise-syntax
+# E1605: backtick
+# E1606: long-suffix
+# E1607: old-ne-operator
+# E1608: old-octal-literal
+# E1609: import-star-module-level
+# E1610: non-ascii-bytes-literal
+# E1611: invalid-unicode-literal
+# W1601: apply-builtin
+# W1602: basestring-builtin
+# W1603: buffer-builtin
+# W1604: cmp-builtin
+# W1605: coerce-builtin
+# W1606: execfile-builtin
+# W1607: file-builtin
+# W1608: long-builtin
+# W1609: raw_input-builtin
+# W1610: reduce-builtin
+# W1611: standarderror-builtin
+# W1612: unicode-builtin
+# W1613: xrange-builtin
+# W1614: coerce-method
+# W1615: delslice-method
+# W1616: getslice-method
+# W1617: setslice-method
+# W1618: no-absolute-import
+# W1619: old-division
+# W1620: dict-iter-method
+# W1621: dict-view-method
+# W1622: next-method-called
+# W1623: metaclass-assignment
+# W1624: indexing-exception
+# W1625: raising-string
+# W1626: reload-builtin
+# W1627: oct-method
+# W1628: hex-method
+# W1629: nonzero-method
+# W1630: cmp-method
+# W1632: input-builtin
+# W1633: round-builtin
+# W1634: intern-builtin
+# W1635: unichr-builtin
+# W1636: map-builtin-not-iterating
+# W1637: zip-builtin-not-iterating
+# W1638: range-builtin-not-iterating
+# W1639: filter-builtin-not-iterating
+# W1640: using-cmp-argument
+# W1641: eq-without-hash
+# W1642: div-method
+# W1643: idiv-method
+# W1644: rdiv-method
+# W1645: exception-message-attribute
+# W1646: invalid-str-codec
+# W1647: sys-max-int
+# W1648: bad-python3-import
+# W1649: deprecated-string-function
+# W1650: deprecated-str-translate-call
+# W1651: deprecated-itertools-function
+# W1652: deprecated-types-field
+# W1653: next-method-defined
+# W1654: dict-items-not-iterating
+# W1655: dict-keys-not-iterating
+# W1656: dict-values-not-iterating
+# W1657: deprecated-operator-function
+# W1658: deprecated-urllib-function
+# W1659: xreadlines-attribute
+# W1660: deprecated-sys-function
+# W1661: exception-escape
+# W1662: comprehension-escape
+enable=E1603,E1609,E1610,E1602,E1606,E1608,E1607,E1605,E1604,E1601,E1611,W1652,
+       W1651,W1649,W1657,W1660,W1658,W1659,W1623,W1622,W1620,W1621,W1645,W1641,
+       W1624,W1648,W1625,W1611,W1662,W1661,W1650,W1640,W1630,W1614,W1615,W1642,
+       W1616,W1628,W1643,W1629,W1627,W1644,W1617,W1601,W1602,W1603,W1604,W1605,
+       W1654,W1655,W1656,W1619,W1606,W1607,W1639,W1618,W1632,W1634,W1608,W1636,
+       W1653,W1646,W1638,W1609,W1610,W1626,W1633,W1647,W1635,W1612,W1613,W1637
 
 # Disable the message, report, category or checker with the given id(s). You
 # can either give multiple identifier separated by comma (,) or put this option
@@ -55,9 +135,17 @@ load-plugins=
 # W0703: broad-except
 # W1201: logging-not-lazy
 # W1401: anomalous-backslash-in-string
-disable=C, R, fixme, W0102, W0105, W0108, W0110, W0120, W0123, W0201, W0212, W0231, W0235,
-        W0402, W0403, W0603, W0611, W0612, W0613, W0621, W0622, W0631, W0703, W1201, W1401
-
+# W1618: no-absolute-import
+# W1619: old-division
+# W1622: next-method-called
+# W1641: eq-without-hash
+# W1645: exception-message-attribute
+# W1653: next-method-defined
+# W1654: dict-items-not-iterating
+disable=C, R, fixme, W0102, W0105, W0108, W0110, W0120, W0123,
+        W0201, W0212, W0231, W0235, W0402, W0403, W0603, W0611,
+        W0612, W0613, W0621, W0622, W0631, W0703, W1201, W1401,
+        W1618, W1619, W1622, W1641, W1645, W1653, W1654
 
 [REPORTS]
 # Set the output format. Available formats are text, parseable, colorized, msvs
