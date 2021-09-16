@@ -10,9 +10,12 @@ import filecmp
 import json
 import mock
 import os.path
+import time
 
 from sysinv.common import constants
 from sysinv.cert_mon import service as cert_mon
+from sysinv.cert_mon import certificate_mon_manager as cert_mon_manager
+from sysinv.cert_mon import subcloud_audit_queue
 from sysinv.cert_mon import utils as cert_mon_utils
 from sysinv.cert_mon import watcher as cert_mon_watcher
 from sysinv.openstack.common.keystone_objects import Token
@@ -32,8 +35,9 @@ class CertMonTestCase(base.DbTestCase):
         self.rest_api_request_result = None
 
         def mock_rest_api_request(token, method, api_cmd,
-                                    api_cmd_payload=None, timeout=10):
+                                  api_cmd_payload=None, timeout=10):
             return self.rest_api_request_result
+
         self.mocked_rest_api_request = mock.patch(
             'sysinv.cert_mon.utils.rest_api_request',
             mock_rest_api_request)
@@ -45,11 +49,10 @@ class CertMonTestCase(base.DbTestCase):
 
     def test_platform_certs_secret_and_ns_check(self):
         self.assertEqual("system-restapi-gui-certificate",
-                            constants.RESTAPI_CERT_SECRET_NAME)
+                         constants.RESTAPI_CERT_SECRET_NAME)
         self.assertEqual("system-registry-local-certificate",
-                            constants.REGISTRY_CERT_SECRET_NAME)
-        self.assertEqual("deployment",
-                            constants.CERT_NAMESPACE_PLATFORM_CERTS)
+                         constants.REGISTRY_CERT_SECRET_NAME)
+        self.assertEqual("deployment", constants.CERT_NAMESPACE_PLATFORM_CERTS)
 
     def test_update_pemfile(self):
         reference_file = self.get_data_file_path("cert-with-key.pem")
@@ -170,3 +173,99 @@ class CertMonTestCase(base.DbTestCase):
 
         mock_watch_instance.stream.assert_called_once()
         mock_watch_instance.stop.assert_called_once()
+
+    def _get_valid_certificate_pem(self):
+        cert_filename = self.get_data_file_path("audit/cacert.pem")
+        with open(cert_filename, 'r') as cfile:
+            cert_file = cfile.read()
+        return cert_file
+
+    def _get_sc_intermediate_ca_secret(self):
+        cert_filename = self.get_data_file_path("audit/ca-chain-bundle.cert.pem")
+        key_filename = self.get_data_file_path("audit/cakey.pem")
+        cacert_filename = self.get_data_file_path("audit/cacert.pem")
+        with open(cert_filename, 'r') as cfile:
+            tls_cert = cfile.read()
+        with open(key_filename, 'r') as kfile:
+            tls_key = kfile.read()
+        with open(cacert_filename, 'r') as kfile:
+            ca_cert = kfile.read()
+        return {
+            'data': {
+                'tls.crt': tls_cert,
+                'tls.key': tls_key,
+                'ca.crt': ca_cert
+            }
+        }
+
+    def test_audit_sc_cert_task_shallow(self):
+        """Test the audit_sc_cert_task basic queuing functionality.
+        Mocks beginning at do_subcloud_audit"""
+        with mock.patch.object(cert_mon_manager.CertificateMonManager,
+                               "do_subcloud_audit") as mock_do_subcloud_audit:
+            mock_do_subcloud_audit.return_value = None
+
+            cmgr = cert_mon_manager.CertificateMonManager()
+            cmgr.use_sc_audit_pool = False  # easier for testing in serial
+
+            cmgr.sc_audit_queue.enqueue(
+                subcloud_audit_queue.SubcloudAuditData("test1"), delay_secs=1)
+            cmgr.sc_audit_queue.enqueue(
+                subcloud_audit_queue.SubcloudAuditData("test2"), delay_secs=2)
+
+            self.assertEqual(cmgr.sc_audit_queue.qsize(), 2)
+            # Run audit immediately, it should not have picked up anything
+            cmgr.audit_sc_cert_task(None)
+            mock_do_subcloud_audit.assert_not_called()
+            self.assertEqual(cmgr.sc_audit_queue.qsize(), 2)
+
+            time.sleep(3)
+            cmgr.audit_sc_cert_task(None)
+            # It should now be drained:
+            mock_do_subcloud_audit.assert_called()
+            self.assertEqual(cmgr.sc_audit_queue.qsize(), 0)
+
+            mock_do_subcloud_audit.reset_mock()
+            cmgr.audit_sc_cert_task(None)
+            mock_do_subcloud_audit.assert_not_called()
+
+    def test_audit_sc_cert_task_deep(self):
+
+        """Test the audit_sc_cert_task basic queuing functionality"""
+        with mock.patch.multiple("sysinv.cert_mon.utils",
+                                 dc_get_subcloud_sysinv_url=mock.DEFAULT,
+                                 get_endpoint_certificate=mock.DEFAULT,
+                                 get_sc_intermediate_ca_secret=mock.DEFAULT,
+                                 is_subcloud_online=mock.DEFAULT,
+                                 get_dc_token=mock.DEFAULT,
+                                 update_subcloud_status=mock.DEFAULT,
+                                 update_subcloud_ca_cert=mock.DEFAULT) as mocks:
+            # returns an SSL cert in PEM-encoded string
+            mocks["dc_get_subcloud_sysinv_url"].return_value \
+                = "https://example.com"
+            mocks["get_endpoint_certificate"].return_value \
+                = self._get_valid_certificate_pem()
+            mocks["get_sc_intermediate_ca_secret"].return_value \
+                = self._get_sc_intermediate_ca_secret()
+            mocks["is_subcloud_online"].return_value = True
+            mocks["get_dc_token"].return_value = None  # don"t care
+            mocks["update_subcloud_status"].return_value = None
+            mocks["update_subcloud_ca_cert"].return_value = None
+
+            cmgr = cert_mon_manager.CertificateMonManager()
+            cmgr.use_sc_audit_pool = False  # easier for testing in serial
+
+            cmgr.sc_audit_queue.enqueue(
+                subcloud_audit_queue.SubcloudAuditData("test1"), delay_secs=1)
+            cmgr.sc_audit_queue.enqueue(
+                subcloud_audit_queue.SubcloudAuditData("test2"), delay_secs=2)
+            self.assertEqual(cmgr.sc_audit_queue.qsize(), 2)
+
+            # Run audit immediately, it should not have picked up anything
+            cmgr.audit_sc_cert_task(None)
+            self.assertEqual(cmgr.sc_audit_queue.qsize(), 2)
+
+            time.sleep(3)
+            cmgr.audit_sc_cert_task(None)
+            # It should now be drained:
+            self.assertEqual(cmgr.sc_audit_queue.qsize(), 0)

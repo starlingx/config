@@ -40,8 +40,8 @@ class SubcloudAuditData(object):
         return hash(self.name)
 
     def __str__(self):
-        return "SubcloudAuditData: %s, audit_count: %s" % (self.name,
-                                                           self.audit_count)
+        return "SubcloudAuditData: {name: %s, audit_count: %s}" % (
+            self.name, self.audit_count)
 
 
 class SubcloudAuditException(Exception):
@@ -78,6 +78,8 @@ class SubcloudAuditPriorityQueue(PriorityQueue):
                                          % sc_audit_item.name)
         if timestamp is None:
             timestamp = self.__get_next_audit_timestamp(delay_secs)
+        else:
+            timestamp += delay_secs
 
         # this PriorityQueue is ordered by the next timestamp:
         sc_audit_item.audit_count += 1
