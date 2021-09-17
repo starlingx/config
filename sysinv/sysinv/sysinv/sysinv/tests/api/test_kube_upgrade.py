@@ -728,6 +728,12 @@ class TestPatch(TestKubeUpgrade,
             state=kubernetes.KUBE_UPGRADING_KUBELETS)
         uuid = kube_upgrade.uuid
 
+        # Mark the kube host upgrade as upgraded-kubelet
+        values = {
+            'status': kubernetes.KUBE_HOST_UPGRADED_KUBELET
+        }
+        self.dbapi.kube_host_upgrade_update(1, values)
+
         # Update state
         new_state = kubernetes.KUBE_UPGRADE_COMPLETE
         response = self.patch_json('/kube_upgrade',

@@ -1222,9 +1222,10 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(updated_upgrade.state,
                          kubernetes.KUBE_UPGRADED_SECOND_MASTER)
 
-        # Verify that the host upgrade status was cleared
+        # Verify that the host upgrade status is upgraded-kubelet
         updated_host_upgrade = self.dbapi.kube_host_upgrade_get(1)
-        self.assertEqual(updated_host_upgrade.status, None)
+        self.assertEqual(updated_host_upgrade.status,
+                         kubernetes.KUBE_HOST_UPGRADED_KUBELET)
 
     def test_kube_upgrade_kubelet_second_master(self):
         # Create an upgrade
