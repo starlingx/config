@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -81,7 +81,7 @@ if [ "$ACTION" == "activate" ]; then
         log "$NAME: Found application ${UPGRADE_APP_NAME}, version ${UPGRADE_APP_VERSION} at $fqpn_app"
 
         # Confirm application is upgradable
-        if [[ "${UPGRADE_APP_NAME}" =~ ^(cert-manager|nginx-ingress-controller|oidc-auth-apps|platform-integ-apps)$ ]]; then
+        if [[ "${UPGRADE_APP_NAME}" =~ ^(cert-manager|nginx-ingress-controller|oidc-auth-apps|platform-integ-apps|snmp)$ ]]; then
             log "$NAME: ${UPGRADE_APP_NAME} is a supported platform application."
         else
             log "$NAME: ${UPGRADE_APP_NAME} is not a supported platform application. skipping..."
