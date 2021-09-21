@@ -66,10 +66,10 @@ def _load():
     # python3 parser to work in strict mode.
     if six.PY2:
         config = configparser.SafeConfigParser()
+        config.readfp(ini_fp)  # pylint: disable=deprecated-method
     elif six.PY3:
         config = configparser.SafeConfigParser(strict=False)  # pylint: disable=unexpected-keyword-arg
-
-    config.readfp(ini_fp)
+        config.read_file(ini_fp)
 
     try:
         value = str(config.get('build_info', 'SW_VERSION'))
@@ -85,7 +85,10 @@ def _load():
     # for ConfigParser. So we'll fake it out.
     ini_str = u'[platform_conf]\n' + open(PLATFORM_CONF_FILE, 'r').read()
     ini_fp = io.StringIO(ini_str)
-    config.readfp(ini_fp)
+    if six.PY2:
+        config.readfp(ini_fp)  # pylint: disable=deprecated-method
+    elif six.PY3:
+        config.read_file(ini_fp)
 
     try:
         value = str(config.get('platform_conf', 'nodetype'))
