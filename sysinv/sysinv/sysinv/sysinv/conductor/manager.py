@@ -12291,6 +12291,30 @@ class ConductorManager(service.PeriodicService):
         passphrase = None
         certificate_file = constants.SSL_PEM_SS_FILE
 
+        # Generate a self-signed server certificate to enable https
+        csr_config = """
+            [ req ]
+            default_bits           = 2048
+            distinguished_name     = req_distinguished_name
+            prompt                 = no
+            [ req_distinguished_name ]
+            CN                     = StarlingX
+            """
+
+        try:
+            with open(os.devnull, "w") as fnull:
+                openssl_cmd = "openssl req -new -x509 -sha256 \
+                        -keyout {file} -out {file} -days 365 -nodes \
+                        -config <(echo \"{config}\"); sync" \
+                        .format(file=certificate_file, config=csr_config)
+                subprocess.check_call(openssl_cmd,  # pylint: disable=not-callable
+                                      stdout=fnull, stderr=fnull,
+                                      shell=True, executable='/usr/bin/bash')
+        except subprocess.CalledProcessError as e:
+            LOG.exception(e)
+            msg = "Fail to generate self-signed certificate to enable https."
+            raise exception.SysinvException(_(msg))
+
         with open(certificate_file) as pemfile:
             pem_contents = pemfile.read()
 
