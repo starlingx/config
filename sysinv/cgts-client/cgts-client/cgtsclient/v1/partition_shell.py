@@ -76,7 +76,7 @@ def do_host_disk_partition_list(cc, args):
     for p in ipartitions:
         p.status = constants.PARTITION_STATUS_MSG[p.status]
 
-        p.size_mib = math.floor(float(p.size_mib) / 1024 * 1000) / 1000.0
+        p.size_mib = math.floor(float(p.size_mib) / 1024 * 1000) / 1000.0  # pylint: disable=old-division
 
     field_labels = ['uuid', 'device_path', 'device_node', 'type_guid',
                     'type_name', 'size_gib', 'status']
