@@ -1903,8 +1903,11 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param success: True if the operation was successful, False if it fails.
                         used in post-*-action to indicate that an operation in progress failed.
         """
-        return self.call(context, self.make_msg('backup_restore_lifecycle_actions',
-                                                operation=operation, success=success))
+        return self.call(
+            context,
+            self.make_msg('backup_restore_lifecycle_actions', operation=operation, success=success),
+            timeout=120,
+        )
 
     def perform_app_upload(self, context, rpc_app, tarfile, lifecycle_hook_info, images=False):
         """Handle application upload request
@@ -2194,7 +2197,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
 
         :param context: request context.
         """
-        return self.call(context, self.make_msg('complete_restore'))
+        return self.call(context, self.make_msg('complete_restore'), timeout=120)
 
     def get_restore_state(self, context):
         """Get the restore state
