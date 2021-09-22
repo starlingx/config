@@ -17,7 +17,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2021 Wind River Systems, Inc.
 #
 
 
@@ -97,12 +97,17 @@ BMC_FW_VER_PATH = "bmcfw_flash_ctrl/bmcfw_version"
 BMC_BUILD_VER_PATH = "max10_version"
 
 
-def wait_for_docker_login():
-    # TODO: add a timeout
-    LOG.info("Waiting for docker login flag.")
-    while not os.path.exists(constants.DOCKER_LOGIN_FLAG):
+def wait_for_n3000_reset():
+    LOG.info("Waiting for n3000 reset flag.")
+    timeout = 0
+    while not os.path.exists(constants.N3000_RESET_FLAG):
+        if timeout > constants.N3000_RESET_TIMEOUT:
+            msg = ("Timeout waiting for n3000 reset flag")
+            LOG.info(msg)
+            return
         time.sleep(1)
-    LOG.info("Found docker login flag, continuing.")
+        timeout += 1
+    LOG.info("Found n3000 reset flag, continuing.")
 
 
 def ensure_device_image_cache_exists():
@@ -151,31 +156,69 @@ def fetch_device_image(filename):
     return local_path
 
 
+def cleanup_container():
+    # Delete container if exists
+    cmd = 'ctr -n=k8s.io container list image=="%s"' % constants.OPAE_IMG
+    items = subprocess.check_output(shlex.split(cmd),  # pylint: disable=not-callable
+                                    stderr=subprocess.STDOUT,
+                                    universal_newlines=True)
+    for line in items.splitlines():
+        if constants.OPAE_IMG in line:
+            cmd = 'ctr -n=k8s.io container rm n3000-opae'
+            subprocess.check_output(shlex.split(cmd),  # pylint: disable=not-callable
+                                    stderr=subprocess.STDOUT,
+                                    universal_newlines=True)
+            LOG.info('Deleted stale container n3000-opae')
+            break
+
+
+def set_cgroup_cpuset():
+    # Set CPU affinity by updating the cpuset.cpus
+    platform_cpulist = '0'
+    cpuset_path = '/sys/fs/cgroup/cpuset/platform/'
+    cpuset_file = os.path.join(cpuset_path, 'cpuset.cpus')
+    if not os.path.exists(cpuset_path):
+        os.makedirs(cpuset_path)
+        with open('/etc/platform/worker_reserved.conf', 'r') as infile:
+            for line in infile:
+                if "PLATFORM_CPU_LIST" in line:
+                    val = line.split("=")
+                    platform_cpulist = val[1].strip('\n')[1:-1].strip('"')
+        with open(cpuset_file, 'w') as fd:
+            LOG.info("Writing %s to file %s" % (platform_cpulist, cpuset_file))
+            fd.write(platform_cpulist)
+
+
 def write_device_image_n3000(filename, pci_addr):
     # Write the firmware image to the FPGA at the specified PCI address.
     # We're assuming that the image update tools will catch the scenario
     # where the image is not compatible with the device.
+
+    # If the container exists, the host probably rebooted during
+    # a device update. Delete the container.
+    cleanup_container()
+
+    # Set cpu affinity for the container
+    set_cgroup_cpuset()
+
     try:
         # Build up the command to perform the firmware update.
         # Note the hack to work around OPAE tool locale issues
-        cmd = ("docker run -t --privileged -e LC_ALL=en_US.UTF-8 "
-               "-e LANG=en_US.UTF-8 -v " + DEVICE_IMAGE_CACHE_DIR +
-               ":" + "/mnt/images " + constants.OPAE_IMG +
-               " fpgasupdate -y --log-level debug /mnt/images/" +
+        cmd = ("ctr -n=k8s.io run --rm --privileged " +
+               "--env LC_ALL=en_US.UTF-8 --env LANG=en_US.UTF-8 " +
+               "--cgroup platform " +
+               "--mount type=bind,src=" + DEVICE_IMAGE_CACHE_DIR +
+               ",dst=/mnt/images,options=rbind:ro " + constants.OPAE_IMG +
+               " n3000-opae fpgasupdate -y --log-level debug /mnt/images/" +
                filename + " " + pci_addr)
 
         # Issue the command to perform the firmware update.
         subprocess.check_output(shlex.split(cmd),  # pylint: disable=not-callable
-                                         stderr=subprocess.STDOUT)
+                                stderr=subprocess.STDOUT)
         # TODO: switch to subprocess.Popen, parse the output and send
         #       progress updates.
     except subprocess.CalledProcessError as exc:
         # Check the return code, send completion info to sysinv-conductor.
-        # "docker run" return code will be:
-        #    125 if the error is with Docker daemon itself
-        #    126 if the contained command cannot be invoked
-        #    127 if the contained command cannot be found
-        #    Exit code of contained command otherwise
         msg = ("Failed to update device image %s for device %s, "
                "return code is %d, command output: %s." %
                (filename, pci_addr, exc.returncode,
@@ -417,8 +460,8 @@ class FpgaAgentManager(service.PeriodicService):
             LOG.info('No config file for sysinv-fpga-agent found.')
             raise exception.ConfigNotFound(message="Unable to find sysinv config file!")
 
-        # Wait for puppet to log in to the local docker registry
-        wait_for_docker_login()
+        # Wait for puppet to finish resetting n3000 devices
+        wait_for_n3000_reset()
         # Wait around until someone else updates the platform.conf file
         # with our host UUID.
         self.wait_for_host_uuid()
