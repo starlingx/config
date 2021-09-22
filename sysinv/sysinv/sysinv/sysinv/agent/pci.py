@@ -103,6 +103,10 @@ class PCI(object):
         return (self.pvendor == rhs.pvendor and
                 self.pdevice == rhs.pdevice)
 
+    def __hash__(self):
+        return hash((self.pciaddr, self.pclass, self.pvendor, self.pdevice,
+                    self.prevision, self.psvendor, self.psdevice))
+
     def __ne__(self, rhs):
         return (self.pvendor != rhs.pvendor or
                 self.pdevice != rhs.pdevice)

@@ -70,6 +70,10 @@ class CPU(object):
                 self.core == rhs.core and
                 self.thread == rhs.thread)
 
+    def __hash__(self):
+        return hash((self.cpu, self.numa_node, self.core, self.thread,
+                     self.cpu_family, self.cpu_model, self.revision))
+
     def __ne__(self, rhs):
         return (self.cpu != rhs.cpu or
                 self.numa_node != rhs.numa_node or

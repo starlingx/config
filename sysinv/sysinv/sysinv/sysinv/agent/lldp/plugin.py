@@ -28,11 +28,6 @@ class Key(object):
     def __hash__(self):
         return hash((self.chassisid, self.portid, self.portname))
 
-    def __cmp__(self, rhs):
-        return ((self.chassisid < rhs.chassisid) or
-                (self.portid < rhs.portid) or
-                (self.portname < rhs.portname))
-
     def __eq__(self, rhs):
         return (self.chassisid == rhs.chassisid and
                 self.portid == rhs.portid and

@@ -1895,7 +1895,7 @@ class ManagerTestCase(base.DbTestCase):
         iface_db_list = self.dbapi.iinterface_get_by_ihost(ihost['uuid'])
         self.assertEqual(len(iface_db_list), len(inic_dict_array))
         for iface in iface_db_list:
-            self.assertIn(iface.imac, inic_mac_dict.keys())
+            self.assertIn(iface.imac, inic_mac_dict)
             self.assertEqual(inic_mac_dict[iface.imac]['pname'], iface.ifname)
             self.assertEqual(inic_mac_dict[iface.imac]['mac'], iface.imac)
 
@@ -1905,7 +1905,7 @@ class ManagerTestCase(base.DbTestCase):
         port_db_list = self.dbapi.port_get_by_host(ihost['uuid'])
         self.assertEqual(len(port_db_list), len(inic_dict_array))
         for port in port_db_list:
-            self.assertIn(port.pciaddr, inic_pciaddr_dict.keys())
+            self.assertIn(port.pciaddr, inic_pciaddr_dict)
             self.assertEqual(inic_pciaddr_dict[port.pciaddr]['pciaddr'], port.pciaddr)
             self.assertEqual(inic_pciaddr_dict[port.pciaddr]['pname'], port.name)
             self.assertEqual(inic_pciaddr_dict[port.pciaddr]['numa_node'], port.numa_node)

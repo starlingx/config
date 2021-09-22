@@ -77,7 +77,7 @@ class RPCException(Exception):
 
         if not message:
             try:
-                message = self.message % kwargs
+                message = self.message % kwargs  # pylint: disable=W1645
 
             except Exception:
                 # kwargs doesn't match a variable in the message
@@ -86,7 +86,7 @@ class RPCException(Exception):
                 for name, value in kwargs.items():
                     LOG.error("%s: %s" % (name, value))
                 # at least get the core message out if something happened
-                message = self.message
+                message = self.message  # pylint: disable=W1645
 
         super(RPCException, self).__init__(message)
 

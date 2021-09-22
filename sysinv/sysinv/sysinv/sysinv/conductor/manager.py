@@ -4142,7 +4142,7 @@ class ConductorManager(service.PeriodicService):
 
         partitions = self.dbapi.partition_get_by_ihost(host.id)
         partition4 = next((p for p in partitions if p.device_node == pv4_name), None)
-        part_size_mib = float(pv_cgts_vg.lvm_pv_size) / (1024 ** 2) - int(partition4.size_mib)
+        part_size_mib = float(pv_cgts_vg.lvm_pv_size) / (1024 ** 2) - int(partition4.size_mib)  # pylint: disable=W1619
         if part_size_mib > 0:
             LOG.info("%s is not enough for R4 cgts-vg" % pv4_name)
         else:
@@ -11666,7 +11666,7 @@ class ConductorManager(service.PeriodicService):
                                  constants.PARTITION_TABLE_SIZE
 
             # Convert bytes to GiB and round to be sure.
-            partition_size = int(round(
+            partition_size = int(round(  # pylint: disable=W1633
                                  cutils.bytes_to_GiB(partition_size)))
 
         return partition_size

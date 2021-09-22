@@ -1303,11 +1303,11 @@ def output_to_dict(output):
 
 
 def bytes_to_GiB(bytes_number):
-    return bytes_number / float(1024 ** 3)
+    return bytes_number / float(1024 ** 3)  # pylint: disable=W1619
 
 
 def bytes_to_MiB(bytes_number):
-    return bytes_number / float(1024 ** 2)
+    return bytes_number / float(1024 ** 2)  # pylint: disable=W1619
 
 
 def check_lock_path():
