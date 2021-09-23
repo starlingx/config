@@ -82,8 +82,11 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         self.registrycert_monitor = None
         self.reattempt_monitor_tasks = []
         self.sc_audit_queue = subcloud_audit_queue.SubcloudAuditPriorityQueue()
-        self.sc_audit_pool = eventlet.greenpool.GreenPool(
-            size=CONF.certmon.audit_greenpool_size)
+        if CONF.certmon.audit_greenpool_size > 0:
+            self.sc_audit_pool = eventlet.greenpool.GreenPool(
+                size=CONF.certmon.audit_greenpool_size)
+        else:
+            self.sc_audit_pool = None
 
     def periodic_tasks(self, context, raise_on_error=False):
         """Tasks to be run at a periodic interval."""
@@ -162,7 +165,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             # Only continue if the next in queue is ready to be audited
             # Peek into the timestamp of the next item in our priority queue
             next_audit_timestamp = self.sc_audit_queue.queue[0][0]
-            if next_audit_timestamp >= int(time.time()):
+            if next_audit_timestamp > int(time.time()):
                 LOG.debug("audit_sc_cert_task: no audits ready for "
                           "processing, qsize=%s"
                           % self.sc_audit_queue.qsize())
@@ -170,12 +173,12 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
 
             _, sc_audit_item = self.sc_audit_queue.get()
             LOG.debug(
-                ("audit_sc_cert_task: enqueue subcloud audit %s, "
-                 "qsize:%s, batch:%s") %
+                "audit_sc_cert_task: enqueue subcloud audit %s, "
+                "qsize:%s, batch:%s" %
                 (sc_audit_item, self.sc_audit_queue.qsize(), batch_count))
 
             # This item is ready for audit
-            if CONF.certmon.audit_greenpool_size > 0:
+            if self.sc_audit_pool is not None:
                 self.sc_audit_pool.spawn_n(self.do_subcloud_audit,
                                            sc_audit_item)
             else:
