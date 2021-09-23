@@ -20,9 +20,10 @@
 import json
 import os
 import re
-import requests
 import ssl
 import tempfile
+
+import requests
 from eventlet.green import subprocess
 from six.moves.urllib.parse import urlparse
 from keystoneclient.v3 import client as keystone_client
@@ -87,8 +88,7 @@ def verify_adminep_cert_chain():
     Verify admin endpoint certificate chain & delete if invalid
     :param context: an admin context.
     :return: True/False if chain is valid
-    """
-    """
+
     * Retrieve ICA & AdminEP cert secrets from k8s
     * base64 decode ICA cert (tls.crt from SC_INTERMEDIATE_CA_SECRET_NAME)
     *   & adminep (tls.crt from SC_ADMIN_ENDPOINT_SECRET_NAME)
@@ -712,3 +712,39 @@ def update_platform_cert(token, cert_type, pem_file_path, force=False):
         os.remove(pem_file_path)
     except OSError:
         LOG.exception('Failed to remove temp pem file %s' % pem_file_path)
+
+
+class TokenCache(object):
+    """Simple token cache. This class holds one keystone token.
+    """
+    def __init__(self):
+        self._token = None
+
+    def get_token(self):
+        """Get a new token if required; otherwise use the cached token"""
+        if not self._token or self._token.is_expired():
+            LOG.debug("%s, Acquiring new token, previous token: %s",
+                      self.__class__.__name__, self._token)
+            self._token = get_token()
+        return self._token
+
+
+class DCTokenCache(object):
+    """Simple token cache for DC tokens (keyed by region_name).
+    For the DC keystone user (e.g. 'dcmanager').
+    """
+    def __init__(self):
+        self._dc_tokens = {}
+
+    def get_dc_token(self, region_name):
+        """Get a new token if required; otherwise use the cached token"""
+        if region_name in self._dc_tokens:
+            dc_token = self._dc_tokens[region_name]
+        else:
+            dc_token = None
+        if not dc_token or dc_token.is_expired():
+            LOG.debug("Acquiring new DC token, region_name: %s, "
+                      "previous token: %s", region_name, dc_token)
+            dc_token = get_dc_token(region_name)
+            self._dc_tokens[region_name] = dc_token
+        return dc_token

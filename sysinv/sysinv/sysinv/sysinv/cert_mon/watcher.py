@@ -47,29 +47,29 @@ CONF = cfg.CONF
 
 
 class MonitorContext(object):
+    """Context data for watches"""
+
+    # Reuse cached tokens across all contexts
+    # (i.e. all watches reuse these caches)
+    token_cache = utils.TokenCache()
+    dc_token_cache = utils.DCTokenCache()
+
     def __init__(self):
         self.dc_role = None
-        self._token = None
-        self._dc_tokens = {}
         self.kubernete_namespace = None
 
     def initialize(self):
         self.dc_role = utils.get_dc_role()
 
-    def get_token(self):
-        if not self._token or self._token.is_expired():
-            self._token = utils.get_token()
-        return self._token
+    @staticmethod
+    def get_token():
+        """Uses the cached local access token"""
+        return MonitorContext.token_cache.get_token()
 
-    def get_dc_token(self, region_name):
-        if region_name in self._dc_tokens:
-            dc_token = self._dc_tokens[region_name]
-        else:
-            dc_token = None
-        if not dc_token or dc_token.is_expired():
-            dc_token = utils.get_dc_token(region_name)
-            self._dc_tokens[region_name] = dc_token
-        return dc_token
+    @staticmethod
+    def get_dc_token(region_name):
+        """Uses the cached DC token for subcloud"""
+        return MonitorContext.dc_token_cache.get_dc_token(region_name)
 
 
 class CertUpdateEventData(object):
