@@ -10568,8 +10568,9 @@ class ConductorManager(service.PeriodicService):
 
         if not os.path.exists(path_to_iso):
             self._import_load_error(new_load)
-            raise exception.SysinvException(_("Specified path not found %s") %
+            raise exception.SysinvException(_("Specified path not found: %s") %
                                             path_to_iso)
+
         mounted_iso = None
 
         mntdir = tempfile.mkdtemp(dir='/tmp')
@@ -10580,8 +10581,7 @@ class ConductorManager(service.PeriodicService):
 
         except subprocess.CalledProcessError:
             self._import_load_error(new_load)
-            raise exception.SysinvException(_(
-                "Unable to mount iso"))
+            raise exception.SysinvException(_("Unable to mount iso"))
 
         # Run the upgrade script
         with open(os.devnull, "w") as fnull:
@@ -10621,14 +10621,8 @@ class ConductorManager(service.PeriodicService):
                 raise exception.SysinvException(_(
                     "Failure during sw-patch init-release"))
 
-        # TODO(tngo): a less efficient but cleaner solution is to let sysinv
-        # api proxy copy the load files directly from the request as opposed
-        # to relying on load files in sysinv staging directory being there.
-        system = self.dbapi.isystem_get_one()
-        if system.distributed_cloud_role == \
-                constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-            greenthread.sleep(constants.STAGING_LOAD_FILES_REMOVAL_WAIT_TIME)
-        shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
+        if os.path.exists(constants.LOAD_FILES_STAGING_DIR):
+            shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
 
         LOG.info("Load import completed.")
         return True

@@ -18,6 +18,8 @@
 # Copyright (c) 2015-2021 Wind River Systems, Inc.
 #
 
+import json
+
 import jsonpatch
 import os
 import pecan
@@ -257,53 +259,50 @@ class LoadController(rest.RestController):
 
     @staticmethod
     def _upload_file(file_item):
-        dst = None
         try:
             staging_dir = constants.LOAD_FILES_STAGING_DIR
             if not os.path.isdir(staging_dir):
                 os.makedirs(staging_dir)
 
-            fn = os.path.join(staging_dir,
+            source_file = file_item.file
+            staging_file = os.path.join(staging_dir,
                               os.path.basename(file_item.filename))
-            if hasattr(file_item.file, 'fileno'):
+
+            if source_file is None:
+                LOG.error("Failed to upload load file %s, invalid file object"
+                          % staging_file)
+                return None
+
+            if hasattr(source_file, 'fileno'):
                 # Only proceed if there is space available for copying
-                file_size = os.stat(file_item.filename).st_size
+                file_size = os.fstat(source_file.fileno()).st_size
                 avail_space = psutil.disk_usage('/scratch').free
                 if (avail_space < file_size):
-                    LOG.error("Failed to upload load file %s, not enough space on /scratch "
-                              "partition: %d bytes available " % (fn, avail_space))
+                    LOG.error("Failed to upload load file %s, not enough space on /scratch"
+                              " partition: %d bytes available "
+                              % (staging_file, avail_space))
                     return None
 
-                # Large iso file
-                dst = os.open(fn, os.O_WRONLY | os.O_CREAT)
+                # Large iso file, allocate the required space
                 subprocess.check_call(["/usr/bin/fallocate",  # pylint: disable=not-callable
-                                       "-l " + str(file_size), fn])
-                src = file_item.file.fileno()
-                size = 64 * 1024
-                n = size
-                while n >= size:
-                    s = os.read(src, size)
-                    n = os.write(dst, s)
+                                       "-l " + str(file_size), staging_file])
 
-                os.close(dst)
-            else:
-                # Small signature file
-                with open(fn, 'wb') as sigfile:
-                    sigfile.write(file_item.file.read())
+            with open(staging_file, 'wb') as destination_file:
+                shutil.copyfileobj(source_file, destination_file)
+
         except subprocess.CalledProcessError as e:
-            LOG.error("Failed to upload load file %s, /usr/bin/fallocate error: %s "
-                      % (fn, e.output))
-            os.close(dst)
-            os.remove(fn)
+            LOG.error("Failed to upload load file %s, /usr/bin/fallocate error: %s"
+                      % (staging_file, e.output))
+            if os.path.isfile(staging_file):
+                os.remove(staging_file)
             return None
         except Exception:
-            if dst:
-                os.close(dst)
-                os.remove(fn)
+            if os.path.isfile(staging_file):
+                os.remove(staging_file)
             LOG.exception("Failed to upload load file %s" % file_item.filename)
             return None
 
-        return fn
+        return staging_file
 
     @expose('json')
     @cutils.synchronized(LOCK_NAME)
@@ -324,38 +323,62 @@ class LoadController(rest.RestController):
         LOG.info("Load import request received.")
 
         system_controller_import_active = False
-        data = dict((k, v) for (k, v) in request.POST.items())
-        if data.get('active') == 'true':
-            if pecan.request.dbapi.isystem_get_one().\
-                    distributed_cloud_role == \
-                    constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-                LOG.info("System Controller allow start import_load")
-                system_controller_import_active = True
 
         # Only import loads on controller-0. This is required because the load
         # is only installed locally and we will be booting controller-1 from
         # this load during the upgrade.
         if socket.gethostname() != constants.CONTROLLER_0_HOSTNAME:
-            raise wsme.exc.ClientSideError(
-                _("A load can only be imported when %s is active. ") % constants.CONTROLLER_0_HOSTNAME)
+            raise wsme.exc.ClientSideError(_("A load can only be imported when"
+                                             " %s is active.")
+                                             % constants.CONTROLLER_0_HOSTNAME)
+
+        req_content = dict()
+        load_files = dict()
+        is_multiform_req = True
+        # Request coming from dc-api-proxy is not multiform, file transfer is handled
+        # by dc-api-proxy, the request contains only the vault file location
+        if request.content_type == "application/json":
+            req_content = dict(json.loads(request.body))
+            is_multiform_req = False
         else:
+            req_content = dict(request.POST.items())
+
+        if not req_content:
+            raise wsme.exc.ClientSideError(_("Empty request."))
+
+        if 'active' in req_content:
+            if req_content['active'] == 'true':
+                if pecan.request.dbapi.isystem_get_one().\
+                        distributed_cloud_role == \
+                        constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+                    LOG.info("System Controller allow start import_load")
+                    system_controller_import_active = True
+
             self._check_existing_loads(active_import=system_controller_import_active)
 
-        load_files = dict()
-        for f in constants.IMPORT_LOAD_FILES:
-            if f not in request.POST:
-                raise wsme.exc.ClientSideError(_("Missing required file for %s") % f)
+        for file in constants.IMPORT_LOAD_FILES:
+            if file not in req_content:
+                raise wsme.exc.ClientSideError(_("Missing required file for %s")
+                                               % file)
 
-            file_item = request.POST[f]
-            if not file_item.filename:
-                raise wsme.exc.ClientSideError(_("No %s file uploaded") % f)
-
-            fn = self._upload_file(file_item)
-            if fn:
-                load_files.update({f: fn})
+            if not is_multiform_req:
+                load_files.update({file: req_content[file]})
             else:
-                raise wsme.exc.ClientSideError(_("Failed to save file %s to disk. Please check "
-                            "sysinv logs for details." % file_item.filename))
+                if file not in request.POST:
+                    raise wsme.exc.ClientSideError(_("Missing required file for %s")
+                                                    % file)
+
+                file_item = request.POST[file]
+                if not file_item.filename:
+                    raise wsme.exc.ClientSideError(_("No %s file uploaded") % file)
+
+                file_location = self._upload_file(file_item)
+                if file_location:
+                    load_files.update({file: file_location})
+                else:
+                    raise wsme.exc.ClientSideError(_("Failed to save file %s to disk."
+                                                        " Please check sysinv logs for"
+                                                        " details." % file_item.filename))
 
         LOG.info("Load files: %s saved to disk." % load_files)
 
