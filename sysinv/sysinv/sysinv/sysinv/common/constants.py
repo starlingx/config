@@ -1195,6 +1195,13 @@ SERVICE_PARAM_NAME_ENDPOINT_DOMAIN = "endpoint_domain"
 SERVICE_PARAM_SECTION_COLLECTD = 'collectd'
 SERVICE_PARAM_COLLECTD_NETWORK_SERVERS = 'network_servers'
 
+# platform kernel parameter auditd
+# enables and disables auditd
+SERVICE_PARAM_SECTION_PLATFORM_KERNEL = 'kernel'
+SERVICE_PARAM_NAME_PLATFORM_AUDITD = 'audit'
+SERVICE_PARAM_PLATFORM_AUDITD_DISABLED = '0'
+SERVICE_PARAM_PLATFORM_AUDITD_ENABLED = '1'
+
 # TIS part number, CPE = combined load, STD = standard load
 TIS_STD_BUILD = 'Standard'
 TIS_AIO_BUILD = 'All-in-one'

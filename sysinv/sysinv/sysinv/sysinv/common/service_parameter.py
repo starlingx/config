@@ -396,6 +396,21 @@ def _validate_pod_max_pids(name, value):
                     constants.SERVICE_PARAM_KUBERNETES_POD_MAX_PIDS_MAX)
 
 
+def _validate_kernel_audit(name, value):
+    """Check if specified value is supported"""
+    try:
+        if str(value) in [constants.SERVICE_PARAM_PLATFORM_AUDITD_DISABLED,
+                          constants.SERVICE_PARAM_PLATFORM_AUDITD_ENABLED]:
+            return
+    except ValueError:
+        pass
+
+    raise wsme.exc.ClientSideError(_(
+        "Parameter '%s' value must be either '%s' or '%s'" %
+        (name, constants.SERVICE_PARAM_PLATFORM_AUDITD_DISABLED,
+         constants.SERVICE_PARAM_PLATFORM_AUDITD_ENABLED)))
+
+
 PLATFORM_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL,
 ]
@@ -522,6 +537,19 @@ PLATFORM_MTCE_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_PLAT_MTCE_HBS_DEGRADE_THRESHOLD: 'platform::mtce::params::heartbeat_degrade_threshold',
     constants.SERVICE_PARAM_PLAT_MTCE_MNFA_THRESHOLD: 'platform::mtce::params::mnfa_threshold',
     constants.SERVICE_PARAM_PLAT_MTCE_MNFA_TIMEOUT: 'platform::mtce::params::mnfa_timeout',
+}
+
+PLATFORM_KERNEL_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD,
+]
+
+PLATFORM_KERNEL_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD: _validate_kernel_audit,
+}
+
+PLATFORM_KERNEL_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD:
+        'platform::compute::grub::params::g_audit',
 }
 
 RADOSGW_CONFIG_PARAMETER_MANDATORY = [
@@ -796,6 +824,11 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_VALIDATOR: COLLECTD_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: COLLECTD_PARAMETER_RESOURCE,
             SERVICE_PARAM_DATA_FORMAT: COLLECTD_NETWORK_SERVERS_PARAMETER_DATA_FORMAT,
+        },
+        constants.SERVICE_PARAM_SECTION_PLATFORM_KERNEL: {
+            SERVICE_PARAM_OPTIONAL: PLATFORM_KERNEL_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: PLATFORM_KERNEL_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: PLATFORM_KERNEL_PARAMETER_RESOURCE,
         },
     },
     constants.SERVICE_TYPE_HORIZON: {
