@@ -22,6 +22,7 @@
 
 """Test class for Sysinv ManagerService."""
 
+import copy
 import mock
 import os.path
 import tsconfig.tsconfig as tsc
@@ -30,6 +31,7 @@ import uuid
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 
+from fm_api import constants as fm_constants
 from oslo_serialization import base64
 from sysinv.agent import rpcapi as agent_rpcapi
 from sysinv.common import constants
@@ -141,6 +143,7 @@ class ManagerTestCase(base.DbTestCase):
         self.service.fm_api = mock.Mock()
         self.service.fm_api.set_fault.side_effect = self._raise_alarm
         self.service.fm_api.clear_fault.side_effect = self._clear_alarm
+        self.service.fm_api.get_faults_by_id.side_effect = self._get_faults_by_id
 
         # Mock sw_version check since tox tsc.SW_VERSION is "TEST.SW_VERSION"
         self.host_load_matches_sw_version_patcher = mock.patch.object(
@@ -1672,6 +1675,9 @@ class ManagerTestCase(base.DbTestCase):
     def _clear_alarm(self, fm_id, fm_instance):
         self.alarm_raised = False
 
+    def _get_faults_by_id(self, alarm_id):
+        return None
+
     def _create_test_ihosts(self):
         # Create controller-0
         config_uuid = str(uuid.uuid4())
@@ -2374,6 +2380,363 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(self.dbapi.ethernet_port_get(ports['pxeboot0'].id).mac,
                          inic_dict_array[3]['mac'])
 
+    def test_iport_update_by_ihost_report_update_different_device_same_slot(self):
+        """Test different device exchange on the same PCI address
+
+        In case of NIC exchange with a new vendor/device-id on the same PCI slot, the old entry
+        is erased and a new one created if the port associated interface is of class none.
+        Otherwise we do not process the new port until the operator removes the existing database.
+        We also update the port.node_id if the inode entry related to the numa node is already
+        created.
+        """
+        inic_dict_array = self._create_test_iports()
+        test_mgmt_mac = inic_dict_array[3]['mac']
+        mgmt_vlan_id = 111
+        # Create controller-0 node
+        config_uuid = str(uuid.uuid4())
+        ihost = self._create_test_ihost(
+            hostname='controller-0', mgmt_mac=test_mgmt_mac, uuid=str(uuid.uuid4()),
+            personality=constants.WORKER, config_status=None, config_applied=config_uuid,
+            config_target=config_uuid, invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED, operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        self._create_test_networks(mgmt_vlan_id)
+
+        mock_find_local_mgmt_interface_vlan_id = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager._find_local_mgmt_interface_vlan_id',
+            mock_find_local_mgmt_interface_vlan_id)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_socket_gethostname = mock.MagicMock()
+        p2 = mock.patch('socket.gethostname', mock_socket_gethostname)
+        p2.start().return_value = 'controller-0'
+        self.addCleanup(p2.stop)
+
+        mock_is_aio_simplex_system = mock.MagicMock()
+        p3 = mock.patch('sysinv.common.utils.is_aio_simplex_system', mock_is_aio_simplex_system)
+        p3.start().return_value = True
+        self.addCleanup(p3.stop)
+
+        port_alarms = dict()
+
+        def port_set_fault(fault):
+            port_alarms[fault.entity_instance_id] = fault
+
+        def port_clear_fault(alarm_id, entity_id):
+            port_alarms[entity_id].alarm_state = fm_constants.FM_ALARM_STATE_CLEAR
+
+        def port_get_faults_by_id(alarm_id):
+            return [fault for fault in port_alarms.values()]
+
+        self.service.fm_api.set_fault.side_effect = port_set_fault
+        self.service.fm_api.clear_fault.side_effect = port_clear_fault
+        self.service.fm_api.get_faults_by_id.side_effect = port_get_faults_by_id
+
+        ifaces = dict()
+        ports = dict()
+        ifaces['sriov0'] = utils.create_test_interface(ifname='sriov0',
+                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
+                                    iftype=constants.INTERFACE_TYPE_ETHERNET,
+                                    ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+                                    imac=inic_dict_array[0]['mac'])
+        ports['sriov0'] = utils.create_test_ethernet_port(name=inic_dict_array[0]['pname'],
+                                    host_id=ihost.id, interface_id=ifaces['sriov0'].id,
+                                    mac=inic_dict_array[0]['mac'],
+                                    pciaddr=inic_dict_array[0]['pciaddr'],
+                                    pdevice=inic_dict_array[0]['pdevice'],
+                                    pvendor=inic_dict_array[0]['pvendor'])
+        ifaces['sriov0a'] = utils.create_test_interface(ifname='sriov0a',
+                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
+                                    iftype=constants.INTERFACE_TYPE_VF, uses=['sriov0'],
+                                    ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+                                    imac=inic_dict_array[0]['mac'])
+
+        ifaces['data0'] = utils.create_test_interface(ifname='data0',
+                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
+                                    ifclass=constants.INTERFACE_CLASS_DATA,
+                                    imac=inic_dict_array[1]['mac'])
+        ports['data0'] = utils.create_test_ethernet_port(name=inic_dict_array[1]['pname'],
+                                    host_id=ihost.id, interface_id=ifaces['data0'].id,
+                                    mac=inic_dict_array[1]['mac'],
+                                    pciaddr=inic_dict_array[1]['pciaddr'],
+                                    pdevice=inic_dict_array[1]['pdevice'],
+                                    pvendor=inic_dict_array[1]['pvendor'])
+
+        ifaces['pcipt0'] = utils.create_test_interface(ifname='pcipt0',
+                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
+                                    ifclass=constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                                    imac=inic_dict_array[2]['mac'])
+        ports['pcipt0'] = utils.create_test_ethernet_port(name=inic_dict_array[1]['pname'],
+                                    host_id=ihost.id, interface_id=ifaces['pcipt0'].id,
+                                    mac=inic_dict_array[2]['mac'],
+                                    pciaddr=inic_dict_array[2]['pciaddr'],
+                                    pdevice=inic_dict_array[2]['pdevice'],
+                                    pvendor=inic_dict_array[2]['pvendor'])
+
+        ifaces['pxeboot0'] = utils.create_test_interface(ifname='pxeboot0',
+                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
+                                    iftype=constants.INTERFACE_TYPE_ETHERNET,
+                                    ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                                    imac=test_mgmt_mac)
+        ports['pxeboot0'] = utils.create_test_ethernet_port(name=inic_dict_array[3]['pname'],
+                                    host_id=ihost.id, interface_id=ifaces['pxeboot0'].id,
+                                    mac=inic_dict_array[3]['mac'],
+                                    pciaddr=inic_dict_array[3]['pciaddr'],
+                                    pdevice=inic_dict_array[3]['pdevice'],
+                                    pvendor=inic_dict_array[3]['pvendor'])
+        ifaces['mgmt0'] = utils.create_test_interface(ifname='mgmt0',
+                                    forihostid=ihost.id, ihost_uuid=ihost.uuid,
+                                    iftype=constants.INTERFACE_TYPE_VLAN, uses=['pxeboot0'],
+                                    ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                                    vlan_id=mgmt_vlan_id, imac=test_mgmt_mac)
+
+        # create inodes to update port.node_id
+        inuma_dict_array = [{'numa_node': 0, 'capabilities': {}},
+                            {'numa_node': 1, 'capabilities': {}}]
+        self.service.inumas_update_by_ihost(self.context, ihost['uuid'], inuma_dict_array)
+
+        old_pci_dev = copy.deepcopy(inic_dict_array[0])
+        inic_dict_array[0] = inic_dict_array[-1]
+        inic_dict_array[0]['pciaddr'] = old_pci_dev['pciaddr']
+
+        self.service.iport_update_by_ihost(self.context, ihost['uuid'], inic_dict_array[0:4])
+
+        # since the port's interface is configured we do not change the DB (the operator needs to
+        # do it)
+        self.assertEqual(self.dbapi.iinterface_get(ifaces['sriov0'].id).imac,
+                         old_pci_dev['mac'])
+        self.assertEqual(self.dbapi.iinterface_get(ifaces['sriov0a'].id).imac,
+                         old_pci_dev['mac'])
+        self.assertEqual(self.dbapi.ethernet_port_get(ports['sriov0'].id).mac,
+                         old_pci_dev['mac'])
+        self.assertEqual(self.dbapi.ethernet_port_get(ports['sriov0'].id).pvendor,
+                         old_pci_dev['pvendor'])
+        self.assertEqual(self.dbapi.ethernet_port_get(ports['sriov0'].id).pdevice,
+                         old_pci_dev['pdevice'])
+        for fault in port_alarms.values():
+            self.assertEqual(fault.alarm_state, fm_constants.FM_ALARM_STATE_SET)
+
+        # remove dependant interface
+        self.dbapi.iinterface_destroy(ifaces['sriov0a'].id)
+        # update interface to class none
+        updates = {'ifclass': None}
+        self.dbapi.iinterface_update(ifaces['sriov0'].uuid, updates)
+
+        port_db_len = len(self.dbapi.ethernet_port_get_by_host(ihost['uuid']))
+
+        self.service.iport_update_by_ihost(self.context, ihost['uuid'], inic_dict_array[0:4])
+
+        port_found = False
+        eth_port_db_list = self.dbapi.ethernet_port_get_by_host(ihost['uuid'])
+        for eth_port in eth_port_db_list:
+            if (eth_port.pciaddr == inic_dict_array[0]['pciaddr']):
+                self.assertEqual(eth_port.mac, inic_dict_array[0]['mac'])
+                self.assertEqual(eth_port.pvendor, inic_dict_array[0]['pvendor'])
+                self.assertEqual(eth_port.pdevice, inic_dict_array[0]['pdevice'])
+
+                # check if node_id points to the correct inode entry (in our case is 2)
+                self.assertEqual(eth_port.node_id, 2)
+
+                iface = self.dbapi.iinterface_get(eth_port.interface_id)
+                self.assertEqual(iface.imac, inic_dict_array[0]['mac'])
+                self.assertEqual(iface.ifclass, None)
+                port_found = True
+        self.assertTrue(port_found)
+        self.assertEqual(len(self.dbapi.ethernet_port_get_by_host(ihost['uuid'])), port_db_len)
+        for fault in port_alarms.values():
+            self.assertEqual(fault.alarm_state, fm_constants.FM_ALARM_STATE_CLEAR)
+
+    def test_iport_update_by_ihost_report_update_same_device_different_slot(self):
+        """Test same device exchange on a different PCI address
+
+        In case of NIC exchange with a new vendor/device-id on a different PCI slot, the old entry
+        is erased and a new one created if the port associated interface is of class none.
+        Otherwise we do not process the new port until the operator removes the existing database.
+        We also update the port.node_id if the inode entry related to the numa node is already
+        created.
+        """
+        # Create compute-0 node
+        config_uuid = str(uuid.uuid4())
+        ihost = self._create_test_ihost(
+            hostname='compute-0', mgmt_mac='22:44:33:55:11:77', uuid=str(uuid.uuid4()),
+            personality=constants.WORKER, config_status=None, config_applied=config_uuid,
+            config_target=config_uuid, invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED, operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        mock_find_local_mgmt_interface_vlan_id = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager._find_local_mgmt_interface_vlan_id',
+            mock_find_local_mgmt_interface_vlan_id)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_socket_gethostname = mock.MagicMock()
+        p2 = mock.patch('socket.gethostname', mock_socket_gethostname)
+        p2.start().return_value = 'controller-0'
+        self.addCleanup(p2.stop)
+
+        mock_is_aio_simplex_system = mock.MagicMock()
+        p3 = mock.patch('sysinv.common.utils.is_aio_simplex_system', mock_is_aio_simplex_system)
+        p3.start().return_value = True
+        self.addCleanup(p3.stop)
+
+        inic_dict_array = self._create_test_iports()
+
+        # execute initial report
+        self.service.iport_update_by_ihost(self.context, ihost['uuid'], inic_dict_array)
+
+        # create inodes
+        inuma_dict_array = [{'numa_node': 0, 'capabilities': {}},
+                            {'numa_node': 1, 'capabilities': {}}]
+        self.service.inumas_update_by_ihost(self.context, ihost['uuid'], inuma_dict_array)
+
+        port_db_len = len(self.dbapi.ethernet_port_get_by_host(ihost['uuid']))
+
+        # now send a report moving the interface to another PCI address
+        inic_dict_array2 = self._create_test_iports()
+        inic_dict_array2[3]['pciaddr'] = '0000:d3:00.1'
+        self.service.iport_update_by_ihost(self.context, ihost['uuid'], inic_dict_array2)
+
+        port_found = False
+        eth_port_db_list = self.dbapi.ethernet_port_get_by_host(ihost['uuid'])
+        for eth_port in eth_port_db_list:
+            if (eth_port.pciaddr == inic_dict_array2[3]['pciaddr']):
+                self.assertEqual(eth_port.mac, inic_dict_array2[3]['mac'])
+                self.assertEqual(eth_port.pvendor, inic_dict_array2[3]['pvendor'])
+                self.assertEqual(eth_port.pdevice, inic_dict_array2[3]['pdevice'])
+
+                # check if node_id points to the correct inode entry (in our case is 2)
+                self.assertEqual(eth_port.node_id, 2)
+
+                iface = self.dbapi.iinterface_get(eth_port.interface_id)
+                self.assertEqual(iface.imac, inic_dict_array2[3]['mac'])
+                self.assertEqual(iface.ifclass, None)
+                port_found = True
+        self.assertTrue(port_found)
+        self.assertEqual(len(self.dbapi.ethernet_port_get_by_host(ihost['uuid'])), port_db_len)
+
+    def _create_test_pci_device_report(self, use_acc100=False):
+        dev1 = {'sriov_vf_driver': None, 'numa_node': 0, 'name': 'pci_0000_00_11_0',
+            'sriov_numvfs': 0, 'driver': None, 'pclass_id': 'ff0000',
+            'pclass': 'Unassigned class [ff00]', 'pdevice_id': 'a1ec',
+            'psdevice': 'Device 0000', 'fpga_n3000_reset': True, 'sriov_vf_pdevice_id': None,
+            'sriov_totalvfs': None, 'pciaddr': '0000:00:11.0',
+            'pdevice': 'C620 Series Chipset Family MROM 0', 'pvendor_id': '8086',
+            'sriov_vfs_pci_address': '', 'extra_info': None,
+            'psvendor': 'Intel Corporation', 'enabled': False, 'pvendor': 'Intel Corporation'}
+        dev2 = {'sriov_vf_driver': None, 'numa_node': 0, 'name': 'pci_0000_00_11_5',
+            'sriov_numvfs': 0, 'driver': 'ahci', 'pclass_id': '010601',
+            'pclass': 'SATA controller', 'pdevice_id': 'a1d2',
+            'psdevice': 'Intel Corporation', 'fpga_n3000_reset': True,
+            'sriov_vf_pdevice_id': None, 'sriov_totalvfs': None, 'pciaddr': '0000:00:11.5',
+            'pdevice': 'C620 Series Chipset Family SSATA Controller [AHCI mode]',
+            'pvendor_id': '8086', 'sriov_vfs_pci_address': '', 'extra_info': None,
+            'psvendor': '-p01', 'enabled': False,
+            'pvendor': 'Intel Corporation'}
+        dev3 = {'sriov_vf_driver': None, 'numa_node': 0, 'name': 'pci_0000_00_14_0',
+            'sriov_numvfs': 0, 'driver': None, 'pclass_id': '0c0330',
+            'pclass': 'USB controller', 'pdevice_id': 'a1af', 'psdevice': 'Intel Corporation',
+            'fpga_n3000_reset': True, 'sriov_vf_pdevice_id': None, 'sriov_totalvfs': None,
+            'pciaddr': '0000:00:14.0', 'pdevice': 'C620 Series Family USB 3.0 xHCI Controller',
+            'pvendor_id': '8086', 'sriov_vfs_pci_address': '', 'extra_info': None,
+            'psvendor': '-p30', 'enabled': False,
+            'pvendor': 'Intel Corporation'}
+        dev4 = {'sriov_vf_driver': None, 'numa_node': 0, 'name': 'pci_0000_00_14_2',
+            'sriov_numvfs': 0, 'driver': None, 'pclass_id': '118000',
+            'pclass': 'Signal processing controller', 'pdevice_id': 'a1b1',
+            'psdevice': 'Device 35cf', 'fpga_n3000_reset': True, 'sriov_vf_pdevice_id': None,
+            'sriov_totalvfs': None, 'pciaddr': '0000:00:14.2',
+            'pdevice': 'C620 Series Chipset Family Thermal Subsystem', 'pvendor_id': '8086',
+            'sriov_vfs_pci_address': '', 'extra_info': None,
+            'psvendor': 'Intel Corporation', 'enabled': False, 'pvendor': 'Intel Corporation'}
+        dev5 = {'sriov_vf_driver': None, 'numa_node': 0, 'name': 'pci_0000_00_16_4',
+            'sriov_numvfs': 0, 'driver': None, 'pclass_id': '078000',
+            'pclass': 'Communication controller', 'pdevice_id': 'a1be',
+            'psdevice': 'Device 35cf', 'fpga_n3000_reset': True, 'sriov_vf_pdevice_id': None,
+            'sriov_totalvfs': None, 'pciaddr': '0000:00:16.4',
+            'pdevice': 'C620 Series Chipset Family MEI Controller #3', 'pvendor_id': '8086',
+            'sriov_vfs_pci_address': '', 'extra_info': None,
+            'psvendor': 'Intel Corporation', 'enabled': False, 'pvendor': 'Intel Corporation'}
+        dev6 = {'sriov_vf_driver': None, 'numa_node': 0, 'name': 'pci_0000_00_1f_4',
+            'sriov_numvfs': 0, 'driver': 'i801_smbus', 'pclass_id': '0c0500', 'pclass': 'SMBus',
+            'pdevice_id': 'a1a3', 'psdevice': 'Device 35cf', 'fpga_n3000_reset': True,
+            'sriov_vf_pdevice_id': None, 'sriov_totalvfs': None, 'pciaddr': '0000:00:1f.4',
+            'pdevice': 'C620 Series Chipset Family SMBus', 'pvendor_id': '8086',
+            'sriov_vfs_pci_address': '', 'extra_info': None,
+            'psvendor': 'Intel Corporation', 'enabled': False, 'pvendor': 'Intel Corporation'}
+        dev7 = {'sriov_vf_driver': None, 'numa_node': 0, 'name': 'pci_0000_00_1f_5',
+            'sriov_numvfs': 0, 'driver': None, 'pclass_id': '0c8000',
+            'pclass': 'Serial bus controller [0c80]', 'pdevice_id': 'a1a4',
+            'psdevice': 'Device 35cf', 'fpga_n3000_reset': True, 'sriov_vf_pdevice_id': None,
+            'sriov_totalvfs': None, 'pciaddr': '0000:00:1f.5',
+            'pdevice': 'C620 Series Chipset Family SPI Controller', 'pvendor_id': '8086',
+            'sriov_vfs_pci_address': '', 'extra_info': None,
+            'psvendor': 'Intel Corporation', 'enabled': False, 'pvendor': 'Intel Corporation'}
+        dev8 = {'sriov_vf_driver': None, 'numa_node': 0, 'name': 'pci_0000_02_00_0',
+            'sriov_numvfs': 0, 'driver': None, 'pclass_id': '030000',
+            'pclass': 'VGA compatible controller', 'pdevice_id': '2000',
+            'psdevice': 'ASPEED Graphics Family', 'fpga_n3000_reset': True,
+            'sriov_vf_pdevice_id': None, 'sriov_totalvfs': None, 'pciaddr': '0000:02:00.0',
+            'pdevice': 'ASPEED Graphics Family', 'pvendor_id': '1a03', 'sriov_vfs_pci_address': '',
+            'extra_info': None, 'psvendor': 'ASPEED Technology, Inc.',
+            'enabled': True, 'pvendor': 'ASPEED Technology, Inc.'}
+        dev9 = {'sriov_vf_driver': None, 'numa_node': 0, 'name': 'pci_0000_18_00_0',
+            'sriov_numvfs': 0, 'driver': 'megaraid_sas', 'pclass_id': '010400',
+            'pclass': 'RAID bus controller', 'pdevice_id': '0017',
+            'psdevice': 'RAID Controller RSP3WD080E', 'fpga_n3000_reset': True,
+            'sriov_vf_pdevice_id': None, 'sriov_totalvfs': None, 'pciaddr': '0000:18:00.0',
+            'pdevice': 'MegaRAID Tri-Mode SAS3408', 'pvendor_id': '1000',
+            'sriov_vfs_pci_address': '', 'extra_info': None,
+            'psvendor': 'Intel Corporation', 'enabled': False,
+            'pvendor': 'LSI Logic / Symbios Logic'}
+        dev10 = {'sriov_vf_driver': 'c6xxvf', 'numa_node': 0, 'name': 'pci_0000_3d_00_0',
+            'sriov_numvfs': 3, 'driver': 'c6xx', 'pclass_id': '0b4000',
+            'pclass': 'Co-processor', 'pdevice_id': '37c8', 'psdevice': 'Device 35cf',
+            'fpga_n3000_reset': True, 'sriov_vf_pdevice_id': '37c9', 'sriov_totalvfs': 16,
+            'pciaddr': '0000:3d:00.0', 'pdevice': 'C62x Chipset QuickAssist Technology',
+            'pvendor_id': '8086', 'sriov_vfs_pci_address': '0000:3d:01.0,0000:3d:01.1,0000:3d:01.2',
+            'extra_info': None, 'psvendor': 'Intel Corporation',
+            'enabled': True, 'pvendor': 'Intel Corporation'}
+        n3000_fpga = {'name': 'pci_0000_b2_00_0', 'pciaddr': '0000:b2:00.0', 'pclass_id': '120000',
+            'pvendor_id': '8086', 'pdevice_id': '0b30', 'pclass': 'Processing accelerators',
+            'pvendor': 'Intel Corporation', 'pdevice': 'Device 0b30',
+            'psvendor': 'Intel Corporation', 'psdevice': 'Device 0000', 'numa_node': 1,
+            'driver': 'intel-fpga-pci', 'sriov_totalvfs': 1, 'sriov_numvfs': 0,
+            'sriov_vfs_pci_address': '', 'enabled': True, 'extra_info': None,
+            'sriov_vf_driver': None, 'sriov_vf_pdevice_id': None, 'fpga_n3000_reset': True}
+        n3000_pf = {'name': 'pci_0000_b4_00_0', 'pciaddr': '0000:b4:00.0', 'pclass_id': '120000',
+            'pvendor_id': '8086', 'pdevice_id': '0d8f', 'pclass': 'Processing accelerators',
+            'pvendor': 'Intel Corporation', 'pdevice': 'Device 0d8f',
+            'psvendor': 'Intel Corporation', 'psdevice': 'Device 0001', 'numa_node': 1,
+            'driver': 'igb_uio', 'sriov_totalvfs': 8, 'sriov_numvfs': 4,
+            'sriov_vfs_pci_address': '0000:b4:00.1,0000:b4:00.2,0000:b4:00.3,0000:b4:00.4',
+            'enabled': True, 'extra_info': None, 'sriov_vf_driver': 'vfio-pci',
+            'sriov_vf_pdevice_id': '0d90', 'fpga_n3000_reset': True}
+        acc100 = {'name': 'pci_0000_b4_00_0', 'pciaddr': '0000:b4:00.0', 'pclass_id': '120001',
+            'pvendor_id': '8086', 'pdevice_id': '0d5c', 'pclass': 'Processing accelerators',
+            'pvendor': 'Intel Corporation', 'pdevice': 'Device 0d5c',
+            'psvendor': 'Intel Corporation', 'psdevice': 'Device 0000', 'numa_node': 0,
+            'driver': 'igb_uio', 'sriov_totalvfs': 16, 'sriov_numvfs': 4,
+            'sriov_vfs_pci_address': '0000:b4:00.1,0000:b4:00.2,0000:b4:00.3,0000:b4:00.4',
+            'enabled': True, 'extra_info': None, 'sriov_vf_driver': 'vfio',
+            'sriov_vf_pdevice_id': '0d5d', 'fpga_n3000_reset': False}
+
+        response = [dev1, dev2, dev3, dev4, dev5, dev6, dev7, dev8, dev9, dev10]
+        if not use_acc100:
+            response.append(n3000_fpga)
+            response.append(n3000_pf)
+        else:
+            response.append(acc100)
+            for dev in response:
+                dev['fpga_n3000_reset'] = False
+
+        return response
+
     def test_pci_device_update_by_host(self):
         # Create compute-0 node
         config_uuid = str(uuid.uuid4())
@@ -2389,6 +2752,7 @@ class ManagerTestCase(base.DbTestCase):
             operational=constants.OPERATIONAL_ENABLED,
             availability=constants.AVAILABILITY_ONLINE,
         )
+
         host_uuid = ihost['uuid']
         host_id = ihost['id']
         PCI_DEV_1 = {'uuid': str(uuid.uuid4()),
@@ -2559,6 +2923,7 @@ class ManagerTestCase(base.DbTestCase):
 
         # update existing dev
         pci_dev_dict_update = [{'pciaddr': PCI_DEV_2['pciaddr'],
+                                'name': PCI_DEV_2['name'],
                                 'pclass_id': '060500',
                                 'pvendor_id': '8086',
                                 'pdevice_id': '0d8f',
@@ -2585,6 +2950,283 @@ class ManagerTestCase(base.DbTestCase):
         dev = self.dbapi.pci_device_get(PCI_DEV_2['pciaddr'], host_id)
         self.assertNotEqual(dev['sriov_vfs_pci_address'],
                             pci_dev_dict_update[0]['sriov_vfs_pci_address'])
+
+    def test_pci_device_update_n3000_replacement_different_slot(self):
+        """ Test if an update contains a n3000 on a different PCI address
+
+        In AIO-SX it is possible to plug a N3000 card without a new server installation, this
+        test check that the pci_device database will take into account the card replacement on a new
+        PCI slot, by removing the old entry and creating the new one. On N3000 case the opertaion
+        is only executed if the reset operation was successful
+        """
+        mock_is_aio_simplex_system = mock.MagicMock()
+        p3 = mock.patch('sysinv.common.utils.is_aio_simplex_system', mock_is_aio_simplex_system)
+        p3.start().return_value = True
+        self.addCleanup(p3.stop)
+
+        # Create controller-0 node
+        config_uuid = str(uuid.uuid4())
+        ihost = self._create_test_ihost(
+            hostname='controller-0', mgmt_mac="1a:2a:3a:4a:5a:6a", uuid=str(uuid.uuid4()),
+            personality=constants.CONTROLLER, config_status=None, config_applied=config_uuid,
+            config_target=config_uuid, invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED, operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        # create new dev with N3000 already reset
+        pci_device_report1 = self._create_test_pci_device_report()
+        self.service.pci_device_update_by_host(self.context, ihost['uuid'], pci_device_report1)
+
+        for pci_dev in pci_device_report1:
+            db_dev = self.dbapi.pci_device_get(pci_dev['pciaddr'], ihost['id'])
+            for key in pci_dev:
+                self.assertEqual(pci_dev[key], db_dev[key])
+
+        # N3000 moves to a different slot and the first report might be without reset
+        pci_device_report2 = self._create_test_pci_device_report()
+        old_n3000_fpga = copy.deepcopy(pci_device_report2[-2])
+        del old_n3000_fpga['fpga_n3000_reset']  # this field is removed in the conductor
+        old_n3000_pf = copy.deepcopy(pci_device_report2[-1])
+        del old_n3000_pf['fpga_n3000_reset']  # this field is removed in the conductor
+        pci_device_report2[-2]['name'] = 'pci_0000_c3_00_0'
+        pci_device_report2[-2]['pciaddr'] = '0000:c3:00.0'
+        pci_device_report2[-1]['name'] = 'pci_0000_c7_00_0'
+        pci_device_report2[-1]['pciaddr'] = '0000:c7:00.0'
+        for pci_dev in pci_device_report2:
+            pci_dev['fpga_n3000_reset'] = False
+
+        self.service.pci_device_update_by_host(self.context, ihost['uuid'],
+                                               pci_device_report2)
+
+        self.assertRaises(exception.ServerNotFound,
+                    self.dbapi.pci_device_get, pci_device_report2[-2]['pciaddr'], ihost['id'])
+        self.assertRaises(exception.ServerNotFound,
+                     self.dbapi.pci_device_get, pci_device_report2[-1]['pciaddr'], ihost['id'])
+        db_dev = self.dbapi.pci_device_get(old_n3000_fpga['pciaddr'], ihost['id'])
+        for key in old_n3000_fpga:
+            self.assertEqual(old_n3000_fpga[key], db_dev[key])
+        db_dev = self.dbapi.pci_device_get(old_n3000_pf['pciaddr'], ihost['id'])
+        for key in old_n3000_pf:
+            self.assertEqual(old_n3000_pf[key], db_dev[key])
+
+        # N3000 report with reset executed
+        pci_device_report3 = self._create_test_pci_device_report()
+        pci_device_report3[-2]['name'] = 'pci_0000_c2_00_0'
+        pci_device_report3[-2]['pciaddr'] = '0000:c2:00.0'
+        pci_device_report3[-1]['name'] = 'pci_0000_c4_00_0'
+        pci_device_report3[-1]['pciaddr'] = '0000:c4:00.0'
+        for pci_dev in pci_device_report3:
+            pci_dev['fpga_n3000_reset'] = True
+        self.service.pci_device_update_by_host(self.context, ihost['uuid'],
+                                               pci_device_report3)
+
+        self.assertRaises(exception.ServerNotFound,
+                    self.dbapi.pci_device_get, old_n3000_fpga['pciaddr'], ihost['id'])
+        self.assertRaises(exception.ServerNotFound,
+                     self.dbapi.pci_device_get, old_n3000_pf['pciaddr'], ihost['id'])
+        db_dev = self.dbapi.pci_device_get(pci_device_report3[-2]['pciaddr'], ihost['id'])
+        for key in pci_device_report3[-2]:
+            self.assertEqual(pci_device_report3[-2][key], db_dev[key])
+        db_dev = self.dbapi.pci_device_get(pci_device_report3[-1]['pciaddr'], ihost['id'])
+        for key in pci_device_report3[-1]:
+            self.assertEqual(pci_device_report3[-1][key], db_dev[key])
+
+    def test_pci_device_update_acc100_replacement_different_slot(self):
+        """ Test if an update contains an ACC100 on a different PCI address
+
+        In AIO-SX it is possible to plug a ACC100 card without a new server installation, this
+        test check that the pci_device database will take into account the card replacement on a new
+        PCI slot, by removing the old entry and creating the new one.
+        """
+        mock_is_aio_simplex_system = mock.MagicMock()
+        p3 = mock.patch('sysinv.common.utils.is_aio_simplex_system', mock_is_aio_simplex_system)
+        p3.start().return_value = True
+        self.addCleanup(p3.stop)
+
+        # Create controller-0 node
+        config_uuid = str(uuid.uuid4())
+        ihost = self._create_test_ihost(
+            hostname='controller-0', mgmt_mac="1a:2a:3a:4a:5a:6a", uuid=str(uuid.uuid4()),
+            personality=constants.CONTROLLER, config_status=None, config_applied=config_uuid,
+            config_target=config_uuid, invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED, operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        # create new devices with ACC100
+        pci_device_report1 = self._create_test_pci_device_report(True)
+        acc100_addr = pci_device_report1[-1]['pciaddr']
+        self.service.pci_device_update_by_host(self.context, ihost['uuid'], pci_device_report1)
+
+        for pci_dev in pci_device_report1:
+            db_dev = self.dbapi.pci_device_get(pci_dev['pciaddr'], ihost['id'])
+            for key in pci_dev:
+                self.assertEqual(pci_dev[key], db_dev[key])
+
+        # ACC100 reports on a different slot
+        pci_device_report2 = self._create_test_pci_device_report(True)
+        pci_device_report2[-1]['name'] = 'pci_0000_c4_00_0'
+        pci_device_report2[-1]['pciaddr'] = '0000:c4:00.0'
+
+        self.service.pci_device_update_by_host(self.context, ihost['uuid'], pci_device_report2)
+
+        self.assertRaises(exception.ServerNotFound,
+                    self.dbapi.pci_device_get, acc100_addr, ihost['id'])
+        for pci_dev in pci_device_report2:
+            db_dev = self.dbapi.pci_device_get(pci_dev['pciaddr'], ihost['id'])
+            for key in pci_dev:
+                self.assertEqual(pci_dev[key], db_dev[key])
+
+    def test_pci_device_update_acc100_replacement_to_n3000_same_slot(self):
+        """ Test if an update contains a FEC card replacement on the same slot
+
+        In AIO-SX it is possible to replace a N3000 to ACC100 (or vice-versa). This test checks if
+        the previous FEC card entry are erased if the PCI address of the new card matches the
+        old card
+        """
+        mock_is_aio_simplex_system = mock.MagicMock()
+        p3 = mock.patch('sysinv.common.utils.is_aio_simplex_system', mock_is_aio_simplex_system)
+        p3.start().return_value = True
+        self.addCleanup(p3.stop)
+
+        # Create controller-0 node
+        config_uuid = str(uuid.uuid4())
+        ihost = self._create_test_ihost(
+            hostname='controller-0', mgmt_mac="1a:2a:3a:4a:5a:6a", uuid=str(uuid.uuid4()),
+            personality=constants.CONTROLLER, config_status=None, config_applied=config_uuid,
+            config_target=config_uuid, invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED, operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        # create new dev with N3000 already reset
+        pci_device_report1 = self._create_test_pci_device_report()
+        self.service.pci_device_update_by_host(self.context, ihost['uuid'], pci_device_report1)
+
+        # ACC100 reports on the same N3000 slot
+        pci_device_report2 = self._create_test_pci_device_report(True)
+
+        self.service.pci_device_update_by_host(self.context, ihost['uuid'], pci_device_report2)
+
+        self.assertRaises(exception.ServerNotFound,
+                    self.dbapi.pci_device_get, '0000:b2:00.0', ihost['id'])
+        for pci_dev in pci_device_report2:
+            db_dev = self.dbapi.pci_device_get(pci_dev['pciaddr'], ihost['id'])
+            for key in pci_dev:
+                self.assertEqual(pci_dev[key], db_dev[key])
+
+        # N3000 without reset replaces ACC100
+        pci_device_report3 = self._create_test_pci_device_report()
+        pci_device_report3[-2]['name'] = 'pci_0000_b3_00_0'
+        pci_device_report3[-2]['pciaddr'] = '0000:b3:00.0'
+        pci_device_report3[-1]['name'] = 'pci_0000_b7_00_0'
+        pci_device_report3[-1]['pciaddr'] = '0000:b7:00.0'
+        for pci_dev in pci_device_report3:
+            pci_dev['fpga_n3000_reset'] = False
+
+        self.service.pci_device_update_by_host(self.context, ihost['uuid'], pci_device_report3)
+
+        # without reset, N3000 devices aren't created
+        self.assertRaises(exception.ServerNotFound,
+                    self.dbapi.pci_device_get, '0000:b3:00.0', ihost['id'])
+        self.assertRaises(exception.ServerNotFound,
+                    self.dbapi.pci_device_get, '0000:b7:00.0', ihost['id'])
+        # removed ACC100 device
+        self.assertRaises(exception.ServerNotFound,
+                    self.dbapi.pci_device_get, '0000:b4:00.0', ihost['id'])
+
+        # N3000 with reset is reported
+        pci_device_report4 = self._create_test_pci_device_report()
+        self.service.pci_device_update_by_host(self.context, ihost['uuid'], pci_device_report4)
+
+        for pci_dev in pci_device_report4:
+            db_dev = self.dbapi.pci_device_get(pci_dev['pciaddr'], ihost['id'])
+            for key in pci_dev:
+                self.assertEqual(pci_dev[key], db_dev[key])
+
+    def test_pci_device_update_acc100_replacement_to_n3000_different_slot(self):
+        """ Test if an update contains a FEC card replacement on a different PCI slot
+
+        In AIO-SX it is possible to replace a N3000 to ACC100 (or vice-versa). This test checks if
+        the previous FEC card entry are erased if the PCI address of the new card is installed on a
+        different address than the old card
+        """
+        mock_is_aio_simplex_system = mock.MagicMock()
+        p3 = mock.patch('sysinv.common.utils.is_aio_simplex_system', mock_is_aio_simplex_system)
+        p3.start().return_value = True
+        self.addCleanup(p3.stop)
+
+        # Create controller-0 node
+        config_uuid = str(uuid.uuid4())
+        ihost = self._create_test_ihost(
+            hostname='controller-0', mgmt_mac="1a:2a:3a:4a:5a:6a", uuid=str(uuid.uuid4()),
+            personality=constants.CONTROLLER, config_status=None, config_applied=config_uuid,
+            config_target=config_uuid, invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED, operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        # create new dev with N3000 already reset
+        pci_device_report1 = self._create_test_pci_device_report()
+        self.service.pci_device_update_by_host(self.context, ihost['uuid'], pci_device_report1)
+
+        # ACC100 reports on a different slot as N3000 is removed
+        pci_device_report2 = self._create_test_pci_device_report(True)
+        pci_device_report2[-1]['name'] = 'pci_0000_c4_00_0'
+        pci_device_report2[-1]['pciaddr'] = '0000:c4:00.0'
+
+        self.service.pci_device_update_by_host(self.context, ihost['uuid'], pci_device_report2)
+
+        self.assertRaises(exception.ServerNotFound,
+                    self.dbapi.pci_device_get, '0000:b2:00.0', ihost['id'])
+        self.assertRaises(exception.ServerNotFound,
+                    self.dbapi.pci_device_get, '0000:b4:00.0', ihost['id'])
+        for pci_dev in pci_device_report2:
+            db_dev = self.dbapi.pci_device_get(pci_dev['pciaddr'], ihost['id'])
+            for key in pci_dev:
+                self.assertEqual(pci_dev[key], db_dev[key])
+
+    def test_pci_device_update_N3000_cleanup_stale_non_AIOSX(self):
+
+        mock_is_aio_simplex_system = mock.MagicMock()
+        p3 = mock.patch('sysinv.common.utils.is_aio_simplex_system', mock_is_aio_simplex_system)
+        p3.start().return_value = False
+        self.addCleanup(p3.stop)
+
+        # Create controller-0 node
+        config_uuid = str(uuid.uuid4())
+        ihost = self._create_test_ihost(
+            hostname='controller-0', mgmt_mac="1a:2a:3a:4a:5a:6a", uuid=str(uuid.uuid4()),
+            personality=constants.CONTROLLER, config_status=None, config_applied=config_uuid,
+            config_target=config_uuid, invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED, operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        # create new dev with N3000 already reset but add invalid addresses so they simulate
+        # a database with both valid and invalid addresses from a possible situation from an upgrade
+        pci_device_report1 = self._create_test_pci_device_report()
+        pci_device_report1 += [copy.deepcopy(pci_device_report1[-2]),
+                               copy.deepcopy(pci_device_report1[-1])]
+
+        pci_device_report1[-2]['name'] = 'pci_0000_b3_00_0'
+        pci_device_report1[-2]['pciaddr'] = '0000:b3:00.0'
+        pci_device_report1[-1]['name'] = 'pci_0000_b7_00_0'
+        pci_device_report1[-1]['pciaddr'] = '0000:b7:00.0'
+        self.service.pci_device_update_by_host(self.context, ihost['uuid'], pci_device_report1)
+
+        pci_device_report2 = self._create_test_pci_device_report()
+        self.service.pci_device_update_by_host(self.context, ihost['uuid'],
+                                               pci_device_report2, True)
+        self.assertRaises(exception.ServerNotFound,
+                    self.dbapi.pci_device_get, '0000:b3:00.0', ihost['id'])
+        self.assertRaises(exception.ServerNotFound,
+                    self.dbapi.pci_device_get, '0000:b7:00.0', ihost['id'])
+        for pci_dev in pci_device_report2:
+            db_dev = self.dbapi.pci_device_get(pci_dev['pciaddr'], ihost['id'])
+            for key in pci_dev:
+                self.assertEqual(pci_dev[key], db_dev[key])
 
     def test_inumas_update_by_ihost(self):
         # Create compute-0 node
