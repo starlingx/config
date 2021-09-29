@@ -28,9 +28,9 @@ class TestKubeCmdVersion(base.FunctionalTest):
                                  headers=self.API_HEADERS)
         self.assert_fields(response)
         self.assertEqual(response['kubeadm_version'],
-                         kubernetes.KUBERNETES_DEFAULT_VERSION)
+                         kubernetes.K8S_INITIAL_CMD_VERSION)
         self.assertEqual(response['kubelet_version'],
-                         kubernetes.KUBERNETES_DEFAULT_VERSION)
+                         kubernetes.K8S_INITIAL_CMD_VERSION)
 
     def test_patch_kube_cmd_version_success(self):
         values = {

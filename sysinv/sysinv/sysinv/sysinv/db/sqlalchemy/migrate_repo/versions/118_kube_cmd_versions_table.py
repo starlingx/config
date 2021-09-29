@@ -21,8 +21,8 @@ CHARSET = 'utf8'
 def _insert_default_kube_cmd_version(kube_cmd_versions):
     kube_cmd_versions_insert = kube_cmd_versions.insert()
     values = {
-        'kubeadm_version': kubernetes.KUBERNETES_DEFAULT_VERSION,
-        'kubelet_version': kubernetes.KUBERNETES_DEFAULT_VERSION
+        'kubeadm_version': kubernetes.K8S_INITIAL_CMD_VERSION,
+        'kubelet_version': kubernetes.K8S_INITIAL_CMD_VERSION
     }
     kube_cmd_versions_insert.execute(values)
 

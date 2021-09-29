@@ -283,12 +283,12 @@ class KubeVersionTestCase(base.PuppetTestCaseMixin, dbbase.BaseHostTestCase):
         kubeadm_version = config.get("platform::kubernetes::params::kubeadm_version")
         kubelet_version = config.get("platform::kubernetes::params::kubelet_version")
 
-        self.assertEqual(kubeadm_version, kubernetes.KUBERNETES_DEFAULT_VERSION)
-        self.assertEqual(kubelet_version, kubernetes.KUBERNETES_DEFAULT_VERSION)
+        self.assertEqual(kubeadm_version, kubernetes.K8S_INITIAL_CMD_VERSION)
+        self.assertEqual(kubelet_version, kubernetes.K8S_INITIAL_CMD_VERSION)
 
     def test_kubernetes_versions_in_hieradata_upgrade_started(self):
         dbutils.create_test_kube_upgrade(
-            from_version=kubernetes.KUBERNETES_DEFAULT_VERSION,
+            from_version=kubernetes.K8S_INITIAL_CMD_VERSION,
             to_version='v1.19.13',
             state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
         )
@@ -304,11 +304,11 @@ class KubeVersionTestCase(base.PuppetTestCaseMixin, dbbase.BaseHostTestCase):
         kubelet_version = config.get("platform::kubernetes::params::kubelet_version")
 
         self.assertEqual(kubeadm_version, '1.19.13')
-        self.assertEqual(kubelet_version, kubernetes.KUBERNETES_DEFAULT_VERSION)
+        self.assertEqual(kubelet_version, kubernetes.K8S_INITIAL_CMD_VERSION)
 
     def test_kubernetes_versions_in_hieradata_upgrade_kubelet(self):
         dbutils.create_test_kube_upgrade(
-            from_version=kubernetes.KUBERNETES_DEFAULT_VERSION,
+            from_version=kubernetes.K8S_INITIAL_CMD_VERSION,
             to_version='v1.19.13',
             state=kubernetes.KUBE_UPGRADING_KUBELETS,
         )
