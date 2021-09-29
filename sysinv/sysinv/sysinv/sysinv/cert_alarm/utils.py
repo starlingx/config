@@ -335,6 +335,7 @@ def get_file_mode_metadata(certname, file_loc):
 
 
 def get_cert_uuid(certname):
+    ret = 'unknown'
     token = certmon_utils._get_token(
         CONF.keystone_authtoken.auth_url + '/v3/auth/tokens',
         CONF.keystone_authtoken.project_name,
@@ -344,12 +345,15 @@ def get_cert_uuid(certname):
         CONF.keystone_authtoken.project_domain_name,
         CONF.keystone_authtoken.region_name)
 
+    if token is None:
+        return ret
+
     service_type = 'platform'
     service_name = 'sysinv'
     sysinv_url = token.get_service_internal_url(service_type,
                                                 service_name)
     api_cmd = sysinv_url + '/certificate'
-    ret = 'unknown'
+
     try:
         res = certmon_utils.rest_api_request(token, "GET", api_cmd)
         if len(res) == 1:
