@@ -21,6 +21,7 @@ import json
 import os
 import re
 import ssl
+import socket
 import tempfile
 
 import requests
@@ -525,10 +526,27 @@ def get_sc_intermediate_ca_secret(sc):
     return kube_op.kube_get_secret(secret_name, CERT_NAMESPACE_SYS_CONTROLLER)
 
 
-def get_endpoint_certificate(endpoint):
+def get_endpoint_certificate(endpoint, timeout_secs=10):
     url = urlparse(endpoint)
     host = url.hostname
     port = url.port
+    if timeout_secs is not None and timeout_secs > 0:
+        # The call to ssl.get_server_certificate blocks for a long time if the
+        # server is not available. A timeout is not available in python 2.7.
+        # See https://bugs.python.org/issue31870
+        # Until the timeout=<val> option is available in
+        # get_server_certificate(), we first check if the port is open
+        # by connecting using a timeout, then we do the certificate check:
+        sock = None
+        try:
+            sock = socket.create_connection((host, port), timeout=timeout_secs)
+        except Exception:
+            LOG.warn("get_endpoint_certificate: connection failed to %s:%s",
+                     host, port)
+            raise
+        finally:
+            if sock is not None:
+                sock.close()
     return ssl.get_server_certificate((host, port))
 
 

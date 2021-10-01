@@ -66,6 +66,9 @@ cert_mon_opts = [
                help='Size of subcloud audit greenpool.'
                     'Set to 0 to disable use of greenpool '
                     '(force serial audit).'),
+    cfg.IntOpt('certificate_timeout_secs',
+               default=10,
+               help='Connection timeout for certificate check (in seconds)'),
 ]
 
 CONF = cfg.CONF
@@ -211,7 +214,9 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         try:
             subcloud_sysinv_url = utils.dc_get_subcloud_sysinv_url(
                 subcloud_name, my_dc_token())
-            sc_ssl_cert = utils.get_endpoint_certificate(subcloud_sysinv_url)
+            sc_ssl_cert = utils.get_endpoint_certificate(
+                subcloud_sysinv_url,
+                timeout_secs=CONF.certmon.certificate_timeout_secs)
 
         except Exception:
             if not utils.is_subcloud_online(subcloud_name, my_dc_token()):
