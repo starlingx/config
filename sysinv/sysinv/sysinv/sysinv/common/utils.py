@@ -47,6 +47,7 @@ import keyring
 import math
 import os
 import pathlib
+import psutil
 import pwd
 import random
 import re
@@ -1277,6 +1278,14 @@ def get_personalities(host_obj):
 def is_cpe(host_obj):
     return (host_has_function(host_obj, constants.CONTROLLER) and
             host_has_function(host_obj, constants.WORKER))
+
+
+def is_space_available(partition, size):
+    """
+        Returns if the given size is available in the specified partition
+    """
+    available_space = psutil.disk_usage(partition).free
+    return False if available_space < size else True
 
 
 def output_to_dict(output):

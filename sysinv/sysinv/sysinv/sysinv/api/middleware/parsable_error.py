@@ -31,6 +31,12 @@ from oslo_log import log
 
 LOG = log.getLogger(__name__)
 
+# As per webob.exc code:
+# https://github.com/Pylons/webob/blob/master/src/webob/exc.py
+# The explanation field is added to the HTTP exception as following:
+# ${explanation}<br /><br />
+WEBOB_EXPL_SEP = "<br /><br />"
+
 
 class ParsableErrorMiddleware(object):
     """Replace error body with something the client can parse.
@@ -86,7 +92,20 @@ class ParsableErrorMiddleware(object):
             else:
                 if six.PY3:
                     app_iter = [i.decode('utf-8') for i in app_iter]
-                body = [json.dumps({'error_message': '\n'.join(app_iter)})]
+                # Parse explanation field from webob.exc and add it as
+                # 'faultstring' to be processed by cgts-client
+                fault = None
+                app_data = '\n'.join(app_iter)
+                for data in app_data.split("\n"):
+                    if WEBOB_EXPL_SEP in str(data):
+                        # Remove separator, trailing and leading white spaces
+                        fault = str(data).replace(WEBOB_EXPL_SEP, "").strip()
+                        break
+                if fault is None:
+                    body = [json.dumps({'error_message': app_data})]
+                else:
+                    body = [json.dumps({'error_message':
+                                        json.dumps({'faultstring': fault})})]
                 if six.PY3:
                     body = [item.encode('utf-8') for item in body]
                 state['headers'].append(('Content-Type', 'application/json'))

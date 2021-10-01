@@ -39,6 +39,7 @@ from sysinv.openstack.common import policy
 from webob import exc
 
 LOG = log.getLogger(__name__)
+NO_SPACE_MSG = "Insufficient space"
 
 audit_log_name = "{}.{}".format(__name__, "auditor")
 auditLOG = log.getLogger(audit_log_name)
@@ -46,6 +47,46 @@ auditLOG = log.getLogger(audit_log_name)
 
 def generate_request_id():
     return 'req-%s' % uuidutils.generate_uuid()
+
+
+def is_load_import(content_type, url_path):
+    if (content_type == "multipart/form-data" and
+            url_path == "/v1/loads/import_load"):
+        return True
+    else:
+        return False
+
+
+class MultiFormDataHook(hooks.PecanHook):
+    """For multipart form-data, check disk space available before
+    proceeding.
+
+    Currently, it is only applying to import_load request, but
+    it can be extended to cover other multipart form-data requests
+    """
+
+    def on_route(self, state):
+        content_type = state.request.content_type
+        url_path = state.request.path
+        if is_load_import(content_type, url_path):
+            content_length = int(state.request.headers.get('Content-Length'))
+            # Currently, the restriction is 2x the file size:
+            # 1x from internal webob copy (see before override below)
+            # 1x from sysinv temporary copy
+            if not utils.is_space_available("/scratch", 2 * content_length):
+                msg = _(NO_SPACE_MSG + " on /scratch for request %s"
+                        % url_path)
+                raise webob.exc.HTTPInternalServerError(explanation=msg)
+
+    # Note: webob, for the multipart form-data request, creates 2 internal
+    # temporary copies, using the before override we can close the second
+    # temporary request before request goes to sysinv, this saves 1x file
+    # size required
+    def before(self, state):
+        content_type = state.request.content_type
+        url_path = state.request.path
+        if is_load_import(content_type, url_path):
+            state.request.body_file.close()
 
 
 class ConfigHook(hooks.PecanHook):
@@ -230,7 +271,13 @@ class AuditLogging(hooks.PecanHook):
 
         def json_post_data(rest_state):
             if 'form-data' in rest_state.request.headers.get('Content-Type'):
-                return " POST: {}".format(rest_state.request.params)
+                # rest_state.request.params causes an internal webob copy,
+                # prevent its call if there is no space available
+                size = int(rest_state.request.headers.get('Content-Length'))
+                if utils.is_space_available("/scratch", 2 * size):
+                    return " POST: {}".format(rest_state.request.params)
+                else:
+                    return " POST: " + NO_SPACE_MSG + " for processing"
             if not hasattr(rest_state.request, 'json'):
                 return ""
             return " POST: {}".format(rest_state.request.json)
