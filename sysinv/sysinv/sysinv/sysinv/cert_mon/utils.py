@@ -26,9 +26,6 @@ import tempfile
 import requests
 from eventlet.green import subprocess
 from six.moves.urllib.parse import urlparse
-from keystoneclient.v3 import client as keystone_client
-from keystoneauth1 import session
-from keystoneclient.auth.identity import v3
 from oslo_config import cfg
 from oslo_log import log
 from oslo_utils import encodeutils
@@ -143,76 +140,31 @@ def verify_adminep_cert_chain():
                 return False
 
 
-def dc_get_subcloud_sysinv_url(subcloud_name):
-    user_auth = v3.Password(
-        auth_url=CONF.endpoint_cache.auth_uri,
-        username=CONF.endpoint_cache.username,
-        user_domain_name=CONF.endpoint_cache.user_domain_name,
-        password=CONF.endpoint_cache.password,
-        project_name=CONF.endpoint_cache.project_name,
-        project_domain_name=CONF.endpoint_cache.project_domain_name,
-    )
-
-    timeout = CONF.endpoint_cache.http_connect_timeout
-    admin_session = session.Session(auth=user_auth, timeout=timeout)
-
-    ks_client = keystone_client.Client(
-        session=admin_session,
-        region_name=constants.REGION_ONE_NAME,
-        interface=constants.OS_INTERFACE_INTERNAL)
-    services = ks_client.services.list(name='sysinv')
-    if len(services) == 0:
-        raise Exception('Cannot find sysinv service')
-
-    s_id = services[0].id
-    sc_sysinv_urls = ks_client.endpoints.list(
-        service=s_id,
-        interface=constants.OS_INTERFACE_ADMIN,
-        region=subcloud_name)
-
-    if len(sc_sysinv_urls) == 0:
-        raise Exception('Cannot find sysinv endpoint for %s' %
-                        subcloud_name)
-    sc_sysinv_url = sc_sysinv_urls[0].url
-    LOG.info('%s sysinv endpoint %s' % (subcloud_name, sc_sysinv_url))
-    if not sc_sysinv_url:
-        raise Exception('{} sysinv endpoint is None'.format(subcloud_name))
-    return sc_sysinv_url
+def dc_get_subcloud_sysinv_url(subcloud_name, dc_token):
+    """Pulls the sysinv platform URL from the given token"""
+    url = dc_token.get_service_admin_url(constants.SERVICE_TYPE_PLATFORM,
+                                         constants.SYSINV_USERNAME,
+                                         subcloud_name)
+    if url:
+        LOG.debug('%s sysinv endpoint %s' % (subcloud_name, url))
+        return url
+    else:
+        LOG.error('Cannot find sysinv endpoint for %s' % subcloud_name)
+        raise Exception('Cannot find sysinv endpoint for %s' % subcloud_name)
 
 
-def dc_get_service_endpoint_url(region, service_name, endpoint_type):
-    user_auth = v3.Password(
-        auth_url=CONF.endpoint_cache.auth_uri,
-        username=CONF.endpoint_cache.username,
-        user_domain_name=CONF.endpoint_cache.user_domain_name,
-        password=CONF.endpoint_cache.password,
-        project_name=CONF.endpoint_cache.project_name,
-        project_domain_name=CONF.endpoint_cache.project_domain_name,
-    )
-
-    timeout = CONF.endpoint_cache.http_connect_timeout
-    admin_session = session.Session(auth=user_auth, timeout=timeout)
-
-    ks_client = keystone_client.Client(
-        session=admin_session,
-        region_name=constants.REGION_ONE_NAME,
-        interface=constants.OS_INTERFACE_INTERNAL)
-    services = ks_client.services.list(name=service_name)
-    if len(services) == 0:
-        raise Exception('Cannot find %s service' % service_name)
-
-    s_id = services[0].id
-    endpoint_urls = ks_client.endpoints.list(
-        service=s_id,
-        interface=endpoint_type,
-        region=region)
-
-    if len(endpoint_urls) == 0:
-        raise Exception('Cannot find %s endpoint for %s' %
-                        (service_name, region))
-    endpoint_url = endpoint_urls[0].url
-    LOG.info('%s %s endpoint %s' % (region, service_name, endpoint_url))
-    return endpoint_url
+def dc_get_service_endpoint_url(token,
+                                service_name='dcmanager',
+                                service_type='dcmanager',
+                                region=constants.SYSTEM_CONTROLLER_REGION):
+    """Pulls the dcmanager service internal URL from the given token"""
+    url = token.get_service_internal_url(service_type, service_name, region)
+    if url:
+        LOG.debug('%s %s endpoint %s' % (region, service_name, url))
+        return url
+    else:
+        LOG.error('Cannot find %s endpoint for %s' % (service_name, region))
+        raise Exception('Cannot find %s endpoint for %s' % (service_name, region))
 
 
 def update_subcloud_ca_cert(
@@ -238,10 +190,7 @@ def update_subcloud_ca_cert(
 
 
 def get_subcloud(token, subcloud_name):
-    service_name = 'dcmanager'
-    api_url = dc_get_service_endpoint_url(constants.SYSTEM_CONTROLLER_REGION,
-                                          service_name,
-                                          constants.OS_INTERFACE_INTERNAL)
+    api_url = dc_get_service_endpoint_url(token)
     api_cmd = api_url + '/subclouds/%s' % subcloud_name
     LOG.info('api_cmd %s' % api_cmd)
     resp = rest_api_request(token, "GET", api_cmd)
@@ -250,10 +199,8 @@ def get_subcloud(token, subcloud_name):
 
 
 def load_subclouds(resp):
-    data = resp
-    print(data)
-    list = []
-    for obj in data['subclouds']:
+    sc_list = []
+    for obj in resp['subclouds']:
         sc = {}
         sc['name'] = obj['name']
         sc['management-state'] = obj['management-state']
@@ -261,16 +208,13 @@ def load_subclouds(resp):
         sc['sync_status'] = obj['sync_status']
         for ss in obj['endpoint_sync_status']:
             sc[ss['endpoint_type']] = ss['sync_status']
-        list.append(sc)
+        sc_list.append(sc)
 
-    return list
+    return sc_list
 
 
 def get_subclouds_from_dcmanager(token):
-    service_name = 'dcmanager'
-    api_url = dc_get_service_endpoint_url(constants.SYSTEM_CONTROLLER_REGION,
-                                          service_name,
-                                          constants.OS_INTERFACE_INTERNAL)
+    api_url = dc_get_service_endpoint_url(token)
     api_cmd = api_url + '/subclouds'
     LOG.debug('api_cmd %s' % api_cmd)
     resp = rest_api_request(token, "GET", api_cmd)
@@ -290,10 +234,7 @@ def is_subcloud_online(subcloud_name, token=None):
 
 
 def update_subcloud_status(token, subcloud_name, status):
-    service_name = 'dcmanager'
-    api_url = dc_get_service_endpoint_url(constants.SYSTEM_CONTROLLER_REGION,
-                                          service_name,
-                                          constants.OS_INTERFACE_INTERNAL)
+    api_url = dc_get_service_endpoint_url(token)
     api_cmd = api_url + '/subclouds/%s/update_status' % subcloud_name
     api_cmd_payload = dict()
     api_cmd_payload['endpoint'] = ENDPOINT_TYPE_DC_CERT
@@ -413,6 +354,7 @@ def get_system(token, method, api_cmd, api_cmd_headers=None,
 
 
 def get_token():
+    """Get token for the sysinv user."""
     token = _get_token(
         CONF.keystone_authtoken.auth_url + '/v3/auth/tokens',
         CONF.keystone_authtoken.project_name,
@@ -421,11 +363,17 @@ def get_token():
         CONF.keystone_authtoken.user_domain_name,
         CONF.keystone_authtoken.project_domain_name,
         CONF.keystone_authtoken.region_name)
-
     return token
 
 
-def get_dc_token(region_name):
+def get_dc_token(region_name=constants.SYSTEM_CONTROLLER_REGION):
+    """Get token for the dcmanager user.
+
+    Note: Although region_name can be specified, the token used here is a
+    "project-scoped" token (i.e., not specific to the subcloud/region name).
+    A token obtained using one region_name can be re-used across any
+    subcloud. We take advantage of this in our DC token caching strategy.
+    """
     token = _get_token(
         CONF.endpoint_cache.auth_uri + '/auth/tokens',
         CONF.endpoint_cache.project_name,
@@ -434,12 +382,17 @@ def get_dc_token(region_name):
         CONF.endpoint_cache.user_domain_name,
         CONF.endpoint_cache.project_domain_name,
         region_name)
-
     return token
 
 
-def _get_token(auth_url, auth_project, username, password, user_domain,
-               project_domain, region_name, timeout=60):
+def _get_token(auth_url,
+               auth_project,
+               username,
+               password,
+               user_domain,
+               project_domain,
+               region_name,
+               timeout=60):
     """
     Ask OpenStack Keystone for a token
     Returns: token object or None on failure
@@ -474,8 +427,10 @@ def _get_token(auth_url, auth_project, username, password, user_domain,
         # Identity API v3 returns token id in X-Subject-Token
         # response header.
         token_id = request.headers.get('X-Subject-Token')
-        response = json.loads(request.read())
+        json_response = request.read()
+        response = json.loads(json_response)
         request.close()
+
         # save the region name for service url lookup
         return Token(response, token_id, region_name)
 
@@ -717,34 +672,17 @@ def update_platform_cert(token, cert_type, pem_file_path, force=False):
 class TokenCache(object):
     """Simple token cache. This class holds one keystone token.
     """
-    def __init__(self):
+    token_getters = {'internal': get_token, 'dc': get_dc_token}
+
+    def __init__(self, token_type):
         self._token = None
+        self._token_type = token_type
+        self._getter_func = self.token_getters[token_type]
 
     def get_token(self):
         """Get a new token if required; otherwise use the cached token"""
         if not self._token or self._token.is_expired():
-            LOG.debug("%s, Acquiring new token, previous token: %s",
-                      self.__class__.__name__, self._token)
-            self._token = get_token()
+            LOG.debug("TokenCache %s, Acquiring new token, previous token: %s",
+                      self._token_type, self._token)
+            self._token = self._getter_func()
         return self._token
-
-
-class DCTokenCache(object):
-    """Simple token cache for DC tokens (keyed by region_name).
-    For the DC keystone user (e.g. 'dcmanager').
-    """
-    def __init__(self):
-        self._dc_tokens = {}
-
-    def get_dc_token(self, region_name):
-        """Get a new token if required; otherwise use the cached token"""
-        if region_name in self._dc_tokens:
-            dc_token = self._dc_tokens[region_name]
-        else:
-            dc_token = None
-        if not dc_token or dc_token.is_expired():
-            LOG.debug("Acquiring new DC token, region_name: %s, "
-                      "previous token: %s", region_name, dc_token)
-            dc_token = get_dc_token(region_name)
-            self._dc_tokens[region_name] = dc_token
-        return dc_token
