@@ -452,6 +452,18 @@ class PTPAlreadyExists(Conflict):
     message = _("A PTP with UUID %(uuid)s already exists.")
 
 
+class PtpInstanceAlreadyExists(Conflict):
+    message = _("A PTP instance with UUID %(uuid)s already exists.")
+
+
+class PtpInterfaceAlreadyExists(Conflict):
+    message = _("A PTP interface with UUID %(uuid)s already exists.")
+
+
+class PtpParameterAlreadyExists(Conflict):
+    message = _("A PTP parameter with UUID %(uuid)s already exists.")
+
+
 class PMAlreadyExists(Conflict):
     message = _("A PM with UUID %(uuid)s already exists.")
 
@@ -578,6 +590,18 @@ class NTPNotFound(NotFound):
 
 class PTPNotFound(NotFound):
     message = _("No PTP with id %(uuid)s found.")
+
+
+class PtpInstanceNotFound(NotFound):
+    message = _("No PTP instance with id %(uuid)s found.")
+
+
+class PtpInterfaceNotFound(NotFound):
+    message = _("No PTP interface with id %(uuid)s found.")
+
+
+class PtpParameterNotFound(NotFound):
+    message = _("No PTP parameter with id %(uuid)s found.")
 
 
 class DiskNotFound(NotFound):

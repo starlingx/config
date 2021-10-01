@@ -71,6 +71,9 @@ from sysinv.objects import peer
 from sysinv.objects import port
 from sysinv.objects import profile
 from sysinv.objects import ptp
+from sysinv.objects import ptp_instance
+from sysinv.objects import ptp_interface
+from sysinv.objects import ptp_parameter
 from sysinv.objects import pv
 from sysinv.objects import remote_logging
 from sysinv.objects import route
@@ -156,6 +159,9 @@ user = user.User
 dns = dns.DNS
 ntp = ntp.NTP
 ptp = ptp.PTP
+ptp_instance = ptp_instance.PtpInstance
+ptp_interface = ptp_interface.PtpInterface
+ptp_parameter = ptp_parameter.PtpParameter
 oam_network = network_oam.OAMNetwork
 storage_backend = storage_backend.StorageBackend
 storage_ceph = storage_ceph.StorageCeph
@@ -236,6 +242,9 @@ __all__ = ("system",
            "dns",
            "ntp",
            "ptp",
+           "ptp_instance",
+           "ptp_interface",
+           "ptp_parameter",
            "oam_network",
            "storage_backend",
            "storage_ceph",
