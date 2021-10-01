@@ -12,6 +12,14 @@ import os
 from cgtsclient.common import utils
 from cgtsclient import exc
 
+import re
+
+# matches all openssl supported key headers
+PRIVATE_KEY_PATTERN = \
+    "-----BEGIN (\w{2,9} )?PRIVATE KEY-----" \
+    "(.|\n)*" \
+    "-----END (\w{2,9} )?PRIVATE KEY-----"
+
 
 def _print_certificate_show(certificate):
     fields = ['uuid', 'certtype', 'signature', 'start_date', 'expiry_date']
@@ -84,9 +92,19 @@ def do_certificate_install(cc, args):
     data = {'passphrase': args.passphrase,
             'mode': args.mode}
 
-    print("WARNING: For security reasons, the original certificate, ")
-    print("containing the private key, will be removed, ")
-    print("once the private key is processed.")
+    has_private_key = False
+    try:
+        with open(certificate_file, 'r') as reader:
+            file_contents = reader.read()
+            has_private_key = re.search(PRIVATE_KEY_PATTERN, file_contents)
+    except OSError:
+        raise exc.CommandError('Error: Could not read the '
+                               'certificate %s' % certificate_file)
+
+    if has_private_key:
+        print("WARNING: For security reasons, the original certificate, ")
+        print("containing the private key, will be removed, ")
+        print("once the private key is processed.")
 
     try:
         response = cc.certificate.certificate_install(sec_file, data=data)
@@ -108,7 +126,8 @@ def do_certificate_install(cc, args):
             print(error)
         else:
             try:
-                os.remove(certificate_file)
+                if has_private_key:
+                    os.remove(certificate_file)
             except OSError:
                 raise exc.CommandError('Error: Could not remove the '
                                        'certificate %s' % certificate_file)
