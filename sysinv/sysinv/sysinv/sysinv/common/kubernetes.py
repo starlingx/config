@@ -999,7 +999,8 @@ class KubeOperator(object):
     def get_cert_secret(self, name, namespace, max_retries=4):
         for i in range(0, max_retries):
             secret = self.kube_get_secret(name, NAMESPACE_DEPLOYMENT)
-            if secret is not None:
+            if secret is not None and secret.data is not None:
+                LOG.debug("secret = %s" % secret)
                 return secret
             time.sleep(5)
         return None
