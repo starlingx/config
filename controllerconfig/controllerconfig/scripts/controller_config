@@ -469,9 +469,9 @@ start()
 
     # Our PXE config files are located in the config directory. Create a
     # symbolic link if it is not already created.
-    if [ ! -L /pxeboot/pxelinux.cfg ]
+    if [ ! -L /var/pxeboot/pxelinux.cfg ]
     then
-        ln -sf $CONFIG_DIR/pxelinux.cfg /pxeboot/pxelinux.cfg
+        ln -sf $CONFIG_DIR/pxelinux.cfg /var/pxeboot/pxelinux.cfg
     fi
 
     # Upgrade related checks

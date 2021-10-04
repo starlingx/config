@@ -1185,19 +1185,19 @@ class ConductorManager(service.PeriodicService):
 
             # Remove an old file if it exists
             try:
-                os.remove("/pxeboot/pxelinux.cfg/01-" + dashed_mac)
+                os.remove("/var/pxeboot/pxelinux.cfg/01-" + dashed_mac)
             except OSError:
                 pass
 
             try:
-                os.remove("/pxeboot/pxelinux.cfg/efi-01-" + dashed_mac)
+                os.remove("/var/pxeboot/pxelinux.cfg/efi-01-" + dashed_mac)
             except OSError:
                 pass
             with open(os.devnull, "w") as fnull:
                 try:
                     subprocess.check_call(  # pylint: disable=not-callable
-                        [pxeboot_update, "-i", "/pxeboot/pxelinux.cfg.files/" +
-                         pxe_config, "-o", "/pxeboot/pxelinux.cfg/01-" +
+                        [pxeboot_update, "-i", "/var/pxeboot/pxelinux.cfg.files/" +
+                         pxe_config, "-o", "/var/pxeboot/pxelinux.cfg/01-" +
                          dashed_mac] + install_opts,
                         stdout=fnull,
                         stderr=fnull)
@@ -1237,12 +1237,12 @@ class ConductorManager(service.PeriodicService):
 
             # Remove the old file if it exists
             try:
-                os.remove("/pxeboot/pxelinux.cfg/01-" + dashed_mac)
+                os.remove("/var/pxeboot/pxelinux.cfg/01-" + dashed_mac)
             except OSError:
                 pass
 
             try:
-                os.remove("/pxeboot/pxelinux.cfg/efi-01-" + dashed_mac)
+                os.remove("/var/pxeboot/pxelinux.cfg/efi-01-" + dashed_mac)
             except OSError:
                 pass
 
