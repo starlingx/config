@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Copyright (C) 2019 Intel Corporation
+# Copyright (c) 2021 Wind River Systems, Inc.
 #
 """
 Sysinv Keystone notification listener.
@@ -9,7 +10,6 @@ Sysinv Keystone notification listener.
 
 import keyring
 import oslo_messaging
-
 from oslo_config import cfg
 from oslo_log import log
 
@@ -19,7 +19,8 @@ from sysinv.db import api as dbapi
 
 LOG = log.getLogger(__name__)
 
-kube_app = None
+callback_func = None
+context = None
 
 
 class NotificationEndpoint(object):
@@ -38,8 +39,15 @@ class NotificationEndpoint(object):
 
     def info(self, ctxt, publisher_id, event_type, payload, metadata):
         """Receives notification at info level."""
-        global kube_app
-        kube_app.audit_local_registry_secrets()
+        global callback_func
+        global context
+
+        if payload['eventType'] == 'activity' and \
+                payload['action'] == 'updated.user' and \
+                payload['outcome'] == 'success' and \
+                payload['resource_info'] == context.user:
+            callback_func(context)
+
         return oslo_messaging.NotificationResult.HANDLED
 
 
@@ -57,14 +65,19 @@ def get_transport_url():
 
     auth_password = keyring.get_password('amqp', 'rabbit')
 
-    transport_url = "rabbit://guest:%s@%s:5672" % (auth_password, address.address)
+    if utils.is_valid_ipv6(address.address):
+        address = "[%s]" % address
+
+    transport_url = "rabbit://guest:%s@%s:5672" % (auth_password, address)
     return transport_url
 
 
-def start_keystone_listener(app):
+def start_keystone_listener(func, ctxt):
 
-    global kube_app
-    kube_app = app
+    global callback_func
+    global context
+    callback_func = func
+    context = ctxt
 
     conf = cfg.ConfigOpts()
     conf.transport_url = get_transport_url()

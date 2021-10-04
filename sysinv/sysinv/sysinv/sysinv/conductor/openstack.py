@@ -347,6 +347,31 @@ class OpenStackOperator(object):
                   "snapshots before restoring volumes."))
         LOG.debug("Cinder DB ready for volume Restore")
 
+    ########################
+    # keystone user methods
+    ########################
+    def _get_keystone_users(self):
+        """Get a list of all users in keystone otherwise an empty list."""
+        user_list = []
+
+        try:
+            user_list = self._get_keystone_client(OPENSTACK_CONFIG).users.list()
+        except Exception as e:
+            LOG.error("Failed to get keystone user list:\n%s" % str(e))
+
+        return user_list
+
+    def get_keystone_admin_user(self):
+        """Return keystone admin otherwise None."""
+        users = self._get_keystone_users()
+
+        try:
+            return [user for user in users if user.name == 'admin'][0]
+        except Exception as e:
+            LOG.error("Failed to get keystone admin user:\n%s" % str(e))
+
+        return None
+
     #########################
     # Primary Region Sysinv
     # Region specific methods

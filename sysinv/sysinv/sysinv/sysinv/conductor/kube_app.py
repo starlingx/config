@@ -957,7 +957,7 @@ class AppOperator(object):
                 except Exception as e:
                     LOG.exception(e)
 
-    def audit_local_registry_secrets(self):
+    def audit_local_registry_secrets(self, context):
         """
         local registry uses admin's username&password for authentication.
         K8s stores the authentication info in secrets in order to access

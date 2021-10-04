@@ -258,7 +258,19 @@ class ConductorManager(service.PeriodicService):
 
         # monitor keystone user update event to check whether admin password is
         # changed or not. If changed, then sync it to kubernetes's secret info.
-        greenthread.spawn(keystone_listener.start_keystone_listener, self._app)
+
+        admin_user = self._openstack.get_keystone_admin_user()
+
+        if admin_user:
+            admin_context = ctx.RequestContext(user=admin_user.id, tenant='admin', is_admin=True)
+            # The thread for kube_app auditing local registry secrets
+            greenthread.spawn(keystone_listener.start_keystone_listener,
+                              self._app.audit_local_registry_secrets, admin_context)
+
+            # The thread for updating keystone admin password in config files
+            greenthread.spawn(keystone_listener.start_keystone_listener,
+                              self.update_keystone_password,
+                              admin_context)
 
         # Monitor ceph to become responsive
         if StorageBackendConfig.has_backend_configured(
@@ -1640,6 +1652,19 @@ class ConductorManager(service.PeriodicService):
                 return True
 
         return False
+
+    def update_keystone_password(self, context):
+        """This method calls a puppet class
+           'openstack::keystone::password::runtime'
+           on keystone password change"""
+
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ["openstack::keystone::password::runtime"]
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
     def update_remotelogging_config(self, context):
         """Update the remotelogging configuration"""
@@ -5823,7 +5848,7 @@ class ConductorManager(service.PeriodicService):
         # Audit kubernetes local registry secrets info
         LOG.debug("Sysinv Conductor running periodic audit task for k8s local registry secrets.")
         if self._app:
-            self._app.audit_local_registry_secrets()
+            self._app.audit_local_registry_secrets(context)
 
     @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
     def _conductor_audit(self, context):
