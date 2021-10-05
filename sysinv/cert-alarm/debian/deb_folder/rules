@@ -1,0 +1,14 @@
+#!/usr/bin/make -f
+#export DH_VERBOSE = 1
+
+ROOT := $(CURDIR)/debian/tmp
+
+%:
+	dh $@
+
+override_dh_install:
+	install -m 755 -p -D cert-alarm ${ROOT}/usr/lib/ocf/resource.d/platform/cert-alarm
+	install -m 644 -p -D cert-alarm.service ${ROOT}/lib/systemd/system/cert-alarm.service
+	install -m 644 -p -D cert-alarm.syslog ${ROOT}/etc/syslog-ng/conf.d/cert-alarm.conf
+	install -m 644 -p -D cert-alarm.logrotate ${ROOT}/etc/logrotate.d/cert-alarm.conf
+	dh_install

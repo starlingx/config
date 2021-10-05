@@ -1,0 +1,4 @@
+usr/lib/ocf/resource.d/platform/cert-alarm
+lib/systemd/system/cert-alarm.service
+etc/syslog-ng/conf.d/cert-alarm.conf
+etc/logrotate.d/cert-alarm.conf

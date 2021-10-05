@@ -1,0 +1,5 @@
+usr/lib/ocf/resource.d
+etc/init.d
+lib/systemd/system
+etc/logrotate.d
+etc/syslog-ng/conf.d

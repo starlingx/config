@@ -1,0 +1,7 @@
+---
+debname: cert-alarm
+debver: 1.0
+src_path: files
+revision:
+  dist: $STX_DIST
+  PKG_GITREVCOUNT: true
