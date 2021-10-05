@@ -1,0 +1,3 @@
+etc/init.d/worker_config
+etc/goenabled.d/config_goenabled_check.sh
+lib/systemd/config/workerconfig-standalone.service lib/systemd/system/workerconfig.service

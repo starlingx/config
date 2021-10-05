@@ -1,0 +1,13 @@
+Source: workerconfig
+Section: admin
+Priority: optional
+Maintainer: Starlingx Developers <starlingx-discuss@lists.starlingx.io>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.4.1
+Homepage: https://www.starlingx.io
+
+Package: workerconfig-standalone
+Architecture: all
+Depends: ${misc:Depends}
+Description: Initial worker node configuration
+ StarlingX daemon to configure worker nodes.
