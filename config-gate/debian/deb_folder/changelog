@@ -1,0 +1,5 @@
+config-gate (1.0-1) unstable; urgency=medium
+
+  * Initial release.
+
+ -- Chuck Short <charles.short@windriver.com>  Sun, 08 Aug 2021 00:50:09 +0000
