@@ -1,0 +1,14 @@
+Source: cert-mon
+Section: admin
+Priority: optional
+Maintainer: Starlingx Developers <starlingx-discuss@lists.starlingx.io>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.5.1
+Rules-Requires-Root: no
+
+Package: cert-mon
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, logrotate, rsyslog
+Description: Starlingx certificate monitor
+ Manages the StarlingX platform's system certificate monitor process
+ as a HA resource.
