@@ -1,0 +1,7 @@
+---
+debname: tsconfig
+debver: 1.0
+src_path: tsconfig
+revision:
+  dist: $STX_DIST
+  PKG_GITREVCOUNT: true

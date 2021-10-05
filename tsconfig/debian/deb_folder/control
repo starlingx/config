@@ -1,0 +1,33 @@
+Source: tsconfig
+Section: admin
+Priority: optional
+Maintainer: StrarlingX Developers <starlingx-discuss@lists.starlingx.io>
+Build-Depends: debhelper-compat (= 13),
+ dh-python,
+ python3-setuptools,
+ python3-all,
+ python3-hacking,
+ python3-coverage,
+ python3-mock,
+ python3-stestr,
+ python3-testrepository,
+ python3-wheel,
+Standards-Version: 4.4.1
+Homepage: https://www.starlingx.io
+
+Package: tsconfig
+Architecture: all
+Depends: ${python3:Depends}, ${misc:Depends}, python3-six
+Description: Starlingx Config Info
+ Starlingx platform's configuration management system.
+ .
+ This is the Python 3 version of the package.
+
+Package: tsconfig-wheel
+Architecture: all
+Depends: ${python3:Depends}, ${misc:Depends}, python3-six, python3-wheel
+Description: Starlingx Config Info
+ Starlingx platform's configuration management system.
+ .
+ This is the support package for the PEP 427 wheel version of the package,
+ required for using pip inside a virtual environment.

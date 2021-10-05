@@ -1,0 +1,18 @@
+#!/usr/bin/make -f
+# See debhelper(7) (uncomment to enable)
+# output every command that modifies files on the build system.
+#export DH_VERBOSE = 1
+
+export PYBUILD_NAME=tsconfig
+DEBIAN_DESTDIR := $(CURDIR)/debian/tmp
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild
+
+override_dh_install:
+	python3 setup.py install -f --install-layout=deb \
+		--root=${DEBIAN_DESTDIR}
+	python3 setup.py bdist_wheel \
+		--universal \
+		-d ${CURDIR}/debian/tsconfig-wheel/usr/share/python-wheels
+	dh_install
