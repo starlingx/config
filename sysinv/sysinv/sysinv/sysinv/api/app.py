@@ -54,8 +54,8 @@ def make_tempdir():
 def setup_app(pecan_config=None, extra_hooks=None):
     policy.init()
 
-    #            hooks.DBTransactionHook()
-    app_hooks = [hooks.ConfigHook(),
+    app_hooks = [hooks.MultiFormDataHook(),
+                 hooks.ConfigHook(),
                  hooks.DBHook(),
                  hooks.ContextHook(pecan_config.app.acl_public_routes),
                  hooks.RPCHook(),
