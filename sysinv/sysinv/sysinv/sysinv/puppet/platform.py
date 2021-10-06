@@ -588,6 +588,8 @@ class PlatformPuppet(base.BasePuppet):
                 host, constants.ISOLATED_FUNCTION, threads=True)
             app_isolated_cpuset = set([c.cpu for c in app_isolated_cpus])
 
+            isolcpus_ranges = utils.format_range_set(vswitch_cpuset.union(app_isolated_cpuset))
+
             # application cpus
             app_cpus = self._get_host_cpu_list(
                 host, constants.APPLICATION_FUNCTION, threads=True)
@@ -604,9 +606,17 @@ class PlatformPuppet(base.BasePuppet):
                     'platform::compute::pmqos::hight_wakeup_cpus':
                         "\"%s\"" % "",
                 })
-                cpu_ranges.update({"nohz_full": rcu_nocbs_ranges})
 
-            isolcpus_ranges = utils.format_range_set(vswitch_cpuset.union(app_isolated_cpuset))
+                # Linux kernel 4.15 is the first release with the following
+                # commit which appears to tie together nohz_full and isolcpus.
+                #
+                # commit edb9382175c3ebdced8ffdb3e0f20052ad9fdbe9
+                # sched/isolation: Move isolcpus= handling to the housekeeping code
+                kver_major_minor = tuple(int(ver) for ver in os.uname()[2].split('.')[0:2])
+                if isolcpus_ranges and kver_major_minor >= (4, 15):
+                    cpu_ranges.update({"nohz_full": isolcpus_ranges})
+                else:
+                    cpu_ranges.update({"nohz_full": rcu_nocbs_ranges})
 
             cpu_ranges.update({
                 "isolcpus": isolcpus_ranges,
