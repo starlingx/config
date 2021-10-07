@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -28,13 +28,11 @@ N3000_DEVICES = [
 
 # TODO: Make this specified in the config file.
 # This is the docker image containing the OPAE tools to access the FPGA device.
+OPAE_IMG_PREV = "registry.local:9001/docker.io/starlingx/n3000-opae:stx.4.0-v1.0.0"
 OPAE_IMG = "registry.local:9001/docker.io/starlingx/n3000-opae:stx.6.0-v1.0.1"
 
-# This is a flag file created by puppet after doing a "docker login".
-# We need to wait for it to exist before trying to run docker images.
-DOCKER_LOGIN_FLAG = "/var/run/docker_login_done"
-
 N3000_RESET_FLAG = os.path.join(tsc.VOLATILE_PATH, ".sysinv_n3000_reset")
+N3000_RESET_TIMEOUT = 600
 
 # This flag is set if the N3000 requires a second reset
 N3000_RETIMER_FLAG = os.path.join(tsc.PLATFORM_CONF_PATH, ".sysinv_n3000_retimer")

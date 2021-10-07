@@ -45,38 +45,63 @@ EEPROM_UPDATE_SUCCESS = '0x1111'
 
 
 def n3000_img_accessible():
-    cmd = 'docker image list "%s"  --format "{{.Repository}}:{{.Tag}}"' % \
-            constants.OPAE_IMG
+    cmd = 'ctr -n=k8s.io image list name=="%s"' % constants.OPAE_IMG
     items = subprocess.check_output(shlex.split(cmd),  # pylint: disable=not-callable
-                                   stderr=subprocess.STDOUT,
-                                   universal_newlines=True)
+                                    stderr=subprocess.STDOUT,
+                                    universal_newlines=True)
     for line in items.splitlines():
-        if line == constants.OPAE_IMG:
+        if constants.OPAE_IMG in line:
             LOG.info('%s image found' % constants.OPAE_IMG)
-            return True
+            return constants.OPAE_IMG
+    LOG.info('%s image not found, check older image' %
+                constants.OPAE_IMG)
+    # During upgrade. check if previous version is available
+    cmd = 'ctr -n=k8s.io image list name=="%s"' % constants.OPAE_IMG_PREV
+    items = subprocess.check_output(shlex.split(cmd),  # pylint: disable=not-callable
+                                    stderr=subprocess.STDOUT,
+                                    universal_newlines=True)
+    for line in items.splitlines():
+        if constants.OPAE_IMG_PREV in line:
+            LOG.info('%s image found' % constants.OPAE_IMG_PREV)
+            return constants.OPAE_IMG_PREV
+    LOG.info('%s image not found, try image pull from controller' %
+             constants.OPAE_IMG_PREV)
 
-    LOG.info("%s image not found." % constants.OPAE_IMG)
-    return False
+    # n3000 image not found in containerd, get it from the controller
+    try:
+        subprocess.check_output(["crictl", "pull", constants.OPAE_IMG])  # pylint: disable=not-callable
+        LOG.info("Image %s imported by containerd" % constants.OPAE_IMG)
+        return constants.OPAE_IMG
+    except subprocess.CalledProcessError as exc:
+        msg = ("Failed to pull image %s, "
+               "return code is %d, command output: %s." %
+               (constants.OPAE_IMG, exc.returncode, exc.output))
+        LOG.info(msg)
+    # During upgrade the current version is not available,
+    # try pulling the previous version
+    try:
+        subprocess.check_output(["crictl", "pull", constants.OPAE_IMG_PREV])  # pylint: disable=not-callable
+        LOG.info("Image %s imported by containerd" % constants.OPAE_IMG_PREV)
+        return constants.OPAE_IMG_PREV
+    except subprocess.CalledProcessError as exc:
+        msg = ("Failed to pull image %s, "
+            "return code is %d, command output: %s." %
+            (constants.OPAE_IMG_PREV, exc.returncode, exc.output))
+        LOG.info(msg)
+    return None
 
 
-def reset_device_n3000(pci_addr):
+def reset_device_n3000(pci_addr, opae_img):
     # Reset the N3000 FPGA at the specified PCI address.
     try:
         # Build up the command to perform the reset.
         # Note the hack to work around OPAE tool locale issues
-        cmd = ("docker run -t --privileged -e LC_ALL=en_US.UTF-8 "
-               "-e LANG=en_US.UTF-8 " + constants.OPAE_IMG +
-               " rsu bmcimg " + pci_addr)
-
+        cmd = ("ctr -n=k8s.io run --rm --privileged " + opae_img +
+               " v1 rsu bmcimg " + pci_addr)
         # Issue the command to perform the firmware update.
         subprocess.check_output(shlex.split(cmd),  # pylint: disable=not-callable
-                                         stderr=subprocess.STDOUT)
+                                stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as exc:
-        # "docker run" return code will be:
-        #    125 if the error is with Docker daemon itself
-        #    126 if the contained command cannot be invoked
-        #    127 if the contained command cannot be found
-        #    Exit code of contained command otherwise
         msg = ("Failed to reset device %s, "
                "return code is %d, command output: %s." %
                (pci_addr, exc.returncode,
@@ -139,14 +164,14 @@ def reset_n3000_fpgas():
         LOG.info("Resetting N3000 FPGAs.")
         got_exception = False
         fpga_addrs = get_n3000_devices()
-        if not n3000_img_accessible() and \
-                not os.path.exists(constants.DOCKER_LOGIN_FLAG):
-            LOG.info("Either docker image or docker login is ready, exit...")
+        opae_img = n3000_img_accessible()
+        if opae_img is None:
+            LOG.info("n3000 opae image is not ready, exit...")
             return False
 
         for fpga_addr in fpga_addrs:
             try:
-                reset_device_n3000(fpga_addr)
+                reset_device_n3000(fpga_addr, opae_img)
             except Exception:
                 got_exception = True
 
@@ -158,7 +183,7 @@ def reset_n3000_fpgas():
                     LOG.info("Updating retimer")
                     update_device_n3000_retimer(fpga_addr)
                     LOG.info("Resetting N3000 second time")
-                    reset_device_n3000(fpga_addr)
+                    reset_device_n3000(fpga_addr, opae_img)
                 except Exception:
                     got_exception = True
 

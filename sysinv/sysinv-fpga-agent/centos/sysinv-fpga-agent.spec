@@ -34,10 +34,6 @@ install -p -D -m 644 sysinv-fpga-agent.service %{buildroot}%{_unitdir}/sysinv-fp
 install -p -D -m 644 sysinv-conf-watcher.service %{buildroot}%{_unitdir}/sysinv-conf-watcher.service
 install -p -D -m 644 sysinv-conf-watcher.path %{buildroot}%{_unitdir}/sysinv-conf-watcher.path
 
-# Workaround to call "docker login" during startup.  Called by puppet.
-install -d -m 755 %{buildroot}%{_exec_prefix}/local/sbin
-install -p -D -m 755 run_docker_login %{buildroot}%{_exec_prefix}/local/sbin/run_docker_login
-
 %post
 /usr/bin/systemctl enable sysinv-fpga-agent.service >/dev/null 2>&1
 /usr/bin/systemctl enable sysinv-conf-watcher.service >/dev/null 2>&1
@@ -54,4 +50,3 @@ rm -rf $RPM_BUILD_ROOT
 %{_unitdir}/sysinv-fpga-agent.service
 %{_unitdir}/sysinv-conf-watcher.service
 %{_unitdir}/sysinv-conf-watcher.path
-%{_exec_prefix}/local/sbin/run_docker_login
