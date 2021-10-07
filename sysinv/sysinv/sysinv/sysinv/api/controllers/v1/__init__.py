@@ -66,6 +66,7 @@ from sysinv.api.controllers.v1 import pci_device
 from sysinv.api.controllers.v1 import port
 from sysinv.api.controllers.v1 import profile
 from sysinv.api.controllers.v1 import ptp
+from sysinv.api.controllers.v1 import ptp_instance
 from sysinv.api.controllers.v1 import pv
 from sysinv.api.controllers.v1 import registry_image
 from sysinv.api.controllers.v1 import remotelogging
@@ -149,6 +150,9 @@ class V1(base.APIBase):
 
     ptp = [link.Link]
     "Links to the ptp resource"
+
+    ptp_instances = [link.Link]
+    "Links to the ptp_instances resource"
 
     iextoam = [link.Link]
     "Links to the iextoam resource"
@@ -457,6 +461,13 @@ class V1(base.APIBase):
                                       'ptp', '',
                                       bookmark=True)
                   ]
+
+        v1.ptp_instances = [link.Link.make_link('self', pecan.request.host_url,
+                                                'ptp_instances', ''),
+                            link.Link.make_link('bookmark',
+                                                pecan.request.host_url,
+                                                'ptp_instances', '',
+                                                bookmark=True)]
 
         v1.iextoam = [link.Link.make_link('self', pecan.request.host_url,
                                           'iextoam', ''),
@@ -901,6 +912,7 @@ class Controller(rest.RestController):
     idns = dns.DNSController()
     intp = ntp.NTPController()
     ptp = ptp.PTPController()
+    ptp_instances = ptp_instance.PtpInstanceController()
     iextoam = network_oam.OAMNetworkController()
     controller_fs = controller_fs.ControllerFsController()
     storage_backend = storage_backend.StorageBackendController()

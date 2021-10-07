@@ -87,6 +87,7 @@ from sysinv.api.controllers.v1 import interface_network
 from sysinv.api.controllers.v1 import interface_datanetwork
 from sysinv.api.controllers.v1 import vim_api
 from sysinv.api.controllers.v1 import patch_api
+from sysinv.api.controllers.v1 import ptp_instance
 
 from sysinv.common import ceph
 from sysinv.common import constants
@@ -1142,6 +1143,9 @@ class HostController(rest.RestController):
     interface_datanetworks = interface_datanetwork.InterfaceDataNetworkController(
         parent="ihosts")
     "Expose interface_datanetworks as a sub-element of ihosts"
+
+    ptp_instances = ptp_instance.PtpInstanceController(from_ihosts=True)
+    "Expose PTP instance as a sub-element of ihosts"
 
     _custom_actions = {
         'detail': ['GET'],
