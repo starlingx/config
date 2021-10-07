@@ -178,7 +178,8 @@ class CertAlarmAudit(object):
 
         snapshot = utils.CERT_SNAPSHOT[cert_name]
         expiry = snapshot[utils.SNAPSHOT_KEY_EXPDATE] - datetime.now()
-        alarm_before = self.parse_time(snapshot[constants.CERT_ALARM_ANNOTATION_ALARM_BEFORE])
+        alarm_before = self.parse_time(snapshot.get(constants.CERT_ALARM_ANNOTATION_ALARM_BEFORE,
+                                       constants.CERT_ALARM_DEFAULT_ANNOTATION_ALARM_BEFORE))
         renew_before = None
         if utils.SNAPSHOT_KEY_RENEW_BEFORE in snapshot:
             renew_before = self.parse_time(snapshot[utils.SNAPSHOT_KEY_RENEW_BEFORE])
