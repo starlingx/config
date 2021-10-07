@@ -39,6 +39,8 @@ from sqlalchemy.orm import relationship, backref
 
 from sysinv.common import constants
 
+UUID_LENGTH = 36
+
 sql_opts = [
     cfg.StrOpt('mysql_engine',
                default='InnoDB',
@@ -782,6 +784,51 @@ class PTP(Base):
                        ForeignKey('i_system.id', ondelete='CASCADE'))
 
     system = relationship("isystem", lazy="joined", join_depth=1)
+
+
+class PtpInstances(Base):
+    __tablename__ = "ptp_instances"
+
+    id = Column(Integer, primary_key=True, nullable=False)
+    uuid = Column(String(UUID_LENGTH), unique=True)
+
+    name = Column(String(255), unique=True)
+    service = Column(String(255))
+    host_id = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'),
+                     nullable=True)
+
+    host = relationship("ihost", backref="ptp_instances", lazy="joined",
+                        join_depth=1)
+
+
+class PtpInterfaces(Base):
+    __tablename__ = "ptp_interfaces"
+
+    id = Column(Integer, primary_key=True, nullable=False)
+    uuid = Column(String(UUID_LENGTH), unique=True)
+
+    interface_id = Column(Integer,
+                          ForeignKey('interfaces.id', ondelete='CASCADE'))
+    ptp_instance_id = Column(Integer,
+                             ForeignKey('ptp_instances.id', ondelete='CASCADE'))
+
+    interface = relationship("Interfaces", backref="ptp_interfaces",
+                             lazy="joined", join_depth=1)
+    ptp_instance = relationship("PtpInstances", backref="ptp_interfaces",
+                                lazy="joined", join_depth=1)
+
+
+class PtpParameters(Base):
+    __tablename__ = "ptp_parameters"
+
+    id = Column(Integer, primary_key=True, nullable=False)
+    uuid = Column(String(UUID_LENGTH), unique=True)
+
+    name = Column(String(255), nullable=False)
+    value = Column(String(255), nullable=False)
+
+    # Either a "PtpInstance" or "PtpInterface" uuid:
+    foreign_uuid = Column(String(UUID_LENGTH))
 
 
 class StorageTier(Base):

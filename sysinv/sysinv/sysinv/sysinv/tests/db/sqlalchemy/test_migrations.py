@@ -1986,3 +1986,51 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
         for col, coltype in devices_col.items():
             self.assertTrue(isinstance(devices.c[col].type,
                             getattr(sqlalchemy.types, coltype)))
+
+    def _check_120(self, engine, data):
+        ptp_instances = db_utils.get_table(engine, 'ptp_instances')
+        ptp_instance_columns = {
+            'created_at': 'DateTime',
+            'updated_at': 'DateTime',
+            'deleted_at': 'DateTime',
+            'id': 'Integer',
+            'uuid': 'String',
+            'name': 'String',
+            'service': 'String',
+            'host_id': 'Integer',
+        }
+        for column, column_type in ptp_instance_columns.items():
+            self.assertTrue(
+                isinstance(ptp_instances.c[column].type,
+                getattr(sqlalchemy.types, column_type)))
+
+        ptp_interfaces = db_utils.get_table(engine, 'ptp_interfaces')
+        ptp_interface_columns = {
+            'created_at': 'DateTime',
+            'updated_at': 'DateTime',
+            'deleted_at': 'DateTime',
+            'id': 'Integer',
+            'uuid': 'String',
+            'interface_id': 'Integer',
+            'ptp_instance_id': 'Integer',
+        }
+        for column, column_type in ptp_interface_columns.items():
+            self.assertTrue(
+                isinstance(ptp_interfaces.c[column].type,
+                getattr(sqlalchemy.types, column_type)))
+
+        ptp_parameters = db_utils.get_table(engine, 'ptp_parameters')
+        ptp_parameters_columns = {
+            'created_at': 'DateTime',
+            'updated_at': 'DateTime',
+            'deleted_at': 'DateTime',
+            'id': 'Integer',
+            'uuid': 'String',
+            'name': 'String',
+            'value': 'String',
+            'foreign_uuid': 'String',
+        }
+        for column, column_type in ptp_parameters_columns.items():
+            self.assertTrue(
+                isinstance(ptp_parameters.c[column].type,
+                getattr(sqlalchemy.types, column_type)))
