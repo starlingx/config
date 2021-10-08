@@ -77,8 +77,8 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         super(CertificateMonManager, self).__init__(CONF)
         self.mon_threads = []
         self.audit_thread = None
-        self.token_cache = utils.TokenCache()
-        self.dc_token_cache = utils.DCTokenCache()
+        self.token_cache = utils.TokenCache('internal')
+        self.dc_token_cache = utils.TokenCache('dc')
         self.dc_monitor = None
         self.restapicert_monitor = None
         self.registrycert_monitor = None
@@ -206,11 +206,11 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
 
         def my_dc_token():
             """Ensure we always have a valid token"""
-            return self.dc_token_cache.get_dc_token(subcloud_name)
+            return self.dc_token_cache.get_token()
 
         try:
             subcloud_sysinv_url = utils.dc_get_subcloud_sysinv_url(
-                subcloud_name)
+                subcloud_name, my_dc_token())
             sc_ssl_cert = utils.get_endpoint_certificate(subcloud_sysinv_url)
 
         except Exception:

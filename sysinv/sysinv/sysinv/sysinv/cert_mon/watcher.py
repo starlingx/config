@@ -51,8 +51,8 @@ class MonitorContext(object):
 
     # Reuse cached tokens across all contexts
     # (i.e. all watches reuse these caches)
-    token_cache = utils.TokenCache()
-    dc_token_cache = utils.DCTokenCache()
+    token_cache = utils.TokenCache('internal')
+    dc_token_cache = utils.TokenCache('dc')
 
     def __init__(self):
         self.dc_role = None
@@ -67,9 +67,9 @@ class MonitorContext(object):
         return MonitorContext.token_cache.get_token()
 
     @staticmethod
-    def get_dc_token(region_name):
+    def get_dc_token():
         """Uses the cached DC token for subcloud"""
-        return MonitorContext.dc_token_cache.get_dc_token(region_name)
+        return MonitorContext.dc_token_cache.get_token()
 
 
 class CertUpdateEventData(object):
@@ -482,10 +482,12 @@ class DCIntermediateCertRenew(CertificateRenew):
 
     def update_certificate(self, event_data):
         subcloud_name = self._get_subcloud_name(event_data)
-        LOG.info('update_certificate: subcloud %s %s' % (subcloud_name, event_data))
+        LOG.info('update_certificate: subcloud %s %s', subcloud_name,
+                 event_data)
 
-        token = self.context.get_dc_token(subcloud_name)
-        subcloud_sysinv_url = utils.dc_get_subcloud_sysinv_url(subcloud_name)
+        token = self.context.get_dc_token()
+        subcloud_sysinv_url = utils.dc_get_subcloud_sysinv_url(subcloud_name,
+                                                               token)
         utils.update_subcloud_ca_cert(token,
                                       subcloud_name,
                                       subcloud_sysinv_url,
@@ -523,7 +525,7 @@ class DCIntermediateCertRenew(CertificateRenew):
                         # update subcloud to dc-cert out-of-sync b/c last intermediate
                         # CA cert was not updated successfully
                         # an audit (default within 24 hours) will pick up and reattempt
-                        dc_token = self.context.get_dc_token(constants.SYSTEM_CONTROLLER_REGION)
+                        dc_token = self.context.get_dc_token()
                         utils.update_subcloud_status(dc_token, sc_name,
                                                      utils.SYNC_STATUS_OUT_OF_SYNC)
                         break

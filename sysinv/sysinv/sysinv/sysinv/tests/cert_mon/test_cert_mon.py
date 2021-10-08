@@ -238,38 +238,48 @@ class CertMonTestCase(base.DbTestCase):
                                  get_endpoint_certificate=mock.DEFAULT,
                                  get_sc_intermediate_ca_secret=mock.DEFAULT,
                                  is_subcloud_online=mock.DEFAULT,
+                                 get_token=mock.DEFAULT,
                                  get_dc_token=mock.DEFAULT,
                                  update_subcloud_status=mock.DEFAULT,
-                                 update_subcloud_ca_cert=mock.DEFAULT) as mocks:
+                                 update_subcloud_ca_cert=mock.DEFAULT) \
+                as utils_mock:
             # returns an SSL cert in PEM-encoded string
-            mocks["dc_get_subcloud_sysinv_url"].return_value \
+            utils_mock["dc_get_subcloud_sysinv_url"].return_value \
                 = "https://example.com"
-            mocks["get_endpoint_certificate"].return_value \
+            utils_mock["get_endpoint_certificate"].return_value \
                 = self._get_valid_certificate_pem()
-            mocks["get_sc_intermediate_ca_secret"].return_value \
+            utils_mock["get_sc_intermediate_ca_secret"].return_value \
                 = self._get_sc_intermediate_ca_secret()
-            mocks["is_subcloud_online"].return_value = True
-            mocks["get_dc_token"].return_value = None  # don"t care
-            mocks["update_subcloud_status"].return_value = None
-            mocks["update_subcloud_ca_cert"].return_value = None
+            utils_mock["is_subcloud_online"].return_value = True
+            utils_mock["get_dc_token"].return_value = None  # don"t care
+            utils_mock["update_subcloud_status"].return_value = None
+            utils_mock["update_subcloud_ca_cert"].return_value = None
 
-            cmgr = cert_mon_manager.CertificateMonManager()
-            cmgr.use_sc_audit_pool = False  # easier for testing in serial
+            # also need to mock the TokenCache
+            with mock.patch.multiple("sysinv.cert_mon.utils.TokenCache",
+                                     get_token=mock.DEFAULT) \
+                    as token_cache_mock:
+                token_cache_mock["get_token"].return_value = None  # don"t care
 
-            cmgr.sc_audit_queue.enqueue(
-                subcloud_audit_queue.SubcloudAuditData("test1"), delay_secs=1)
-            cmgr.sc_audit_queue.enqueue(
-                subcloud_audit_queue.SubcloudAuditData("test2"), delay_secs=2)
-            self.assertEqual(cmgr.sc_audit_queue.qsize(), 2)
+                cmgr = cert_mon_manager.CertificateMonManager()
+                cmgr.use_sc_audit_pool = False  # easier for testing in serial
 
-            # Run audit immediately, it should not have picked up anything
-            cmgr.audit_sc_cert_task(None)
-            self.assertEqual(cmgr.sc_audit_queue.qsize(), 2)
+                cmgr.sc_audit_queue.enqueue(
+                    subcloud_audit_queue.SubcloudAuditData("test1"),
+                    delay_secs=1)
+                cmgr.sc_audit_queue.enqueue(
+                    subcloud_audit_queue.SubcloudAuditData("test2"),
+                    delay_secs=2)
+                self.assertEqual(cmgr.sc_audit_queue.qsize(), 2)
 
-            time.sleep(3)
-            cmgr.audit_sc_cert_task(None)
-            # It should now be drained:
-            self.assertEqual(cmgr.sc_audit_queue.qsize(), 0)
+                # Run audit immediately, it should not have picked up anything
+                cmgr.audit_sc_cert_task(None)
+                self.assertEqual(cmgr.sc_audit_queue.qsize(), 2)
+
+                time.sleep(3)
+                cmgr.audit_sc_cert_task(None)
+                # It should now be drained:
+                self.assertEqual(cmgr.sc_audit_queue.qsize(), 0)
 
     def test_token_cache(self):
         """Basic test case for TokenCache"""
@@ -282,58 +292,27 @@ class CertMonTestCase(base.DbTestCase):
             self.token_cache_num += 1
             return token
 
-        with mock.patch("sysinv.cert_mon.utils.get_token") as mock_get_token:
-            mock_get_token.side_effect = get_cache_test_token
-            token_cache = cert_mon_utils.TokenCache()
-            token = token_cache.get_token()
-            self.assertEqual(token.get_id(), "token1")
-            self.assertFalse(token.is_expired())
-            self.assertEqual(token_cache.get_token().get_id(), "token1")
-            token.set_expired()
-            self.assertTrue(token.is_expired())
-            # should now get a new, unexpired token:
-            token = token_cache.get_token()
-            self.assertEqual(token.get_id(), "token2")
-            self.assertFalse(token.is_expired())
-            self.assertEqual(token_cache.get_token().get_id(), "token2")
-            token_cache.get_token().set_expired()
-            self.assertTrue(token.is_expired())
+        token_cache = cert_mon_utils.TokenCache('internal')
 
-    def test_dc_token_cache(self):
-        """Basic test case for DCTokenCache"""
-        def get_cache_test_token(region_name):
-            """Increments the token id each invocation
-            This method is called in place of utils.get_token() for this test."""
-            token = self.get_keystone_token()
-            token.token_id = "token{}".format(self.token_cache_num)
-            token.region_name = region_name
-            self.token_cache_num += 1
-            return token
+        # override the cache getter function for our test:
+        token_cache._getter_func = get_cache_test_token
 
-        with mock.patch(
-                "sysinv.cert_mon.utils.get_dc_token") as mock_get_dc_token:
-            mock_get_dc_token.side_effect = get_cache_test_token
-            token_cache = cert_mon_utils.DCTokenCache()
-            region = "RegionOne"
-            token = token_cache.get_dc_token(region)
-            self.assertEqual(token.get_id(), "token1")
-            self.assertEqual(token.region_name, "RegionOne")
-            self.assertFalse(token.is_expired())
-            self.assertEqual(token_cache.get_dc_token(region).get_id(), "token1")
-            token.set_expired()
-            self.assertTrue(token.is_expired())
-            # should now get a new, unexpired token:
-            token = token_cache.get_dc_token(region)
-            self.assertEqual(token.get_id(), "token2")
-            self.assertFalse(token.is_expired())
-            self.assertEqual(token_cache.get_dc_token(region).get_id(), "token2")
-            token_cache.get_dc_token(region).set_expired()
-            self.assertTrue(token.is_expired())
-            token = token_cache.get_dc_token(region)
-            self.assertEqual(token.get_id(), "token3")
-            self.assertFalse(token.is_expired())
-            # Test getting token for a different region:
-            region = "RegionTwo"
-            token = token_cache.get_dc_token(region)
-            self.assertEqual(token.get_id(), "token4")
-            self.assertFalse(token.is_expired())
+        token = token_cache.get_token()
+        self.assertEqual(token.get_id(), "token1")
+        self.assertFalse(token.is_expired())
+        self.assertEqual(token_cache.get_token().get_id(), "token1")
+        token.set_expired()
+        self.assertTrue(token.is_expired())
+        # should now get a new, unexpired token:
+        token = token_cache.get_token()
+        self.assertEqual(token.get_id(), "token2")
+        self.assertFalse(token.is_expired())
+        self.assertEqual(token_cache.get_token().get_id(), "token2")
+        token_cache.get_token().set_expired()
+        self.assertTrue(token.is_expired())
+        token = token_cache.get_token()
+        self.assertEqual(token.get_id(), "token3")
+        self.assertFalse(token.is_expired())
+        token = token_cache.get_token()
+        self.assertEqual(token.get_id(), "token3")
+        self.assertFalse(token.is_expired())
