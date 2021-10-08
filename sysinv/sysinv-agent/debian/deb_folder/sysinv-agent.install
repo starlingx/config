@@ -1,0 +1,3 @@
+etc/init.d/sysinv-agent
+etc/pmon.d/sysinv-agent.conf
+lib/systemd/system/sysinv-agent.service
