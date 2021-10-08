@@ -200,7 +200,6 @@ class HelmOperator(object):
         """Build a dictionary of AppLifecycle operators"""
 
         operators_dict = {}
-        dist_info_dict = {}
 
         app_lifecycle_operators = extension.ExtensionManager(
             namespace=self.STEVEDORE_LIFECYCLE,
@@ -216,16 +215,6 @@ class HelmOperator(object):
             else:
                 operator_name = operator.name
             operators_dict[operator_name] = operator.obj
-
-            distribution = utils.get_distribution_from_entry_point(operator.entry_point)
-            (project_name, project_location) = \
-                utils.get_project_name_and_location_from_distribution(distribution)
-
-            # Extract distribution information for logging
-            dist_info_dict[operator_name] = {
-                'name': project_name,
-                'location': project_location,
-            }
 
         return operators_dict
 
