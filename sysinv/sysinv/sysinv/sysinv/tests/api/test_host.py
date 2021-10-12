@@ -1995,6 +1995,27 @@ class TestPatch(TestHost):
         self.assertEqual(http_client.BAD_REQUEST, response.status_int)
         self.assertTrue(response.json['error_message'])
 
+    def test_unlock_action_controller_during_k8s_rootca_pods_update(self):
+        # Create controller-0 without inv_state initial inventory complete
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            inv_state=None, clock_synchronization=constants.NTP)
+
+        # Create kube rootca update updating pods on phase trust-both-cas
+        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTBOTHCAS)
+
+        # Unlock host
+        response = self._patch_host_action(c0_host['hostname'],
+                                           constants.UNLOCK_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertTrue(response.json['error_message'])
+
     def _test_lock_action_controller(self):
         # Create controller-0
         self._create_controller_0(
@@ -2788,6 +2809,68 @@ class TestPatchStdDuplexControllerAction(TestHost):
         self.assertTrue(response.json['error_message'])
         self.assertIn("Rejected: Cannot swact %s while %s is updating device "
                       "images." % (c0_host['hostname'], c1_host['hostname']),
+                      response.json['error_message'])
+
+    def test_swact_action_controller_while_kube_rootca_pods_update(self):
+        # Create controller-0
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create kube rootca update updating pods on phase trust-both-cas
+        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTBOTHCAS)
+
+        # Swact controller host
+        response = self._patch_host_action(c0_host['hostname'],
+                                           constants.SWACT_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("Can not swact %s while kubernetes root ca "
+                      "update phase in progress. Wait for update "
+                      "phase to complete." % c0_host['hostname'],
+                      response.json['error_message'])
+
+    def test_swact_action_controller_while_kube_rootca_host_update(self):
+        # Create controller-0
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create kubernetes rootca update for the host and set it with phase in progress
+        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS)
+        dbutils.create_test_kube_rootca_host_update(host_id=c0_host['id'],
+                                                    state=kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS)
+
+        # Swact controller host
+        response = self._patch_host_action(c0_host['hostname'],
+                                           constants.SWACT_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("Can not swact %s while kubernetes root ca "
+                      "update phase is in progress. Wait for update "
+                      "phase to complete on host." % c0_host['hostname'],
                       response.json['error_message'])
 
 

@@ -3513,6 +3513,46 @@ class HostController(rest.RestController):
                     "Wait for kubelet upgrade to complete." % ihost['hostname'])
             raise wsme.exc.ClientSideError(msg)
 
+    def _semantic_check_unlock_kube_rootca_update(self, ihost, force_unlock=False):
+        """
+        Perform semantic checks related to kubernetes rootca update
+        prior to unlocking host.
+        """
+
+        if force_unlock:
+            LOG.warning("Host %s force unlock while kubernetes "
+                        "rootca update in progress." % ihost['hostname'])
+            return
+
+        try:
+            kube_rootca_update = \
+                pecan.request.dbapi.kube_rootca_update_get_one()
+
+            if kube_rootca_update.state in [kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTBOTHCAS,
+                                            kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTNEWCA]:
+                msg = _("Can not unlock %s while kubernetes root ca "
+                        "update phase in progress. Wait for update "
+                        "phase to complete." % ihost['hostname'])
+                raise wsme.exc.ClientSideError(msg)
+        except exception.NotFound:
+            LOG.debug("No kubernetes rootca update was found")
+            return
+
+        try:
+            kube_host_rootca_update = \
+                pecan.request.dbapi.kube_rootca_host_update_get_by_host(ihost['uuid'])
+            if kube_host_rootca_update.state in [kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS,
+                                                 kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS,
+                                                 kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA]:
+                msg = _("Can not unlock %s while kubernetes root ca "
+                        "update phase in progress. Wait for update "
+                        "phase to complete on host." % ihost['hostname'])
+                raise wsme.exc.ClientSideError(msg)
+        except exception.NotFound:
+            LOG.debug("No kubernetes rootca update on host %s "
+                      "was found" % ihost['hostname'])
+            return
+
     def _semantic_check_unlock_upgrade(self, ihost, force_unlock=False):
         """
         Perform semantic checks related to upgrades prior to unlocking host.
@@ -5376,6 +5416,10 @@ class HostController(rest.RestController):
         # the unlock.
         self.check_unlock_application(hostupdate, force_unlock)
 
+        # Ensure there is no k8s rootca update phase in progress
+        self._semantic_check_unlock_kube_rootca_update(hostupdate.ihost_orig,
+                                                       force_unlock)
+
         personality = hostupdate.ihost_patch.get('personality')
         if personality == constants.CONTROLLER:
             self.check_unlock_controller(hostupdate, force_unlock)
@@ -6037,6 +6081,47 @@ class HostController(rest.RestController):
         # Check for new hardware since upgrade-start
         self._semantic_check_upgrade_refresh(upgrade, to_host, force_swact)
 
+    def _semantic_check_swact_kube_rootca_update(self, ihost, force_swact=False):
+        """
+        Perform semantic checks related to kubernetes rootca update
+        prior to swacting host.
+        """
+
+        if force_swact:
+            LOG.warning("Host %s force swact while kubernetes "
+                        "rootca update in progress on host."
+                        % ihost['hostname'])
+            return
+
+        try:
+            kube_rootca_update = \
+                pecan.request.dbapi.kube_rootca_update_get_one()
+
+            if kube_rootca_update.state in [kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTBOTHCAS,
+                                            kubernetes.KUBE_ROOTCA_UPDATING_PODS_TRUSTNEWCA]:
+                msg = _("Can not swact %s while kubernetes root ca "
+                        "update phase in progress. Wait for update "
+                        "phase to complete." % ihost['hostname'])
+                raise wsme.exc.ClientSideError(msg)
+        except exception.NotFound:
+            LOG.debug("No kubernetes rootca update was found")
+            return
+
+        try:
+            kube_host_rootca_update = \
+                pecan.request.dbapi.kube_rootca_host_update_get_by_host(ihost['uuid'])
+            if kube_host_rootca_update.state in [kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS,
+                                                 kubernetes.KUBE_ROOTCA_UPDATING_HOST_UPDATECERTS,
+                                                 kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA]:
+                msg = _("Can not swact %s while kubernetes root ca "
+                        "update phase is in progress. Wait for update "
+                        "phase to complete on host." % ihost['hostname'])
+                raise wsme.exc.ClientSideError(msg)
+        except exception.NotFound:
+            LOG.debug("No kubernetes rootca update on host %s "
+                      "was found" % ihost['hostname'])
+            return
+
     def _check_swact_device_image_update(self, from_host, to_host, force=False):
         if force:
             LOG.info("device image update swact check bypassed with force option")
@@ -6113,6 +6198,10 @@ class HostController(rest.RestController):
                             (ihost_ctr.hostname,
                              ihost_ctr.subfunction_oper,
                              ihost_ctr.subfunctions))
+
+                # deny swact if a kube rootca update phase is in progress
+                self._semantic_check_swact_kube_rootca_update(hostupdate.ihost_orig,
+                                                              force_swact)
 
                 # deny swact if storage backend not ready
                 self._semantic_check_storage_backend(ihost_ctr)
