@@ -65,6 +65,8 @@ CERT_SNAPSHOT is a dict of dict. Each entry is per certificate.
 }
 """
 
+TOKEN_CACHE = certmon_utils.TokenCache('internal')
+
 
 def get_cert_expiration_date(cert):
     """
@@ -217,7 +219,7 @@ def get_annotation_data(secretobj):
                 if SNAPSHOT_KEY_RENEW_BEFORE in certobj[SPEC]:
                     mode_metadata[SNAPSHOT_KEY_RENEW_BEFORE] = certobj[SPEC][SNAPSHOT_KEY_RENEW_BEFORE]
 
-                certobj_annotation = certobj[METADATA][ANNOTATIONS]
+                certobj_annotation = certobj[METADATA].get(ANNOTATIONS)
                 annotation_dict, patch_needed = process_annotation_data(certobj_annotation)
                 if patch_needed is True:
                     # Update the annotation
@@ -336,16 +338,12 @@ def get_file_mode_metadata(certname, file_loc):
 
 def get_cert_uuid(certname):
     ret = 'unknown'
-    token = certmon_utils._get_token(
-        CONF.keystone_authtoken.auth_url + '/v3/auth/tokens',
-        CONF.keystone_authtoken.project_name,
-        CONF.keystone_authtoken.username,
-        CONF.keystone_authtoken.password,
-        CONF.keystone_authtoken.user_domain_name,
-        CONF.keystone_authtoken.project_domain_name,
-        CONF.keystone_authtoken.region_name)
+
+    global TOKEN_CACHE
+    token = TOKEN_CACHE.get_token()
 
     if token is None:
+        LOG.error('Error in retrieving token. Cannot process cert %s' % certname)
         return ret
 
     service_type = 'platform'
