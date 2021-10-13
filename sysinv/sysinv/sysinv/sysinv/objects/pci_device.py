@@ -40,6 +40,8 @@ class PCIDevice(base.SysinvObject):
 
             'bmc_build_version': utils.str_or_none,
             'bmc_fw_version': utils.str_or_none,
+            'retimer_a_version': utils.str_or_none,
+            'retimer_b_version': utils.str_or_none,
             'root_key': utils.str_or_none,
             'revoked_key_ids': utils.str_or_none,
             'boot_page': utils.str_or_none,
@@ -50,6 +52,8 @@ class PCIDevice(base.SysinvObject):
         'host_uuid': 'host:uuid',
         'bmc_build_version': 'fpga:bmc_build_version',
         'bmc_fw_version': 'fpga:bmc_fw_version',
+        'retimer_a_version': 'fpga:retimer_a_version',
+        'retimer_b_version': 'fpga:retimer_b_version',
         'root_key': 'fpga:root_key',
         'revoked_key_ids': 'fpga:revoked_key_ids',
         'boot_page': 'fpga:boot_page',
@@ -59,6 +63,8 @@ class PCIDevice(base.SysinvObject):
     _optional_fields = {
         'bmc_build_version',
         'bmc_fw_version',
+        'retimer_a_version',
+        'retimer_b_version',
         'root_key',
         'revoked_key_ids',
         'boot_page',

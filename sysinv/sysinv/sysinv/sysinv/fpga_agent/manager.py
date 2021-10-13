@@ -95,6 +95,11 @@ CANCELLED_CSKS_PATH = "ifpga_sec_mgr/ifpga_sec*/security/sr_canceled_csks"
 IMAGE_LOAD_PATH = "fpga_flash_ctrl/fpga_image_load"
 BMC_FW_VER_PATH = "bmcfw_flash_ctrl/bmcfw_version"
 BMC_BUILD_VER_PATH = "max10_version"
+RETIMER_A_VER_PATH = "pkvl/pkvl_a_version"
+RETIMER_B_VER_PATH = "pkvl/pkvl_b_version"
+
+# Length of the retimer version in database
+RETIMER_VERSION_LENGTH = 32
 
 
 def wait_for_n3000_reset():
@@ -331,6 +336,26 @@ def get_n3000_bmc_build_version(pci_addr):
     return get_n3000_bmc_version(pci_addr, BMC_BUILD_VER_PATH)
 
 
+def get_n3000_retimer_version(pci_addr, path):
+    version_pattern = (SYSFS_DEVICE_PATH + pci_addr + FME_PATH +
+                       SPI_PATH + path)
+    version = read_n3000_sysfs_file(version_pattern)
+    if len(version) > RETIMER_VERSION_LENGTH:
+        LOG.warn("Retimer version string (%s) read from file %s is "
+                 "unexpectedly long. It is truncating." %
+                 (version, version_pattern))
+        version = version[:RETIMER_VERSION_LENGTH]
+    return version
+
+
+def get_n3000_retimer_a_version(pci_addr):
+    return get_n3000_retimer_version(pci_addr, RETIMER_A_VER_PATH)
+
+
+def get_n3000_retimer_b_version(pci_addr):
+    return get_n3000_retimer_version(pci_addr, RETIMER_B_VER_PATH)
+
+
 def get_n3000_devices():
     # First get the PCI addresses of each supported FPGA device
     cmd = ["lspci", "-Dm", "-d " + constants.N3000_VENDOR + ":" +
@@ -539,6 +564,8 @@ class FpgaAgentManager(service.PeriodicService):
             fpgainfo = {'pciaddr': addr}
             fpgainfo['bmc_build_version'] = get_n3000_bmc_build_version(addr)
             fpgainfo['bmc_fw_version'] = get_n3000_bmc_fw_version(addr)
+            fpgainfo['retimer_a_version'] = get_n3000_retimer_a_version(addr)
+            fpgainfo['retimer_b_version'] = get_n3000_retimer_b_version(addr)
             fpgainfo['boot_page'] = get_n3000_boot_page(addr)
             fpgainfo['bitstream_id'] = get_n3000_bitstream_id(addr)
             fpgainfo['root_key'] = get_n3000_root_hash(addr)

@@ -46,10 +46,12 @@ def _print_device_show(device):
         fields += ['root_key', 'revoked_key_ids',
                    'boot_page', 'bitstream_id',
                    'bmc_build_version', 'bmc_fw_version',
+                   'retimer_a_version', 'retimer_b_version',
                    'driver', 'sriov_vf_driver']
         labels += ['root_key', 'revoked_key_ids',
                    'boot_page', 'bitstream_id',
                    'bmc_build_version', 'bmc_fw_version',
+                   'retimer_a_version', 'retimer_b_version',
                    'driver', 'sriov_vf_driver']
 
     data = [(f, getattr(device, f, '')) for f in fields]

@@ -14260,6 +14260,8 @@ class ConductorManager(service.PeriodicService):
                         attr = {
                             'bmc_build_version': fpga_dev['bmc_build_version'],
                             'bmc_fw_version': fpga_dev['bmc_fw_version'],
+                            'retimer_a_version': fpga_dev.get('retimer_a_version', None),
+                            'retimer_b_version': fpga_dev.get('retimer_b_version', None),
                             'root_key': fpga_dev['root_key'],
                             'revoked_key_ids': fpga_dev['revoked_key_ids'],
                             'boot_page': fpga_dev['boot_page'],

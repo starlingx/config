@@ -1438,6 +1438,8 @@ def get_test_fpga_device(**kw):
         'pciaddr': kw.get('pciaddr', '0000:00:02.0'),
         'bmc_build_version': kw.get('bmc_build_version'),
         'bmc_fw_version': kw.get('bmc_fw_version'),
+        'retimer_a_version': kw.get('retimer_a_version'),
+        'retimer_b_version': kw.get('retimer_b_version'),
         'root_key': kw.get('root_key'),
         'revoked_key_ids': kw.get('revoked_key_ids'),
         'boot_page': kw.get('boot_page'),
