@@ -1503,6 +1503,8 @@ class FpgaDevice(Base):
     pciaddr = Column(String(32))
     bmc_build_version = Column(String(32))
     bmc_fw_version = Column(String(32))
+    retimer_a_version = Column(String(32))
+    retimer_b_version = Column(String(32))
     root_key = Column(String(128))
     revoked_key_ids = Column(String(512))
     boot_page = Column(String(16))

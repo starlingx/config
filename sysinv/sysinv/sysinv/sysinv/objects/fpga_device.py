@@ -26,6 +26,8 @@ class FPGADevice(base.SysinvObject):
         'pciaddr': utils.str_or_none,
         'bmc_build_version': utils.str_or_none,
         'bmc_fw_version': utils.str_or_none,
+        'retimer_a_version': utils.str_or_none,
+        'retimer_b_version': utils.str_or_none,
         'root_key': utils.str_or_none,
         'revoked_key_ids': utils.str_or_none,
         'boot_page': utils.str_or_none,

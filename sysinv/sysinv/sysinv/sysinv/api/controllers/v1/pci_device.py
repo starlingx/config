@@ -117,6 +117,12 @@ class PCIDevice(base.APIBase):
     bmc_fw_version = wtypes.text
     "Represent the BMC firmware version of the fpga device"
 
+    retimer_a_version = wtypes.text
+    "Represent the retimer A version of the fpga device"
+
+    retimer_b_version = wtypes.text
+    "Represent the retimer B version of the fpga device"
+
     root_key = wtypes.text
     "Represent the root key of the fpga device"
 
@@ -152,6 +158,7 @@ class PCIDevice(base.APIBase):
                                         'sriov_vf_pdevice_id', 'driver',
                                         'host_uuid', 'enabled',
                                         'bmc_build_version', 'bmc_fw_version',
+                                        'retimer_a_version', 'retimer_b_version',
                                         'root_key', 'revoked_key_ids',
                                         'boot_page', 'bitstream_id',
                                         'created_at', 'updated_at',
@@ -165,6 +172,8 @@ class PCIDevice(base.APIBase):
         if device.pclass_id != dconstants.PCI_DEVICE_CLASS_FPGA:
             device.bmc_build_version = wtypes.Unset
             device.bmc_fw_version = wtypes.Unset
+            device.retimer_a_version = wtypes.Unset
+            device.retimer_b_version = wtypes.Unset
             device.root_key = wtypes.Unset
             device.revoked_key_ids = wtypes.Unset
             device.boot_page = wtypes.Unset

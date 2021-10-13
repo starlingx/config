@@ -4928,6 +4928,8 @@ itemNotFound (404)
    "bitstream_id (optional) ", "plain", "xsd:string", "The bitstream id of the FPGA device."
    "bmc_build_version (optional) ", "plain", "xsd:string", "The BMC build version of the FPGA device."
    "bmc_fw_version (optional) ", "plain", "xsd:string", "The BMC firmware version of the FPGA device."
+   "retimer_a_version (optional) ", "plain", "xsd:string", "The retimer A version of the FPGA device."
+   "retimer_b_version (optional) ", "plain", "xsd:string", "The retimer B version of the FPGA device."
 
 ::
 
@@ -5346,6 +5348,8 @@ itemNotFound (404)
          "root_key": null,
          "host_uuid": "35436a7d-ce05-4e5f-87ac-706fe7513ece",
          "bmc_build_version": null,
+         "retimer_a_version": null,
+         "retimer_b_version": null,
          "name": "pci_0000_b3_00_0",
          "revoked_key_ids": null,
          "numa_node": 1,
