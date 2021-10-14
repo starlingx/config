@@ -451,7 +451,8 @@ class KubeOperator(object):
     def kube_copy_secret(self, name, src_namespace, dst_namespace):
         c = self._get_kubernetesclient_core()
         try:
-            body = c.read_namespaced_secret(name, src_namespace, export=True)
+            body = c.read_namespaced_secret(name, src_namespace)
+            body.metadata.resource_version = None
             body.metadata.namespace = dst_namespace
             c.create_namespaced_secret(dst_namespace, body)
         except Exception as e:
@@ -565,7 +566,8 @@ class KubeOperator(object):
     def kube_copy_config_map(self, name, src_namespace, dst_namespace):
         c = self._get_kubernetesclient_core()
         try:
-            body = c.read_namespaced_config_map(name, src_namespace, export=True)
+            body = c.read_namespaced_config_map(name, src_namespace)
+            body.metadata.resource_version = None
             body.metadata.namespace = dst_namespace
             c.create_namespaced_config_map(dst_namespace, body)
         except Exception as e:
