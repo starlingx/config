@@ -185,7 +185,7 @@ class FaultApiMgr(object):
                             (cert_name, expired_flag, state))
                     self.fm_api.clear_fault(alrm_id, entity_inst_id)
         except Exception as e:
-            LOG.warn(e)
+            LOG.exception(e)
 
     def get_faults(self, expired_flag):
         alrm_id = fm_constants.FM_ALARM_ID_CERT_EXPIRED if expired_flag \
@@ -194,7 +194,7 @@ class FaultApiMgr(object):
         try:
             alarms = self.fm_api.get_faults_by_id(alrm_id)
         except Exception as e:
-            LOG.warn(e)
+            LOG.exception(e)
         return alarms
 
     def collect_all_cert_alarms(self):

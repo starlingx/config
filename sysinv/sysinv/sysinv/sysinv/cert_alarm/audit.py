@@ -201,12 +201,12 @@ class CertAlarmAudit(object):
             self.clear_expiring_soon(cert_name)
             self.clear_expired(cert_name)
         else:
-            if days_to_expiry > 0:
-                self.raise_expiring_soon(cert_name)
-            else:
+            if days_to_expiry < 0:
                 # Expired. Clear expiring-soon & raise expired
                 self.clear_expiring_soon(cert_name)
                 self.raise_expired(cert_name)
+            else:
+                self.raise_expiring_soon(cert_name)
 
     def raise_expiring_soon(self, cert_name):
         self.fm_obj.set_fault(cert_name,
