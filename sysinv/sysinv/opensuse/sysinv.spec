@@ -90,7 +90,6 @@ install -p -D -m 755 etc/sysinv/sysinv_goenabled_check.sh %{buildroot}%{local_et
 
 install -d -m 755 %{buildroot}%{local_etc_sysinv}
 install -p -D -m 644 etc/sysinv/policy.json %{buildroot}%{local_etc_sysinv}/policy.json
-install -p -D -m 640 etc/sysinv/profileSchema.xsd %{buildroot}%{local_etc_sysinv}/profileSchema.xsd
 
 install -p -D -m 644 etc/sysinv/crushmap-storage-model.txt %{buildroot}%{local_etc_sysinv}/crushmap-storage-model.txt
 install -p -D -m 644 etc/sysinv/crushmap-controller-model.txt %{buildroot}%{local_etc_sysinv}/crushmap-controller-model.txt

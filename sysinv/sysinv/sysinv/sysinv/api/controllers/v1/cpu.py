@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 
@@ -377,7 +377,6 @@ class CPUController(rest.RestController):
         # only allow patching allocated_function and capabilities
         # replace ihost_uuid and inode_uuid with corresponding
         patch_obj = jsonpatch.JsonPatch(patch)
-        from_profile = False
         action = None
         for p in patch_obj:
             if p['path'] == '/ihost_uuid':
@@ -394,9 +393,6 @@ class CPUController(rest.RestController):
                     p['value'] = inode.id
                 except exception.SysinvException:
                     p['value'] = None
-
-            if p['path'] == '/allocated_function':
-                from_profile = True
 
             if p['path'] == '/action':
                 value = p['value']
@@ -428,8 +424,7 @@ class CPUController(rest.RestController):
         # Semantic checks
         ihost = pecan.request.dbapi.ihost_get(cpu.forihostid)
         _check_host(ihost)
-        if not from_profile:
-            _check_cpu(cpu, ihost)
+        _check_cpu(cpu, ihost)
 
         # Update only the fields that have changed
         try:
@@ -463,7 +458,7 @@ class CPUController(rest.RestController):
 ##############
 # UTILS
 ##############
-def _update(cpu_uuid, cpu_values, from_profile=False):
+def _update(cpu_uuid, cpu_values):
     # Get CPU
     cpu = objects.cpu.get_by_uuid(
                        pecan.request.context, cpu_uuid)
@@ -471,8 +466,7 @@ def _update(cpu_uuid, cpu_values, from_profile=False):
     # Semantic checks
     ihost = pecan.request.dbapi.ihost_get(cpu.forihostid)
     _check_host(ihost)
-    if not from_profile:
-        _check_cpu(cpu, ihost)
+    _check_cpu(cpu, ihost)
 
     # Update cpu
     pecan.request.dbapi.icpu_update(cpu_uuid, cpu_values)

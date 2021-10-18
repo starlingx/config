@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -26,130 +26,11 @@ VSWITCH_MIN_CORES = 0
 VSWITCH_MAX_CORES = 8
 
 
-class CpuProfile(object):
-    class CpuConfigure(object):
-        def __init__(self):
-            self.platform = 0
-            self.vswitch = 0
-            self.shared = 0
-            self.vms = 0
-            self.numa_node = 0
-
-    # cpus is a list of icpu sorted by numa_node, core and thread
-    # if not, provide a node list sorted by numa_node (id might not be reliable)
-    def __init__(self, cpus, nodes=None):
-        if nodes is not None:
-            cpus = CpuProfile.sort_cpu_by_numa_node(cpus, nodes)
-        cores = []
-
-        self.number_of_cpu = 0
-        self.cores_per_cpu = 0
-        self.hyper_thread = False
-        self.processors = []
-        cur_processor = None
-
-        for cpu in cpus:
-            key = '{0}-{1}'.format(cpu.numa_node, cpu.core)
-            if key not in cores:
-                cores.append(key)
-            else:
-                self.hyper_thread = True
-                continue
-
-            if cur_processor is None or cur_processor.numa_node != cpu.numa_node:
-                cur_processor = CpuProfile.CpuConfigure()
-                cur_processor.numa_node = cpu.numa_node
-                self.processors.append(cur_processor)
-
-            if cpu.allocated_function == constants.PLATFORM_FUNCTION:
-                cur_processor.platform += 1
-            elif cpu.allocated_function == constants.VSWITCH_FUNCTION:
-                cur_processor.vswitch += 1
-            elif cpu.allocated_function == constants.SHARED_FUNCTION:
-                cur_processor.shared += 1
-            elif cpu.allocated_function == constants.APPLICATION_FUNCTION:
-                cur_processor.vms += 1
-
-        self.number_of_cpu = len(self.processors)
-        self.cores_per_cpu = len(cores) // self.number_of_cpu
-
-    @staticmethod
-    def sort_cpu_by_numa_node(cpus, nodes):
-        newlist = []
-        for node in nodes:
-            for cpu in cpus:
-                if cpu.forinodeid == node.id:
-                    cpu.numa_node = node.numa_node
-                    newlist.append(cpu)
-        return newlist
-
-
-class HostCpuProfile(CpuProfile):
-    def __init__(self, subfunctions, cpus, nodes=None):
-        super(HostCpuProfile, self).__init__(cpus, nodes)
-        self.subfunctions = subfunctions
-
-    # see if a cpu profile is applicable to this host
-    def profile_applicable(self, profile):
-        if self.number_of_cpu == profile.number_of_cpu and \
-                self.cores_per_cpu == profile.cores_per_cpu:
-            return self.check_profile_core_functions(profile)
-        return False  # Profile is not applicable to host
-
-    def check_profile_core_functions(self, profile):
-        platform_cores = 0
-        vswitch_cores = 0
-        shared_cores = 0
-        vm_cores = 0
-        for cpu in profile.processors:
-            platform_cores += cpu.platform
-            vswitch_cores += cpu.vswitch
-            shared_cores += cpu.shared
-            vm_cores += cpu.vms
-
-        error_string = ""
-        if platform_cores == 0:
-            error_string = "There must be at least one core for %s." % \
-                           constants.PLATFORM_FUNCTION
-        elif constants.WORKER in self.subfunctions and vswitch_cores == 0:
-            error_string = "There must be at least one core for %s." % \
-                           constants.VSWITCH_FUNCTION
-        elif constants.WORKER in self.subfunctions and vm_cores == 0:
-            error_string = "There must be at least one core for %s." % \
-                           constants.APPLICATION_FUNCTION
-        return error_string
-
-
 def lookup_function(s):
     for f in CORE_FUNCTIONS:
         if s.lower() == f.lower():
             return f
     return s
-
-
-def check_profile_core_functions(personality, profile):
-
-    platform_cores = 0
-    vswitch_cores = 0
-    shared_cores = 0
-    vm_cores = 0
-    for cpu in profile.processors:
-        platform_cores += cpu.platform
-        vswitch_cores += cpu.vswitch
-        shared_cores += cpu.shared
-        vm_cores += cpu.vms
-
-    error_string = ""
-    if platform_cores == 0:
-        error_string = "There must be at least one core for %s." % \
-                       constants.PLATFORM_FUNCTION
-    elif constants.WORKER in personality and vswitch_cores == 0:
-        error_string = "There must be at least one core for %s." % \
-                       constants.VSWITCH_FUNCTION
-    elif constants.WORKER in personality and vm_cores == 0:
-        error_string = "There must be at least one core for %s." % \
-                       constants.APPLICATION_FUNCTION
-    return error_string
 
 
 def check_core_functions(personality, icpus):

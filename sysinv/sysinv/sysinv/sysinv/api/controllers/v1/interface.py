@@ -698,7 +698,7 @@ def _set_defaults(interface):
     return interface_merged
 
 
-def _check_interface_vlan_id(op, interface, ihost, from_profile=False):
+def _check_interface_vlan_id(op, interface, ihost):
     # Check vlan_id
     if 'vlan_id' in interface.keys() and interface['vlan_id'] is not None:
         if not str(interface['vlan_id']).isdigit():
@@ -712,7 +712,7 @@ def _check_interface_vlan_id(op, interface, ihost, from_profile=False):
     return interface
 
 
-def _check_interface_name(op, interface, ihost, from_profile=False):
+def _check_interface_name(op, interface, ihost):
     ihost_id = interface['forihostid']
     ifname = interface['ifname']
     iftype = interface['iftype']
@@ -763,7 +763,7 @@ def _check_interface_name(op, interface, ihost, from_profile=False):
     return interface
 
 
-def _check_interface_mtu(interface, ihost, from_profile=False):
+def _check_interface_mtu(interface, ihost):
     # Check imtu
     if 'imtu' in interface.keys() and interface['imtu'] is not None:
         if not str(interface['imtu']).isdigit():
@@ -774,7 +774,7 @@ def _check_interface_mtu(interface, ihost, from_profile=False):
     return interface
 
 
-def _check_interface_sriov(interface, ihost, from_profile=False):
+def _check_interface_sriov(interface, ihost):
     sriov_update = False
 
     if 'ifclass' in interface.keys() and not interface['ifclass']:
@@ -1116,7 +1116,7 @@ def _check_interface_data(op, interface, ihost, existing_interface,
     ihost_uuid = interface['ihost_uuid']
 
     # Check interface name for validity
-    _check_interface_name(op, interface, ihost, existing_interface)
+    _check_interface_name(op, interface, ihost)
 
     if op == "add":
         this_interface_id = 0
@@ -1477,21 +1477,19 @@ def _allocate_pool_address(interface_id, pool_uuid, address_name=None):
         interface_id, pool_uuid, address_name)
 
 
-def _update_ipv6_address_mode(interface, mode=None, pool=None,
-                              from_profile=False):
+def _update_ipv6_address_mode(interface, mode=None, pool=None):
     mode = interface['ipv6_mode'] if not mode else mode
     pool = interface['ipv6_pool'] if not pool else pool
     utils.update_address_mode(interface, constants.IPV6_FAMILY, mode, pool)
-    if mode == constants.IPV6_POOL and not from_profile:
+    if mode == constants.IPV6_POOL:
         _allocate_pool_address(interface['id'], pool)
 
 
-def _update_ipv4_address_mode(interface, mode=None, pool=None,
-                              interface_profile=False):
+def _update_ipv4_address_mode(interface, mode=None, pool=None):
     mode = interface['ipv4_mode'] if not mode else mode
     pool = interface['ipv4_pool'] if not pool else pool
     utils.update_address_mode(interface, constants.IPV4_FAMILY, mode, pool)
-    if mode == constants.IPV4_POOL and not interface_profile:
+    if mode == constants.IPV4_POOL:
         _allocate_pool_address(interface['id'], pool)
 
 
@@ -1528,13 +1526,11 @@ def _add_extended_attributes(ihost, interface, attributes):
     if attributes.get('ipv4_mode'):
         _update_ipv4_address_mode(interface_data,
                                   attributes.get('ipv4_mode'),
-                                  attributes.get('ipv4_pool'),
-                                  attributes.get('interface_profile'))
+                                  attributes.get('ipv4_pool'))
     if attributes.get('ipv6_mode'):
         _update_ipv6_address_mode(interface_data,
                                   attributes.get('ipv6_mode'),
-                                  attributes.get('ipv6_pool'),
-                                  attributes.get('interface_profile'))
+                                  attributes.get('ipv6_pool'))
 
 
 def _update_ports(op, interface, ihost, ports):
@@ -1728,13 +1724,13 @@ def update_upper_interface_macs(ihost, interface):
 
 
 # This method allows creating an interface through a non-HTTP
-# request e.g. through profile.py while still passing
-# through interface semantic checks and osd configuration
+# request while still passing through interface semantic checks and osd
+# configuration
 # Hence, not declared inside a class
 #
 # Param:
 #       interface - dictionary of interface values
-def _create(interface, from_profile=False):
+def _create(interface):
     # Get host
     ihostId = interface.get('forihostid') or interface.get('ihost_uuid')
     ihost = pecan.request.dbapi.ihost_get(ihostId)
@@ -1776,21 +1772,19 @@ def _create(interface, from_profile=False):
         interface.update({'used_by': []})
 
     # Check mtu before setting defaults
-    interface = _check_interface_mtu(interface, ihost, from_profile=from_profile)
+    interface = _check_interface_mtu(interface, ihost)
 
     # Check vlan_id before setting defaults
-    interface = _check_interface_vlan_id("add", interface, ihost, from_profile=from_profile)
+    interface = _check_interface_vlan_id("add", interface, ihost)
 
     # Set defaults - before checks to allow for optional attributes
-    if not from_profile:
-        interface = _set_defaults(interface)
+    interface = _set_defaults(interface)
 
     # Semantic checks
-    interface = _check("add", interface, ports=ports, ifaces=uses_if, from_profile=from_profile)
+    interface = _check("add", interface, ports=ports, ifaces=uses_if)
 
-    if not from_profile:
-        # Select appropriate MAC address from lower interface(s)
-        interface = set_interface_mac(ihost, interface)
+    # Select appropriate MAC address from lower interface(s)
+    interface = set_interface_mac(ihost, interface)
 
     new_interface = pecan.request.dbapi.iinterface_create(
         forihostid,
@@ -1845,8 +1839,8 @@ def _create(interface, from_profile=False):
     return new_interface
 
 
-def _check(op, interface, ports=None, ifaces=None, from_profile=False,
-           existing_interface=None, datanetworks=None):
+def _check(op, interface, ports=None, ifaces=None, existing_interface=None,
+           datanetworks=None):
     # Semantic checks
     ihost = pecan.request.dbapi.ihost_get(interface['ihost_uuid']).as_dict()
 
@@ -1864,63 +1858,64 @@ def _check(op, interface, ports=None, ifaces=None, from_profile=False,
 
     if check_host:
         _check_host(ihost)
-    if not from_profile:
-        if ports:
-            _check_ports(op, interface, ihost, ports)
-        if ifaces:
-            interfaces = pecan.request.dbapi.iinterface_get_by_ihost(interface['ihost_uuid'])
-            if len(ifaces) > 1 and \
-                    interface['iftype'] == constants.INTERFACE_TYPE_VLAN:
-                # Can only have one interface associated to vlan interface type
+
+    if ports:
+        _check_ports(op, interface, ihost, ports)
+
+    if ifaces:
+        interfaces = pecan.request.dbapi.iinterface_get_by_ihost(interface['ihost_uuid'])
+        if len(ifaces) > 1 and \
+                interface['iftype'] == constants.INTERFACE_TYPE_VLAN:
+            # Can only have one interface associated to vlan interface type
+            raise wsme.exc.ClientSideError(
+                _("Can only have one interface for vlan type. (%s)" % ifaces))
+        if interface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
+            if len(ifaces) > 1:
                 raise wsme.exc.ClientSideError(
-                    _("Can only have one interface for vlan type. (%s)" % ifaces))
-            if interface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
-                if len(ifaces) > 1:
-                    raise wsme.exc.ClientSideError(
-                        _("Can only have one lower interface for ethernet type."
-                            "(%s)" % ifaces))
-                lower = pecan.request.dbapi.iinterface_get(ifaces[0],
-                        interface['ihost_uuid'])
-                if not (lower['iftype'] == constants.INTERFACE_TYPE_ETHERNET
-                        and lower['ifclass'] ==
-                                        constants.INTERFACE_CLASS_PCI_SRIOV):
-                    # Can only have pci_sriov ethernet type lower interface
-                    # associated to ethernet interface type
-                    raise wsme.exc.ClientSideError(
-                        _("Can only use pci-sriov ethernet interface for "
-                            "ethernet type. (%s)" % ifaces))
+                    _("Can only have one lower interface for ethernet type."
+                        "(%s)" % ifaces))
+            lower = pecan.request.dbapi.iinterface_get(ifaces[0],
+                    interface['ihost_uuid'])
+            if not (lower['iftype'] == constants.INTERFACE_TYPE_ETHERNET
+                    and lower['ifclass'] ==
+                                    constants.INTERFACE_CLASS_PCI_SRIOV):
+                # Can only have pci_sriov ethernet type lower interface
+                # associated to ethernet interface type
+                raise wsme.exc.ClientSideError(
+                    _("Can only use pci-sriov ethernet interface for "
+                        "ethernet type. (%s)" % ifaces))
 
-            for i in ifaces:
-                for iface in interfaces:
-                    if iface['uuid'] == i or iface['ifname'] == i:
-                        existing_iface = copy.deepcopy(iface)
+        for i in ifaces:
+            for iface in interfaces:
+                if iface['uuid'] == i or iface['ifname'] == i:
+                    existing_iface = copy.deepcopy(iface)
 
-                        # Get host
-                        ihost = pecan.request.dbapi.ihost_get(
-                            iface.get('forihostid'))
+                    # Get host
+                    ihost = pecan.request.dbapi.ihost_get(
+                        iface.get('forihostid'))
 
-                        if 'vlan_id' not in iface:
-                            iface['vlan_id'] = None
+                    if 'vlan_id' not in iface:
+                        iface['vlan_id'] = None
 
-                        if 'aemode' not in iface:
-                            iface['aemode'] = None
+                    if 'aemode' not in iface:
+                        iface['aemode'] = None
 
-                        if 'txhashpolicy' not in iface:
-                            iface['txhashpolicy'] = None
+                    if 'txhashpolicy' not in iface:
+                        iface['txhashpolicy'] = None
 
-                        if 'primary_reselect' not in iface:
-                            iface['primary_reselect'] = None
+                    if 'primary_reselect' not in iface:
+                        iface['primary_reselect'] = None
 
-                        _check_interface_data(
-                            "modify", iface, ihost, existing_iface, datanetworks)
+                    _check_interface_data(
+                        "modify", iface, ihost, existing_iface, datanetworks)
 
-        interface = _check_interface_data(
-            op, interface, ihost, existing_interface, datanetworks)
+    interface = _check_interface_data(
+        op, interface, ihost, existing_interface, datanetworks)
 
     return interface
 
 
-def _update(interface_uuid, interface_values, from_profile):
+def _update(interface_uuid, interface_values):
     return objects.interface.get_by_uuid(pecan.request.context, interface_uuid)
 
 
@@ -1968,21 +1963,20 @@ def _clear_interface_state_fault(hostname, interface_uuid):
     FM.clear_fault(fm_constants.FM_ALARM_ID_NETWORK_INTERFACE, entity_instance_id)
 
 
-def _delete(interface, from_profile=False):
+def _delete(interface):
     ihost = pecan.request.dbapi.ihost_get(interface['forihostid']).as_dict()
 
-    if not from_profile:
-        check_host = True
-        if (cutils.is_aio_simplex_system(pecan.request.dbapi)
-                and interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV
-                and interface['iftype'] == constants.INTERFACE_TYPE_VF):
-            # user can delete interface SR-IOV VF without host lock in AIO-SX
-            check_host = False
+    check_host = True
+    if (cutils.is_aio_simplex_system(pecan.request.dbapi)
+            and interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV
+            and interface['iftype'] == constants.INTERFACE_TYPE_VF):
+        # user can delete interface SR-IOV VF without host lock in AIO-SX
+        check_host = False
 
-        if check_host:
-            _check_host(ihost)
+    if check_host:
+        _check_host(ihost)
 
-    if not from_profile and interface['iftype'] == 'ethernet' and not interface['uses']:
+    if interface['iftype'] == 'ethernet' and not interface['uses']:
         msg = _("Cannot delete a system created ethernet interface")
         raise wsme.exc.ClientSideError(msg)
 
@@ -2075,3 +2069,5 @@ def _is_interface_address_allowed(interface):
     elif interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
         return True
     return False
+
+# TODO (pbovina): Move utils methods within InterfaceController class

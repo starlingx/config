@@ -116,7 +116,6 @@ class isystem(Base):
 class ihost(Base):
 
     recordTypeEnum = Enum('standard',
-                          'profile',
                           'sprofile',
                           'reserve1',
                           'reserve2',
@@ -135,7 +134,6 @@ class ihost(Base):
                               'worker',
                               'network',
                               'storage',
-                              'profile',
                               'reserve1',
                               'reserve2',
                               'edgeworker',

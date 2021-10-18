@@ -4,7 +4,7 @@
 #
 # Copyright (C) 2019 Intel Corporation
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2021 Wind River Systems, Inc.
 #
 # lib/config
 # Functions to control the configuration and operation of stx-config
@@ -109,7 +109,6 @@ function cleanup_sysinv {
 
     sudo rm -f $SYSINV_ETC_GOENABLEDD/sysinv_goenabled_check.sh
     sudo rm -f $SYSINV_CONF_DIR/policy.json
-    sudo rm -f $SYSINV_CONF_DIR/profileSchema.xsd
     sudo rm -f $SYSINV_ETC_MOTDD/10-system
     sudo rm -f $SYSINV_CONF_DIR/upgrades/delete_load.sh
     sudo rm -f $STX_OCF_ROOT/resource.d/platform/sysinv-api
@@ -249,7 +248,6 @@ function install_sysinv {
     sudo install -p -D -m 755 $SYSINV_DIR/etc/sysinv/sysinv_goenabled_check.sh $SYSINV_ETC_GOENABLEDD/sysinv_goenabled_check.sh
     sudo install -d -m 755  $SYSINV_CONF_DIR
     sudo install -p -D -m 755 $SYSINV_DIR/etc/sysinv/policy.json $SYSINV_CONF_DIR/policy.json
-    sudo install -p -D -m 640 $SYSINV_DIR/etc/sysinv/profileSchema.xsd  $SYSINV_CONF_DIR/profileSchema.xsd
     sudo install -d -m 755 $SYSINV_ETC_MOTDD
     sudo install -p -D -m 755 $SYSINV_DIR/etc/sysinv/motd-system $SYSINV_ETC_MOTDD/10-system
     sudo install -d -m 755 $SYSINV_CONF_DIR/upgrades

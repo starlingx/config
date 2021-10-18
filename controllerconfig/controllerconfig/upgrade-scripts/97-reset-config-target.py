@@ -54,10 +54,10 @@ def reset_config_target():
     conn = psycopg2.connect("dbname=sysinv user=postgres")
     with conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("update i_host set config_target=NULL where "
-                        "recordtype!='profile'",)
+                cur.execute("update i_host set config_target=NULL",)
 
     LOG.info("Reset host config_target completed")
+
 
 if __name__ == "__main__":
     sys.exit(main())

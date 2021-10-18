@@ -34,7 +34,6 @@ from sqlalchemy import or_
 
 from sqlalchemy.orm import contains_eager
 from sqlalchemy.orm import joinedload
-from sqlalchemy.orm import subqueryload
 from sqlalchemy.orm import with_polymorphic
 from sqlalchemy.orm.exc import DetachedInstanceError
 from sqlalchemy.orm.exc import MultipleResultsFound
@@ -1460,59 +1459,6 @@ class Connection(api.Connection):
 
             query.delete()
 
-    def interface_profile_get_list(self, limit=None, marker=None,
-                                   sort_key=None, sort_dir=None, session=None):
-
-        ports = with_polymorphic(models.Ports, '*', flat=True)
-        interfaces = with_polymorphic(models.Interfaces, '*', flat=True)
-
-        query = model_query(models.ihost, session=session).\
-            filter_by(recordtype="profile"). \
-            join(models.ihost.ports). \
-            options(subqueryload(models.ihost.ports.of_type(ports)),
-                    subqueryload(models.ihost.interfaces.of_type(interfaces)))
-
-        return _paginate_query(models.ihost, limit, marker,
-                               sort_key, sort_dir, query)
-
-    def cpu_profile_get_list(self, limit=None, marker=None,
-                             sort_key=None, sort_dir=None, session=None):
-
-        query = model_query(models.ihost, session=session).\
-            filter_by(recordtype="profile"). \
-            join(models.ihost.cpus). \
-            options(subqueryload(models.ihost.cpus),
-                    subqueryload(models.ihost.nodes))
-
-        return _paginate_query(models.ihost, limit, marker,
-                               sort_key, sort_dir, query)
-
-    def memory_profile_get_list(self, limit=None, marker=None,
-                                sort_key=None, sort_dir=None, session=None):
-
-        query = model_query(models.ihost, session=session).\
-            filter_by(recordtype="profile"). \
-            join(models.ihost.memory). \
-            options(subqueryload(models.ihost.memory),
-                    subqueryload(models.ihost.nodes))
-
-        return _paginate_query(models.ihost, limit, marker,
-                               sort_key, sort_dir, query)
-
-    def storage_profile_get_list(self, limit=None, marker=None,
-                                 sort_key=None, sort_dir=None, session=None):
-
-        query = model_query(models.ihost, session=session).\
-            filter_by(recordtype="profile").\
-            join(models.ihost.disks).\
-            outerjoin(models.ihost.partitions).\
-            outerjoin(models.ihost.stors).\
-            outerjoin(models.ihost.pvs).\
-            outerjoin(models.ihost.lvgs)
-
-        return _paginate_query(models.ihost, limit, marker,
-                               sort_key, sort_dir, query)
-
     def _node_get(self, inode_id):
         query = model_query(models.inode)
         query = add_identity_filter(query, inode_id)
@@ -2379,17 +2325,13 @@ class Connection(api.Connection):
 
         self._interface_ratelimit_encode(values)
 
-        is_profile = values.get('interface_profile', False)
         with _session_for_write() as session:
 
             # interface = models.Interfaces()
             if hasattr(obj, 'uses') and values.get('uses'):
                 for i in list(values['uses']):
                     try:
-                        if is_profile:
-                            uses_if = self._interface_get(models.Interfaces, i, obj=obj)
-                        else:
-                            uses_if = self._interface_get(models.Interfaces, i, values['forihostid'], obj=obj)
+                        uses_if = self._interface_get(models.Interfaces, i, values['forihostid'], obj=obj)
                         obj.uses.append(uses_if)
                     except NoResultFound:
                         raise exception.InvalidParameterValue(
@@ -2402,10 +2344,7 @@ class Connection(api.Connection):
             if hasattr(obj, 'used_by') and values.get('used_by'):
                 for i in list(values['used_by']):
                     try:
-                        if is_profile:
-                            uses_if = self._interface_get(models.Interfaces, i, obj=obj)
-                        else:
-                            uses_if = self._interface_get(models.Interfaces, i, values['forihostid'], obj=obj)
+                        uses_if = self._interface_get(models.Interfaces, i, values['forihostid'], obj=obj)
                         obj.used_by.append(uses_if)
                     except NoResultFound:
                         raise exception.InvalidParameterValue(
@@ -5980,10 +5919,8 @@ class Connection(api.Connection):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
         values['host_id'] = int(host_id)
-
         if 'sensor_profile' in values:
             values.pop('sensor_profile')
-
         # The id is null for ae sensors with more than one member
         # sensor
         temp_id = obj.id
@@ -6258,10 +6195,8 @@ class Connection(api.Connection):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
         values['host_id'] = int(host_id)
-
         if 'sensorgroup_profile' in values:
             values.pop('sensorgroup_profile')
-
         temp_id = obj.id
         obj.update(values)
         if obj.id is None:

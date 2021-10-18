@@ -29,7 +29,6 @@ features:
     - Node role and role profiles.
     - Core and memory (including huge page) assignments.
     - Network Interfaces and storage assignments.
-    - Bulk configuration of nodes through system profiles.
   - |
     User Interface:
 

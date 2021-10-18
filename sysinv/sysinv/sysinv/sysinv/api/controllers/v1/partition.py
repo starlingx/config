@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2018 Wind River Systems, Inc.
+# Copyright (c) 2017-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -630,7 +630,7 @@ def _semantic_checks(operation, partition):
     return partition
 
 
-def _create(partition, iprofile=None, applyprofile=None):
+def _create(partition):
     # Reject operation if we are upgrading the system.
     ihostid = partition.get('forihostid') or partition.get('ihost_uuid')
     ihost = pecan.request.dbapi.ihost_get(ihostid)
@@ -653,8 +653,7 @@ def _create(partition, iprofile=None, applyprofile=None):
 
     # Set the status of the new partition
     if (ihost.invprovision in [constants.PROVISIONED,
-                               constants.PROVISIONING] and
-            not iprofile):
+                               constants.PROVISIONING]):
         partition['status'] = constants.PARTITION_CREATE_IN_SVC_STATUS
     else:
         partition['status'] = constants.PARTITION_CREATE_ON_UNLOCK_STATUS
@@ -678,8 +677,7 @@ def _create(partition, iprofile=None, applyprofile=None):
         #  - PROVISIONING: AIO (after config_controller) and before worker
         #                  configuration
         if (ihost.invprovision in [constants.PROVISIONED,
-                                   constants.PROVISIONING] and
-                not iprofile):
+                                   constants.PROVISIONING]):
             # Instruct puppet to implement the change
             pecan.request.rpcapi.update_partition_config(pecan.request.context,
                                                          partition)

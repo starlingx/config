@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 from eventlet.green import subprocess
@@ -518,16 +518,6 @@ class StorageController(rest.RestController):
             raise
 
 
-def _check_profile(stor):
-    # semantic check: whether system has a ceph backend
-    if not StorageBackendConfig.has_backend_configured(
-        pecan.request.dbapi,
-        constants.SB_TYPE_CEPH
-    ):
-        raise wsme.exc.ClientSideError(_(
-            "System must have a %s backend" % constants.SB_TYPE_CEPH))
-
-
 def _check_host(stor):
     ihost_id = stor['forihostid']
     ihost = pecan.request.dbapi.ihost_get(ihost_id)
@@ -794,14 +784,11 @@ def _check_journal(old_foristor, new_foristor):
 
 
 # This method allows creating a stor through a non-HTTP
-# request e.g. through profile.py while still passing
-# through istor semantic checks and osd configuration
-# Hence, not declared inside a class
+# request
 #
 # Param:
 #       stor - dictionary of stor values
-#       iprofile - True when created by a storage profile
-def _create(stor, iprofile=None):
+def _create(stor):
 
     LOG.debug("storage._create stor with params: %s" % stor)
     # Init
@@ -820,10 +807,7 @@ def _create(stor, iprofile=None):
     stor.update({'forihostid': forihostid})
 
     # SEMANTIC CHECKS
-    if iprofile:
-        _check_profile(stor)
-    else:
-        _check_host(stor)
+    _check_host(stor)
 
     try:
         idisk_uuid = _check_disk(stor)
@@ -834,12 +818,11 @@ def _create(stor, iprofile=None):
     # Assign the function if necessary.
     function = stor['function']
     if function:
-        if function == constants.STOR_FUNCTION_OSD and not iprofile:
+        if function == constants.STOR_FUNCTION_OSD:
             osd_create = True
     else:
         function = stor['function'] = constants.STOR_FUNCTION_OSD
-        if not iprofile:
-            osd_create = True
+        osd_create = True
 
     create_attrs = {}
     create_attrs.update(stor)
@@ -880,32 +863,31 @@ def _create(stor, iprofile=None):
 
         create_attrs['fortierid'] = tier.id
 
-        if not iprofile:
-            try:
-                journal_location = \
-                    _check_journal_location(stor['journal_location'],
-                                            stor,
-                                            constants.ACTION_CREATE_JOURNAL)
-            except exception.InvalidUUID as e:
-                raise wsme.exc.ClientSideError(_(str(e)))
+        try:
+            journal_location = \
+                _check_journal_location(stor['journal_location'],
+                                        stor,
+                                        constants.ACTION_CREATE_JOURNAL)
+        except exception.InvalidUUID as e:
+            raise wsme.exc.ClientSideError(_(str(e)))
 
-            # If the journal is collocated, make sure its size is set to the
-            # default one.
-            if 'uuid' in stor and journal_location == stor['uuid']:
-                stor['journal_size_mib'] = CONF.journal.journal_default_size
-            elif journal_location:
-                if not stor['journal_size_mib']:
-                    stor['journal_size_mib'] = \
-                        CONF.journal.journal_default_size
+        # If the journal is collocated, make sure its size is set to the
+        # default one.
+        if 'uuid' in stor and journal_location == stor['uuid']:
+            stor['journal_size_mib'] = CONF.journal.journal_default_size
+        elif journal_location:
+            if not stor['journal_size_mib']:
+                stor['journal_size_mib'] = \
+                    CONF.journal.journal_default_size
 
-                journal_istor = pecan.request.dbapi.istor_get(journal_location)
-                journal_idisk_uuid = journal_istor.idisk_uuid
+            journal_istor = pecan.request.dbapi.istor_get(journal_location)
+            journal_idisk_uuid = journal_istor.idisk_uuid
 
-                # Find out if there is enough space to keep the journal on the
-                # journal stor.
-                _check_journal_space(journal_idisk_uuid,
-                                     journal_location,
-                                     stor['journal_size_mib'])
+            # Find out if there is enough space to keep the journal on the
+            # journal stor.
+            _check_journal_space(journal_idisk_uuid,
+                                    journal_location,
+                                    stor['journal_size_mib'])
 
     elif function == constants.STOR_FUNCTION_JOURNAL:
         # Check that the journal stor resides on a device of SSD type.
@@ -938,7 +920,7 @@ def _create(stor, iprofile=None):
 
     # Journals are created only for OSDs
     if new_stor.get("function") == constants.STOR_FUNCTION_OSD:
-        if iprofile or not journal_location:
+        if not journal_location:
             # iprofile either provides a valid location or assumes
             # collocation. For collocation: stor['journal_location'] =
             # stor['uuid'], since sometimes we get the UUID of the newly
@@ -954,16 +936,15 @@ def _create(stor, iprofile=None):
         setattr(new_stor, "journal_location", new_journal.get("onistor_uuid"))
         setattr(new_stor, "journal_size", new_journal.get("size_mib"))
 
-        if not iprofile:
-            # Update the state of the storage tier
-            try:
-                pecan.request.dbapi.storage_tier_update(
-                    tier.id,
-                    {'status': constants.SB_TIER_STATUS_IN_USE})
-            except exception.StorageTierNotFound as e:
-                # Shouldn't happen. Log exception. Stor is created but tier status
-                # is not updated.
-                LOG.exception(e)
+        # Update the state of the storage tier
+        try:
+            pecan.request.dbapi.storage_tier_update(
+                tier.id,
+                {'status': constants.SB_TIER_STATUS_IN_USE})
+        except exception.StorageTierNotFound as e:
+            # Shouldn't happen. Log exception. Stor is created but tier status
+            # is not updated.
+            LOG.exception(e)
 
         # Apply runtime manifests for OSDs on "available" nodes.
         runtime_manifests = False

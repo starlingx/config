@@ -237,62 +237,6 @@ class Connection(object):
         """
 
     @abc.abstractmethod
-    def interface_profile_get_list(self, limit=None, marker=None,
-                                   sort_key=None, sort_dir=None, session=None):
-        """Return a list of interface profiles.
-
-        :param limit: Maximum number of profiles to return.
-        :param marker: the last item of the previous page; we return the next
-                       result set.
-        :param sort_key: Attribute by which results should be sorted.
-        :param sort_dir: direction in which results should be sorted.
-                         (asc, desc)
-        :param session: The DB session instance to use during the model query
-        """
-
-    @abc.abstractmethod
-    def cpu_profile_get_list(self, limit=None, marker=None,
-                             sort_key=None, sort_dir=None, session=None):
-        """Return a list of cpu profiles.
-
-        :param limit: Maximum number of profiles to return.
-        :param marker: the last item of the previous page; we return the next
-                       result set.
-        :param sort_key: Attribute by which results should be sorted.
-        :param sort_dir: direction in which results should be sorted.
-                         (asc, desc)
-        :param session: The DB session instance to use during the model query
-        """
-
-    @abc.abstractmethod
-    def memory_profile_get_list(self, limit=None, marker=None,
-                                sort_key=None, sort_dir=None, session=None):
-        """Return a list of memory profiles.
-
-        :param limit: Maximum number of profiles to return.
-        :param marker: the last item of the previous page; we return the next
-                       result set.
-        :param sort_key: Attribute by which results should be sorted.
-        :param sort_dir: direction in which results should be sorted.
-                         (asc, desc)
-        :param session: The DB session instance to use during the model query
-        """
-
-    @abc.abstractmethod
-    def storage_profile_get_list(self, limit=None, marker=None,
-                                 sort_key=None, sort_dir=None, session=None):
-        """Return a list of storage profiles.
-
-        :param limit: Maximum number of profiles to return.
-        :param marker: the last item of the previous page; we return the next
-                       result set.
-        :param sort_key: Attribute by which results should be sorted.
-        :param sort_dir: direction in which results should be sorted.
-                         (asc, desc)
-        :param session: The DB session instance to use during the model query
-        """
-
-    @abc.abstractmethod
     def inode_create(self, forihostid, values):
         """Create a new inode for a host.
 
