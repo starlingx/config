@@ -7021,6 +7021,19 @@ class ConductorManager(service.PeriodicService):
                     }
                     self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
+    def update_ptp_instances_config(self, context, host_uuid,
+                                    ptp_instances_dict):
+        try:
+            host = self.dbapi.ihost_get(host_uuid)
+            if host:  # TODO: put here to make variable used; remove it later
+                pass
+        except exception.ServerNotFound:
+            LOG.error("Cannot find host by id %s" % host_uuid)
+            return
+        # TODO: apply configuration of PTP instance to host (will probably go
+        # through PTP parameters instead to set the 'conf' files for services)
+        pass
+
     def update_system_mode_config(self, context):
         """Update the system mode configuration"""
         personalities = [constants.CONTROLLER]

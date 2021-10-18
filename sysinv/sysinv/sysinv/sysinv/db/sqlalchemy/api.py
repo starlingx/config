@@ -3746,7 +3746,7 @@ class Connection(api.Connection):
                 session.add(ptp_instance)
                 session.flush()
             except db_exc.DBDuplicateEntry:
-                raise exception.PtpInstanceAlreadyExists(uuid=values['uuid'])
+                raise exception.PtpInstanceAlreadyExists(name=values['name'])
             return self._ptp_instance_get(values['uuid'])
 
     @objects.objectify(objects.ptp_instance)
@@ -3862,6 +3862,18 @@ class Connection(api.Connection):
         iface_obj = self.iinterface_get(interface_id)
         query = model_query(models.PtpInterfaces)
         query = query.filter_by(interface_id=iface_obj.id)
+        return _paginate_query(models.PtpInterfaces, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @objects.objectify(objects.ptp_interface)
+    def ptp_interfaces_get_by_instance(self, ptp_instance_id, limit=None,
+                                       marker=None, sort_key=None,
+                                       sort_dir=None):
+        # NOTE: ptp_instance_get() to raise an exception if the instance is
+        # not found
+        ptp_instance_obj = self.ptp_instance_get(ptp_instance_id)
+        query = model_query(models.PtpInterfaces)
+        query = query.filter_by(ptp_instance_id=ptp_instance_obj.id)
         return _paginate_query(models.PtpInterfaces, limit, marker,
                                sort_key, sort_dir, query)
 

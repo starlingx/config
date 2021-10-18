@@ -2051,6 +2051,22 @@ class Connection(object):
         """
 
     @abc.abstractmethod
+    def ptp_interfaces_get_by_instance(self, ptp_instance_id, limit=None,
+                                       marker=None, sort_key=None,
+                                       sort_dir=None):
+        """Returns a list of the PTP associations for a given PTP instance.
+
+        :param ptp_instance_id: The id or uuid of a PTP instance.
+        :param limit: Maximum number of PTP associations to return.
+        :param marker: The last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted
+        :param sort_dir: direction in which results should be sorted
+                         (asc, desc)
+        :returns: A list of PTP associations (interfaces) for the PTP instance.
+        """
+
+    @abc.abstractmethod
     def ptp_interface_destroy(self, ptp_interface_id):
         """Destroys a PTP interface association.
 

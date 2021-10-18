@@ -453,7 +453,7 @@ class PTPAlreadyExists(Conflict):
 
 
 class PtpInstanceAlreadyExists(Conflict):
-    message = _("A PTP instance with UUID %(uuid)s already exists.")
+    message = _("A PTP instance with name '%(name)s' already exists.")
 
 
 class PtpInterfaceAlreadyExists(Conflict):
