@@ -1,0 +1,50 @@
+Source: controllerconfig
+Section: admin
+Priority: optional
+Maintainer: StarlingX Developers <starlingx-discuss@lists.starlingx.io>
+Build-Depends: debhelper-compat (= 13),
+ dh-python,
+ python3-setuptools,
+ python3-all,
+ python3-wheel
+Build-Depends-Indep:
+ python3-netaddr,
+ python3-keyring,
+ python3-pyudev,
+ python3-psycopg2,
+ python3-six,
+ python3-iso8601,
+ python3-netifaces,
+ python3-cryptography,
+ python3-oslo.utils,
+ python3-oslo.log,
+ python3-yaml,
+ tsconfig
+Standards-Version: 4.4.1
+Homepage: https://www.starlingx.io
+
+Package: controllerconfig
+Architecture: all
+Depends: ${python3:Depends}, ${misc:Depends},
+ python3-netaddr,
+ python3-keyring,
+ python3-pyudev,
+ python3-psycopg2,
+ python3-six,
+ python3-iso8601,
+ python3-netifaces,
+ python3-cryptography,
+ python3-oslo.utils,
+ python3-yaml,
+ python3-oslo.log,
+ tsconfig
+Description: Controller node configuration
+ Support scripts for controller node upgrade and configuration
+
+Package: controllerconfig-wheels
+Architecture: all
+Depends: ${python3:Depends}, ${misc:Depends}, python3-wheel
+Description: Controller node configuration - python wheel
+ Support scripts for controller node upgrade and configuration
+ .
+ This package contains the python wheel.

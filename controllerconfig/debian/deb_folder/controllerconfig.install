@@ -1,0 +1,6 @@
+usr/bin/*
+etc/goenabled.d/*
+usr/lib/python*/dist-packages/*
+etc/init.d/*
+etc/upgrade.d/*
+lib/systemd/system/*

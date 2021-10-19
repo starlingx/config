@@ -1,0 +1,44 @@
+#!/usr/bin/make -f
+#export DH_VERBOSE = 1
+
+export PYBUILD_NAME=controllerconfig
+
+ROOT := $(CURDIR)/debian/tmp
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild
+
+override_dh_install:
+	python3 setup.py install -f --install-layout=deb --root=$(ROOT)
+	python3 setup.py bdist_wheel  --universal  -d $(CURDIR)/debian/controllerconfig-wheels/usr/share/python-wheels
+	install -d -m 755 $(ROOT)/usr/bin
+	install -p -D -m 700 scripts/openstack_update_admin_password $(ROOT)/usr/bin/openstack_update_admin_password
+	install -p -D -m 700 scripts/upgrade_swact_migration.py $(ROOT)/usr/bin/upgrade_swact_migration.py
+	install -p -D -m 755 scripts/image-backup.sh $(ROOT)/usr/bin/image-backup.sh
+	install -d -m 755 $(ROOT)/etc/goenabled.d/
+	install -p -D -m 700 scripts/config_goenabled_check.sh $(ROOT)/etc/goenabled.d/config_goenabled_check.sh
+	install -d -m 755 $(ROOT)/etc/init.d
+	install -p -D -m 755 scripts/controller_config $(ROOT)/etc/init.d/controller_config
+	install -d -m 755 $(ROOT)/etc/upgrade.d
+	install -p -D -m 755 upgrade-scripts/* $(ROOT)/etc/upgrade.d
+	install -d -m 755 $(ROOT)/lib/systemd/system
+	install -p -D -m 664 scripts/controllerconfig.service $(ROOT)/lib/systemd/system/controllerconfig.service
+	dh_install
+
+override_dh_fixperms:
+	dh_fixperms \
+		-X/usr/bin/openstack_update_admin_password \
+		-X/usr/bin/image-backup.sh \
+		-Xupgrade_swact_migration.py \
+		-Xconfig_goenabled_check.sh \
+
+ifeq (,$(findstring nocheck, $(DEB_BUILD_OPTIONS)))
+override_dh_auto_test:
+	stestr run || true
+endif
+
+override_dh_installsystemd:
+	dh_installsystemd --name controllerconfig
+
+override_dh_python3:
+	dh_python3 --shebang=/usr/bin/python3
