@@ -7894,6 +7894,22 @@ class Connection(api.Connection):
         return self._kube_app_get(name)
 
     @objects.objectify(objects.kube_app)
+    def kube_app_get_endswith(self, name):
+        query = model_query(models.KubeApp)
+        try:
+            return query.filter(models.KubeApp.name.endswith(name)).one()
+        except NoResultFound:
+            raise exception.KubeAppNotFound(name="endswith '{}'".format(name))
+        except MultipleResultsFound:
+            LOG.exception(
+                exception.InvalidParameterValue(
+                    err="Multiple app entries found ending with {}, returning "
+                        "the first occurrence".format(name)
+                )
+            )
+            return query.filter(models.KubeApp.name.endswith(name)).first()
+
+    @objects.objectify(objects.kube_app)
     def kube_app_update(self, app_id, values):
         with _session_for_write() as session:
             query = model_query(models.KubeApp, session=session)

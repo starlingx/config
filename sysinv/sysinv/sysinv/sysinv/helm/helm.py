@@ -221,8 +221,9 @@ class HelmOperator(object):
     def get_app_lifecycle_operator(self, app_name):
         """Return an AppLifecycle operator based on app name"""
 
-        if app_name in self.app_lifecycle_operators:
-            operator = self.app_lifecycle_operators[app_name]
+        plugin_name = utils.find_app_plugin_name(app_name)
+        if plugin_name in self.app_lifecycle_operators:
+            operator = self.app_lifecycle_operators[plugin_name]
         else:
             operator = self.app_lifecycle_operators['generic']
 
@@ -269,8 +270,9 @@ class HelmOperator(object):
     def get_armada_manifest_operator(self, app_name):
         """Return a manifest operator based on app name"""
 
-        if app_name in self.armada_manifest_operators:
-            manifest_op = self.armada_manifest_operators[app_name]
+        plugin_name = utils.find_app_plugin_name(app_name)
+        if plugin_name in self.armada_manifest_operators:
+            manifest_op = self.armada_manifest_operators[plugin_name]
         else:
             manifest_op = self.armada_manifest_operators['generic']
         return manifest_op
@@ -334,8 +336,10 @@ class HelmOperator(object):
 
         namespaces = []
         if chart_name in self.chart_operators:
+            app_plugin_name = utils.find_app_plugin_name(app_name)
+
             namespaces = self.chart_operators[chart_name].get_namespaces_by_app(
-                app_name)
+                app_plugin_name)
         return namespaces
 
     def get_helm_chart_namespaces(self, chart_name):
@@ -355,6 +359,7 @@ class HelmOperator(object):
 
     @helm_context
     def get_helm_chart_overrides(self, chart_name, cnamespace=None):
+        """ RPCApi: Gets the *chart* overrides for a supported chart. """
         return self._get_helm_chart_overrides(chart_name, cnamespace)
 
     def _get_helm_chart_overrides(self, chart_name, cnamespace=None):
@@ -415,15 +420,11 @@ class HelmOperator(object):
                   overrides may be provided.
         """
 
-        try:
-            app = self.dbapi.kube_app_get(app_name)
-        except exception.KubeAppNotFound:
-            LOG.exception("Application %s not found." % app_name)
-            raise
+        app, plugin_name = self._find_kube_app_and_app_plugin_name(app_name)
 
         app_namespaces = {}
-        if app_name in self.helm_system_applications:
-            for chart_name in self.helm_system_applications[app_name]:
+        if plugin_name in self.helm_system_applications:
+            for chart_name in self.helm_system_applications[plugin_name]:
                 try:
                     app_namespaces.update(
                         {chart_name:
@@ -442,6 +443,7 @@ class HelmOperator(object):
 
     @helm_context
     def get_helm_application_overrides(self, app_name, cnamespace=None):
+        """RPCApi: Gets the application overrides for a supported set of charts."""
         return self._get_helm_application_overrides(app_name, cnamespace)
 
     def _get_helm_application_overrides(self, app_name, cnamespace=None):
@@ -487,8 +489,10 @@ class HelmOperator(object):
         }
         """
         overrides = {}
-        if app_name in self.helm_system_applications:
-            for chart_name in self.helm_system_applications[app_name]:
+        plugin_name = utils.find_app_plugin_name(app_name)
+
+        if plugin_name in self.helm_system_applications:
+            for chart_name in self.helm_system_applications[plugin_name]:
                 try:
                     overrides.update({chart_name:
                                       self._get_helm_chart_overrides(
@@ -648,7 +652,7 @@ class HelmOperator(object):
         """Generate system helm chart overrides
 
         This method will generate system helm chart override an write them to a
-        yaml file.for use with the helm command. If the namespace is provided
+        yaml file for use with the helm command. If the namespace is provided
         only the overrides file for that specified namespace will be written.
 
         :param chart_name: name of a supported chart
@@ -689,9 +693,9 @@ class HelmOperator(object):
         """Create the system overrides files for a supported application
 
         This method will generate system helm chart overrides yaml files for a
-        set of supported charts that comprise an application.. If the namespace
+        set of supported charts that comprise an application. If the namespace
         is provided only the overrides files for that specified namespace will
-        be written..
+        be written.
 
         :param app_name: name of the bundle of charts required to support an
             application
@@ -706,23 +710,19 @@ class HelmOperator(object):
             system overrides
         """
 
-        try:
-            app = self.dbapi.kube_app_get(app_name)
-        except exception.KubeAppNotFound:
-            LOG.exception("Application %s not found." % app_name)
-            raise
+        app, plugin_name = self._find_kube_app_and_app_plugin_name(app_name)
 
         # Get a manifest operator to provide a single point of
         # manipulation for the chart, chart group and manifest schemas
-        manifest_op = self.get_armada_manifest_operator(app_name)
+        manifest_op = self.get_armada_manifest_operator(app.name)
 
         # Load the manifest into the operator
         armada_manifest = utils.generate_synced_armada_manifest_fqpn(
             app.name, app.app_version, app.manifest_file)
         manifest_op.load(armada_manifest)
 
-        if app_name in self.helm_system_applications:
-            app_overrides = self._get_helm_application_overrides(app_name,
+        if plugin_name in self.helm_system_applications:
+            app_overrides = self._get_helm_application_overrides(plugin_name,
                                                                  cnamespace)
             for (chart_name, overrides) in iteritems(app_overrides):
                 if combined:
@@ -827,6 +827,10 @@ class HelmOperator(object):
         manifest_op.save_overrides()
         manifest_op.save_summary(path=path)
         manifest_op.save_delete_manifest()
+
+    def _find_kube_app_and_app_plugin_name(self, app_name):
+        return utils.find_kube_app(self.dbapi, app_name), \
+               utils.find_app_plugin_name(app_name)
 
     def remove_helm_chart_overrides(self, path, chart_name, cnamespace=None):
         """Remove the overrides files for a chart"""

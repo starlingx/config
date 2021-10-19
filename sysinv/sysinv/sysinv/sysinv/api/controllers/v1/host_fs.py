@@ -474,14 +474,15 @@ def _delete(host_fs):
 
     if host_fs['name'] == constants.FILESYSTEM_NAME_IMAGE_CONVERSION:
         try:
-            app = pecan.request.dbapi.kube_app_get(constants.HELM_APP_OPENSTACK)
+            app = utils.find_openstack_app(pecan.request.dbapi)
             if app.status != constants.APP_UPLOAD_SUCCESS:
-                raise wsme.exc.ClientSideError(_("Deleting filesystem %s is not allowed "
-                                                 "when stx-openstack is in %s state" %
-                                                  (host_fs['name'], app.status)))
+                raise wsme.exc.ClientSideError(
+                    _("Deleting filesystem %s is not allowed when %s is in %s "
+                      "state" % (host_fs['name'], app.name, app.status))
+                )
         except exception.KubeAppNotFound:
-            LOG.info("Application %s not found, deleting %s fs" %
-                    (constants.HELM_APP_OPENSTACK, host_fs['name']))
+            LOG.info("Application %s not found, deleting %s fs"
+                     % (app.name, host_fs['name']))
 
     ihost = pecan.request.dbapi.ihost_get(host_fs['forihostid'])
     try:

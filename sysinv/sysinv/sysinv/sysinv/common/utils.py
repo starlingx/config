@@ -1895,9 +1895,16 @@ def is_app_applied(dbapi, app_name):
         return False
 
 
+def find_openstack_app(dbapi):
+    return dbapi.kube_app_get_endswith(constants.HELM_APP_OPENSTACK)
+
+
 def is_openstack_applied(dbapi):
     """ Checks whether the OpenStack application is applied successfully. """
-    return is_app_applied(dbapi, constants.HELM_APP_OPENSTACK)
+    try:
+        return find_openstack_app(dbapi).active
+    except exception.KubeAppNotFound:
+        return False
 
 
 def is_url(url_str):
@@ -2483,6 +2490,26 @@ def generate_synced_metadata_fqpn(app_name, app_version):
         'metadata.yaml')
 
 
+def is_app_openstack(app_name):
+    return app_name.endswith("openstack")
+
+
+def find_app_plugin_name(app_name):
+    return "openstack" if is_app_openstack(app_name) else app_name
+
+
+def find_kube_app(dbapi, app_name):
+    try:
+        if is_app_openstack(app_name):
+            app_name = find_openstack_app(dbapi).name
+
+        app = dbapi.kube_app_get(app_name)
+    except exception.KubeAppNotFound:
+        LOG.exception("Application %s not found." % app_name)
+        raise
+    return app
+
+
 def is_chart_enabled(dbapi, app_name, chart_name, namespace):
     """
     Check if the chart is enable at an application level
@@ -2495,7 +2522,7 @@ def is_chart_enabled(dbapi, app_name, chart_name, namespace):
     enabled.
     """
     try:
-        db_app = dbapi.kube_app_get(app_name)
+        db_app = find_kube_app(dbapi, app_name)
         db_chart = dbapi.helm_override_get(db_app.id, chart_name, namespace)
     except exception.KubeAppNotFound:
         LOG.exception("is_chart_enabled: %s application unknown" % (app_name))
