@@ -8877,23 +8877,16 @@ class ConductorManager(service.PeriodicService):
         # Update host 'update state'
         self.dbapi.kube_rootca_host_update_update(h_update.id, values)
 
-        # Update cluster 'update state'
-        hosts = self.dbapi.ihost_get_list()
+        # The host state has been updated.  Now query all hosts.
+        # If all hosts are updated, update cluster 'update state'
         h_updates = self.dbapi.kube_rootca_host_update_get_list()
 
-        # Look to see if there are other hosts not successfully updated yet
-        for host in hosts:
-            if host.uuid == host_uuid:
-                continue
-            for h_update in h_updates:
-                # This host has been updated successfully
-                if host.id == h_update.host_id and h_update.state == state:
-                    break
-            else:
-                # This host has not been updated successfully
-                break
-        else:
-            # All other hosts has been updated successfully
+        matching = 0
+        for h_update in h_updates:
+            if h_update.state == state:
+                matching += 1
+        if matching == len(h_updates):
+            # All hosts are up to date.
             c_update = self.dbapi.kube_rootca_update_get_one()
             self.dbapi.kube_rootca_update_update(c_update.id, {'state': state})
 
