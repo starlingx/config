@@ -10,16 +10,15 @@
 #
 ### BEGIN INIT INFO
 # Provides:          sysinv-agent
-# Default-Start:     3 5
-# Required-Start:
-# Required-Stop:
-# Default-Stop:      0 1 2 6
+# Default-Start:     2 3 4 5
+# Required-Start:    $local_fs
+# Required-Stop:     $local_fs
+# Default-Stop:      0 1 6
 # Short-Description: Maintenance daemon 
 ### END INIT INFO
 
 . /etc/init.d/functions
 . /etc/build.info
-
 
 PLATFORM_CONF="/etc/platform/platform.conf"
 NODETYPE=""
@@ -52,7 +51,7 @@ RETVAL=0
 PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/bin
 export PATH
 
-function mount_and_copy_config_file()
+mount_and_copy_config_file()
 {
     echo "Mount /opt/platform"
     logger "$0: Info: nfs-mount controller:/opt/platform/sysinv/${SW_VERSION} /mnt/sysinv"
@@ -218,8 +217,8 @@ case "$1" in
         [ -f /var/lock/subsys/$DAEMON_NAME ] && $0 restart
         ;;
 
-    *)
-        echo "usage: $0 { start | stop | status | restart | condrestart | status }"
+    force-reload | *)
+        echo "usage: $0 { start | stop | status | restart | condrestart }"
         ;;
 esac
 

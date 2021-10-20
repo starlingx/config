@@ -1,0 +1,10 @@
+#!/bin/bash
+set -x
+
+PKG_BUILD_NAME=$1
+PKG_BUILD_ROOT=$(realpath `pwd`/${PKG_BUILD_NAME})
+STX_BASE=$(realpath ${MY_REPO}/stx)
+SRC=$(realpath ${STX_BASE}/config/sysinv/sysinv-agent)
+
+mkdir ${PKG_BUILD_NAME}
+cp -p ${SRC}/{LICENSE,sysinv-agent*} ${PKG_BUILD_ROOT}/

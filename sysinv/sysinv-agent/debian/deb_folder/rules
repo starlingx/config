@@ -1,0 +1,16 @@
+#!/usr/bin/make -f
+#export DH_VERBOSE=1
+
+ROOT := $(CURDIR)/debian/tmp
+
+%:
+	dh $@
+
+override_dh_install:
+	install -p -D -m 755 sysinv-agent ${ROOT}/etc/init.d/sysinv-agent
+	install -p -D -m 644 sysinv-agent.conf ${ROOT}/etc/pmon.d/sysinv-agent.conf
+	install -p -D -m 644 sysinv-agent.service ${ROOT}/lib/systemd/system/sysinv-agent.service
+	dh_install
+
+override_dh_installinit:
+	dh_installinit --only-scripts
