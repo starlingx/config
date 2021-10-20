@@ -1,0 +1,7 @@
+---
+debver: 1.0
+debname: storageconfig
+src_path: storageconfig
+revision:
+  dist: $STX_DIST
+  PKG_GITREVCOUNT:
