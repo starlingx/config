@@ -1,0 +1,22 @@
+#!/usr/bin/make -f
+#export DH_VERBOSE = 1
+
+ROOT := $(CURDIR)/debian/tmp
+
+%:
+	dh $@
+
+override_dh_install:
+	install -p -D -m 755 sysinv-fpga-agent ${ROOT}/etc/init.d/sysinv-fpga-agent
+	install -p -D -m 644 sysinv-fpga-agent.conf ${ROOT}/etc/pmon.d/sysinv-fpga-agent.conf
+	install -p -D -m 644 sysinv-fpga-agent.service ${ROOT}/lib/systemd/system/sysinv-fpga-agent.service
+	install -p -D -m 644 sysinv-conf-watcher.service ${ROOT}/lib/systemd/system/sysinv-conf-watcher.service
+	install -p -D -m 644 sysinv-conf-watcher.path ${ROOT}/lib/systemd/system/sysinv-conf-watcher.path
+	dh_install
+
+override_dh_usrlocal:
+	# do nothing
+
+override_dh_installsystemd:
+	dh_installsystemd --name=sysinv-fpga-agent.service
+	dh_installsystemd --name=sysinv-fpga-watcher.service

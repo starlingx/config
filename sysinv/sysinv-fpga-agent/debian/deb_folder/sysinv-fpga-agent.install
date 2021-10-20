@@ -1,0 +1,5 @@
+etc/init.d/sysinv-fpga-agent
+etc/pmon.d/sysinv-fpga-agent.conf
+lib/systemd/system/sysinv-fpga-agent.service
+lib/systemd/system/sysinv-conf-watcher.service
+lib/systemd/system/sysinv-conf-watcher.path
