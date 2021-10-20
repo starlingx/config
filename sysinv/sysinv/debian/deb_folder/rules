@@ -1,0 +1,34 @@
+#!/usr/bin/make -f
+#export DH_VERBOSE = 1
+
+export PYBUILD_NAME=sysinv
+export PBR_VERSION=1.0.0
+DEBIAN_DIR := $(CURDIR)/debian/tmp
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild
+
+ifeq (,$(findstring nocheck, $(DEB_BUILD_OPTIONS)))
+override_dh_auto_test:
+	# FIXME: UTs run during packaging are currently broken
+	PYTHONDIR=$(CURDIR) stestr run || true
+endif
+
+override_dh_install:
+	python3 setup.py install -f --install-layout=deb \
+		--root=$(CURDIR)/debian/tmp
+	python3 setup.py bdist_wheel \
+		--universal \
+		-d $(CURDIR)/debian/sysinv-wheel/usr/share/python3-wheels
+	install -p -D -m 755 $(CURDIR)/etc/sysinv/motd-system $(CURDIR)/debian/tmp/etc/motd.d/10-system
+	dh_install
+
+override_dh_python3:
+	dh_python3 --shebang=/usr/bin/python3
+
+override_dh_installsystemd:
+	dh_installsystemd --name=sysinv-api
+	dh_installsystemd --name=sysinv-conductor
+
+override_dh_fixperms:
+	dh_fixperms -Xkube-cert-rotation.sh

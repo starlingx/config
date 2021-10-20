@@ -1,0 +1,32 @@
+etc/sysinv/sysinv_goenabled_check.sh etc/goenabled.d
+etc/sysinv/policy.json etc/sysinv
+etc/sysinv/crushmap-storage-model.txt etc/sysinv
+etc/sysinv/crushmap-controller-model.txt etc/sysinv
+etc/sysinv/crushmap-aio-sx.txt etc/sysinv
+etc/sysinv/delete_load.sh etc/sysinv/upgrades
+scripts/sysinv-api usr/lib/ocf/resource.d/platform
+scripts/sysinv-conductor usr/lib/ocf/resource.d/platform
+scripts/sysinv-api.service lib/systemd/system
+scripts/sysinv-conductor.service lib/systemd/system
+scripts/partition_info.sh usr/bin
+scripts/validate-platform-backup.sh usr/bin
+scripts/manage-partitions usr/bin
+scripts/query_pci_id usr/bin
+scripts/kube-cert-rotation.sh usr/bin
+scripts/ceph_k8s_update_monitors.sh usr/bin
+usr/lib/python*/dist-packages/*
+etc/motd.d/10-system
+usr/bin/cert-alarm
+usr/bin/cert-mon
+usr/bin/sysinv-agent
+usr/bin/sysinv-api
+usr/bin/sysinv-conductor
+usr/bin/sysinv-dbsync
+usr/bin/sysinv-dnsmasq-lease-update
+usr/bin/sysinv-fpga-agent
+usr/bin/sysinv-helm
+usr/bin/sysinv-puppet
+usr/bin/sysinv-reset-n3000-fpgas
+usr/bin/sysinv-rootwrap
+usr/bin/sysinv-utils
+usr/bin/sysinv-upgrade
