@@ -3244,6 +3244,11 @@ class ArmadaHelper(object):
              ('{}/{}'.format(self.overrides_dir, app_name),
               '{}:{}'.format(armada_pod, overrides_dest))]
         for src_dir, dest_dir in src_dest_dirs:
+            # If there are no overrides it's not a fatal error.
+            if (src_dir.startswith(self.overrides_dir) and
+                    not os.path.exists(src_dir)):
+                LOG.info("%s doesn't exist, skipping it." % src_dir)
+                continue
             LOG.info("Copy %s to %s ." % (src_dir, dest_dir))
             stdout, stderr = self.kube_cp_container(
                 ARMADA_NAMESPACE, src_dir, dest_dir,
