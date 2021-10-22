@@ -1000,11 +1000,11 @@ class KubeOperator(object):
                        label_selector, field_selector, e)
             raise
 
-    def get_cert_secret(self, name, namespace, max_retries=4):
-        for i in range(0, max_retries):
+    def get_cert_secret(self, name, namespace, max_retries=60):
+        for _ in range(max_retries):
             secret = self.kube_get_secret(name, NAMESPACE_DEPLOYMENT)
-            if secret is not None and secret.data is not None:
+            if secret is not None and secret.data.get("tls.crt"):
                 LOG.debug("secret = %s" % secret)
                 return secret
-            time.sleep(5)
+            time.sleep(1)
         return None

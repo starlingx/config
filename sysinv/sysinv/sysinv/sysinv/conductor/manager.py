@@ -14834,11 +14834,11 @@ class ConductorManager(service.PeriodicService):
 
         data = secret.data
         tls_crt = base64.decode_as_bytes(data['tls.crt'])
-        cert = cutils.extract_certs_from_pem(tls_crt)[0]
+        certs = cutils.extract_certs_from_pem(tls_crt)
 
         # extract information regarding the new rootca
         try:
-            new_cert = cutils.build_cert_identifier(cert)
+            new_cert = cutils.build_cert_identifier(certs[0])
         except Exception:
             msg = "Failed to extract issuer and serial number from new root CA"
             LOG.error(msg)
@@ -14909,7 +14909,7 @@ class ConductorManager(service.PeriodicService):
         :param secret_name: the name of the secret to wait
         """
         kube_operator = kubernetes.KubeOperator()
-        secret = kube_operator.get_cert_secret(secret_name, kubernetes.NAMESPACE_DEPLOYMENT, max_retries=2)
+        secret = kube_operator.get_cert_secret(secret_name, kubernetes.NAMESPACE_DEPLOYMENT)
         if secret is None:
             msg = "Secret %s creation timeout" % secret_name
             LOG.error(msg)
