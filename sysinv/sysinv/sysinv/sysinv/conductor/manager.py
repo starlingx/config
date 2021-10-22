@@ -1205,6 +1205,28 @@ class ConductorManager(service.PeriodicService):
                     raise exception.SysinvException(_(
                         "Failed to create pxelinux.cfg file"))
 
+    def _apply_kube_apiserver_parameters(self, context):
+        """Applies the runtime manifest to change kube_apiserver parameters.
+           Only done on simplex because the issue is due to the apiserver
+           service parameters not being applied during the restore.
+           returns True if runtime manifests were applied
+        """
+        if cutils.is_aio_simplex_system(self.dbapi):
+            personalities = [constants.CONTROLLER]
+            config_uuid = self._config_update_hosts(
+                context, personalities)
+            config_dict = {
+                "personalities": personalities,
+                "classes": ['platform::kubernetes::master::change_apiserver_parameters'],
+                puppet_common.REPORT_STATUS_CFG:
+                    puppet_common.REPORT_UPGRADE_ACTIONS
+            }
+            self._config_apply_runtime_manifest(context,
+                                                config_uuid=config_uuid,
+                                                config_dict=config_dict)
+            return True
+        return False
+
     def _remove_pxe_config(self, host):
         """Delete the PXE config file for this host.
 
@@ -11272,6 +11294,9 @@ class ConductorManager(service.PeriodicService):
         if from_version == tsc.SW_VERSION_21_05:
             # Apply etcd split ca puppet manifest for standby controller.
             manifests_applied = self._split_etcd_security_config(context)
+
+        manifests_applied = manifests_applied or\
+                            self._apply_kube_apiserver_parameters(context)
 
         if manifests_applied:
             LOG.info("Running upgrade activation manifests")
