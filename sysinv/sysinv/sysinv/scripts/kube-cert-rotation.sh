@@ -18,8 +18,16 @@ declare -r CUTOFF_DAYS_S=$((${CUTOFF_DAYS}*24*3600))
 TEMP_WORK_DIR="/tmp/kube_cert_rotation"
 
 # Expiration date of k8s certs
-CERT_EXP_DATES=$(kubeadm alpha certs check-expiration)
 
+# Tries ga command version, failing over to alpha command
+kubeadm certs &> /dev/null
+if [ $? -eq 0 ]; then
+    CERT_CMD='certs'
+else
+    CERT_CMD='alpha certs'
+fi
+
+CERT_EXP_DATES=$(kubeadm $CERT_CMD check-expiration)
 # Time left in seconds for a cert
 time_left_s() {
     local time_left_s=""
@@ -57,7 +65,8 @@ renew_cert() {
     time_left_s=$(time_left_s "$1")
     if [ "x${time_left_s}" != "x" ]; then
         if [ ${time_left_s} -lt ${CUTOFF_DAYS_S} ]; then
-            kubeadm alpha certs renew $1
+            kubeadm $CERT_CMD renew $1
+
             if [ $? -ne 0 ]; then
                 ret=1
             fi
@@ -355,5 +364,9 @@ elif [ ${ERR} -eq 1 ]; then
     /usr/local/bin/fmClientCli -c "### ###250.003###set###host###host=${HOSTNAME}### ###major###Kubernetes certificates renewal failed.###operational-violation### ###Lock and unlock the host to update services with new certificates (Manually renew kubernetes certificates first if renewal failed).### ### ###"
 else
     # Clear the alarm if cert rotation completed
-    /usr/local/bin/fmClientCli -d "###250.003###host=${HOSTNAME}###"
+    # Check if alarm exist first before deleting. fmClientCli -A returns 0 when found and 255 when not found
+    /usr/local/bin/fmClientCli -A "250.003" &> /dev/null
+    if [ $? -eq 0 ]; then
+        /usr/local/bin/fmClientCli -d "###250.003###host=${HOSTNAME}###"
+    fi
 fi
