@@ -8,23 +8,19 @@
       jobs:
         - openstack-tox-linters
         - sysinv-tox-py27
-        - sysinv-tox-py36
         - sysinv-tox-py39
         - sysinv-tox-flake8
         - sysinv-tox-pylint
         - sysinv-tox-bandit
         - controllerconfig-tox-py27
-        - controllerconfig-tox-py36
         - controllerconfig-tox-py39
         - controllerconfig-tox-flake8
         - controllerconfig-tox-pylint
-        - tsconfig-tox-pylint
-        - tsconfig-tox-py27
-        - tsconfig-tox-py36
-        - config-tox-py39
-        - tsconfig-tox-flake8
+        - tsconfig__tox-pylint
+        - tsconfig__tox-py27
+        - tsconfig__tox-py39
+        - tsconfig__tox-flake8
         - cgtsclient-tox-py27
-        - cgtsclient-tox-py36
         - cgtsclient-tox-py39
         - cgtsclient-tox-pep8
         - cgtsclient-tox-pylint
@@ -32,23 +28,19 @@
       jobs:
         - openstack-tox-linters
         - sysinv-tox-py27
-        - sysinv-tox-py36
         - sysinv-tox-py39
         - sysinv-tox-flake8
         - sysinv-tox-pylint
         - sysinv-tox-bandit
         - controllerconfig-tox-py27
-        - controllerconfig-tox-py36
         - controllerconfig-tox-py39
         - controllerconfig-tox-flake8
         - controllerconfig-tox-pylint
-        - config-tox-pylint
-        - config-tox-py27
-        - config-tox-py36
-        - config-tox-py39
-        - config-tox-flake8
+        - tsconfig__tox-pylint
+        - tsconfig__tox-py27
+        - tsconfig__tox-py39
+        - tsconfig__tox-flake8
         - cgtsclient-tox-py27
-        - cgtsclient-tox-py36
         - cgtsclient-tox-py39
         - cgtsclient-tox-pep8
         - cgtsclient-tox-pylint
@@ -64,28 +56,12 @@
     nodeset: ubuntu-xenial
     required-projects:
       - starlingx/fault
-      - starlingx/update
       - starlingx/utilities
+      - starlingx/update
     files:
       - sysinv/sysinv/*
     vars:
       tox_envlist: py27
-      tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
-
-- job:
-    name: sysinv-tox-py36
-    parent: tox
-    description: |
-      Run py36 test for sysinv
-    nodeset: ubuntu-bionic
-    required-projects:
-      - starlingx/fault
-      - starlingx/update
-      - starlingx/utilities
-    files:
-      - sysinv/sysinv/*
-    vars:
-      tox_envlist: py36
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
 
 - job:
@@ -96,9 +72,9 @@
     nodeset: debian-bullseye
     required-projects:
       - starlingx/fault
-      - starlingx/update
       - starlingx/utilities
       - starlingx/root
+      - starlingx/update
     files:
       - sysinv/sysinv/*
     vars:
@@ -126,8 +102,8 @@
     nodeset: ubuntu-bionic
     required-projects:
       - starlingx/fault
-      - starlingx/update
       - starlingx/utilities
+      - starlingx/update
     files:
       - sysinv/sysinv/*
     vars:
@@ -157,19 +133,6 @@
       - controllerconfig/*
     vars:
       tox_envlist: py27
-      tox_extra_args: -c controllerconfig/controllerconfig/tox.ini
-
-- job:
-    name: controllerconfig-tox-py36
-    parent: tox
-    description: Run py36 tests for controllerconfig
-    nodeset: ubuntu-bionic
-    required-projects:
-      - starlingx/fault
-    files:
-      - controllerconfig/*
-    vars:
-      tox_envlist: py36
       tox_extra_args: -c controllerconfig/controllerconfig/tox.ini
 
 - job:
@@ -211,7 +174,7 @@
       tox_extra_args: -c controllerconfig/controllerconfig/tox.ini
 
 - job:
-    name: config-tox-pylint
+    name: tsconfig__tox-pylint
     parent: tox
     nodeset: ubuntu-xenial
     description: Run pylint tests for tsconfig
@@ -222,7 +185,7 @@
       tox_extra_args: -c tsconfig/tsconfig/tox.ini
 
 - job:
-    name: config-tox-py27
+    name: tsconfig__tox-py27
     parent: tox
     nodeset: ubuntu-xenial
     description: Run py27 tests for tsconfig
@@ -233,18 +196,7 @@
       tox_extra_args: -c tsconfig/tsconfig/tox.ini
 
 - job:
-    name: config-tox-py36
-    parent: tox
-    description: Run py36 tests for tsconfig
-    nodeset: ubuntu-bionic
-    files:
-      - tsconfig/*
-    vars:
-      tox_envlist: py36
-      tox_extra_args: -c tsconfig/tsconfig/tox.ini
-
-- job:
-    name: config-tox-py39
+    name: tsconfig__tox-py39
     parent: tox-py39
     description: Run py39 tests for tsconfig
     nodeset: debian-bullseye
@@ -255,7 +207,7 @@
       tox_extra_args: -c tsconfig/tsconfig/tox.ini
 
 - job:
-    name: config-tox-flake8
+    name: tsconfig__tox-flake8
     parent: tox
     description: Run flake8 tests for tsconfig
     nodeset: ubuntu-bionic
@@ -264,31 +216,6 @@
     vars:
       tox_envlist: flake8
       tox_extra_args: -c tsconfig/tsconfig/tox.ini
-
-
-- job:
-    name: flock-devstack-config
-    parent: flock-devstack-base
-    required-projects:
-      - starlingx/fault
-      - starlingx/update
-      - starlingx/utilities
-    vars:
-      tox_envlist: functional
-      devstack_services:
-        # StarlingX services
-        fm-common: true
-        fm-api: true
-        cgtsclient: true
-        sysinv-agent: true
-        sysinv-api: true
-        sysinv-cond: true
-        tls-proxy: false
-      devstack_plugins:
-        config: https://opendev.org/starlingx/config
-        fault: https://opendev.org/starlingx/fault
-        integ: https://opendev.org/starlingx/integ
-        update: https://opendev.org/starlingx/update
 
 - job:
     name: cgtsclient-tox-py27
@@ -300,18 +227,6 @@
       - sysinv/cgts-client/*
     vars:
       tox_envlist: py27
-      tox_extra_args: -c sysinv/cgts-client/cgts-client/tox.ini
-
-- job:
-    name: cgtsclient-tox-py36
-    parent: tox
-    description: |
-      Run py36 test for cgts-client
-    nodeset: ubuntu-bionic
-    files:
-      - sysinv/cgts-client/*
-    vars:
-      tox_envlist: py36
       tox_extra_args: -c sysinv/cgts-client/cgts-client/tox.ini
 
 - job:
