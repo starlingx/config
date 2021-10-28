@@ -150,6 +150,14 @@ class FaultApiMgr(object):
                 else fm_constants.FM_ALARM_ID_CERT_EXPIRING_SOON
         entity_inst_id = self.get_entity_instance_id(cert_name)
 
+        # If case of api errors during data collection, we do not want to raise alarms with
+        # "unknown" UUID (because we will need to clear such alarms manually). In such a case,
+        # we log the error and skip the alarm raise. Subsequent audit runs will raise the alarms.
+        if "uuid=unknown" in entity_inst_id:
+            LOG.error('set_fault called for certificate %s with unknown UUID. Suppressing alarm' %
+                     cert_name)
+            return
+
         try:
             if state == fm_constants.FM_ALARM_STATE_SET:
                 # Raise alarm only if alarm does not already exist
