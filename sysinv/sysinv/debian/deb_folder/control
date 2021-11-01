@@ -2,7 +2,12 @@ Source: sysinv
 Section: admin
 Priority: optional
 Maintainer: Starlingx Developers <StarlingX-discuss@lists.StarlingX.io>
-Build-Depends: debhelper-compat (= 13), dh-python, python3-setuptools, python3-all, python3-pbr
+Build-Depends: debhelper-compat (= 13),
+ dh-python,
+ python3-all,
+ python3-pbr,
+ python3-setuptools,
+ python3-wheel
 Build-Depends-Indep:
  python3-sqlalchemy,
  python3-amqplib,
