@@ -3,3 +3,9 @@ sysinv/cgts-client
 sysinv/sysinv-fpga-agent
 sysinv/sysinv
 tsconfig
+config-gate
+workerconfig
+storageconfig
+sysinv/cert-mon
+sysinv/cert-alarm
+sysinv/sysinv-agent
