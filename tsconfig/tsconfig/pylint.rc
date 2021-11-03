@@ -112,9 +112,8 @@ enable=E1603,E1609,E1610,E1602,E1606,E1608,E1607,E1605,E1604,E1601,E1611,W1652,
 # W0702 bare-except
 # W0703 broad except warning
 # W1201 logging-not-lazy
-# W1505: deprecated-method
 # W1618: no-absolute-import
-disable=C, R, W0603, W0612, W0613, W0702, W0703, W1201, W1505, W1618
+disable=C, R, W0603, W0612, W0613, W0702, W0703, W1201, W1618
 
 [REPORTS]
 # Set the output format. Available formats are text, parseable, colorized, msvs
