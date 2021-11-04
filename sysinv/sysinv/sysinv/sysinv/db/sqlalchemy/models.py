@@ -262,7 +262,7 @@ class inode(Base):
 
     forihostid = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
 
-    host = relationship("ihost", backref="nodes", lazy="joined", join_depth=1)
+    host = relationship("ihost", backref="nodes", lazy="joined", cascade="all")
 
     UniqueConstraint('numa_node', 'forihostid', name='u_hostnuma')
 
@@ -369,7 +369,7 @@ class Interfaces(Base):
         join_depth=1)
 
     host = relationship("ihost", backref="interfaces",
-                        lazy="joined", join_depth=1)
+                        lazy="joined", cascade="all")
 
     addresses = relationship("Addresses",
                              backref=backref("interface", lazy="joined"),
@@ -481,10 +481,10 @@ class Ports(Base):
     capabilities = Column(JSONEncodedDict)
     # JSON{'speed':1000,'MTU':9600, 'duplex':'', 'autonegotiation':'false'}
 
-    node = relationship("inode", backref="ports", lazy="joined", join_depth=1)
-    host = relationship("ihost", backref="ports", lazy="joined", join_depth=1)
+    node = relationship("inode", backref="ports", lazy="joined", cascade="all")
+    host = relationship("ihost", backref="ports", lazy="joined", cascade="all")
     interface = relationship("Interfaces", backref="port",
-                             lazy="joined", join_depth=1)
+                             lazy="joined", cascade="all")
 
     UniqueConstraint('pciaddr', 'dev_id', 'host_id', name='u_pciaddrdevihost')
 
@@ -798,8 +798,8 @@ class PtpInstances(Base):
     # capabilities not used yet: JSON{'':"", '':''}
     capabilities = Column(JSONEncodedDict)
 
-    host = relationship("ihost", backref="ptp_instances", lazy="joined",
-                        join_depth=1)
+    host = relationship("ihost", backref="ptp_instance", lazy="joined",
+                        cascade="all")
 
 
 class PtpInterfaces(Base):
@@ -811,15 +811,16 @@ class PtpInterfaces(Base):
     interface_id = Column(Integer,
                           ForeignKey('interfaces.id', ondelete='CASCADE'))
     ptp_instance_id = Column(Integer,
-                             ForeignKey('ptp_instances.id', ondelete='CASCADE'))
+                             ForeignKey('ptp_instances.id',
+                                        ondelete='CASCADE'))
 
     # capabilities not used yet: JSON{'':"", '':''}
     capabilities = Column(JSONEncodedDict)
 
-    interface = relationship("Interfaces", backref="ptp_interfaces",
-                             lazy="joined", join_depth=1)
-    ptp_instance = relationship("PtpInstances", backref="ptp_interfaces",
-                                lazy="joined", join_depth=1)
+    interface = relationship("Interfaces", backref="ptp_interface",
+                             lazy="joined", cascade="all")
+    ptp_instance = relationship("PtpInstances", backref="ptp_interface",
+                                lazy="joined", cascade="all")
 
 
 class PtpParameters(Base):
@@ -829,10 +830,25 @@ class PtpParameters(Base):
     uuid = Column(String(UUID_LENGTH), unique=True)
 
     name = Column(String(255), nullable=False)
-    value = Column(String(255), nullable=False)
+    value = Column(String(255))
 
-    # Either a "PtpInstance" or "PtpInterface" uuid:
-    foreign_uuid = Column(String(UUID_LENGTH))
+    type = Column(String(255))
+    foreign_uuid = Column(String(UUID_LENGTH), nullable=False)
+
+    ptp_instance = relationship(
+        "PtpInstances",
+        primaryjoin="PtpParameters.foreign_uuid == foreign(PtpInstances.uuid)",
+        lazy="subquery",
+        cascade="all")
+
+    ptp_interface = relationship(
+        "PtpInterfaces",
+        primaryjoin="PtpParameters.foreign_uuid == "
+                    "foreign(PtpInterfaces.uuid)",
+        lazy="subquery",
+        cascade="all")
+
+    UniqueConstraint('name', 'foreign_uuid', name='u_paramnameforeign')
 
 
 class StorageTier(Base):

@@ -2141,6 +2141,7 @@ class Connection(object):
                         {
                          'name': 'domain',
                          'value': '24',
+                         'type': 'ptp-instance',
                          'foreign_uuid': 'c2abca03-2f33-413e-b60d-85133a4a37b6'
                         }
         :returns: A PTP parameter.
@@ -2177,18 +2178,35 @@ class Connection(object):
         """
 
     @abc.abstractmethod
-    def ptp_parameters_get_by_foreign_uuid(self, uuid, limit=None, marker=None,
-                                           sort_key=None, sort_dir=None):
-        """Returns a list of PTP parameters for a given foreign UUID.
+    def ptp_parameters_get_by_type(self, type, limit=None, marker=None,
+                                   sort_key=None, sort_dir=None):
+        """Returns a list of all PTP parameters for a given owner type.
 
-        :param uuid: The uuid of a PTP instance or PTP interface association.
+        :param type: Type of the parameter owner (either 'ptp-instance' or
+                     'ptp-interface')
         :param limit: Maximum number of PTP parameters to return.
         :param marker: The last item of the previous page; we return the next
                        result set.
         :param sort_key: Attribute by which results should be sorted
         :param sort_dir: direction in which results should be sorted
                          (asc, desc)
-        :returns: A list of PTP parameters.
+        :returns: A list of PTP parameters for a specific owner type.
+        """
+
+    @abc.abstractmethod
+    def ptp_parameters_get_by_owner(self, uuid, limit=None, marker=None,
+                                    sort_key=None, sort_dir=None):
+        """Returns a list of the PTP parameters for a given owner identified by
+        its UUID.
+
+        :param uuid: UUID of the parameter owner.
+        :param limit: Maximum number of PTP parameters to return.
+        :param marker: The last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted
+        :param sort_dir: direction in which results should be sorted
+                         (asc, desc)
+        :returns: A list of PTP parameters of the specified owner.
         """
 
     @abc.abstractmethod

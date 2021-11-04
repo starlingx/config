@@ -6,9 +6,36 @@
 #
 ########################################################################
 
+from sysinv.common import constants
 from sysinv.db import api as db_api
 from sysinv.objects import base
 from sysinv.objects import utils
+
+
+def get_owner(field, db_object):
+    owner = {}
+    """Retrieves the owner details based on type and uuid."""
+    if db_object['type'] == constants.PTP_PARAMETER_OWNER_INSTANCE:
+        ptp_instances = getattr(db_object, 'ptp_instance')
+        if ptp_instances:
+            owner['name'] = ptp_instances[0].name
+            owner['type'] = ptp_instances[0].service
+            host = getattr(ptp_instances[0], 'host')
+            if host:
+                owner['hostname'] = host.hostname
+
+    elif db_object['type'] == constants.PTP_PARAMETER_OWNER_INTERFACE:
+        ptp_interfaces = getattr(db_object, 'ptp_interface')
+        if ptp_interfaces:
+            interface = getattr(ptp_interfaces[0], 'interface')
+            if interface:
+                owner['name'] = interface.ifname
+                owner['type'] = interface.iftype
+                host = getattr(interface, 'host')
+                if host:
+                    owner['hostname'] = host.hostname
+
+    return owner
 
 
 class PtpParameter(base.SysinvObject):
@@ -22,10 +49,14 @@ class PtpParameter(base.SysinvObject):
             'name': utils.str_or_none,
             'value': utils.str_or_none,
 
-            'foreign_uuid': utils.str_or_none
+            'type': utils.str_or_none,
+            'foreign_uuid': utils.str_or_none,
+
+            'owner': dict
              }
 
     _foreign_fields = {
+        'owner': get_owner
     }
 
     @base.remotable_classmethod

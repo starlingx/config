@@ -2030,6 +2030,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
             'uuid': 'String',
             'name': 'String',
             'value': 'String',
+            'type': 'String',
             'foreign_uuid': 'String',
         }
         for column, column_type in ptp_parameters_columns.items():

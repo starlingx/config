@@ -81,12 +81,12 @@ class TestCreatePtpInterface(BasePtpInterfaceTestCase):
 
         self.test_instance = dbutils.create_test_ptp_instance(
             name='testInstance',
-            service='ptp4l',
+            service=constants.PTP_INSTANCE_TYPE_PTP4L,
             host_id=self.controller.id)
 
     def _create_ptp_interface_success(self, interface_uuid, ptp_instance_uuid):
         ptp_interface_db = self.get_post_object(interface_uuid,
-                                               ptp_instance_uuid)
+                                                ptp_instance_uuid)
         response = self.post_json(self.API_PREFIX, ptp_interface_db,
                                   headers=self.API_HEADERS)
         self.assertEqual('application/json', response.content_type)
@@ -125,7 +125,7 @@ class TestCreatePtpInterface(BasePtpInterfaceTestCase):
 
     def test_create_ptp_interface_duplicate(self):
         self._create_ptp_interface_success(self.test_interface.uuid,
-                                    self.test_instance.uuid)
+                                           self.test_instance.uuid)
 
         self._create_ptp_interface_failed(
             interface_uuid=self.test_interface.uuid,
@@ -145,16 +145,17 @@ class TestGetPtpInterface(BasePtpInterfaceTestCase):
 
         self.test_instance = dbutils.create_test_ptp_instance(
             name='testInstance',
-            service='ptp4l',
+            service=constants.PTP_INSTANCE_TYPE_PTP4L,
             host_id=self.controller.id)
 
         self.test_ptp_interface = dbutils.create_test_ptp_interface(
-                                            interface_id=self.test_interface.id,
-                                            ptp_instance_id=self.test_instance.id)
+            interface_id=self.test_interface.id,
+            ptp_instance_id=self.test_instance.id)
 
     def test_get_ptp_interface_found(self):
 
-        response = self.get_json(self.get_single_url(self.test_ptp_interface.uuid))
+        response = self.get_json(
+            self.get_single_url(self.test_ptp_interface.uuid))
         self.assertIn(self.COMMON_FIELD, response)
 
     def test_get_ptp_interface_not_found(self):
@@ -185,7 +186,7 @@ class TestListPtpInterface(BasePtpInterfaceTestCase):
 
         self.test_instance_ptp4l = dbutils.create_test_ptp_instance(
             name='ptp4lInstance',
-            service='ptp4l',
+            service=constants.PTP_INSTANCE_TYPE_PTP4L,
             host_id=self.worker.id)
 
         self.test_instance_phc2sys = dbutils.create_test_ptp_instance(
@@ -194,28 +195,30 @@ class TestListPtpInterface(BasePtpInterfaceTestCase):
             host_id=self.worker.id)
 
         self.ptp4l_ptp_interface = dbutils.create_test_ptp_interface(
-                                                interface_id=self.test_interface.id,
-                                                ptp_instance_id=self.test_instance_ptp4l.id)
+            interface_id=self.test_interface.id,
+            ptp_instance_id=self.test_instance_ptp4l.id)
         self.phc2sys_ptp_interface = dbutils.create_test_ptp_interface(
-                                                interface_id=self.test_interface.id,
-                                                ptp_instance_id=self.test_instance_phc2sys.id)
+            interface_id=self.test_interface.id,
+            ptp_instance_id=self.test_instance_phc2sys.id)
         self.dummy_ptp_interface = dbutils.create_test_ptp_interface(
-                                                interface_id=self.dummy_interface.id,
-                                                ptp_instance_id=self.test_instance_ptp4l.id)
+            interface_id=self.dummy_interface.id,
+            ptp_instance_id=self.test_instance_ptp4l.id)
 
     def test_list_ptp_interface_host(self):
         response = self.get_json(self.get_host_scoped_url(self.worker.uuid))
         for result in response[self.RESULT_KEY]:
             self.assertEqual(self.worker.id, result['forihostid'])
             if result['uuid'] == self.ptp4l_ptp_interface.uuid \
-                                 or result['uuid'] == self.dummy_interface.uuid:
-                self.assertEqual(self.test_instance_ptp4l.id, result['ptp_instance_id'])
+               or result['uuid'] == self.dummy_interface.uuid:
+                self.assertEqual(self.test_instance_ptp4l.id,
+                                 result['ptp_instance_id'])
             elif result['uuid'] == self.phc2sys_ptp_interface.uuid:
-                self.assertEqual(self.test_instance_phc2sys.id, result['ptp_instance_id'])
+                self.assertEqual(self.test_instance_phc2sys.id,
+                                 result['ptp_instance_id'])
 
     def test_list_ptp_interface_interface(self):
-        response = self.get_json(self.get_host_scoped_url_interface(self.worker.uuid,
-                                                                    self.test_interface.uuid))
+        response = self.get_json(self.get_host_scoped_url_interface(
+            self.worker.uuid, self.test_interface.uuid))
         for result in response[self.RESULT_KEY]:
             self.assertIn(self.COMMON_FIELD, result)
             self.assertNotIn(self.dummy_interface.uuid, result)
@@ -243,25 +246,39 @@ class TestDeletePtpInterface(BasePtpInterfaceTestCase):
 
         self.test_instance_ptp4l = dbutils.create_test_ptp_instance(
             name='ptp4lInstance',
-            service='ptp4l',
+            service=constants.PTP_INSTANCE_TYPE_PTP4L,
             host_id=self.worker.id)
 
         self.test_ptp_interface = dbutils.create_test_ptp_interface(
-                                            interface_id=self.test_interface.id,
-                                            ptp_instance_id=self.test_instance_ptp4l.id)
+            interface_id=self.test_interface.id,
+            ptp_instance_id=self.test_instance_ptp4l.id)
 
     def test_delete_ptp_interface(self):
-        response = self.delete(self.get_single_url(self.test_ptp_interface.uuid),
-                               headers=self.API_HEADERS)
+        response = self.delete(
+            self.get_single_url(self.test_ptp_interface.uuid),
+            headers=self.API_HEADERS)
         self.assertEqual(response.status_code, http_client.NO_CONTENT)
 
-        error_message = 'No PTP interface with id %s found' % self.test_ptp_interface.uuid
-        response = self.get_json(self.get_single_url(self.test_ptp_interface.uuid),
-                                 expect_errors=True)
+        error_message = \
+            'No PTP interface with id %s found' % self.test_ptp_interface.uuid
+        response = self.get_json(
+            self.get_single_url(self.test_ptp_interface.uuid),
+            expect_errors=True)
         self.assertEqual('application/json', response.content_type)
         self.assertEqual(response.status_code, http_client.NOT_FOUND)
         self.assertIn(error_message, response.json['error_message'])
 
     def test_delete_ptp_interface_with_parameters_failed(self):
-        # TODO: implement when PTP parameters API is available
-        pass
+        ptp_parameter = dbutils.create_test_ptp_parameter(
+            name='fake-param', value='fake-value',
+            type=constants.PTP_PARAMETER_OWNER_INTERFACE,
+            foreign_uuid=self.test_ptp_interface.uuid)
+        self.assertEqual(self.test_ptp_interface.uuid,
+                         ptp_parameter['foreign_uuid'])
+
+        response = self.delete(
+            self.get_single_url(self.test_ptp_interface.uuid),
+            headers=self.API_HEADERS, expect_errors=True)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn('has PTP parameter', response.json['error_message'])

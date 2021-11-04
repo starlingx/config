@@ -1178,6 +1178,43 @@ def add_deviceimage_filter(query, value):
         return add_identity_filter(query, value, use_name=True)
 
 
+def add_ptp_instance_filter_by_host(query, hostid):
+    """Adds a ptp-instance-specific ihost filter to a query.
+
+    Filters results by host id if supplied value is an integer,
+    otherwise attempts to filter results by host uuid.
+
+    :param query: Initial query to add filter to.
+    :param hostid: host id or uuid to filter results by.
+    :return: Modified query.
+    """
+    if utils.is_int_like(hostid):
+        return query.filter_by(host_id=hostid)
+    elif utils.is_uuid_like(hostid):
+        query = query.join(models.ihost)
+        return query.filter(models.ihost.uuid == hostid)
+
+    LOG.debug("ptp_instance_filter_by_host: "
+              "No match for supplied filter id (%s)" % str(hostid))
+
+
+def add_ptp_parameter_filter_by_owner(query, type, uuid):
+    if type == constants.PTP_PARAMETER_OWNER_INSTANCE:
+        query = query.join(models.PtpInstances,
+                           models.PtpInstances.uuid == uuid)
+    elif type == constants.PTP_PARAMETER_OWNER_INTERFACE:
+        query = (query.join(models.PtpInterfaces,
+                            models.PtpInterfaces.uuid == uuid)
+                 .join(models.Interfaces, models.Interfaces.id ==
+                       models.PtpInterfaces.interface_id))
+    else:
+        LOG.error("ptp_parameter_filter_by_owner: "
+                  "Invalid owner type (%s)" % type)
+        raise exception.Invalid()
+
+    return query
+
+
 class Connection(api.Connection):
     """SqlAlchemy connection."""
 
@@ -3758,7 +3795,7 @@ class Connection(api.Connection):
         query = model_query(models.PtpInstances)
         if name is not None:
             query = query.filter_by(name=name)
-        if service is not None:
+        elif service is not None:
             query = query.filter_by(service=service)
         try:
             return query.one()
@@ -3775,10 +3812,8 @@ class Connection(api.Connection):
     @objects.objectify(objects.ptp_instance)
     def ptp_instances_get_by_ihost(self, ihost_id, limit=None, marker=None,
                                    sort_key=None, sort_dir=None):
-        # ihost_get() to raise an exception if the ihost is not found
-        ihost_obj = self.ihost_get(ihost_id)
         query = model_query(models.PtpInstances)
-        query = query.filter_by(host_id=ihost_obj.id)
+        query = add_ptp_instance_filter_by_host(query, ihost_id)
         return _paginate_query(models.PtpInstances, limit, marker,
                                sort_key, sort_dir, query)
 
@@ -3968,20 +4003,32 @@ class Connection(api.Connection):
                                sort_key, sort_dir, query)
 
     @objects.objectify(objects.ptp_parameter)
-    def ptp_parameters_get_by_foreign_uuid(self, uuid, limit=None, marker=None,
-                                           sort_key=None, sort_dir=None):
-        # Look for foreign UUID in PTP instances first, then in PTP interfaces
-        # if not found
-        try:
-            foreign_obj = self.ptp_instance_get(uuid)
-        except exception.PtpInstanceNotFound:
-            try:
-                foreign_obj = self.ptp_interface_get(uuid)
-            except exception.PtpInterfaceNotFound:
-                raise exception.NotFound()
-
+    def ptp_parameters_get_by_type(self, type, limit=None, marker=None,
+                                   sort_key=None, sort_dir=None):
         query = model_query(models.PtpParameters)
-        query = query.filter_by(foreign_uuid=foreign_obj.uuid)
+        query = query.filter_by(type=type)
+        return _paginate_query(models.PtpParameters, limit, marker,
+                               sort_key, sort_dir, query)
+
+    def _ptp_parameter_get_type(self, uuid):
+        type = None
+        query = model_query(models.PtpParameters)
+        query = query.filter_by(foreign_uuid=uuid)
+        ptp_parameter_object = query.first()
+        if ptp_parameter_object:
+            type = ptp_parameter_object.type
+
+        return type
+
+    @objects.objectify(objects.ptp_parameter)
+    def ptp_parameters_get_by_owner(self, uuid, limit=None, marker=None,
+                                    sort_key=None, sort_dir=None):
+        type = self._ptp_parameter_get_type(uuid)
+        if not type:
+            return []
+        query = model_query(models.PtpParameters)
+        query = query.filter_by(foreign_uuid=uuid)
+        query = add_ptp_parameter_filter_by_owner(query, type, uuid)
         return _paginate_query(models.PtpParameters, limit, marker,
                                sort_key, sort_dir, query)
 

@@ -71,6 +71,7 @@ from cgtsclient.v1 import port
 from cgtsclient.v1 import ptp
 from cgtsclient.v1 import ptp_instance
 from cgtsclient.v1 import ptp_interface
+from cgtsclient.v1 import ptp_parameter
 from cgtsclient.v1 import registry_image
 from cgtsclient.v1 import remotelogging
 from cgtsclient.v1 import restore
@@ -122,6 +123,7 @@ class Client(http.HTTPClient):
         self.ptp = ptp.ptpManager(self)
         self.ptp_instance = ptp_instance.PtpInstanceManager(self)
         self.ptp_interface = ptp_interface.PtpInterfaceManager(self)
+        self.ptp_parameter = ptp_parameter.PtpParameterManager(self)
         self.iextoam = iextoam.iextoamManager(self)
         self.controller_fs = controller_fs.ControllerFsManager(self)
         self.storage_backend = storage_backend.StorageBackendManager(self)

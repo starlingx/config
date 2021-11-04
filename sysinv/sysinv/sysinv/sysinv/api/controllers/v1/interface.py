@@ -46,6 +46,7 @@ from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1 import interface_network
 from sysinv.api.controllers.v1 import interface_datanetwork
+from sysinv.api.controllers.v1 import ptp_parameter
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
@@ -301,6 +302,9 @@ class InterfaceController(rest.RestController):
 
     routes = route.RouteController(parent="iinterfaces")
     "Expose routes as a sub-element of interface"
+
+    ptp_parameters = ptp_parameter.PtpParameterController(parent="iinterface")
+    "Expose PTP parameters as a sub-element of interface"
 
     interface_networks = interface_network.InterfaceNetworkController(
         parent="iinterfaces")

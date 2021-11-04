@@ -447,6 +447,29 @@ class BaseHostTestCase(BaseSystemTestCase):
             index = index + 1
         return ifaces
 
+    def _create_test_ptp_instance(self, host):
+        services = [constants.PTP_INSTANCE_TYPE_PTP4L,
+                    constants.PTP_INSTANCE_TYPE_PHC2SYS]
+        names = [constants.PTP_INSTANCE_DEFAULT_PTP4L,
+                 constants.PTP_INSTANCE_DEFAULT_PHC2SYS]
+        ptp_instances = []
+        for svc, nm in zip(services, names):
+            instance = dbutils.create_test_ptp_instance(
+                name=nm, service=svc, host_id=host['id'])
+            ptp_instances.append(instance)
+        return ptp_instances
+
+    def _create_test_ptp_interface(self,
+                                   ptp_instances,
+                                   platform_interfaces):
+        ptp_interfaces = []
+        for ptp_instance in ptp_instances:
+            ptp_interface = dbutils.create_test_ptp_interface(
+                ptp_instance_id=ptp_instance['id'],
+                interface_id=platform_interfaces[0]['id'])
+            ptp_interfaces.append(ptp_interface)
+        return ptp_interfaces
+
 
 class ControllerHostTestCase(BaseHostTestCase):
 

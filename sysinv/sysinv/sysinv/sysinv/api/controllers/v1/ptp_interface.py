@@ -9,6 +9,7 @@
 import pecan
 from pecan import rest
 import six
+import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
@@ -206,8 +207,20 @@ class PtpInterfaceController(rest.RestController):
     def delete(self, ptp_interface_uuid):
         """Delete a PTP interface."""
         try:
-            ptp_interface = objects.ptp_interface.get_by_uuid(pecan.request.context,
-                                                              ptp_interface_uuid)
+            ptp_interface = objects.ptp_interface.get_by_uuid(
+                pecan.request.context, ptp_interface_uuid)
         except exception.PtpInterfaceNotFound:
             raise
+
+        # Only allow delete if there are no associated parameters
+        parameters = pecan.request.dbapi.ptp_parameters_get_by_owner(
+            ptp_interface_uuid)
+        if parameters:
+            names = [str(p['name']) for p in parameters]
+            raise wsme.exc.ClientSideError(
+                "PTP interface %s has PTP parameter(s): %s"
+                % (ptp_interface_uuid, names))
+
+        LOG.debug("PtpInterfaceController.delete: all clear for %s" %
+                  ptp_interface_uuid)
         pecan.request.dbapi.ptp_interface_destroy(ptp_interface.uuid)

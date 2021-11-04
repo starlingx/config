@@ -13,7 +13,7 @@
 # from datetime import datetime
 
 from sqlalchemy import Integer, String, DateTime, Text
-from sqlalchemy import Column, MetaData, Table, ForeignKey
+from sqlalchemy import Column, MetaData, Table, ForeignKey, UniqueConstraint
 
 from sysinv.db.sqlalchemy.models import UUID_LENGTH
 
@@ -101,9 +101,12 @@ def upgrade(migrate_engine):
         Column('id', Integer, primary_key=True, nullable=False),
         Column('uuid', String(UUID_LENGTH), unique=True),
 
-        Column('name', String(255)),
+        Column('name', String(255), nullable=False),
         Column('value', String(255)),
-        Column('foreign_uuid', String(UUID_LENGTH)),
+        Column('type', String(255)),
+        Column('foreign_uuid', String(UUID_LENGTH), nullable=False),
+
+        UniqueConstraint('name', 'foreign_uuid', name='u_paramnameforeign'),
 
         mysql_engine=ENGINE,
         mysql_charset=CHARSET,
