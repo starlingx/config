@@ -455,7 +455,9 @@ class KubeRootCAUpdateController(rest.RestController):
 
         force = force == 'True'
         alarm_ignore_list = body.get('alarm_ignore_list', [])
-        alarm_ignore_list.append(fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_ABORTED)
+        alarm_ignore_list.extend([
+            fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_ABORTED,
+            fm_constants.FM_ALARM_ID_CERT_EXPIRING_SOON])
 
         try:
             update = pecan.request.dbapi.kube_rootca_update_get_one()
@@ -591,7 +593,8 @@ class KubeRootCAUpdateController(rest.RestController):
             "kube-rootca-update-complete",
             alarm_ignore_list=[
                 fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_IN_PROGRESS,
-                fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_AUTO_APPLY_INPROGRESS],
+                fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_AUTO_APPLY_INPROGRESS,
+                fm_constants.FM_ALARM_ID_CERT_EXPIRING_SOON],
             force=force,
         )
 
