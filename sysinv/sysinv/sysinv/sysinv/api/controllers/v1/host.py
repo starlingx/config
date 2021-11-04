@@ -87,7 +87,7 @@ from sysinv.api.controllers.v1 import interface_datanetwork
 from sysinv.api.controllers.v1 import vim_api
 from sysinv.api.controllers.v1 import patch_api
 from sysinv.api.controllers.v1 import ptp_instance
-
+from sysinv.api.controllers.v1 import ptp_interface
 from sysinv.common import ceph
 from sysinv.common import constants
 from sysinv.common import device
@@ -1130,6 +1130,9 @@ class HostController(rest.RestController):
 
     ptp_instances = ptp_instance.PtpInstanceController(from_ihosts=True)
     "Expose PTP instance as a sub-element of ihosts"
+
+    ptp_interfaces = ptp_interface.PtpInterfaceController(from_ihosts=True)
+    "Expose PTP interface as a sub-element of ihosts"
 
     _custom_actions = {
         'detail': ['GET'],
@@ -6470,12 +6473,12 @@ class HostController(rest.RestController):
         if ihost['clock_synchronization'] == constants.PTP:
             # Ensure we have at least one PTP interface
             host_interfaces = pecan.request.dbapi.iinterface_get_by_ihost(host_uuid)
-            ptp_interfaces = []
+            ptp_ifaces = []
             for interface in host_interfaces:
                 if interface.ptp_role != constants.INTERFACE_PTP_ROLE_NONE:
-                    ptp_interfaces.append(interface)
+                    ptp_ifaces.append(interface)
 
-            if not ptp_interfaces:
+            if not ptp_ifaces:
                 raise wsme.exc.ClientSideError(
                     _("Hosts with PTP clock synchronization must have at least one PTP interface configured"))
 
@@ -6486,8 +6489,8 @@ class HostController(rest.RestController):
                 address_interfaces = set()
                 for address in addresses:
                     address_interfaces.add(address.ifname)
-                for ptp_interface in ptp_interfaces:
-                    if ptp_interface.ifname not in address_interfaces:
+                for ptp_if in ptp_ifaces:
+                    if ptp_if.ifname not in address_interfaces:
                         raise wsme.exc.ClientSideError(
                             _("All PTP interfaces must have an associated address when PTP transport is UDP"))
 

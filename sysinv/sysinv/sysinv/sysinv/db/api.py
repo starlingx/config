@@ -2035,6 +2035,23 @@ class Connection(object):
         """
 
     @abc.abstractmethod
+    def ptp_interfaces_get_by_host(self, host_uuid, limit=None,
+                                   marker=None, sort_key=None,
+                                   sort_dir=None):
+
+        """Returns a list of the PTP associations for a given host.
+
+        :param host_uuid: The id or uuid of a host.
+        :param limit: Maximum number of PTP associations to return.
+        :param marker: The last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted
+        :param sort_dir: direction in which results should be sorted
+                         (asc, desc)
+        :returns: A list of PTP associations (instances) for the host
+        """
+
+    @abc.abstractmethod
     def ptp_interfaces_get_by_interface(self, interface_id, limit=None,
                                         marker=None, sort_key=None,
                                         sort_dir=None):
@@ -2064,6 +2081,25 @@ class Connection(object):
         :param sort_dir: direction in which results should be sorted
                          (asc, desc)
         :returns: A list of PTP associations (interfaces) for the PTP instance.
+        """
+
+    @abc.abstractmethod
+    def ptp_interfaces_get_by_instance_and_interface(self, ptp_instance_id,
+                                                     interface_id,
+                                                     limit=None,
+                                                     marker=None,
+                                                     sort_key=None,
+                                                     sort_dir=None):
+        """Returns a list of one PTP interface for a given instance and interface.
+
+        :param ptp_instance_id: The id of a PTP instance.
+        :param interface_id: The UUID of the underlying interface.
+        :param marker: The last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted
+        :param sort_dir: direction in which results should be sorted
+                         (asc, desc)
+        :returns: A list of PTP interfaces with the given instance and interface.
         """
 
     @abc.abstractmethod

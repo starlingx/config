@@ -3815,7 +3815,6 @@ class Connection(api.Connection):
     def _ptp_interface_get(self, ptp_interface_id):
         query = model_query(models.PtpInterfaces)
         query = add_identity_filter(query, ptp_interface_id)
-
         try:
             return query.one()
         except NoResultFound:
@@ -3825,7 +3824,8 @@ class Connection(api.Connection):
     def ptp_interface_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
-        ptp_interface = models.PtpInterfaces(**values)
+        ptp_interface = models.PtpInterfaces()
+        ptp_interface.update(values)
         with _session_for_write() as session:
             try:
                 session.add(ptp_interface)
@@ -3854,6 +3854,18 @@ class Connection(api.Connection):
                                sort_key, sort_dir, query)
 
     @objects.objectify(objects.ptp_interface)
+    def ptp_interfaces_get_by_host(self, host_uuid, limit=None,
+                                   marker=None, sort_key=None,
+                                   sort_dir=None):
+        ihost_obj = self.ihost_get(host_uuid)
+        query = model_query(models.PtpInterfaces)
+        query = (query.join(models.Interfaces).
+                join(models.ihost,
+                     models.ihost.id == models.Interfaces.forihostid))
+        query, field = add_filter_by_many_identities(query, models.ihost, [ihost_obj.uuid])
+        return _paginate_query(models.PtpInterfaces, limit, marker, sort_key, sort_dir, query)
+
+    @objects.objectify(objects.ptp_interface)
     def ptp_interfaces_get_by_interface(self, interface_id, limit=None,
                                         marker=None, sort_key=None,
                                         sort_dir=None):
@@ -3862,6 +3874,21 @@ class Connection(api.Connection):
         iface_obj = self.iinterface_get(interface_id)
         query = model_query(models.PtpInterfaces)
         query = query.filter_by(interface_id=iface_obj.id)
+        return _paginate_query(models.PtpInterfaces, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @objects.objectify(objects.ptp_interface)
+    def ptp_interfaces_get_by_instance_and_interface(self, ptp_instance_id,
+                                                     interface_id,
+                                                     limit=None,
+                                                     marker=None,
+                                                     sort_key=None,
+                                                     sort_dir=None):
+        ptp_instance_obj = self.ptp_instance_get(ptp_instance_id)
+        ptp_interface_obj = self.iinterface_get(interface_id)
+        query = model_query(models.PtpInterfaces)
+        query = query.filter_by(interface_id=ptp_interface_obj.id)
+        query = query.filter_by(ptp_instance_id=ptp_instance_obj.id)
         return _paginate_query(models.PtpInterfaces, limit, marker,
                                sort_key, sort_dir, query)
 

@@ -29,8 +29,8 @@ def do_ptp_instance_list(cc, args):
         ihost = ihost_utils._find_ihost(cc, instance.host_uuid)
         setattr(instance, 'hostname', ihost.hostname)
 
-    field_labels = ['name', 'service', 'hostname']
-    fields = ['name', 'service', 'hostname']
+    field_labels = ['uuid', 'name', 'service', 'hostname']
+    fields = ['uuid', 'name', 'service', 'hostname']
     utils.print_list(ptp_instances, fields, field_labels)
 
 

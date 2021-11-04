@@ -536,6 +536,45 @@ def create_test_ptp(**kw):
     return dbapi.ptp_create(ptp)
 
 
+# Create test ptp_instance object
+def get_test_ptp_instance(**kw):
+    ptp_instance = {
+        'id': kw.get('id'),
+        'uuid': kw.get('uuid'),
+        'name': kw.get('name'),
+        'service': kw.get('service'),
+        'host_id': kw.get('host_id'),
+    }
+    return ptp_instance
+
+
+def create_test_ptp_instance(**kw):
+    ptp_instance = get_test_ptp_instance(**kw)
+    # Let DB generate ID if it isn't specified explicitly
+    if 'id' not in kw:
+        del ptp_instance['id']
+    dbapi = db_api.get_instance()
+    return dbapi.ptp_instance_create(ptp_instance)
+
+
+# Create test ptp_interface object
+def get_test_ptp_interface(**kw):
+    ptp_interface = {
+        'uuid': kw.get('uuid'),
+        'interface_id': kw.get('interface_id'),
+        'ptp_instance_id': kw.get('ptp_instance_id')
+    }
+    return ptp_interface
+
+
+def create_test_ptp_interface(**kw):
+    ptp_interface = get_test_ptp_interface(**kw)
+    if 'uuid' in kw:
+        del ptp_interface['uuid']
+    dbapi = db_api.get_instance()
+    return dbapi.ptp_interface_create(ptp_interface)
+
+
 # Create test dns object
 def get_test_dns(**kw):
     dns = {
