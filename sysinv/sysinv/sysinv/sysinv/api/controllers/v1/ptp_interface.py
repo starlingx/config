@@ -8,6 +8,7 @@
 
 import pecan
 from pecan import rest
+import six
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
@@ -62,6 +63,10 @@ class PtpInterface(base.APIBase):
     ptp_instance_name = wtypes.text
     "The name of the associated PTP instance"
 
+    capabilities = {wtypes.text: utils.ValidTypes(wtypes.text,
+                    six.integer_types)}
+    "Capabilities (metadata) of this PTP interface"
+
     created_at = wtypes.datetime.datetime
 
     def __init__(self, **kwargs):
@@ -82,6 +87,7 @@ class PtpInterface(base.APIBase):
                                                 'ptp_instance_name',
                                                 'ifname',
                                                 'interface_uuid',
+                                                'capabilities',
                                                 'created_at'])
 
         return ptp_interface

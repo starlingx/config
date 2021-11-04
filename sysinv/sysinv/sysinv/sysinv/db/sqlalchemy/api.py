@@ -3904,6 +3904,16 @@ class Connection(api.Connection):
         return _paginate_query(models.PtpInterfaces, limit, marker,
                                sort_key, sort_dir, query)
 
+    @objects.objectify(objects.ptp_interface)
+    def ptp_interface_update(self, ptp_interface_id, values):
+        with _session_for_write() as session:
+            query = model_query(models.PtpInterfaces, session=session)
+            query = add_identity_filter(query, ptp_interface_id)
+            count = query.update(values, synchronize_session='fetch')
+            if count != 1:
+                raise exception.PtpInterfaceNotFound(uuid=ptp_interface_id)
+            return query.one()
+
     def ptp_interface_destroy(self, ptp_interface_id):
         with _session_for_write() as session:
             query = model_query(models.PtpInterfaces, session=session)

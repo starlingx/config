@@ -795,6 +795,9 @@ class PtpInstances(Base):
     host_id = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'),
                      nullable=True)
 
+    # capabilities not used yet: JSON{'':"", '':''}
+    capabilities = Column(JSONEncodedDict)
+
     host = relationship("ihost", backref="ptp_instances", lazy="joined",
                         join_depth=1)
 
@@ -809,6 +812,9 @@ class PtpInterfaces(Base):
                           ForeignKey('interfaces.id', ondelete='CASCADE'))
     ptp_instance_id = Column(Integer,
                              ForeignKey('ptp_instances.id', ondelete='CASCADE'))
+
+    # capabilities not used yet: JSON{'':"", '':''}
+    capabilities = Column(JSONEncodedDict)
 
     interface = relationship("Interfaces", backref="ptp_interfaces",
                              lazy="joined", join_depth=1)

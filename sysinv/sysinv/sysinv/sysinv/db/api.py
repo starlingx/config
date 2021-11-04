@@ -1914,7 +1914,8 @@ class Connection(object):
                         {
                          'name': 'default',
                          'service': 'ptp4l',
-                         'host': 'controller-0'
+                         'host': 'controller-0',
+                         'capabilities': { ... }
                         }
         :returns: A PTP service instance.
         """
@@ -1970,10 +1971,15 @@ class Connection(object):
         """Updates properties of a PTP instance.
 
         :param ptp_instance_id: The id or uuid of a PTP instance.
-        :param values: May be a partial dict containing the items to update
-                        {
-                         'host': 'worker-0'
-                        }
+        :param values: May be a partial list, eg. when setting the
+                       properties for capabilities. For example:
+                       {
+                        'capabilities':
+                            {
+                             'my-field-1': val1,
+                             'my-field-2': val2
+                            }
+                       }
         :returns: A PTP service instance.
         """
 
@@ -2001,6 +2007,7 @@ class Connection(object):
                         {
                          'interface_id': 101,
                          'ptp_instance_id': 10,
+                         'capabilities': { ... }
                         }
         :returns: A PTP interface association.
         """
@@ -2099,7 +2106,23 @@ class Connection(object):
         :param sort_key: Attribute by which results should be sorted
         :param sort_dir: direction in which results should be sorted
                          (asc, desc)
-        :returns: A list of PTP interfaces with the given instance and interface.
+        :returns: A list of PTP interfaces with the given instance and
+                  interface.
+        """
+
+    def ptp_interface_update(self, ptp_interface_id, values):
+        """Updates capabilities of a PTP interface.
+
+        :param ptp_interface_id: The id or uuid of a PTP interface.
+        :param values: May be a partial list. For example:
+                       {
+                        'capabilities':
+                            {
+                             'my-field-1': val1,
+                             'my-field-2': val2
+                            }
+                       }
+        :returns: A PTP interface association.
         """
 
     @abc.abstractmethod
