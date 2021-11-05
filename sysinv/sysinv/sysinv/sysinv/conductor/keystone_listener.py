@@ -66,7 +66,7 @@ def get_transport_url():
     auth_password = keyring.get_password('amqp', 'rabbit')
 
     if utils.is_valid_ipv6(address.address):
-        address = "[%s]" % address
+        address = "[%s]" % address.address
 
     transport_url = "rabbit://guest:%s@%s:5672" % (auth_password, address)
     return transport_url
