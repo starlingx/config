@@ -1998,6 +1998,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
             'name': 'String',
             'service': 'String',
             'host_id': 'Integer',
+            'capabilities': 'Text'
         }
         for column, column_type in ptp_instance_columns.items():
             self.assertTrue(
@@ -2013,6 +2014,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
             'uuid': 'String',
             'interface_id': 'Integer',
             'ptp_instance_id': 'Integer',
+            'capabilities': 'Text'
         }
         for column, column_type in ptp_interface_columns.items():
             self.assertTrue(

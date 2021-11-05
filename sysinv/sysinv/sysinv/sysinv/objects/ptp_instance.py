@@ -23,7 +23,8 @@ class PtpInstance(base.SysinvObject):
             'service': utils.str_or_none,
 
             'host_uuid': utils.str_or_none,
-            'host_id': utils.int_or_none
+            'host_id': utils.int_or_none,
+            'capabilities': utils.dict_or_none
              }
 
     _foreign_fields = {

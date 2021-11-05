@@ -6,6 +6,7 @@
 
 import pecan
 from pecan import rest
+import six
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
@@ -58,6 +59,10 @@ class PtpInstance(base.APIBase):
     service = wtypes.Enum(str, 'ptp4l', 'phc2sys', 'ts2phc')
     "Type of service of the PTP instance"
 
+    capabilities = {wtypes.text: utils.ValidTypes(wtypes.text,
+                    six.integer_types)}
+    "Capabilities (metadata) of this PTP instance"
+
     def __init__(self, **kwargs):
         self.fields = list(objects.ptp_instance.fields.keys())
         for k in self.fields:
@@ -73,6 +78,7 @@ class PtpInstance(base.APIBase):
                                               'host_uuid',
                                               'name',
                                               'service',
+                                              'capabilities',
                                               'created_at'])
 
         # do not expose the id attribute

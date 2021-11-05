@@ -12,7 +12,7 @@
 # import uuid
 # from datetime import datetime
 
-from sqlalchemy import Integer, String, DateTime
+from sqlalchemy import Integer, String, DateTime, Text
 from sqlalchemy import Column, MetaData, Table, ForeignKey
 
 from sysinv.db.sqlalchemy.models import UUID_LENGTH
@@ -62,6 +62,7 @@ def upgrade(migrate_engine):
 
         Column('host_id', Integer,
                ForeignKey('i_host.id', ondelete="CASCADE")),
+        Column('capabilities', Text),
 
         mysql_engine=ENGINE,
         mysql_charset=CHARSET,
@@ -83,6 +84,7 @@ def upgrade(migrate_engine):
                ForeignKey('interfaces.id', ondelete="CASCADE")),
         Column('ptp_instance_id', Integer,
                ForeignKey('ptp_instances.id', ondelete="CASCADE")),
+        Column('capabilities', Text),
 
         mysql_engine=ENGINE,
         mysql_charset=CHARSET,

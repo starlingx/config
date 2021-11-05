@@ -29,6 +29,7 @@ class PtpInterface(base.SysinvObject):
             'ifname': utils.str_or_none,
             'forihostid': utils.int_or_none,
 
+            'capabilities': utils.dict_or_none
              }
 
     _foreign_fields = {
@@ -39,7 +40,6 @@ class PtpInterface(base.SysinvObject):
         'ifname': 'interface:ifname',
         'forihostid': 'interface:forihostid',
         'ptp_instance_host': 'ptp_instance:host_id'
-
     }
 
     @base.remotable_classmethod
