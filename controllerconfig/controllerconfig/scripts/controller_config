@@ -309,7 +309,8 @@ start()
 
     if [ -e $CONFIG_DIR/etcd/etcd-server.key ]
     then
-        cp $CONFIG_DIR/etcd/etcd-server.key /etc/etcd/etcd-server.key
+        cp $CONFIG_DIR/etcd/etcd-server.key /etc/etcd/etcd-server.key &&
+        chmod 600 /etc/etcd/etcd-server.key
         if [ $? -ne 0 ]
         then
             fatal_error "Unable to copy $CONFIG_DIR/etcd/etcd-server.key"
@@ -327,7 +328,8 @@ start()
 
     if [ -e $CONFIG_DIR/etcd/etcd-client.key ]
     then
-        cp $CONFIG_DIR/etcd/etcd-client.key /etc/etcd/etcd-client.key
+        cp $CONFIG_DIR/etcd/etcd-client.key /etc/etcd/etcd-client.key &&
+        chmod 600 /etc/etcd/etcd-client.key
         if [ $? -ne 0 ]
         then
             fatal_error "Unable to copy $CONFIG_DIR/etcd/etcd-client.key"
@@ -345,7 +347,8 @@ start()
 
     if [ -e $CONFIG_DIR/etcd/ca.key ]
     then
-        cp $CONFIG_DIR/etcd/ca.key /etc/etcd/ca.key
+        cp $CONFIG_DIR/etcd/ca.key /etc/etcd/ca.key &&
+        chmod 600 /etc/etcd/ca.key
         if [ $? -ne 0 ]
         then
             fatal_error "Unable to copy $CONFIG_DIR/etcd/ca.key"
@@ -354,7 +357,8 @@ start()
 
     if [ -e $CONFIG_DIR/registry-cert.key ]
     then
-        cp $CONFIG_DIR/registry-cert.key /etc/ssl/private/registry-cert.key
+        cp $CONFIG_DIR/registry-cert.key /etc/ssl/private/registry-cert.key &&
+        chmod 600 /etc/ssl/private/registry-cert.key
         if [ $? -ne 0 ]
         then
             fatal_error "Unable to copy $CONFIG_DIR/registry-cert.key"
