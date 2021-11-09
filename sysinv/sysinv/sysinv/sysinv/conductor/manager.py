@@ -14029,14 +14029,18 @@ class ConductorManager(service.PeriodicService):
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
         # Wait for the manifest to be applied
-        elapsed = 0
-        while elapsed < kubernetes.MANIFEST_APPLY_TIMEOUT:
-            elapsed += kubernetes.MANIFEST_APPLY_INTERVAL
+        LOG.debug("Waiting for config apply on host %s" % host_name)
+        starttime = datetime.utcnow()
+        while ((datetime.utcnow() - starttime).total_seconds() <
+                kubernetes.MANIFEST_APPLY_TIMEOUT):
             greenthread.sleep(kubernetes.MANIFEST_APPLY_INTERVAL)
-            host_obj = objects.host.get_by_uuid(context, host_uuid)
-            if host_obj.config_target == host_obj.config_applied:
-                LOG.info("Config was applied for host %s" % host_name)
-                break
+            try:
+                host_obj = objects.host.get_by_uuid(context, host_uuid)
+                if host_obj.config_target == host_obj.config_applied:
+                    LOG.info("Config was applied for host %s" % host_name)
+                    break
+            except Exception:
+                LOG.exception("Problem getting host info.")
             LOG.debug("Waiting for config apply on host %s" % host_name)
         else:
             LOG.warning("Manifest apply failed for host %s" % host_name)
@@ -14049,14 +14053,20 @@ class ConductorManager(service.PeriodicService):
 
         # Wait for the kubelet to start with the new version
         kube_operator = kubernetes.KubeOperator()
-        elapsed = 0
-        while elapsed < kubernetes.POD_START_TIMEOUT:
-            elapsed += kubernetes.POD_START_INTERVAL
+        LOG.debug("Waiting for kubelet update on host %s" % host_name)
+        starttime = datetime.utcnow()
+        while ((datetime.utcnow() - starttime).total_seconds() <
+                kubernetes.POD_START_TIMEOUT):
             greenthread.sleep(kubernetes.POD_START_INTERVAL)
-            kubelet_versions = kube_operator.kube_get_kubelet_versions()
-            if kubelet_versions.get(host_name, None) == target_version:
-                LOG.info("Kubelet was updated for host %s" % host_name)
-                break
+            try:
+                # If we can't talk to the Kubernetes API we still want to
+                # hit the else clause below on timeout.
+                kubelet_versions = kube_operator.kube_get_kubelet_versions()
+                if kubelet_versions.get(host_name, None) == target_version:
+                    LOG.info("Kubelet was updated for host %s" % host_name)
+                    break
+            except Exception:
+                LOG.exception("Problem getting kubelet versions.")
             LOG.debug("Waiting for kubelet update on host %s" % host_name)
         else:
             LOG.warning("Kubelet upgrade failed for host %s" % host_name)
