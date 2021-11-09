@@ -15,8 +15,10 @@ from oslo_log import log
 from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
+from sysinv.api.controllers.v1 import ptp_parameter
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
+from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv import objects
@@ -53,10 +55,16 @@ class PtpInstance(base.APIBase):
     host_uuid = types.uuid
     "UUID of the host the PTP instance is associated to"
 
+    hostname = wtypes.text
+    "Name of the host the PTP instance is associated to"
+
     name = wtypes.text
     "Name given to the PTP instance"
 
-    service = wtypes.Enum(str, 'ptp4l', 'phc2sys', 'ts2phc')
+    service = wtypes.Enum(str,
+                          constants.PTP_INSTANCE_TYPE_PTP4L,
+                          constants.PTP_INSTANCE_TYPE_PHC2SYS,
+                          constants.PTP_INSTANCE_TYPE_TS2PHC)
     "Type of service of the PTP instance"
 
     capabilities = {wtypes.text: utils.ValidTypes(wtypes.text,
@@ -76,6 +84,7 @@ class PtpInstance(base.APIBase):
         if not expand:
             ptp_instance.unset_fields_except(['uuid',
                                               'host_uuid',
+                                              'hostname',
                                               'name',
                                               'service',
                                               'capabilities',
@@ -114,11 +123,15 @@ LOCK_NAME = 'PtpInstanceController'
 class PtpInstanceController(rest.RestController):
     """REST controller for PTP instance."""
 
+    ptp_parameters = ptp_parameter.PtpParameterController(
+        parent="ptp_instance")
+    "Expose PTP parameters as a sub-element of PTP instances"
+
     def __init__(self, from_ihosts=False):
         self._from_ihosts = from_ihosts
 
     def _get_ptp_instance_collection(
-            self, host_uuid, marker=None, limit=None, sort_key=None,
+            self, host_uuid=None, marker=None, limit=None, sort_key=None,
             sort_dir=None, expand=False, resource_url=None):
         LOG.debug("PtpInstanceController._get_ptp_instance_collection: "
                   "from_ihosts %s host_uuid %s" % (self._from_ihosts,
@@ -186,6 +199,13 @@ class PtpInstanceController(rest.RestController):
         ptp_instance_dict = ptp_instance.as_dict()
         LOG.debug("PtpInstanceController.post: %s" % ptp_instance_dict)
 
+        # Get rid of hostname (if any) to create the PTP instance
+        try:
+            ptp_instance_dict.pop('hostname')
+        except KeyError:
+            LOG.debug("PtpInstanceController.post: no hostname in %s" %
+                      ptp_instance_dict)
+
         # Replace host UUID by host ID
         host_uuid = ptp_instance_dict.pop('host_uuid')
         try:
@@ -195,8 +215,8 @@ class PtpInstanceController(rest.RestController):
             raise wsme.exc.ClientSideError(msg)
 
         ptp_instance_dict['host_id'] = ihost_obj['id']
-        result = pecan.request.dbapi.ptp_instance_create(ptp_instance_dict)
-        return PtpInstance.convert_with_links(result)
+        return PtpInstance.convert_with_links(
+            pecan.request.dbapi.ptp_instance_create(ptp_instance_dict))
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
@@ -208,14 +228,24 @@ class PtpInstanceController(rest.RestController):
 
         # Only allow delete if there are no associated interfaces and
         # parameters
-        parameters = pecan.request.dbapi.ptp_parameters_get_by_foreign_uuid(
+        parameters = pecan.request.dbapi.ptp_parameters_get_by_owner(
             ptp_instance_uuid)
-        interfaces = pecan.request.dbapi.ptp_interfaces_get_by_instance(
-            ptp_instance_uuid)
-        if parameters or interfaces:
+        if parameters:
+            names = [str(p['name']) for p in parameters]
             raise wsme.exc.ClientSideError(
-                _("PTP instance %s has still parameters or associated "
-                  "interfaces. Check both ptp-interfaces and ptp-parameters.")
-                % ptp_instance_uuid)
+                "PTP instance %s is still associated with PTP parameter(s): %s"
+                % (ptp_instance_uuid, names))
 
+        ptp_instance_obj = objects.ptp_instance.get_by_uuid(
+            pecan.request.context, ptp_instance_uuid)
+        interfaces = pecan.request.dbapi.ptp_interfaces_get_by_instance(
+            ptp_instance_obj.id)
+        if interfaces:
+            names = [str(i['ifname']) for i in interfaces]
+            raise wsme.exc.ClientSideError(
+                "PTP instance %s is still associated with PTP interface(s): %s"
+                % (ptp_instance_uuid, names))
+
+        LOG.debug("PtpInstanceController.delete: all clear for %s" %
+                  ptp_instance_uuid)
         pecan.request.dbapi.ptp_instance_destroy(ptp_instance_uuid)

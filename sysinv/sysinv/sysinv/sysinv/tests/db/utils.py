@@ -536,25 +536,27 @@ def create_test_ptp(**kw):
     return dbapi.ptp_create(ptp)
 
 
-# Create test ptp_instance object
+# Utility functions to create a PTP instance for testing
 def get_test_ptp_instance(**kw):
-    ptp_instance = {
+    instance = {
         'id': kw.get('id'),
         'uuid': kw.get('uuid'),
-        'name': kw.get('name'),
-        'service': kw.get('service'),
-        'host_id': kw.get('host_id'),
+        'name': kw.get('name', None),
+        'service': kw.get('service', constants.PTP_INSTANCE_TYPE_PTP4L),
+        'host_id': kw.get('host_id', None)
     }
-    return ptp_instance
+    return instance
 
 
 def create_test_ptp_instance(**kw):
-    ptp_instance = get_test_ptp_instance(**kw)
-    # Let DB generate ID if it isn't specified explicitly
+    instance = get_test_ptp_instance(**kw)
+    # Let DB generate ID if isn't specified
     if 'id' not in kw:
-        del ptp_instance['id']
+        del instance['id']
+    if 'uuid' in kw:
+        del instance['uuid']
     dbapi = db_api.get_instance()
-    return dbapi.ptp_instance_create(ptp_instance)
+    return dbapi.ptp_instance_create(instance)
 
 
 # Create test ptp_interface object
@@ -573,6 +575,30 @@ def create_test_ptp_interface(**kw):
         del ptp_interface['uuid']
     dbapi = db_api.get_instance()
     return dbapi.ptp_interface_create(ptp_interface)
+
+
+# Utility functions to create a PTP parameter for testing
+def get_test_ptp_parameter(**kw):
+    parameter = {
+        'id': kw.get('id'),
+        'uuid': kw.get('uuid'),
+        'name': kw.get('name', None),
+        'value': kw.get('value', None),
+        'type': kw.get('type', None),
+        'foreign_uuid': kw.get('foreign_uuid', None)
+    }
+    return parameter
+
+
+def create_test_ptp_parameter(**kw):
+    parameter = get_test_ptp_parameter(**kw)
+    # Let DB generate ID if isn't specified
+    if 'id' not in kw:
+        del parameter['id']
+    if 'uuid' in kw:
+        del parameter['uuid']
+    dbapi = db_api.get_instance()
+    return dbapi.ptp_parameter_create(parameter)
 
 
 # Create test dns object

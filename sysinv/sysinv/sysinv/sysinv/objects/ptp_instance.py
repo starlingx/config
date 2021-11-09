@@ -22,13 +22,17 @@ class PtpInstance(base.SysinvObject):
             'name': utils.str_or_none,
             'service': utils.str_or_none,
 
-            'host_uuid': utils.str_or_none,
             'host_id': utils.int_or_none,
+
+            'host_uuid': utils.str_or_none,
+            'hostname': utils.str_or_none,
+
             'capabilities': utils.dict_or_none
              }
 
     _foreign_fields = {
-        'host_uuid': 'host:uuid'
+        'host_uuid': 'host:uuid',
+        'hostname': 'host:hostname'
     }
 
     @base.remotable_classmethod

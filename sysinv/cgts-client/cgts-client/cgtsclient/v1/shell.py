@@ -56,6 +56,7 @@ from cgtsclient.v1 import pci_device_shell
 from cgtsclient.v1 import port_shell
 from cgtsclient.v1 import ptp_instance_shell
 from cgtsclient.v1 import ptp_interface_shell
+from cgtsclient.v1 import ptp_parameter_shell
 from cgtsclient.v1 import ptp_shell
 from cgtsclient.v1 import registry_image_shell
 from cgtsclient.v1 import remotelogging_shell
@@ -79,6 +80,7 @@ COMMAND_MODULES = [
     ptp_shell,
     ptp_instance_shell,
     ptp_interface_shell,
+    ptp_parameter_shell,
     iextoam_shell,
     controller_fs_shell,
     storage_backend_shell,

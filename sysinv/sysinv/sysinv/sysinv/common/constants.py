@@ -1850,6 +1850,19 @@ PTP_TRANSPORT_UDP = 'udp'
 PTP_TRANSPORT_L2 = 'l2'
 PTP_NETWORK_TRANSPORT_IEEE_802_3 = 'L2'
 
+# PTP instance types
+PTP_INSTANCE_TYPE_PTP4L = 'ptp4l'
+PTP_INSTANCE_TYPE_PHC2SYS = 'phc2sys'
+PTP_INSTANCE_TYPE_TS2PHC = 'ts2phc'
+
+# PTP instances created during migration from service parameters
+PTP_INSTANCE_DEFAULT_PTP4L = 'default-ptp4l'
+PTP_INSTANCE_DEFAULT_PHC2SYS = 'default-phc2sys'
+
+# PTP parameter: owner types
+PTP_PARAMETER_OWNER_INSTANCE = 'ptp-instance'
+PTP_PARAMETER_OWNER_INTERFACE = 'ptp-interface'
+
 # Backup & Restore
 FIX_INSTALL_UUID_INTERVAL_SECS = 30
 

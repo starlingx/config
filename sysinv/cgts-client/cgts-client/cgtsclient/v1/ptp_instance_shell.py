@@ -25,10 +25,6 @@ def _print_ptp_instance_show(ptp_instance_obj):
 def do_ptp_instance_list(cc, args):
     """List all PTP instances, in any host."""
     ptp_instances = cc.ptp_instance.list()
-    for instance in ptp_instances[:]:
-        ihost = ihost_utils._find_ihost(cc, instance.host_uuid)
-        setattr(instance, 'hostname', ihost.hostname)
-
     field_labels = ['uuid', 'name', 'service', 'hostname']
     fields = ['uuid', 'name', 'service', 'hostname']
     utils.print_list(ptp_instances, fields, field_labels)
@@ -53,8 +49,6 @@ def do_host_ptp_instance_list(cc, args):
 def do_ptp_instance_show(cc, args):
     """Show PTP instance attributes."""
     ptp_instance = ptp_instance_utils._find_ptp_instance(cc, args.nameoruuid)
-    ihost = ihost_utils._find_ihost(cc, ptp_instance.host_uuid)
-    setattr(ptp_instance, 'hostname', ihost.hostname)
     _print_ptp_instance_show(ptp_instance)
 
 
@@ -87,8 +81,6 @@ def do_ptp_instance_add(cc, args):
     except exc.HTTPNotFound:
         raise exc.CommandError('PTP instance just created not found: %s' %
                                uuid)
-    if ptp_instance:
-        setattr(ptp_instance, 'hostname', ihost.hostname)
     _print_ptp_instance_show(ptp_instance)
 
 
