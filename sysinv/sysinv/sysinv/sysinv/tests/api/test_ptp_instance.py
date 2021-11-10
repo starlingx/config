@@ -1,4 +1,4 @@
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2021-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -40,13 +40,13 @@ class BasePtpInstanceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
     def get_host_url(self, host_uuid):
         return '%s/%s' % (self.HOST_PREFIX, host_uuid)
 
-    def get_post_object(self, name='test_instance',
+    def get_post_object(self, name='test-instance',
                         service=constants.PTP_INSTANCE_TYPE_PTP4L):
         return dbutils.get_test_ptp_instance(name=name, service=service)
 
 
 class TestCreatePtpInstance(BasePtpInstanceTestCase):
-    name = constants.PTP_INSTANCE_DEFAULT_PTP4L
+    name = 'test-instance'
     service = constants.PTP_INSTANCE_TYPE_PTP4L
 
     def setUp(self):
@@ -72,7 +72,7 @@ class TestCreatePtpInstance(BasePtpInstanceTestCase):
         self.assertIn(error_message, response.json['error_message'])
 
     def test_create_ptp_instance_ok(self):
-        self._create_ptp_instance_success('test-instance',
+        self._create_ptp_instance_success('fake-instance',
                                           constants.PTP_INSTANCE_TYPE_PTP4L)
 
     def test_create_ptp_instance_invalid_service(self):
@@ -98,7 +98,7 @@ class TestUpdatePtpInstance(BasePtpInstanceTestCase):
     def setUp(self):
         super(TestUpdatePtpInstance, self).setUp()
         ptp_instance = dbutils.create_test_ptp_instance(
-            name=constants.PTP_INSTANCE_DEFAULT_PTP4L,
+            name='test-instance',
             service=constants.PTP_INSTANCE_TYPE_PTP4L)
         self.uuid = ptp_instance['uuid']
 
@@ -155,7 +155,7 @@ class TestHostPtpInstance(BasePtpInstanceTestCase):
 
     def _assign_host_ptp_instance_success(self):
         ptp_instance = dbutils.create_test_ptp_instance(
-            name=constants.PTP_INSTANCE_DEFAULT_PTP4L,
+            name='test-instance',
             service=constants.PTP_INSTANCE_TYPE_PTP4L)
         ptp_instance_id = ptp_instance['id']
         response = self.patch_json(
@@ -204,7 +204,7 @@ class TestGetPtpInstance(BasePtpInstanceTestCase):
 
     def test_get_ptp_instance_found(self):
         ptp_instance = dbutils.create_test_ptp_instance(
-            name=constants.PTP_INSTANCE_DEFAULT_PTP4L,
+            name='test-instance',
             service=constants.PTP_INSTANCE_TYPE_PTP4L)
         response = self.get_json(self.get_single_url(ptp_instance['uuid']))
         self.assertIn(self.COMMON_FIELD, response)
@@ -270,7 +270,7 @@ class TestDeletePtpInstance(BasePtpInstanceTestCase):
     def setUp(self):
         super(TestDeletePtpInstance, self).setUp()
         self.ptp_instance = dbutils.create_test_ptp_instance(
-            name=constants.PTP_INSTANCE_DEFAULT_PTP4L,
+            name='test-instance',
             service=constants.PTP_INSTANCE_TYPE_PTP4L)
         self.uuid = self.ptp_instance['uuid']
 

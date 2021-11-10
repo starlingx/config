@@ -450,8 +450,7 @@ class BaseHostTestCase(BaseSystemTestCase):
     def _create_test_ptp_instance(self):
         services = [constants.PTP_INSTANCE_TYPE_PTP4L,
                     constants.PTP_INSTANCE_TYPE_PHC2SYS]
-        names = [constants.PTP_INSTANCE_DEFAULT_PTP4L,
-                 constants.PTP_INSTANCE_DEFAULT_PHC2SYS]
+        names = ['test-ptp4l', 'test-phc2sys']
         ptp_instances = []
         for svc, nm in zip(services, names):
             instance = dbutils.create_test_ptp_instance(
