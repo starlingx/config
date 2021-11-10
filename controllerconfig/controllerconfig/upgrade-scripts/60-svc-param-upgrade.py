@@ -3,8 +3,9 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-# This script will add service parameters into sysinv database
-# during migration phase of upgrade procedure.
+# This script will add service parameters specific to handling of ghcr.io
+# registry into the sysinv database during migration phase of upgrade
+# procedure.
 
 import sys
 import psycopg2
@@ -12,7 +13,6 @@ from datetime import datetime
 from oslo_utils import uuidutils
 from psycopg2.extras import RealDictCursor
 from controllerconfig.common import log
-from sysinv.common import constants as sysinv_constants
 
 LOG = log.get_logger(__name__)
 
@@ -39,48 +39,53 @@ def main():
 
     LOG.info("%s invoked with from_release = %s to_release = %s action = %s"
              % (sys.argv[0], from_release, to_release, action))
+    if action == "migrate" and from_release == '21.05':
+        try:
+            conn = psycopg2.connect("dbname=sysinv user=postgres")
+            with conn:
+                cmd = """
+                      INSERT INTO service_parameter (created_at, uuid, name,
+                      value, service, section, personality, resource) VALUES
+                      (%s, %s, %s, %s, %s, %s, %s, %s);
+                      """
 
-    if action == "migrate":
-        if from_release == '21.05':
-            try:
-                conn = psycopg2.connect("dbname=sysinv user=postgres")
-                with conn:
+                rows = get_gcr_rows(conn)
+                for row in rows:
                     timestamp = str(datetime.now())
                     uuid = uuidutils.generate_uuid()
-                    role = get_system_role(conn)
-                    if (role ==
-                            sysinv_constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
-                        ghcr_url = 'registry.central:9001/ghcr.io'
-                    else:
-                        ghcr_url = 'ghcr.io'
-                    cmd = "INSERT INTO service_parameter (created_at, uuid, "\
-                        "service, section, name, value, personality, "\
-                        "resource) VALUES ('{}', '{}', 'docker', "\
-                        "'ghcr-registry', 'url', '{}', NULL, NULL)".format(
-                            timestamp, uuid, ghcr_url)
-                    LOG.info("Adding to db: '%s'" % cmd)
-                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                        cur.execute(cmd,)
+                    value = row.get('value')
 
-                    LOG.info("%s: Upgrade of service parameters completed "
-                             "from release %s to %s"
-                             % (sys.argv[0], from_release, to_release))
+                    # There are two names where we expect to need to
+                    # replace the registry name in the corresponding value.
+                    for key in ['additional-overrides', 'url']:
+                        if value and row.get('name') == key:
+                            value = value.replace('gcr.io', 'ghcr.io')
 
-            except Exception as ex:
-                LOG.exception(ex)
-                return 1
+                    LOG.info("Adding %s=%s to db for ghcr-registry" %
+                             (row['name'], value))
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            cmd,
+                            (timestamp, uuid, row['name'], value,
+                             'docker', 'ghcr-registry', row['personality'],
+                             row['resource']))
+
+                LOG.info("%s: Upgrade of service parameters completed "
+                         "from release %s to %s"
+                         % (sys.argv[0], from_release, to_release))
+                return 0
+        except Exception as ex:
+            LOG.exception(ex)
+            return 1
 
 
-def get_system_role(db_conn):
-    cur = db_conn.cursor()
+def get_gcr_rows(db_conn):
+    with db_conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute("select name, value, personality, resource from "
+                    "service_parameter where service='docker' and "
+                    "section='gcr-registry'")
 
-    cur.execute("SELECT distributed_cloud_role FROM i_system")
-    row = cur.fetchone()
-
-    role = row[0]
-    LOG.debug("System role is %s" % role)
-
-    return role
+        return cur.fetchall()
 
 
 if __name__ == "__main__":
