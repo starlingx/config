@@ -2696,7 +2696,8 @@ def extract_certs_from_pem(pem_contents):
 
 
 def check_cert_validity(cert):
-    """Perform checks on validity of certificate
+    """
+    Perform checks on the validity period of a certificate
     """
     now = datetime.datetime.utcnow()
     msg = ("certificate is not valid before %s nor after %s" %
@@ -2705,6 +2706,16 @@ def check_cert_validity(cert):
     if now <= cert.not_valid_before or now >= cert.not_valid_after:
         msg = ("certificate is not valid before %s nor after %s" %
                 (cert.not_valid_before, cert.not_valid_after))
+        LOG.info(msg)
+        return msg
+    if cert.not_valid_after - cert.not_valid_before < datetime.timedelta(days=1):
+        msg = ("The certificate has less than 24h of duration, "
+               "please upload a certificate with a longer duration")
+        LOG.info(msg)
+        return msg
+    if cert.not_valid_after - now < datetime.timedelta(days=1):
+        msg = ("The certificate will expire in less than 24h, "
+               "please upload a certificate with a longer expiration date")
         LOG.info(msg)
         return msg
     return None
