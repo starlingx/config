@@ -44,6 +44,7 @@ _logger = logging.getLogger(__name__)
 
 CHUNKSIZE = 1024 * 64  # 64kB
 SENSITIVE_HEADERS = ('X-Auth-Token',)
+UPLOAD_REQUEST_TIMEOUT = 1800
 
 # httplib2 retries requests on socket.timeout which
 # is not idempotent and can lead to orhan objects.
@@ -113,7 +114,7 @@ class HTTPClient(httplib2.Http):
     def __init__(self, endpoint,
                  username=None, tenant_name=None, tenant_id=None,
                  password=None, auth_url=None,
-                 token=None, region_name=None, timeout=None,
+                 token=None, region_name=None, timeout=7200,
                  endpoint_url=None, insecure=False,
                  endpoint_type='publicURL',
                  auth_strategy='keystone', ca_cert=None, log_credentials=False,
@@ -297,16 +298,6 @@ class HTTPClient(httplib2.Http):
         connection_url = self._get_connection_url(url)
         return self._cs_request(connection_url, method, **kwargs)
 
-    def upload_request(self, method, url, **kwargs):
-        self.authenticate_and_fetch_endpoint_url()
-        connection_url = self._get_connection_url(url)
-        headers = {"X-Auth-Token": self.auth_token}
-        files = {'file': ("for_upload",
-                          kwargs['body'],
-                          )}
-        req = requests.post(connection_url, headers=headers, files=files)
-        return req.json()
-
     def upload_request_with_data(self, method, url, **kwargs):
         self.authenticate_and_fetch_endpoint_url()
         connection_url = self._get_connection_url(url)
@@ -315,8 +306,9 @@ class HTTPClient(httplib2.Http):
                           kwargs['body'],
                           )}
         data = kwargs.get('data')
-        req = requests.post(connection_url, headers=headers, files=files,
-                            data=data)
+        req = requests.post(connection_url, headers=headers,
+                            files=files, data=data,
+                            timeout=UPLOAD_REQUEST_TIMEOUT)
         return req.json()
 
     def upload_request_with_multipart(self, method, url, **kwargs):
@@ -335,7 +327,8 @@ class HTTPClient(httplib2.Http):
                    "X-Auth-Token": self.auth_token}
         response = requests.post(connection_url,
                                  data=enc,
-                                 headers=headers)
+                                 headers=headers,
+                                 timeout=UPLOAD_REQUEST_TIMEOUT)
 
         if kwargs.get('check_exceptions'):
             if response.status_code != 200:
