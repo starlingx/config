@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -34,6 +34,7 @@ class NetworkingPuppet(base.BasePuppet):
         config.update(self._get_ironic_interface_config())
         config.update(self._get_ptp_interface_config())
         config.update(self._get_storage_interface_config())
+        config.update(self._get_instance_ptp_config(host))
         if host.personality == constants.CONTROLLER:
             config.update(self._get_oam_interface_config())
         return config
@@ -184,6 +185,103 @@ class NetworkingPuppet(base.BasePuppet):
 
     def _get_storage_interface_config(self):
         return self._get_interface_config(constants.NETWORK_TYPE_STORAGE)
+
+    def _get_instance_ptp_config(self, host):
+
+        if host.clock_synchronization == constants.PTP:
+            ptp_enabled = True
+        else:
+            ptp_enabled = False
+            return {'platform::ptpinstance::enabled': ptp_enabled}
+
+        # Get the database entries for instances, interfaces and parameters
+        ptp_instances = self.dbapi.ptp_instances_get_by_ihost(host.uuid)
+        ptp_interfaces = self.dbapi.ptp_interfaces_get_by_host(host.uuid)
+        ptp_parameters_instance = self.dbapi.ptp_parameters_get_by_type(
+                                  constants.PTP_PARAMETER_OWNER_INSTANCE)
+        ptp_parameters_interface = self.dbapi.ptp_parameters_get_by_type(
+                                   constants.PTP_PARAMETER_OWNER_INTERFACE)
+
+        for index, instance in enumerate(ptp_instances):
+            ptp_instances[index] = instance.as_dict()
+        for index, iface in enumerate(ptp_interfaces):
+            ptp_interfaces[index] = iface.as_dict()
+        for index, param in enumerate(ptp_parameters_instance):
+            ptp_parameters_instance[index] = param.as_dict()
+        for index, param in enumerate(ptp_parameters_interface):
+            ptp_parameters_interface[index] = param.as_dict()
+
+        # Default parameters were determined during the original integration of PTP.
+        # These defaults maintain the same PTP behaviour as single instance implementation.
+        default_global_parameters = {
+            'tx_timestamp_timeout': constants.PTP_TX_TIMESTAMP_TIMEOUT,
+            'summary_interval': constants.PTP_SUMMARY_INTERVAL,
+            'clock_servo': constants.PTP_CLOCK_SERVO_LINREG,
+            'network_transport': constants.PTP_NETWORK_TRANSPORT_IEEE_802_3,
+            'time_stamping': constants.PTP_TIME_STAMPING_HARDWARE,
+            'delay_mechanism': constants.PTP_DELAY_MECHANISM_E2E
+        }
+
+        default_interface_parameters = {}
+        ptp_config = {}
+        # Fields required in the hieradata - all others can be pruned after processing
+        required_instance_fields = ['global_parameters', 'interfaces', 'name', 'service']
+        required_interface_fields = ['ifname', 'port_names', 'parameters']
+
+        for instance in ptp_instances:
+            # Add default global parameters the instance
+            instance['global_parameters'] = {}
+            instance['global_parameters'].update(default_global_parameters)
+
+            for global_param in ptp_parameters_instance:
+                # Add the supplied instance parameters to global_parameters
+                if global_param['foreign_uuid'] == instance['uuid']:
+                    instance['global_parameters'][global_param['name']] = global_param['value']
+                if instance['global_parameters']['time_stamping'].lower() \
+                        == constants.PTP_TIME_STAMPING_HARDWARE \
+                        and 'boundary_clock_jbod' not in instance['global_parameters']:
+                    instance['global_parameters'].update(
+                        {'boundary_clock_jbod': constants.PTP_BOUNDARY_CLOCK_JBOD_1})
+                if 'slaveOnly' not in instance['global_parameters']:
+                    instance['global_parameters'].update({'slaveOnly': constants.PTP_SLAVEONLY_0})
+                if 'uds_address' not in instance['global_parameters']:
+                    instance['global_parameters'].update({'uds_address': '/var/run/'
+                        + instance['service'] + '-' + instance['name']})
+                if 'uds_ro_address' not in instance['global_parameters']:
+                    instance['global_parameters'].update({'uds_ro_address': '/var/run/'
+                        + instance['service'] + '-' + instance['name'] + 'ro'})
+
+                # Create a list so that the instance can hold interfaces
+                instance['interfaces'] = []
+                for iface in ptp_interfaces:
+                    iface['parameters'] = {}
+                    # Find the interfaces that belong to this instance
+                    if iface['ptp_instance_id'] == instance['id']:
+                        # Find the underlying port name for the interface because ptp can't
+                        # use the custom interface name
+                        iinterface = self.dbapi.iinterface_get(iface['interface_uuid'])
+                        interface_devices = interface.get_interface_devices(self.context,
+                                                                            iinterface)
+                        iface['port_names'] = interface_devices
+                        # Add default interface values
+                        iface['parameters'].update(default_interface_parameters)
+
+                        # Add supplied params to the interface
+                        for param in ptp_parameters_interface:
+                            if param['foreign_uuid'] == iface['uuid']:
+                                iface['parameters'][param['name']] = param['value']
+                        # Prune fields and add the interface to the instance
+                        pruned_iface = {r: iface[r] for r in required_interface_fields}
+                        instance['interfaces'].append(pruned_iface)
+
+                # Prune fields and add the instance to the config
+                # Change 'name' key to '_name' because it is unusable in puppet
+                pruned_instance = {r: instance[r] for r in required_instance_fields}
+                pruned_instance['_name'] = pruned_instance.pop('name')
+                ptp_config[pruned_instance['_name']] = pruned_instance
+
+        return {'platform::ptpinstance::config': ptp_config,
+                'platform::ptpinstance::enabled': ptp_enabled}
 
     def _get_ptp_interface_config(self):
         config = {}
