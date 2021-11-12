@@ -5,6 +5,7 @@
 #
 
 import abc
+import math
 import six
 
 from oslo_log import log as logging
@@ -430,3 +431,20 @@ class BaseHelm(object):
         """
         return utils.is_chart_enabled(
             self.dbapi, app_name, chart_name, namespace)
+
+    def _estimate_ceph_pool_pg_num(self, num_osd):
+        """
+        Estimate a default PG_NUM for a ceph pool based on the number of OSD
+        available.
+        The formula is to multiply the number of OSDs by 100 minus 1.
+        After that it gets the nearest power of two below the previous result
+
+        The main premise on having 100 PG per OSD and to always use a power of two
+        are taken from this ceph doc:
+        https://docs.ceph.com/en/nautilus/rados/operations/placement-groups/#a-preselection-of-pg-num
+
+        :param num_osd: Number of available OSDs on ceph
+        """
+        num_osd = max(len(num_osd), 1)
+        max_chunk_size_allowed = num_osd * 100 - 1
+        return 2 ** (int(math.log(max_chunk_size_allowed, 2)))
