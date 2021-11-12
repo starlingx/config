@@ -3103,15 +3103,19 @@ class DockerHelper(object):
                     LOG.info("Image %s is not available in local registry, "
                              "download started from public/private registry"
                              % img_tag)
+
                     pub_img_tag = img_tag.replace(
                         constants.DOCKER_REGISTRY_SERVER + "/", "")
+
                     target_img_tag, registry_auth = \
                         self._get_img_tag_with_registry(pub_img_tag, registries_info)
+
                     client.pull(target_img_tag, auth_config=registry_auth)
+
                 except Exception as e:
                     rc = False
                     LOG.error("Image %s download failed from public/private"
-                              "registry: %s" % (pub_img_tag, e))
+                              "registry: %s" % (img_tag, e))
                     return img_tag, rc
 
                 try:
