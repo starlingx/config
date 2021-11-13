@@ -259,28 +259,35 @@ class CephPuppet(openstack.OpenstackBasePuppet):
                 # Use default values from the system config if no upgrade in progress
                 pass
             else:
-                ceph_mon_ips = StorageBackendConfig.get_ceph_mon_ip_addresses(
-                    self.dbapi)
-                LOG.info("Formatting addresses to enforce v1 in monitors")
+                # When in any activating state, we'll update the monitors to
+                # drop the v1 enforcement (so skip the special formatting below)
+                if upgrade.state not in [constants.UPGRADE_ACTIVATION_REQUESTED,
+                                         constants.UPGRADE_ACTIVATING,
+                                         constants.UPGRADE_ACTIVATING_HOSTS,
+                                         constants.UPGRADE_ACTIVATION_FAILED,
+                                         constants.UPGRADE_ACTIVATION_COMPLETE]:
+                    ceph_mon_ips = StorageBackendConfig.get_ceph_mon_ip_addresses(
+                        self.dbapi)
+                    LOG.info("Formatting addresses to enforce v1 in monitors")
 
-                mon_0_ip = ceph_mon_ips[constants.CEPH_MON_0]
-                mon_1_ip = ceph_mon_ips[constants.CEPH_MON_1]
-                mon_2_ip = ceph_mon_ips.get(constants.CEPH_MON_2, None)
+                    mon_0_ip = ceph_mon_ips[constants.CEPH_MON_0]
+                    mon_1_ip = ceph_mon_ips[constants.CEPH_MON_1]
+                    mon_2_ip = ceph_mon_ips.get(constants.CEPH_MON_2, None)
 
-                mon_0_addr = "[v1:%s:%s]" % (self._format_ceph_mon_address(mon_0_ip),
-                                             self.SERVICE_PORT_MON_V1)
-                mon_1_addr = "[v1:%s:%s]" % (self._format_ceph_mon_address(mon_1_ip),
-                                             self.SERVICE_PORT_MON_V1)
-                if mon_2_ip:
-                    mon_2_addr = "[v1:%s:%s]" % (self._format_ceph_mon_address(mon_2_ip),
+                    mon_0_addr = "[v1:%s:%s]" % (self._format_ceph_mon_address(mon_0_ip),
                                                  self.SERVICE_PORT_MON_V1)
-                else:
-                    mon_2_addr = None
-                config.update({
-                    'platform::ceph::params::mon_0_addr': mon_0_addr,
-                    'platform::ceph::params::mon_1_addr': mon_1_addr,
-                    'platform::ceph::params::mon_2_addr': mon_2_addr,
-                })
+                    mon_1_addr = "[v1:%s:%s]" % (self._format_ceph_mon_address(mon_1_ip),
+                                                 self.SERVICE_PORT_MON_V1)
+                    if mon_2_ip:
+                        mon_2_addr = "[v1:%s:%s]" % (self._format_ceph_mon_address(mon_2_ip),
+                                                     self.SERVICE_PORT_MON_V1)
+                    else:
+                        mon_2_addr = None
+                    config.update({
+                        'platform::ceph::params::mon_0_addr': mon_0_addr,
+                        'platform::ceph::params::mon_1_addr': mon_1_addr,
+                        'platform::ceph::params::mon_2_addr': mon_2_addr,
+                    })
         return config
 
     def _get_ceph_osd_config(self, host):
