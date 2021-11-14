@@ -25,19 +25,19 @@ type 10 root
 host storage-0 {
 	id -4		# do not change unnecessarily
 	# weight 0.000
-	alg straw
+	alg straw2
 	hash 0	# rjenkins1
 }
 host storage-1 {
 	id -5		# do not change unnecessarily
 	# weight 0.000
-	alg straw
+	alg straw2
 	hash 0	# rjenkins1
 }
 chassis group-0 {
 	id -3		# do not change unnecessarily
 	# weight 0.000
-	alg straw
+	alg straw2
 	hash 0	# rjenkins1
 	item storage-0 weight 0.000
 	item storage-1 weight 0.000
@@ -45,7 +45,7 @@ chassis group-0 {
 root storage-tier {
 	id -1		# do not change unnecessarily
 	# weight 0.000
-	alg straw
+	alg straw2
 	hash 0	# rjenkins1
 	item group-0 weight 0.000
 }
