@@ -40,6 +40,9 @@ MODE_SECRET = 'secret'
 MODE_CERT_MGR = 'certmgr'
 MODE_OTHER = 'other'
 
+ALARM_UUID = 'alarm_uuid'
+ENTITY_ID = 'entity_id'
+
 CERT_SNAPSHOT = {}
 """
 CERT_SNAPSHOT is a dict of dict. Each entry is per certificate.
@@ -58,6 +61,8 @@ CERT_SNAPSHOT is a dict of dict. Each entry is per certificate.
         mode_other: <other>
         file_location: <filepath>
         renewBefore: <renewBefore>
+        alarm_uuid: <alarm-uuid>
+        entity_id: <entity-instance-id>
     }
     certname2: {
         ...
@@ -294,6 +299,32 @@ def add_cert_snapshot(certname, expirydate, annotation_data, mode_metadata):
     internaldict.update(annotation_data)
     internaldict.update(mode_metadata)
     CERT_SNAPSHOT[certname] = internaldict
+
+
+def update_cert_snapshot_field(cert_name, key, value):
+    global CERT_SNAPSHOT
+    if cert_name not in CERT_SNAPSHOT:
+        LOG.error('Cannot find certificate %s in CERT_SNAPSHOT' % cert_name)
+    else:
+        LOG.debug('Updating CERT_SNAPSHOT cert_name=%s, key=%s, val=%s' % (cert_name, key, value))
+        CERT_SNAPSHOT[cert_name][key] = value
+
+
+def update_cert_snapshot_field_with_entity_id(entity_id, key, value):
+    cert_name = get_cert_name_with_entity_id(entity_id)
+    if cert_name is None:
+        LOG.error('Cannot find certificate with entity_id %s' % entity_id)
+    else:
+        update_cert_snapshot_field(cert_name, key, value)
+
+
+def get_cert_name_with_entity_id(entity_id):
+    global CERT_SNAPSHOT
+    for cert_name in CERT_SNAPSHOT:
+        if CERT_SNAPSHOT[cert_name].get(ENTITY_ID) == entity_id:
+            return cert_name
+
+    return None
 
 
 def get_default_annotation_values():

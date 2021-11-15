@@ -6,7 +6,6 @@
 from datetime import datetime
 from datetime import timedelta
 from fm_api import constants as fm_constants
-from itertools import chain
 from oslo_log import log
 import re
 from sysinv.cert_alarm import fm as fm_mgr
@@ -32,15 +31,29 @@ class CertAlarmAudit(object):
         # Reset both CERT_SNAPSHOT & ALARM_SNAPSHOT
         utils.reset_cert_snapshot()
         self.fm_obj.reset_alarms_snapshot()
-        self.fm_obj.reset_entityid_to_certname_map()
 
-        # Collect CERT_SNAPSHOT
+        # Collect snapshots
         self.collect_cert_snapshot()
+        self.fm_obj.collect_all_cert_alarms()
+
+        # Update snapshots
+        """
+        In order to correlate alarms with CERT_SNAPSHOT,
+        we need references to entity_instance_id and
+        alarm_uuids (if any alarms present). This is needed
+        to audit for deleted certificates
+        """
+        # Needs entity_id present before auditing deleted certificates
+        # Do not change order
+        self.update_entity_ids_in_cert_snapshot()
+        self.audit_for_deleted_certificates()
+
         utils.print_cert_snapshot()
+        self.fm_obj.print_alarms_snapshot()
 
-        self.compute_action_full_audit()
+        self.apply_action_full_audit()
 
-        LOG.info('cert-alarm full completed')
+        LOG.info('cert-alarm full audit completed')
 
     def collect_cert_snapshot(self):
         """
@@ -94,9 +107,18 @@ class CertAlarmAudit(object):
             if entry[1] is not None:
                 utils.add_cert_snapshot(entry[0], entry[1], entry[2], entry[3])
 
-    def compute_action_full_audit(self):
+    def update_entity_ids_in_cert_snapshot(self):
         for cert_name in utils.CERT_SNAPSHOT:
-            self.compute_action(cert_name)
+            entity_id = self.fm_obj.get_entity_instance_id(cert_name)
+            utils.update_cert_snapshot_field(cert_name,
+                                             utils.ENTITY_ID,
+                                             entity_id)
+
+    def apply_action_full_audit(self):
+        for cert_name in utils.CERT_SNAPSHOT:
+            entity_id = utils.CERT_SNAPSHOT[cert_name].get(utils.ENTITY_ID,
+                                self.fm_obj.get_entity_instance_id(cert_name))
+            self.apply_action(cert_name, entity_id)
 
     # ============== Active Alarm audit ===================
     def run_active_alarm_audit(self):
@@ -106,22 +128,26 @@ class CertAlarmAudit(object):
         LOG.info('Running cert-alarm active_alarm_audit')
 
         # Collect ALARM_SNAPSHOT
+        self.fm_obj.reset_alarms_snapshot()
         self.fm_obj.collect_all_cert_alarms()
 
-        self.compute_action_active_alarms()
+        self.apply_action_active_alarms()
+
+        utils.print_cert_snapshot()
+        self.fm_obj.print_alarms_snapshot()
 
         LOG.info('cert-alarm active_alarm_audit completed')
 
-    def compute_action_active_alarms(self):
-        # Create single list of expiring_soon & expired certs
-        all_active_alarms = list(chain(*self.fm_obj.ALARMS_SNAPSHOT.values()))
+    def apply_action_active_alarms(self):
+        for alarm_instance in self.fm_obj.ALARMS_SNAPSHOT:
+            entity_id = self.fm_obj.ALARMS_SNAPSHOT[alarm_instance]['ENTITY_ID']
+            cert_name = utils.get_cert_name_with_entity_id(entity_id)
+            if cert_name is not None:
+                # 1. First refresh expiry date snapshot data
+                self.refresh_expiry_data(cert_name)
 
-        for cert_name in all_active_alarms:
-            # 1. First refresh expiry date snapshot data
-            self.refresh_expiry_data(cert_name)
-
-            # 2. Now check dates and compute_action
-            self.compute_action(cert_name)
+                # 2. Now check dates and apply_action
+                self.apply_action(cert_name, entity_id)
 
     def refresh_expiry_data(self, cert_name):
         if cert_name not in utils.CERT_SNAPSHOT:
@@ -167,9 +193,9 @@ class CertAlarmAudit(object):
                 time_params[name] = int(param)
         return timedelta(**time_params)
 
-    def compute_action(self, cert_name):
+    def apply_action(self, cert_name, entity_id):
         """
-        Computes any action required based on parameters passed and calls FM API
+        Applies any action required based on parameters passed and calls FM API
         Input:  cert_name: Certificate name
         """
         if cert_name not in utils.CERT_SNAPSHOT:
@@ -183,8 +209,8 @@ class CertAlarmAudit(object):
         renew_before = None
         if utils.SNAPSHOT_KEY_RENEW_BEFORE in snapshot:
             renew_before = self.parse_time(snapshot[utils.SNAPSHOT_KEY_RENEW_BEFORE])
-        LOG.debug('cert_name=%s, expiry=%s, alarm_before=%s, renew_before=%s'
-            % (cert_name, expiry.days, alarm_before.days, renew_before.days))
+        LOG.debug('cert_name=%s, entity_id=%s, expiry=%s, alarm_before=%s, renew_before=%s'
+            % (cert_name, entity_id, expiry.days, alarm_before.days, renew_before.days))
 
         days_to_expiry = expiry.days
         alarm_before_days = alarm_before.days
@@ -198,32 +224,64 @@ class CertAlarmAudit(object):
             threshold = alarm_before_days
 
         if days_to_expiry > threshold:
-            self.clear_expiring_soon(cert_name)
-            self.clear_expired(cert_name)
+            self.clear_expiring_soon(cert_name, entity_id)
+            self.clear_expired(cert_name, entity_id)
         else:
             if days_to_expiry < 0:
                 # Expired. Clear expiring-soon & raise expired
-                self.clear_expiring_soon(cert_name)
-                self.raise_expired(cert_name)
+                self.clear_expiring_soon(cert_name, entity_id)
+                self.raise_expired(cert_name, entity_id)
             else:
-                self.raise_expiring_soon(cert_name)
+                self.raise_expiring_soon(cert_name, entity_id)
 
-    def raise_expiring_soon(self, cert_name):
-        self.fm_obj.set_fault(cert_name,
-                              False,
-                              fm_constants.FM_ALARM_STATE_SET)
+    def raise_expiring_soon(self, cert_name, entity_id):
+        if self.alarm_override_check_passed(cert_name):
+            self.fm_obj.set_fault(entity_id,
+                                  fm_constants.FM_ALARM_ID_CERT_EXPIRING_SOON,
+                                  fm_constants.FM_ALARM_STATE_SET)
 
-    def clear_expiring_soon(self, cert_name):
-        self.fm_obj.set_fault(cert_name,
-                              False,
-                              fm_constants.FM_ALARM_STATE_CLEAR)
+    def clear_expiring_soon(self, cert_name, entity_id):
+        if self.alarm_override_check_passed(cert_name):
+            self.fm_obj.set_fault(entity_id,
+                                  fm_constants.FM_ALARM_ID_CERT_EXPIRING_SOON,
+                                  fm_constants.FM_ALARM_STATE_CLEAR)
 
-    def raise_expired(self, cert_name):
-        self.fm_obj.set_fault(cert_name,
-                              True,
-                              fm_constants.FM_ALARM_STATE_SET)
+    def raise_expired(self, cert_name, entity_id):
+        if self.alarm_override_check_passed(cert_name):
+            self.fm_obj.set_fault(entity_id,
+                                  fm_constants.FM_ALARM_ID_CERT_EXPIRED,
+                                  fm_constants.FM_ALARM_STATE_SET)
 
-    def clear_expired(self, cert_name):
-        self.fm_obj.set_fault(cert_name,
-                              True,
-                              fm_constants.FM_ALARM_STATE_CLEAR)
+    def clear_expired(self, cert_name, entity_id):
+        if self.alarm_override_check_passed(cert_name):
+            self.fm_obj.set_fault(entity_id,
+                                  fm_constants.FM_ALARM_ID_CERT_EXPIRED,
+                                  fm_constants.FM_ALARM_STATE_CLEAR)
+
+    def alarm_override_check_passed(self, cert_name):
+        '''
+        Check for alarm overrides in annotation.
+        Return: True for enabled, False for disabled alarms
+        '''
+        if cert_name in utils.CERT_SNAPSHOT:
+            snapshot = utils.CERT_SNAPSHOT[cert_name]
+            if snapshot.get(constants.CERT_ALARM_ANNOTATION_ALARM,
+                            constants.CERT_ALARM_DEFAULT_ANNOTATION_ALARM) == 'disabled':
+                LOG.info('Found annotation override, disabling alarm. Suppressing %s' %
+                         cert_name)
+                return False
+
+        return True  # defaults to True (i.e., raise alarm)
+
+    def audit_for_deleted_certificates(self):
+        LOG.info('Auditing for deleted certificates')
+        for alarm_instance in self.fm_obj.ALARMS_SNAPSHOT:
+            entity_id = self.fm_obj.ALARMS_SNAPSHOT[alarm_instance]['ENTITY_ID']
+            cert_name = utils.get_cert_name_with_entity_id(entity_id)
+            if cert_name is None:
+                LOG.info('Found alarm for entity %s, but no related \
+                         certificate resource' % entity_id)
+                alarm_id = self.fm_obj.ALARMS_SNAPSHOT[alarm_instance]['ALARM_ID']
+                self.fm_obj.set_fault(entity_id,
+                                      alarm_id,
+                                      fm_constants.FM_ALARM_STATE_CLEAR)
