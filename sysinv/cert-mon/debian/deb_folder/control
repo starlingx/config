@@ -8,7 +8,9 @@ Rules-Requires-Root: no
 
 Package: cert-mon
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, logrotate, rsyslog
+Depends: ${shlibs:Depends}, ${misc:Depends},
+ logrotate,
+ syslog-ng
 Description: Starlingx certificate monitor
  Manages the StarlingX platform's system certificate monitor process
  as a HA resource.

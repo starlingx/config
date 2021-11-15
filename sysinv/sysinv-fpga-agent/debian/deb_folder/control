@@ -8,6 +8,8 @@ Rules-Requires-Root: no
 
 Package: sysinv-fpga-agent
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, logrotate, rsyslog
+Depends: ${shlibs:Depends}, ${misc:Depends},
+ logrotate,
+ syslog-ng
 Description: StarlingX FPGA agent monitor
  Startup Scripts for StarlingX FPGA agent monitor
