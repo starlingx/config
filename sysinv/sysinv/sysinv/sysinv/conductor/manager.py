@@ -5727,6 +5727,36 @@ class ConductorManager(service.PeriodicService):
                         vim_api.set_vim_upgrade_state(controller_0, False)
                 except Exception:
                     LOG.exception("Unable to set VIM upgrade state to False")
+        elif upgrade.state == constants.UPGRADE_UPGRADING_HOSTS:
+            # As part of a 3-host Ceph monitor quorum, over a platform upgrade
+            # we may need to take action once all monitors are running
+            ceph_storage_backend = StorageBackendConfig.get_backend(
+                self.dbapi,
+                constants.SB_TYPE_CEPH
+            )
+            if ceph_storage_backend:
+                monitor_list = self.dbapi.ceph_mon_get_list()
+                LOG.info("Ceph Upgrade: Checking monitor states")
+                for mon in monitor_list:
+
+                    host = self.dbapi.ihost_get(mon.forihostid)
+                    host_upgrade = self.dbapi.host_upgrade_get(host.id)
+                    host_load = self.dbapi.load_get(host_upgrade.software_load)
+
+                    if host_load.software_version != upgrade.to_release:
+                        LOG.info("Ceph Upgrade: Monitor %s is not upgraded to %s" %
+                                 (mon.hostname, upgrade.to_release))
+                        return
+
+                    mon_config_target = host.config_target
+                    mon_config_applied = host.config_applied
+                    if mon_config_target and mon_config_target != mon_config_applied:
+                        LOG.info("Ceph Upgrade: Monitor %s has not applied the "
+                                 "latest configuration changes" % mon.hostname)
+                        return
+                LOG.info("Ceph Upgrade: Enabling monitor msgr2")
+                self._ceph_api.enable_msgr2()
+                LOG.info("Ceph Upgrade: Enabled monitor msgr2")
 
     def _audit_install_states(self, hosts):
         # A node could shutdown during it's installation and the install_state
