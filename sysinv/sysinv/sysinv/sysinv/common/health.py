@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 from eventlet.green import subprocess
+import json
 import os
 
 from oslo_log import log
@@ -236,6 +237,31 @@ class Health(object):
 
         success = not fail_pod_list
         return success, fail_pod_list
+
+    def _check_trident_compatibility(self):
+        """Checks that the running Trident service has been
+        upgraded and is compatible with all possible k8s
+        upgrade versions."""
+
+        incompatible_version = '20.04'
+
+        try:
+            output = subprocess.check_output(  # pylint: disable=not-callable
+                'export KUBECONFIG=/etc/kubernetes/admin.conf && \
+                tridentctl -n trident version -o json',
+                shell=True, stderr=subprocess.STDOUT).decode('utf-8')
+            if output:
+                json_output = json.loads(output)
+                if 'server' in json_output.keys():
+                    if incompatible_version in json_output['server']['version']:
+                        return False
+                else:
+                    return True
+        except Exception as e:
+            LOG.info("Exception %s occured when trying to get trident version" % e)
+            return True
+
+        return True
 
     def _check_kube_applications(self):
         """Checks that each kubernetes application is in a valid state"""
@@ -495,6 +521,12 @@ class Health(object):
             alarm_ignore_list=alarm_ignore_list)
 
         success, apps_not_valid = self._check_kube_applications()
+
+        # can be removed in the release after stx6
+        if not self._check_trident_compatibility():
+            apps_not_valid.append("NetApp Trident Driver")
+            success = False
+
         output += _(
             'All kubernetes applications are in a valid state: [%s]\n') \
             % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)

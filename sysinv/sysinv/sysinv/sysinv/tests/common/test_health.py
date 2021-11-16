@@ -286,6 +286,7 @@ class TestHealth(dbbase.BaseHostTestCase):
         assert "not ready: kube-controller-manager-controller-1" in output, \
             "output: %s" % output
 
+    @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
     def test_get_system_health_kube_upgrade(self):
         # Create controller-0
         config_uuid = str(uuid.uuid4())
@@ -329,6 +330,7 @@ class TestHealth(dbbase.BaseHostTestCase):
             self.context)
         assert health_ok is True, "output: %s" % output
 
+    @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
     def test_get_system_health_kube_upgrade_k8s_app_invalid_state(self):
         # Create controller-0
         config_uuid = str(uuid.uuid4())
