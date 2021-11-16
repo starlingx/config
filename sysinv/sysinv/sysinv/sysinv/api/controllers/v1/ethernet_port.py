@@ -159,7 +159,7 @@ class EthernetPort(base.APIBase):
     "Represent a list containing a self link and associated port links"
 
     def __init__(self, **kwargs):
-        self.fields = objects.ethernet_port.fields.keys()
+        self.fields = objects.ethernet_port.fields
         for k in self.fields:
             setattr(self, k, kwargs.get(k))
 

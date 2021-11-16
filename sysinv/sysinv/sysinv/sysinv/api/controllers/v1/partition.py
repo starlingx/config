@@ -387,7 +387,7 @@ def _partition_pre_patch_checks(partition_obj, patch_obj, host_obj):
                 raise wsme.exc.ClientSideError(
                     _("Requested partition size must be larger than current "
                       "size: %s GiB <= %s GiB") % (int(p['value']) // 1024,
-                      math.floor(float(partition_obj.size_mib) / 1024 * 1000) / 1000.0))
+                      math.floor(float(partition_obj.size_mib) / 1024 * 1000) / 1000.0))  # pylint: disable=W1619
 
 
 def _is_user_created_partition(guid):
@@ -512,7 +512,8 @@ def _semantic_checks(operation, partition):
             raise wsme.exc.ClientSideError(
                 _("Requested size %s GiB is larger than the %s GiB "
                   "available.") % (partition['size_mib'] // 1024,
-                                   math.floor(float(idisk.available_mib) / 1024 * 1000) / 1000.0))
+                                   math.floor(float(idisk.available_mib) /  # pylint: disable=W1619
+                                              1024 * 1000) / 1000.0))
 
         _are_partition_operations_simultaneous(ihost, partition,
                                                constants.PARTITION_CMD_CREATE)
@@ -592,7 +593,8 @@ def _semantic_checks(operation, partition):
             raise wsme.exc.ClientSideError(
                 _("Requested extra size %s GiB is larger than the %s GiB "
                   "available.") % (extra_size // 1024,
-                                   math.floor(float(idisk.available_mib) / 1024 * 1000) / 1000.0))
+                                   math.floor(float(idisk.available_mib) /  # pylint: disable=W1619
+                                              1024 * 1000) / 1000.0))
 
     elif operation == constants.PARTITION_CMD_DELETE:
         ############

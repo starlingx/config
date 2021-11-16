@@ -22,6 +22,7 @@
 import datetime
 import os
 import pecan
+import six
 import ssl
 import wsme
 import wsmeext.pecan as wsme_pecan
@@ -439,7 +440,7 @@ class CertificateController(rest.RestController):
                 if domain:
                     msg = _check_cert_dns_name(cert, domain)
                     if msg is not True:
-                        return dict(success="", error=msg.message)
+                        return dict(success="", error=six.text_type(msg))
                 elif msg:
                     return dict(success="", error=msg)
 

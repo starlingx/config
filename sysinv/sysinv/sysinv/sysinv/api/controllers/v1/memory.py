@@ -460,7 +460,7 @@ class MemoryController(rest.RestController):
             except wsme.exc.ClientSideError as e:
                 inode = pecan.request.dbapi.inode_get(inode_id=rpc_port.forinodeid)
                 numa_node = inode.numa_node
-                msg = _('Processor {0}:'.format(numa_node)) + e.message
+                msg = _('Processor {0}:'.format(numa_node)) + six.text_type(e)
                 raise wsme.exc.ClientSideError(msg)
         else:
             # Standard/system controller or storage node

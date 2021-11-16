@@ -283,7 +283,7 @@ class KubeAppController(rest.RestController):
         if directive == 'apply':
             if not values:
                 mode = None
-            elif name not in constants.HELM_APP_APPLY_MODES.keys():
+            elif name not in constants.HELM_APP_APPLY_MODES:
                 raise wsme.exc.ClientSideError(_(
                     "Application-apply rejected: Mode is not supported "
                     "for app {}.".format(name)))

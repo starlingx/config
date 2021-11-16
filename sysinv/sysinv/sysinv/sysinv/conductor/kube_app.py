@@ -1452,7 +1452,8 @@ class AppOperator(object):
                                                              adjust))
                                             tadjust = 0
 
-                                    percent = round((float(num) / (charts_count - tadjust)) * 100)
+                                    percent = round((float(num) /  # pylint: disable=W1619
+                                                     (charts_count - tadjust)) * 100)
 
                                 progress_str = "processing chart: {}, overall completion: {}%".\
                                                format(last, percent)

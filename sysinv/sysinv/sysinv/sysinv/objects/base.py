@@ -412,7 +412,7 @@ class SysinvObject(object):
                 yield name, getattr(self, name)
 
     def items(self):
-        return list(self.iteritems())
+        return list(self.iteritems())  # pylint: disable=dict-iter-method
 
     def __getitem__(self, name):
         """For backwards-compatibility with dict-based objects.

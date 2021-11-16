@@ -94,7 +94,7 @@ class SysinvException(Exception):
 
         if not message:
             try:
-                message = self.message % kwargs
+                message = self.message % kwargs  # pylint: disable=W1645
 
             except Exception as e:
                 # kwargs doesn't match a variable in the message
@@ -107,7 +107,7 @@ class SysinvException(Exception):
                     raise e
                 else:
                     # at least get the core message out if something happened
-                    message = self.message
+                    message = self.message  # pylint: disable=W1645
 
         super(SysinvException, self).__init__(message)
 
@@ -1207,7 +1207,7 @@ class OpenStackException(PickleableException):
         """
         Return a tuple so that we can properly pickle the exception
         """
-        return OpenStackException, (self.message, self._reason)
+        return OpenStackException, (self.message, self._reason)  # pylint: disable=W1645
 
     @property
     def message(self):
@@ -1228,6 +1228,8 @@ class OpenStackRestAPIException(PickleableException):
     """
     OpenStack Rest-API Exception
     """
+    message = _("An unknown exception occurred.")
+
     def __init__(self, message, http_status_code, reason):
         """
         Create an OpenStack Rest-API exception
@@ -1235,6 +1237,7 @@ class OpenStackRestAPIException(PickleableException):
         super(OpenStackRestAPIException, self).__init__(message)
         self._http_status_code = http_status_code  # as defined in RFC 2616
         self._reason = reason  # a message string or another exception
+        self._message = message
 
     def __str__(self):
         """
@@ -1253,7 +1256,7 @@ class OpenStackRestAPIException(PickleableException):
         """
         Return a tuple so that we can properly pickle the exception
         """
-        return OpenStackRestAPIException, (self.message,
+        return OpenStackRestAPIException, (self.message,  # pylint: disable=W1645
                                            self._http_status_code,
                                            self._reason)
 

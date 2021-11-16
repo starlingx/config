@@ -4298,7 +4298,7 @@ class HostController(rest.RestController):
 
         if (active_controller_used > standby_controller_allocated_space):
             # Round up the needed space from float to integer
-            needed_space = math.ceil(float(
+            needed_space = math.ceil(float(  # pylint: disable=W1619
                 active_controller_used -
                 standby_controller_allocated_space) / (1024 ** 3))
             msg = _("Standby controller does not have enough space allocated to "

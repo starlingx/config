@@ -17,6 +17,9 @@ class pci_device_class_acclr(object):
     def __eq__(self, other):
         return (other in self.pci_class_ids)
 
+    def __hash__(self):
+        return hash(''.join(self.pci_class_ids))
+
     def __ne__(self, other):
         return (other not in self.pci_class_ids)
 

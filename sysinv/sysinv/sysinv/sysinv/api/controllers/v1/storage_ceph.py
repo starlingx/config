@@ -1112,7 +1112,7 @@ def _check_pool_quotas_data(ostorceph, storceph):
                         _("The configured quota for the cinder pool (%s GiB) "
                           "must be greater than the already occupied space (%s GiB)")
                         % (storceph['cinder_pool_gib'],
-                           float(ceph_pool['stats']['bytes_used']) / (1024 ** 3)))
+                           float(ceph_pool['stats']['bytes_used']) / (1024 ** 3)))  # pylint: disable=W1619
             elif ceph_pool['name'] == constants.CEPH_POOL_KUBE_NAME:
                 if (int(storceph['kube_pool_gib']) > 0 and
                     (int(ceph_pool['stats']['bytes_used']) >
@@ -1121,7 +1121,7 @@ def _check_pool_quotas_data(ostorceph, storceph):
                         _("The configured quota for the kube pool (%s GiB) "
                           "must be greater than the already occupied space (%s GiB)")
                         % (storceph['kube_pool_gib'],
-                           float(ceph_pool['stats']['bytes_used']) / (1024 ** 3)))
+                           float(ceph_pool['stats']['bytes_used']) / (1024 ** 3)))  # pylint: disable=W1619
             elif ceph_pool['name'] == constants.CEPH_POOL_EPHEMERAL_NAME:
                 if (int(storceph['ephemeral_pool_gib']) > 0 and
                     (int(ceph_pool['stats']['bytes_used']) >
@@ -1130,7 +1130,7 @@ def _check_pool_quotas_data(ostorceph, storceph):
                         _("The configured quota for the ephemeral pool (%s GiB) "
                           "must be greater than the already occupied space (%s GiB)")
                         % (storceph['ephemeral_pool_gib'],
-                           float(ceph_pool['stats']['bytes_used']) / (1024 ** 3)))
+                           float(ceph_pool['stats']['bytes_used']) / (1024 ** 3)))  # pylint: disable=W1619
             elif ceph_pool['name'] == constants.CEPH_POOL_IMAGES_NAME:
                 if (int(storceph['glance_pool_gib']) > 0 and
                     (int(ceph_pool['stats']['bytes_used']) >
@@ -1139,7 +1139,7 @@ def _check_pool_quotas_data(ostorceph, storceph):
                         _("The configured quota for the glance pool (%s GiB) "
                           "must be greater than the already occupied space (%s GiB)")
                         % (storceph['glance_pool_gib'],
-                           float(ceph_pool['stats']['bytes_used']) / (1024 ** 3)))
+                           float(ceph_pool['stats']['bytes_used']) / (1024 ** 3)))  # pylint: disable=W1619
             elif ceph_pool['name'] in constants.CEPH_POOL_OBJECT_GATEWAY_NAME:
                 if (int(storceph['object_pool_gib']) > 0 and
                     (int(ceph_pool['stats']['bytes_used']) >
@@ -1148,7 +1148,7 @@ def _check_pool_quotas_data(ostorceph, storceph):
                         _("The configured quota for the object pool (%s GiB) "
                           "must be greater than the already occupied space (%s GiB)")
                         % (storceph['object_pool_gib'],
-                           float(ceph_pool['stats']['bytes_used']) / (1024 ** 3)))
+                           float(ceph_pool['stats']['bytes_used']) / (1024 ** 3)))  # pylint: disable=W1619
         else:
             if storceph['tier_name'] in ceph_pool['name']:
                 if constants.CEPH_POOL_VOLUMES_NAME in ceph_pool['name']:
@@ -1159,7 +1159,7 @@ def _check_pool_quotas_data(ostorceph, storceph):
                             _("The configured quota for the cinder pool (%s GiB) "
                               "must be greater than the already occupied space (%s GiB)")
                             % (storceph['cinder_pool_gib'],
-                               float(ceph_pool['stats']['bytes_used']) / (1024 ** 3)))
+                               float(ceph_pool['stats']['bytes_used']) / (1024 ** 3)))  # pylint: disable=W1619
                 elif K8RbdProvisioner.get_pool(storceph) == ceph_pool['name']:
                     if (int(storceph['kube_pool_gib']) > 0 and
                         (int(ceph_pool['stats']['bytes_used']) >
@@ -1168,7 +1168,7 @@ def _check_pool_quotas_data(ostorceph, storceph):
                             _("The configured quota for the kube pool (%s GiB) "
                               "must be greater than the already occupied space (%s GiB)")
                             % (storceph['kube_pool_gib'],
-                               float(ceph_pool['stats']['bytes_used']) / (1024 ** 3)))
+                               float(ceph_pool['stats']['bytes_used']) / (1024 ** 3)))  # pylint: disable=W1619
 
     # sanity check the quota
     total_quota_gib = 0

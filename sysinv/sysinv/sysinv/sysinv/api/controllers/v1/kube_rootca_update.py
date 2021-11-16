@@ -76,7 +76,7 @@ class KubeRootCAGenerateController(rest.RestController):
                                             "format of 'C=<Country> ST=<State/Province> "
                                             "L=<Locality> O=<Organization> OU=<OrganizationUnit> "
                                             "CN=<commonName>"))
-        if 'CN' not in subject_dict.keys():
+        if 'CN' not in list(subject_dict.keys()):
             raise wsme.exc.ClientSideError(_("The CN=<commonName> parameter is required to be "
                                             "specified in subject argument"))
         return subject_dict
@@ -172,7 +172,7 @@ class KubeRootCAUpdate(base.APIBase):
     "A list containing a self link and associated kubernetes rootca update links"
 
     def __init__(self, **kwargs):
-        self.fields = objects.kube_rootca_update.fields.keys()
+        self.fields = list(objects.kube_rootca_update.fields.keys())
         for k in self.fields:
             if not hasattr(self, k):
                 continue
@@ -229,7 +229,7 @@ class KubeRootCAHostUpdate(base.APIBase):
     "update links"
 
     def __init__(self, **kwargs):
-        self.fields = objects.kube_rootca_host_update.fields.keys()
+        self.fields = list(objects.kube_rootca_host_update.fields.keys())
         for k in self.fields:
             if not hasattr(self, k):
                 continue

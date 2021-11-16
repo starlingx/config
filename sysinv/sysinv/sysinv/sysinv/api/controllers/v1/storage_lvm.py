@@ -384,8 +384,10 @@ def _discover_and_validate_cinder_hiera_data(caps_dict):
                      'while for %s is %s GiB.') %
                    (constants.LVG_CINDER_VOLUMES,
                     constants.CINDER_LVM_MINIMUM_DEVICE_SIZE_GIB,
-                    pv_sizes[0]['host'], math.floor(float(pv_sizes[0]['size']) / 1024 * 1000) / 1000.0,
-                    pv_sizes[1]['host'], math.floor(float(pv_sizes[1]['size']) / 1024 * 1000) / 1000.0))
+                    pv_sizes[0]['host'], math.floor(float(pv_sizes[0]['size']) /  # pylint: disable=W1619
+                                                    1024 * 1000) / 1000.0,
+                    pv_sizes[1]['host'], math.floor(float(pv_sizes[1]['size']) /  # pylint: disable=W1619
+                                                    1024 * 1000) / 1000.0))
             raise wsme.exc.ClientSideError(msg)
 
     if pv_sizes[0]['size'] < (constants.CINDER_LVM_MINIMUM_DEVICE_SIZE_GIB * 1024):
@@ -393,7 +395,7 @@ def _discover_and_validate_cinder_hiera_data(caps_dict):
                  'Current allocation is: %s GiB.') %
                (constants.LVG_CINDER_VOLUMES,
                 constants.CINDER_LVM_MINIMUM_DEVICE_SIZE_GIB,
-                math.floor(float(pv_sizes[0]['size']) / 1024 * 1000) / 1000.0))
+                math.floor(float(pv_sizes[0]['size']) / 1024 * 1000) / 1000.0))  # pylint: disable=W1619
         raise wsme.exc.ClientSideError(msg)
 
     # Log all the LVM parameters
