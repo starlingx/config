@@ -14,6 +14,8 @@ from sysinv.common import constants
 LOG = log.getLogger(__name__)
 CONF = cfg.CONF
 
+ALARM_ID = 'ALARM_ID'
+ENTITY_ID = 'ENTITY_ID'
 EXPIRING_SOON = 'EXPIRING_SOON'
 EXPIRED = 'EXPIRED'
 
@@ -24,19 +26,18 @@ class FaultApiMgr(object):
         self.fm_api = fm_api.FaultAPIs()
         """
         After an audit is completed, ALARMS_SNAPSHOT stores all active alarms
-        ALARMS_SNAPSHOT is a dict of list.
+        ALARMS_SNAPSHOT is a dict of dict. Each entry is per certificate.
         {
-            EXPIRING_SOON: [certname1, certname2,...]
-            EXPIRED: [certname7, certname8,...]
+            alarm_uuid_1: {
+                ALARM_ID: FM_ALARM_ID_CERT_EXPIRED or FM_ALARM_ID_CERT_EXPIRING_SOON
+                ENTITY_ID: entity_instance_id returned from FM API
+            }
+            alarm_uuid_2: {
+                ...
+            }
         }
         """
         self.ALARMS_SNAPSHOT = {}
-        """
-        Entity ID to cert_name mapping
-        Due to the nature of entity_id strings generated, we need a map
-        to lookup cert_name's in utils.CERT_SNAPSHOT during audits
-        """
-        self.ENTITYID_TO_CERTNAME_MAP = {}
 
     def get_entity_instance_id(self, cert_name):
         """
@@ -65,21 +66,20 @@ class FaultApiMgr(object):
                 tmp_id.append("system.certificate.%s" % cert_name)
 
         entity_id = ''.join(tmp_id)
-        self.ENTITYID_TO_CERTNAME_MAP[entity_id] = cert_name
         return entity_id
-
-    def get_cert_name_from_entity_instance_id(self, instance_id):
-        if instance_id in self.ENTITYID_TO_CERTNAME_MAP:
-            return self.ENTITYID_TO_CERTNAME_MAP[instance_id]
-        else:
-            return 'Unknown'
 
     @staticmethod
     def get_mode(cert_name):
         return 'ssl_ca' if 'ssl_ca' in cert_name else cert_name
 
-    def get_reason_text(self, cert_name, expired_flag):
+    def get_reason_text(self, entity_id, alrm_id):
         txt = []
+        cert_name = utils.get_cert_name_with_entity_id(entity_id)
+        if cert_name is None:
+            LOG.eror('Error retrieving certificate from snapshot. Returning entity_id')
+            txt.append(entity_id)
+            return ''.join(txt)
+
         if cert_name in utils.CERT_SNAPSHOT:
             # Add entity related text
             snapshot = utils.CERT_SNAPSHOT[cert_name]
@@ -106,7 +106,7 @@ class FaultApiMgr(object):
                 txt.append(' ')
 
             # Add Expired or Expiring
-            if expired_flag:
+            if alrm_id == fm_constants.FM_ALARM_ID_CERT_EXPIRED:
                 txt.append("expired.")
             else:
                 expiry_date = snapshot[utils.SNAPSHOT_KEY_EXPDATE]
@@ -122,9 +122,15 @@ class FaultApiMgr(object):
         LOG.debug('Alarm text: %s' % txt_str)
         return txt_str
 
-    def get_severity(self, cert_name, expired_flag):
-        alarm_severity = fm_constants.FM_ALARM_SEVERITY_CRITICAL if expired_flag \
-                       else fm_constants.FM_ALARM_SEVERITY_MAJOR
+    def get_severity(self, entity_id, alrm_id):
+        alarm_severity = fm_constants.FM_ALARM_SEVERITY_CRITICAL if \
+                         alrm_id == fm_constants.FM_ALARM_ID_CERT_EXPIRED \
+                         else fm_constants.FM_ALARM_SEVERITY_MAJOR
+
+        cert_name = utils.get_cert_name_with_entity_id(entity_id)
+        if cert_name is None:
+            LOG.error('Error retrieving certificate from snapshot. Using default severity')
+            return alarm_severity
 
         # Check for annotation overrides
         if cert_name in utils.CERT_SNAPSHOT:
@@ -136,62 +142,57 @@ class FaultApiMgr(object):
 
         return alarm_severity
 
-    def set_fault(self, cert_name, expired_flag, state):
-        """
+    def set_fault(self, entity_inst_id, alrm_id, state):
+        '''
         Set Fault calls the FM API to raise or clear alarm
-        Params: cert-name: certificate name
-                expired_flag: True/False
-                              Determines whether 'Expired' (True) or 'Expiring Soon' (False)
-                              Also determines the severity Critical (True) or Major (False)
+        Params: entity_inst_id: entity id for alarm
+                alrm_id: fm_constants.FM_ALARM_ID_CERT_EXPIRED or
+                        fm_constant.FM_ALARM_ID_CERT_EXPIRING_SOON
                 state: will determine SET or CLEAR
-        """
-
-        alrm_id = fm_constants.FM_ALARM_ID_CERT_EXPIRED if expired_flag \
-                else fm_constants.FM_ALARM_ID_CERT_EXPIRING_SOON
-        entity_inst_id = self.get_entity_instance_id(cert_name)
+        '''
 
         # If case of api errors during data collection, we do not want to raise alarms with
         # "unknown" UUID (because we will need to clear such alarms manually). In such a case,
         # we log the error and skip the alarm raise. Subsequent audit runs will raise the alarms.
-        if "uuid=unknown" in entity_inst_id:
+        if entity_inst_id is None or "uuid=unknown" in entity_inst_id:
             LOG.error('set_fault called for certificate %s with unknown UUID. Suppressing alarm' %
-                     cert_name)
+                      entity_inst_id)
             return
 
         try:
             if state == fm_constants.FM_ALARM_STATE_SET:
                 # Raise alarm only if alarm does not already exist
                 if not self.fm_api.get_fault(alrm_id, entity_inst_id):
-                    # Check for annotation override
-                    if cert_name in utils.CERT_SNAPSHOT:
-                        snapshot = utils.CERT_SNAPSHOT[cert_name]
-                        if snapshot.get(constants.CERT_ALARM_ANNOTATION_ALARM,
-                                        constants.CERT_ALARM_DEFAULT_ANNOTATION_ALARM) == 'disabled':
-                            LOG.info('Found annotation override, disabling alarm. Suppressing %s' %
-                                    cert_name)
-                            return
-
                     fault = fm_api.Fault(
                             alarm_id=alrm_id,
                             alarm_state=state,
                             entity_type_id=fm_constants.FM_ENTITY_TYPE_CERTIFICATE,
                             entity_instance_id=entity_inst_id,
-                            severity=self.get_severity(cert_name, expired_flag),
-                            reason_text=self.get_reason_text(cert_name, expired_flag),
+                            severity=self.get_severity(entity_inst_id, alrm_id),
+                            reason_text=self.get_reason_text(entity_inst_id, alrm_id),
                             alarm_type=fm_constants.FM_ALARM_TYPE_9,
                             probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_77,
                             proposed_repair_action="Renew certificate for entity identified",
                             suppression=False,
                             service_affecting=False)
 
-                    LOG.info('Setting fault for cert_name=%s, expired_flag=%s, state=%s' %
-                            (cert_name, expired_flag, state))
-                    self.fm_api.set_fault(fault)
+                    LOG.info('Setting fault for entity_id=%s, alarm_type=%s, state=%s' %
+                            (entity_inst_id, alrm_id, state))
+                    alarm_uuid = self.fm_api.set_fault(fault)
+                    # Update CERT_SNAPSHOT
+                    utils.update_cert_snapshot_field_with_entity_id(entity_inst_id,
+                                                                    utils.ALARM_UUID,
+                                                                    alarm_uuid)
             else:
                 if self.fm_api.get_fault(alrm_id, entity_inst_id):
-                    LOG.info('Setting fault for cert_name=%s, expired_flag=%s, state=%s' %
-                            (cert_name, expired_flag, state))
+                    LOG.info('Setting fault for entity_id=%s, alarm_type=%s, state=%s' %
+                            (entity_inst_id, alrm_id, state))
                     self.fm_api.clear_fault(alrm_id, entity_inst_id)
+                    # Update CERT_SNAPSHOT
+                    utils.update_cert_snapshot_field_with_entity_id(entity_inst_id,
+                                                                    utils.ALARM_UUID,
+                                                                    "")
+
         except Exception as e:
             LOG.exception(e)
 
@@ -210,11 +211,13 @@ class FaultApiMgr(object):
 
         # Expiring Soon alarms
         exp_soon_alarms = self.get_faults(False)
-        self.add_alarms_snapshot(EXPIRING_SOON, exp_soon_alarms)
+        self.add_alarms_snapshot(fm_constants.FM_ALARM_ID_CERT_EXPIRING_SOON,
+                                exp_soon_alarms)
 
         # Expired alarms
         exprd_alarms = self.get_faults(True)
-        self.add_alarms_snapshot(EXPIRED, exprd_alarms)
+        self.add_alarms_snapshot(fm_constants.FM_ALARM_ID_CERT_EXPIRED,
+                                 exprd_alarms)
 
     def reset_alarms_snapshot(self):
         self.ALARMS_SNAPSHOT = {}
@@ -222,16 +225,10 @@ class FaultApiMgr(object):
     def print_alarms_snapshot(self):
         LOG.info('Alarms snapshot = %s' % self.ALARMS_SNAPSHOT)
 
-    def add_alarms_snapshot(self, key, alarms):
-        cert_names = []
+    def add_alarms_snapshot(self, alarm_type, alarms):
         if alarms:
             for item in alarms:
-                cert_names.append(self.get_cert_name_from_entity_instance_id(item.entity_instance_id))
-
-        self.ALARMS_SNAPSHOT[key] = cert_names
-
-    def reset_entityid_to_certname_map(self):
-        self.ENTITYID_TO_CERTNAME_MAP = {}
-
-    def print_entityid_to_certname_map(self):
-        LOG.info('Entityid_to_certname map = %s' % self.ENTITYID_TO_CERTNAME_MAP)
+                self.ALARMS_SNAPSHOT[item.uuid] = {
+                    ALARM_ID: alarm_type,
+                    ENTITY_ID: item.entity_instance_id
+                }
