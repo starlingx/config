@@ -803,7 +803,8 @@ def size_unit_conversion(size, step):
       :returns: The return value is a float with 3 digits after
                 the decimal point.
     """
-    return math.floor(float(size) / (1024 ** step) * 1000) / 1000.0
+    return math.floor(float(size) /  # pylint: disable=old-division
+                      (1024 ** step) * 1000) / 1000.0
 
 
 def _get_system_info(cc):

@@ -113,7 +113,7 @@ def do_service_parameter_modify(cc, args):
     patch = []
     attributes = utils.extract_keypairs(args)
 
-    if len(attributes.items()) > 1 \
+    if len(attributes) > 1 \
             and (args.resource is not None or args.personality is not None):
         raise exc.CommandError("Cannot specify multiple parameters with custom resource.")
 
@@ -170,7 +170,7 @@ def do_service_parameter_add(cc, args):
 
     attributes = utils.extract_keypairs(args)
 
-    if len(attributes.items()) > 1 \
+    if len(attributes) > 1 \
             and (args.resource is not None or args.personality is not None):
         raise exc.CommandError("Cannot specify multiple parameters with custom resource.")
 

@@ -53,8 +53,12 @@ def do_host_disk_show(cc, args):
     idisk = _find_disk(cc, ihost, args.device_nodeoruuid)
 
     # Convert size from mib to gib and round it down
-    idisk.size_mib = math.floor(float(idisk.size_mib) / 1024 * 1000) / 1000.0
-    idisk.available_mib = math.floor(float(idisk.available_mib) / 1024 * 1000) / 1000.0
+    idisk.size_mib = math.floor(
+        float(idisk.size_mib) /  # pylint: disable=old-division
+        1024 * 1000) / 1000.0
+    idisk.available_mib = math.floor(
+        float(idisk.available_mib) /  # pylint: disable=old-division
+        1024 * 1000) / 1000.0
 
     _print_idisk_show(idisk)
 
@@ -78,8 +82,12 @@ def do_host_disk_list(cc, args):
 
     # Convert size from mib to gib and round it down
     for i in idisks:
-        i.size_mib = math.floor(float(i.size_mib) / 1024 * 1000) / 1000.0
-        i.available_mib = math.floor(float(i.available_mib) / 1024 * 1000) / 1000.0
+        i.size_mib = math.floor(
+            float(i.size_mib) /  # pylint: disable=old-division
+            1024 * 1000) / 1000.0
+        i.available_mib = math.floor(
+            float(i.available_mib) /  # pylint: disable=old-division
+            1024 * 1000) / 1000.0
 
     utils.print_list(idisks, fields, field_labels, sortby=1)
 

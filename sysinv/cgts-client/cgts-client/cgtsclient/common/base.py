@@ -163,6 +163,9 @@ class Resource(object):
             return self.id == other.id
         return self._info == other._info
 
+    def __hash__(self):
+        return hash((self.manager, self._info, self._loaded))
+
     def is_loaded(self):
         return self._loaded
 

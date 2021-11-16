@@ -28,7 +28,9 @@ def _print_ipv_show(ipv):
               'lvm_pv_name', 'lvm_vg_name', 'lvm_pv_uuid',
               'lvm_pv_size', 'lvm_pe_total', 'lvm_pe_alloced', 'ihost_uuid',
               'created_at', 'updated_at']
-    ipv.lvm_pv_size = math.floor(float(ipv.lvm_pv_size) / (1024 ** 3) * 1000) / 1000.0
+    ipv.lvm_pv_size = math.floor(
+        float(ipv.lvm_pv_size) /  # pylint: disable=old-division
+        (1024 ** 3) * 1000) / 1000.0
     data = [(f, getattr(ipv, f, '')) for f in fields]
     utils.print_tuple_list(data, labels)
 

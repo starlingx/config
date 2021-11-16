@@ -454,15 +454,21 @@ def build_column_stats_for_best_guess_formatting(objs, fields, field_labels, cus
             if value_width > self.max_width:
                 self.max_width = value_width
             if self.count > 0:
-                self.average_width = float(self.total_width) / float(self.count)
+                ftw = float(self.total_width)
+                fc = float(self.count)
+                self.average_width = ftw / fc  # pylint: disable=old-division
 
         def set_max_percent(self, max_total_width):
             if max_total_width > 0:
-                self.max_percent = float(self.max_width) / float(max_total_width)
+                fmw = float(self.max_width)
+                ftw = float(max_total_width)
+                self.max_percent = fmw / ftw  # pylint: disable=old-division
 
         def set_avg_percent(self, avg_total_width):
             if avg_total_width > 0:
-                self.average_percent = float(self.average_width) / float(avg_total_width)
+                faw = float(self.average_width)
+                ftw = float(avg_total_width)
+                self.average_percent = faw / ftw  # pylint: disable=W1619
 
         def __str__(self):
             return str([self.field,
@@ -514,7 +520,8 @@ def build_best_guess_formatters_using_average_widths(objs, fields, field_labels,
     if total_avg_width <= 0:
         return format_spec
     for f in [ff for ff in fields if ff not in no_wrap_fields]:
-        format_spec[f] = float(column_info["stats"][f].average_width) / total_avg_width
+        fsaw = float(column_info["stats"][f].average_width)
+        format_spec[f] = fsaw / total_avg_width  # pylint: disable=W1619
         custom_formatter = custom_formatters.get(f, None)
         if custom_formatter:
             format_spec[f] = {"formatter": custom_formatter, "wrapperFormatter": format_spec[f]}
@@ -532,7 +539,9 @@ def build_best_guess_formatters_using_max_widths(objs, fields, field_labels, cus
     column_info = build_column_stats_for_best_guess_formatting(objs, fields, field_labels, custom_formatters)
     format_spec = {}
     for f in [ff for ff in fields if ff not in no_wrap_fields]:
-        format_spec[f] = float(column_info["stats"][f].max_width) / float(column_info["total_max_width"])
+        fsmw = float(column_info["stats"][f].max_width)
+        vtmw = float(column_info["total_max_width"])
+        format_spec[f] = fsmw / vtmw  # pylint: disable=old-division
         custom_formatter = custom_formatters.get(f, None)
         if custom_formatter:
             format_spec[f] = {"formatter": custom_formatter, "wrapperFormatter": format_spec[f]}
