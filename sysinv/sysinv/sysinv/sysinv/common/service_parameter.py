@@ -57,6 +57,14 @@ def _validate_integer(name, value):
             "Parameter '%s' must be an integer value." % name))
 
 
+def _validate_zero_or_positive_integer(name, value):
+    _validate_integer(name, value)
+
+    if int(value) < 0:
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' must be positive integer or zero.") % name)
+
+
 def _validate_float(name, value):
     try:
         float(value)
@@ -564,7 +572,7 @@ PLATFORM_KERNEL_PARAMETER_VALIDATOR = {
 
 PLATFORM_KEYSTONE_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_UNIQUE_LAST_PASSWORD_COUNT:
-        _validate_integer,
+        _validate_zero_or_positive_integer,
     constants.SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_PASSWORD_REGEX:
         _validate_regex,
     constants.SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_PASSWORD_REGEX_DESCRIPTION:
