@@ -8446,6 +8446,8 @@ class Connection(api.Connection):
         query = query.join(models.ihost,
                            models.KubeHostUpgrade.host_id == models.ihost.id)
         query = query.filter(models.ihost.recordtype == "standard")
+        # Filter out the storage nodes since they aren't running k8s.
+        query = query.filter(models.ihost.subfunctions != "storage")
 
         return _paginate_query(models.KubeHostUpgrade, limit, marker,
                                sort_key, sort_dir, query)
