@@ -425,7 +425,11 @@ def wrapper_formatter_factory(ctx, field, formatter):
     raise Exception("Formatter Error! Unrecognized formatter {} for field {}".format(formatter, field))
 
 
-def build_column_stats_for_best_guess_formatting(objs, fields, field_labels, custom_formatters={}):
+def build_column_stats_for_best_guess_formatting(objs, fields, field_labels, custom_formatters=None):
+
+    if custom_formatters is None:
+        custom_formatters = {}
+
     class ColumnStats:
         def __init__(self, field, field_label, custom_formatter=None):
             self.field = field
@@ -513,7 +517,15 @@ def build_column_stats_for_best_guess_formatting(objs, fields, field_labels, cus
             "total_avg_width": total_avg_width}
 
 
-def build_best_guess_formatters_using_average_widths(objs, fields, field_labels, custom_formatters={}, no_wrap_fields=[]):
+def build_best_guess_formatters_using_average_widths(objs, fields, field_labels,
+                                                     custom_formatters=None, no_wrap_fields=None):
+
+    if custom_formatters is None:
+        custom_formatters = {}
+
+    if no_wrap_fields is None:
+        no_wrap_fields = []
+
     column_info = build_column_stats_for_best_guess_formatting(objs, fields, field_labels, custom_formatters)
     format_spec = {}
     total_avg_width = float(column_info["total_avg_width"])
@@ -535,7 +547,15 @@ def build_best_guess_formatters_using_average_widths(objs, fields, field_labels,
     return format_spec
 
 
-def build_best_guess_formatters_using_max_widths(objs, fields, field_labels, custom_formatters={}, no_wrap_fields=[]):
+def build_best_guess_formatters_using_max_widths(objs, fields, field_labels,
+                                                 custom_formatters=None, no_wrap_fields=None):
+
+    if custom_formatters is None:
+        custom_formatters = {}
+
+    if no_wrap_fields is None:
+        no_wrap_fields = []
+
     column_info = build_column_stats_for_best_guess_formatting(objs, fields, field_labels, custom_formatters)
     format_spec = {}
     for f in [ff for ff in fields if ff not in no_wrap_fields]:
@@ -575,7 +595,7 @@ def needs_wrapping_formatters(formatters, no_wrap=None):
     return True
 
 
-def as_wrapping_formatters(objs, fields, field_labels, formatters, no_wrap=None, no_wrap_fields=[]):
+def as_wrapping_formatters(objs, fields, field_labels, formatters, no_wrap=None, no_wrap_fields=None):
     """This function is the entry point for building the "best guess"
        word wrapping formatters.  A best guess formatter guesses what the best
        columns widths should be for the table celldata.  It does this by collecting
@@ -600,6 +620,10 @@ def as_wrapping_formatters(objs, fields, field_labels, formatters, no_wrap=None,
               When wrapping is required, best-guess word wrapping formatters are returned
               with original parameter formatters embedded in the word wrapping formatters
     """
+
+    if no_wrap_fields is None:
+        no_wrap_fields = []
+
     no_wrap = is_nowrap_set(no_wrap)
 
     if not needs_wrapping_formatters(formatters, no_wrap):

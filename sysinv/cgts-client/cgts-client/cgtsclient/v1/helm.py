@@ -47,7 +47,7 @@ class HelmManager(base.Manager):
             return None
 
     def update_overrides(self, app, name, namespace,
-                         flag='reset', override_values={}):
+                         flag='reset', override_values=None):
         """Update overrides for a given chart.
 
         :param app_name: name of application
@@ -59,6 +59,8 @@ class HelmManager(base.Manager):
 
         This will return the end-user overrides for the specified chart.
         """
+        if override_values is None:
+            override_values = {}
         body = {'flag': flag, 'values': override_values, 'attributes': {}}
         return self._update(self._path(app) +
                             '?name=' + name +

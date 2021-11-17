@@ -81,7 +81,9 @@ def _wrapping_formatter_callback_decorator(subparser, command, callback):
 
     def no_wrap_decorator_builder(callback):
 
-        def process_callback_with_no_wrap(cc, args={}):
+        def process_callback_with_no_wrap(cc, args=None):
+            if args is None:
+                args = {}
             no_wrap = args.nowrap
             # turn on/off wrapping formatters when outputting CLI results
             wrapping_formatters.set_no_wrap(no_wrap)
@@ -197,7 +199,10 @@ def pretty_choice_list(l):
     return ', '.join("'%s'" % i for i in l)
 
 
-def _sort_for_list(objs, fields, formatters={}, sortby=0, reversesort=False):
+def _sort_for_list(objs, fields, formatters=None, sortby=0, reversesort=False):
+
+    if formatters is None:
+        formatters = {}
 
     # Sort only if necessary
     if sortby is None:
@@ -359,9 +364,15 @@ def parse_date(string_data):
     return re.sub(pattern, convert_date, string_data)
 
 
-def print_list(objs, fields, field_labels, formatters={}, sortby=0,
-               reversesort=False, no_wrap_fields=[], printer=default_printer,
+def print_list(objs, fields, field_labels, formatters=None, sortby=0,
+               reversesort=False, no_wrap_fields=None, printer=default_printer,
                output_format=None):
+
+    if formatters is None:
+        formatters = {}
+
+    if no_wrap_fields is None:
+        no_wrap_fields = []
 
     if output_format == 'yaml' or output_format == 'value':
         my_dict_list = []
@@ -399,7 +410,14 @@ def _build_row_from_object(fields, formatters, o):
     return row
 
 
-def print_tuple_list(tuples, tuple_labels=[], formatters={}):
+def print_tuple_list(tuples, tuple_labels=None, formatters=None):
+
+    if tuple_labels is None:
+        tuple_labels = []
+
+    if formatters is None:
+        formatters = {}
+
     pt = prettytable.PrettyTable(['Property', 'Value'],
                                  caching=False, print_empty=False)
     pt.align = 'l'
@@ -439,8 +457,14 @@ def row_height(texts):
     return height
 
 
-def print_long_list(objs, fields, field_labels, formatters={}, sortby=0, reversesort=False, no_wrap_fields=[],
+def print_long_list(objs, fields, field_labels, formatters=None, sortby=0, reversesort=False, no_wrap_fields=None,
                     no_paging=False, printer=default_printer):
+
+    if formatters is None:
+        formatters = {}
+
+    if no_wrap_fields is None:
+        no_wrap_fields = []
 
     formatters = wrapping_formatters.as_wrapping_formatters(objs, fields, field_labels, formatters,
                                                             no_wrap_fields=no_wrap_fields)
