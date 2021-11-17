@@ -39,39 +39,6 @@ class FaultApiMgr(object):
         """
         self.ALARMS_SNAPSHOT = {}
 
-    def get_entity_instance_id(self, cert_name):
-        """
-        Returns entity_instance_ids in format:
-            system.certificate.mode=<mode>.uuid=<uuid>
-            OR
-            namespace=<namespace-name>.certificate=<certificate-name>
-            OR
-            namespace=<namespace-name>.secret=<secret-name>
-            OR
-            system.certificate.k8sRootCA
-        """
-        tmp_id = []
-        if cert_name in utils.CERT_SNAPSHOT:
-            snapshot = utils.CERT_SNAPSHOT[cert_name]
-            if snapshot[utils.SNAPSHOT_KEY_MODE] is utils.UUID:
-                tmp_id.append("system.certificate.mode=%s.uuid=%s" %
-                    (self.get_mode(cert_name), snapshot[utils.UUID]))
-            elif snapshot[utils.SNAPSHOT_KEY_MODE] is utils.MODE_CERT_MGR:
-                tmp_id.append("namespace=%s.certificate=%s" %
-                    (snapshot[utils.SNAPSHOT_KEY_k8s_ns], snapshot[utils.SNAPSHOT_KEY_k8s_cert]))
-            elif snapshot[utils.SNAPSHOT_KEY_MODE] is utils.MODE_SECRET:
-                tmp_id.append("namespace=%s.secret=%s" %
-                    (snapshot[utils.SNAPSHOT_KEY_k8s_ns], snapshot[utils.SNAPSHOT_KEY_k8s_secret]))
-            elif snapshot[utils.SNAPSHOT_KEY_MODE] is utils.MODE_OTHER:
-                tmp_id.append("system.certificate.%s" % cert_name)
-
-        entity_id = ''.join(tmp_id)
-        return entity_id
-
-    @staticmethod
-    def get_mode(cert_name):
-        return 'ssl_ca' if 'ssl_ca' in cert_name else cert_name
-
     def get_reason_text(self, entity_id, alrm_id):
         txt = []
         cert_name = utils.get_cert_name_with_entity_id(entity_id)
@@ -94,7 +61,7 @@ class FaultApiMgr(object):
             txt.append("Certificate ")
             if snapshot[utils.SNAPSHOT_KEY_MODE] is utils.UUID:
                 txt.append("\'system certificate-show %s\' (mode=%s) " %
-                    (snapshot[utils.UUID], self.get_mode(cert_name)))
+                    (snapshot[utils.UUID], utils.get_mode(cert_name)))
             elif snapshot[utils.SNAPSHOT_KEY_MODE] is utils.MODE_CERT_MGR:
                 txt.append("namespace=%s, certificate=%s " %
                     (snapshot[utils.SNAPSHOT_KEY_k8s_ns], snapshot[utils.SNAPSHOT_KEY_k8s_cert]))
