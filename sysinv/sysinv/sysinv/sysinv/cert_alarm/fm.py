@@ -76,7 +76,7 @@ class FaultApiMgr(object):
         txt = []
         cert_name = utils.get_cert_name_with_entity_id(entity_id)
         if cert_name is None:
-            LOG.eror('Error retrieving certificate from snapshot. Returning entity_id')
+            LOG.error('Error retrieving certificate from snapshot. Returning entity_id')
             txt.append(entity_id)
             return ''.join(txt)
 
