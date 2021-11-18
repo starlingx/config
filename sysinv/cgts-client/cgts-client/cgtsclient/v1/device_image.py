@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -12,7 +12,7 @@ from cgtsclient import exc
 CREATION_ATTRIBUTES = [
     'bitstream_type', 'pci_vendor', 'pci_device',
     'bitstream_id', 'key_signature', 'revoke_key_id',
-    'name', 'description', 'image_version', 'uuid', 'retimer_included']
+    'name', 'description', 'image_version', 'uuid', 'bmc', 'retimer_included']
 
 
 class DeviceImage(base.Resource):

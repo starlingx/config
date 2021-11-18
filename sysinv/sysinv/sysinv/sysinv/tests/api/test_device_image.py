@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -295,6 +295,25 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
         self.assertIn("retimer_included option is only applicable to"
                       " functional BMC image", str(result))
 
+    def test_create_functional_image_non_bmc_with_retimer(self):
+        # Test creation of device image
+        bitstream_file = os.path.join(os.path.dirname(__file__), "data",
+                                'bitstream.bit')
+        data = {
+            'bitstream_type': dconstants.BITSTREAM_TYPE_ROOT_KEY,
+            'pci_vendor': fpga_constants.N3000_VENDOR,
+            'pci_device': fpga_constants.N3000_DEVICE,
+            'key_signature': '12345',
+            'bmc': True,
+        }
+        upload_file = [('file', bitstream_file)]
+        result = self.post_with_files('/device_images', data,
+                                      upload_files=upload_file,
+                                      headers=self.API_HEADERS,
+                                      expect_errors=True)
+        self.assertIn("bmc option is only applicable to"
+                      " functional image", str(result))
+
     def test_create_bitstream_type_invalid(self):
         # Test creation of device image
         bitstream_file = os.path.join(os.path.dirname(__file__), "data",
@@ -362,6 +381,20 @@ class TestPatch(TestDeviceImage):
             pci_vendor='80ee',
             pci_device='beef',
             bitstream_id='6789')
+        self.device_image_bmc = dbutils.create_test_device_image(
+            bitstream_type=dconstants.BITSTREAM_TYPE_FUNCTIONAL,
+            pci_vendor='80ee',
+            pci_device='beef',
+            bitstream_id='0x2300011001030F',
+            bmc=True,
+            retimer_included=False)
+        self.device_image_bmc_retimer = dbutils.create_test_device_image(
+            bitstream_type=dconstants.BITSTREAM_TYPE_FUNCTIONAL,
+            pci_vendor='80ee',
+            pci_device='beef',
+            bitstream_id='0x2300011001030F',
+            bmc=True,
+            retimer_included=True)
 
     def test_device_image_apply_all_hosts(self):
         # Test applying device image to all hosts with fpga devices
@@ -458,6 +491,101 @@ class TestPatch(TestDeviceImage):
                                    expect_errors=True)
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
+
+        # Verify that an entry of image to device mapping is updated
+        dev_img_state = self.dbapi.device_image_state_get_by_image_device(
+            self.device_image2.id, self.pci_device.id)
+        self.assertEqual(self.device_image2.id, dev_img_state.image_id)
+
+    def test_device_image_apply_functional_user_bmc(self):
+        # Test applying second device image with label
+
+        # Assign label to a device
+        self.post_json('/device_labels',
+                       [{'pcidevice_uuid': self.pci_device.uuid},
+                        {'key1': 'value1'}],
+                       headers=self.API_HEADERS)
+
+        # Apply the device user image
+        path = '/device_images/%s?action=apply' % self.device_image.uuid
+        response = self.patch_json(path, [{'key1': 'value1'}],
+                                   headers=self.API_HEADERS)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+        # Verify that an entry of image to device mapping is updated
+        dev_img_state = self.dbapi.device_image_state_get_by_image_device(
+            self.device_image.id, self.pci_device.id)
+        self.assertEqual(dconstants.DEVICE_IMAGE_UPDATE_PENDING,
+                         dev_img_state.status)
+
+        # Test 1: Apply a functional BMC device image
+        path = '/device_images/%s?action=apply' % self.device_image_bmc.uuid
+        response = self.patch_json(path, [{'key1': 'value1'}],
+                                   headers=self.API_HEADERS,
+                                   expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+        # Verify that the entries for both images exist
+        dev_img_state = self.dbapi.device_image_state_get_by_image_device(
+            self.device_image.id, self.pci_device.id)
+        self.assertEqual(self.device_image.id, dev_img_state.image_id)
+        dev_img_state = self.dbapi.device_image_state_get_by_image_device(
+            self.device_image_bmc.id, self.pci_device.id)
+        self.assertEqual(self.device_image_bmc.id, dev_img_state.image_id)
+
+        # Test 2: Apply a functional BMC retimer device image
+        path = '/device_images/%s?action=apply' % self.device_image_bmc_retimer.uuid
+        response = self.patch_json(path, [{'key1': 'value1'}],
+                                   headers=self.API_HEADERS,
+                                   expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+        # Verify that the old bmc image is replaced with new bmc image with retimer
+        state_list = self.dbapi.device_image_state_get_list()
+        self.assertEqual(len(state_list), 2)
+        dev_img_state = self.dbapi.device_image_state_get_by_image_device(
+            self.device_image.id, self.pci_device.id)
+        self.assertEqual(self.device_image.id, dev_img_state.image_id)
+        dev_img_state = self.dbapi.device_image_state_get_by_image_device(
+            self.device_image_bmc_retimer.id, self.pci_device.id)
+        self.assertEqual(self.device_image_bmc_retimer.id, dev_img_state.image_id)
+
+        # Test 3: Apply a BMC image w/o retimer
+        path = '/device_images/%s?action=apply' % self.device_image_bmc.uuid
+        response = self.patch_json(path, [{'key1': 'value1'}],
+                                   headers=self.API_HEADERS,
+                                   expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+        # Verify that all three states exist, the old BMC retimer image state exists
+        state_list = self.dbapi.device_image_state_get_list()
+        self.assertEqual(len(state_list), 3)
+        dev_img_state = self.dbapi.device_image_state_get_by_image_device(
+            self.device_image.id, self.pci_device.id)
+        self.assertEqual(self.device_image.id, dev_img_state.image_id)
+        dev_img_state = self.dbapi.device_image_state_get_by_image_device(
+            self.device_image_bmc_retimer.id, self.pci_device.id)
+        self.assertEqual(self.device_image_bmc_retimer.id, dev_img_state.image_id)
+        dev_img_state = self.dbapi.device_image_state_get_by_image_device(
+            self.device_image_bmc.id, self.pci_device.id)
+        self.assertEqual(self.device_image_bmc.id, dev_img_state.image_id)
+
+        # Test 4: Apply a BMC image with retimer
+        path = '/device_images/%s?action=apply' % self.device_image_bmc_retimer.uuid
+        response = self.patch_json(path, [{'key1': 'value1'}],
+                                   headers=self.API_HEADERS,
+                                   expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+        # Verify that state for BMC image without retimer is deleted
+        state_list = self.dbapi.device_image_state_get_list()
+        self.assertEqual(len(state_list), 2)
+        dev_img_state = self.dbapi.device_image_state_get_by_image_device(
+            self.device_image.id, self.pci_device.id)
+        self.assertEqual(self.device_image.id, dev_img_state.image_id)
+        dev_img_state = self.dbapi.device_image_state_get_by_image_device(
+            self.device_image_bmc_retimer.id, self.pci_device.id)
+        self.assertEqual(self.device_image_bmc_retimer.id, dev_img_state.image_id)
 
     def test_device_image_remove_all_hosts(self):
         # Test removing device image for all hosts with fpga devices

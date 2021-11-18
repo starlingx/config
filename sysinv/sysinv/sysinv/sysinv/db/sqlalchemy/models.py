@@ -1593,6 +1593,7 @@ class DeviceImageFunctional(DeviceImageCommon, DeviceImage):
     __tablename__ = 'device_images_functional'
 
     bitstream_id = Column(String(255), nullable=True)
+    bmc = Column(Boolean, nullable=False, default=False)
     retimer_included = Column(Boolean, nullable=False, default=False)
 
     __mapper_args__ = {

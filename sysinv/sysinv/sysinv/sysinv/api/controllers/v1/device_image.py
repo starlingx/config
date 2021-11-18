@@ -1,9 +1,10 @@
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
+from distutils.util import strtobool
 import os
 import pecan
 from pecan import expose
@@ -81,6 +82,9 @@ class DeviceImage(base.APIBase):
     image_version = wtypes.text
     "The version of the device image"
 
+    bmc = bool
+    "Represent the functional image is a BMC image"
+
     retimer_included = bool
     "Retimer firmware included in BMC firmware binary"
 
@@ -112,7 +116,7 @@ class DeviceImage(base.APIBase):
                 ['id', 'uuid', 'bitstream_type', 'pci_vendor', 'pci_device',
                  'bitstream_id', 'key_signature', 'revoke_key_id',
                  'name', 'description', 'image_version',
-                 'applied', 'applied_labels', 'retimer_included'])
+                 'applied', 'applied_labels', 'bmc', 'retimer_included'])
 
         # insert applied labels for this device image if they exist
         device_image = _get_applied_labels(device_image)
@@ -249,7 +253,7 @@ class DeviceImageController(rest.RestController):
 
         field_list = ['uuid', 'bitstream_type', 'pci_vendor', 'pci_device',
                       'bitstream_id', 'key_signature', 'revoke_key_id',
-                      'name', 'description', 'image_version', 'retimer_included']
+                      'name', 'description', 'image_version', 'bmc', 'retimer_included']
         data = dict((k, v) for (k, v) in pecan.request.POST.items()
                 if k in field_list and not (v is None))
         msg = _validate_syntax(data)
@@ -435,8 +439,20 @@ def _validate_bitstream_type(dev_img):
           'revoke_key_id' not in dev_img):
         msg = _("revoke_key_id is required for key revocation bitstream type")
     elif (dev_img['bitstream_type'] != dconstants.BITSTREAM_TYPE_FUNCTIONAL and
+          'bmc' in dev_img.keys()):
+        msg = _("bmc option is only applicable to functional image")
+    elif (dev_img['bitstream_type'] != dconstants.BITSTREAM_TYPE_FUNCTIONAL and
           'retimer_included' in dev_img.keys()):
         msg = _("retimer_included option is only applicable to functional BMC image")
+    elif dev_img['bitstream_type'] == dconstants.BITSTREAM_TYPE_FUNCTIONAL:
+        bmc = False
+        retimer_included = False
+        if 'bmc' in dev_img.keys():
+            bmc = bool(strtobool(dev_img['bmc']))
+        if 'retimer_included' in dev_img.keys():
+            retimer_included = bool(strtobool(dev_img['retimer_included']))
+        if not bmc and retimer_included:
+            msg = _("retimer_included option is only applicable to functional BMC image")
     return msg
 
 
@@ -482,6 +498,10 @@ def _validate_syntax(device_image):
     if ('uuid' in device_image.keys() and
             not cutils.is_uuid_like(device_image['uuid'])):
         msg = _("uuid must be a valid UUID")
+        return msg
+    if ('bmc' in device_image.keys() and
+            not cutils.is_valid_boolstr(device_image['bmc'])):
+        msg = _("Parameter bmc must be a valid bool string")
         return msg
     if ('retimer_included' in device_image.keys() and
             not cutils.is_valid_boolstr(device_image['retimer_included'])):
@@ -566,16 +586,27 @@ def process_device_image_apply(pcidevice_id, device_image, label_id=None):
                         # return False for nothing to do
                         response = False
                 else:
-                    # Remove the existing device_image_state record
-                    pecan.request.dbapi.device_image_state_destroy(r.uuid)
-                    # Remove the existing device image label if any
-                    if label_id:
-                        try:
-                            img_lbl = pecan.request.dbapi.device_image_label_get_by_image_label(
-                                img.id, label_id)
-                            pecan.request.dbapi.device_image_label_destroy(img_lbl.uuid)
-                        except exception.DeviceImageLabelNotFoundByKey:
-                            pass
+                    do_remove = True
+                    # If the new image and the applied image are of a different kind (user/bmc),
+                    # do not remove the image.
+                    # If the new BMC image does not have retimer and an applied BMC image
+                    # does have retimer, keep that applied device image state.
+                    if device_image.bmc != img.bmc:
+                        do_remove = False
+                    if (device_image.bmc and
+                            (not device_image.retimer_included and img.retimer_included)):
+                        do_remove = False
+                    if do_remove:
+                        # Remove the existing device_image_state record
+                        pecan.request.dbapi.device_image_state_destroy(r.uuid)
+                        # Remove the existing device image label if any
+                        if label_id:
+                            try:
+                                img_lbl = pecan.request.dbapi.device_image_label_get_by_image_label(
+                                    img.id, label_id)
+                                pecan.request.dbapi.device_image_label_destroy(img_lbl.uuid)
+                            except exception.DeviceImageLabelNotFoundByKey:
+                                pass
             elif img.bitstream_type == dconstants.BITSTREAM_TYPE_KEY_REVOCATION:
                 if img.id == device_image.id:
                     if r.status in [dconstants.DEVICE_IMAGE_UPDATE_COMPLETED,
