@@ -132,6 +132,10 @@ def do_kube_host_upgrade_list(cc, args):
     # Get the kubernetes host upgrades
     kube_host_upgrade_details = _get_kube_host_upgrade_details(cc)
 
+    # Keep only the hosts that have kubernetes upgrade details.
+    # Storage nodes aren't part of the kubernetes cluster, for example.
+    ihosts = [host for host in ihosts if host.id in kube_host_upgrade_details]
+
     for host in ihosts:
         host.target_version = \
             kube_host_upgrade_details[host.id]['target_version']

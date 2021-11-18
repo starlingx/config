@@ -193,7 +193,7 @@ class TestListKubeHostUpgrade(TestKubeHostUpgrade):
         worker = self._create_worker(mgmt_ip='192.168.24.12')
         storage = self._create_storage(mgmt_ip='192.168.24.13')
         data = self.get_json('/kube_host_upgrades')
-        self.assertEqual(4, len(data['kube_host_upgrades']))
+        self.assertEqual(3, len(data['kube_host_upgrades']))
         host_id = 1
         for upgrade in data['kube_host_upgrades']:
             self.assertIn('id', upgrade)
