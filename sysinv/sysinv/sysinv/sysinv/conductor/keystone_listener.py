@@ -54,7 +54,7 @@ class NotificationEndpoint(object):
 def get_transport_url():
     try:
         db_api = dbapi.get_instance()
-        address = db_api.address_get_by_name(
+        network_object = db_api.address_get_by_name(
             utils.format_address_name(constants.CONTROLLER_HOSTNAME,
                                       constants.NETWORK_TYPE_MGMT)
         )
@@ -65,10 +65,12 @@ def get_transport_url():
 
     auth_password = keyring.get_password('amqp', 'rabbit')
 
-    if utils.is_valid_ipv6(address.address):
-        address = "[%s]" % address.address
+    if utils.is_valid_ipv6(network_object.address):
+        ip_address = "[%s]" % network_object.address
+    else:
+        ip_address = "%s" % network_object.address
 
-    transport_url = "rabbit://guest:%s@%s:5672" % (auth_password, address)
+    transport_url = "rabbit://guest:%s@%s:5672" % (auth_password, ip_address)
     return transport_url
 
 
