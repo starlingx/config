@@ -36,16 +36,7 @@ class CertAlarmAudit(object):
         self.collect_cert_snapshot()
         self.fm_obj.collect_all_cert_alarms()
 
-        # Update snapshots
-        """
-        In order to correlate alarms with CERT_SNAPSHOT,
-        we need references to entity_instance_id and
-        alarm_uuids (if any alarms present). This is needed
-        to audit for deleted certificates
-        """
-        # Needs entity_id present before auditing deleted certificates
-        # Do not change order
-        self.update_entity_ids_in_cert_snapshot()
+        # Auditing deleted certificates
         self.audit_for_deleted_certificates()
 
         utils.print_cert_snapshot()
@@ -107,17 +98,10 @@ class CertAlarmAudit(object):
             if entry[1] is not None:
                 utils.add_cert_snapshot(entry[0], entry[1], entry[2], entry[3])
 
-    def update_entity_ids_in_cert_snapshot(self):
-        for cert_name in utils.CERT_SNAPSHOT:
-            entity_id = self.fm_obj.get_entity_instance_id(cert_name)
-            utils.update_cert_snapshot_field(cert_name,
-                                             utils.ENTITY_ID,
-                                             entity_id)
-
     def apply_action_full_audit(self):
         for cert_name in utils.CERT_SNAPSHOT:
             entity_id = utils.CERT_SNAPSHOT[cert_name].get(utils.ENTITY_ID,
-                                self.fm_obj.get_entity_instance_id(cert_name))
+                                utils.get_entity_instance_id(cert_name))
             self.apply_action(cert_name, entity_id)
 
     # ============== Active Alarm audit ===================
@@ -233,6 +217,7 @@ class CertAlarmAudit(object):
                 self.raise_expired(cert_name, entity_id)
             else:
                 self.raise_expiring_soon(cert_name, entity_id)
+                self.clear_expired(cert_name, entity_id)
 
     def raise_expiring_soon(self, cert_name, entity_id):
         if self.alarm_override_check_passed(cert_name):
@@ -276,12 +261,12 @@ class CertAlarmAudit(object):
     def audit_for_deleted_certificates(self):
         LOG.info('Auditing for deleted certificates')
         for alarm_instance in self.fm_obj.ALARMS_SNAPSHOT:
-            entity_id = self.fm_obj.ALARMS_SNAPSHOT[alarm_instance]['ENTITY_ID']
+            entity_id = self.fm_obj.ALARMS_SNAPSHOT[alarm_instance][fm_mgr.ENTITY_ID]
             cert_name = utils.get_cert_name_with_entity_id(entity_id)
             if cert_name is None:
                 LOG.info('Found alarm for entity %s, but no related \
                          certificate resource' % entity_id)
-                alarm_id = self.fm_obj.ALARMS_SNAPSHOT[alarm_instance]['ALARM_ID']
+                alarm_id = self.fm_obj.ALARMS_SNAPSHOT[alarm_instance][fm_mgr.ALARM_ID]
                 self.fm_obj.set_fault(entity_id,
                                       alarm_id,
                                       fm_constants.FM_ALARM_STATE_CLEAR)

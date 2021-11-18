@@ -299,6 +299,8 @@ def add_cert_snapshot(certname, expirydate, annotation_data, mode_metadata):
     internaldict.update(annotation_data)
     internaldict.update(mode_metadata)
     CERT_SNAPSHOT[certname] = internaldict
+    # After entry added in CERT_SNAPSHOT, update entity_id
+    internaldict[ENTITY_ID] = get_entity_instance_id(certname)
 
 
 def update_cert_snapshot_field(cert_name, key, value):
@@ -395,3 +397,38 @@ def get_cert_uuid(certname):
         LOG.exception(e)
 
     return ret
+
+
+def get_mode(cert_name):
+    return 'ssl_ca' if 'ssl_ca' in cert_name else cert_name
+
+
+def get_entity_instance_id(cert_name):
+    """
+    Returns entity_instance_ids in format:
+        system.certificate.mode=<mode>.uuid=<uuid>
+        OR
+        namespace=<namespace-name>.certificate=<certificate-name>
+        OR
+        namespace=<namespace-name>.secret=<secret-name>
+        OR
+        system.certificate.k8sRootCA
+    """
+    global CERT_SNAPSHOT
+    tmp_id = []
+    if cert_name in CERT_SNAPSHOT:
+        snapshot = CERT_SNAPSHOT[cert_name]
+        if snapshot[SNAPSHOT_KEY_MODE] is UUID:
+            tmp_id.append("system.certificate.mode=%s.uuid=%s" %
+                (get_mode(cert_name), snapshot[UUID]))
+        elif snapshot[SNAPSHOT_KEY_MODE] is MODE_CERT_MGR:
+            tmp_id.append("namespace=%s.certificate=%s" %
+                (snapshot[SNAPSHOT_KEY_k8s_ns], snapshot[SNAPSHOT_KEY_k8s_cert]))
+        elif snapshot[SNAPSHOT_KEY_MODE] is MODE_SECRET:
+            tmp_id.append("namespace=%s.secret=%s" %
+                (snapshot[SNAPSHOT_KEY_k8s_ns], snapshot[SNAPSHOT_KEY_k8s_secret]))
+        elif snapshot[SNAPSHOT_KEY_MODE] is MODE_OTHER:
+            tmp_id.append("system.certificate.%s" % cert_name)
+
+    entity_id = ''.join(tmp_id)
+    return entity_id
