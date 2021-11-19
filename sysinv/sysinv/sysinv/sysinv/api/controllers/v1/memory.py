@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2016 Wind River Systems, Inc.
+# Copyright (c) 2013-2021 Wind River Systems, Inc.
 #
 
 
@@ -399,8 +399,8 @@ class MemoryController(rest.RestController):
         else:
             ihostId = rpc_port['ihost_uuid']
 
-        host_id = pecan.request.dbapi.ihost_get(ihostId)
-        if host_id['personality'] == constants.STORAGE:
+        host = pecan.request.dbapi.ihost_get(ihostId)
+        if host['personality'] == constants.STORAGE:
             raise exception.OperationNotPermitted
 
         vm_hugepages_nr_2M_pending = None
@@ -441,22 +441,25 @@ class MemoryController(rest.RestController):
                             'value': vm_hugepages_nr_1G_pending})
 
         # The host must be locked
-        if host_id:
-            _check_host(host_id)
+        if host:
+            _check_host(host)
         else:
             raise wsme.exc.ClientSideError(_(
                   "Hostname or uuid must be defined"))
 
-        if cutils.host_has_function(host_id, constants.WORKER):
+        if cutils.host_has_function(host, constants.WORKER):
             try:
                 # Semantics checks and update hugepage memory accounting
+                host_labels = pecan.request.dbapi.label_get_by_host(host['uuid'])
+                has_vswitch_enabled = cutils.has_vswitch_enabled(host_labels, pecan.request.dbapi)
                 patch = _check_huge_values(rpc_port, patch,
                                            vm_hugepages_nr_2M_pending,
                                            vm_hugepages_nr_1G_pending,
                                            vswitch_hugepages_reqd,
                                            vswitch_hugepages_size_mib,
                                            platform_reserved_mib,
-                                           vm_pending_as_percentage)
+                                           vm_pending_as_percentage,
+                                           has_vswitch_enabled)
             except wsme.exc.ClientSideError as e:
                 inode = pecan.request.dbapi.inode_get(inode_id=rpc_port.forinodeid)
                 numa_node = inode.numa_node
@@ -472,7 +475,7 @@ class MemoryController(rest.RestController):
                     "Hugepages memory configuration is not supported for this node."))
 
         # Semantics checks for platform memory
-        _check_memory(pecan.request.dbapi, rpc_port, host_id, platform_reserved_mib,
+        _check_memory(pecan.request.dbapi, rpc_port, host, platform_reserved_mib,
                       vm_hugepages_nr_2M_pending, vm_hugepages_nr_1G_pending,
                       vswitch_hugepages_reqd, vswitch_hugepages_size_mib,
                       vm_pending_as_percentage)
@@ -512,7 +515,7 @@ class MemoryController(rest.RestController):
         rpc_port.save()
 
         pecan.request.rpcapi.update_grub_config(
-            pecan.request.context, host_id['uuid'], force=True)
+            pecan.request.context, host['uuid'], force=True)
         return Memory.convert_with_links(rpc_port)
 
     @cutils.synchronized(LOCK_NAME)
@@ -731,7 +734,8 @@ def _check_memory(dbapi, rpc_port, ihost, platform_reserved_mib=None,
 def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
                        vm_hugepages_nr_1G=None, vswitch_hugepages_reqd=None,
                        vswitch_hugepages_size_mib=None,
-                       platform_reserved_mib=None, vm_pending_as_percentage=None):
+                       platform_reserved_mib=None, vm_pending_as_percentage=None,
+                       has_vswitch_enabled=False):
 
     if rpc_port['vm_hugepages_use_1G'] == 'False':
         vs_hp_size = vswitch_hugepages_size_mib
@@ -775,7 +779,7 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
             raise wsme.exc.ClientSideError(_(
                 "vSwitch huge pages must be a number"))
         if (utils.get_vswitch_type() != constants.VSWITCH_TYPE_NONE and
-           val <= 0):
+           val <= 0 and has_vswitch_enabled):
             raise wsme.exc.ClientSideError(_(
                 "vSwitch huge pages must be greater than zero"))
         elif (utils.get_vswitch_type() == constants.VSWITCH_TYPE_NONE and

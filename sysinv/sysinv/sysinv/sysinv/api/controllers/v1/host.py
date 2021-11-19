@@ -5716,7 +5716,9 @@ class HostController(rest.RestController):
         align_1G_memory = False
 
         # semantic check vswitch memory if required
-        if utils.get_vswitch_type() != constants.VSWITCH_TYPE_NONE:
+        host_labels = pecan.request.dbapi.label_get_by_host(ihost['uuid'])
+        if (utils.get_vswitch_type() != constants.VSWITCH_TYPE_NONE and
+                cutils.has_vswitch_enabled(host_labels, pecan.request.dbapi)):
             self._check_vswitch_memory(ihost_inodes)
 
         for node in ihost_inodes:

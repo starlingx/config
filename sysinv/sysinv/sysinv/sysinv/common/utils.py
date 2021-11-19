@@ -2423,6 +2423,35 @@ def has_sriovdp_enabled(labels):
     return False
 
 
+def has_vswitch_enabled(host_labels, dbapi):
+    """Returns true if the vswitch label is set """
+    if not host_labels:
+        return False
+
+    labels = {
+        label.label_key: label.label_value for label in host_labels
+    }
+
+    # For downstream implementations of vswitch we need to have a label
+    # enabling the vswitch.
+    platform_vswitch = get_vswitch_type(dbapi)
+    if platform_vswitch in labels:
+        vswitch_label_value = labels[platform_vswitch].lower()
+        return helm_common.LABEL_VALUE_ENABLED == vswitch_label_value
+
+    ovs_labels_to_types = {
+        'openvswitch': [constants.VSWITCH_TYPE_OVS_DPDK],
+    }
+
+    for ovs_allowed_label in ovs_labels_to_types:
+        if platform_vswitch in ovs_labels_to_types[ovs_allowed_label]:
+            vswitch_label_value = labels[ovs_allowed_label].lower()
+            return helm_common.LABEL_VALUE_ENABLED == vswitch_label_value
+
+    # We haven't found the platform vswitch node key. Return False
+    return False
+
+
 def get_vswitch_type(dbapi):
     system = dbapi.isystem_get_one()
     return system.capabilities.get('vswitch_type', None)
