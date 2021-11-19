@@ -390,7 +390,11 @@ def get_cert_uuid(certname):
         if len(res) == 1:
             cert_list = res.get('certificates')
             for item in cert_list:
-                if item['signature'] == certname:
+                key = 'certtype'
+                if get_mode(certname) == 'ssl_ca':
+                    key = 'signature'
+
+                if item[key] == certname:
                     ret = item['uuid']
                     break
     except Exception as e:
