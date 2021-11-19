@@ -1988,17 +1988,45 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
                             getattr(sqlalchemy.types, coltype)))
 
     def _check_120(self, engine, data):
-        ptp_instances = db_utils.get_table(engine, 'ptp_instances')
-        ptp_instance_columns = {
+        ptp_parameters = db_utils.get_table(engine, 'ptp_parameters')
+        ptp_parameters_columns = {
             'created_at': 'DateTime',
             'updated_at': 'DateTime',
             'deleted_at': 'DateTime',
             'id': 'Integer',
             'uuid': 'String',
             'name': 'String',
-            'service': 'String',
-            'host_id': 'Integer',
+            'value': 'String'
+        }
+        for column, column_type in ptp_parameters_columns.items():
+            self.assertTrue(
+                isinstance(ptp_parameters.c[column].type,
+                getattr(sqlalchemy.types, column_type)))
+
+        ptp_parameter_owners = db_utils.get_table(engine,
+                                                  'ptp_parameter_owners')
+        ptp_parameter_owner_columns = {
+            'created_at': 'DateTime',
+            'updated_at': 'DateTime',
+            'deleted_at': 'DateTime',
+            'id': 'Integer',
+            'uuid': 'String',
+            'type': 'String',
             'capabilities': 'Text'
+        }
+        for column, column_type in ptp_parameter_owner_columns.items():
+            self.assertTrue(
+                isinstance(ptp_parameter_owners.c[column].type,
+                getattr(sqlalchemy.types, column_type)))
+
+        ptp_instances = db_utils.get_table(engine, 'ptp_instances')
+        ptp_instance_columns = {
+            'created_at': 'DateTime',
+            'updated_at': 'DateTime',
+            'deleted_at': 'DateTime',
+            'id': 'Integer',
+            'name': 'String',
+            'service': 'String'
         }
         for column, column_type in ptp_instance_columns.items():
             self.assertTrue(
@@ -2011,29 +2039,25 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
             'updated_at': 'DateTime',
             'deleted_at': 'DateTime',
             'id': 'Integer',
-            'uuid': 'String',
-            'interface_id': 'Integer',
-            'ptp_instance_id': 'Integer',
-            'capabilities': 'Text'
+            'ptp_instance_id': 'Integer'
         }
         for column, column_type in ptp_interface_columns.items():
             self.assertTrue(
                 isinstance(ptp_interfaces.c[column].type,
                 getattr(sqlalchemy.types, column_type)))
 
-        ptp_parameters = db_utils.get_table(engine, 'ptp_parameters')
-        ptp_parameters_columns = {
+        ptp_parameter_ownerships = db_utils.get_table(
+            engine, 'ptp_parameter_ownerships')
+        ptp_parameter_ownership_columns = {
             'created_at': 'DateTime',
             'updated_at': 'DateTime',
             'deleted_at': 'DateTime',
             'id': 'Integer',
             'uuid': 'String',
-            'name': 'String',
-            'value': 'String',
-            'type': 'String',
-            'foreign_uuid': 'String',
+            'parameter_uuid': 'String',
+            'owner_uuid': 'String'
         }
-        for column, column_type in ptp_parameters_columns.items():
+        for column, column_type in ptp_parameter_ownership_columns.items():
             self.assertTrue(
-                isinstance(ptp_parameters.c[column].type,
+                isinstance(ptp_parameter_ownerships.c[column].type,
                 getattr(sqlalchemy.types, column_type)))

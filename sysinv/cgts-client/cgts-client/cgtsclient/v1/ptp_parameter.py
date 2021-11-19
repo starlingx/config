@@ -11,7 +11,7 @@ from cgtsclient import exc
 from cgtsclient.v1 import options
 
 
-CREATION_ATTRIBUTES = ['name', 'value', 'type', 'foreign_uuid']
+CREATION_ATTRIBUTES = ['name', 'value']
 
 
 class PtpParameter(base.Resource):

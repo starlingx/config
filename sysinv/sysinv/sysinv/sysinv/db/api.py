@@ -1914,7 +1914,6 @@ class Connection(object):
                         {
                          'name': 'default',
                          'service': 'ptp4l',
-                         'host': 'controller-0',
                          'capabilities': { ... }
                         }
         :returns: A PTP service instance.
@@ -1929,19 +1928,21 @@ class Connection(object):
         """
 
     @abc.abstractmethod
-    def ptp_instance_get_one(self, name=None, service=None):
+    def ptp_instance_get_one(self, name=None, host=None, service=None):
         """Returns exactly one PTP service instance.
 
         :param name: name of PTP instance given by user.
+        :param host: id or uuid of host.
         :param service: service of PTP instance.
         :returns: A PTP service instance.
         """
 
     @abc.abstractmethod
-    def ptp_instances_get_list(self, limit=None, marker=None, sort_key=None,
-                               sort_dir=None):
+    def ptp_instances_get_list(self, host=None, limit=None, marker=None,
+                               sort_key=None, sort_dir=None):
         """Returns a list of PTP service instances.
 
+        :param host: id or uuid of host.
         :param limit: Maximum number of PTP instances to return.
         :param marker: The last item of the previous page; we return the next
                        result set.
@@ -1949,38 +1950,6 @@ class Connection(object):
         :param sort_dir: direction in which results should be sorted.
                          (asc, desc)
         :returns: A list of PTP instances.
-        """
-
-    @abc.abstractmethod
-    def ptp_instances_get_by_ihost(self, ihost_id, limit=None, marker=None,
-                                   sort_key=None, sort_dir=None):
-        """Returns a list of the PTP instances for a given ihost.
-
-        :param ihost_id: The id or uuid of an ihost.
-        :param limit: Maximum number of PTP instances to return.
-        :param marker: The last item of the previous page; we return the next
-                       result set.
-        :param sort_key: Attribute by which results should be sorted
-        :param sort_dir: direction in which results should be sorted
-                         (asc, desc)
-        :returns: A list of PTP instances.
-        """
-
-    @abc.abstractmethod
-    def ptp_instance_update(self, ptp_instance_id, values):
-        """Updates properties of a PTP instance.
-
-        :param ptp_instance_id: The id or uuid of a PTP instance.
-        :param values: May be a partial list, eg. when setting the
-                       properties for capabilities. For example:
-                       {
-                        'capabilities':
-                            {
-                             'my-field-1': val1,
-                             'my-field-2': val2
-                            }
-                       }
-        :returns: A PTP service instance.
         """
 
     @abc.abstractmethod
@@ -2042,39 +2011,6 @@ class Connection(object):
         """
 
     @abc.abstractmethod
-    def ptp_interfaces_get_by_host(self, host_uuid, limit=None,
-                                   marker=None, sort_key=None,
-                                   sort_dir=None):
-
-        """Returns a list of the PTP associations for a given host.
-
-        :param host_uuid: The id or uuid of a host.
-        :param limit: Maximum number of PTP associations to return.
-        :param marker: The last item of the previous page; we return the next
-                       result set.
-        :param sort_key: Attribute by which results should be sorted
-        :param sort_dir: direction in which results should be sorted
-                         (asc, desc)
-        :returns: A list of PTP associations (instances) for the host
-        """
-
-    @abc.abstractmethod
-    def ptp_interfaces_get_by_interface(self, interface_id, limit=None,
-                                        marker=None, sort_key=None,
-                                        sort_dir=None):
-        """Returns a list of the PTP associations for a given interface.
-
-        :param interface_id: The id or uuid of an interface.
-        :param limit: Maximum number of PTP associations to return.
-        :param marker: The last item of the previous page; we return the next
-                       result set.
-        :param sort_key: Attribute by which results should be sorted
-        :param sort_dir: direction in which results should be sorted
-                         (asc, desc)
-        :returns: A list of PTP associations (instances) for the interface.
-        """
-
-    @abc.abstractmethod
     def ptp_interfaces_get_by_instance(self, ptp_instance_id, limit=None,
                                        marker=None, sort_key=None,
                                        sort_dir=None):
@@ -2110,21 +2046,6 @@ class Connection(object):
                   interface.
         """
 
-    def ptp_interface_update(self, ptp_interface_id, values):
-        """Updates capabilities of a PTP interface.
-
-        :param ptp_interface_id: The id or uuid of a PTP interface.
-        :param values: May be a partial list. For example:
-                       {
-                        'capabilities':
-                            {
-                             'my-field-1': val1,
-                             'my-field-2': val2
-                            }
-                       }
-        :returns: A PTP interface association.
-        """
-
     @abc.abstractmethod
     def ptp_interface_destroy(self, ptp_interface_id):
         """Destroys a PTP interface association.
@@ -2134,15 +2055,14 @@ class Connection(object):
 
     @abc.abstractmethod
     def ptp_parameter_create(self, values):
-        """Creates a new PTP parameter.
+        """Creates a new PTP parameter to be applied later either to some
+           instance(s) or PTP interface(s).
 
         :param values: A dict containing several items used to identify
                        and track the PTP parameter.
                         {
                          'name': 'domain',
-                         'value': '24',
-                         'type': 'ptp-instance',
-                         'foreign_uuid': 'c2abca03-2f33-413e-b60d-85133a4a37b6'
+                         'value': '24'
                         }
         :returns: A PTP parameter.
         """
@@ -2178,8 +2098,8 @@ class Connection(object):
         """
 
     @abc.abstractmethod
-    def ptp_parameters_get_by_type(self, type, limit=None, marker=None,
-                                   sort_key=None, sort_dir=None):
+    def ptp_parameters_get_by_owner_type(self, type, limit=None, marker=None,
+                                         sort_key=None, sort_dir=None):
         """Returns a list of all PTP parameters for a given owner type.
 
         :param type: Type of the parameter owner (either 'ptp-instance' or
@@ -2194,8 +2114,8 @@ class Connection(object):
         """
 
     @abc.abstractmethod
-    def ptp_parameters_get_by_owner(self, uuid, limit=None, marker=None,
-                                    sort_key=None, sort_dir=None):
+    def ptp_parameters_get_by_owner_uuid(self, uuid, limit=None, marker=None,
+                                         sort_key=None, sort_dir=None):
         """Returns a list of the PTP parameters for a given owner identified by
         its UUID.
 
@@ -2222,10 +2142,103 @@ class Connection(object):
         """
 
     @abc.abstractmethod
+    def ptp_parameter_set_owner(self, values):
+        """Set the PTP parameter to either a PTP instance or PTP interface
+           by associating their UUIDs to each other.
+
+        :param values: A dict containing the IDs used to associate
+                       the PTP parameter to the owner entity.
+                    {
+                     'parameter_uuid': '86089c13-c687-4025-991b-45525d031b67',
+                     'owner_uuid': 'ccc95d7c-abea-47ef-955b-026d68fd2b02'
+                    }
+        :returns: A PTP parameter association.
+        """
+
+    @abc.abstractmethod
+    def ptp_parameter_unset_owner(self, values):
+        """Remove the association between a PTP parameter and either a PTP
+           instance or interface.
+
+        :param values: A dict containing the IDs used to associate
+                       the PTP parameter to the owner entity.
+                    {
+                     'parameter_uuid': '86089c13-c687-4025-991b-45525d031b67',
+                     'owner_uuid': 'ccc95d7c-abea-47ef-955b-026d68fd2b02'
+                    }
+        """
+
+    @abc.abstractmethod
+    def ptp_parameter_get_owners_list(self, ptp_parameter_id, limit=None,
+                                      marker=None, sort_key=None,
+                                      sort_dir=None):
+        """Returns a list of all PTP instances and/or PTP interfaces that refer
+           to the PTP parameter.
+
+        :param ptp_parameter_id: The id or uuid of a PTP parameter.
+        :param limit: Maximum number of owners to return.
+        :param marker: The last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted
+        :param sort_dir: direction in which results should be sorted
+                         (asc, desc)
+        :returns: A list of owners for the given PTP parameter.
+        """
+
+    @abc.abstractmethod
     def ptp_parameter_destroy(self, ptp_parameter_id):
         """Destroys a PTP parameter.
 
         :param ptp_parameter_id: The id or uuid of a PTP parameter.
+        """
+
+    @abc.abstractmethod
+    def ptp_paramowner_get(self, ptp_paramowner_id):
+        """Returns a PTP parameter owner (can be either a PTP instance or a
+           PTP interface).
+
+        :param ptp_paramowner_id: The id or uuid of a PTP owner.
+        :returns: A PTP parameter owner.
+        """
+
+    @abc.abstractmethod
+    def ptp_paramownership_get(self, ptp_paramownership_id):
+        """Returns a PTP parameter ownership.
+
+        :param ptp_paramownership_id: The id or uuid of a PTP parameter
+                                      ownership.
+        :returns: A PTP parameter ownership.
+        """
+
+    @abc.abstractmethod
+    def ptp_paramownerships_get_by_parameter(self, uuid, limit=None,
+                                             marker=None, sort_key=None,
+                                             sort_dir=None):
+        """Returns a list of PTP ownerships for a given parameter.
+
+        :param uuid: UUID of the PTP parameter owner.
+        :param limit: Maximum number of PTP ownerships to return.
+        :param marker: The last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted.
+        :param sort_dir: direction in which results should be sorted.
+                         (asc, desc)
+        :returns: A list of PTP parameter ownerships.
+        """
+
+    @abc.abstractmethod
+    def ptp_paramownerships_get_by_owner(self, uuid, limit=None, marker=None,
+                                         sort_key=None, sort_dir=None):
+        """Returns a list of PTP ownerships for a given owner.
+
+        :param uuid: UUID of the PTP parameter owner (instance or interface).
+        :param limit: Maximum number of PTP ownerships to return.
+        :param marker: The last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted.
+        :param sort_dir: direction in which results should be sorted.
+                         (asc, desc)
+        :returns: A list of PTP parameter ownerships.
         """
 
     @abc.abstractmethod

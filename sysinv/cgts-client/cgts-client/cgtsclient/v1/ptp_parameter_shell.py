@@ -11,71 +11,44 @@ from cgtsclient import exc
 from cgtsclient.v1 import ptp_parameter as ptp_parameter_utils
 
 
-def _owner_formatter(values):
-    result = []
-    result.append(str(values['name'] +
-                      " of type " + values['type'] +
-                      " at " + values['hostname']))
-    return result
-
-
 def _print_ptp_parameter_show(ptp_parameter_obj):
-    fields = ['uuid', 'name', 'value', 'type',
-              'owner', 'foreign_uuid', 'created_at', 'updated_at']
-    labels = ['uuid', 'name', 'value', 'type',
-              'owned_by', 'owner_id', 'created_at', 'updated_at']
+    fields = ['uuid', 'name', 'value', 'created_at', 'updated_at']
     data = [(f, getattr(ptp_parameter_obj, f, '')) for f in fields]
-    utils.print_tuple_list(data, labels,
-                           formatters={'owner': _owner_formatter})
+    utils.print_tuple_list(data)
 
 
-@utils.arg('-t', '--type',
-           metavar='<owner type>',
-           choices=['ptp-instance', 'ptp-interface'],
-           help='List PTP parameters for a specific owner type')
-@utils.arg('-u', '--foreign_uuid',
-           metavar='<owner uuid>',
-           help='List PTP parameters associated to specified owner')
+def _print_ptp_parameter_list(ptp_parameter_list):
+    fields = ['uuid', 'name', 'value']
+    labels = ['uuid', 'name', 'value']
+    utils.print_list(ptp_parameter_list, fields, labels)
+
+
 def do_ptp_parameter_list(cc, args):
-    """List all PTP parameters, in any host."""
-    missing = ((args.type is None) and (args.foreign_uuid is not None)) or \
-              ((args.type is not None) and (args.foreign_uuid is None))
-    if missing:
-        raise exc.CommandError("Both 'type' and 'foreign_uuid' "
-                               "must be provided")
-    ptp_parameters = None
-    if args.type == 'ptp-instance':
-        ptp_parameters = cc.ptp_parameter.list_by_ptp_instance(
-            args.foreign_uuid)
-    elif args.type == 'ptp-interface':
-        ptp_parameters = cc.ptp_parameter.list_by_interface(
-            args.foreign_uuid)
-    if ptp_parameters:
-        fields = ['uuid', 'name', 'value']
-        labels = ['uuid', 'name', 'value']
-    else:
-        ptp_parameters = cc.ptp_parameter.list()
-        for ptp_parameter in ptp_parameters:
-            owner_dict = getattr(ptp_parameter, 'owner', '')
-            setattr(ptp_parameter, 'owner_name', owner_dict['name'])
-            setattr(ptp_parameter, 'owner_host', owner_dict['hostname'])
+    """List all PTP parameters."""
+    ptp_parameters = cc.ptp_parameter.list()
+    _print_ptp_parameter_list(ptp_parameters)
 
-        fields = ['uuid',
-                  'name',
-                  'value',
-                  'type',
-                  'owner_name',
-                  'owner_host',
-                  'foreign_uuid']
-        labels = ['uuid',
-                  'name',
-                  'value',
-                  'owner_type',
-                  'owner_name',
-                  'owner_host',
-                  'owner_uuid']
 
-    utils.print_list(ptp_parameters, fields, labels)
+@utils.arg('ptp_instance_uuid',
+           metavar='<PTP instance uuid>',
+           help="UUID of PTP instance")
+def do_ptp_parameter_list_instances(cc, args):
+    """List all PTP parameters that are associated to a specific PTP instance.
+    """
+    ptp_parameters = cc.ptp_parameter.list_by_ptp_instance(
+        args.ptp_instance_uuid)
+    _print_ptp_parameter_list(ptp_parameters)
+
+
+@utils.arg('ptp_interface_uuid',
+           metavar='<PTP interface uuid>',
+           help="UUID of PTP interface")
+def do_ptp_parameter_list_interfaces(cc, args):
+    """List all PTP parameters that are associated to a specific PTP interface.
+    """
+    ptp_parameters = cc.ptp_parameter.list_by_interface(
+        args.ptp_interface_uuid)
+    _print_ptp_parameter_list(ptp_parameters)
 
 
 @utils.arg('uuid',
@@ -93,18 +66,10 @@ def do_ptp_parameter_show(cc, args):
 @utils.arg('value',
            metavar='<value>',
            help="Value of PTP parameter [REQUIRED]")
-@utils.arg('type',
-           metavar='<owner type>',
-           choices=['ptp-instance', 'ptp-interface'],
-           help="Type of parameter owner ('ptp-instance' or 'ptp-interface') "
-                "[REQUIRED]")
-@utils.arg('foreign_uuid',
-           metavar='<owner uuid>',
-           help="UUID of parameter owner [REQUIRED]")
 def do_ptp_parameter_add(cc, args):
     """Add a PTP parameter."""
 
-    field_list = ['name', 'value', 'type', 'foreign_uuid']
+    field_list = ['name', 'value']
 
     # Prune input fields down to required/expected values
     data = dict((k, v) for (k, v) in vars(args).items()

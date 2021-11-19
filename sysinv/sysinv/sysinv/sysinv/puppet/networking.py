@@ -195,7 +195,7 @@ class NetworkingPuppet(base.BasePuppet):
             return {'platform::ptpinstance::enabled': ptp_enabled}
 
         # Get the database entries for instances, interfaces and parameters
-        ptp_instances = self.dbapi.ptp_instances_get_by_ihost(host.uuid)
+        ptp_instances = self.dbapi.ptp_instances_get_list(host=host.uuid)
         ptp_interfaces = self.dbapi.ptp_interfaces_get_by_host(host.uuid)
         ptp_parameters_instance = self.dbapi.ptp_parameters_get_by_type(
                                   constants.PTP_PARAMETER_OWNER_INSTANCE)

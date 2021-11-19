@@ -22,7 +22,7 @@ CHARSET = 'utf8'
 
 
 def _populate_ptp_tables(meta, ptp_instances, ptp_interfaces,
-                         ptp_parameters, i_host, interfaces):
+                         ptp_parameters, ptp_parameter_ownerships):
     """This function moves PTP configuration from other tables:
        - If advanced (specialized) ptp4l configuration is found in
          'service_parameter' table, it inserts a 'ptp4l' entry in
@@ -46,51 +46,6 @@ def upgrade(migrate_engine):
     meta = MetaData()
     meta.bind = migrate_engine
 
-    i_host = Table('i_host', meta, autoload=True)
-    ptp_instances = Table(
-        'ptp_instances',
-        meta,
-        Column('created_at', DateTime),
-        Column('updated_at', DateTime),
-        Column('deleted_at', DateTime),
-
-        Column('id', Integer, primary_key=True, nullable=False),
-        Column('uuid', String(UUID_LENGTH), unique=True),
-
-        Column('name', String(255), unique=True),
-        Column('service', String(255)),
-
-        Column('host_id', Integer,
-               ForeignKey('i_host.id', ondelete="CASCADE")),
-        Column('capabilities', Text),
-
-        mysql_engine=ENGINE,
-        mysql_charset=CHARSET,
-    )
-    ptp_instances.create()
-
-    interfaces = Table('interfaces', meta, autoload=True)
-    ptp_interfaces = Table(
-        'ptp_interfaces',
-        meta,
-        Column('created_at', DateTime),
-        Column('updated_at', DateTime),
-        Column('deleted_at', DateTime),
-
-        Column('id', Integer, primary_key=True, nullable=False),
-        Column('uuid', String(UUID_LENGTH), unique=True),
-
-        Column('interface_id', Integer,
-               ForeignKey('interfaces.id', ondelete="CASCADE")),
-        Column('ptp_instance_id', Integer,
-               ForeignKey('ptp_instances.id', ondelete="CASCADE")),
-        Column('capabilities', Text),
-
-        mysql_engine=ENGINE,
-        mysql_charset=CHARSET,
-    )
-    ptp_interfaces.create()
-
     ptp_parameters = Table(
         'ptp_parameters',
         meta,
@@ -101,31 +56,125 @@ def upgrade(migrate_engine):
         Column('id', Integer, primary_key=True, nullable=False),
         Column('uuid', String(UUID_LENGTH), unique=True),
 
-        Column('name', String(255), nullable=False),
+        Column('name', String(255), unique=True, nullable=False),
         Column('value', String(255)),
-        Column('type', String(255)),
-        Column('foreign_uuid', String(UUID_LENGTH), nullable=False),
 
-        UniqueConstraint('name', 'foreign_uuid', name='u_paramnameforeign'),
+        UniqueConstraint('name', 'value', name='u_paramnamevalue'),
 
         mysql_engine=ENGINE,
         mysql_charset=CHARSET,
     )
     ptp_parameters.create()
 
+    ptp_parameter_owners = Table(
+        'ptp_parameter_owners',
+        meta,
+        Column('created_at', DateTime),
+        Column('updated_at', DateTime),
+        Column('deleted_at', DateTime),
+
+        Column('id', Integer, primary_key=True, nullable=False),
+        Column('uuid', String(UUID_LENGTH), unique=True),
+
+        Column('type', String(255), nullable=False),
+
+        Column('capabilities', Text),
+
+        mysql_engine=ENGINE,
+        mysql_charset=CHARSET,
+    )
+    ptp_parameter_owners.create()
+
+    ptp_instances = Table(
+        'ptp_instances',
+        meta,
+        Column('created_at', DateTime),
+        Column('updated_at', DateTime),
+        Column('deleted_at', DateTime),
+
+        Column('id', Integer,
+               ForeignKey('ptp_parameter_owners.id', ondelete="CASCADE"),
+               primary_key=True, nullable=False),
+
+        Column('name', String(255), unique=True, nullable=False),
+        Column('service', String(255)),
+
+        mysql_engine=ENGINE,
+        mysql_charset=CHARSET,
+    )
+    ptp_instances.create()
+
+    host = Table('i_host', meta, autoload=True)
+    host.create_column(
+        Column('ptp_instance_id', Integer, ForeignKey('ptp_instances.id')))
+
+    ptp_interfaces = Table(
+        'ptp_interfaces',
+        meta,
+        Column('created_at', DateTime),
+        Column('updated_at', DateTime),
+        Column('deleted_at', DateTime),
+
+        Column('id', Integer,
+               ForeignKey('ptp_parameter_owners.id', ondelete="CASCADE"),
+               primary_key=True, nullable=False),
+
+        Column('ptp_instance_id', Integer,
+               ForeignKey('ptp_instances.id', ondelete="CASCADE"),
+               nullable=False),
+
+        mysql_engine=ENGINE,
+        mysql_charset=CHARSET,
+    )
+    ptp_interfaces.create()
+
+    interface = Table('interfaces', meta, autoload=True)
+    interface.create_column(
+        Column('ptp_interface_id', Integer, ForeignKey('ptp_interfaces.id')))
+
+    ptp_parameter_ownerships = Table(
+        'ptp_parameter_ownerships',
+        meta,
+        Column('created_at', DateTime),
+        Column('updated_at', DateTime),
+        Column('deleted_at', DateTime),
+
+        Column('id', Integer, primary_key=True, nullable=False),
+        Column('uuid', String(UUID_LENGTH), unique=True),
+
+        Column('parameter_uuid', String(UUID_LENGTH),
+               ForeignKey('ptp_parameters.uuid', ondelete='CASCADE'),
+               nullable=False),
+        Column('owner_uuid', String(UUID_LENGTH), nullable=False),
+
+        UniqueConstraint('parameter_uuid', 'owner_uuid', name='u_paramowner'),
+
+        mysql_engine=ENGINE,
+        mysql_charset=CHARSET,
+    )
+    ptp_parameter_ownerships.create()
+
     _populate_ptp_tables(meta, ptp_instances, ptp_interfaces, ptp_parameters,
-                         i_host, interfaces)
+                         ptp_parameter_ownerships)
 
 
 def downgrade(migrate_engine):
     meta = MetaData()
     meta.bind = migrate_engine
 
-    ptp_parameters = Table('ptp_parameters', meta, autoload=True)
-    ptp_parameters.drop()
+    ptp_parameter_ownerships = Table('ptp_parameter_ownerships',
+                                     meta,
+                                     autoload=True)
+    ptp_parameter_ownerships.drop()
 
     ptp_interfaces = Table('ptp_interfaces', meta, autoload=True)
     ptp_interfaces.drop()
 
     ptp_instances = Table('ptp_instances', meta, autoload=True)
     ptp_instances.drop()
+
+    ptp_parameter_owners = Table('ptp_parameter_owners', meta, autoload=True)
+    ptp_parameter_owners.drop()
+
+    ptp_parameters = Table('ptp_parameters', meta, autoload=True)
+    ptp_parameters.drop()

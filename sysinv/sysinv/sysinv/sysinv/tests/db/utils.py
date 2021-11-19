@@ -539,22 +539,16 @@ def create_test_ptp(**kw):
 # Utility functions to create a PTP instance for testing
 def get_test_ptp_instance(**kw):
     instance = {
-        'id': kw.get('id'),
-        'uuid': kw.get('uuid'),
-        'name': kw.get('name', None),
-        'service': kw.get('service', constants.PTP_INSTANCE_TYPE_PTP4L),
-        'host_id': kw.get('host_id', None)
+        # TODO: check why this is needed for this specific child class/table
+        'type': kw.get('type', constants.PTP_PARAMETER_OWNER_INSTANCE),
+        'name': kw.get('name'),
+        'service': kw.get('service', constants.PTP_INSTANCE_TYPE_PTP4L)
     }
     return instance
 
 
 def create_test_ptp_instance(**kw):
     instance = get_test_ptp_instance(**kw)
-    # Let DB generate ID if isn't specified
-    if 'id' not in kw:
-        del instance['id']
-    if 'uuid' in kw:
-        del instance['uuid']
     dbapi = db_api.get_instance()
     return dbapi.ptp_instance_create(instance)
 
@@ -562,17 +556,14 @@ def create_test_ptp_instance(**kw):
 # Create test ptp_interface object
 def get_test_ptp_interface(**kw):
     ptp_interface = {
-        'uuid': kw.get('uuid'),
-        'interface_id': kw.get('interface_id'),
-        'ptp_instance_id': kw.get('ptp_instance_id')
+        'ptp_instance_id': kw.get('ptp_instance_id'),
+        'ptp_instance_uuid': kw.get('ptp_instance_uuid', None)
     }
     return ptp_interface
 
 
 def create_test_ptp_interface(**kw):
     ptp_interface = get_test_ptp_interface(**kw)
-    if 'uuid' in kw:
-        del ptp_interface['uuid']
     dbapi = db_api.get_instance()
     return dbapi.ptp_interface_create(ptp_interface)
 
@@ -580,25 +571,30 @@ def create_test_ptp_interface(**kw):
 # Utility functions to create a PTP parameter for testing
 def get_test_ptp_parameter(**kw):
     parameter = {
-        'id': kw.get('id'),
-        'uuid': kw.get('uuid'),
-        'name': kw.get('name', None),
-        'value': kw.get('value', None),
-        'type': kw.get('type', None),
-        'foreign_uuid': kw.get('foreign_uuid', None)
+        'name': kw.get('name'),
+        'value': kw.get('value', None)
     }
     return parameter
 
 
 def create_test_ptp_parameter(**kw):
     parameter = get_test_ptp_parameter(**kw)
-    # Let DB generate ID if isn't specified
-    if 'id' not in kw:
-        del parameter['id']
-    if 'uuid' in kw:
-        del parameter['uuid']
     dbapi = db_api.get_instance()
     return dbapi.ptp_parameter_create(parameter)
+
+
+def get_test_ptp_ownership(**kw):
+    ownership = {
+        'parameter_uuid': kw.get('parameter_uuid', None),
+        'owner_uuid': kw.get('owner_uuid', None)
+    }
+    return ownership
+
+
+def create_test_ptp_ownership(**kw):
+    ownership = get_test_ptp_ownership(**kw)
+    dbapi = db_api.get_instance()
+    return dbapi.ptp_parameter_set_owner(ownership)
 
 
 # Create test dns object

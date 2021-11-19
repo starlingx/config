@@ -16,18 +16,21 @@ def _print_ptp_instance_show(ptp_instance_obj):
     fields = ['uuid',
               'name',
               'service',
-              'hostname',
               'created_at']
     data = [(f, getattr(ptp_instance_obj, f, '')) for f in fields]
     utils.print_tuple_list(data)
 
 
+def _print_ptp_instance_list(ptp_instance_list):
+    field_labels = ['uuid', 'name', 'service']
+    fields = ['uuid', 'name', 'service']
+    utils.print_list(ptp_instance_list, fields, field_labels)
+
+
 def do_ptp_instance_list(cc, args):
-    """List all PTP instances, in any host."""
+    """List all PTP instances."""
     ptp_instances = cc.ptp_instance.list()
-    field_labels = ['uuid', 'name', 'service', 'hostname']
-    fields = ['uuid', 'name', 'service', 'hostname']
-    utils.print_list(ptp_instances, fields, field_labels)
+    _print_ptp_instance_list(ptp_instances)
 
 
 @utils.arg('hostnameorid',
@@ -37,10 +40,7 @@ def do_host_ptp_instance_list(cc, args):
     """List PTP instances on host."""
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
     ptp_instances = cc.ptp_instance.list_by_host(ihost.uuid)
-
-    field_labels = ['name', 'service', 'uuid']
-    fields = ['name', 'service', 'uuid']
-    utils.print_list(ptp_instances, fields, field_labels)
+    _print_ptp_instance_list(ptp_instances)
 
 
 @utils.arg('nameoruuid',
@@ -59,9 +59,6 @@ def do_ptp_instance_show(cc, args):
            metavar='<service type>',
            choices=['ptp4l', 'phc2sys', 'ts2phc'],
            help="Service type [REQUIRED]")
-@utils.arg('hostnameorid',
-           metavar='<hostname or id>',
-           help="Name or ID of host [REQUIRED]")
 def do_ptp_instance_add(cc, args):
     """Add a PTP instance."""
 
@@ -70,9 +67,6 @@ def do_ptp_instance_add(cc, args):
     # Prune input fields down to required/expected values
     data = dict((k, v) for (k, v) in vars(args).items()
                 if k in field_list and not (v is None))
-
-    ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
-    data.update({'host_uuid': ihost.uuid})
 
     ptp_instance = cc.ptp_instance.create(**data)
     uuid = getattr(ptp_instance, 'uuid', '')
@@ -93,3 +87,43 @@ def do_ptp_instance_delete(cc, args):
     uuid = ptp_instance.uuid
     cc.ptp_instance.delete(uuid)
     print('Deleted PTP instance: %s' % uuid)
+
+
+@utils.arg('hostnameorid',
+           metavar='<hostname or id>',
+           help="Name or ID of host [REQUIRED]")
+@utils.arg('nameoruuid',
+           metavar='<name or UUID>',
+           help="Name or UUID of PTP instance [REQUIRED]")
+def do_host_ptp_instance_add(cc, args):
+    """Associate PTP instance to host."""
+    ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
+    ptp_instance = ptp_instance_utils._find_ptp_instance(cc, args.nameoruuid)
+    try:
+        cc.ptp_instance.apply(ihost.uuid, ptp_instance.id)
+    except exc.HTTPNotFound:
+        raise exc.CommandError(
+            "Failed to apply PTP instance '%s' to host '%s'"
+            % (ihost.hostname, ptp_instance.name))
+    print("Applying PTP instance '%s' to host '%s'"
+          % (ihost.hostname, ptp_instance.name))
+
+
+@utils.arg('hostnameorid',
+           metavar='<hostname or id>',
+           help="Name or ID of host")
+@utils.arg('nameoruuid',
+           metavar='<name or UUID>',
+           help="Name or UUID of PTP instance")
+def do_host_ptp_instance_delete(cc, args):
+    """Disassociate PTP instance on host."""
+    ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
+    ptp_instance = ptp_instance_utils._find_ptp_instance(cc, args.nameoruuid)
+    try:
+        cc.ptp_instance.remove(ihost.uuid, ptp_instance.id)
+    except exc.HTTPNotFound:
+        raise exc.CommandError(
+            "Failed to remove PTP instance '%s' from host '%s'"
+            % (ihost.hostname, ptp_instance.name))
+    print("Removing PTP instance '%s' from host '%s'"
+          % (ihost.hostname, ptp_instance.name))
