@@ -5789,7 +5789,16 @@ class ConductorManager(service.PeriodicService):
                                  "latest configuration changes" % mon.hostname)
                         return
                 LOG.info("Ceph Upgrade: Enabling monitor msgr2")
-                self._ceph_api.enable_msgr2()
+                try:
+                    # This operation takes less than one second to be executed.
+                    # Ten seconds is more than enough to have this executed.
+                    # In case ceph cluster loses quorum, this operation won't hang
+                    # because the request method actually needs to query the ceph cluster
+                    # to retrieve password and service url before running this command.
+                    # Those operations also timeout after 5 seconds.
+                    self._ceph_api.enable_msgr2(timeout=10)
+                except Exception as e:
+                    LOG.info("Ceph Upgrade: Exception %s" % e)
                 LOG.info("Ceph Upgrade: Enabled monitor msgr2")
 
     def _audit_install_states(self, hosts):
