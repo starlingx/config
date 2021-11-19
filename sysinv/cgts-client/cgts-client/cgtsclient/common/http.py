@@ -389,7 +389,7 @@ class HTTPClient(httplib2.Http):
             resp_body = None
         self._extract_service_catalog(resp_body)
 
-        _logger.debug("Authenticated user %s" % self.username)
+        _logger.debug("Authenticated user %s", self.username)
 
     def get_auth_info(self):
         return {'auth_token': self.auth_token,
