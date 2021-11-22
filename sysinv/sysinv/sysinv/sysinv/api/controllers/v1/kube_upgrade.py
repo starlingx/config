@@ -366,7 +366,7 @@ class KubeUpgradeController(rest.RestController):
                 raise wsme.exc.ClientSideError(_(
                     "Kubernetes upgrade must be in %s or %s state to upgrade "
                     "networking" %
-                    (kubernetes.KUBE_UPGRADED_FIRST_MASTER,
+                    (kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
                      kubernetes.KUBE_UPGRADING_NETWORKING_FAILED)))
 
             # Update the upgrade state
