@@ -5137,6 +5137,7 @@ itemNotFound (404)
    "description (Optional)", "plain", "xsd:string", "The description of the device image."
    "image_version (Optional)", "plain", "xsd:string", "The version of the device image."
    "applied_labels (Optional)", "plain", "xsd:list", "The device image applied to the device labels."
+   "bmc (Optional)", "plain", "xsd:boolean", "This indicates whether it is a BMC functional image."
    "retimer_included (Optional)", "plain", "xsd:boolean", "This indicates whether the retimer firmware is included in the BMC functional image."
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
@@ -5156,6 +5157,7 @@ itemNotFound (404)
             "description": null,
             "name": null,
             "image_version": null,
+            "bmc": false,
             "retimer_included": false,
             "applied_labels":
                {
@@ -5235,6 +5237,7 @@ itemNotFound (404)
    "description (Optional)", "plain", "xsd:string", "The description of the device image."
    "image_version (Optional)", "plain", "xsd:string", "The version of the device image."
    "applied_labels (Optional)", "plain", "xsd:list", "The device image applied to the device labels."
+   "bmc (Optional)", "plain", "xsd:boolean", "This indicates whether it is a BMC functional image."
    "retimer_included (Optional)", "plain", "xsd:boolean", "This indicates whether the retimer firmware is included in the BMC functional image."
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
    "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
@@ -5254,6 +5257,7 @@ itemNotFound (404)
             "description": null,
             "name": null,
             "image_version": null,
+            "bmc": false,
             "retimer_included": false,
             "applied_labels":
                {
@@ -5293,6 +5297,7 @@ badMediaType (415)
    "name (Optional)", "plain", "xsd:string", "The name of the device image."
    "description (Optional)", "plain", "xsd:string", "The description of the device image."
    "image_version (Optional)", "plain", "xsd:string", "The version of the device image."
+   "bmc (Optional)", "plain", "xsd:boolean", "This indicates whether it is a BMC functional image."
    "retimer_included (Optional)", "plain", "xsd:boolean", "This indicates whether the retimer firmware is included in the BMC functional image."
 
 **Response parameters**
@@ -5310,6 +5315,7 @@ badMediaType (415)
    "name (Optional)", "plain", "xsd:string", "The name of the device image."
    "description (Optional)", "plain", "xsd:string", "The description of the device image."
    "image_version (Optional)", "plain", "xsd:string", "The version of the device image."
+   "bmc (Optional)", "plain", "xsd:boolean", "This indicates whether it is a BMC functional image."
    "retimer_included (Optional)", "plain", "xsd:boolean", "This indicates whether the retimer firmware is included in the BMC functional image."
    "applied_labels (Optional)", "plain", "xsd:list", "The device image applied to the device labels."
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
@@ -5329,6 +5335,7 @@ badMediaType (415)
             "description": null,
             "name": null,
             "image_version": null,
+            "bmc": false,
             "retimer_included": false,
             "applied_labels": null
          }
@@ -5380,6 +5387,7 @@ badMediaType (415)
    "name (Optional)", "plain", "xsd:string", "The name of the device image."
    "description (Optional)", "plain", "xsd:string", "The description of the device image."
    "image_version (Optional)", "plain", "xsd:string", "The version of the device image."
+   "bmc (Optional)", "plain", "xsd:boolean", "This indicates whether it is a BMC functional image."
    "retimer_included (Optional)", "plain", "xsd:boolean", "This indicates whether the retimer firmware is included in the BMC functional image."
    "applied_labels (Optional)", "plain", "xsd:list", "The device image applied to the device labels."
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
@@ -5399,6 +5407,7 @@ badMediaType (415)
             "description": null,
             "name": null,
             "image_version": null,
+            "bmc": false,
             "retimer_included": false,
             "applied_labels":
                {
@@ -5454,6 +5463,7 @@ badMediaType (415)
    "name (Optional)", "plain", "xsd:string", "The name of the device image."
    "description (Optional)", "plain", "xsd:string", "The description of the device image."
    "image_version (Optional)", "plain", "xsd:string", "The version of the device image."
+   "bmc (Optional)", "plain", "xsd:boolean", "This indicates whether it is a BMC functional image."
    "retimer_included (Optional)", "plain", "xsd:boolean", "This indicates whether the retimer firmware is included in the BMC functional image."
    "applied_labels (Optional)", "plain", "xsd:list", "The device image applied to the device labels."
    "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
@@ -5473,6 +5483,7 @@ badMediaType (415)
             "description": null,
             "name": null,
             "image_version": null,
+            "bmc": false,
             "retimer_included": false,
             "applied_labels": null
          }

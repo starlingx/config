@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -27,6 +27,7 @@ class DeviceImage(base.SysinvObject):
               'image_version': utils.str_or_none,
               'applied': utils.bool_or_none,
               'capabilities': utils.dict_or_none,
+              'bmc': utils.bool_or_none,
               'retimer_included': utils.bool_or_none,
               }
 
@@ -36,6 +37,7 @@ class DeviceImage(base.SysinvObject):
                         'name',
                         'description',
                         'image_version',
+                        'bmc',
                         'retimer_included'}
 
     @base.remotable_classmethod

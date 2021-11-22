@@ -1609,6 +1609,8 @@ def get_test_device_image(**kw):
         'name': kw.get('name'),
         'description': kw.get('description'),
         'version': kw.get('version'),
+        'bmc': kw.get('bmc'),
+        'retimer_included': kw.get('retimer_included'),
     }
     return device_image
 
