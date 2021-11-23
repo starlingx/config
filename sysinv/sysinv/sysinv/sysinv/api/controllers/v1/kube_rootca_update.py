@@ -557,12 +557,14 @@ class KubeRootCAUpdateController(rest.RestController):
         rpc_kube_rootca_update = pecan.request.dbapi.kube_rootca_update_get_list()
         return KubeRootCAUpdateCollection.convert_with_links(rpc_kube_rootca_update)
 
+    # TODO (aning): move DB state update to conductor and synchronize with
+    # state updating resulting from puppet apply status report using a LOCK.
+    # (eg, sync with report_kube_rootca_update_success())
     @cutils.synchronized(LOCK_KUBE_ROOTCA_CONTROLLER)
-    @wsme.validate(wtypes.text, [KubeRootCAUpdatePatchType])
+    @wsme.validate([KubeRootCAUpdatePatchType])
     @wsme_pecan.wsexpose(KubeRootCAUpdate, wtypes.text, body=[KubeRootCAUpdatePatchType])
-    def patch(self, force, patch):
+    def patch(self, patch):
         """Completes the kubernetes rootca, clearing both tables and alarm"""
-        force = force == 'True'
         updates = self._get_updates(patch)
         update_state = updates['state']
 
@@ -588,15 +590,6 @@ class KubeRootCAUpdateController(rest.RestController):
         except exception.NotFound:
             raise wsme.exc.ClientSideError(_(
                 "kube-rootca-update-complete rejected: No kubernetes root CA update in progress."))
-
-        self._check_cluster_health(
-            "kube-rootca-update-complete",
-            alarm_ignore_list=[
-                fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_IN_PROGRESS,
-                fm_constants.FM_ALARM_ID_KUBE_ROOTCA_UPDATE_AUTO_APPLY_INPROGRESS,
-                fm_constants.FM_ALARM_ID_CERT_EXPIRING_SOON],
-            force=force,
-        )
 
         rpc_host_update_list = pecan.request.dbapi.kube_rootca_host_update_get_list()
         hostnames = [host.hostname for host in rpc_host_update_list]

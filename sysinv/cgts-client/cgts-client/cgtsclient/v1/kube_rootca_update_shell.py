@@ -160,10 +160,6 @@ def do_kube_rootca_host_update_list(cc, args):
     utils.print_list(update_status_list, fields, fields)
 
 
-@utils.arg('-f', '--force',
-           action='store_true',
-           default=False,
-           help="Ignore non management-affecting alarms")
 def do_kube_rootca_update_complete(cc, args):
     """Marks the rootca update as complete"""
 
@@ -172,14 +168,10 @@ def do_kube_rootca_update_complete(cc, args):
                   'path': '/state',
                   'value': KUBE_ROOTCA_UPDATE_COMPLETED})
 
-    update_status = cc.kube_rootca_update.update_complete(patch, args.force)
+    update_status = cc.kube_rootca_update.update_complete(patch)
     _print_kube_rootca_update_show(update_status)
 
 
-@utils.arg('-f', '--force',
-           action='store_true',
-           default=False,
-           help="Ignore non management-affecting alarms")
 def do_kube_rootca_update_abort(cc, args):
     """Marks the rootca update as aborted"""
 
@@ -188,5 +180,5 @@ def do_kube_rootca_update_abort(cc, args):
                   'path': '/state',
                   'value': KUBE_ROOTCA_UPDATE_ABORTED})
 
-    update_status = cc.kube_rootca_update.update_complete(patch, args.force)
+    update_status = cc.kube_rootca_update.update_complete(patch)
     _print_kube_rootca_update_show(update_status)

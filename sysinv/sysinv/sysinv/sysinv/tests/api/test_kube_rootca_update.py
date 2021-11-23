@@ -371,7 +371,7 @@ class TestKubeRootCAUpdateComplete(TestKubeRootCAUpdate,
         patch = [{'op': 'replace',
                 'path': '/state',
                 'value': 'update-completed'}]
-        result = self.patch_json(self.url + '?force=False', patch)
+        result = self.patch_json(self.url, patch)
         result = result.json
 
         self.assertEqual(result['state'], kubernetes.KUBE_ROOTCA_UPDATE_COMPLETED)
@@ -388,7 +388,7 @@ class TestKubeRootCAUpdateComplete(TestKubeRootCAUpdate,
         host_updates = self.dbapi.kube_rootca_host_update_get_list()
         self.assertEqual(len(host_updates), 0)
 
-    def test_update_complete_force_pods_trustnewca_update_exists(self):
+    def test_update_abort_pods_trustnewca_update_exists(self):
         dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
         dbutils.create_test_kube_rootca_host_update(host_id=self.host.id,
             state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
@@ -398,7 +398,7 @@ class TestKubeRootCAUpdateComplete(TestKubeRootCAUpdate,
         patch = [{'op': 'replace',
                 'path': '/state',
                 'value': 'update-aborted'}]
-        result = self.patch_json(self.url + '?force=False', patch)
+        result = self.patch_json(self.url, patch)
         result = result.json
 
         self.assertEqual(result['state'], kubernetes.KUBE_ROOTCA_UPDATE_COMPLETED)
@@ -415,7 +415,7 @@ class TestKubeRootCAUpdateComplete(TestKubeRootCAUpdate,
         host_updates = self.dbapi.kube_rootca_host_update_get_list()
         self.assertEqual(len(host_updates), 0)
 
-    def test_update_complete_force_hosts_updatecerts_trustnewca_update_exists(self):
+    def test_update_abort_hosts_updatecerts_trustnewca_update_exists(self):
         dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA)
         dbutils.create_test_kube_rootca_host_update(host_id=self.host.id,
             state=kubernetes.KUBE_ROOTCA_UPDATED_HOST_UPDATECERTS)
@@ -425,7 +425,7 @@ class TestKubeRootCAUpdateComplete(TestKubeRootCAUpdate,
         patch = [{'op': 'replace',
                 'path': '/state',
                 'value': 'update-aborted'}]
-        result = self.patch_json(self.url + '?force=False', patch)
+        result = self.patch_json(self.url, patch)
         result = result.json
 
         self.assertEqual(result['state'], kubernetes.KUBE_ROOTCA_UPDATE_ABORTED)
@@ -441,34 +441,11 @@ class TestKubeRootCAUpdateComplete(TestKubeRootCAUpdate,
         host_list = self.dbapi.kube_rootca_host_update_get_list()
         self.assertEqual(len(host_list), 0)
 
-    def test_update_complete_invalid_health(self):
-        dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
-        dbutils.create_test_kube_rootca_host_update(host_id=self.host.id,
-            state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
-        dbutils.create_test_kube_rootca_host_update(host_id=self.host2.id,
-            state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
-        self.fake_fm_client.alarm.list.return_value = [FAKE_MGMT_ALARM]
-
-        patch = [{'op': 'replace',
-                'path': '/state',
-                'value': 'update-completed'}]
-
-        result = self.patch_json(self.url + '?force=False', patch, expect_errors=True)
-
-        self.assertEqual(result.status_int, http_client.BAD_REQUEST)
-        self.assertIn("System is not healthy. Run system health-query for more details.",
-            result.json['error_message'])
-        # Checks that DB is unmodified
-        update_entry = self.dbapi.kube_rootca_update_get_one()
-        self.assertNotEqual(update_entry, None)
-        host_update_list = self.dbapi.kube_rootca_host_update_get_list()
-        self.assertEqual(len(host_update_list), 2)
-
     def test_update_complete_no_update(self):
         patch = [{'op': 'replace',
                 'path': '/state',
                 'value': 'update-completed'}]
-        result = self.patch_json(self.url + '?force=False', patch, expect_errors=True)
+        result = self.patch_json(self.url, patch, expect_errors=True)
 
         self.assertEqual(result.status_int, http_client.BAD_REQUEST)
         self.assertIn("kube-rootca-update-complete rejected: No kubernetes root CA update in progress.",
@@ -480,7 +457,7 @@ class TestKubeRootCAUpdateComplete(TestKubeRootCAUpdate,
         patch = [{'op': 'replace',
                 'path': '/state',
                 'value': 'update-completed'}]
-        result = self.patch_json(self.url + '?force=False', patch, expect_errors=True)
+        result = self.patch_json(self.url, patch, expect_errors=True)
 
         self.assertEqual(result.status_int, http_client.BAD_REQUEST)
         self.assertIn("kube-rootca-update-complete rejected: Expect to find cluster update"

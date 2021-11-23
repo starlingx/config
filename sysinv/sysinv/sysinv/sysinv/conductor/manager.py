@@ -8997,6 +8997,13 @@ class ConductorManager(service.PeriodicService):
         LOG.info("Kube root CA update phase '%s' succeeded on host: %s"
                 % (reported_cfg, host_uuid))
 
+        # If the update is aborted, don't update anything
+        c_update = self.dbapi.kube_rootca_update_get_one()
+        if c_update.state == kubernetes.KUBE_ROOTCA_UPDATE_ABORTED:
+            LOG.info("Current update has been aborted at host: %s, config: %s"
+                    % (host_uuid, reported_cfg))
+            return
+
         values = {}
         h_update = self.dbapi.kube_rootca_host_update_get_by_host(host_uuid)
 
@@ -9028,7 +9035,6 @@ class ConductorManager(service.PeriodicService):
                 matching += 1
         if matching == len(h_updates):
             # All hosts are up to date.
-            c_update = self.dbapi.kube_rootca_update_get_one()
             self.dbapi.kube_rootca_update_update(c_update.id, {'state': state})
 
     def report_kube_rootca_update_failure(self, host_uuid, reported_cfg,
@@ -9038,6 +9044,13 @@ class ConductorManager(service.PeriodicService):
         """
         LOG.info("Kube root CA update phase '%s' failed on host: %s, error: %s"
                 % (reported_cfg, host_uuid, error))
+
+        # If the update is aborted, don't update anything
+        c_update = self.dbapi.kube_rootca_update_get_one()
+        if c_update.state == kubernetes.KUBE_ROOTCA_UPDATE_ABORTED:
+            LOG.info("Current update has been aborted at host: %s, config: %s"
+                    % (host_uuid, reported_cfg))
+            return
 
         if reported_cfg == puppet_common.REPORT_KUBE_CERT_UPDATE_TRUSTBOTHCAS:
             state = kubernetes.KUBE_ROOTCA_UPDATING_HOST_TRUSTBOTHCAS_FAILED
@@ -9056,7 +9069,6 @@ class ConductorManager(service.PeriodicService):
                                                   {'state': state})
 
         # Update cluster 'update state'
-        c_update = self.dbapi.kube_rootca_update_get_one()
         self.dbapi.kube_rootca_update_update(c_update.id, {'state': state})
 
     def report_kube_rootca_pods_update_success(self, reported_cfg):
@@ -9065,6 +9077,13 @@ class ConductorManager(service.PeriodicService):
         """
         LOG.info("Kube root CA update phase '%s' succeeded for pods"
                 % (reported_cfg))
+
+        # If the update is aborted, don't update anything
+        c_update = self.dbapi.kube_rootca_update_get_one()
+        if c_update.state == kubernetes.KUBE_ROOTCA_UPDATE_ABORTED:
+            LOG.info("Current update has been aborted at config: %s"
+                    % (reported_cfg))
+            return
 
         if reported_cfg == \
                 puppet_common.REPORT_KUBE_CERT_UPDATE_PODS_TRUSTBOTHCAS:
@@ -9078,7 +9097,6 @@ class ConductorManager(service.PeriodicService):
                 "Not supported reported_cfg: %s" % reported_cfg))
 
         # Update cluster 'update state'
-        c_update = self.dbapi.kube_rootca_update_get_one()
         self.dbapi.kube_rootca_update_update(c_update.id, {'state': state})
 
     def report_kube_rootca_pods_update_failure(self, reported_cfg, error):
@@ -9087,6 +9105,13 @@ class ConductorManager(service.PeriodicService):
         """
         LOG.info("Kube root CA update phase '%s' failed for pods, error: %s"
                 % (reported_cfg, error))
+
+        # If the update is aborted, don't update anything
+        c_update = self.dbapi.kube_rootca_update_get_one()
+        if c_update.state == kubernetes.KUBE_ROOTCA_UPDATE_ABORTED:
+            LOG.info("Current update has been aborted at config: %s"
+                    % (reported_cfg))
+            return
 
         if reported_cfg == \
                 puppet_common.REPORT_KUBE_CERT_UPDATE_PODS_TRUSTBOTHCAS:
@@ -9100,7 +9125,6 @@ class ConductorManager(service.PeriodicService):
                 "Not supported reported_cfg: %s" % reported_cfg))
 
         # Update cluster 'update state'
-        c_update = self.dbapi.kube_rootca_update_get_one()
         self.dbapi.kube_rootca_update_update(c_update.id, {'state': state})
 
     def create_controller_filesystems(self, context, rootfs_device):

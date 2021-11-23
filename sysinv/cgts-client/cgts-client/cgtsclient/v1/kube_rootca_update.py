@@ -88,12 +88,10 @@ class KubeRootCAUpdateManager(base.Manager):
 
         return self._list(self._path('hosts'), 'kube_host_updates')
 
-    def update_complete(self, patch, force):
+    def update_complete(self, patch):
         """Marks the Kubernetes rootca update as complete
 
         :param patch: a json PATCH document to apply on complete API.
-        :param force: A CLI argument to indicate if the API should ignore
-        minor alarms on eventual health checks.
         """
 
-        return self._update(self._path() + '?force=' + str(force), patch)
+        return self._update(self._path(), patch)
