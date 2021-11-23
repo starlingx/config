@@ -109,11 +109,6 @@ class CephPuppet(openstack.OpenstackBasePuppet):
                 constants.CONTROLLER_1_HOSTNAME,
             'platform::ceph::params::mon_2_host': mon_2_host,
 
-            'platform::ceph::params::floating_mon_ip': floating_mon_ip,
-            'platform::ceph::params::mon_0_ip': mon_0_ip,
-            'platform::ceph::params::mon_1_ip': mon_1_ip,
-            'platform::ceph::params::mon_2_ip': mon_2_ip,
-
             'platform::ceph::params::floating_mon_addr': floating_mon_addr,
             'platform::ceph::params::mon_0_addr': mon_0_addr,
             'platform::ceph::params::mon_1_addr': mon_1_addr,
