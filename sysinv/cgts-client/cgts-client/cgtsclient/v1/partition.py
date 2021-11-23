@@ -56,15 +56,15 @@ class partitionManager(base.Manager):
         return self._update(path, patch)
 
 
-def _find_partition(cc, ihost, partition, idisk=None):
+def _find_partition(cc, ihost, partition_id, idisk=None):
     if idisk:
         part_list = cc.partition.list(ihost.uuid, idisk.uuid)
     else:
         part_list = cc.partition.list(ihost.uuid)
     for p in part_list:
-        if p.device_path == partition:
+        if p.device_path == partition_id:
             return p
-        if p.uuid == partition:
+        if p.uuid == partition_id:
             return p
     else:
         return None

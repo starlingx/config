@@ -55,10 +55,10 @@ class isystemManager(base.Manager):
         return self._update(self._path(isystem_id), patch)
 
 
-def _find_isystem(cc, isystem):
+def _find_isystem(cc, isystem_id):
     try:
-        h = cc.isystem.get(isystem)
+        h = cc.isystem.get(isystem_id)
     except exc.HTTPNotFound:
-        raise exc.CommandError('system not found: %s' % isystem)
+        raise exc.CommandError('system not found: %s' % isystem_id)
     else:
         return h

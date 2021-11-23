@@ -546,8 +546,8 @@ def find_resource(manager, name_or_id):
         raise exc.CommandError(msg)
 
 
-def string_to_bool(arg):
-    return arg.strip().lower() in ('t', 'true', 'yes', '1')
+def string_to_bool(s):
+    return s.strip().lower() in ('t', 'true', 'yes', '1')
 
 
 def env(*vars, **kwargs):

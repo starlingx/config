@@ -46,9 +46,9 @@ def do_device_label_list(cc, args):
             setattr(dl, 'devicename', "")
             setattr(dl, 'hostname', "")
         else:
-            pci_device = cc.pci_device.get(dl.pcidevice_uuid)
-            setattr(dl, 'devicename', getattr(pci_device, 'name'))
-            host = ihost_utils._find_ihost(cc, getattr(pci_device, 'host_uuid'))
+            pci_device_name = cc.pci_device.get(dl.pcidevice_uuid)
+            setattr(dl, 'devicename', getattr(pci_device_name, 'name'))
+            host = ihost_utils._find_ihost(cc, getattr(pci_device_name, 'host_uuid'))
             setattr(dl, 'hostname', host.hostname)
     field_labels = ['hostname', 'PCI device name', 'label key', 'label value']
     fields = ['hostname', 'devicename', 'label_key', 'label_value']

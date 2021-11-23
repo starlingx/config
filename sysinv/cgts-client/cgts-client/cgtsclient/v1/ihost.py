@@ -153,18 +153,18 @@ class ihostManager(base.Manager):
         return self.resource_class(self, body)
 
 
-def _find_ihost(cc, ihost):
-    if ihost.isdigit() or utils.is_uuid_like(ihost):
+def _find_ihost(cc, ihost_id):
+    if ihost_id.isdigit() or utils.is_uuid_like(ihost_id):
         try:
-            h = cc.ihost.get(ihost)
+            h = cc.ihost.get(ihost_id)
         except exc.HTTPNotFound:
-            raise exc.CommandError('host not found: %s' % ihost)
+            raise exc.CommandError('host not found: %s' % ihost_id)
         else:
             return h
     else:
         hostlist = cc.ihost.list()
         for h in hostlist:
-            if h.hostname == ihost:
+            if h.hostname == ihost_id:
                 return h
         else:
-            raise exc.CommandError('host not found: %s' % ihost)
+            raise exc.CommandError('host not found: %s' % ihost_id)

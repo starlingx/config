@@ -63,10 +63,10 @@ def get_disk_display_name(d):
         return '(' + str(d.uuid)[-8:] + ')'
 
 
-def _find_disk(cc, ihost, idisk):
-    if utils.is_uuid_like(idisk):
+def _find_disk(cc, ihost, idisk_id):
+    if utils.is_uuid_like(idisk_id):
         try:
-            disk = cc.idisk.get(idisk)
+            disk = cc.idisk.get(idisk_id)
         except exc.HTTPNotFound:
             return None
         else:
@@ -74,7 +74,7 @@ def _find_disk(cc, ihost, idisk):
     else:
         disklist = cc.idisk.list(ihost.uuid)
         for disk in disklist:
-            if disk.device_node == idisk or disk.device_path == idisk:
+            if disk.device_node == idisk_id or disk.device_path == idisk_id:
                 return disk
         else:
             return None
