@@ -12570,6 +12570,17 @@ class ConductorManager(service.PeriodicService):
                                                 config_uuid,
                                                 config_dict,
                                                 force=True)
+
+            personalities = [constants.CONTROLLER]
+            config_uuid = self._config_update_hosts(context, personalities)
+            config_dict = {
+                "personalities": personalities,
+                "classes": ['platform::kubernetes::master::apiserver::runtime']
+            }
+            self._config_apply_runtime_manifest(context,
+                                                config_uuid,
+                                                config_dict)
+
         elif mode == constants.CERT_MODE_DOCKER_REGISTRY:
             LOG.info("Docker registry certificate install")
             # docker registry requires a PKCS1 key for the token server
