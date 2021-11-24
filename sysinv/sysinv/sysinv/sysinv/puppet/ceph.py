@@ -136,33 +136,36 @@ class CephPuppet(openstack.OpenstackBasePuppet):
             if cephfs_filesystems:
                 config['platform::ceph::params::cephfs_filesystems'] = cephfs_filesystems
 
-        if (utils.is_openstack_applied(self.dbapi) and
-                utils.is_chart_enabled(self.dbapi,
-                                       constants.HELM_APP_OPENSTACK,
-                                       self.HELM_CHART_SWIFT,
-                                       common.HELM_NS_OPENSTACK)):
-            app = self.dbapi.kube_app_get(constants.HELM_APP_OPENSTACK)
-            override = self.dbapi.helm_override_get(
-                        app.id,
-                        self.SERVICE_NAME_RGW,
-                        common.HELM_NS_OPENSTACK)
-            password = override.system_overrides.get(
-                        self.SERVICE_NAME_RGW, None)
-            if password:
-                swift_auth_password = password.encode('utf8', 'strict')
-                config.update(
-                    {'platform::ceph::rgw::keystone::swift_endpts_enabled':
-                     True})
-                config.pop('platform::ceph::rgw::keystone::rgw_admin_user')
-                config.update({'platform::ceph::rgw::keystone::rgw_admin_password':
-                               swift_auth_password})
-                config.update({'platform::ceph::rgw::keystone::rgw_admin_domain':
-                               self.RADOSGW_SERVICE_DOMAIN_NAME})
-                config.update({'platform::ceph::rgw::keystone::rgw_admin_project':
-                               self.RADOSGW_SERVICE_PROJECT_NAME})
-            else:
-                raise exception.SysinvException(
-                    "Unable to retreive containerized swift auth password")
+        if utils.is_openstack_applied(self.dbapi):
+            openstack_app = utils.find_openstack_app(self.dbapi)
+
+            if utils.is_chart_enabled(
+                    self.dbapi,
+                    openstack_app.name,
+                    self.HELM_CHART_SWIFT,
+                    common.HELM_NS_OPENSTACK
+            ):
+                override = self.dbapi.helm_override_get(
+                            openstack_app.id,
+                            self.SERVICE_NAME_RGW,
+                            common.HELM_NS_OPENSTACK)
+                password = override.system_overrides.get(
+                            self.SERVICE_NAME_RGW, None)
+                if password:
+                    swift_auth_password = password.encode('utf8', 'strict')
+                    config.update(
+                        {'platform::ceph::rgw::keystone::swift_endpts_enabled':
+                         True})
+                    config.pop('platform::ceph::rgw::keystone::rgw_admin_user')
+                    config.update({'platform::ceph::rgw::keystone::rgw_admin_password':
+                                   swift_auth_password})
+                    config.update({'platform::ceph::rgw::keystone::rgw_admin_domain':
+                                   self.RADOSGW_SERVICE_DOMAIN_NAME})
+                    config.update({'platform::ceph::rgw::keystone::rgw_admin_project':
+                                   self.RADOSGW_SERVICE_PROJECT_NAME})
+                else:
+                    raise exception.SysinvException(
+                        "Unable to retreive containerized swift auth password")
 
         return config
 
