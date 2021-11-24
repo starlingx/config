@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 #
 # Copyright (c) 2021 Wind River Systems, Inc.
 #
@@ -52,35 +53,58 @@ class TestSystemUpdate(TestSystem):
         super(TestSystemUpdate, self).setUp()
         self.system = dbutils.create_test_isystem()
 
+    def test_update_valid_system_values_0(self):
+        update = {
+            "name": "StarlingX #0",
+            "timezone": "UCT",
+            "description": "System Description",
+            "contact": "John Doe",
+            "location": "Earth",
+            "latitude": "00.11223344556677 N",
+            "longitude": "-00.11223344556677 W",
+            "security_feature": "spectre_meltdown_v1",
+        }
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update)
+
+    def test_update_valid_system_values_1(self):
+        update = {
+            "name": "StarlingX #1",
+            "timezone": "CET",
+            "description": "[System Description!]",
+            "contact": "Mr. John Doe",
+            "location": "Mars",
+            "latitude": None,
+            "longitude": None,
+            "security_feature": "spectre_meltdown_all",
+        }
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update)
+
+    def test_update_name_invalid_chars(self):
+        update = {"name": "Nõt à vªlid nâmë"}
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update, expect_errors=True)
+
     def test_update_latitude_longer_than_30_chars(self):
         update = {"latitude": "00.0000000111111111122222222223"}
         self._patch_and_check(self._get_path(self.system.uuid),
                               update, expect_errors=True)
 
-    def test_update_latitude_valid_length(self):
-        update = {"latitude": "00.11223344556677"}
+    def test_update_latitude_invalid_chars(self):
+        update = {"latitude": u"99.99999° N"}
         self._patch_and_check(self._get_path(self.system.uuid),
-                              update)
-
-    def test_update_latitude_null_value(self):
-        update = {"latitude": None}
-        self._patch_and_check(self._get_path(self.system.uuid),
-                              update)
+                              update, expect_errors=True)
 
     def test_update_longitude_longer_than_30_chars(self):
         update = {"longitude": "00.0000000111111111122222222223"}
         self._patch_and_check(self._get_path(self.system.uuid),
                               update, expect_errors=True)
 
-    def test_update_longitude_valid_length(self):
-        update = {"longitude": "-00.11223344556677"}
+    def test_update_longitude_invalid_chars(self):
+        update = {"longitude": u"99.99999° W"}
         self._patch_and_check(self._get_path(self.system.uuid),
-                              update)
-
-    def test_update_longitude_null_value(self):
-        update = {"longitude": None}
-        self._patch_and_check(self._get_path(self.system.uuid),
-                              update)
+                              update, expect_errors=True)
 
 
 class TestSystemUpdateModeFromSimplex(TestSystem):
