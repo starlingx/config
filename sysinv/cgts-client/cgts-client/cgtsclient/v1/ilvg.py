@@ -54,22 +54,22 @@ class ilvgManager(base.Manager):
         return self._update(path, patch)
 
 
-def _find_ilvg(cc, ihost, ilvg):
+def _find_ilvg(cc, ihost, ilvg_id):
     if ilvg.isdigit():
         try:
-            lvg = cc.ilvg.get(ilvg)
+            lvg = cc.ilvg.get(ilvg_id)
         except exc.HTTPNotFound:
             raise exc.CommandError('Local volume group not found by id: %s'
-                                   % ilvg)
+                                   % ilvg_id)
         else:
             return lvg
     else:
         lvglist = cc.ilvg.list(ihost.uuid)
         for lvg in lvglist:
-            if lvg.lvm_vg_name == ilvg:
+            if lvg.lvm_vg_name == ilvg_id:
                 return lvg
-            if lvg.uuid == ilvg:
+            if lvg.uuid == ilvg_id:
                 return lvg
         else:
             raise exc.CommandError('Local volume group not found by name or '
-                                   'uuid: %s' % ilvg)
+                                   'uuid: %s' % ilvg_id)

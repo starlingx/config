@@ -62,18 +62,18 @@ def _get_disks(cc, ihost, pv):
     pv.disks = disk_list
 
 
-def _find_ipv(cc, ihost, ipv):
+def _find_ipv(cc, ihost, ipv_id):
     if ipv.isdigit():
         try:
-            pv = cc.ipv.get(ipv)
+            pv = cc.ipv.get(ipv_id)
         except exc.HTTPNotFound:
-            raise exc.CommandError('physical volume not found: %s' % ipv)
+            raise exc.CommandError('physical volume not found: %s' % ipv_id)
         else:
             return pv
     else:
         pvlist = cc.ipv.list(ihost.uuid)
         for pv in pvlist:
-            if pv.uuid == ipv:
+            if pv.uuid == ipv_id:
                 return pv
         else:
-            raise exc.CommandError('physical volume not found: %s' % ipv)
+            raise exc.CommandError('physical volume not found: %s' % ipv_id)
