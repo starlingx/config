@@ -30,8 +30,8 @@ class KubeRootCAUpdateTest(test_shell.ShellTest):
             'uuid': '88d31a2d-c82e-429f-a52d-f03f860bb620',
             'personality': 'fake-personality',
             'state': 'None',
-            'target_rootca_cert': 'fake-target_rootca_cert',
-            'effective_rootca_cert': 'fake-effective_rootca_cert',
+            'target_rootca_cert': 'fake-target_cert',
+            'effective_rootca_cert': 'fake-effective_cert',
             'created_at': 'fake-created-time',
             'updated_at': 'fake-updated-time',
         }

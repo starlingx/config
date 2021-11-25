@@ -10966,7 +10966,6 @@ forbidden (403), badMethod (405), overLimit (413)
    :widths: 20, 20, 20, 60
 
    "state", "plain", "xsd:string", "The new state to be set in kube_rootca_update object"
-   "force", "query", "xsd:boolean", "A boolean flag indicating if the API should ignore non-management affecting alarms on eventual health checks (the parameter is passed as part of the URL, ie, /v1/kube_rootca_update/?force=True)."
 
 ::
 
@@ -11038,7 +11037,6 @@ forbidden (403), badMethod (405), overLimit (413)
    :widths: 20, 20, 20, 60
 
    "state", "plain", "xsd:string", "The new state to be set in kube_rootca_update object"
-   "force", "query", "xsd:boolean", "A boolean flag indicating if the API should ignore non-management affecting alarms on eventual health checks (the parameter is passed as part of the URL, ie, /v1/kube_rootca_update/?force=True)."
 
 ::
 
@@ -11084,7 +11082,7 @@ forbidden (403), badMethod (405), overLimit (413)
       "from_rootca_cert":"d70efa2daaee06f8-70634176318091904949557575469846596498",
       "updated_at":"2021-08-26T18:25:02.759171+00:00",
       "capabilities":{},
-      "state":"update-completed",
+      "state":"update-aborted",
       "id":27
    }
 
