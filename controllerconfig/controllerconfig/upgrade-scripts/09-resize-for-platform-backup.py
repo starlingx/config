@@ -5,18 +5,18 @@
 #
 
 import math
-import operator
 import psycopg2
 import sys
 import subprocess
 
-from sysinv.common import constants
-from psycopg2.extras import RealDictCursor
 from controllerconfig.common import log
+from operator import itemgetter
+from psycopg2.extras import RealDictCursor
 
 LOG = log.get_logger(__name__)
 
 BACKUP_GUID = 'ba5eba11-0000-1111-2222-000000000002'
+SYSINV_GUID = 'ba5eba11-0000-1111-2222-000000000001'
 
 
 def main():
@@ -50,6 +50,7 @@ def main():
 
 
 def adjust_backup_partition():
+    installed_backup_size = get_backup_size()
     conn = psycopg2.connect("dbname=sysinv user=postgres")
     with conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -66,18 +67,9 @@ def adjust_backup_partition():
                     cur, controller, controller_rootfs_disk)
                 LOG.info("Database partition data: %s" % db_partitions)
 
-                installed_partitions = get_partitions(
-                    controller_rootfs_disk['device_path'],
-                    controller_rootfs_disk['device_node'])
-                installed_partition_map = {
-                    p['device_node']: p for p in installed_partitions}
-                LOG.info("Installed partitions: %s" % installed_partitions)
-
                 backup_partition = next(p for p in db_partitions if
                                         p['type_guid'].lower() == BACKUP_GUID)
-                backup_device_node = backup_partition['device_node']
                 original_backup_size = backup_partition['size_mib']
-                installed_backup_size = int(installed_partition_map[backup_device_node]['size_mib'])  # noqa: E501
                 if installed_backup_size == original_backup_size:
                     LOG.info("Backup partition size unchanged, nothing to do. "
                              "Installed: %s DB: %s" %
@@ -89,44 +81,45 @@ def adjust_backup_partition():
                     db_partitions, backup_partition, backup_change)
 
                 # Ensure the last partition will fit on the disk
-                disk_size = get_disk_size(controller_rootfs_disk['device_node']) - 1  # noqa: E501
+                disk_size = controller_rootfs_disk['size_mib'] - 1
                 last_partition = adjusted_partitions[-1]
                 required_space = max(0, last_partition['end_mib'] - disk_size)
-                if required_space > 0:
-                    LOG.info("Reducing partition: %s by %s" %
-                             (last_partition['device_node'], required_space))
-                    last_partition['end_mib'] -= required_space
-                    last_partition['size_mib'] -= required_space
-
-                if last_partition['size_mib'] < 0:
-                    raise Exception("Invalid partition configuration. Partitions: %s" % adjusted_partitions)  # noqa: E501
-
-                update_partitions(cur, adjusted_partitions)
 
                 if required_space == 0:
+                    update_partitions(cur, adjusted_partitions)
                     LOG.info("Adjusted partitions fit rootfs, can continue. "
                              "Partitions: %s " % adjusted_partitions)
                     continue
 
-                cgts_vg = get_cgts_vg(cur, controller)
-                cgts_vg_free_space = int(cgts_vg['lvm_vg_size'] / cgts_vg['lvm_vg_total_pe']) * cgts_vg['lvm_vg_free_pe']  # noqa: E501
+                added_partitions = [p for p in db_partitions if
+                                    p['type_guid'].lower() == SYSINV_GUID]
+                unassigned_partitions = [p for p in added_partitions if
+                                         p['foripvid'] is None]
 
-                # There may be available space in the cgts_vg
-                if cgts_vg_free_space >= required_space:
-                    LOG.info("cgts_vg has sufficient space, can continue. "
-                             "cgts_vg: %s " % cgts_vg)
-                    continue
+                if not added_partitions:
+                    # This is not an AIO system, we'll resize the last partiton
+                    added_partitions.append(last_partition)
 
-                # Otherwise we'll reduce the backup fs by up to 15GB and remove
-                # the rest from the docker fs
-                required_space -= cgts_vg_free_space
-                required_gb = int(math.ceil(required_space / 1024.0))
-                backup_fs_reduction = min(15, required_gb)
-                update_host_fs(cur, controller, 'backup', backup_fs_reduction)
+                partitions = unassigned_partitions if unassigned_partitions else added_partitions  # noqa
+                partition = max(partitions, key=itemgetter('size_mib'))
 
-                required_gb -= backup_fs_reduction
-                if required_gb > 0:
-                    update_host_fs(cur, controller, 'docker', required_gb)
+                if partition['size_mib'] < required_space:
+                    LOG.exception(
+                        "Insufficient space to resize partition %s - %s" %
+                        (partition, required_space))
+                    raise
+
+                reduced_partitions = move_partitions(
+                    adjusted_partitions, partition, required_space * -1)
+                final_partitions = adjusted_partitions[:adjusted_partitions.index(partition)]  # noqa
+                final_partitions.extend(reduced_partitions)
+                update_partitions(cur, final_partitions)
+
+                host_pvs = get_pvs(cur, controller)
+                partition_vg_name = get_vg_name(partition, host_pvs)
+
+                if partition_vg_name == 'cgts-vg':
+                    resize_cgts_vg(cur, controller, required_space)
 
 
 def get_host_rootfs(cursor, host):
@@ -141,34 +134,16 @@ def get_db_partitions(cursor, host, rootfs):
     return cursor.fetchall()
 
 
-def get_partitions(device_path, device_node):
-    """Obtain existing partitions from a disk."""
-    partitions = []
-    sgdisk_part_info = get_sgdisk_info(device_path)
+def get_backup_size():
+    lsblk_command = 'lsblk -pno PKNAME $(findmnt -n / -o SOURCE)'
+    lsblk = subprocess.Popen(lsblk_command, stdout=subprocess.PIPE, shell=True)
+    root_disk_path = lsblk.stdout.read()
+    part_info = get_sgdisk_info(root_disk_path)
 
-    for partition in sgdisk_part_info:
-        partition_number = partition.get('part_number')
-        type_name = partition.get('type_name')
-        part_size_mib = partition.get('size_mib')
-        part_device_node = build_partition_device_node(
-            device_node, partition_number)
-        part_device_path = build_partition_device_path(
-            device_path, partition_number)
-        start_mib = partition.get('start_mib')
-        end_mib = partition.get('end_mib')
+    backup_size = next(part['size_mib'] for part in part_info if
+                       part['type_guid'].lower() == BACKUP_GUID)
 
-        part_attrs = {
-            'partition_number': partition_number,
-            'device_path': part_device_path,
-            'device_node': part_device_node,
-            'type_name': type_name,
-            'start_mib': start_mib,
-            'end_mib': end_mib,
-            'size_mib': part_size_mib,
-        }
-        partitions.append(part_attrs)
-
-    return partitions
+    return int(backup_size)
 
 
 def get_sgdisk_info(device_path):
@@ -206,40 +181,17 @@ def get_sgdisk_info(device_path):
     return sgdisk_part_info
 
 
-def build_partition_device_node(disk_device_node, partition_number):
-    if constants.DEVICE_NAME_NVME in disk_device_node:
-        partition_device_node = '{}p{}'.format(
-            disk_device_node, partition_number)
-    else:
-        partition_device_node = '{}{}'.format(
-            disk_device_node, partition_number)
-
-    LOG.debug("partition_device_node: %s" % partition_device_node)
-
-    return partition_device_node
-
-
-def build_partition_device_path(disk_device_path, partition_number):
-    partition_device_path = '{}-part{}'.format(
-        disk_device_path, partition_number)
-
-    LOG.debug("partition_device_path: %s" % partition_device_path)
-
-    return partition_device_path
-
-
 def move_partitions(db_values, start, size):
     """
-    Updates the list of partitions based on the new size of the platform backup
-    partition
+    Updates the list of partitions based on the new size of a given partition
     :param:   db_values: A list of partitions to adjust
-    :param:   start: The platform-backup partition
-    :param:   size: The new size of the platform-backup partition
+    :param:   start: The partition being adjusted
+    :param:   size: The change in size of the partition
     :returns: A sorted list of updated partitions
     """
-    partitions = sorted(db_values, key=operator.itemgetter('start_mib'))
+    partitions = sorted(db_values, key=itemgetter('start_mib'))
     partitions = partitions[partitions.index(start):]
-    # Update the platform backup size and end_mib
+    # Update the specified partition size and end_mib
     partitions[0]['size_mib'] += size
     partitions[0]['end_mib'] += size
     # Shift the rest of the partitions
@@ -259,14 +211,39 @@ def update_partitions(cursor, updated_partitions):
                         partition['size_mib'], partition['id']))
 
 
-def get_disk_size(rootfs):
-    disk_size_cmd = '{} {}'.format('blockdev --getsize64', rootfs)
-    disk_size_process = subprocess.Popen(
-        disk_size_cmd, stdout=subprocess.PIPE, shell=True)
-    disk_size = int(disk_size_process.stdout.read().rstrip())
+def get_pvs(cursor, host):
+    query = "select * from i_pv where forihostid=%s"
+    cursor.execute(query, (host['id'],))
+    return cursor.fetchall()
 
-    # Return in mib
-    return int(disk_size / (1024 * 1024))
+
+def get_vg_name(partition, pvs):
+    pv_id = partition['foripvid']
+    if not pv_id:
+        return None
+    return next(pv['lvm_vg_name'] for pv in pvs if pv['id'] == pv_id)
+
+
+def resize_cgts_vg(cursor, host, required_space):
+    cgts_vg = get_cgts_vg(cursor, host)
+    cgts_vg_free_space = int(cgts_vg['lvm_vg_size'] / cgts_vg['lvm_vg_total_pe']) * cgts_vg['lvm_vg_free_pe']  # noqa: E501
+
+    # There may be available space in the cgts_vg
+    if cgts_vg_free_space >= required_space:
+        LOG.info("cgts_vg has sufficient space, can continue. "
+                 "cgts_vg: %s " % cgts_vg)
+        return
+
+    # Otherwise we'll reduce the backup fs by up to 15GB and remove
+    # the rest from the docker fs
+    required_space -= cgts_vg_free_space
+    required_gb = int(math.ceil(required_space / 1024.0))
+    backup_fs_reduction = min(15, required_gb)
+    update_host_fs(cursor, host, 'backup', backup_fs_reduction)
+
+    required_gb -= backup_fs_reduction
+    if required_gb > 0:
+        update_host_fs(cursor, host, 'docker', required_gb)
 
 
 def get_cgts_vg(cursor, host):
