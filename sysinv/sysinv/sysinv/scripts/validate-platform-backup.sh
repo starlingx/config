@@ -41,7 +41,7 @@ for part_number in "${part_numbers[@]}"; do
         part_end_mib=$((($(echo "$sgdisk_part_info" | grep "$part_last_sector_str" | awk '{print $3;}') * $sector_size / (1024*1024)) + 1))
         part_size_mib=$((part_end_mib-part_start_mib))
         log "Found platform-backup partition with size: $part_size_mib"
-        if [ $part_size_mib -eq $PLATFORM_BACKUP_SIZE ]; then
+        if [ $part_size_mib -ge $PLATFORM_BACKUP_SIZE ]; then
             log "Success"
             exit 0
         fi
