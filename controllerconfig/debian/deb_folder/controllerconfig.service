@@ -1,0 +1,17 @@
+[Unit]
+Description=controllerconfig service
+After=syslog.target network.target remote-fs.target sw-patch.service sysinv-agent.service
+After=network-online.target
+Before=config.service
+
+[Service]
+Type=simple
+ExecStart=/etc/init.d/controller_config start
+ExecStop=
+ExecReload=
+StandardOutput=journal+console
+StandardError=journal+console
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
