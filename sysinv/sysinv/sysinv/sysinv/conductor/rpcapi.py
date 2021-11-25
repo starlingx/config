@@ -24,6 +24,7 @@ Client side of the conductor RPC API.
 """
 
 from oslo_log import log
+from sysinv.common import constants
 from sysinv.objects import base as objects_base
 import sysinv.openstack.common.rpc.proxy
 
@@ -2028,7 +2029,9 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context,
                          self.make_msg('reconfigure_service_endpoints',
-                                       host=host))
+                                       host=host),
+                         timeout=constants.INVENTORY_WAIT_TIMEOUT_IN_SECS +
+                             constants.DEFAULT_RPCAPI_TIMEOUT_IN_SECS)
 
     def mgmt_mac_set_by_ihost(self, context, host, mgmt_mac):
         """Update the management mac address upon management interface
