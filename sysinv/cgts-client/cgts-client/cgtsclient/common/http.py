@@ -143,6 +143,8 @@ class HTTPClient(httplib2.Http):
         # httplib2 overrides
         self.disable_ssl_certificate_validation = insecure
 
+        self.service_catalog = None
+
     #################
     # REQUEST
     #################
