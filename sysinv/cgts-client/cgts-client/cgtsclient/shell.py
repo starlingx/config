@@ -34,6 +34,10 @@ import os
 
 class CgtsShell(object):
 
+    def __init__(self):
+        self.subcommands = None
+        self.parser = None
+
     def get_base_parser(self):
         parser = argparse.ArgumentParser(
             prog='system',
