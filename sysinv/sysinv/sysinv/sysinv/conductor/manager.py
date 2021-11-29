@@ -635,15 +635,15 @@ class ConductorManager(service.PeriodicService):
          'name': constants.SERVICE_PARAM_IDENTITY_CONFIG_TOKEN_EXPIRATION,
          'value': constants.SERVICE_PARAM_IDENTITY_CONFIG_TOKEN_EXPIRATION_DEFAULT
          },
-        {'service': constants.SERVICE_TYPE_HORIZON,
-         'section': constants.SERVICE_PARAM_SECTION_HORIZON_AUTH,
-         'name': constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_PERIOD_SEC,
-         'value': constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_PERIOD_SEC_DEFAULT
+        {'service': constants.SERVICE_TYPE_IDENTITY,
+         'section': constants.SERVICE_PARAM_SECTION_SECURITY_COMPLIANCE,
+         'name': constants.SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_LOCKOUT_DURATION,
+         'value': constants.SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_LOCKOUT_DURATION_DEFAULT,
          },
-        {'service': constants.SERVICE_TYPE_HORIZON,
-         'section': constants.SERVICE_PARAM_SECTION_HORIZON_AUTH,
-         'name': constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_RETRIES,
-         'value': constants.SERVICE_PARAM_HORIZON_AUTH_LOCKOUT_RETRIES_DEFAULT
+        {'service': constants.SERVICE_TYPE_IDENTITY,
+         'section': constants.SERVICE_PARAM_SECTION_SECURITY_COMPLIANCE,
+         'name': constants.SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_LOCKOUT_FAILURE_ATTEMPTS,
+         'value': constants.SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_LOCKOUT_FAILURE_ATTEMPTS_DEFAULT,
          },
         {'service': constants.SERVICE_TYPE_PLATFORM,
          'section': constants.SERVICE_PARAM_SECTION_PLATFORM_MAINTENANCE,

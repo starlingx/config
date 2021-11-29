@@ -6,6 +6,8 @@
 # This script will add service parameters specific to handling of ghcr.io
 # registry into the sysinv database during migration phase of upgrade
 # procedure.
+# Also, the previous horizon parameters will be removed without necessity
+# to keep the old unused values.
 
 import sys
 import psycopg2
@@ -43,36 +45,10 @@ def main():
         try:
             conn = psycopg2.connect("dbname=sysinv user=postgres")
             with conn:
-                cmd = """
-                      INSERT INTO service_parameter (created_at, uuid, name,
-                      value, service, section, personality, resource) VALUES
-                      (%s, %s, %s, %s, %s, %s, %s, %s);
-                      """
+                add_ghcr_registry(conn)
 
-                rows = get_gcr_rows(conn)
-                for row in rows:
-                    timestamp = str(datetime.now())
-                    uuid = uuidutils.generate_uuid()
-                    value = row.get('value')
+                remove_horizon_params(conn)
 
-                    # There are two names where we expect to need to
-                    # replace the registry name in the corresponding value.
-                    for key in ['additional-overrides', 'url']:
-                        if value and row.get('name') == key:
-                            value = value.replace('gcr.io', 'ghcr.io')
-
-                    LOG.info("Adding %s=%s to db for ghcr-registry" %
-                             (row['name'], value))
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            cmd,
-                            (timestamp, uuid, row['name'], value,
-                             'docker', 'ghcr-registry', row['personality'],
-                             row['resource']))
-
-                LOG.info("%s: Upgrade of service parameters completed "
-                         "from release %s to %s"
-                         % (sys.argv[0], from_release, to_release))
                 return 0
         except Exception as ex:
             LOG.exception(ex)
@@ -86,6 +62,44 @@ def get_gcr_rows(db_conn):
                     "section='gcr-registry'")
 
         return cur.fetchall()
+
+
+def add_ghcr_registry(db_conn):
+    cmd = """
+        INSERT INTO service_parameter (created_at, uuid, name,
+        value, service, section, personality, resource) VALUES
+        (%s, %s, %s, %s, %s, %s, %s, %s);
+        """
+    rows = get_gcr_rows(db_conn)
+    for row in rows:
+        timestamp = str(datetime.now())
+        uuid = uuidutils.generate_uuid()
+        value = row.get('value')
+
+        # There are two names where we expect to need to
+        # replace the registry name in the corresponding value.
+        for key in ['additional-overrides', 'url']:
+            if value and row.get('name') == key:
+                value = value.replace('gcr.io', 'ghcr.io')
+
+        LOG.info("Adding %s=%s to db for ghcr-registry"
+                 % (row['name'], value))
+        with db_conn.cursor() as cur:
+            cur.execute(
+                cmd,
+                (timestamp, uuid, row['name'], value,
+                    'docker', 'ghcr-registry', row['personality'],
+                    row['resource']))
+    LOG.info("ghcr_registry parameters upgrade completed")
+
+
+def remove_horizon_params(db_conn):
+    cmd_delete = "DELETE FROM service_parameter WHERE " \
+                 "service='horizon' and section='auth'"
+    LOG.info("Removing horizon auth params from db")
+    with db_conn.cursor() as cur:
+        cur.execute(cmd_delete)
+    LOG.info("Horizon auth params removed")
 
 
 if __name__ == "__main__":
