@@ -36,20 +36,9 @@ def _print_certificate_show(certificate):
 
 
 @utils.arg('certificate_uuid', metavar='<certificate_uuid>',
-           help="UUID of certificate or the reserved word 'tpm' "
-                "to show TPM certificate")
+           help="UUID of certificate")
 def do_certificate_show(cc, args):
     """Show Certificate details."""
-    if args.certificate_uuid == 'tpm':
-        certificates = cc.certificate.list()
-        for cert in certificates:
-            if cert.certtype == 'tpm_mode':
-                args.certificate_uuid = cert.uuid
-                break
-        else:
-            print("No TPM certificate installed")
-            return
-
     certificate = cc.certificate.get(args.certificate_uuid)
     if certificate:
         _print_certificate_show(certificate)
@@ -76,8 +65,8 @@ def do_certificate_list(cc, args):
            help='The passphrase for the PEM file')
 @utils.arg('-m', '--mode',
            metavar='<mode>',
-           help="optional mode: 'tpm_mode',"
-                "'docker_registry, 'openstack', 'openstack_ca', 'ssl_ca'. "
+           help="optional mode: 'docker_registry', "
+                "'openstack', 'openstack_ca', 'ssl_ca'. "
                 "Default is 'ssl'.")
 def do_certificate_install(cc, args):
     """Install certificate."""
