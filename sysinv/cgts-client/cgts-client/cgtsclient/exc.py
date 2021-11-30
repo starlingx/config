@@ -17,6 +17,7 @@ import sys
 class BaseException(Exception):
     """An error occurred."""
     def __init__(self, message=None):
+        super(BaseException, self).__init__()
         self.message = message
 
     def __str__(self):
@@ -44,6 +45,7 @@ class HTTPException(ClientException):
     code = 'N/A'
 
     def __init__(self, details=None):
+        super(HTTPException, self).__init__()
         self.details = details
 
     def __str__(self):
