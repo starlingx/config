@@ -4,7 +4,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+from sysinv.common import exception
 from sysinv.common import utils
+from sysinv.helm import common
 from sysinv.helm import helm
 from sysinv.puppet import openstack
 
@@ -12,7 +14,7 @@ from sysinv.puppet import openstack
 class PciIrqAffinityPuppet(openstack.OpenstackBasePuppet):
     """Class to encapsulate puppet operations for PciIrqAffinity configuration"""
     PLATFORM_KEYRING_SERVICE = 'CGCS'
-    OPENSTACK_VERSION_WITH_CONTAINER_SUPPORT = 125
+    HELM_CHART_PCI_IRQ_AFFINITY_AGENT = 'pci-irq-affinity-agent'
 
     # This function will be removed when the service is completely removed from the platform
     def should_enable_agent_service(self):
@@ -21,15 +23,17 @@ class PciIrqAffinityPuppet(openstack.OpenstackBasePuppet):
         includes the pci irq affinity agent container
         """
         try:
-            openstack_app_version = utils.find_openstack_app(self.dbapi).app_version
-            # stx-openstack app version string format: x.y-wz-release-info
-            openstack_app_version = int(openstack_app_version.split('-', 2)[1])
-        except Exception:
+            openstack_app = utils.find_openstack_app(self.dbapi)
+        except exception.KubeAppNotFound:
             return False
-
-        if openstack_app_version < self.OPENSTACK_VERSION_WITH_CONTAINER_SUPPORT:
-            return True
-        return False
+        # Service should only be enabled if the containerized version of the service is not
+        # present
+        return not utils.is_chart_enabled(
+            self.dbapi,
+            openstack_app.name,
+            self.HELM_CHART_PCI_IRQ_AFFINITY_AGENT,
+            common.HELM_NS_OPENSTACK
+        )
 
     def get_secure_static_config(self):
         return {}
