@@ -74,7 +74,7 @@ def _wrapping_formatter_callback_decorator(subparser, command, callback):
     try:
         subparser.add_argument('--nowrap', action='store_true',
                                help='No wordwrapping of output')
-    except Exception as e:
+    except Exception:
         # exception happens when nowrap option already configured
         # for command - so get out with callback undecorated
         return callback

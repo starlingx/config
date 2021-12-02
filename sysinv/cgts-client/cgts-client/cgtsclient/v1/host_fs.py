@@ -49,7 +49,6 @@ class HostFsManager(base.Manager):
 
     def create(self, **kwargs):
         path = '/v1/host_fs'
-        valid_list = []
         new = {}
         for (key, value) in kwargs.items():
             if key in CREATION_ATTRIBUTES:

@@ -199,7 +199,7 @@ class CgtsclientException(Exception):
             try:
                 message = self.message % kwargs  # pylint: disable=exception-message-attribute
 
-            except Exception as e:
+            except Exception:
                 # kwargs doesn't match a variable in the message
                 # at least get the core message out if something happened
                 message = self.message  # pylint: disable=exception-message-attribute

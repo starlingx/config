@@ -346,7 +346,7 @@ def main():
         print(('caught: %r, aborting' % (e)), file=sys.stderr)
         sys.exit(0)
 
-    except IOError as e:
+    except IOError:
         sys.exit(0)
 
     except Exception as e:

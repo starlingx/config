@@ -46,7 +46,7 @@ def do_drbdsync_show(cc, args):
     _print_drbdsync_show(drbdconfigs[0])
     print('')
 
-    ihosts = cc.ihost.list_personality(personality=CONTROLLER)
+    ihosts = cc.ihost.list_personality(CONTROLLER)
     _print_controller_config_show(ihosts)
 
 
@@ -84,9 +84,8 @@ def do_drbdsync_modify(cc, args):
                                    % pa['path'][1:])
 
     # Prevent update if controllers are mid-configuration
-    personality = 'controller'
     is_config = False
-    ihosts = cc.ihost.list_personality(personality=CONTROLLER)
+    ihosts = cc.ihost.list_personality(CONTROLLER)
     for ihost in ihosts:
         if ihost.config_target and ihost.config_applied != ihost.config_target:
             is_config = True
@@ -108,7 +107,7 @@ def do_drbdsync_modify(cc, args):
     do_wait = True
     LOOP_MAX = int(configuration_timeout // wait_interval)
     for x in range(0, LOOP_MAX):
-        ihosts = cc.ihost.list_personality(personality=CONTROLLER)
+        ihosts = cc.ihost.list_personality(CONTROLLER)
         do_wait = False
         hosts = []
         for ihost in ihosts:

@@ -182,7 +182,7 @@ def do_host_sensorgroup_relearn(cc, args):
 
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
 
-    isensorgroups = cc.isensorgroup.relearn(ihost.uuid)
+    cc.isensorgroup.relearn(ihost.uuid)
 
     print("%s sensor model and any related alarm assertions are being "
           "deleted." % (args.hostnameorid))

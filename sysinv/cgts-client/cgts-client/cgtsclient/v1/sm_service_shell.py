@@ -77,7 +77,7 @@ def do_service_enable(cc, args):
     patch = utils.dict_to_patch(values)
 
     try:
-        response = cc.sm_service.update(args.service, patch)
+        cc.sm_service.update(args.service, patch)
     except exc.HTTPNotFound:
         raise exc.CommandError('service not recognized: %s' % args.service)
     except exc.Forbidden:
@@ -91,7 +91,7 @@ def do_service_disable(cc, args):
     values = {'enabled': False}
     patch = utils.dict_to_patch(values)
     try:
-        response = cc.sm_service.update(args.service, patch)
+        cc.sm_service.update(args.service, patch)
     except exc.HTTPNotFound:
         raise exc.CommandError('service not recognized: %s' % args.service)
     except exc.Forbidden:

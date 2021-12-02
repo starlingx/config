@@ -52,7 +52,6 @@ def do_ptp_modify(cc, args):
 
     ptps = cc.ptp.list()
     ptp = ptps[0]
-    op = "replace"
 
     attributes = []
 

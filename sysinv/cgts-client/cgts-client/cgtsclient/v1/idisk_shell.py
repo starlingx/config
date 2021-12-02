@@ -138,7 +138,7 @@ def do_host_disk_wipe(cc, args):
         patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
 
     try:
-        updated_idisk = cc.idisk.update(idisk.uuid, patch)
+        cc.idisk.update(idisk.uuid, patch)
     except exc.HTTPNotFound:
         raise exc.CommandError(
             "ERROR: Failed to wipe and GPT format disk %s "
