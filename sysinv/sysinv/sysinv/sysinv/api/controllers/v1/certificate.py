@@ -305,9 +305,6 @@ class CertificateController(rest.RestController):
             # Default certificate install is non-tpm SSL
             mode = constants.CERT_MODE_SSL
 
-        system = pecan.request.dbapi.isystem_get_one()
-        capabilities = system.capabilities
-
         # platform-cert 'force' check for backward compatibility
         if self._is_mode_supported_by_cert_manager(mode):
             # Call may not contain 'force' parameter
@@ -330,29 +327,6 @@ class CertificateController(rest.RestController):
                         "the %s Certificate and Secret." % plat_cert_name
                 LOG.info(msg)
                 return dict(success="", error=msg)
-
-        standalone_certs = [constants.CERT_MODE_DOCKER_REGISTRY,
-                            constants.CERT_MODE_SSL_CA]
-        if mode not in standalone_certs:
-            system_https_enabled = capabilities.get('https_enabled', False)
-            if system_https_enabled is False or system_https_enabled == 'n':
-                msg = "No certificates have been added, https is not enabled."
-                LOG.info(msg)
-                return dict(success="", error=msg)
-
-        if mode.startswith(constants.CERT_MODE_OPENSTACK):
-            try:
-                pecan.request.dbapi.certificate_get_by_certtype(
-                    constants.CERT_MODE_SSL)
-            except exception.CertificateTypeNotFound:
-                try:
-                    pecan.request.dbapi.certificate_get_by_certtype(
-                        constants.CERT_MODE_TPM)
-                except exception.CertificateTypeNotFound:
-                    msg = "No openstack certificates have been added, " \
-                          "platform SSL certificate is not installed."
-                    LOG.info(msg)
-                    return dict(success="", error=msg)
 
         if not fileitem.filename:
             return dict(success="", error="Error: No file uploaded")
