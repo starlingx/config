@@ -55,7 +55,7 @@ class ilvgManager(base.Manager):
 
 
 def _find_ilvg(cc, ihost, ilvg_id):
-    if ilvg.isdigit():
+    if ilvg_id.isdigit():
         try:
             lvg = cc.ilvg.get(ilvg_id)
         except exc.HTTPNotFound:
