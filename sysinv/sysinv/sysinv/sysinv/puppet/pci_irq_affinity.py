@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sysinv.common import constants
 from sysinv.common import utils
 from sysinv.helm import helm
 from sysinv.puppet import openstack
@@ -21,9 +20,8 @@ class PciIrqAffinityPuppet(openstack.OpenstackBasePuppet):
         Checks whether the OpenStack application version
         includes the pci irq affinity agent container
         """
-        openstack_app_name = constants.HELM_APP_OPENSTACK
         try:
-            openstack_app_version = self.dbapi.kube_app_get(openstack_app_name).app_version
+            openstack_app_version = utils.find_openstack_app(self.dbapi).app_version
             # stx-openstack app version string format: x.y-wz-release-info
             openstack_app_version = int(openstack_app_version.split('-', 2)[1])
         except Exception:
