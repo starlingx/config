@@ -63,7 +63,7 @@ def _get_disks(cc, ihost, pv):
 
 
 def _find_ipv(cc, ihost, ipv_id):
-    if ipv.isdigit():
+    if ipv_id.isdigit():
         try:
             pv = cc.ipv.get(ipv_id)
         except exc.HTTPNotFound:
