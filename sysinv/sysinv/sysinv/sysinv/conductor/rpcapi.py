@@ -1920,7 +1920,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(
             context,
             self.make_msg('backup_restore_lifecycle_actions', operation=operation, success=success),
-            timeout=120,
+            timeout=180,
         )
 
     def perform_app_upload(self, context, rpc_app, tarfile, lifecycle_hook_info, images=False):
