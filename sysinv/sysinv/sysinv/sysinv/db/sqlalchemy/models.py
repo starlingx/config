@@ -245,6 +245,9 @@ class ihost(Base):
     peer_id = Column(Integer,
                      ForeignKey('peers.id'))
 
+    ptp_instance_id = Column(Integer, ForeignKey('ptp_instances.id'))
+    ptp = relationship("PtpInstances", lazy="joined", join_depth=1)
+
     system = relationship("isystem")
 
     host_upgrade = relationship("HostUpgrade", uselist=False)
@@ -262,7 +265,7 @@ class inode(Base):
 
     forihostid = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
 
-    host = relationship("ihost", backref="nodes", lazy="joined", cascade="all")
+    host = relationship("ihost", backref="nodes", lazy="joined", join_depth=1)
 
     UniqueConstraint('numa_node', 'forihostid', name='u_hostnuma')
 
@@ -356,7 +359,10 @@ class Interfaces(Base):
     farend = Column(JSONEncodedDict)
     sriov_numvfs = Column(Integer)
     sriov_vf_driver = Column(String(255))
-    ptp_role = Column(String(255), default='none')
+    ptp_role = Column(String(255), default='none')  # TODO: deprecate it
+
+    ptp_interface_id = Column(Integer, ForeignKey('ptp_interfaces.id'))
+    ptp = relationship("PtpInterfaces", lazy="joined", join_depth=1)
 
     used_by = relationship(
         "Interfaces",
@@ -369,7 +375,7 @@ class Interfaces(Base):
         join_depth=1)
 
     host = relationship("ihost", backref="interfaces",
-                        lazy="joined", cascade="all")
+                        lazy="joined", join_depth=1)
 
     addresses = relationship("Addresses",
                              backref=backref("interface", lazy="joined"),
@@ -481,10 +487,10 @@ class Ports(Base):
     capabilities = Column(JSONEncodedDict)
     # JSON{'speed':1000,'MTU':9600, 'duplex':'', 'autonegotiation':'false'}
 
-    node = relationship("inode", backref="ports", lazy="joined", cascade="all")
-    host = relationship("ihost", backref="ports", lazy="joined", cascade="all")
+    node = relationship("inode", backref="ports", lazy="joined", join_depth=1)
+    host = relationship("ihost", backref="ports", lazy="joined", join_depth=1)
     interface = relationship("Interfaces", backref="port",
-                             lazy="joined", cascade="all")
+                             lazy="joined", join_depth=1)
 
     UniqueConstraint('pciaddr', 'dev_id', 'host_id', name='u_pciaddrdevihost')
 
@@ -784,45 +790,6 @@ class PTP(Base):
     system = relationship("isystem", lazy="joined", join_depth=1)
 
 
-class PtpInstances(Base):
-    __tablename__ = "ptp_instances"
-
-    id = Column(Integer, primary_key=True, nullable=False)
-    uuid = Column(String(UUID_LENGTH), unique=True)
-
-    name = Column(String(255), unique=True)
-    service = Column(String(255))
-    host_id = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'),
-                     nullable=True)
-
-    # capabilities not used yet: JSON{'':"", '':''}
-    capabilities = Column(JSONEncodedDict)
-
-    host = relationship("ihost", backref="ptp_instance", lazy="joined",
-                        cascade="all")
-
-
-class PtpInterfaces(Base):
-    __tablename__ = "ptp_interfaces"
-
-    id = Column(Integer, primary_key=True, nullable=False)
-    uuid = Column(String(UUID_LENGTH), unique=True)
-
-    interface_id = Column(Integer,
-                          ForeignKey('interfaces.id', ondelete='CASCADE'))
-    ptp_instance_id = Column(Integer,
-                             ForeignKey('ptp_instances.id',
-                                        ondelete='CASCADE'))
-
-    # capabilities not used yet: JSON{'':"", '':''}
-    capabilities = Column(JSONEncodedDict)
-
-    interface = relationship("Interfaces", backref="ptp_interface",
-                             lazy="joined", cascade="all")
-    ptp_instance = relationship("PtpInstances", backref="ptp_interface",
-                                lazy="joined", cascade="all")
-
-
 class PtpParameters(Base):
     __tablename__ = "ptp_parameters"
 
@@ -832,23 +799,106 @@ class PtpParameters(Base):
     name = Column(String(255), nullable=False)
     value = Column(String(255))
 
-    type = Column(String(255))
-    foreign_uuid = Column(String(UUID_LENGTH), nullable=False)
+    ptp_parameter_owners = relationship(
+        "PtpParameterOwners",
+        secondary="ptp_parameter_ownerships",
+        primaryjoin="PtpParameters.uuid == "
+                    "foreign(PtpParameterOwnerships.parameter_uuid)",
+        secondaryjoin="PtpParameterOwners.uuid == "
+                      "foreign(PtpParameterOwnerships.owner_uuid)",
+        back_populates="ptp_parameters", lazy="joined", join_depth=1)
 
-    ptp_instance = relationship(
-        "PtpInstances",
-        primaryjoin="PtpParameters.foreign_uuid == foreign(PtpInstances.uuid)",
-        lazy="subquery",
-        cascade="all")
+    UniqueConstraint('name', 'value', name='u_paramnamevalue')
 
-    ptp_interface = relationship(
-        "PtpInterfaces",
-        primaryjoin="PtpParameters.foreign_uuid == "
-                    "foreign(PtpInterfaces.uuid)",
-        lazy="subquery",
-        cascade="all")
 
-    UniqueConstraint('name', 'foreign_uuid', name='u_paramnameforeign')
+class PtpParameterOwners(Base):
+    __tablename__ = "ptp_parameter_owners"
+
+    id = Column(Integer, primary_key=True, nullable=False)
+    uuid = Column(String(UUID_LENGTH), unique=True)
+    type = Column(String(255), nullable=False)
+
+    # capabilities not used yet: JSON{'':"", '':''}
+    capabilities = Column(JSONEncodedDict)
+
+    ptp_parameters = relationship(
+        "PtpParameters",
+        secondary="ptp_parameter_ownerships",
+        primaryjoin="PtpParameterOwners.uuid == "
+                    "foreign(PtpParameterOwnerships.owner_uuid)",
+        secondaryjoin="PtpParameters.uuid == "
+                      "foreign(PtpParameterOwnerships.parameter_uuid)",
+        back_populates="ptp_parameter_owners", lazy="joined", join_depth=1)
+
+    __mapper_args__ = {
+        'polymorphic_identity': 'ptp_parameter_owner',
+        'polymorphic_on': type,
+        'with_polymorphic': '*'
+    }
+
+
+class PtpInstances(PtpParameterOwners):
+    __tablename__ = "ptp_instances"
+
+    id = Column(Integer, ForeignKey('ptp_parameter_owners.id'),
+                primary_key=True,
+                nullable=False)
+    name = Column(String(255), unique=True, nullable=False)
+    service = Column(String(255))
+
+    __mapper_args__ = {
+        'polymorphic_identity': constants.PTP_PARAMETER_OWNER_INSTANCE
+    }
+
+
+class PtpInterfaces(PtpParameterOwners):
+    __tablename__ = "ptp_interfaces"
+
+    id = Column(Integer, ForeignKey('ptp_parameter_owners.id'),
+                primary_key=True,
+                nullable=False)
+    ptp_instance_id = Column(Integer,
+                             ForeignKey('ptp_instances.id',
+                                        ondelete='CASCADE'),
+                             nullable=False)
+
+    ptp_instance = relationship("PtpInstances", lazy="joined", join_depth=1,
+                                foreign_keys=[
+                                    PtpInstances.id,
+                                    PtpInstances.name,
+                                    PtpInstances.uuid])
+
+    __mapper_args__ = {
+        'polymorphic_identity': constants.PTP_PARAMETER_OWNER_INTERFACE
+    }
+
+
+class PtpParameterOwnerships(Base):
+    """
+    This is a bridge table used to model the many-to-many relationship between
+    PTP parameters and their owners: PTP instances and PTP interfaces.
+    """
+    __tablename__ = "ptp_parameter_ownerships"
+
+    id = Column(Integer, primary_key=True, nullable=False)
+    uuid = Column(String(UUID_LENGTH), unique=True)
+
+    parameter_uuid = Column(String(UUID_LENGTH),
+                            ForeignKey('ptp_parameters.uuid',
+                                       ondelete='CASCADE'),
+                            nullable=False)
+    owner_uuid = Column(String(UUID_LENGTH), nullable=False)
+
+    parameter = relationship("PtpParameters", lazy="joined", join_depth=1)
+
+    owner = relationship(
+        "PtpParameterOwners",
+        primaryjoin="PtpParameterOwnerships.owner_uuid == "
+                    "foreign(PtpParameterOwners.uuid)",
+        lazy="joined",
+        join_depth=1)
+
+    UniqueConstraint('parameter_uuid', 'owner_uuid', name='u_paramowner')
 
 
 class StorageTier(Base):

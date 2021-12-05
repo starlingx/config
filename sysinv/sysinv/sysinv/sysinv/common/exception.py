@@ -461,7 +461,12 @@ class PtpInterfaceAlreadyExists(Conflict):
 
 
 class PtpParameterAlreadyExists(Conflict):
-    message = _("A PTP parameter with UUID %(uuid)s already exists.")
+    message = _("A PTP parameter with name '%(name)s' and value "
+                "'%(value)s' already exists.")
+
+
+class PtpParameterOwnershipAlreadyExists(Conflict):
+    message = _("UUID %(param)s is already a PTP parameter of UUID %(owner)s.")
 
 
 class PMAlreadyExists(Conflict):
@@ -602,6 +607,14 @@ class PtpInterfaceNotFound(NotFound):
 
 class PtpParameterNotFound(NotFound):
     message = _("No PTP parameter with id %(uuid)s found.")
+
+
+class PtpParameterOwnerNotFound(NotFound):
+    message = _("No PTP parameter owner with id %(uuid)s found.")
+
+
+class PtpParameterOwnershipNotFound(NotFound):
+    message = _("No PTP parameter ownership with id %(uuid)s found.")
 
 
 class DiskNotFound(NotFound):

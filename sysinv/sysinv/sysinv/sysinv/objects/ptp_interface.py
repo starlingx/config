@@ -9,37 +9,22 @@
 from sysinv.db import api as db_api
 from sysinv.objects import base
 from sysinv.objects import utils
+from sysinv.objects import ptp_paramowner
 
 
-class PtpInterface(base.SysinvObject):
+class PtpInterface(ptp_paramowner.PtpParameterOwner):
 
     dbapi = db_api.get_instance()
 
-    fields = {
-            'id': int,
-            'uuid': utils.str_or_none,
-
-            'interface_uuid': utils.str_or_none,
-            'interface_id': utils.int_or_none,
-
-            'ptp_instance_uuid': utils.str_or_none,
+    fields = dict({
             'ptp_instance_id': utils.int_or_none,
-            'ptp_instance_name': utils.str_or_none,
-
-            'ifname': utils.str_or_none,
-            'forihostid': utils.int_or_none,
-
-            'capabilities': utils.dict_or_none
-             }
+            'ptp_instance_uuid': utils.str_or_none,
+            'ptp_instance_name': utils.str_or_none
+             }, **ptp_paramowner.PtpParameterOwner.fields)
 
     _foreign_fields = {
-        'interface_uuid': 'interface:uuid',
-        'interface_id': 'interface:id',
         'ptp_instance_uuid': 'ptp_instance:uuid',
-        'ptp_instance_name': 'ptp_instance:name',
-        'ifname': 'interface:ifname',
-        'forihostid': 'interface:forihostid',
-        'ptp_instance_host': 'ptp_instance:host_id'
+        'ptp_instance_name': 'ptp_instance:name'
     }
 
     @base.remotable_classmethod

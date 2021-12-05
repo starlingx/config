@@ -73,6 +73,8 @@ from sysinv.objects import ptp
 from sysinv.objects import ptp_instance
 from sysinv.objects import ptp_interface
 from sysinv.objects import ptp_parameter
+from sysinv.objects import ptp_paramowner
+from sysinv.objects import ptp_paramownership
 from sysinv.objects import pv
 from sysinv.objects import remote_logging
 from sysinv.objects import route
@@ -160,6 +162,8 @@ ptp = ptp.PTP
 ptp_instance = ptp_instance.PtpInstance
 ptp_interface = ptp_interface.PtpInterface
 ptp_parameter = ptp_parameter.PtpParameter
+ptp_paramowner = ptp_paramowner.PtpParameterOwner
+ptp_paramownership = ptp_paramownership.PtpParameterOwnership
 oam_network = network_oam.OAMNetwork
 storage_backend = storage_backend.StorageBackend
 storage_ceph = storage_ceph.StorageCeph
@@ -242,6 +246,8 @@ __all__ = ("system",
            "ptp_instance",
            "ptp_interface",
            "ptp_parameter",
+           "ptp_paramowner",
+           "ptp_paramownership",
            "oam_network",
            "storage_backend",
            "storage_ceph",

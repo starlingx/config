@@ -12,7 +12,7 @@ from cgtsclient import exc
 from cgtsclient.v1 import options
 
 
-CREATION_ATTRIBUTES = ['name', 'service', 'host_uuid']
+CREATION_ATTRIBUTES = ['name', 'service']
 
 
 class PtpInstance(base.Resource):
@@ -49,6 +49,14 @@ class PtpInstanceManager(base.Manager):
             else:
                 raise exc.InvalidAttribute('%s' % key)
         return self._create(self._path(), data)
+
+    def apply(self, ihost_uuid, ptp_instance_id):
+        return self._update('/v1/ihosts/%s?action=apply' % ihost_uuid,
+                            ptp_instance_id)
+
+    def remove(self, ihost_uuid, ptp_instance_id):
+        return self._update('/v1/ihosts/%s?action=remove' % ihost_uuid,
+                            ptp_instance_id)
 
     def delete(self, ptp_instance_id):
         return self._delete(self._path(ptp_instance_id))
