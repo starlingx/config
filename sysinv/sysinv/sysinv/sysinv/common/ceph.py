@@ -756,7 +756,7 @@ class CephApiOperator(object):
         host_health = None
         try:
             response, body = self._ceph_api.pg_dump_stuck(body='json')
-            pg_detail = len(body['output'])
+            stuck_pgs = body['output']['stuck_pg_stats']
         except Exception as e:
             LOG.exception(e)
             return host_health
@@ -765,9 +765,10 @@ class CephApiOperator(object):
         # each osd from pg_detail whose hostname
         # is not equal with hostnamge given as parameter
         osd_list = []
-        for x in range(pg_detail):
+        LOG.debug('stuck_pgs %s' % stuck_pgs)
+        for pg in stuck_pgs:
             # extract the osd and return the storage node
-            osd = body['output'][x]['acting']
+            osd = pg['acting']
             # osd is a list with osd where a stuck/degraded PG
             # was replicated. If osd is empty, it means
             # PG is not replicated to any osd
