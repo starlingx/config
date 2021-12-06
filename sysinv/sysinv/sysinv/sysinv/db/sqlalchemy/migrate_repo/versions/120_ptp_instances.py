@@ -56,7 +56,7 @@ def upgrade(migrate_engine):
         Column('id', Integer, primary_key=True, nullable=False),
         Column('uuid', String(UUID_LENGTH), unique=True),
 
-        Column('name', String(255), unique=True, nullable=False),
+        Column('name', String(255), nullable=False),
         Column('value', String(255)),
 
         UniqueConstraint('name', 'value', name='u_paramnamevalue'),
