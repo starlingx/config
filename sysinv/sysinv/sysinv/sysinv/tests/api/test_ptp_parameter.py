@@ -108,7 +108,11 @@ class TestCreatePtpParameter(BasePtpParameterTestCase):
         self._create_ptp_parameter_success(
             name='interface-param', value='interface-value')
 
-    def test_create_ptp_parameter_duplicate(self):
+    def test_create_ptp_parameter_synonymous_ok(self):
+        self._create_ptp_parameter_success(
+            name=self.name, value='another-value')
+
+    def test_create_ptp_parameter_duplicate_failed(self):
         self._create_ptp_parameter_failed(
             name=self.name,
             value=self.value,
