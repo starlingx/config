@@ -108,11 +108,6 @@ def get_datanetworks(field, db_object):
     return result
 
 
-def _get_ptp_configuration(field, db_object):
-    # TODO
-    return {}
-
-
 class Interface(base.SysinvObject):
     # VERSION 1.0: Initial version
     # VERSION 1.1: Added VLAN and uses/used_by interface support
@@ -125,7 +120,6 @@ class Interface(base.SysinvObject):
             'uuid': utils.str_or_none,
             'forihostid': utils.int_or_none,
             'ihost_uuid': utils.str_or_none,
-            'ptp_interface_id': utils.int_or_none,
 
             'ifname': utils.str_or_none,
             'iftype': utils.str_or_none,
@@ -154,7 +148,6 @@ class Interface(base.SysinvObject):
             'sriov_numvfs': utils.int_or_none,
             'sriov_vf_driver': utils.str_or_none,
             'ptp_role': utils.str_or_none,
-            'ptp_config': utils.dict_or_none,
             'max_tx_rate': utils.int_or_none,
              }
 
@@ -166,8 +159,7 @@ class Interface(base.SysinvObject):
                        'ipv6_pool': get_ipv6_address_pool,
                        'ihost_uuid': get_host_uuid,
                        'networktypelist': get_networktypes,
-                       'datanetworks': get_datanetworks,
-                       'ptp_config': _get_ptp_configuration}
+                       'datanetworks': get_datanetworks}
 
     _optional_fields = ['aemode', 'txhashpolicy', 'schedpolicy',
                         'vlan_id', 'vlan_type', 'primary_reselect']

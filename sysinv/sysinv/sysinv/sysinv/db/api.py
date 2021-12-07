@@ -1938,11 +1938,11 @@ class Connection(object):
         """
 
     @abc.abstractmethod
-    def ptp_instances_get_list(self, host=None, limit=None, marker=None,
+    def ptp_instances_get_list(self, host_uuid=None, limit=None, marker=None,
                                sort_key=None, sort_dir=None):
         """Returns a list of PTP service instances.
 
-        :param host: id or uuid of host.
+        :param host_uuid: id or uuid of host.
         :param limit: Maximum number of PTP instances to return.
         :param marker: The last item of the previous page; we return the next
                        result set.
@@ -1950,6 +1950,46 @@ class Connection(object):
         :param sort_dir: direction in which results should be sorted.
                          (asc, desc)
         :returns: A list of PTP instances.
+        """
+
+    @abc.abstractmethod
+    def ptp_instance_set_host(self, values):
+        """Set the PTP instance to some host.
+
+        :param values: A dict containing the IDs used to associate
+                       the PTP instance to the host.
+                    {
+                     'host_id': 1,
+                     'ptp_instance_id': 3
+                    }
+        :returns: A PTP instance mapping.
+        """
+
+    @abc.abstractmethod
+    def ptp_instance_unset_host(self, values):
+        """Remove the association between a PTP instance and a host.
+
+        :param values: A dict containing the IDs used to associate
+                       the PTP instance to the host.
+                    {
+                     'host_id': 1,
+                     'ptp_instance_id': 3
+                    }
+        """
+
+    @abc.abstractmethod
+    def ptp_instance_get_hosts(self, ptp_instance_id, limit=None, marker=None,
+                               sort_key=None, sort_dir=None):
+        """Returns a list of all hosts associated to the PTP instance.
+
+        :param ptp_instance_id: The id or uuid of a PTP instance.
+        :param limit: Maximum number of hosts to return.
+        :param marker: The last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted
+        :param sort_dir: direction in which results should be sorted
+                         (asc, desc)
+        :returns: A list of hosts for the given PTP instance.
         """
 
     @abc.abstractmethod
@@ -1964,6 +2004,14 @@ class Connection(object):
         """Destroys a PTP service instance based on name.
 
         :param name: The name given for a PTP instance.
+        """
+
+    @abc.abstractmethod
+    def ptp_instance_map_get(self, ptp_instance_map_id):
+        """Returns a PTP instance mapping.
+
+        :param ptp_instance_map_id: The id or uuid of a PTP instance map.
+        :returns: A PTP instance map.
         """
 
     @abc.abstractmethod
@@ -2047,10 +2095,58 @@ class Connection(object):
         """
 
     @abc.abstractmethod
+    def ptp_interface_set_interface(self, values):
+        """Set the PTP interface to some interface.
+
+        :param values: A dict containing the IDs used to associate
+                       the PTP interface to the interface.
+                    {
+                     'interface_id': 1,
+                     'ptp_interface_id': 3
+                    }
+        :returns: A PTP interface mapping.
+        """
+
+    @abc.abstractmethod
+    def ptp_interface_unset_interface(self, values):
+        """Remove the association between a PTP interface and a interface.
+
+        :param values: A dict containing the IDs used to associate
+                       the PTP interface to the interface.
+                    {
+                     'interface_id': 1,
+                     'ptp_interface_id': 3
+                    }
+        """
+
+    @abc.abstractmethod
+    def ptp_interface_get_interfaces(self, ptp_interface_id, limit=None,
+                                     marker=None, sort_key=None, sort_dir=None):
+        """Returns a list of all interfaces associated to the PTP interface.
+
+        :param ptp_interface_id: The id or uuid of a PTP interface.
+        :param limit: Maximum number of interfaces to return.
+        :param marker: The last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted
+        :param sort_dir: direction in which results should be sorted
+                         (asc, desc)
+        :returns: A list of interfaces for the given PTP interface.
+        """
+
+    @abc.abstractmethod
     def ptp_interface_destroy(self, ptp_interface_id):
         """Destroys a PTP interface association.
 
         :param ptp_interface_id: The id or uuid of a PTP interface association.
+        """
+
+    @abc.abstractmethod
+    def ptp_interface_map_get(self, ptp_interface_map_id):
+        """Returns a PTP interface mapping.
+
+        :param ptp_interface_map_id: The id or uuid of a PTP interface map.
+        :returns: A PTP interface map.
         """
 
     @abc.abstractmethod

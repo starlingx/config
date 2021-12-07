@@ -597,6 +597,34 @@ def create_test_ptp_ownership(**kw):
     return dbapi.ptp_parameter_set_owner(ownership)
 
 
+def get_test_ptp_instance_map(**kw):
+    map = {
+        'host_id': kw.get('host_id', None),
+        'ptp_instance_id': kw.get('ptp_instance_id', None)
+    }
+    return map
+
+
+def create_test_ptp_instance_map(**kw):
+    map = get_test_ptp_instance_map(**kw)
+    dbapi = db_api.get_instance()
+    return dbapi.ptp_instance_set_host(map)
+
+
+def get_test_ptp_interface_map(**kw):
+    map = {
+        'interface_id': kw.get('interface_id', None),
+        'ptp_interface_id': kw.get('ptp_interface_id', None)
+    }
+    return map
+
+
+def create_test_ptp_interface_map(**kw):
+    map = get_test_ptp_interface_map(**kw)
+    dbapi = db_api.get_instance()
+    return dbapi.ptp_interface_set_interface(map)
+
+
 # Create test dns object
 def get_test_dns(**kw):
     dns = {

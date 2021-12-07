@@ -3779,24 +3779,57 @@ class Connection(api.Connection):
             raise exception.NotFound()
 
     @objects.objectify(objects.ptp_instance)
-    def ptp_instances_get_list(self, host=None, limit=None, marker=None,
+    def ptp_instances_get_list(self, host_uuid=None, limit=None, marker=None,
                                sort_key=None, sort_dir=None):
         query = model_query(models.PtpInstances)
-        if host is not None:
-            if utils.is_int_like(host):
-                ihost = self.ihost_get(int(host))
-            elif utils.is_uuid_like(host):
-                ihost = self.ihost_get(host.strip())
-            elif isinstance(host, models.ihost):
-                ihost = host
-            else:
-                raise exception.NodeNotFound(node=host)
-            ptp_instance_id = ihost['ptp_instance_id']
-            if not ptp_instance_id:
-                return []
-            query = add_identity_filter(query, ptp_instance_id)
+        if host_uuid is not None:
+            host = self.ihost_get(host_uuid)
+            query = query.join(models.PtpInstanceMaps,
+                               models.PtpInstanceMaps.host_id == host.id)
         return _paginate_query(models.PtpInstances, limit, marker,
                                sort_key, sort_dir, query)
+
+    @objects.objectify(objects.ptp_instance_map)
+    def ptp_instance_set_host(self, values):
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+        ptp_instance_map = models.PtpInstanceMaps(**values)
+        with _session_for_write() as session:
+            try:
+                session.add(ptp_instance_map)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                raise exception.PtpInstanceMapAlreadyExists(
+                    ptp_instance=values['ptp_instance_id'],
+                    host=values['host_id'])
+
+            query = model_query(models.PtpInstanceMaps)
+            query = add_identity_filter(query, values['uuid'])
+
+            try:
+                return query.one()
+            except NoResultFound:
+                raise exception.PtpInstanceMapNotFound(uuid=values['uuid'])
+
+    def ptp_instance_unset_host(self, values):
+        with _session_for_write() as session:
+            query = model_query(models.PtpInstanceMaps, session=session)
+            query = query.filter_by(ptp_instance_id=values['ptp_instance_id'],
+                                    host_id=values['host_id'])
+            try:
+                query.one()
+            except NoResultFound:
+                return
+            query.delete()
+
+    @objects.objectify(objects.ptp_instance)
+    def ptp_instance_get_hosts(self, ptp_instance_id, limit=None, marker=None,
+                               sort_key=None, sort_dir=None):
+        query = model_query(models.PtpInstances)
+        query = add_identity_filter(query, ptp_instance_id)
+        query = query.join(models.PtpInstances.hosts)
+        return _paginate_query(models.PtpInstances, limit, marker, sort_key,
+                               sort_dir, query)
 
     def ptp_instance_destroy(self, ptp_instance_id):
         with _session_for_write() as session:
@@ -3818,6 +3851,15 @@ class Connection(api.Connection):
             except NoResultFound:
                 raise exception.NotFound()
             query.delete()
+
+    @objects.objectify(objects.ptp_instance_map)
+    def ptp_instance_map_get(self, ptp_instance_map_id):
+        query = model_query(models.PtpInstanceMaps)
+        query = add_identity_filter(query, ptp_instance_map_id)
+        try:
+            return query.one()
+        except NoResultFound:
+            raise exception.PtpInstanceMapNotFound(uuid=ptp_instance_map_id)
 
     def _ptp_interface_get(self, ptp_interface_id):
         query = model_query(models.PtpInterfaces)
@@ -3910,6 +3952,50 @@ class Connection(api.Connection):
         return _paginate_query(models.PtpInterfaces, limit, marker,
                                sort_key, sort_dir, query)
 
+    @objects.objectify(objects.ptp_interface_map)
+    def ptp_interface_set_interface(self, values):
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+        ptp_interface_map = models.PtpInterfaceMaps(**values)
+        with _session_for_write() as session:
+            try:
+                session.add(ptp_interface_map)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                raise exception.PtpInterfaceMapAlreadyExists(
+                    ptp_interface=values['ptp_interface_id'],
+                    interface=values['interface_id'])
+
+            query = model_query(models.PtpInterfaceMaps)
+            query = add_identity_filter(query, values['uuid'])
+
+            try:
+                return query.one()
+            except NoResultFound:
+                raise exception.PtpInterfaceMapNotFound(uuid=values['uuid'])
+
+    def ptp_interface_unset_interface(self, values):
+        with _session_for_write() as session:
+            query = model_query(models.PtpInterfaceMaps, session=session)
+            query = query.filter_by(
+                ptp_interface_id=values['ptp_interface_id'],
+                interface_id=values['interface_id'])
+            try:
+                query.one()
+            except NoResultFound:
+                return
+            query.delete()
+
+    @objects.objectify(objects.ptp_interface)
+    def ptp_interface_get_interfaces(self, ptp_interface_id, limit=None,
+                                     marker=None, sort_key=None,
+                                     sort_dir=None):
+        query = model_query(models.PtpInterfaces)
+        query = add_identity_filter(query, ptp_interface_id)
+        query = query.join(models.PtpInterfaces.interfaces)
+        return _paginate_query(models.PtpInterfaces, limit, marker, sort_key,
+                               sort_dir, query)
+
     def ptp_interface_destroy(self, ptp_interface_id):
         with _session_for_write() as session:
             # PTP instance will be deleted by cascade
@@ -3920,6 +4006,15 @@ class Connection(api.Connection):
             except NoResultFound:
                 raise exception.PtpInterfaceNotFound(uuid=ptp_interface_id)
             query.delete()
+
+    @objects.objectify(objects.ptp_interface_map)
+    def ptp_interface_map_get(self, ptp_interface_map_id):
+        query = model_query(models.PtpInterfaceMaps)
+        query = add_identity_filter(query, ptp_interface_map_id)
+        try:
+            return query.one()
+        except NoResultFound:
+            raise exception.PtpInterfaceMapNotFound(uuid=ptp_interface_map_id)
 
     def _ptp_parameter_get(self, ptp_parameter_id):
         query = model_query(models.PtpParameters)

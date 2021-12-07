@@ -2061,3 +2061,33 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
             self.assertTrue(
                 isinstance(ptp_parameter_ownerships.c[column].type,
                 getattr(sqlalchemy.types, column_type)))
+
+        ptp_instance_maps = db_utils.get_table(engine, 'ptp_instance_maps')
+        ptp_instance_map_columns = {
+            'created_at': 'DateTime',
+            'updated_at': 'DateTime',
+            'deleted_at': 'DateTime',
+            'id': 'Integer',
+            'uuid': 'String',
+            'host_id': 'Integer',
+            'ptp_instance_id': 'Integer'
+        }
+        for column, column_type in ptp_instance_map_columns.items():
+            self.assertTrue(
+                isinstance(ptp_instance_maps.c[column].type,
+                getattr(sqlalchemy.types, column_type)))
+
+        ptp_interface_maps = db_utils.get_table(engine, 'ptp_interface_maps')
+        ptp_interface_map_columns = {
+            'created_at': 'DateTime',
+            'updated_at': 'DateTime',
+            'deleted_at': 'DateTime',
+            'id': 'Integer',
+            'uuid': 'String',
+            'interface_id': 'Integer',
+            'ptp_interface_id': 'Integer'
+        }
+        for column, column_type in ptp_interface_map_columns.items():
+            self.assertTrue(
+                isinstance(ptp_interface_maps.c[column].type,
+                getattr(sqlalchemy.types, column_type)))
