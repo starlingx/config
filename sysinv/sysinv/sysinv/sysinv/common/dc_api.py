@@ -1,8 +1,7 @@
+#
 # Copyright (c) 2021 Wind River Systems, Inc.
 #
-# The right to copy, distribute, modify, or otherwise make use
-# of this software may be licensed only pursuant to the terms
-# of an applicable Wind River license agreement.
+# SPDX-License-Identifier: Apache-2.0
 #
 
 import json
