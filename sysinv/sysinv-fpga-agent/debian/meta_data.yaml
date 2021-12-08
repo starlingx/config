@@ -1,7 +1,14 @@
 ---
 debname: sysinv-fpga-agent
 debver: 1.0
-dl_hook: dl_hook
+src_path: null
+src_files:
+  - sysinv-conf-watcher.service
+  - sysinv-fpga-agent
+  - sysinv-conf-watcher.path
+  - sysinv-fpga-agent.conf
+  - sysinv-fpga-agent.service
+  - LICENSE
 revision:
   dist: $STX_DIST
   PKG_GITREVCOUNT: true
