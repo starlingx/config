@@ -211,6 +211,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             """Ensure we always have a valid token"""
             return self.dc_token_cache.get_token()
 
+        subcloud_sysinv_url = None
         try:
             subcloud_sysinv_url = utils.dc_get_subcloud_sysinv_url(
                 subcloud_name, my_dc_token())
