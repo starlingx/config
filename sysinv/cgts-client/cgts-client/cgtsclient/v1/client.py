@@ -70,7 +70,9 @@ from cgtsclient.v1 import pci_device
 from cgtsclient.v1 import port
 from cgtsclient.v1 import ptp
 from cgtsclient.v1 import ptp_instance
+from cgtsclient.v1 import ptp_instance_map
 from cgtsclient.v1 import ptp_interface
+from cgtsclient.v1 import ptp_interface_map
 from cgtsclient.v1 import ptp_parameter
 from cgtsclient.v1 import ptp_paramownership
 from cgtsclient.v1 import registry_image
@@ -123,7 +125,9 @@ class Client(http.HTTPClient):
         self.intp = intp.intpManager(self)
         self.ptp = ptp.ptpManager(self)
         self.ptp_instance = ptp_instance.PtpInstanceManager(self)
+        self.ptp_instance_map = ptp_instance_map.PtpInstanceMapManager(self)
         self.ptp_interface = ptp_interface.PtpInterfaceManager(self)
+        self.ptp_interface_map = ptp_interface_map.PtpInterfaceMapManager(self)
         self.ptp_parameter = ptp_parameter.PtpParameterManager(self)
         self.ptp_paramownership = \
             ptp_paramownership.PtpParameterOwnershipManager(self)

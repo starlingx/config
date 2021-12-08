@@ -46,7 +46,13 @@ class PtpParameterOwnership(base.APIBase):
     "Unique UUID for this PTP parameter ownership"
 
     parameter_uuid = types.uuid
-    "UUID of the PTP parameter (name/value)"
+    "UUID of the PTP parameter"
+
+    parameter_name = wtypes.text
+    "Name of the PTP parameter"
+
+    parameter_value = wtypes.text
+    "Value of the PTP parameter"
 
     owner_uuid = types.uuid
     "UUID of the entity associated to PTP parameter (instance or interface)"
@@ -64,7 +70,8 @@ class PtpParameterOwnership(base.APIBase):
             **rpc_ptp_paramownership.as_dict())
         if not expand:
             ptp_parameter_ownership.unset_fields_except(
-                ['uuid', 'parameter_uuid', 'owner_uuid', 'created_at'])
+                ['uuid', 'parameter_uuid', 'parameter_name', 'parameter_value',
+                 'owner_uuid', 'created_at'])
 
         LOG.debug("PtpParameterOwnership.convert_with_links: converted %s" %
                   ptp_parameter_ownership.as_dict())
@@ -139,6 +146,14 @@ class PtpParameterOwnershipController(rest.RestController):
         LOG.debug("PtpParameterOwnershipController.post: %s"
                   % ptp_paramownership_dict)
 
+        # Get rid of parameter details to set the ownership
+        try:
+            ptp_paramownership_dict.pop('parameter_name')
+            ptp_paramownership_dict.pop('parameter_value')
+        except KeyError:
+            LOG.debug("PtpParameterController.post: no parameter data in %s" %
+                      ptp_paramownership_dict)
+
         self._check_parameter_exists(ptp_paramownership_dict['parameter_uuid'])
         self._check_owner_exists(ptp_paramownership_dict['owner_uuid'])
 
@@ -150,7 +165,7 @@ class PtpParameterOwnershipController(rest.RestController):
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, ptp_paramownership_uuid):
         """Delete a PTP parameter ownership."""
-        LOG.debug("PtpParameterController.delete: %s"
+        LOG.debug("PtpParameterOwnershipController.delete: %s"
                   % ptp_paramownership_uuid)
         ptp_paramownership = objects.ptp_paramownership.get_by_uuid(
             pecan.request.context, ptp_paramownership_uuid)

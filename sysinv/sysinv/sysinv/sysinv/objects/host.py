@@ -23,11 +23,6 @@ def _get_target_load(field, db_object):
         return db_object.host_upgrade.load_target.software_version
 
 
-def _get_ptp_configuration(field, db_object):
-    # TODO
-    return {}
-
-
 class Host(base.SysinvObject):
 
     dbapi = db_api.get_instance()
@@ -37,7 +32,6 @@ class Host(base.SysinvObject):
             'forisystemid': utils.int_or_none,
             'isystem_uuid': utils.str_or_none,
             'peer_id': utils.int_or_none,
-            'ptp_instance_id': utils.int_or_none,
             'recordtype': utils.str_or_none,
 
             # 'created_at': utils.datetime_str_or_none,
@@ -82,7 +76,6 @@ class Host(base.SysinvObject):
             'config_target': utils.str_or_none,
             'capabilities': utils.dict_or_none,
             'clock_synchronization': utils.str_or_none,
-            'ptp_config': utils.dict_or_none,
 
             'boot_device': utils.str_or_none,
             'rootfs_device': utils.str_or_none,
@@ -103,8 +96,7 @@ class Host(base.SysinvObject):
     _foreign_fields = {
         'isystem_uuid': 'system:uuid',
         'software_load': _get_software_load,
-        'target_load': _get_target_load,
-        'ptp_config': _get_ptp_configuration
+        'target_load': _get_target_load
     }
 
     @base.remotable_classmethod

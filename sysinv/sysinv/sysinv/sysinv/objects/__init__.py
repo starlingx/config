@@ -71,7 +71,9 @@ from sysinv.objects import peer
 from sysinv.objects import port
 from sysinv.objects import ptp
 from sysinv.objects import ptp_instance
+from sysinv.objects import ptp_instance_map
 from sysinv.objects import ptp_interface
+from sysinv.objects import ptp_interface_map
 from sysinv.objects import ptp_parameter
 from sysinv.objects import ptp_paramowner
 from sysinv.objects import ptp_paramownership
@@ -160,7 +162,9 @@ dns = dns.DNS
 ntp = ntp.NTP
 ptp = ptp.PTP
 ptp_instance = ptp_instance.PtpInstance
+ptp_instance_map = ptp_instance_map.PtpInstanceMap
 ptp_interface = ptp_interface.PtpInterface
+ptp_interface_map = ptp_interface_map.PtpInterfaceMap
 ptp_parameter = ptp_parameter.PtpParameter
 ptp_paramowner = ptp_paramowner.PtpParameterOwner
 ptp_paramownership = ptp_paramownership.PtpParameterOwnership
@@ -244,7 +248,9 @@ __all__ = ("system",
            "ntp",
            "ptp",
            "ptp_instance",
+           "ptp_instance_map",
            "ptp_interface",
+           "ptp_interface_map",
            "ptp_parameter",
            "ptp_paramowner",
            "ptp_paramownership",

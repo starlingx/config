@@ -245,13 +245,18 @@ class ihost(Base):
     peer_id = Column(Integer,
                      ForeignKey('peers.id'))
 
-    ptp_instance_id = Column(Integer, ForeignKey('ptp_instances.id'))
-    ptp = relationship("PtpInstances", lazy="joined", join_depth=1)
-
     system = relationship("isystem")
 
     host_upgrade = relationship("HostUpgrade", uselist=False)
     kube_host_upgrade = relationship("KubeHostUpgrade", uselist=False)
+
+    ptp_instances = relationship(
+        "PtpInstances",
+        secondary="ptp_instance_maps",
+        primaryjoin="ihost.id == foreign(PtpInstanceMaps.host_id)",
+        secondaryjoin="PtpInstances.id == "
+                      "foreign(PtpInstanceMaps.ptp_instance_id)",
+        back_populates="hosts", lazy="joined", join_depth=1)
 
 
 class inode(Base):
@@ -361,9 +366,6 @@ class Interfaces(Base):
     sriov_vf_driver = Column(String(255))
     ptp_role = Column(String(255), default='none')  # TODO: deprecate it
 
-    ptp_interface_id = Column(Integer, ForeignKey('ptp_interfaces.id'))
-    ptp = relationship("PtpInterfaces", lazy="joined", join_depth=1)
-
     used_by = relationship(
         "Interfaces",
         secondary=interfaces_to_interfaces,
@@ -388,6 +390,14 @@ class Interfaces(Base):
     address_modes = relationship("AddressModes", lazy="joined",
                                  backref=backref("interface", lazy="joined"),
                                  cascade="all")
+
+    ptp_interfaces = relationship(
+        "PtpInterfaces",
+        secondary="ptp_interface_maps",
+        primaryjoin="Interfaces.id == foreign(PtpInterfaceMaps.interface_id)",
+        secondaryjoin="PtpInterfaces.id == "
+                      "foreign(PtpInterfaceMaps.ptp_interface_id)",
+        back_populates="interfaces", lazy="joined", join_depth=1)
 
     UniqueConstraint('ifname', 'forihostid', name='u_interfacenameihost')
 
@@ -846,6 +856,14 @@ class PtpInstances(PtpParameterOwners):
     name = Column(String(255), unique=True, nullable=False)
     service = Column(String(255))
 
+    hosts = relationship(
+        "ihost",
+        secondary="ptp_instance_maps",
+        primaryjoin="PtpInstances.id == "
+                    "foreign(PtpInstanceMaps.ptp_instance_id)",
+        secondaryjoin="ihost.id == foreign(PtpInstanceMaps.host_id)",
+        back_populates="ptp_instances", lazy="joined", join_depth=1)
+
     __mapper_args__ = {
         'polymorphic_identity': constants.PTP_PARAMETER_OWNER_INSTANCE
     }
@@ -868,6 +886,15 @@ class PtpInterfaces(PtpParameterOwners):
                                     PtpInstances.name,
                                     PtpInstances.uuid])
 
+    interfaces = relationship(
+        "Interfaces",
+        secondary="ptp_interface_maps",
+        primaryjoin="PtpInterfaces.id == "
+                    "foreign(PtpInterfaceMaps.ptp_interface_id)",
+        secondaryjoin="Interfaces.id == "
+                      "foreign(PtpInterfaceMaps.interface_id)",
+        back_populates="ptp_interfaces", lazy="joined", join_depth=1)
+
     __mapper_args__ = {
         'polymorphic_identity': constants.PTP_PARAMETER_OWNER_INTERFACE
     }
@@ -887,18 +914,62 @@ class PtpParameterOwnerships(Base):
                             ForeignKey('ptp_parameters.uuid',
                                        ondelete='CASCADE'),
                             nullable=False)
-    owner_uuid = Column(String(UUID_LENGTH), nullable=False)
+    owner_uuid = Column(String(UUID_LENGTH),
+                        ForeignKey('ptp_parameter_owners.uuid',
+                                   ondelete='CASCADE'),
+                        nullable=False)
 
     parameter = relationship("PtpParameters", lazy="joined", join_depth=1)
-
-    owner = relationship(
-        "PtpParameterOwners",
-        primaryjoin="PtpParameterOwnerships.owner_uuid == "
-                    "foreign(PtpParameterOwners.uuid)",
-        lazy="joined",
-        join_depth=1)
+    owner = relationship("PtpParameterOwners", lazy="joined", join_depth=1)
 
     UniqueConstraint('parameter_uuid', 'owner_uuid', name='u_paramowner')
+
+
+class PtpInstanceMaps(Base):
+    """
+    This is a bridge table used to model the many-to-many relationship between
+    PTP instances (the services) and the hosts they run.
+    """
+    __tablename__ = "ptp_instance_maps"
+
+    id = Column(Integer, primary_key=True, nullable=False)
+    uuid = Column(String(UUID_LENGTH), unique=True)
+
+    host_id = Column(Integer,
+                     ForeignKey('i_host.id', ondelete='CASCADE'),
+                     nullable=False)
+    ptp_instance_id = Column(
+        Integer, ForeignKey('ptp_instances.id', ondelete='CASCADE'),
+        nullable=False)
+
+    host = relationship("ihost", lazy="joined", join_depth=1)
+    instance = relationship("PtpInstances", lazy="joined", join_depth=1)
+
+    UniqueConstraint('host_id', 'ptp_instance_id', name='u_hostinstance')
+
+
+class PtpInterfaceMaps(Base):
+    """
+    This is a bridge table used to model the many-to-many relationship between
+    PTP interfaces (PTP services and parameters) and the interfaces they run.
+    """
+    __tablename__ = "ptp_interface_maps"
+
+    id = Column(Integer, primary_key=True, nullable=False)
+    uuid = Column(String(UUID_LENGTH), unique=True)
+
+    interface_id = Column(Integer,
+                          ForeignKey('interfaces.id', ondelete='CASCADE'),
+                          nullable=False)
+    ptp_interface_id = Column(
+        Integer, ForeignKey('ptp_interfaces.id', ondelete='CASCADE'),
+        nullable=False)
+
+    interface = relationship("Interfaces", lazy="joined", join_depth=1)
+    ptp_interface = relationship("PtpInterfaces", lazy="joined", join_depth=1)
+
+    UniqueConstraint('interface_id', 'ptp_interface_id',
+                     name='u_ifaceptpiface')
 
 
 class StorageTier(Base):
