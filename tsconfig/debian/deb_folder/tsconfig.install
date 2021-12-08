@@ -1,2 +1,2 @@
-scripts/tsconfig usr/sbin/tsconfig
+scripts/tsconfig usr/bin
 /usr/lib/python*/dist-packages/*
