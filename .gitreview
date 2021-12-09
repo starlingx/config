@@ -2,3 +2,4 @@
 host=review.opendev.org
 port=29418
 project=starlingx/config.git
+defaultbranch=r/stx.6.0
