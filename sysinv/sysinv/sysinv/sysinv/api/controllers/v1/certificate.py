@@ -409,6 +409,13 @@ class CertificateController(rest.RestController):
                           "occured on cert %s: %s" % (index, e)
                     return dict(success="", error=msg)
 
+            # validation checking for ssl_ca
+            if mode == constants.CERT_MODE_SSL_CA:
+                if not cutils.is_ca_cert(cert):
+                    msg = "Cannot install non-CA type certificate as SSL " \
+                          "CA certificate"
+                    return dict(success="", error=msg)
+
             if mode == constants.CERT_MODE_OPENSTACK and index == 0:
                 domain, msg = _check_endpoint_domain_exists()
                 if domain:
