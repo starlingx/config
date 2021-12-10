@@ -190,6 +190,10 @@ class NetworkingPuppet(base.BasePuppet):
 
         if host.clock_synchronization == constants.PTP:
             ptp_enabled = True
+            # Returning here because ptp instance functionality is not enabled at this time
+            # Subsequent code is inactive until this return statement is removed and ptp instance
+            # functionality is turned on
+            return {'platform::ptpinstance::enabled': ptp_enabled}
         else:
             ptp_enabled = False
             return {'platform::ptpinstance::enabled': ptp_enabled}
