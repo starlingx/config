@@ -7,10 +7,11 @@
 ########################################################################
 
 from cgtsclient.common import base
+from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import options
 
-CREATION_ATTRIBUTES = ['interface_uuid', 'ptp_instance_uuid']
+CREATION_ATTRIBUTES = ['ptp_instance_uuid']
 
 
 class PtpInterface(base.Resource):
@@ -33,8 +34,8 @@ class PtpInterfaceManager(base.Manager):
         path = 'v1/ihosts/%s/ptp_interfaces' % host_id
         return self._list(path, "ptp_interfaces")
 
-    def list_by_interface(self, host_id, interface_id):
-        path = 'v1/ihosts/%s/ptp_interfaces?interface_uuid=%s' % (host_id, interface_id)
+    def list_by_interface(self, interface_id):
+        path = 'v1/iinterfaces/%s/ptp_interfaces' % interface_id
         return self._list(path, "ptp_interfaces")
 
     def get(self, ptp_interface_id):
@@ -52,5 +53,19 @@ class PtpInterfaceManager(base.Manager):
                 raise exc.InvalidAttribute('Invalid attribute: %s' % key)
         return self._create(self._path(), body)
 
+    def update(self, ptp_interface_id, patch):
+        return self._update(self._path(ptp_interface_id), patch)
+
     def delete(self, ptp_interface_id):
         return self._delete(self._path(ptp_interface_id))
+
+
+def _find_ptp_interface(cc, key):
+    if key.isdigit() or utils.is_uuid_like(key):
+        try:
+            interface = cc.ptp_interface.get(key)
+            return interface
+        except exc.HTTPNotFound:
+            pass
+
+    raise exc.CommandError('PTP interface not found: %s' % key)

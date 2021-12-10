@@ -66,11 +66,8 @@ from sysinv.api.controllers.v1 import pci_device
 from sysinv.api.controllers.v1 import port
 from sysinv.api.controllers.v1 import ptp
 from sysinv.api.controllers.v1 import ptp_instance
-from sysinv.api.controllers.v1 import ptp_instance_map
 from sysinv.api.controllers.v1 import ptp_interface
-from sysinv.api.controllers.v1 import ptp_interface_map
 from sysinv.api.controllers.v1 import ptp_parameter
-from sysinv.api.controllers.v1 import ptp_paramownership
 from sysinv.api.controllers.v1 import pv
 from sysinv.api.controllers.v1 import registry_image
 from sysinv.api.controllers.v1 import remotelogging
@@ -155,20 +152,11 @@ class V1(base.APIBase):
     ptp_instances = [link.Link]
     "Links to the ptp_instances resource"
 
-    ptp_instance_maps = [link.Link]
-    "Links to the ptp_instance_maps resource"
-
     ptp_interfaces = [link.Link]
     "Links to the ptp_interfaces resource"
 
-    ptp_interface_maps = [link.Link]
-    "Links to the ptp_interface_maps resource"
-
     ptp_parameters = [link.Link]
     "Links to the ptp_parameters resource"
-
-    ptp_parameter_ownerships = [link.Link]
-    "Links to the ptp_parameter_ownerships resource"
 
     iextoam = [link.Link]
     "Links to the iextoam resource"
@@ -477,14 +465,6 @@ class V1(base.APIBase):
                                                 'ptp_instances', '',
                                                 bookmark=True)]
 
-        v1.ptp_instance_maps = [link.Link.make_link('self',
-                                                    pecan.request.host_url,
-                                                    'ptp_instance_maps', ''),
-                                link.Link.make_link('bookmark',
-                                                    pecan.request.host_url,
-                                                    'ptp_instance_maps', '',
-                                                    bookmark=True)]
-
         v1.ptp_interfaces = [link.Link.make_link('self', pecan.request.host_url,
                                                 'ptp_interfaces', ''),
                             link.Link.make_link('bookmark',
@@ -493,28 +473,12 @@ class V1(base.APIBase):
                                                 bookmark=True)
                              ]
 
-        v1.ptp_interface_maps = [link.Link.make_link('self',
-                                                     pecan.request.host_url,
-                                                     'ptp_instance_maps', ''),
-                                 link.Link.make_link('bookmark',
-                                                     pecan.request.host_url,
-                                                     'ptp_instance_maps', '',
-                                                     bookmark=True)]
-
         v1.ptp_parameters = [link.Link.make_link('self', pecan.request.host_url,
                                                  'ptp_parameters', ''),
                              link.Link.make_link('bookmark',
                                                  pecan.request.host_url,
                                                  'ptp_parameters', '',
                                                  bookmark=True)]
-
-        v1.ptp_parameter_ownerships = \
-            [link.Link.make_link('self', pecan.request.host_url,
-                                 'ptp_parameter_ownerships', ''),
-             link.Link.make_link('bookmark',
-                                 pecan.request.host_url,
-                                 'ptp_parameter_ownerships', '',
-                                 bookmark=True)]
 
         v1.iextoam = [link.Link.make_link('self', pecan.request.host_url,
                                           'iextoam', ''),
@@ -959,12 +923,8 @@ class Controller(rest.RestController):
     intp = ntp.NTPController()
     ptp = ptp.PTPController()
     ptp_instances = ptp_instance.PtpInstanceController()
-    ptp_instance_maps = ptp_instance_map.PtpInstanceMapController()
     ptp_interfaces = ptp_interface.PtpInterfaceController()
-    ptp_interface_maps = ptp_interface_map.PtpInterfaceMapController()
     ptp_parameters = ptp_parameter.PtpParameterController()
-    ptp_parameter_ownerships = \
-        ptp_paramownership.PtpParameterOwnershipController()
     iextoam = network_oam.OAMNetworkController()
     controller_fs = controller_fs.ControllerFsController()
     storage_backend = storage_backend.StorageBackendController()

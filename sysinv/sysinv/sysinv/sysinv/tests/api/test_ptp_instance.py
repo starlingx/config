@@ -37,11 +37,12 @@ class BasePtpInstanceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
     def get_host_scoped_url(self, host_uuid):
         return '%s/%s%s' % (self.HOST_PREFIX, host_uuid, self.API_PREFIX)
 
+    def get_host_url(self, host_uuid):
+        return '%s/%s' % (self.HOST_PREFIX, host_uuid)
+
     def get_post_object(self, name='test_instance',
                         service=constants.PTP_INSTANCE_TYPE_PTP4L):
-        ptp_instance_db = dbutils.get_test_ptp_instance(name=name,
-                                                        service=service)
-        return ptp_instance_db
+        return dbutils.get_test_ptp_instance(name=name, service=service)
 
 
 class TestCreatePtpInstance(BasePtpInstanceTestCase):
@@ -91,22 +92,128 @@ class TestCreatePtpInstance(BasePtpInstanceTestCase):
             error_message=error_message)
 
 
-class TestSetPtpInstance(BasePtpInstanceTestCase):
+class TestUpdatePtpInstance(BasePtpInstanceTestCase):
+    uuid = None
+
     def setUp(self):
-        super(TestSetPtpInstance, self).setUp()
+        super(TestUpdatePtpInstance, self).setUp()
+        ptp_instance = dbutils.create_test_ptp_instance(
+            name=constants.PTP_INSTANCE_DEFAULT_PTP4L,
+            service=constants.PTP_INSTANCE_TYPE_PTP4L)
+        self.uuid = ptp_instance['uuid']
 
-    def test_set_ptp_instance_to_hosts(self):
-        # TODO
-        pass
+    def test_update_ptp_instance_add_parameter_ok(self):
+        ptp_parameter_1 = dbutils.create_test_ptp_parameter(
+            name='param1', value='value1')
+        ptp_parameter_2 = dbutils.create_test_ptp_parameter(
+            name='param2', value='value2')
+        response = self.patch_json(self.get_single_url(self.uuid),
+                                   [{'path': '/ptp_parameters/-',
+                                     'value': ptp_parameter_1['uuid'],
+                                     'op': 'add'},
+                                    {'path': '/ptp_parameters/-',
+                                     'value': ptp_parameter_2['uuid'],
+                                     'op': 'add'}],
+                                   headers=self.API_HEADERS)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_update_ptp_instance_add_parameter_failed_no_instance(self):
+        ptp_parameter = dbutils.create_test_ptp_parameter(name='name',
+                                                          value='value')
+        fake_uuid = 'f4c56ddf-aef3-46ed-b9aa-126a1faafd40'
+        error_message = 'No PTP instance with id %s found.' % fake_uuid
+        response = self.patch_json(self.get_single_url(fake_uuid),
+                                   [{'path': '/ptp_parameters/-',
+                                     'value': ptp_parameter['uuid'],
+                                     'op': 'add'}],
+                                   headers=self.API_HEADERS,
+                                   expect_errors=True)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.NOT_FOUND)
+        self.assertIn(error_message, response.json['error_message'])
+
+    def test_update_ptp_instance_add_parameter_failed_no_param(self):
+        fake_uuid = 'f4c56ddf-aef3-46ed-b9aa-126a1faafd40'
+        error_message = 'No PTP parameter object found for %s' % fake_uuid
+        response = self.patch_json(self.get_single_url(self.uuid),
+                                   [{'path': '/ptp_parameters/-',
+                                     'value': fake_uuid,
+                                     'op': 'add'}],
+                                   headers=self.API_HEADERS,
+                                   expect_errors=True)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn(error_message, response.json['error_message'])
+
+    def test_update_ptp_instance_delete_parameter_ok(self):
+        ptp_parameter = dbutils.create_test_ptp_parameter(
+            name='param1', value='value1')
+        response = self.patch_json(self.get_single_url(self.uuid),
+                                   [{'path': '/ptp_parameters/-',
+                                     'value': ptp_parameter['uuid'],
+                                     'op': 'add'}],
+                                   headers=self.API_HEADERS)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+        response = self.patch_json(self.get_single_url(self.uuid),
+                                   [{'path': '/ptp_parameters/-',
+                                     'value': ptp_parameter['uuid'],
+                                     'op': 'remove'}],
+                                   headers=self.API_HEADERS)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
 
 
-class TestUnsetPtpInstance(BasePtpInstanceTestCase):
+class TestHostPtpInstance(BasePtpInstanceTestCase):
     def setUp(self):
-        super(TestUnsetPtpInstance, self).setUp()
+        super(TestHostPtpInstance, self).setUp()
 
-    def test_unset_ptp_instance_from_hosts(self):
-        # TODO
-        pass
+    def _assign_host_ptp_instance_success(self):
+        ptp_instance = dbutils.create_test_ptp_instance(
+            name=constants.PTP_INSTANCE_DEFAULT_PTP4L,
+            service=constants.PTP_INSTANCE_TYPE_PTP4L)
+        ptp_instance_id = ptp_instance['id']
+        response = self.patch_json(
+            self.get_host_url(self.controller.uuid),
+            [{'path': '/ptp_instances/-',
+              'value': ptp_instance_id,
+              'op': 'add'}],
+            headers=self.API_HEADERS)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+        return ptp_instance_id
+
+    def test_host_ptp_instance_assign_ok(self):
+        self._assign_host_ptp_instance_success()
+
+    def test_host_ptp_instance_assign_failed(self):
+        fake_id = 101
+        error_message = 'No PTP instance object with id %s' % fake_id
+        response = self.patch_json(
+            self.get_host_url(self.controller.uuid),
+            [{'path': '/ptp_instances/-',
+              'value': fake_id,
+              'op': 'add'}],
+            headers=self.API_HEADERS,
+            expect_errors=True)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn(error_message, response.json['error_message'])
+
+    def test_host_ptp_instance_remove_ok(self):
+        ptp_instance_id = self._assign_host_ptp_instance_success()
+
+        response = self.patch_json(
+            self.get_host_url(self.controller.uuid),
+            [{'path': '/ptp_instances/-',
+              'value': ptp_instance_id,
+              'op': 'remove'}],
+            headers=self.API_HEADERS)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
 
 
 class TestGetPtpInstance(BasePtpInstanceTestCase):
@@ -117,8 +224,7 @@ class TestGetPtpInstance(BasePtpInstanceTestCase):
         ptp_instance = dbutils.create_test_ptp_instance(
             name=constants.PTP_INSTANCE_DEFAULT_PTP4L,
             service=constants.PTP_INSTANCE_TYPE_PTP4L)
-        uuid = ptp_instance['uuid']
-        response = self.get_json(self.get_single_url(uuid))
+        response = self.get_json(self.get_single_url(ptp_instance['uuid']))
         self.assertIn(self.COMMON_FIELD, response)
 
     def test_get_ptp_instance_not_found(self):
@@ -141,13 +247,18 @@ class TestListPtpInstance(BasePtpInstanceTestCase):
         services = [constants.PTP_INSTANCE_TYPE_PTP4L,
                     constants.PTP_INSTANCE_TYPE_PHC2SYS,
                     constants.PTP_INSTANCE_TYPE_TS2PHC]
-        instances = []
         for service in services:
             name = '%s-%s' % (name_prefix, service)
-            instance = dbutils.create_test_ptp_instance(
-                name=name, service=service)
-            instances.append(instance)
-        return instances
+            instance = dbutils.create_test_ptp_instance(name=name,
+                                                        service=service)
+            response = self.patch_json(
+                self.get_host_url(self.controller.uuid),
+                [{'path': '/ptp_instances/-',
+                  'value': instance['id'],
+                  'op': 'add'}],
+                headers=self.API_HEADERS)
+            self.assertEqual(response.content_type, 'application/json')
+            self.assertEqual(response.status_code, http_client.OK)
 
     def test_list_ptp_instance_all(self):
         response = self.get_json(self.API_PREFIX)
@@ -159,8 +270,10 @@ class TestListPtpInstance(BasePtpInstanceTestCase):
         self.assertEqual([], response[self.RESULT_KEY])
 
     def test_list_ptp_instance_host(self):
-        # TODO
-        pass
+        response = self.get_json(
+            self.get_host_scoped_url(self.controller.uuid))
+        for result in response[self.RESULT_KEY]:
+            self.assertIn(self.controller.hostname, result['hostnames'])
 
 
 class TestDeletePtpInstance(BasePtpInstanceTestCase):
@@ -193,15 +306,32 @@ class TestDeletePtpInstance(BasePtpInstanceTestCase):
         self.assertIn(error_message, response.json['error_message'])
 
     def test_delete_ptp_instance_with_host_failed(self):
-        # TODO
-        pass
+        response = self.patch_json(
+            self.get_host_url(self.controller.uuid),
+            [{'path': '/ptp_instances/-',
+              'value': self.ptp_instance['id'],
+              'op': 'add'}],
+            headers=self.API_HEADERS)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+        response = self.delete(self.get_single_url(self.uuid),
+                               headers=self.API_HEADERS, expect_errors=True)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn('still associated with host',
+                      response.json['error_message'])
 
     def test_delete_ptp_instance_with_parameters_failed(self):
         ptp_parameter = dbutils.create_test_ptp_parameter(
             name='fake-param', value='fake-value')
-        ptp_ownership = dbutils.create_test_ptp_ownership(
-            parameter_uuid=ptp_parameter['uuid'], owner_uuid=self.uuid)
-        self.assertEqual(self.uuid, ptp_ownership['owner_uuid'])
+        response = self.patch_json(self.get_single_url(self.uuid),
+                                   [{'path': '/ptp_parameters/-',
+                                     'value': ptp_parameter['uuid'],
+                                     'op': 'add'}],
+                                   headers=self.API_HEADERS)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
 
         response = self.delete(self.get_single_url(self.uuid),
                                headers=self.API_HEADERS, expect_errors=True)
@@ -211,12 +341,9 @@ class TestDeletePtpInstance(BasePtpInstanceTestCase):
                       response.json['error_message'])
 
     def test_delete_ptp_instance_with_interfaces_failed(self):
-        interface = dbutils.create_test_interface(
-            ifname='fake0', ifclass=constants.INTERFACE_CLASS_PLATFORM,
-            forihostid=self.controller.id, ihost_uuid=self.controller.uuid)
         ptp_interface = dbutils.create_test_ptp_interface(
-            interface_id=interface['id'],
-            ptp_instance_id=self.ptp_instance['id'])
+            ptp_instance_id=self.ptp_instance['id'],
+            ptp_instance_uuid=self.ptp_instance['uuid'])
         self.assertEqual(self.ptp_instance['id'],
                          ptp_interface['ptp_instance_id'])
 

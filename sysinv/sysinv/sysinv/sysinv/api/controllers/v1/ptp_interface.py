@@ -6,6 +6,7 @@
 #
 ########################################################################
 
+import jsonpatch
 import pecan
 from pecan import rest
 import six
@@ -14,13 +15,15 @@ from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
 from oslo_log import log
+from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
-from sysinv.api.controllers.v1 import link
+from sysinv.api.controllers.v1 import ptp_parameter
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import utils as cutils
 from sysinv import objects
 
 LOG = log.getLogger(__name__)
@@ -41,7 +44,16 @@ class PtpInterface(base.APIBase):
     interface.
     """
 
+    created_at = wtypes.datetime.datetime
+    "Timestamp of creation of this PTP interface"
+
+    updated_at = wtypes.datetime.datetime
+    "Timestamp of update of this PTP interface"
+
     # Inherited from PtpParameterOwner
+
+    id = int
+    "ID (primary key) of this PTP interface"
 
     uuid = types.uuid
     "Unique UUID for this PTP interface"
@@ -63,16 +75,20 @@ class PtpInterface(base.APIBase):
     ptp_instance_id = int
     "ID for the PTP instance this interface is associated with"
 
-    links = [link.Link]
-    "A list containing a self link and associated ptp interface links"
-
     ptp_instance_uuid = types.uuid
     "The UUID of the host this PTP interface belongs to"
 
     ptp_instance_name = wtypes.text
     "The name of the associated PTP instance"
 
-    created_at = wtypes.datetime.datetime
+    hostnames = types.MultiType([list])
+    "Name(s) of host(s) associated to this PTP interface"
+
+    interface_names = types.MultiType([list])
+    "Interface(s) associated to this PTP interface"
+
+    parameters = types.MultiType([list])
+    "List of parameters referred by this PTP interface"
 
     def __init__(self, **kwargs):
         self.fields = list(objects.ptp_interface.fields.keys())
@@ -83,18 +99,24 @@ class PtpInterface(base.APIBase):
 
     @classmethod
     def convert_with_links(cls, rpc_ptp_interface, expand=True):
-
         ptp_interface = PtpInterface(**rpc_ptp_interface.as_dict())
         if not expand:
-            ptp_interface.unset_fields_except(['uuid',
+            ptp_interface.unset_fields_except(['id',
+                                               'uuid',
                                                'type',
                                                'capabilities',
                                                'name',
                                                'ptp_instance_id',
                                                'ptp_instance_uuid',
                                                'ptp_instance_name',
-                                               'created_at'])
+                                               'hostnames',
+                                               'interface_names',
+                                               'parameters',
+                                               'created_at',
+                                               'updated_at'])
 
+        LOG.debug("PtpInterface.convert_with_links: converted %s" %
+                  ptp_interface.as_dict())
         return ptp_interface
 
 
@@ -124,95 +146,150 @@ LOCK_NAME = 'PtpInterfaceController'
 class PtpInterfaceController(rest.RestController):
     """REST controller for ptp interfaces."""
 
-    def __init__(self, from_ihosts=False):
-        self._from_ihosts = from_ihosts
+    ptp_parameters = ptp_parameter.PtpParameterController(
+        parent="ptp_interface")
+    "Expose PTP parameters as a sub-element of PTP interfaces"
 
-    @wsme_pecan.wsexpose(PtpInterfaceCollection, types.uuid, int, wtypes.text,
-                         wtypes.text)
-    def get_all(self, marker=None, limit=None, sort_key='id', sort_dir='asc'):
+    def __init__(self, parent=None):
+        self._parent = parent
+
+    @wsme_pecan.wsexpose(PtpInterfaceCollection, types.uuid, types.uuid, int,
+                         wtypes.text, wtypes.text)
+    def get_all(self, parent_uuid=None, marker=None, limit=None, sort_key='id',
+                sort_dir='asc'):
         """Retrieve a list of PTP interfaces."""
+        LOG.debug("PtpInterfaceController.get_all: parent %s uuid %s type %s" %
+                  (self._parent, parent_uuid, type))
+        if self._parent and not parent_uuid:
+            raise exception.InvalidParameterValue(_(
+                "Parent id not specified."))
+
         limit = utils.validate_limit(limit)
         sort_dir = utils.validate_sort_dir(sort_dir)
 
-        """ TODO
         marker_obj = None
         if marker:
             marker_obj = objects.ptp_interface.get_by_uuid(
                 pecan.request.context, marker)
 
-        if self._from_ihosts or host_uuid is not None:
-            if interface_uuid is not None:
-                ptp_interfaces = \
-                    pecan.request.dbapi.ptp_interfaces_get_by_interface(
-                        interface_uuid, limit, marker_obj, sort_key, sort_dir)
-            else:
-                ptp_interfaces = \
-                    pecan.request.dbapi.ptp_interfaces_get_by_host(
-                        host_uuid, limit, marker_obj, sort_key, sort_dir)
+        if self._parent == 'iinterface':
+            ptp_interfaces = \
+                pecan.request.dbapi.ptp_interfaces_get_list(
+                    interface=parent_uuid, limit=limit, marker=marker_obj,
+                    sort_key=sort_key, sort_dir=sort_dir)
+        elif self._parent == 'ihosts':
+            ptp_interfaces = \
+                pecan.request.dbapi.ptp_interfaces_get_list(
+                    host=parent_uuid, limit=limit, marker=marker_obj,
+                    sort_key=sort_key, sort_dir=sort_dir)
         else:
-            ptp_interfaces = pecan.request.dbapi.ptp_interfaces_get_list()
-        """
-        ptp_interfaces = pecan.request.dbapi.ptp_interfaces_get_list()
-        return PtpInterfaceCollection.convert_with_links(ptp_interfaces,
-                                                         limit,
-                                                         sort_key=sort_key,
-                                                         sort_dir=sort_dir)
+            ptp_interfaces = \
+                pecan.request.dbapi.ptp_interfaces_get_list(
+                    limit=limit, marker=marker_obj, sort_key=sort_key,
+                    sort_dir=sort_dir)
+
+        return PtpInterfaceCollection.convert_with_links(
+            ptp_interfaces, limit, sort_key=sort_key, sort_dir=sort_dir)
 
     @wsme_pecan.wsexpose(PtpInterface, types.uuid)
     def get_one(self, ptp_interface_uuid):
         """Retrieve information about the given PTP interface"""
-        rpc_ptp_interface = objects.ptp_interface.get_by_uuid(
+        LOG.debug("PtpInterfaceController.get_one: uuid=%s"
+                  % ptp_interface_uuid)
+        ptp_interface = objects.ptp_interface.get_by_uuid(
             pecan.request.context, ptp_interface_uuid)
-        return PtpInterface.convert_with_links(rpc_ptp_interface)
+        return PtpInterface.convert_with_links(ptp_interface)
 
+    @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(PtpInterface, body=PtpInterface)
     def post(self, ptp_interface):
         """Create a new PTP interface"""
-        return self._create_ptp_interface(ptp_interface)
-
-    def _create_ptp_interface(self, ptp_interface):
-        # Create a new PTP interface
         ptp_interface_dict = ptp_interface.as_dict()
+        LOG.debug("PtpInterfaceController.post: %s" % ptp_interface_dict)
 
         """
         TODO: enforce "name" as required field here
         """
 
-        instance_uuid = ptp_interface_dict.pop('ptp_instance_uuid', None)
-        instance = objects.ptp_instance.get_by_uuid(pecan.request.context,
-                                                    instance_uuid)
-        ptp_interface_dict['ptp_instance_id'] = instance['id']
+        ptp_instance_uuid = ptp_interface_dict.pop('ptp_instance_uuid', None)
+        ptp_instance = objects.ptp_instance.get_by_uuid(pecan.request.context,
+                                                        ptp_instance_uuid)
+        ptp_interface_dict['ptp_instance_id'] = ptp_instance['id']
 
-        """ TODO
-        check = \
-            pecan.request.dbapi.ptp_interfaces_get_by_instance_and_interface(
-                ptp_interface_dict["ptp_instance_id"],
-                ptp_interface_dict["interface_id"])
-        if len(check) != 0:
-            raise exception.PtpInterfaceAlreadyExists()
-        """
+        return PtpInterface.convert_with_links(
+            pecan.request.dbapi.ptp_interface_create(ptp_interface_dict))
 
-        result = pecan.request.dbapi.ptp_interface_create(ptp_interface_dict)
-        return PtpInterface.convert_with_links(result)
+    @cutils.synchronized(LOCK_NAME)
+    @wsme.validate(types.uuid, [PtpInterfacePatchType])
+    @wsme_pecan.wsexpose(PtpInterface, types.uuid,
+                         body=[PtpInterfacePatchType])
+    def patch(self, uuid, patch):
+        """Update the association between PTP interface and PTP parameters."""
+        if self._parent:
+            raise exception.OperationNotPermitted
+
+        LOG.debug("PtpInterfaceController.patch: uuid %s params %s" %
+                  (uuid, patch))
+        utils.validate_patch(patch)
+
+        try:
+            # Check PTP interface exists
+            objects.ptp_interface.get_by_uuid(pecan.request.context, uuid)
+        except exception.InvalidParameterValue:
+            raise wsme.exc.ClientSideError(
+                _("No PTP interface found for %s" % uuid))
+
+        # Currently patch is used to add/remove PTP parameters
+        # (but not having both operations in same patch)
+        patch_list = list(jsonpatch.JsonPatch(patch))
+        for p in patch_list:
+            param_uuid = p['value']
+            try:
+                # Check PTP parameter exists
+                pecan.request.dbapi.ptp_parameter_get(param_uuid)
+            except exception.PtpParameterNotFound:
+                raise wsme.exc.ClientSideError(
+                    _("No PTP parameter object found for %s" % param_uuid))
+
+            if p['op'] == 'add':
+                pecan.request.dbapi.ptp_interface_parameter_add(uuid,
+                                                                param_uuid)
+            else:
+                pecan.request.dbapi.ptp_interface_parameter_remove(uuid,
+                                                                   param_uuid)
+
+        return PtpInterface.convert_with_links(
+            objects.ptp_interface.get_by_uuid(pecan.request.context, uuid))
 
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, ptp_interface_uuid):
         """Delete a PTP interface."""
+        LOG.debug("PtpInterfaceController.delete: %s" % ptp_interface_uuid)
+        if self._parent:
+            raise exception.OperationNotPermitted
+
         try:
-            ptp_interface = objects.ptp_interface.get_by_uuid(
+            ptp_interface_obj = objects.ptp_interface.get_by_uuid(
                 pecan.request.context, ptp_interface_uuid)
         except exception.PtpInterfaceNotFound:
             raise
 
-        # Only allow delete if there are no associated parameters
-        parameters = pecan.request.dbapi.ptp_parameters_get_by_owner_uuid(
-            ptp_interface_uuid)
+        # Only allow delete if there are no associated hosts/interfaces and
+        # parameters
+        parameters = pecan.request.dbapi.ptp_parameters_get_list(
+            ptp_interface=ptp_interface_uuid)
         if parameters:
-            names = [str(p['name']) for p in parameters]
             raise wsme.exc.ClientSideError(
-                "PTP interface %s has PTP parameter(s): %s"
-                % (ptp_interface_uuid, names))
+                "PTP interface %s is still associated with PTP parameter(s)"
+                % ptp_interface_uuid)
+
+        interfaces = pecan.request.dbapi.ptp_interface_get_assignees(
+            ptp_interface_obj.id)
+        if interfaces:
+            raise wsme.exc.ClientSideError(
+                "PTP interface %s is still associated with host interface(s)"
+                % ptp_interface_uuid)
 
         LOG.debug("PtpInterfaceController.delete: all clear for %s" %
                   ptp_interface_uuid)
-        pecan.request.dbapi.ptp_interface_destroy(ptp_interface.uuid)
+        pecan.request.dbapi.ptp_interface_destroy(ptp_interface_uuid)

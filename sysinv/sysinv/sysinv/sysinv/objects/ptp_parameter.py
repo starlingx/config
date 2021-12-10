@@ -6,27 +6,18 @@
 #
 ########################################################################
 
-from sysinv.common import constants
 from sysinv.db import api as db_api
 from sysinv.objects import base
 from sysinv.objects import utils
 
 
 def get_owners(field, db_object):
-    ptp_parameter_owners = db_object['ptp_parameter_owners']
-    if not ptp_parameter_owners:
-        return []
-
-    owners = []
-    for owner in ptp_parameter_owners:
-        details = {}
-        details['uuid'] = owner.uuid
-        if owner.type == constants.PTP_PARAMETER_OWNER_INSTANCE:
-            details['owner'] = owner.name
-            details['type'] = owner.service
-        owners.append(details)
-
-    return owners
+    owners = db_object['ptp_parameter_owners']
+    uuids = []
+    if owners is not None:
+        for o in owners:
+            uuids.append(o.uuid)
+    return uuids
 
 
 class PtpParameter(base.SysinvObject):
@@ -36,11 +27,9 @@ class PtpParameter(base.SysinvObject):
     fields = {
             'id': int,
             'uuid': utils.str_or_none,
-
             'name': utils.str_or_none,
             'value': utils.str_or_none,
-
-            'owners': list
+            'owners': utils.list_of_strings_or_none
              }
 
     _foreign_fields = {

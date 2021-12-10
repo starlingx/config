@@ -23,6 +23,15 @@ def _get_target_load(field, db_object):
         return db_object.host_upgrade.load_target.software_version
 
 
+def _get_ptp_instance_names(field, db_object):
+    instances = db_object['ptp_instances']
+    names = []
+    if instances is not None:
+        for i in instances:
+            names.append(str(i.name))
+    return names
+
+
 class Host(base.SysinvObject):
 
     dbapi = db_api.get_instance()

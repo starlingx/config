@@ -34,8 +34,8 @@ class PtpParameterManager(base.Manager):
         path = '/v1/ptp_instances/%s/ptp_parameters' % ptp_instance_uuid
         return self._list(path, "ptp_parameters")
 
-    def list_by_interface(self, interface_uuid):
-        path = '/v1/iinterfaces/%s/ptp_parameters' % interface_uuid
+    def list_by_ptp_interface(self, ptp_interface_uuid):
+        path = '/v1/ptp_interfaces/%s/ptp_parameters' % ptp_interface_uuid
         return self._list(path, "ptp_parameters")
 
     def get(self, ptp_parameter_id):

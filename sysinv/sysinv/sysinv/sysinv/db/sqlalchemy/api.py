@@ -3740,6 +3740,8 @@ class Connection(api.Connection):
     def ptp_instance_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
+        if not values.get('type'):
+            values['type'] = constants.PTP_PARAMETER_OWNER_INSTANCE
         ptp_instance = models.PtpInstances(**values)
         with _session_for_write() as session:
             try:
@@ -3754,43 +3756,24 @@ class Connection(api.Connection):
         return self._ptp_instance_get(ptp_instance_id)
 
     @objects.objectify(objects.ptp_instance)
-    def ptp_instance_get_one(self, name=None, host=None, service=None):
-        query = model_query(models.PtpInstances)
-        if name is not None:
-            query = query.filter_by(name=name)
-        elif host is not None:
-            if utils.is_int_like(host):
-                ihost = self.ihost_get(int(host))
-            elif utils.is_uuid_like(host):
-                ihost = self.ihost_get(host.strip())
-            elif isinstance(host, models.ihost):
-                ihost = host
-            else:
-                raise exception.NodeNotFound(node=host)
-            ptp_instance_id = ihost['ptp_instance_id']
-            if not ptp_instance_id:
-                return None
-            query = add_identity_filter(query, ptp_instance_id)
-        elif service is not None:
-            query = query.filter_by(service=service)
-        try:
-            return query.one()
-        except NoResultFound:
-            raise exception.NotFound()
-
-    @objects.objectify(objects.ptp_instance)
-    def ptp_instances_get_list(self, host_uuid=None, limit=None, marker=None,
+    def ptp_instances_get_list(self, host=None, limit=None, marker=None,
                                sort_key=None, sort_dir=None):
         query = model_query(models.PtpInstances)
-        if host_uuid is not None:
-            host = self.ihost_get(host_uuid)
-            query = query.join(models.PtpInstanceMaps,
-                               models.PtpInstanceMaps.host_id == host.id)
+        if host is not None:
+            host_obj = self.ihost_get(host)
+            query = query.join(models.PtpInstanceMaps).filter(
+                models.PtpInstanceMaps.host_id == host_obj.id)
         return _paginate_query(models.PtpInstances, limit, marker,
                                sort_key, sort_dir, query)
 
+    def ptp_instance_parameter_add(self, ptp_instance, ptp_parameter):
+        return self._ptp_parameter_add(ptp_instance, ptp_parameter)
+
+    def ptp_instance_parameter_remove(self, ptp_instance, ptp_parameter):
+        self._ptp_parameter_remove(ptp_instance, ptp_parameter)
+
     @objects.objectify(objects.ptp_instance_map)
-    def ptp_instance_set_host(self, values):
+    def ptp_instance_assign(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
         ptp_instance_map = models.PtpInstanceMaps(**values)
@@ -3811,7 +3794,7 @@ class Connection(api.Connection):
             except NoResultFound:
                 raise exception.PtpInstanceMapNotFound(uuid=values['uuid'])
 
-    def ptp_instance_unset_host(self, values):
+    def ptp_instance_remove(self, values):
         with _session_for_write() as session:
             query = model_query(models.PtpInstanceMaps, session=session)
             query = query.filter_by(ptp_instance_id=values['ptp_instance_id'],
@@ -3822,14 +3805,14 @@ class Connection(api.Connection):
                 return
             query.delete()
 
-    @objects.objectify(objects.ptp_instance)
-    def ptp_instance_get_hosts(self, ptp_instance_id, limit=None, marker=None,
-                               sort_key=None, sort_dir=None):
-        query = model_query(models.PtpInstances)
-        query = add_identity_filter(query, ptp_instance_id)
-        query = query.join(models.PtpInstances.hosts)
-        return _paginate_query(models.PtpInstances, limit, marker, sort_key,
-                               sort_dir, query)
+    @objects.objectify(objects.host)
+    def ptp_instance_get_assignees(self, ptp_instance_id, limit=None,
+                                   marker=None, sort_key=None, sort_dir=None):
+        query = model_query(models.ihost)
+        query = query.join(models.PtpInstanceMaps).filter(
+            models.PtpInstanceMaps.ptp_instance_id == ptp_instance_id)
+        return _paginate_query(models.ihost, limit, marker, sort_key, sort_dir,
+                               query)
 
     def ptp_instance_destroy(self, ptp_instance_id):
         with _session_for_write() as session:
@@ -3873,6 +3856,8 @@ class Connection(api.Connection):
     def ptp_interface_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
+        if not values.get('type'):
+            values['type'] = constants.PTP_PARAMETER_OWNER_INTERFACE
         ptp_interface = models.PtpInterfaces()
         ptp_interface.update(values)
         with _session_for_write() as session:
@@ -3888,72 +3873,37 @@ class Connection(api.Connection):
         return self._ptp_interface_get(ptp_interface_id)
 
     @objects.objectify(objects.ptp_interface)
-    def ptp_interface_get_one(self, interface_uuid=None):
+    def ptp_interfaces_get_list(self, host=None, interface=None,
+                                ptp_instance=None, limit=None, marker=None,
+                                sort_key=None, sort_dir=None):
         query = model_query(models.PtpInterfaces)
-        if interface_uuid is not None:
-            interface = self.iinterface_get(interface_uuid)
-            ptp_interface_id = interface['ptp_interface_id']
-            if not ptp_interface_id:
-                return None
-            query = add_identity_filter(query, ptp_interface_id)
-        try:
-            return query.one()
-        except NoResultFound:
-            raise exception.NotFound()
-
-    @objects.objectify(objects.ptp_interface)
-    def ptp_interfaces_get_list(self, host_uuid=None, interface_uuid=None,
-                                limit=None, marker=None, sort_key=None,
-                                sort_dir=None):
-        query = model_query(models.PtpInterfaces)
-        if host_uuid is not None:
-            query = query.join(models.Interfaces).join(
-                models.ihost,
-                models.ihost.id == models.Interfaces.forihostid).filter(
-                    models.ihost.uuid == host_uuid,
-                    models.Interfaces.ptp_interface_id ==
-                    models.PtpInterfaces.id)
-        elif interface_uuid is not None:
-            interface = self.iinterface_get(interface_uuid)
-            ptp_interface_id = interface['ptp_interface_id']
-            if not ptp_interface_id:
-                return []
-            query = add_identity_filter(query, ptp_interface_id)
+        if ptp_instance is not None:
+            ptp_instance_obj = self.ptp_instance_get(ptp_instance)
+            query = query.filter_by(ptp_instance_id=ptp_instance_obj.id)
+            if interface is not None:
+                interface_obj = self.iinterface_get(interface)
+                query = query.join(models.PtpInterfaceMaps).filter(
+                    models.PtpInterfaceMaps.interface_id == interface_obj.id)
+        elif interface is not None:
+            interface_obj = self.iinterface_get(interface)
+            query = query.join(models.PtpInterfaceMaps).filter(
+                models.PtpInterfaceMaps.interface_id == interface_obj.id)
+        elif host is not None:
+            host_obj = self.ihost_get(host)
+            query = query.join(models.PtpInterfaceMaps).join(
+                models.Interfaces).filter(
+                    models.Interfaces.forihostid == host_obj.id)
         return _paginate_query(models.PtpInterfaces, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.ptp_interface)
-    def ptp_interfaces_get_by_instance(self, ptp_instance_id, limit=None,
-                                       marker=None, sort_key=None,
-                                       sort_dir=None):
-        # NOTE: ptp_instance_get() to raise an exception if the instance is
-        # not found
-        ptp_instance_obj = self.ptp_instance_get(ptp_instance_id)
-        query = model_query(models.PtpInterfaces)
-        query = query.filter_by(ptp_instance_id=ptp_instance_obj.id)
-        return _paginate_query(models.PtpInterfaces, limit, marker,
-                               sort_key, sort_dir, query)
+    def ptp_interface_parameter_add(self, ptp_interface, ptp_parameter):
+        return self._ptp_parameter_add(ptp_interface, ptp_parameter)
 
-    @objects.objectify(objects.ptp_interface)
-    def ptp_interfaces_get_by_instance_and_interface(self, ptp_instance_id,
-                                                     interface_id,
-                                                     limit=None,
-                                                     marker=None,
-                                                     sort_key=None,
-                                                     sort_dir=None):
-        query = model_query(models.PtpInterfaces)
-        interface = self.iinterface_get(interface_id)
-        ptp_interface_id = interface['ptp_interface_id']
-        if not ptp_interface_id:
-            return []
-        query = add_identity_filter(query, ptp_interface_id)
-        ptp_instance_obj = self.ptp_instance_get(ptp_instance_id)
-        query = query.filter_by(ptp_instance_id=ptp_instance_obj.id)
-        return _paginate_query(models.PtpInterfaces, limit, marker,
-                               sort_key, sort_dir, query)
+    def ptp_interface_parameter_remove(self, ptp_interface, ptp_parameter):
+        self._ptp_parameter_remove(ptp_interface, ptp_parameter)
 
     @objects.objectify(objects.ptp_interface_map)
-    def ptp_interface_set_interface(self, values):
+    def ptp_interface_assign(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
         ptp_interface_map = models.PtpInterfaceMaps(**values)
@@ -3974,7 +3924,7 @@ class Connection(api.Connection):
             except NoResultFound:
                 raise exception.PtpInterfaceMapNotFound(uuid=values['uuid'])
 
-    def ptp_interface_unset_interface(self, values):
+    def ptp_interface_remove(self, values):
         with _session_for_write() as session:
             query = model_query(models.PtpInterfaceMaps, session=session)
             query = query.filter_by(
@@ -3986,14 +3936,13 @@ class Connection(api.Connection):
                 return
             query.delete()
 
-    @objects.objectify(objects.ptp_interface)
-    def ptp_interface_get_interfaces(self, ptp_interface_id, limit=None,
-                                     marker=None, sort_key=None,
-                                     sort_dir=None):
-        query = model_query(models.PtpInterfaces)
-        query = add_identity_filter(query, ptp_interface_id)
-        query = query.join(models.PtpInterfaces.interfaces)
-        return _paginate_query(models.PtpInterfaces, limit, marker, sort_key,
+    @objects.objectify(objects.interface)
+    def ptp_interface_get_assignees(self, ptp_interface_id, limit=None,
+                                    marker=None, sort_key=None, sort_dir=None):
+        query = model_query(models.Interfaces)
+        query = query.join(models.PtpInterfaceMaps).filter(
+            models.PtpInterfaceMaps.ptp_interface_id == ptp_interface_id)
+        return _paginate_query(models.Interfaces, limit, marker, sort_key,
                                sort_dir, query)
 
     def ptp_interface_destroy(self, ptp_interface_id):
@@ -4043,39 +3992,43 @@ class Connection(api.Connection):
         return self._ptp_parameter_get(ptp_parameter_id)
 
     @objects.objectify(objects.ptp_parameter)
-    def ptp_parameter_get_one(self, name=None):
-        query = model_query(models.PtpParameters)
-        if name is not None:
-            query = query.filter_by(name=name)
-        try:
-            return query.one()
-        except NoResultFound:
-            raise exception.NotFound()
-
-    @objects.objectify(objects.ptp_parameter)
-    def ptp_parameters_get_list(self, limit=None, marker=None, sort_key=None,
+    def ptp_parameters_get_list(self, ptp_instance=None, ptp_interface=None,
+                                limit=None, marker=None, sort_key=None,
                                 sort_dir=None):
         query = model_query(models.PtpParameters)
+        uuid = None
+        type = None
+        if ptp_instance:
+            uuid = ptp_instance
+            type = constants.PTP_PARAMETER_OWNER_INSTANCE
+        elif ptp_interface:
+            uuid = ptp_interface
+            type = constants.PTP_PARAMETER_OWNER_INTERFACE
+        if uuid and type:
+            query = query.join(
+                models.PtpParameters.ptp_parameter_owners).filter(
+                    models.PtpParameterOwners.uuid == uuid,
+                    models.PtpParameterOwners.type == type)
         return _paginate_query(models.PtpParameters, limit, marker,
                                sort_key, sort_dir, query)
 
     @objects.objectify(objects.ptp_parameter)
-    def ptp_parameters_get_by_owner_type(self, type, limit=None, marker=None,
-                                         sort_key=None, sort_dir=None):
+    def ptp_parameters_get_list_by_type(self, type, limit=None, marker=None,
+                                        sort_key=None, sort_dir=None):
         query = model_query(models.PtpParameters)
         query = query.join(models.PtpParameters.ptp_parameter_owners).filter(
             models.PtpParameterOwners.type == type)
         return _paginate_query(models.PtpParameters, limit, marker, sort_key,
                                sort_dir, query)
 
-    @objects.objectify(objects.ptp_parameter)
-    def ptp_parameters_get_by_owner_uuid(self, uuid, limit=None, marker=None,
-                                         sort_key=None, sort_dir=None):
-        query = model_query(models.PtpParameters)
-        query = query.join(models.PtpParameters.ptp_parameter_owners).filter(
-            models.PtpParameterOwners.uuid == uuid)
-        return _paginate_query(models.PtpParameters, limit, marker, sort_key,
-                               sort_dir, query)
+    @objects.objectify(objects.ptp_paramowner)
+    def ptp_parameter_get_owners(self, ptp_parameter_uuid, limit=None,
+                                 marker=None, sort_key=None, sort_dir=None):
+        query = model_query(models.PtpParameterOwners)
+        query = query.join(models.PtpParameterOwnerships).filter(
+            models.PtpParameterOwnerships.parameter_uuid == ptp_parameter_uuid)
+        return _paginate_query(models.PtpParameterOwners, limit, marker,
+                               sort_key, sort_dir, query)
 
     @objects.objectify(objects.ptp_parameter)
     def ptp_parameter_update(self, ptp_parameter_id, values):
@@ -4086,49 +4039,6 @@ class Connection(api.Connection):
             if count != 1:
                 raise exception.PtpParameterNotFound(uuid=ptp_parameter_id)
             return query.one()
-
-    @objects.objectify(objects.ptp_paramownership)
-    def ptp_parameter_set_owner(self, values):
-        if not values.get('uuid'):
-            values['uuid'] = uuidutils.generate_uuid()
-        param_ownership = models.PtpParameterOwnerships(**values)
-        with _session_for_write() as session:
-            try:
-                session.add(param_ownership)
-                session.flush()
-            except db_exc.DBDuplicateEntry:
-                raise exception.PtpParameterOwnershipAlreadyExists(
-                    param=values['parameter_uuid'], owner=values['owner_uuid'])
-
-            query = model_query(models.PtpParameterOwnerships)
-            query = add_identity_filter(query, values['uuid'])
-
-            try:
-                return query.one()
-            except NoResultFound:
-                raise exception.PtpParameterOwnershipNotFound(
-                    uuid=values['uuid'])
-
-    def ptp_parameter_unset_owner(self, values):
-        with _session_for_write() as session:
-            query = model_query(models.PtpParameterOwnerships, session=session)
-            query = query.filter_by(parameter_uuid=values['parameter_uuid'],
-                                    owner_uuid=values['owner_uuid'])
-            try:
-                query.one()
-            except NoResultFound:
-                return
-            query.delete()
-
-    @objects.objectify(objects.ptp_parameter)
-    def ptp_parameter_get_owners_list(self, ptp_parameter_id, limit=None,
-                                      marker=None, sort_key=None,
-                                      sort_dir=None):
-        query = model_query(models.PtpParameters)
-        query = add_identity_filter(query, ptp_parameter_id)
-        query = query.join(models.PtpParameters.ptp_parameter_owners)
-        return _paginate_query(models.PtpParameters, limit, marker, sort_key,
-                               sort_dir, query)
 
     def ptp_parameter_destroy(self, ptp_parameter_id):
         with _session_for_write() as session:
@@ -4149,8 +4059,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.PtpParameterOwnerNotFound(uuid=ptp_paramowner_id)
 
-    @objects.objectify(objects.ptp_paramownership)
-    def ptp_paramownership_get(self, ptp_paramownership_id):
+    def _ptp_paramownership_get(self, ptp_paramownership_id):
         query = model_query(models.PtpParameterOwnerships)
         query = add_identity_filter(query, ptp_paramownership_id)
         try:
@@ -4160,21 +4069,33 @@ class Connection(api.Connection):
                 uuid=ptp_paramownership_id)
 
     @objects.objectify(objects.ptp_paramownership)
-    def ptp_paramownerships_get_by_parameter(self, uuid, limit=None,
-                                             marker=None, sort_key=None,
-                                             sort_dir=None):
-        query = model_query(models.PtpParameterOwnerships)
-        query = query.filter_by(parameter_uuid=uuid)
-        return _paginate_query(models.PtpParameterOwnerships, limit, marker,
-                               sort_key, sort_dir, query)
+    def ptp_paramownership_get(self, ptp_paramownership_id):
+        return self._ptp_paramownership_get(ptp_paramownership_id)
 
     @objects.objectify(objects.ptp_paramownership)
-    def ptp_paramownerships_get_by_owner(self, uuid, limit=None, marker=None,
-                                         sort_key=None, sort_dir=None):
-        query = model_query(models.PtpParameterOwnerships)
-        query = query.filter_by(owner_uuid=uuid)
-        return _paginate_query(models.PtpParameterOwnerships, limit, marker,
-                               sort_key, sort_dir, query)
+    def _ptp_parameter_add(self, ptp_parameter_owner, ptp_parameter):
+        with _session_for_write() as session:
+            values = dict()
+            values['uuid'] = uuidutils.generate_uuid()
+            values['owner_uuid'] = ptp_parameter_owner
+            values['parameter_uuid'] = ptp_parameter
+            param_ownership = models.PtpParameterOwnerships(**values)
+            try:
+                session.add(param_ownership)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                raise exception.PtpParameterOwnershipAlreadyExists(
+                    param=ptp_parameter, owner=ptp_parameter_owner)
+            return self._ptp_paramownership_get(values['uuid'])
+
+    def _ptp_parameter_remove(self, ptp_parameter_owner, ptp_parameter):
+        with _session_for_write() as session:
+            query = model_query(models.PtpParameterOwnerships,
+                                session=session)
+            query = query.filter_by(parameter_uuid=ptp_parameter,
+                                    owner_uuid=ptp_parameter_owner)
+            query.one()
+            query.delete()
 
     # NOTE: method is deprecated and provided for API compatibility.
     # object class will convert Network entity to an iextoam object

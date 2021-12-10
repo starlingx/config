@@ -17,40 +17,6 @@ def _print_ptp_parameter_show(ptp_parameter_obj):
     utils.print_tuple_list(data)
 
 
-def _print_ptp_parameter_list(ptp_parameter_list):
-    fields = ['uuid', 'name', 'value']
-    labels = ['uuid', 'name', 'value']
-    utils.print_list(ptp_parameter_list, fields, labels)
-
-
-def do_ptp_parameter_list(cc, args):
-    """List all PTP parameters."""
-    ptp_parameters = cc.ptp_parameter.list()
-    _print_ptp_parameter_list(ptp_parameters)
-
-
-@utils.arg('ptp_instance_uuid',
-           metavar='<PTP instance uuid>',
-           help="UUID of PTP instance")
-def do_ptp_parameter_list_instances(cc, args):
-    """List all PTP parameters that are associated to a specific PTP instance.
-    """
-    ptp_parameters = cc.ptp_parameter.list_by_ptp_instance(
-        args.ptp_instance_uuid)
-    _print_ptp_parameter_list(ptp_parameters)
-
-
-@utils.arg('ptp_interface_uuid',
-           metavar='<PTP interface uuid>',
-           help="UUID of PTP interface")
-def do_ptp_parameter_list_interfaces(cc, args):
-    """List all PTP parameters that are associated to a specific PTP interface.
-    """
-    ptp_parameters = cc.ptp_parameter.list_by_interface(
-        args.ptp_interface_uuid)
-    _print_ptp_parameter_list(ptp_parameters)
-
-
 @utils.arg('uuid',
            metavar='<uuid>',
            help="UUID of PTP parameter")
@@ -58,6 +24,39 @@ def do_ptp_parameter_show(cc, args):
     """Show PTP parameter attributes."""
     ptp_parameter = ptp_parameter_utils._find_ptp_parameter(cc, args.uuid)
     _print_ptp_parameter_show(ptp_parameter)
+
+
+def _print_ptp_parameter_list(ptp_parameter_list):
+    fields = ['uuid', 'name', 'value']
+    labels = ['uuid', 'name', 'value']
+    utils.print_list(ptp_parameter_list, fields, labels)
+
+
+@utils.arg('--instance',
+           metavar='<instance>',
+           default=None,
+           help="UUID of PTP instance")
+@utils.arg('--interface',
+           metavar='<interface>',
+           default=None,
+           help="UUID of PTP interface")
+def do_ptp_parameter_list(cc, args):
+    """List all PTP parameters, the ones of a specified PTP instance or
+       the ones of a specified PTP interface.
+    """
+    if args.instance:
+        if args.interface:
+            raise exc.CommandError('Only a single optional argument allowed')
+        else:
+            ptp_parameters = cc.ptp_parameter.list_by_ptp_instance(
+                args.instance)
+    elif args.interface:
+        ptp_parameters = cc.ptp_parameter.list_by_ptp_interface(
+            args.interface)
+    else:
+        ptp_parameters = cc.ptp_parameter.list()
+
+    _print_ptp_parameter_list(ptp_parameters)
 
 
 @utils.arg('name',

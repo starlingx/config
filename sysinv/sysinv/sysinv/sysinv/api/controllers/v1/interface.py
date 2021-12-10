@@ -46,7 +46,7 @@ from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1 import interface_network
 from sysinv.api.controllers.v1 import interface_datanetwork
-from sysinv.api.controllers.v1 import ptp_parameter
+from sysinv.api.controllers.v1 import ptp_interface
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
@@ -303,8 +303,8 @@ class InterfaceController(rest.RestController):
     routes = route.RouteController(parent="iinterfaces")
     "Expose routes as a sub-element of interface"
 
-    ptp_parameters = ptp_parameter.PtpParameterController(parent="iinterface")
-    "Expose PTP parameters as a sub-element of interface"
+    ptp_interfaces = ptp_interface.PtpInterfaceController(parent="iinterface")
+    "Expose PTP interfaces as a sub-element of interface"
 
     interface_networks = interface_network.InterfaceNetworkController(
         parent="iinterfaces")
@@ -426,8 +426,12 @@ class InterfaceController(rest.RestController):
 
         LOG.debug("patch_data: %s" % patch)
 
+        rpc_interface = objects.interface.get_by_uuid(pecan.request.context,
+                                                      interface_uuid)
+
         uses = None
         ports = None
+        has_ptp_interfaces = False
         patches_to_remove = []
         for p in patch:
             if '/ifclass' == p['path']:
@@ -439,6 +443,25 @@ class InterfaceController(rest.RestController):
             elif '/ports' == p['path']:
                 ports = p['value']
                 patches_to_remove.append(p)
+            elif '/ptp_interfaces/-' == p['path']:
+                has_ptp_interfaces = True
+                ptp_interface_id = p['value']
+                try:
+                    # Check PTP interface exists
+                    pecan.request.dbapi.ptp_interface_get(ptp_interface_id)
+                except exception.PtpInterfaceNotFound:
+                    raise wsme.exc.ClientSideError(
+                        _("No PTP interface object with id %s"
+                          % ptp_interface_id))
+                values = {'interface_id': rpc_interface.id,
+                          'ptp_interface_id': ptp_interface_id}
+                if p['op'] == 'add':
+                    pecan.request.dbapi.ptp_interface_assign(values)
+                else:
+                    pecan.request.dbapi.ptp_interface_remove(values)
+
+        if has_ptp_interfaces:
+            return Interface.convert_with_links(rpc_interface)
 
         if uses:
             patch.append(dict(path='/uses', value=uses, op='replace'))
@@ -446,9 +469,6 @@ class InterfaceController(rest.RestController):
         patch = [p for p in patch if p not in patches_to_remove]
 
         LOG.debug("patch_ports: %s" % ports)
-
-        rpc_interface = objects.interface.get_by_uuid(pecan.request.context,
-                                                      interface_uuid)
 
         # create a temp interface for semantics checks
         temp_interface = copy.deepcopy(rpc_interface)

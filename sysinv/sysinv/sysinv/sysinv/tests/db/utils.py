@@ -539,7 +539,6 @@ def create_test_ptp(**kw):
 # Utility functions to create a PTP instance for testing
 def get_test_ptp_instance(**kw):
     instance = {
-        # TODO: check why this is needed for this specific child class/table
         'type': kw.get('type', constants.PTP_PARAMETER_OWNER_INSTANCE),
         'name': kw.get('name'),
         'service': kw.get('service', constants.PTP_INSTANCE_TYPE_PTP4L)
@@ -556,8 +555,9 @@ def create_test_ptp_instance(**kw):
 # Create test ptp_interface object
 def get_test_ptp_interface(**kw):
     ptp_interface = {
+        'type': kw.get('type', constants.PTP_PARAMETER_OWNER_INTERFACE),
         'ptp_instance_id': kw.get('ptp_instance_id'),
-        'ptp_instance_uuid': kw.get('ptp_instance_uuid', None),
+        'ptp_instance_uuid': kw.get('ptp_instance_uuid'),
         'name': kw.get('name', None)
     }
     return ptp_interface
@@ -582,48 +582,6 @@ def create_test_ptp_parameter(**kw):
     parameter = get_test_ptp_parameter(**kw)
     dbapi = db_api.get_instance()
     return dbapi.ptp_parameter_create(parameter)
-
-
-def get_test_ptp_ownership(**kw):
-    ownership = {
-        'parameter_uuid': kw.get('parameter_uuid', None),
-        'owner_uuid': kw.get('owner_uuid', None)
-    }
-    return ownership
-
-
-def create_test_ptp_ownership(**kw):
-    ownership = get_test_ptp_ownership(**kw)
-    dbapi = db_api.get_instance()
-    return dbapi.ptp_parameter_set_owner(ownership)
-
-
-def get_test_ptp_instance_map(**kw):
-    map = {
-        'host_id': kw.get('host_id', None),
-        'ptp_instance_id': kw.get('ptp_instance_id', None)
-    }
-    return map
-
-
-def create_test_ptp_instance_map(**kw):
-    map = get_test_ptp_instance_map(**kw)
-    dbapi = db_api.get_instance()
-    return dbapi.ptp_instance_set_host(map)
-
-
-def get_test_ptp_interface_map(**kw):
-    map = {
-        'interface_id': kw.get('interface_id', None),
-        'ptp_interface_id': kw.get('ptp_interface_id', None)
-    }
-    return map
-
-
-def create_test_ptp_interface_map(**kw):
-    map = get_test_ptp_interface_map(**kw)
-    dbapi = db_api.get_instance()
-    return dbapi.ptp_interface_set_interface(map)
 
 
 # Create test dns object

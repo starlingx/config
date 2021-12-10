@@ -464,7 +464,8 @@ class BaseHostTestCase(BaseSystemTestCase):
         ptp_interfaces = []
         for ptp_instance in ptp_instances:
             ptp_interface = dbutils.create_test_ptp_interface(
-                ptp_instance_id=ptp_instance['id'])
+                ptp_instance_id=ptp_instance['id'],
+                ptp_instance_uuid=ptp_instance['uuid'])
             ptp_interfaces.append(ptp_interface)
         return ptp_interfaces
 

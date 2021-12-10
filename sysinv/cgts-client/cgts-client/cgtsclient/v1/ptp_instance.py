@@ -50,13 +50,8 @@ class PtpInstanceManager(base.Manager):
                 raise exc.InvalidAttribute('%s' % key)
         return self._create(self._path(), data)
 
-    def apply(self, ihost_uuid, ptp_instance_id):
-        return self._update('/v1/ihosts/%s?action=apply' % ihost_uuid,
-                            ptp_instance_id)
-
-    def remove(self, ihost_uuid, ptp_instance_id):
-        return self._update('/v1/ihosts/%s?action=remove' % ihost_uuid,
-                            ptp_instance_id)
+    def update(self, ptp_instance_id, patch):
+        return self._update(self._path(ptp_instance_id), patch)
 
     def delete(self, ptp_instance_id):
         return self._delete(self._path(ptp_instance_id))
@@ -72,7 +67,7 @@ def _find_ptp_instance(cc, key):
             return instance
     else:
         ptp_instances = cc.ptp_instance.list()
-        for instance in ptp_instances[:]:
+        for instance in ptp_instances:
             if instance.name == key:
                 return instance
         else:

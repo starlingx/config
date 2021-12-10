@@ -57,7 +57,7 @@ class PtpParameter(base.APIBase):
     "Value of PTP parameter"
 
     owners = types.MultiType([list])
-    "Owners information: name, type, etc."
+    "List of owners (UUIDs)"
 
     def __init__(self, **kwargs):
         self.fields = list(objects.ptp_parameter.fields.keys())
@@ -113,7 +113,7 @@ class PtpParameterController(rest.RestController):
     @wsme_pecan.wsexpose(PtpParameterCollection, types.uuid, wtypes.text,
                          types.uuid, int, wtypes.text, wtypes.text)
     def get_all(self, parent_uuid=None, type=None, marker=None, limit=None,
-                sort_key='id', sort_dir='asc'):
+                sort_key='name', sort_dir='asc'):
         """Retrieve a list of PTP parameters."""
         LOG.debug("PtpParameterController.get_all: parent %s uuid %s type %s" %
                   (self._parent, parent_uuid, type))
@@ -130,18 +130,27 @@ class PtpParameterController(rest.RestController):
                 pecan.request.context, marker)
 
         if parent_uuid:
-            ptp_parameters = \
-                pecan.request.dbapi.ptp_parameters_get_by_owner_uuid(
-                    parent_uuid, limit, marker_obj, sort_key=sort_key,
-                    sort_dir=sort_dir)
+            if self._parent == 'ptp_instance':
+                ptp_parameters = \
+                    pecan.request.dbapi.ptp_parameters_get_list(
+                        ptp_instance=parent_uuid, limit=limit,
+                        marker=marker_obj, sort_key=sort_key,
+                        sort_dir=sort_dir)
+            elif self._parent == 'ptp_interface':
+                ptp_parameters = \
+                    pecan.request.dbapi.ptp_parameters_get_list(
+                        ptp_interface=parent_uuid, limit=limit,
+                        marker=marker_obj, sort_key=sort_key,
+                        sort_dir=sort_dir)
         elif type is not None:
             ptp_parameters = \
-                pecan.request.dbapi.ptp_parameters_get_by_owner_type(
+                pecan.request.dbapi.ptp_parameters_get_list_by_type(
                     type, limit, marker_obj, sort_key=sort_key,
                     sort_dir=sort_dir)
         else:
             ptp_parameters = pecan.request.dbapi.ptp_parameters_get_list(
-                limit, marker_obj, sort_key=sort_key, sort_dir=sort_dir)
+                limit=limit, marker=marker_obj, sort_key=sort_key,
+                sort_dir=sort_dir)
 
         return PtpParameterCollection.convert_with_links(
             ptp_parameters, limit, sort_key=sort_key, sort_dir=sort_dir)
@@ -153,8 +162,7 @@ class PtpParameterController(rest.RestController):
                   ptp_parameter_uuid)
         try:
             ptp_parameter = objects.ptp_parameter.get_by_uuid(
-                pecan.request.context,
-                ptp_parameter_uuid)
+                pecan.request.context, ptp_parameter_uuid)
         except exception.InvalidParameterValue:
             raise wsme.exc.ClientSideError(
                 _("No PTP parameter found for %s" % ptp_parameter_uuid))
@@ -168,11 +176,11 @@ class PtpParameterController(rest.RestController):
         ptp_parameter_dict = ptp_parameter.as_dict()
         LOG.debug("PtpParameterController.post: %s" % ptp_parameter_dict)
 
-        # Get rid of owner details to create the PTP parameter
+        # Get rid of owner list to create the PTP parameter
         try:
             ptp_parameter_dict.pop('owners')
         except KeyError:
-            LOG.debug("PtpParameterController.post: no owner data in %s" %
+            LOG.debug("PtpParameterController.post: no owner list in %s" %
                       ptp_parameter_dict)
 
         result = pecan.request.dbapi.ptp_parameter_create(ptp_parameter_dict)
@@ -187,6 +195,7 @@ class PtpParameterController(rest.RestController):
         if self._parent:
             raise exception.OperationNotPermitted
 
+        utils.validate_patch(patch)
         ptp_parameter = objects.ptp_parameter.get_by_uuid(
             pecan.request.context, uuid)
 
@@ -215,12 +224,10 @@ class PtpParameterController(rest.RestController):
 
         # Only allow delete if there are no associated PTP instances and
         # interfaces
-        owners = pecan.request.dbapi.ptp_paramownerships_get_by_parameter(
+        owners = pecan.request.dbapi.ptp_parameter_get_owners(
             ptp_parameter_uuid)
         if owners:
-            uuids = [str(o['owner_uuid']) for o in owners]
-            raise wsme.exc.ClientSideError(
-                "PTP parameter %s is still associated with %s"
-                % (ptp_parameter_uuid, uuids))
+            raise wsme.exc.ClientSideError("PTP parameter %s still in use"
+                                           % ptp_parameter_uuid)
 
         pecan.request.dbapi.ptp_parameter_destroy(ptp_parameter_uuid)

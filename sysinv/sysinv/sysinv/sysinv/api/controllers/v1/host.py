@@ -1129,10 +1129,10 @@ class HostController(rest.RestController):
     "Expose interface_datanetworks as a sub-element of ihosts"
 
     ptp_instances = ptp_instance.PtpInstanceController(from_ihosts=True)
-    "Expose PTP instance as a sub-element of ihosts"
+    "Expose PTP instances as a sub-element of ihosts"
 
-    ptp_interfaces = ptp_interface.PtpInterfaceController(from_ihosts=True)
-    "Expose PTP interface as a sub-element of ihosts"
+    ptp_interfaces = ptp_interface.PtpInterfaceController(parent="ihosts")
+    "Expose PTP interfaces as a sub-element of ihosts"
 
     _custom_actions = {
         'detail': ['GET'],
@@ -1818,17 +1818,22 @@ class HostController(rest.RestController):
         """
         utils.validate_patch(patch)
 
+        has_ptp_instances = False
         optimizable = 0
         optimize_list = ['/uptime', '/location', '/serialid', '/task']
         for p in patch:
             path = p['path']
             if path in optimize_list:
                 optimizable += 1
+            elif path == '/ptp_instances/-':
+                has_ptp_instances = True
 
-        if len(patch) == optimizable:
+        if has_ptp_instances:
+            return self._patch_ptp(uuid, patch)
+        elif len(patch) == optimizable:
             return self._patch(uuid, patch)
         elif (pecan.request.user_agent.startswith('mtce') or
-           pecan.request.user_agent.startswith('vim')):
+              pecan.request.user_agent.startswith('vim')):
             return self._patch_sys(uuid, patch)
         else:
             return self._patch_gen(uuid, patch)
@@ -1840,6 +1845,27 @@ class HostController(rest.RestController):
     @cutils.synchronized(LOCK_NAME)
     def _patch_gen(self, uuid, patch):
         return self._patch(uuid, patch)
+
+    @cutils.synchronized(LOCK_NAME)
+    def _patch_ptp(self, uuid, patch):
+        ihost_obj = objects.host.get_by_uuid(pecan.request.context, uuid)
+        for p in patch:
+            ptp_instance_id = p['value']
+            try:
+                # Check PTP instance exists
+                pecan.request.dbapi.ptp_instance_get(ptp_instance_id)
+            except exception.PtpInstanceNotFound:
+                raise wsme.exc.ClientSideError(
+                    _("No PTP instance object with id %s"
+                        % ptp_instance_id))
+            values = {'host_id': ihost_obj.id,
+                      'ptp_instance_id': ptp_instance_id}
+            if p['op'] == 'add':
+                pecan.request.dbapi.ptp_instance_assign(values)
+            else:
+                pecan.request.dbapi.ptp_instance_remove(values)
+
+        return Host.convert_with_links(ihost_obj)
 
     @staticmethod
     def _validate_capability_is_not_set(old, new):

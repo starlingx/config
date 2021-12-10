@@ -236,7 +236,7 @@ class NetworkingPuppet(base.BasePuppet):
 
             for global_param in ptp_parameters_instance:
                 # Add the supplied instance parameters to global_parameters
-                if global_param['foreign_uuid'] == instance['uuid']:
+                if instance['uuid'] in global_param['owners']:
                     instance['global_parameters'][global_param['name']] = global_param['value']
                 if 'cmdline_opts' in instance['global_parameters']:
                     instance['cmdline_opts'] = instance['global_parameters'].pop('cmdline_opts')
@@ -280,7 +280,7 @@ class NetworkingPuppet(base.BasePuppet):
                 iface['parameters'].update(default_interface_parameters)
                 # Add supplied params to the interface
                 for param in ptp_parameters_interface:
-                    if param['foreign_uuid'] == iface['uuid']:
+                    if iface['uuid'] in param['owners']:
                         iface['parameters'][param['name']] = param['value']
 
         return ptp_instances
@@ -289,20 +289,20 @@ class NetworkingPuppet(base.BasePuppet):
 
         if host.clock_synchronization == constants.PTP:
             ptp_enabled = True
-            # Returning here because ptp instance functionality is not enabled at this time
-            # Subsequent code is inactive until this return statement is removed and ptp instance
-            # functionality is turned on
-            return {'platform::ptpinstance::enabled': ptp_enabled}
         else:
             ptp_enabled = False
-            return {'platform::ptpinstance::enabled': ptp_enabled}
+
+        # Returning here because ptp instance functionality is not enabled at this time
+        # Subsequent code is inactive until this return statement is removed and ptp instance
+        # functionality is turned on
+        return {'platform::ptpinstance::enabled': ptp_enabled}
 
         # Get the database entries for instances, interfaces and parameters
-        ptp_instances = self.dbapi.ptp_instances_get_by_ihost(ihost_id=host.id)
-        ptp_interfaces = self.dbapi.ptp_interfaces_get_by_host(host.uuid)
-        ptp_parameters_instance = self.dbapi.ptp_parameters_get_by_type(
+        ptp_instances = self.dbapi.ptp_instances_get_list(host=host.id)
+        ptp_interfaces = self.dbapi.ptp_interfaces_get_list(host=host.uuid)
+        ptp_parameters_instance = self.dbapi.ptp_parameters_get_list_by_type(
                                   constants.PTP_PARAMETER_OWNER_INSTANCE)
-        ptp_parameters_interface = self.dbapi.ptp_parameters_get_by_type(
+        ptp_parameters_interface = self.dbapi.ptp_parameters_get_list_by_type(
                                    constants.PTP_PARAMETER_OWNER_INTERFACE)
 
         for index, instance in enumerate(ptp_instances):

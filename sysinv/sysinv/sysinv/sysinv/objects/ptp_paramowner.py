@@ -11,6 +11,16 @@ from sysinv.objects import base
 from sysinv.objects import utils
 
 
+def get_parameters(field, db_object):
+    ptp_parameters = db_object['ptp_parameters']
+    parameters = []
+    if ptp_parameters is not None:
+        for p in ptp_parameters:
+            parameter = '%s=%s' % (p.name, p.value)
+            parameters.append(parameter)
+    return parameters
+
+
 class PtpParameterOwner(base.SysinvObject):
 
     dbapi = db_api.get_instance()
@@ -19,7 +29,7 @@ class PtpParameterOwner(base.SysinvObject):
             'id': int,
             'uuid': utils.str_or_none,
             'type': utils.str_or_none,
-            'capabilities': utils.dict_or_none
+            'capabilities': utils.dict_or_none,
              }
 
     _foreign_fields = {}

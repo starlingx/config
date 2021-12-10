@@ -245,7 +245,7 @@ class ihost(Base):
     peer_id = Column(Integer,
                      ForeignKey('peers.id'))
 
-    system = relationship("isystem")
+    system = relationship("isystem", lazy="joined", join_depth=1)
 
     host_upgrade = relationship("HostUpgrade", uselist=False)
     kube_host_upgrade = relationship("KubeHostUpgrade", uselist=False)
@@ -880,10 +880,8 @@ class PtpInterfaces(PtpParameterOwners):
                              nullable=False)
 
     ptp_instance = relationship("PtpInstances", lazy="joined", join_depth=1,
-                                foreign_keys=[
-                                    PtpInstances.id,
-                                    PtpInstances.name,
-                                    PtpInstances.uuid])
+                                primaryjoin="PtpInterfaces.ptp_instance_id == "
+                                            "PtpInstances.id")
 
     interfaces = relationship(
         "Interfaces",

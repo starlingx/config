@@ -12,14 +12,12 @@ from sysinv.objects import utils
 from sysinv.objects import ptp_paramowner
 
 
-def get_hosts(field, db_object):
+def get_hostnames(field, db_object):
     hosts = db_object['hosts']
-    if not hosts:
-        return []
-
     hostnames = []
-    for h in hosts:
-        hostnames.append(h.hostname)
+    if hosts is not None:
+        for h in hosts:
+            hostnames.append(h.hostname)
     return hostnames
 
 
@@ -28,13 +26,16 @@ class PtpInstance(ptp_paramowner.PtpParameterOwner):
     dbapi = db_api.get_instance()
 
     fields = dict({
+            'id': int,
             'name': utils.str_or_none,
             'service': utils.str_or_none,
-            'hosts': utils.list_of_strings_or_none
+            'hostnames': utils.list_of_strings_or_none,
+            'parameters': utils.list_of_strings_or_none
              }, **ptp_paramowner.PtpParameterOwner.fields)
 
     _foreign_fields = {
-        'hosts': get_hosts
+        'hostnames': get_hostnames,
+        'parameters': ptp_paramowner.get_parameters
     }
 
     @base.remotable_classmethod
