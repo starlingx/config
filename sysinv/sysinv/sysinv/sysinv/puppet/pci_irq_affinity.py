@@ -44,16 +44,12 @@ class PciIrqAffinityPuppet(openstack.OpenstackBasePuppet):
         if utils.is_openstack_applied(self.dbapi):
             helm_data = helm.HelmOperatorData(self.dbapi)
 
-            # if openstack includes the agent container then agent
-            # service on platform must be disabled
-            enable_agent_service = self.should_enable_agent_service()
-
             # The openstack services are authenticated with pod based
             # keystone.
             keystone_auth_data = helm_data.get_keystone_auth_data()
             openstack_auth_config = {
                 'platform::pciirqaffinity::params::openstack_enabled':
-                    enable_agent_service,
+                    True,
                 'platform::pciirqaffinity::params::openstack_username':
                     keystone_auth_data['admin_user_name'],
                 'platform::pciirqaffinity::params::openstack_tenant':
@@ -117,7 +113,13 @@ class PciIrqAffinityPuppet(openstack.OpenstackBasePuppet):
         return config
 
     def get_host_config(self, host):
-        return {}
+        host_labels = self.dbapi.label_get_by_host(host.id)
+        return {
+            'platform::pciirqaffinity::params::openstack_enabled':
+                utils.is_openstack_applied(self.dbapi) and
+                utils.has_openstack_compute(host_labels) and
+                self.should_enable_agent_service(),
+        }
 
     def get_public_url(self):
         # not an openstack service
