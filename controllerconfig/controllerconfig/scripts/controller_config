@@ -251,7 +251,7 @@ start()
             then
                 fatal_error "Unable to retrieve installation uuid from active controller"
             fi
-            INSTALL_UUID=`cat /www/pages/feed/rel-${SW_VERSION}/install_uuid`
+            INSTALL_UUID=`cat /var/www/pages/feed/rel-${SW_VERSION}/install_uuid`
             if [ "$INSTALL_UUID" != "$CONTROLLER_UUID" ]
             then
                 fatal_error "This node is running a different load than the active controller and must be reinstalled"
