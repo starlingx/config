@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -22,13 +22,15 @@ class OVSPuppet(base.BasePuppet):
 
     def get_host_config(self, host):
         config = {}
-        if (constants.WORKER in utils.get_personalities(host) and
-                self._vswitch_type() == constants.VSWITCH_TYPE_OVS_DPDK):
-            config.update(self._get_cpu_config(host))
-            config.update(self._get_memory_config(host))
-            config.update(self._get_port_config(host))
-            config.update(self._get_virtual_config(host))
-            config.update(self._get_lldp_config(host))
+        if constants.WORKER in utils.get_personalities(host):
+            config.update(self._get_vswitch_enabled_config(host))
+
+            if self._vswitch_type() == constants.VSWITCH_TYPE_OVS_DPDK:
+                config.update(self._get_cpu_config(host))
+                config.update(self._get_memory_config(host))
+                config.update(self._get_port_config(host))
+                config.update(self._get_virtual_config(host))
+                config.update(self._get_lldp_config(host))
         return config
 
     def _get_port_config(self, host):
@@ -373,6 +375,13 @@ class OVSPuppet(base.BasePuppet):
                 'openstack::neutron::params::tunnel_csum': True,
             })
         return config
+
+    def _get_vswitch_enabled_config(self, host):
+        host_labels = self.dbapi.label_get_by_host(host.id)
+        return {
+            'platform::vswitch::params::enabled':
+                utils.has_vswitch_enabled(host_labels, self.dbapi)
+        }
 
     def _is_vxlan_datanet(self, datanet):
         return datanet.get('network_type') == constants.DATANETWORK_TYPE_VXLAN

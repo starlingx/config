@@ -118,7 +118,7 @@ EDGEWORKER = 'edgeworker'
 
 PERSONALITIES = [CONTROLLER, STORAGE, WORKER, EDGEWORKER]
 
-# SUBFUNCTION FEATURES
+# Subfunction features
 SUBFUNCTIONS = 'subfunctions'
 LOWLATENCY = 'lowlatency'
 
