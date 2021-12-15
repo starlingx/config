@@ -23,7 +23,6 @@ import jsonpatch
 import os
 import pecan
 from pecan import rest
-import re
 import six
 import wsme
 from wsme import types as wtypes
@@ -408,14 +407,9 @@ class SystemController(rest.RestController):
         change_dc_role = False
         vswitch_type = None
         new_system_mode = None
-        ALLOWED_CHARS = r"^[a-zA-Z0-9!@#$%^&*()_+\-=\[\]{};:\'\"|,.<>\/? ]*$"
 
         # prevent description field from being updated
         for p in jsonpatch.JsonPatch(patch):
-            if p['value'] is not None and not re.match(ALLOWED_CHARS, p['value']):
-                raise wsme.exc.ClientSideError(_("System values must not "
-                                               "contain special characters."))
-
             if p['path'] == '/software_version':
                 raise wsme.exc.ClientSideError(_("software_version field "
                                                  "cannot be modified."))
