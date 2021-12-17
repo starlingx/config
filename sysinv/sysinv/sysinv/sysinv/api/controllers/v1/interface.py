@@ -1690,6 +1690,7 @@ def set_interface_mac(ihost, interface):
     selected_ifname = None
     if interface['iftype'] == constants.INTERFACE_TYPE_VIRTUAL:
         selected_mac = constants.ETHERNET_NULL_MAC
+    available_macs = _get_lower_interface_macs(ihost, interface)
     if interface['iftype'] == constants.INTERFACE_TYPE_AE:
         boot_interface = _get_boot_interface(ihost)
         if boot_interface:
@@ -1701,9 +1702,19 @@ def set_interface_mac(ihost, interface):
         else:
             LOG.warn("No boot interface found for host {}".format(
                 ihost['hostname']))
+
+            # If one of the interfaces in the bond is the original mgmt mac
+            # of controller-0, select that interface and its mac.
+            if (ihost['hostname'] == constants.CONTROLLER_0_HOSTNAME and
+                    ihost['mgmt_mac'] is not None and
+                    interface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM):
+                for ifname in interface['uses']:
+                    if ihost['mgmt_mac'] == available_macs[ifname]:
+                        selected_ifname = ifname
+                        selected_mac = available_macs[selected_ifname]
+                        break
     if not selected_mac:
         # Fallback to selecting the first interface in the list.
-        available_macs = _get_lower_interface_macs(ihost, interface)
         selected_ifname = sorted(available_macs)[0]
         selected_mac = available_macs[selected_ifname]
     if interface.get('imac') != selected_mac:
