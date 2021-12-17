@@ -2288,12 +2288,13 @@ class ConductorManager(service.PeriodicService):
             except Exception as ex:
                 LOG.exception("Failed to get interface %s for port %s, exception: %s" %
                                 (port.interface_id, port.name, type(ex).__name__))
+                continue
 
             if port.pciaddr in inic_pciaddr_dict.keys():
                 if (inic_pciaddr_dict[port.pciaddr]['pvendor'] != port.pvendor
                         or (inic_pciaddr_dict[port.pciaddr]['pvendor'] == port.pvendor
                         and inic_pciaddr_dict[port.pciaddr]['pdevice'] != port.pdevice)):
-                    if (iface and iface.ifclass is None and not iface.used_by):
+                    if (iface.ifclass is None and not iface.used_by):
                         LOG.info('Detected port %s addr:%s replaced from "%s/%s" to "%s/%s"'
                                 % (port.name, port.pciaddr, port.pvendor, port.pdevice,
                                   inic_pciaddr_dict[port.pciaddr]['pvendor'],
@@ -2308,7 +2309,7 @@ class ConductorManager(service.PeriodicService):
                         alarm_port_list.append((port, "OS reports vendor or device-id without match"
                                                 " on DB for port {}".format(port.name)))
             else:
-                if (iface and iface.ifclass is None and not iface.used_by):
+                if (iface.ifclass is None and not iface.used_by):
                     LOG.info('Detected port %s addr:%s unreported and class=none on DB "%s/%s"'
                             % (port.name, port.pciaddr, port.pvendor, port.pdevice))
                     unreported_ports.append(port)
@@ -2316,8 +2317,11 @@ class ConductorManager(service.PeriodicService):
                     LOG.info("Unreported port {} at addr:{}, has interface {} with class {}"
                              " or is used by {}".format(port.name, port.pciaddr, port.interface_id,
                                                         iface.ifclass, iface.used_by))
-                    alarm_port_list.append((port, "Port {} on DB is no longer reported"
-                                                 " by the OS".format(port.name)))
+                    # if class is DATA the interface might be owned by user space poll mode driver
+                    # like ovs-dpdk and no longer be reported by the OS
+                    if (iface.ifclass != constants.INTERFACE_CLASS_DATA):
+                        alarm_port_list.append((port, "Port {} on DB is no longer reported"
+                                                     " by the OS".format(port.name)))
 
         # first clear alarms that are no longer valid
         self._clear_existing_port_report_mismatch_alarms(ihost, eth_ports, alarm_port_list)
