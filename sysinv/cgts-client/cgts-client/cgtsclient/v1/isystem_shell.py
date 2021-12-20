@@ -160,7 +160,7 @@ def do_modify(cc, args):
     if print_https_warning:
         certificates = cc.certificate.list()
         for certificate in certificates:
-            if certificate.certtype in ['ssl', 'tpm_mode']:
+            if certificate.certtype == 'ssl':
                 warning = ("Existing certificate %s is used for https."
                            % certificate.uuid)
                 break

@@ -128,9 +128,6 @@ class Certificate(base.APIBase):
                                              'start_date',
                                              'expiry_date'])
 
-        # insert details for this certificate if they exist
-        certificate = _insert_certificate_details(certificate)
-
         certificate.links = \
             [link.Link.make_link('self', pecan.request.host_url,
                                  'certificates', certificate.uuid),
@@ -169,33 +166,6 @@ def _check_certificate_data(certificate):
     if not utils.get_https_enabled():
         raise wsme.exc.ClientSideError(
             _("Cannot configure Certificate without HTTPS mode being enabled"))
-
-    return certificate
-
-
-def _insert_certificate_details(certificate):
-    if not certificate:
-        return
-
-    if certificate.certtype == constants.CERT_MODE_TPM:
-        try:
-            tpmconfig = pecan.request.dbapi.tpmconfig_get_one()
-        except exception.NotFound:
-            return certificate
-
-        tpmdevices = pecan.request.dbapi.tpmdevice_get_list()
-        certificate.details = {}
-        states = {}
-        for device in tpmdevices:
-            # extract the state info per host
-            ihost = pecan.request.dbapi.ihost_get(device['host_id'])
-            if ihost:
-                states[ihost.hostname] = device.state
-        if tpmdevices:
-            certificate.details['state'] = states
-            if tpmconfig.updated_at:
-                certificate.details['updated_at'] = \
-                    tpmconfig.updated_at.isoformat()
 
     return certificate
 
@@ -283,7 +253,6 @@ class CertificateController(rest.RestController):
 
            Certificates are installed according to one of the following modes:
                default: install certificate for ssl
-               tpm_mode: install certificate to tpm devices for ssl
                docker_registry: install certificate for docker registry
                openstack: install certificate for openstack
                openstack_ca: install ca certificate for openstack
@@ -379,10 +348,9 @@ class CertificateController(rest.RestController):
 
                 continue
 
-            # validation checking for ssl, tpm_mode, docker_registry
+            # validation checking for ssl, docker_registry
             # and openstack certficcates
             if mode in [constants.CERT_MODE_SSL,
-                        constants.CERT_MODE_TPM,
                         constants.CERT_MODE_DOCKER_REGISTRY,
                         constants.CERT_MODE_OPENSTACK,
                         ]:
@@ -425,27 +393,6 @@ class CertificateController(rest.RestController):
                 elif msg:
                     return dict(success="", error=msg)
 
-        if mode == constants.CERT_MODE_TPM:
-            try:
-                tpm = pecan.request.dbapi.tpmconfig_get_one()
-            except exception.NotFound:
-                tpm = None
-                pass
-
-            if tpm:
-                tpmdevices = pecan.request.dbapi.tpmdevice_get_list()
-                # if any of the tpm devices are in APPLYING state
-                # then disallow a modification until previous config
-                # either applies or fails
-                for device in tpmdevices:
-                    if device.state == constants.TPMCONFIG_APPLYING:
-                        msg = ("TPM Device %s is still in APPLYING state. "
-                               "Wait for the configuration to finish "
-                               "before attempting a modification." %
-                               device.uuid)
-                        LOG.info(msg)
-                        return dict(success="", error=msg)
-
         try:
             config_dict = {'passphrase': passphrase,
                            'mode': mode,
@@ -461,15 +408,6 @@ class CertificateController(rest.RestController):
             return dict(success="", error=str(e.value), body="", certificates={})
 
         certificates = pecan.request.dbapi.certificate_get_list()
-        # ssl and ssl_tpm certs are mutual exclusive, so
-        # if the new cert is a SSL cert, delete the existing TPM cert as well
-        # if the new cert is a TPM cert, delete the existing SSL cert as well
-        for certificate in certificates:
-            if (mode == constants.CERT_MODE_SSL
-                    and certificate.certtype == constants.CERT_MODE_TPM) or \
-                (mode == constants.CERT_MODE_TPM
-                    and certificate.certtype == constants.CERT_MODE_SSL):
-                pecan.request.dbapi.certificate_destroy(certificate.uuid)
 
         # Create new or update existing certificates in sysinv with the
         # information returned from conductor manager.
@@ -479,7 +417,6 @@ class CertificateController(rest.RestController):
             # cert is ICA signed cert (ie, the pem_contents contains
             # intermediate CA certs), skip these intermediate CA certs.
             if mode in [constants.CERT_MODE_SSL,
-                        constants.CERT_MODE_TPM,
                         constants.CERT_MODE_DOCKER_REGISTRY,
                         constants.CERT_MODE_OPENSTACK] \
                     and inv_cert.get('is_ca', None):

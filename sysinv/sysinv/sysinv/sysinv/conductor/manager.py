@@ -32,7 +32,6 @@ collection of inventory data for each host.
 import errno
 import filecmp
 import fnmatch
-import glob
 import hashlib
 import io
 import math
@@ -7349,8 +7348,7 @@ class ConductorManager(service.PeriodicService):
         if system.capabilities.get('https_enabled', False):
             certificates = self.dbapi.certificate_get_list()
             for certificate in certificates:
-                if certificate.certtype in [constants.CERT_MODE_SSL,
-                                            constants.CERT_MODE_TPM]:
+                if certificate.certtype == constants.CERT_MODE_SSL:
                     break
             else:
                 self._config_selfsigned_certificate(context)
@@ -12272,38 +12270,12 @@ class ConductorManager(service.PeriodicService):
 
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-    def _destroy_tpm_config(self, context, tpm_obj=None):
-        """Delete a tpmconfig."""
-
-        if not tpm_obj:
-            tpm_obj = None
-            try:
-                tpm_obj = self.dbapi.tpmconfig_get_one()
-            except exception.NotFound:
-                return
-
-        tpm_file = tpm_obj.tpm_path
-        tpmdevices = self.dbapi.tpmdevice_get_list()
-        for device in tpmdevices:
-            self.dbapi.tpmdevice_destroy(device.uuid)
-        self.dbapi.tpmconfig_destroy(tpm_obj.uuid)
-        self.update_tpm_config_manifests(context,
-                                         delete_tpm_file=tpm_file)
-
-        alarms = self.fm_api.get_faults_by_id(
-            fm_constants.FM_ALARM_ID_TPM_INIT)
-        if alarms:
-            for alarm in alarms:
-                self.fm_api.clear_fault(
-                    fm_constants.FM_ALARM_ID_TPM_INIT,
-                    alarm.entity_instance_id)
-
     @staticmethod
     def _extract_keys_from_pem(mode, pem_contents, cert_format,
                                passphrase=None):
         """Extract keys from the pem contents
 
-        :param mode: mode one of: ssl, tpm_mode, docker_registry
+        :param mode: mode one of: ssl, docker_registry
         :param pem_contents: pem_contents in unicode
         :param cert_format: serialization.PrivateFormat
         :param passphrase: passphrase for PEM file
@@ -12318,7 +12290,6 @@ class ConductorManager(service.PeriodicService):
         private_mode = False
         temp_pem_contents = pem_contents.encode("utf-8")
         if mode in [constants.CERT_MODE_SSL,
-                    constants.CERT_MODE_TPM,
                     constants.CERT_MODE_DOCKER_REGISTRY,
                     constants.CERT_MODE_OPENSTACK,
                     ]:
@@ -12428,42 +12399,6 @@ class ConductorManager(service.PeriodicService):
             LOG.warn(msg)
             raise exception.SysinvException(_(msg))
 
-    def _perform_config_certificate_tpm_mode(self, context,
-                                             tpm, private_bytes, public_bytes):
-
-        personalities = [constants.CONTROLLER]
-
-        os_tpmdevices = glob.glob('/dev/tpm*')
-        if not os_tpmdevices:
-            msg = "TPM device does not exist on active controller"
-            LOG.warn(msg)
-            raise exception.SysinvException(_(msg))
-        config_uuid = self._config_update_hosts(context, personalities)
-
-        cert_path = constants.SSL_CERT_DIR + 'key.pem'
-        public_path = constants.SSL_CERT_DIR + 'cert.pem'
-
-        config_dict = {
-            'personalities': personalities,
-            'file_names': [cert_path, public_path],
-            'file_content': {cert_path: private_bytes,
-                             public_path: public_bytes},
-            'permissions': constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY,
-        }
-        self._config_update_file(context, config_uuid, config_dict)
-
-        tpmconfig_dict = {'tpm_path': constants.SSL_CERT_DIR + 'object.tpm'}
-        if not tpm:
-            self.dbapi.tpmconfig_create(tpmconfig_dict)
-
-        tpmconfig_dict.update(
-            {'cert_path': constants.SSL_CERT_DIR + 'key.pem',
-             'public_path': constants.SSL_CERT_DIR + 'cert.pem'})
-
-        self.update_tpm_config(context,
-                               tpmconfig_dict,
-                               update_file_required=False)
-
     def _get_registry_floating_address(self):
         """gets the registry floating address. Currently this is mgmt
         """
@@ -12483,8 +12418,6 @@ class ConductorManager(service.PeriodicService):
 
         In regular mode, the SSL certificate is crafted from the
             isolated private and public keys.
-
-        In tpm_mode, this is done by tpmconfig
         """
 
         passphrase = config_dict.get('passphrase', None)
@@ -12498,27 +12431,8 @@ class ConductorManager(service.PeriodicService):
                                         passphrase)
 
         personalities = [constants.CONTROLLER]
-        tpm = None
-        try:
-            tpm = self.dbapi.tpmconfig_get_one()
-        except exception.NotFound:
-            pass
 
-        if mode == constants.CERT_MODE_TPM:
-            private_bytes = self._get_private_bytes_one(private_key)
-            public_bytes = self._get_public_bytes(cert_list)
-            self._perform_config_certificate_tpm_mode(
-                context, tpm, private_bytes, public_bytes)
-
-            file_content = public_bytes
-            # copy the certificate to shared directory
-            with os.fdopen(os.open(constants.SSL_PEM_FILE_SHARED,
-                                   os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
-                                   constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
-                                   'wb') as f:
-                f.write(file_content)
-
-        elif mode == constants.CERT_MODE_SSL:
+        if mode == constants.CERT_MODE_SSL:
             config_uuid = self._config_update_hosts(context, personalities)
             private_bytes = self._get_private_bytes_one(private_key)
             public_bytes = self._get_public_bytes(cert_list)
@@ -12538,11 +12452,6 @@ class ConductorManager(service.PeriodicService):
                                    constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY),
                                    'wb') as f:
                 f.write(file_content)
-
-            if tpm:
-                LOG.info("tpm_mode not requested; destroy tpmconfig=%s" %
-                         tpm.uuid)
-                self._destroy_tpm_config(context, tpm_obj=tpm)
 
             config_uuid = self._config_update_hosts(context, personalities)
             config_dict = {

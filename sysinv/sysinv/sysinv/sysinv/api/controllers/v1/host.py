@@ -5673,9 +5673,6 @@ class HostController(rest.RestController):
         self._semantic_check_cinder_volumes(hostupdate.ihost_orig)
         self._semantic_check_filesystem_sizes(hostupdate.ihost_orig)
         self._semantic_check_storage_backend(hostupdate.ihost_orig)
-        # If HTTPS is enabled then we may be in TPM configuration mode
-        if utils.get_https_enabled():
-            self._semantic_check_tpm_config(hostupdate.ihost_orig)
         if utils.get_system_mode() == constants.SYSTEM_MODE_DUPLEX:
             self._semantic_check_duplex_oam_config(hostupdate.ihost_orig)
 
@@ -5940,38 +5937,6 @@ class HostController(rest.RestController):
                 "Rebooting a simplex system is not allowed."))
         return True
 
-    @staticmethod
-    def _semantic_check_tpm_config(ihost):
-        """Pre swact/unlock semantic checks for TPM configuration"""
-        tpmconfig = utils.get_tpm_config()
-        if tpmconfig:
-            # retrieve the tpmdevice configuration for this host.
-            # If this host got Reinstalled or Restored, and it had
-            # TPM configured on it prior, then we should still find
-            # a valid tpmdevice entry for this host. Otherwise this
-            # is a new host or a previous host that was deleted and re-added
-            tpmdevice = \
-                pecan.request.dbapi.tpmdevice_get_by_host(ihost['uuid'])
-            if not tpmdevice or len(tpmdevice) > 1:
-                raise wsme.exc.ClientSideError(
-                        _("Global TPM configuration found; but "
-                          "no valid TPM Device configuration on host %s." %
-                          ihost['hostname']))
-            tpmdevice = tpmdevice[0]
-            if tpmdevice.state == constants.TPMCONFIG_APPLYING:
-                raise wsme.exc.ClientSideError(
-                    _("TPM configuration in progress on host %s; "
-                      "Please wait for operation to complete "
-                      "before re-attempting." % ihost['hostname']))
-            elif tpmdevice.state != constants.TPMCONFIG_APPLIED:
-                # if the TPM certificate for this host is not
-                # preserved as tpm_data, then disallow unlock/swact
-                if not tpmdevice.tpm_data:
-                    raise wsme.exc.ClientSideError(
-                        _("TPM configuration not fully applied on host %s; "
-                          "Please run system certificate-install -m tpm_mode "
-                          "before re-attempting." % ihost['hostname']))
-
     def _semantic_check_swact_upgrade(self, from_host, to_host, force_swact=False):
         """
         Perform semantic checks related to upgrades prior to swacting host.
@@ -6196,10 +6161,6 @@ class HostController(rest.RestController):
                 self._semantic_check_swact_upgrade(hostupdate.ihost_orig,
                                                    ihost_ctr,
                                                    force_swact)
-
-                # If HTTPS is enabled then we may be in TPM mode
-                if utils.get_https_enabled():
-                    self._semantic_check_tpm_config(ihost_ctr)
 
         # Check: If DRBD is resizing
         controller_fs_list = pecan.request.dbapi.controller_fs_get_list()

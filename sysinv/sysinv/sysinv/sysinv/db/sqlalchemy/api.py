@@ -7643,25 +7643,6 @@ class Connection(api.Connection):
             query.delete()
 
     @objects.objectify(objects.tpmconfig)
-    def tpmconfig_create(self, values):
-
-        if not values.get('uuid'):
-            values['uuid'] = uuidutils.generate_uuid()
-
-        tpmconfig = models.tpmconfig()
-        tpmconfig.update(values)
-        with _session_for_write() as session:
-            try:
-                session.add(tpmconfig)
-                session.flush()
-            except db_exc.DBDuplicateEntry:
-                LOG.error("Failed to add TPM configuration %s. "
-                          "Already exists with this uuid" %
-                          (values['uuid']))
-                raise exception.TPMConfigAlreadyExists(uuid=values['uuid'])
-            return tpmconfig
-
-    @objects.objectify(objects.tpmconfig)
     def tpmconfig_get(self, uuid):
         query = model_query(models.tpmconfig)
         query = query.filter_by(uuid=uuid)

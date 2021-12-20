@@ -4554,19 +4554,6 @@ class Connection(object):
         """
 
     @abc.abstractmethod
-    def tpmconfig_create(self, values):
-        """Create a new TPM configuration.
-
-        :param values: A dict containing several items used to identify
-                       and track the global TPM configuration. For example:
-                        {
-                         'uuid'     : uuidutils.generate_uuid(),
-                         'tpm_path' : Path to TPM object context,
-                        }
-        :returns: A TPM configuration
-        """
-
-    @abc.abstractmethod
     def tpmconfig_get(self, uuid):
         """Return a TPM configuration
 
