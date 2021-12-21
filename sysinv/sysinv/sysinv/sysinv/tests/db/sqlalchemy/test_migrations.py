@@ -2039,6 +2039,7 @@ class TestMigrations(BaseMigrationTestCase, WalkVersionsMixin):
             'updated_at': 'DateTime',
             'deleted_at': 'DateTime',
             'id': 'Integer',
+            'name': 'String',
             'ptp_instance_id': 'Integer'
         }
         for column, column_type in ptp_interface_columns.items():

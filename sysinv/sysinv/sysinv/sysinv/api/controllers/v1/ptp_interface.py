@@ -57,6 +57,9 @@ class PtpInterface(base.APIBase):
 
     # Fields of PtpInterface
 
+    name = wtypes.text
+    "Name given to the PTP interface"
+
     ptp_instance_id = int
     "ID for the PTP instance this interface is associated with"
 
@@ -86,6 +89,7 @@ class PtpInterface(base.APIBase):
             ptp_interface.unset_fields_except(['uuid',
                                                'type',
                                                'capabilities',
+                                               'name',
                                                'ptp_instance_id',
                                                'ptp_instance_uuid',
                                                'ptp_instance_name',
@@ -169,6 +173,10 @@ class PtpInterfaceController(rest.RestController):
     def _create_ptp_interface(self, ptp_interface):
         # Create a new PTP interface
         ptp_interface_dict = ptp_interface.as_dict()
+
+        """
+        TODO: enforce "name" as required field here
+        """
 
         instance_uuid = ptp_interface_dict.pop('ptp_instance_uuid', None)
         instance = objects.ptp_instance.get_by_uuid(pecan.request.context,

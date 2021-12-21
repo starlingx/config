@@ -4035,8 +4035,7 @@ class Connection(api.Connection):
                 session.add(ptp_parameter)
                 session.flush()
             except db_exc.DBDuplicateEntry:
-                raise exception.PtpParameterAlreadyExists(
-                    name=values['name'], value=values['value'])
+                raise exception.PtpParameterAlreadyExists(uuid=values['uuid'])
             return self._ptp_parameter_get(values['uuid'])
 
     @objects.objectify(objects.ptp_parameter)

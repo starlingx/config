@@ -53,9 +53,9 @@ class BasePtpInterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
                                               self.API_PREFIX,
                                               interface_uuid)
 
-    def get_post_object(self, ptp_instance_uuid):
+    def get_post_object(self, ptp_instance_uuid, name=None):
         ptp_interface_db = dbutils.get_test_ptp_interface(
-            ptp_instance_uuid=ptp_instance_uuid)
+            ptp_instance_uuid=ptp_instance_uuid, name=name)
         return ptp_interface_db
 
 
@@ -64,8 +64,8 @@ class TestCreatePtpInterface(BasePtpInterfaceTestCase):
     def setUp(self):
         super(TestCreatePtpInterface, self).setUp()
 
-    def _create_ptp_interface_success(self, ptp_instance_uuid):
-        ptp_interface_db = self.get_post_object(ptp_instance_uuid)
+    def _create_ptp_interface_success(self, name, ptp_instance_uuid):
+        ptp_interface_db = self.get_post_object(ptp_instance_uuid, name)
         response = self.post_json(self.API_PREFIX, ptp_interface_db,
                                   headers=self.API_HEADERS)
         self.assertEqual('application/json', response.content_type)
@@ -76,9 +76,9 @@ class TestCreatePtpInterface(BasePtpInterfaceTestCase):
                          ptp_interface_db[self.COMMON_FIELD])
         """
 
-    def _create_ptp_interface_failed(self, ptp_instance_uuid,
+    def _create_ptp_interface_failed(self, name, ptp_instance_uuid,
                                      status_code, error_message):
-        ptp_interface_db = self.get_post_object(ptp_instance_uuid)
+        ptp_interface_db = self.get_post_object(ptp_instance_uuid, name)
         response = self.post_json(self.API_PREFIX, ptp_interface_db,
                                   headers=self.API_HEADERS,
                                   expect_errors=True)
@@ -87,10 +87,11 @@ class TestCreatePtpInterface(BasePtpInterfaceTestCase):
         self.assertIn(error_message, response.json['error_message'])
 
     def test_create_ptp_interface_ok(self):
-        self._create_ptp_interface_success(self.instance.uuid)
+        self._create_ptp_interface_success('test', self.instance.uuid)
 
     def test_create_ptp_interface_invalid_instance(self):
         self._create_ptp_interface_failed(
+            'test',
             '32dbb999-6c10-448d-aeca-964c50af6384',
             status_code=http_client.NOT_FOUND,
             error_message='No PTP instance with id 32dbb999-6c10-448d-aeca-964c50af6384 found.')

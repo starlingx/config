@@ -461,8 +461,7 @@ class PtpInterfaceAlreadyExists(Conflict):
 
 
 class PtpParameterAlreadyExists(Conflict):
-    message = _("A PTP parameter with name '%(name)s' and value "
-                "'%(value)s' already exists.")
+    message = _("A PTP parameter with UUID %(uuid)s already exists.")
 
 
 class PtpParameterOwnershipAlreadyExists(Conflict):

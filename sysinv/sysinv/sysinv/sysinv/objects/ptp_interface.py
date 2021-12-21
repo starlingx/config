@@ -35,6 +35,7 @@ class PtpInterface(ptp_paramowner.PtpParameterOwner):
     dbapi = db_api.get_instance()
 
     fields = dict({
+            'name': utils.str_or_none,
             'ptp_instance_id': utils.int_or_none,
             'ptp_instance_uuid': utils.str_or_none,
             'ptp_instance_name': utils.str_or_none,
