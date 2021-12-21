@@ -168,6 +168,18 @@ def _subprocess_setup():
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
 
+def exception_msg(exception):
+    """Helper method to extract exception message
+       for both py2 and py3 exception types
+
+       :param exception:    Exception object
+       :returns:  string representing the exception message
+    """
+    if hasattr(exception, 'message'):
+        return str(exception.message)
+    return str(exception)
+
+
 def execute(*cmd, **kwargs):
     """Helper method to execute command with optional retry.
 
