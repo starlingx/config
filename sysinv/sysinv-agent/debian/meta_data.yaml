@@ -1,7 +1,12 @@
 ---
 debver: 1.0-1
 debname: sysinv-agent
-dl_hook: dl_hook
+src_path: null
+src_files:
+  - LICENSE
+  - sysinv-agent
+  - sysinv-agent.conf
+  - sysinv-agent.service
 revision:
   dist: $STX_DIST
   PKG_GITREVCOUNT: true
