@@ -12,8 +12,8 @@ VERSION=$1
 
 FEED_DIR=/var/www/pages/feed/rel-$VERSION
 
-rm -f /pxeboot/pxelinux.cfg.files/*-$VERSION
-rm -rf /pxeboot/rel-$VERSION
+rm -f /var/pxeboot/pxelinux.cfg.files/*-$VERSION
+rm -rf /var/pxeboot/rel-$VERSION
 
 rm -f /usr/sbin/pxeboot-update-$VERSION.sh
 

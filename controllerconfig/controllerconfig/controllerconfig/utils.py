@@ -238,7 +238,7 @@ def persist_config():
 
     try:
         subprocess.check_call(["ln", "-s", constants.CONFIG_PERMDIR +
-                               "/pxelinux.cfg", "/pxeboot/pxelinux.cfg"])
+                               "/pxelinux.cfg", "/var/pxeboot/pxelinux.cfg"])
     except subprocess.CalledProcessError:
         LOG.error("Failed to create pxelinux.cfg symlink")
         raise Exception("Failed to persist config files")
