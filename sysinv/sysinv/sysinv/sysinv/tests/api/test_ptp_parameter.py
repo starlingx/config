@@ -112,13 +112,6 @@ class TestCreatePtpParameter(BasePtpParameterTestCase):
         self._create_ptp_parameter_success(
             name=self.name, value='another-value')
 
-    def test_create_ptp_parameter_duplicate_failed(self):
-        self._create_ptp_parameter_failed(
-            name=self.name,
-            value=self.value,
-            status_code=http_client.CONFLICT,
-            error_message='already exists')
-
 
 class TestSetPtpParameter(BasePtpParameterTestCase):
     name = 'test-param'

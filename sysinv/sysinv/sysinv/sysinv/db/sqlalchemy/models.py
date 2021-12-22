@@ -818,8 +818,6 @@ class PtpParameters(Base):
                       "foreign(PtpParameterOwnerships.owner_uuid)",
         back_populates="ptp_parameters", lazy="joined", join_depth=1)
 
-    UniqueConstraint('name', 'value', name='u_paramnamevalue')
-
 
 class PtpParameterOwners(Base):
     __tablename__ = "ptp_parameter_owners"
@@ -875,6 +873,7 @@ class PtpInterfaces(PtpParameterOwners):
     id = Column(Integer, ForeignKey('ptp_parameter_owners.id'),
                 primary_key=True,
                 nullable=False)
+    name = Column(String(255), unique=True)
     ptp_instance_id = Column(Integer,
                              ForeignKey('ptp_instances.id',
                                         ondelete='CASCADE'),

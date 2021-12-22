@@ -60,8 +60,6 @@ def upgrade(migrate_engine):
         Column('name', String(255), nullable=False),
         Column('value', String(255)),
 
-        UniqueConstraint('name', 'value', name='u_paramnamevalue'),
-
         mysql_engine=ENGINE,
         mysql_charset=CHARSET,
     )
@@ -102,6 +100,8 @@ def upgrade(migrate_engine):
         Column('name', String(255), unique=True, nullable=False),
         Column('service', String(255)),
 
+        Column('extra_info', Text),
+
         mysql_engine=ENGINE,
         mysql_charset=CHARSET,
     )
@@ -118,10 +118,13 @@ def upgrade(migrate_engine):
         Column('id', Integer,
                ForeignKey('ptp_parameter_owners.id', ondelete="CASCADE"),
                primary_key=True, nullable=False),
+        Column('name', String(255), unique=True),
 
         Column('ptp_instance_id', Integer,
                ForeignKey('ptp_instances.id', ondelete="CASCADE"),
                nullable=False),
+
+        Column('extra_info', Text),
 
         mysql_engine=ENGINE,
         mysql_charset=CHARSET,
