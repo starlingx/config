@@ -89,6 +89,8 @@ ARMADA_LOCK_NAME = 'lock'
 LOCK_NAME_APP_REAPPLY = 'app_reapply'
 LOCK_NAME_PROCESS_APP_METADATA = 'process_app_metadata'
 
+STX_APP_PLUGIN_PATH = '/var/stx_app/plugins'
+
 
 # Helper functions
 def generate_armada_service_manifest_fqpn(app_name, app_version, manifest_filename):
@@ -4243,34 +4245,7 @@ class PluginHelper(object):
     def __init__(self, dbapi, helm_op):
         self._dbapi = dbapi
         self._helm_op = helm_op
-        self._system_path = self._get_python_system_path()
-
-    def _get_python_system_path(self):
-        path = None
-        try:
-            if six.PY2:
-                path = site.getsitepackages()[0]
-            else:
-                for p in site.getsitepackages():
-                    if os.path.exists(p):
-                        path = p
-                        break
-        except AttributeError:
-            # Based on https://github.com/pypa/virtualenv/issues/737.
-            # site.getsitepackages() function is not available in a virtualenv.
-            # So use a tox friendly method when in a virtualenv
-            try:
-                from distutils.sysconfig import get_python_lib
-                path = get_python_lib()
-            except Exception as e:
-                raise exception.SysinvException(_(
-                    "Failed to determine the python site packages path" % str(e)))
-
-        if not path:
-            raise exception.SysinvException(_(
-                "Failed to determine the python site packages path."))
-
-        return path
+        self._system_path = STX_APP_PLUGIN_PATH
 
     def _get_pth_fqpn(self, app):
         return "{}/{}{}-{}.pth".format(

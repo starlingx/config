@@ -60,6 +60,7 @@ System Inventory
 %define local_etc_motdd      /etc/motd.d/
 %define pythonroot           /usr/lib64/python2.7/site-packages
 %define ocf_resourced        /usr/lib/ocf/resource.d
+%define stx_app_plugind      /var/stx_app/plugins
 
 %define debug_package %{nil}
 
@@ -106,6 +107,8 @@ install -m 755 -p -D scripts/sysinv-conductor %{buildroot}/usr/lib/ocf/resource.
 install -m 644 -p -D scripts/sysinv-api.service %{buildroot}%{_unitdir}/sysinv-api.service
 install -m 644 -p -D scripts/sysinv-conductor.service %{buildroot}%{_unitdir}/sysinv-conductor.service
 
+install -d -m 755 %{buildroot}%{stx_app_plugind}
+
 #install -p -D -m 755 %{buildroot}/usr/bin/sysinv-api %{buildroot}/usr/bin/sysinv-api
 #install -p -D -m 755 %{buildroot}/usr/bin/sysinv-agent %{buildroot}/usr/bin/sysinv-agent
 #install -p -D -m 755 %{buildroot}/usr/bin/sysinv-fpga-agent %{buildroot}/usr/bin/sysinv-fpga-agent
@@ -138,6 +141,7 @@ rm -rf $RPM_BUILD_ROOT
 %{local_etc_sysinv}/*
 
 %{local_etc_motdd}/*
+%dir %{stx_app_plugind}
 
 # SM OCF Start/Stop/Monitor Scripts
 %{ocf_resourced}/platform/sysinv-api

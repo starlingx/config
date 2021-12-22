@@ -2,3 +2,4 @@ usr/bin
 etc/goenabled.d
 etc/sysinv
 usr/lib/ocf/resource.d
+var/stx_app/plugins
