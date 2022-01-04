@@ -4,7 +4,7 @@ Source: https://opendev.org/starlingx/sysinv
 
 Files: *
 Copyright: (c) 2013-2021 Wind River Systems, Inc
-Copyright: Others ((See individual files for more details)
+           Others (See individual files for more details)
 License: Apache-2
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
