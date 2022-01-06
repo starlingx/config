@@ -249,7 +249,7 @@ class NetworkingPuppet(base.BasePuppet):
 
         return ptp_config
 
-    def _set_ptp_instance_interfaces(self, ptp_instances, ptp_interfaces):
+    def _set_ptp_instance_interfaces(self, host, ptp_instances, ptp_interfaces):
 
         allowed_interface_fields = ['ifname', 'port_names', 'parameters', 'uuid']
 
@@ -260,13 +260,18 @@ class NetworkingPuppet(base.BasePuppet):
                     iface['parameters'] = {}
                     # Find the underlying port name for the interface because ptp can't
                     # use the custom interface name
-                    iinterface = self.dbapi.iinterface_get(iface['interface_uuid'])
-                    interface_devices = interface.get_interface_devices(self.context,
-                                                                            iinterface)
-                    iface['port_names'] = interface_devices
-                    # Prune fields and add the interface to the instance
-                    pruned_iface = {r: iface[r] for r in allowed_interface_fields}
-                    ptp_instances[instance]['interfaces'].append(pruned_iface)
+                    for hostinterface in iface['interface_names']:
+                        temp_host = hostinterface.split('/')[0]
+                        temp_interface = hostinterface.split('/')[1]
+                        if host.hostname == temp_host:
+                            iinterface = self.dbapi.iinterface_get(temp_interface, host.uuid)
+                            interface_devices = interface.get_interface_devices(self.context,
+                                                                                iinterface)
+                            iface['port_names'] = interface_devices
+                            iface['ifname'] = temp_interface
+                            # Prune fields and add the interface to the instance
+                            pruned_iface = {r: iface[r] for r in allowed_interface_fields}
+                            ptp_instances[instance]['interfaces'].append(pruned_iface)
 
         return ptp_instances
 
@@ -316,7 +321,7 @@ class NetworkingPuppet(base.BasePuppet):
 
         ptp_config = self._set_ptp_instance_global_parameters(ptp_instances,
                                                               ptp_parameters_instance)
-        ptp_config = self._set_ptp_instance_interfaces(ptp_config,
+        ptp_config = self._set_ptp_instance_interfaces(host, ptp_config,
                                                        ptp_interfaces)
         ptp_config = self._set_ptp_instance_interface_parameters(ptp_config,
                                                                  ptp_parameters_interface)
