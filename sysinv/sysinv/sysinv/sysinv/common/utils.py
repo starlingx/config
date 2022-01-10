@@ -1951,22 +1951,45 @@ def is_valid_domain_or_ip(url_str):
     if url_str:
         url_without_path = url_str.split('/')[0]
         url_with_port = url_without_path.split(':')
+        # check ipv4 or ipv4 with port
         if len(url_with_port) <= 2:
+            try:
+                if len(url_with_port) == 2 and not int(url_with_port[1]) in range(1, 65535):
+                    return False
+            except ValueError:
+                return False
+            if is_possible_ipv4_address(url_with_port[0]):
+                return is_valid_ipv4(url_with_port[0])
             if is_valid_domain(url_with_port[0]):
                 return True
-            # check ipv4 or ipv4 with port
-            return is_valid_ipv4(url_with_port[0])
         else:
             # check ipv6
             if '[' in url_without_path:
                 try:
                     bkt_idx = url_without_path.index(']')
+                    port = url_without_path[bkt_idx:].replace(']:', '')
+                    if not int(port) in range(1, 65535):
+                        return False
                     return is_valid_ipv6(url_without_path[1:bkt_idx])
                 except Exception:
                     return False
             else:
                 # check ipv6 without port
                 return is_valid_ipv6(url_without_path)
+
+
+def is_possible_ipv4_address(str_ip):
+    """
+    This method does not validate if the string is a valid IPV4,
+    it only verifies if the string matches a IPV4 basic format of
+    four numbers separated by dots.
+    """
+    r = re.compile(r'^(?:[0-9](?:[0-9-]{0,61}[0-9])?\.)+([0-9-]+\.?)')
+    url = r.match(str_ip)
+    if url:
+        return True
+    else:
+        return False
 
 
 def is_valid_domain_name(value):

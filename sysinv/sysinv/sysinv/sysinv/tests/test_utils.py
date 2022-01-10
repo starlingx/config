@@ -229,6 +229,43 @@ class GenericUtilsTestCase(base.TestCase):
         self.assertFalse(utils.is_valid_boolstr('maybe'))
         self.assertFalse(utils.is_valid_boolstr('only on tuesdays'))
 
+    def test_is_valid_domain_or_ip(self):
+        # IPV6
+        # Valid IPV6 without port
+        self.assertTrue(utils.is_valid_domain_or_ip("1fff:0:a88:85a3::ac1f/index.html"))
+        self.assertTrue(utils.is_valid_domain_or_ip("::"))
+        # Valid IPV6 with port
+        self.assertTrue(utils.is_valid_domain_or_ip("[::]:8000"))
+        self.assertTrue(utils.is_valid_domain_or_ip("[1fff:0:a88:85a3::ac1f]:22"))
+        # Invalid IPV6 without port
+        self.assertFalse(utils.is_valid_domain_or_ip("2002:1d:"))
+        self.assertFalse(utils.is_valid_domain_or_ip(":1d::"))
+        # IPV6 with invalid port
+        self.assertFalse(utils.is_valid_domain_or_ip("[::]:75535"))
+        self.assertFalse(utils.is_valid_domain_or_ip("[1fff:0:a88:85a3::ac1f]:99999"))
+        self.assertFalse(utils.is_valid_domain_or_ip("[1fff:0:a88:85a3::ac1f]:90a90"))
+        # IPV4
+        # Valid IPV4 without port
+        self.assertTrue(utils.is_valid_domain_or_ip("192.2.3.4"))
+        self.assertTrue(utils.is_valid_domain_or_ip("255.90.33.87"))
+        # Valid IPV4 with port
+        self.assertTrue(utils.is_valid_domain_or_ip("100.168.0.98:12345"))
+        self.assertTrue(utils.is_valid_domain_or_ip("192.168.0.98:8080"))
+        # Invalid IPV4 without port
+        self.assertFalse(utils.is_valid_domain_or_ip("192.168.0.999999"))
+        self.assertFalse(utils.is_valid_domain_or_ip("500.168.0.10"))
+        # IPV4 with invalid port
+        self.assertFalse(utils.is_valid_domain_or_ip("100.168.0.10:99999"))
+        self.assertFalse(utils.is_valid_domain_or_ip("100.168.0.10:80000"))
+        self.assertFalse(utils.is_valid_domain_or_ip("100.168.0.10:8cc00"))
+
+    def test_is_possible_ipv4_address(self):
+        self.assertTrue(utils.is_possible_ipv4_address('127.0.0.1'))
+        self.assertTrue(utils.is_possible_ipv4_address('9999.9999.9999.9999'))
+        self.assertFalse(utils.is_possible_ipv4_address('::1'))
+        self.assertFalse(utils.is_possible_ipv4_address('bacon'))
+        self.assertFalse(utils.is_possible_ipv4_address(""))
+
     def test_is_valid_ipv4(self):
         self.assertTrue(utils.is_valid_ipv4('127.0.0.1'))
         self.assertFalse(utils.is_valid_ipv4('::1'))
