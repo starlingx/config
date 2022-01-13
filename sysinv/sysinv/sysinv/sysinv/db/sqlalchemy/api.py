@@ -3783,7 +3783,6 @@ class Connection(api.Connection):
                 session.flush()
             except db_exc.DBDuplicateEntry:
                 raise exception.PtpInstanceMapAlreadyExists(
-                    ptp_instance=values['ptp_instance_id'],
                     host=values['host_id'])
 
             query = model_query(models.PtpInstanceMaps)
@@ -3865,7 +3864,7 @@ class Connection(api.Connection):
                 session.add(ptp_interface)
                 session.flush()
             except db_exc.DBDuplicateEntry:
-                raise exception.PtpInterfaceAlreadyExists(uuid=values['uuid'])
+                raise exception.PtpInterfaceAlreadyExists(name=values['name'])
             return self._ptp_interface_get(values['uuid'])
 
     @objects.objectify(objects.ptp_interface)
@@ -3913,7 +3912,6 @@ class Connection(api.Connection):
                 session.flush()
             except db_exc.DBDuplicateEntry:
                 raise exception.PtpInterfaceMapAlreadyExists(
-                    ptp_interface=values['ptp_interface_id'],
                     interface=values['interface_id'])
 
             query = model_query(models.PtpInterfaceMaps)
@@ -3956,6 +3954,16 @@ class Connection(api.Connection):
                 raise exception.PtpInterfaceNotFound(uuid=ptp_interface_id)
             query.delete()
 
+    def ptp_interface_destroy_by_name(self, name):
+        with _session_for_write() as session:
+            query = model_query(models.PtpInterfaces, session=session)
+            query = query.filter_by(name=name)
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.NotFound()
+            query.delete()
+
     @objects.objectify(objects.ptp_interface_map)
     def ptp_interface_map_get(self, ptp_interface_map_id):
         query = model_query(models.PtpInterfaceMaps)
@@ -3990,6 +3998,15 @@ class Connection(api.Connection):
     @objects.objectify(objects.ptp_parameter)
     def ptp_parameter_get(self, ptp_parameter_id):
         return self._ptp_parameter_get(ptp_parameter_id)
+
+    @objects.objectify(objects.ptp_parameter)
+    def ptp_parameter_get_by_namevalue(self, name, value):
+        query = model_query(models.PtpParameters)
+        query = query.filter_by(name=name, value=value)
+        try:
+            return query.one()
+        except NoResultFound:
+            raise exception.NotFound
 
     @objects.objectify(objects.ptp_parameter)
     def ptp_parameters_get_list(self, ptp_instance=None, ptp_interface=None,

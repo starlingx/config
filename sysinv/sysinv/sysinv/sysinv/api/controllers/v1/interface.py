@@ -443,7 +443,7 @@ class InterfaceController(rest.RestController):
             elif '/ports' == p['path']:
                 ports = p['value']
                 patches_to_remove.append(p)
-            elif '/ptp_interfaces/-' == p['path']:
+            elif constants.PTP_INTERFACE_ARRAY_PATH == p['path']:
                 has_ptp_interfaces = True
                 ptp_interface_id = p['value']
                 try:
@@ -455,7 +455,7 @@ class InterfaceController(rest.RestController):
                           % ptp_interface_id))
                 values = {'interface_id': rpc_interface.id,
                           'ptp_interface_id': ptp_interface_id}
-                if p['op'] == 'add':
+                if p.get('op') == constants.PTP_PATCH_OPERATION_ADD:
                     pecan.request.dbapi.ptp_interface_assign(values)
                 else:
                     pecan.request.dbapi.ptp_interface_remove(values)

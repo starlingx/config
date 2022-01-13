@@ -15,28 +15,25 @@ from cgtsclient.v1 import ptp_interface as ptp_interface_utils
 
 
 def _print_ptp_interface_show(ptp_interface_obj):
-    fields = ['uuid', 'interface_names', 'ptp_instance_name', 'parameters',
-              'created_at']
+    fields = ['uuid', 'name', 'interface_names', 'ptp_instance_name',
+              'parameters', 'created_at']
     data = [(f, getattr(ptp_interface_obj, f, '')) for f in fields]
     utils.print_tuple_list(data)
 
 
-@utils.arg('ptp_interface_uuid',
-           metavar='<ptp_interface_uuid>',
-           help="UUID of a PTP interface")
+@utils.arg('nameoruuid',
+           metavar='<name or UUID>',
+           help="Name or UUID of a PTP interface")
 def do_ptp_interface_show(cc, args):
     """Show PTP interface attributes."""
-    try:
-        ptp_interface = cc.ptp_interface.get(args.ptp_interface_uuid)
-    except exc.HTTPNotFound:
-        raise exc.CommandError('PTP interface not found: %s'
-                               % args.ptp_interface_uuid)
+    ptp_interface = ptp_interface_utils._find_ptp_interface(
+        cc, args.nameoruuid)
     _print_ptp_interface_show(ptp_interface)
 
 
 def _print_ptp_interface_list(ptp_interface_list):
-    field_labels = ['uuid', 'ptp_instance_name', 'parameters']
-    fields = ['uuid', 'ptp_instance_name', 'parameters']
+    field_labels = ['uuid', 'name', 'ptp_instance_name', 'parameters']
+    fields = ['uuid', 'name', 'ptp_instance_name', 'parameters']
     utils.print_list(ptp_interface_list, fields, field_labels)
 
 
@@ -46,20 +43,24 @@ def do_ptp_interface_list(cc, args):
     _print_ptp_interface_list(ptp_interfaces)
 
 
+@utils.arg('name',
+           metavar='<name>',
+           help="Name of PTP interface [REQUIRED]")
 @utils.arg('ptpinstancenameorid',
-           metavar='<name or UUID>',
+           metavar='<PTP instance name or UUID>',
            help="Name or UUID of a PTP instance [REQUIRED]")
 def do_ptp_interface_add(cc, args):
     """Add a PTP interface."""
-    field_list = ['ptp_instance_uuid']
-
-    ptp_instance = \
-        ptp_instance_utils._find_ptp_instance(cc, args.ptpinstancenameorid)
+    field_list = ['name']
 
     # Prune input fields down to required/expected values
     data = dict((k, v) for (k, v) in vars(args).items()
                 if k in field_list and not (v is None))
-    data["ptp_instance_uuid"] = ptp_instance.uuid
+
+    # Check the PTP instance exists
+    ptp_instance = ptp_instance_utils._find_ptp_instance(
+        cc, args.ptpinstancenameorid)
+    data.update({'ptp_instance_uuid': ptp_instance.uuid})
 
     ptp_interface = cc.ptp_interface.create(**data)
     uuid = getattr(ptp_interface, 'uuid', '')
@@ -71,73 +72,59 @@ def do_ptp_interface_add(cc, args):
     _print_ptp_interface_show(ptp_interface)
 
 
-@utils.arg('ptp_interface_uuid',
-           metavar='<ptp_interface_uuid>',
-           help="UUID of a PTP instance")
+@utils.arg('nameoruuid',
+           metavar='<name or UUID>',
+           help="Name or UUID of PTP interface")
 def do_ptp_interface_delete(cc, args):
     """Delete a PTP interface"""
-    cc.ptp_interface.delete(args.ptp_interface_uuid)
-    print('Deleted PTP interface: %s' % args.ptp_interface_uuid)
+    ptp_interface = ptp_interface_utils._find_ptp_interface(
+        cc, args.nameoruuid)
+    uuid = ptp_interface.uuid
+    cc.ptp_interface.delete(uuid)
+    print('Deleted PTP interface: %s' % uuid)
 
 
-def _ptp_interface_parameter_op(cc, op, ptp_interface_uuid, data):
+def _ptp_interface_parameter_op(cc, op, interface, parameters):
+    if len(parameters) == 0:
+        raise exc.CommandError('Missing PTP parameter')
+    ptp_interface = ptp_interface_utils._find_ptp_interface(cc, interface)
     patch = []
-    for (_k, v) in data.items():
-        for uuids in v:
-            for uuid in uuids:
-                if not utils.is_uuid_like(uuid):
-                    raise exc.CommandError("Invalid UUID '%s'" % uuid)
-                patch.append({'op': op,
-                              'path': '/ptp_parameters/-',
-                              'value': uuid})
-    ptp_interface = cc.ptp_interface.update(ptp_interface_uuid, patch)
+    for parameter in parameters:
+        patch.append({'op': op,
+                      'path': '/ptp_parameters/-',
+                      'value': parameter})
+    ptp_interface = cc.ptp_interface.update(ptp_interface.uuid, patch)
     _print_ptp_interface_show(ptp_interface)
 
 
-@utils.arg('ptp_interface_uuid',
-           metavar='<UUID>',
-           help="UUID of PTP interface")
-@utils.arg('paramuuid',
-           metavar='<parameter UUID>',
+@utils.arg('nameoruuid',
+           metavar='<name or UUID>',
+           help="Name or UUID of PTP interface")
+@utils.arg('parameters',
+           metavar='<name=value>',
            nargs='+',
            action='append',
            default=[],
-           help="UUID of PTP parameter")
+           help="PTP parameter to add")
 def do_ptp_interface_parameter_add(cc, args):
     """Add parameter(s) to a PTP interface."""
-    if len(args.paramuuid) == 0:
-        raise exc.CommandError('Missing PTP parameter UUID')
-
-    field_list = ['paramuuid']
-    data = dict((k, v) for (k, v) in vars(args).items()
-                if k in field_list and not (v is None))
-
-    _ptp_interface_parameter_op(cc, op='add',
-                                ptp_interface_uuid=args.ptp_interface_uuid,
-                                data=data)
+    _ptp_interface_parameter_op(cc, op='add', interface=args.nameoruuid,
+                                parameters=args.parameters[0])
 
 
-@utils.arg('ptp_interface_uuid',
-           metavar='<UUID>',
-           help="UUID of PTP interface")
-@utils.arg('paramuuid',
-           metavar='<parameter UUID>',
+@utils.arg('nameoruuid',
+           metavar='<name or UUID>',
+           help="Name or UUID of PTP interface")
+@utils.arg('parameters',
+           metavar='<name=value>',
            nargs='+',
            action='append',
            default=[],
-           help="UUID of PTP parameter")
+           help="PTP parameter to remove")
 def do_ptp_interface_parameter_delete(cc, args):
     """Delete parameter(s) from a PTP interface."""
-    if len(args.paramuuid) == 0:
-        raise exc.CommandError('Missing PTP parameter UUID')
-
-    field_list = ['paramuuid']
-    data = dict((k, v) for (k, v) in vars(args).items()
-                if k in field_list and not (v is None))
-
-    _ptp_interface_parameter_op(cc, op='remove',
-                                ptp_interface_uuid=args.ptp_interface_uuid,
-                                data=data)
+    _ptp_interface_parameter_op(cc, op='remove', interface=args.nameoruuid,
+                                parameters=args.parameters[0])
 
 
 @utils.arg('hostnameorid',
@@ -166,16 +153,18 @@ def do_host_if_ptp_list(cc, args):
         utils.print_list(ptp_interfaces, fields, field_labels)
 
 
-def _interface_ptp_op(cc, op, uuid, ptp_interface):
+def _interface_ptp_op(cc, op, host, interface, ptp_interface):
+    ihost = ihost_utils._find_ihost(cc, host)
+    iinterface = iinterface_utils._find_interface(cc, ihost, interface)
     ptp_interface_obj = ptp_interface_utils._find_ptp_interface(cc,
                                                                 ptp_interface)
     ptp_interface_id = ptp_interface_obj.id
     patch = [{'op': op,
               'path': '/ptp_interfaces/-',
               'value': ptp_interface_id}]
-    cc.iinterface.update(uuid, patch)
+    cc.iinterface.update(iinterface.uuid, patch)
 
-    ptp_interfaces = cc.ptp_interface.list_by_interface(uuid)
+    ptp_interfaces = cc.ptp_interface.list_by_interface(iinterface.uuid)
     _print_ptp_interface_list(ptp_interfaces)
 
 
@@ -183,31 +172,29 @@ def _interface_ptp_op(cc, op, uuid, ptp_interface):
            metavar='<hostname or id>',
            help="The host associated with the PTP interface")
 @utils.arg('ifnameorid',
-           metavar='<interface name or uuid>',
+           metavar='<interface name or UUID>',
            help="Name or UUID of an interface at host")
-@utils.arg('ptp_interface_uuid',
-           metavar='<PTP interface UUID>',
-           help="UUID of PTP interface")
+@utils.arg('ptp_interface_nameoruuid',
+           metavar='<PTP interface name or UUID>',
+           help="Name or UUID of PTP interface to assign")
 def do_host_if_ptp_assign(cc, args):
     """Associate PTP to an interface at host."""
-    ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
-    iinterface = iinterface_utils._find_interface(cc, ihost, args.ifnameorid)
-    _interface_ptp_op(cc, op='add', uuid=iinterface.uuid,
-                      ptp_interface=args.ptp_interface_uuid)
+    _interface_ptp_op(cc, op='add', host=args.hostnameorid,
+                      interface=args.ifnameorid,
+                      ptp_interface=args.ptp_interface_nameoruuid)
 
 
 @utils.arg('hostnameorid',
            metavar='<hostname or id>',
            help="The host associated with the PTP interface")
 @utils.arg('ifnameorid',
-           metavar='<interface name or uuid>',
+           metavar='<interface name or UUID>',
            help="Name or UUID of an interface at host")
-@utils.arg('ptp_interface_uuid',
-           metavar='<PTP interface UUID>',
-           help="UUID of PTP interface")
+@utils.arg('ptp_interface_nameoruuid',
+           metavar='<PTP interface name or UUID>',
+           help="Name or UUID of PTP interface to remove")
 def do_host_if_ptp_remove(cc, args):
     """Disassociate PTP to an interface at host."""
-    ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
-    iinterface = iinterface_utils._find_interface(cc, ihost, args.ifnameorid)
-    _interface_ptp_op(cc, op='remove', uuid=iinterface.uuid,
-                      ptp_interface=args.ptp_interface_uuid)
+    _interface_ptp_op(cc, op='remove', host=args.hostnameorid,
+                      interface=args.ifnameorid,
+                      ptp_interface=args.ptp_interface_nameoruuid)

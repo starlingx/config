@@ -207,9 +207,11 @@ class PtpInterfaceController(rest.RestController):
         ptp_interface_dict = ptp_interface.as_dict()
         LOG.debug("PtpInterfaceController.post: %s" % ptp_interface_dict)
 
-        """
-        TODO: enforce "name" as required field here
-        """
+        # Check 'name' is set (wasn't set in object model for no-patchability
+        # constraints)
+        if ptp_interface_dict.get('name') is None:
+            raise wsme.exc.ClientSideError(
+                _("No name assigned to PTP interface"))
 
         ptp_instance_uuid = ptp_interface_dict.pop('ptp_instance_uuid', None)
         ptp_instance = objects.ptp_instance.get_by_uuid(pecan.request.context,
@@ -243,20 +245,51 @@ class PtpInterfaceController(rest.RestController):
         # (but not having both operations in same patch)
         patch_list = list(jsonpatch.JsonPatch(patch))
         for p in patch_list:
-            param_uuid = p['value']
+            param_adding = p.get('op') == constants.PTP_PATCH_OPERATION_ADD
+            param_keypair = p['value']
+            if param_keypair.find('=') < 0:
+                raise wsme.exc.ClientSideError(
+                    _("Bad PTP parameter keypair: %s" % param_keypair))
+            (param_name, param_value) = param_keypair.split('=', 1)
             try:
                 # Check PTP parameter exists
-                pecan.request.dbapi.ptp_parameter_get(param_uuid)
-            except exception.PtpParameterNotFound:
-                raise wsme.exc.ClientSideError(
-                    _("No PTP parameter object found for %s" % param_uuid))
+                ptp_parameter = \
+                    pecan.request.dbapi.ptp_parameter_get_by_namevalue(
+                        param_name, param_value)
 
-            if p['op'] == 'add':
+            except exception.NotFound:
+                if not param_adding:
+                    raise wsme.exc.ClientSideError(
+                        _("No PTP parameter object found for %s"
+                          % param_keypair))
+
+                # If PTP parameter doesn't exist yet, create it
+                param_dict = dict(name=param_name, value=param_value)
+                LOG.debug("PtpInterfaceController.patch: creating parameter %s"
+                          % param_keypair)
+                ptp_parameter = pecan.request.dbapi.ptp_parameter_create(
+                    param_dict)
+
+            param_uuid = ptp_parameter.uuid
+            if param_adding:
                 pecan.request.dbapi.ptp_interface_parameter_add(uuid,
                                                                 param_uuid)
+                LOG.debug("PtpInterfaceController.patch: added %s to %s" %
+                          (param_keypair, uuid))
             else:
                 pecan.request.dbapi.ptp_interface_parameter_remove(uuid,
                                                                    param_uuid)
+                LOG.debug("PtpInterfaceController.patch: removed %s from %s" %
+                          (param_keypair, uuid))
+
+                # If PTP parameter isn't owned by anyone else, remove it
+                param_owners = pecan.request.dbapi.ptp_parameter_get_owners(
+                    param_uuid)
+                if len(param_owners) == 0:
+                    LOG.debug(
+                        "PtpInterfaceController.patch: destroying unreferenced "
+                        "parameter %s" % param_keypair)
+                    pecan.request.dbapi.ptp_parameter_destroy(param_uuid)
 
         return PtpInterface.convert_with_links(
             objects.ptp_interface.get_by_uuid(pecan.request.context, uuid))
