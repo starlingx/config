@@ -292,15 +292,11 @@ class NetworkingPuppet(base.BasePuppet):
 
     def _get_instance_ptp_config(self, host):
 
-        if host.clock_synchronization == constants.PTP:
-            ptp_enabled = True
+        if (host.clock_synchronization != constants.PTP):
+            ptpinstance_enabled = False
+            return {'platform::ptpinstance::enabled': ptpinstance_enabled}
         else:
-            ptp_enabled = False
-
-        # Returning here because ptp instance functionality is not enabled at this time
-        # Subsequent code is inactive until this return statement is removed and ptp instance
-        # functionality is turned on
-        return {'platform::ptpinstance::enabled': ptp_enabled}
+            ptpinstance_enabled = True
 
         # Get the database entries for instances, interfaces and parameters
         ptp_instances = self.dbapi.ptp_instances_get_list(host=host.id)
@@ -327,7 +323,7 @@ class NetworkingPuppet(base.BasePuppet):
                                                                  ptp_parameters_interface)
 
         return {'platform::ptpinstance::config': ptp_config,
-                'platform::ptpinstance::enabled': ptp_enabled}
+                'platform::ptpinstance::enabled': ptpinstance_enabled}
 
     def _get_ptp_interface_config(self):
         config = {}

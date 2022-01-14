@@ -6467,9 +6467,12 @@ class HostController(rest.RestController):
                 if interface.ptp_role != constants.INTERFACE_PTP_ROLE_NONE:
                     ptp_ifaces.append(interface)
 
-            if not ptp_ifaces:
+            ptp_instances = pecan.request.dbapi.ptp_instances_get_list(host_uuid)
+            if not (ptp_ifaces or ptp_instances):
                 raise wsme.exc.ClientSideError(
-                    _("Hosts with PTP clock synchronization must have at least one PTP interface configured"))
+                    _("Hosts with PTP clock synchronization "
+                      "must have at least one PTP "
+                      "interface or instance configured"))
 
             # Check that interfaces have addresses assigned if PTP transport is UDP
             system_ptp = pecan.request.dbapi.ptp_get_one()
