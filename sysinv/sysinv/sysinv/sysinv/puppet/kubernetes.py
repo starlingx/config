@@ -243,7 +243,9 @@ class KubernetesPuppet(base.BasePuppet):
                 fd, temp_kubeadm_config_view = tempfile.mkstemp(
                     dir='/tmp', suffix='.yaml')
                 with os.fdopen(fd, 'w') as f:
-                    cmd = ['kubeadm', KUBECONFIG, 'config', 'view']
+                    cmd = ['kubectl', 'get', 'cm', '-n', 'kube-system',
+                           'kubeadm-config', '-o=jsonpath={.data.ClusterConfiguration}',
+                           KUBECONFIG]
                     subprocess.check_call(cmd, stdout=f)  # pylint: disable=not-callable
 
                 # We will use a custom key to encrypt kubeadm certificates
@@ -251,6 +253,7 @@ class KubernetesPuppet(base.BasePuppet):
 
                 key = str(keyring.get_password(CERTIFICATE_KEY_SERVICE,
                         CERTIFICATE_KEY_USER))
+
                 with open(temp_kubeadm_config_view, "a") as f:
                     f.write("---\r\napiVersion: kubeadm.k8s.io/v1beta2\r\n"
                             "kind: InitConfiguration\r\ncertificateKey: "
