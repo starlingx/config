@@ -2448,8 +2448,9 @@ def has_vswitch_enabled(host_labels, dbapi):
     # enabling the vswitch.
     platform_vswitch = get_vswitch_type(dbapi)
     if platform_vswitch in labels:
-        vswitch_label_value = labels[platform_vswitch].lower()
-        return helm_common.LABEL_VALUE_ENABLED == vswitch_label_value
+        vswitch_label_value = labels.get(platform_vswitch)
+        if vswitch_label_value:
+            return helm_common.LABEL_VALUE_ENABLED == vswitch_label_value.lower()
 
     ovs_labels_to_types = {
         'openvswitch': [constants.VSWITCH_TYPE_OVS_DPDK],
@@ -2457,8 +2458,9 @@ def has_vswitch_enabled(host_labels, dbapi):
 
     for ovs_allowed_label in ovs_labels_to_types:
         if platform_vswitch in ovs_labels_to_types[ovs_allowed_label]:
-            vswitch_label_value = labels[ovs_allowed_label].lower()
-            return helm_common.LABEL_VALUE_ENABLED == vswitch_label_value
+            vswitch_label_value = labels.get(ovs_allowed_label)
+            if vswitch_label_value:
+                return helm_common.LABEL_VALUE_ENABLED == vswitch_label_value.lower()
 
     # We haven't found the platform vswitch node key. Return False
     return False
