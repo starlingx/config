@@ -56,6 +56,9 @@ class PtpInstanceManager(base.Manager):
     def delete(self, ptp_instance_id):
         return self._delete(self._path(ptp_instance_id))
 
+    def apply(self):
+        return self.api.json_request('POST', self._path() + "/apply")
+
 
 def _find_ptp_instance(cc, key):
     if key.isdigit() or utils.is_uuid_like(key):

@@ -808,18 +808,13 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('update_ptp_config', do_apply=do_apply))
 
-    def update_ptp_instances_config(self, context, host_uuid,
-                                    ptp_instances_dict):
+    def update_ptp_instances_config(self, context):
         """Synchronously, have the conductor update PTP instance(s).
 
         :param context: request context.
-        :param host_uuid: uuid or id of the host
-        :param ptp_instances_dict: a dictionary {name:service} of PTP instances
         """
         return self.call(context,
-                         self.make_msg('update_ptp_instances_config',
-                                       host_uuid=host_uuid,
-                                       ptp_instances_dict=ptp_instances_dict))
+                         self.make_msg('update_ptp_instances_config'))
 
     def update_system_mode_config(self, context):
         """Synchronously, have the conductor update the system mode

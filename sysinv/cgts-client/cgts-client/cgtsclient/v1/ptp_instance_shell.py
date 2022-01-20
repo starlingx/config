@@ -184,3 +184,11 @@ def do_host_ptp_instance_remove(cc, args):
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
     _host_ptp_instance_op(cc, op='remove', uuid=ihost.uuid,
                           instance=args.nameoruuid)
+
+
+def do_ptp_instance_apply(cc, args):
+    """Apply the PTP Instance config."""
+
+    cc.ptp_instance.apply()
+
+    print('Applying the PTP Instance configuration')

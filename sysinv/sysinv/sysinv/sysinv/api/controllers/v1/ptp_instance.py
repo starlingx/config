@@ -133,6 +133,10 @@ LOCK_NAME = 'PtpInstanceController'
 class PtpInstanceController(rest.RestController):
     """REST controller for PTP instance."""
 
+    _custom_actions = {
+        'apply': ['POST']
+    }
+
     ptp_parameters = ptp_parameter.PtpParameterController(
         parent="ptp_instance")
     "Expose PTP parameters as a sub-element of PTP instances"
@@ -281,3 +285,13 @@ class PtpInstanceController(rest.RestController):
         LOG.debug("PtpInstanceController.delete: all clear for %s" %
                   ptp_instance_uuid)
         pecan.request.dbapi.ptp_instance_destroy(ptp_instance_uuid)
+
+    @cutils.synchronized(LOCK_NAME)
+    @wsme_pecan.wsexpose(None, status_code=204)
+    def apply(self):
+        """Apply the ptp instance configuration."""
+        try:
+            pecan.request.rpcapi.update_ptp_instances_config(pecan.request.context)
+        except exception.HTTPNotFound:
+            msg = ("PTP Instance apply failed")
+            raise wsme.exc.ClientSideError(msg)
