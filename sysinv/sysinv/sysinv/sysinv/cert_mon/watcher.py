@@ -11,7 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Copyright (c) 2020-2021 Wind River Systems, Inc.
+# Copyright (c) 2020-2022 Wind River Systems, Inc.
 #
 # The right to copy, distribute, modify, or otherwise make use
 # of this software may be licensed only pursuant to the terms
@@ -20,6 +20,7 @@
 import re
 import hashlib
 from dateutil.parser import parse
+from kubernetes import __version__ as K8S_MODULE_VERSION
 from kubernetes import client
 from kubernetes.client.rest import ApiException
 from kubernetes import watch
@@ -36,6 +37,7 @@ from sysinv.cert_mon import utils
 from sysinv.common import constants
 from sysinv.common import kubernetes as sys_kube
 
+K8S_MODULE_MAJOR_VERSION = int(K8S_MODULE_VERSION.split('.')[0])
 KUBE_CONFIG_PATH = '/etc/kubernetes/admin.conf'
 LOG = log.getLogger(__name__)
 
@@ -238,7 +240,10 @@ class CertWatcher(object):
 
     def start_watch(self, on_success, on_error):
         config.load_kube_config(KUBE_CONFIG_PATH)
-        c = Configuration()
+        if K8S_MODULE_MAJOR_VERSION < 12:
+            c = Configuration()
+        else:
+            c = Configuration().get_default_copy()
         c.verify_ssl = True
         Configuration.set_default(c)
         ccApi = client.CoreV1Api()

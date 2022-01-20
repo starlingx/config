@@ -1,10 +1,8 @@
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
 
 # All Rights Reserved.
 #
@@ -18,6 +16,7 @@ import os
 import re
 import time
 
+from kubernetes import __version__ as K8S_MODULE_VERSION
 from kubernetes import config
 from kubernetes import client
 from kubernetes.client import Configuration
@@ -29,6 +28,7 @@ from six.moves import http_client as httplib
 from oslo_log import log as logging
 from sysinv.common import exception
 
+K8S_MODULE_MAJOR_VERSION = int(K8S_MODULE_VERSION.split('.')[0])
 
 LOG = logging.getLogger(__name__)
 
@@ -234,7 +234,10 @@ class KubeOperator(object):
         config.load_kube_config(KUBERNETES_ADMIN_CONF)
 
         # Workaround: Turn off SSL/TLS verification
-        c = Configuration()
+        if K8S_MODULE_MAJOR_VERSION < 12:
+            c = Configuration()
+        else:
+            c = Configuration().get_default_copy()
         c.verify_ssl = False
         Configuration.set_default(c)
         return c
