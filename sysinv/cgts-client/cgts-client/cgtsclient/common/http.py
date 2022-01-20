@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Wind River, Inc.
+# Copyright 2013-2022 Wind River, Inc.
 # Copyright 2012 Openstack Foundation
 # All Rights Reserved.
 #
@@ -586,4 +586,4 @@ class ResponseBodyIterator(object):
         if chunk:
             return chunk
         else:
-            raise StopIteration()
+            return

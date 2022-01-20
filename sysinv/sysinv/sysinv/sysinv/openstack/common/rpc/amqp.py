@@ -1,5 +1,4 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
+# Copyright 2022 Wind River Systems, Inc
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # All Rights Reserved.
@@ -495,7 +494,7 @@ class MulticallProxyWaiter(object):
     def __iter__(self):
         """Return a result until we get a reply with an 'ending" flag"""
         if self._done:
-            raise StopIteration
+            return
         while True:
             result = None
             try:
@@ -510,7 +509,7 @@ class MulticallProxyWaiter(object):
             if self._got_ending:
                 yield result
                 self.done()
-                raise StopIteration
+                return
             if isinstance(result, Exception):
                 self.done()
                 raise result  # pylint: disable=raising-bad-type
@@ -553,7 +552,7 @@ class MulticallWaiter(object):
     def __iter__(self):
         """Return a result until we get a 'None' response from consumer"""
         if self._done:
-            raise StopIteration
+            return
         while True:
             try:
                 next(self._iterator)
@@ -562,7 +561,7 @@ class MulticallWaiter(object):
                     self.done()
             if self._got_ending:
                 self.done()
-                raise StopIteration
+                return
             result = self._result
             if isinstance(result, Exception):
                 self.done()

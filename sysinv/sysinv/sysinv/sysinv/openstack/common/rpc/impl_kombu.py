@@ -1,5 +1,4 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
-
+#    Copyright 2022 Wind River Systems, Inc
 #    Copyright 2011 OpenStack Foundation
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -662,7 +661,7 @@ class Connection(object):
 
         for iteration in itertools.count(0):
             if limit and iteration >= limit:
-                raise StopIteration
+                return
             yield self.ensure(_error_callback, _consume)
 
     def cancel_consumer_thread(self):
