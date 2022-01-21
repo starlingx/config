@@ -11,7 +11,7 @@ from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import options
 
-CREATION_ATTRIBUTES = ['ptp_instance_uuid']
+CREATION_ATTRIBUTES = ['name', 'ptp_instance_uuid']
 
 
 class PtpInterface(base.Resource):
@@ -64,8 +64,14 @@ def _find_ptp_interface(cc, key):
     if key.isdigit() or utils.is_uuid_like(key):
         try:
             interface = cc.ptp_interface.get(key)
-            return interface
         except exc.HTTPNotFound:
-            pass
-
-    raise exc.CommandError('PTP interface not found: %s' % key)
+            raise exc.CommandError('PTP interface not found: %s' % key)
+        else:
+            return interface
+    else:
+        ptp_interfaces = cc.ptp_interface.list()
+        for interface in ptp_interfaces:
+            if interface.name == key:
+                return interface
+        else:
+            raise exc.CommandError('PTP interface not found: %s' % key)

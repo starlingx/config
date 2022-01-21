@@ -1872,6 +1872,13 @@ PTP_INSTANCE_DEFAULT_PHC2SYS = 'default-phc2sys'
 PTP_PARAMETER_OWNER_INSTANCE = 'ptp-instance'
 PTP_PARAMETER_OWNER_INTERFACE = 'ptp-interface'
 
+# Patching PTP entities
+PTP_INSTANCE_ARRAY_PATH = '/ptp_instances/-'
+PTP_INTERFACE_ARRAY_PATH = '/ptp_interfaces/-'
+PTP_PARAMETER_ARRAY_PATH = '/ptp_parameters/-'
+PTP_PATCH_OPERATION_ADD = 'add'
+PTP_PATCH_OPERATION_DELETE = 'remove'
+
 # Backup & Restore
 FIX_INSTALL_UUID_INTERVAL_SECS = 30
 

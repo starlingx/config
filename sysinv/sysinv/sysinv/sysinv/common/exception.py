@@ -457,7 +457,7 @@ class PtpInstanceAlreadyExists(Conflict):
 
 
 class PtpInterfaceAlreadyExists(Conflict):
-    message = _("A PTP interface with UUID %(uuid)s already exists.")
+    message = _("A PTP interface with name '%(name)s' already exists.")
 
 
 class PtpParameterAlreadyExists(Conflict):
@@ -469,12 +469,11 @@ class PtpParameterOwnershipAlreadyExists(Conflict):
 
 
 class PtpInstanceMapAlreadyExists(Conflict):
-    message = _("PTP instance %(ptp_instance)s is already associated to host "
-                "%(host)s.")
+    message = _("PTP instance is already associated to host %(host)s.")
 
 
 class PtpInterfaceMapAlreadyExists(Conflict):
-    message = _("PTP interface %(ptp_interface)s is already associated to "
+    message = _("PTP interface is already associated to "
                 "interface %(interface)s.")
 
 

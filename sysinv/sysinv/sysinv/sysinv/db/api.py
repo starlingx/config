@@ -2125,6 +2125,13 @@ class Connection(object):
         """
 
     @abc.abstractmethod
+    def ptp_interface_destroy_by_name(self, name):
+        """Destroys a PTP interface association based on name.
+
+        :param name: The name given for a PTP interface.
+        """
+
+    @abc.abstractmethod
     def ptp_interface_map_get(self, ptp_interface_map_id):
         """Returns a PTP interface mapping.
 
@@ -2151,6 +2158,15 @@ class Connection(object):
         """Returns a PTP parameter.
 
         :param ptp_parameter_id: The id or uuid of a PTP parameter.
+        :returns: A PTP parameter.
+        """
+
+    @abc.abstractmethod
+    def ptp_parameter_get_by_namevalue(self, name, value):
+        """Returns the PTP parameter entry that matches the pair name-value.
+
+        :param name: Name of a PTP parameter.
+        :param value: Value of a PTP parameter.
         :returns: A PTP parameter.
         """
 

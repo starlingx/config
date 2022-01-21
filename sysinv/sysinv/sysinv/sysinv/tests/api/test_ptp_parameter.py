@@ -126,29 +126,23 @@ class TestListPtpParameter(BasePtpParameterTestCase):
         self._create_test_ptp_parameters()
 
     def _create_test_ptp_parameters(self, prefix='test'):
-        param1 = dbutils.create_test_ptp_parameter(name='param1-name',
-                                                   value='param1-value')
-        param2 = dbutils.create_test_ptp_parameter(name='param2-name',
-                                                   value='param2-value')
         response = self.patch_json(
             self.get_instance_url(self.ptp_instances[0].uuid),
-            [{'path': '/ptp_parameters/-',
-              'value': param1['uuid'],
-              'op': 'add'},
-             {'path': '/ptp_parameters/-',
-              'value': param2['uuid'],
-              'op': 'add'}],
+            [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'value': 'param1=value1',
+              'op': constants.PTP_PATCH_OPERATION_ADD},
+             {'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'value': 'param2=value2',
+              'op': constants.PTP_PATCH_OPERATION_ADD}],
             headers=self.API_HEADERS)
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
 
-        param3 = dbutils.create_test_ptp_parameter(name='param3-name',
-                                                   value='param3-value')
         response = self.patch_json(
             self.get_interface_url(self.ptp_interfaces[0].uuid),
-            [{'path': '/ptp_parameters/-',
-              'value': param3['uuid'],
-              'op': 'add'}],
+            [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'value': 'param3=value3',
+              'op': constants.PTP_PATCH_OPERATION_ADD}],
             headers=self.API_HEADERS)
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
@@ -168,7 +162,8 @@ class TestListPtpParameter(BasePtpParameterTestCase):
             self.get_instance_scoped_url(self.ptp_instances[0].uuid))
         for result in response[self.RESULT_KEY]:
             self.assertIn(self.ptp_instances[0].uuid, str(result['owners']))
-            self.assertNotIn(self.ptp_interfaces[0].uuid, str(result['owners']))
+            self.assertNotIn(self.ptp_interfaces[0].uuid,
+                             str(result['owners']))
 
     def test_list_ptp_parameter_by_interface(self):
         response = self.get_json(
@@ -208,11 +203,13 @@ class TestDeletePtpParameter(BasePtpParameterTestCase):
     """
     ptp_parameter = None
     uuid = None
+    name = 'test-param'
+    value = 'test-value'
 
     def setUp(self):
         super(TestDeletePtpParameter, self).setUp()
         self.ptp_parameter = dbutils.create_test_ptp_parameter(
-            name='test-param', value='test-value')
+            name=self.name, value=self.value)
         self.uuid = self.ptp_parameter['uuid']
 
     def test_delete_ptp_parameter_ok(self):
@@ -229,11 +226,12 @@ class TestDeletePtpParameter(BasePtpParameterTestCase):
         self.assertIn(error_message, response.json['error_message'])
 
     def test_delete_ptp_parameter_with_owner_failed(self):
+        value = '%s=%s' % (self.name, self.value)
         response = self.patch_json(
             self.get_interface_url(self.ptp_interfaces[0].uuid),
-            [{'path': '/ptp_parameters/-',
-              'value': self.uuid,
-              'op': 'add'}],
+            [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'value': value,
+              'op': constants.PTP_PATCH_OPERATION_ADD}],
             headers=self.API_HEADERS)
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)

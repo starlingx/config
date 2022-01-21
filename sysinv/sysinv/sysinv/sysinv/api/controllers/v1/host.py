@@ -1825,15 +1825,14 @@ class HostController(rest.RestController):
             path = p['path']
             if path in optimize_list:
                 optimizable += 1
-            elif path == '/ptp_instances/-':
+            elif path == constants.PTP_INSTANCE_ARRAY_PATH:
                 has_ptp_instances = True
 
-        if has_ptp_instances:
-            return self._patch_ptp(uuid, patch)
-        elif len(patch) == optimizable:
+        if len(patch) == optimizable:
             return self._patch(uuid, patch)
         elif (pecan.request.user_agent.startswith('mtce') or
-              pecan.request.user_agent.startswith('vim')):
+              pecan.request.user_agent.startswith('vim') or
+              has_ptp_instances):
             return self._patch_sys(uuid, patch)
         else:
             return self._patch_gen(uuid, patch)
@@ -1845,27 +1844,6 @@ class HostController(rest.RestController):
     @cutils.synchronized(LOCK_NAME)
     def _patch_gen(self, uuid, patch):
         return self._patch(uuid, patch)
-
-    @cutils.synchronized(LOCK_NAME)
-    def _patch_ptp(self, uuid, patch):
-        ihost_obj = objects.host.get_by_uuid(pecan.request.context, uuid)
-        for p in patch:
-            ptp_instance_id = p['value']
-            try:
-                # Check PTP instance exists
-                pecan.request.dbapi.ptp_instance_get(ptp_instance_id)
-            except exception.PtpInstanceNotFound:
-                raise wsme.exc.ClientSideError(
-                    _("No PTP instance object with id %s"
-                        % ptp_instance_id))
-            values = {'host_id': ihost_obj.id,
-                      'ptp_instance_id': ptp_instance_id}
-            if p['op'] == 'add':
-                pecan.request.dbapi.ptp_instance_assign(values)
-            else:
-                pecan.request.dbapi.ptp_instance_remove(values)
-
-        return Host.convert_with_links(ihost_obj)
 
     @staticmethod
     def _validate_capability_is_not_set(old, new):
@@ -1926,12 +1904,30 @@ class HostController(rest.RestController):
     def _patch(self, uuid, patch):
         log_start = cutils.timestamped("ihost_patch_start")
 
-        patch_obj = jsonpatch.JsonPatch(patch)
-
         ihost_obj = objects.host.get_by_uuid(pecan.request.context, uuid)
         ihost_dict = ihost_obj.as_dict()
-
         self._block_add_host_semantic_checks(ihost_dict)
+
+        for p in patch:
+            if p['path'] == constants.PTP_INSTANCE_ARRAY_PATH:
+                ptp_instance_id = p['value']
+                try:
+                    # Check PTP instance exists
+                    pecan.request.dbapi.ptp_instance_get(ptp_instance_id)
+                except exception.PtpInstanceNotFound:
+                    raise wsme.exc.ClientSideError(_("No PTP instance object"))
+                values = {'host_id': ihost_obj.id,
+                          'ptp_instance_id': ptp_instance_id}
+                if p.get('op') == constants.PTP_PATCH_OPERATION_ADD:
+                    pecan.request.dbapi.ptp_instance_assign(values)
+                else:
+                    pecan.request.dbapi.ptp_instance_remove(values)
+
+                # Remove from patch to apply the paths related to assigned PTP
+                # instances, since they don't actually patch the host object
+                patch.remove(p)
+
+        patch_obj = jsonpatch.JsonPatch(patch)
 
         # Add transient fields that are not stored in the database
         ihost_dict['bm_password'] = None

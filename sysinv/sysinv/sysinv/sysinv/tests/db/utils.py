@@ -556,9 +556,9 @@ def create_test_ptp_instance(**kw):
 def get_test_ptp_interface(**kw):
     ptp_interface = {
         'type': kw.get('type', constants.PTP_PARAMETER_OWNER_INTERFACE),
+        'name': kw.get('name'),
         'ptp_instance_id': kw.get('ptp_instance_id'),
-        'ptp_instance_uuid': kw.get('ptp_instance_uuid'),
-        'name': kw.get('name', None)
+        'ptp_instance_uuid': kw.get('ptp_instance_uuid')
     }
     return ptp_interface
 

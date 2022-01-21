@@ -8,6 +8,8 @@
 
 from cgtsclient.common import utils
 from cgtsclient import exc
+from cgtsclient.v1 import ptp_instance as ptp_instance_utils
+from cgtsclient.v1 import ptp_interface as ptp_interface_utils
 from cgtsclient.v1 import ptp_parameter as ptp_parameter_utils
 
 
@@ -35,11 +37,11 @@ def _print_ptp_parameter_list(ptp_parameter_list):
 @utils.arg('--instance',
            metavar='<instance>',
            default=None,
-           help="UUID of PTP instance")
+           help="Name or UUID of PTP instance")
 @utils.arg('--interface',
            metavar='<interface>',
            default=None,
-           help="UUID of PTP interface")
+           help="Name or UUID of PTP interface")
 def do_ptp_parameter_list(cc, args):
     """List all PTP parameters, the ones of a specified PTP instance or
        the ones of a specified PTP interface.
@@ -48,40 +50,19 @@ def do_ptp_parameter_list(cc, args):
         if args.interface:
             raise exc.CommandError('Only a single optional argument allowed')
         else:
-            ptp_parameters = cc.ptp_parameter.list_by_ptp_instance(
-                args.instance)
+            ptp_instance = ptp_instance_utils._find_ptp_instance(cc,
+                                                                 args.instance)
+            uuid = ptp_instance.uuid
+            ptp_parameters = cc.ptp_parameter.list_by_ptp_instance(uuid)
     elif args.interface:
-        ptp_parameters = cc.ptp_parameter.list_by_ptp_interface(
-            args.interface)
+        ptp_interface = ptp_interface_utils._find_ptp_interface(cc,
+                                                                args.interface)
+        uuid = ptp_interface.uuid
+        ptp_parameters = cc.ptp_parameter.list_by_ptp_interface(uuid)
     else:
         ptp_parameters = cc.ptp_parameter.list()
 
     _print_ptp_parameter_list(ptp_parameters)
-
-
-@utils.arg('name',
-           metavar='<name>',
-           help="Name of PTP parameter [REQUIRED]")
-@utils.arg('value',
-           metavar='<value>',
-           help="Value of PTP parameter [REQUIRED]")
-def do_ptp_parameter_add(cc, args):
-    """Add a PTP parameter."""
-
-    field_list = ['name', 'value']
-
-    # Prune input fields down to required/expected values
-    data = dict((k, v) for (k, v) in vars(args).items()
-                if k in field_list and not (v is None))
-
-    ptp_parameter = cc.ptp_parameter.create(**data)
-    uuid = getattr(ptp_parameter, 'uuid', '')
-    try:
-        ptp_parameter = cc.ptp_parameter.get(uuid)
-    except exc.HTTPNotFound:
-        raise exc.CommandError('PTP parameter just created not found: %s' %
-                               uuid)
-    _print_ptp_parameter_show(ptp_parameter)
 
 
 @utils.arg('uuid',
@@ -104,12 +85,3 @@ def do_ptp_parameter_modify(cc, args):
 
     ptp_parameter = cc.ptp_parameter.update(args.uuid, patch)
     _print_ptp_parameter_show(ptp_parameter)
-
-
-@utils.arg('uuid',
-           metavar='<uuid>',
-           help="UUID of PTP parameter")
-def do_ptp_parameter_delete(cc, args):
-    """Delete a PTP parameter."""
-    cc.ptp_parameter.delete(args.uuid)
-    print('Deleted PTP parameter: %s' % args.uuid)
