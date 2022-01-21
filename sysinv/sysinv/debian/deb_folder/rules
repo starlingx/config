@@ -19,7 +19,7 @@ override_dh_install:
 		--root=$(CURDIR)/debian/tmp
 	python3 setup.py bdist_wheel \
 		--universal \
-		-d $(CURDIR)/debian/sysinv-wheel/usr/share/python3-wheels
+		-d $(CURDIR)/debian/sysinv-wheels/usr/share/python-wheel
 	install -p -D -m 755 $(CURDIR)/etc/sysinv/motd-system $(CURDIR)/debian/tmp/etc/motd.d/10-system
 	dh_install
 
