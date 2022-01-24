@@ -27,8 +27,8 @@ override_dh_python3:
 	dh_python3 --shebang=/usr/bin/python3
 
 override_dh_installsystemd:
-	dh_installsystemd --name=sysinv-api
-	dh_installsystemd --name=sysinv-conductor
+	dh_installsystemd --no-enable --name sysinv-api
+	dh_installsystemd --no-enable --name sysinv-conductor
 
 override_dh_fixperms:
 	dh_fixperms -Xkube-cert-rotation.sh

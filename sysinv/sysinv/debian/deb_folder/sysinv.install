@@ -6,8 +6,6 @@ etc/sysinv/crushmap-aio-sx.txt etc/sysinv
 etc/sysinv/delete_load.sh etc/sysinv/upgrades
 scripts/sysinv-api usr/lib/ocf/resource.d/platform
 scripts/sysinv-conductor usr/lib/ocf/resource.d/platform
-scripts/sysinv-api.service lib/systemd/system
-scripts/sysinv-conductor.service lib/systemd/system
 scripts/partition_info.sh usr/bin
 scripts/validate-platform-backup.sh usr/bin
 scripts/manage-partitions usr/bin

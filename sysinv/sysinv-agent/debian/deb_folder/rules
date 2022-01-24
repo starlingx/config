@@ -9,8 +9,10 @@ ROOT := $(CURDIR)/debian/tmp
 override_dh_install:
 	install -p -D -m 755 sysinv-agent ${ROOT}/etc/init.d/sysinv-agent
 	install -p -D -m 644 sysinv-agent.conf ${ROOT}/etc/pmon.d/sysinv-agent.conf
-	install -p -D -m 644 sysinv-agent.service ${ROOT}/lib/systemd/system/sysinv-agent.service
 	dh_install
 
 override_dh_installinit:
 	dh_installinit --only-scripts
+
+override_dh_installsystemd:
+	dh_installsystemd --name sysinv-agent
