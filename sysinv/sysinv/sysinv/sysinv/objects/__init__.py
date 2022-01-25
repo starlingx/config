@@ -12,11 +12,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
-
-
-import functools
 
 from sysinv.objects import address
 from sysinv.objects import address_mode
@@ -107,27 +104,6 @@ from sysinv.objects import host_fs
 from sysinv.objects import restore
 from sysinv.objects import kube_rootca_update
 from sysinv.objects import kube_rootca_host_update
-
-
-def objectify(klass):
-    """Decorator to convert database results into specified objects.
-    :param klass: database results class
-    """
-
-    def the_decorator(fn):
-        @functools.wraps(fn)
-        def wrapper(*args, **kwargs):
-            result = fn(*args, **kwargs)
-            try:
-                return klass.from_db_object(result)
-            except TypeError:
-                # TODO(deva): handle lists of objects better
-                #             once support for those lands and is imported.
-                return [klass.from_db_object(obj) for obj in result]
-
-        return wrapper
-
-    return the_decorator
 
 
 # alias objects for RPC compatibility
@@ -286,7 +262,6 @@ __all__ = ("system",
            "tpmconfig",
            "tpmdevice",
            "certificate",
-           "objectify",
            "storage_file",
            "storage_external",
            "storage_ceph_rook",
@@ -311,5 +286,4 @@ __all__ = ("system",
            "kube_rootca_update",
            # alias objects for RPC compatibility
            "ihost",
-           "ilvg",
-           "objectify")
+           "ilvg")

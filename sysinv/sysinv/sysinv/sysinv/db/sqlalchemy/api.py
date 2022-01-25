@@ -1,4 +1,3 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
 # -*- encoding: utf-8 -*-
 #
 # Copyright 2013 Hewlett-Packard Development Company, L.P.
@@ -15,7 +14,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 
 """SQLAlchemy storage backend."""
@@ -49,6 +48,7 @@ from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.db import api
 from sysinv.db.sqlalchemy import models
+from sysinv.db.sqlalchemy import objects as db_objects
 
 CONF = cfg.CONF
 CONF.import_opt('journal_min_size',
@@ -1187,7 +1187,7 @@ class Connection(api.Connection):
     def get_session(self, autocommit=True):
         return get_session(autocommit)
 
-    @objects.objectify(objects.system)
+    @db_objects.objectify(objects.system)
     def isystem_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -1203,7 +1203,7 @@ class Connection(api.Connection):
                 raise exception.SystemAlreadyExists(uuid=values['uuid'])
             return isystem
 
-    @objects.objectify(objects.system)
+    @db_objects.objectify(objects.system)
     def isystem_get(self, server):
         query = model_query(models.isystem)
         query = add_identity_filter(query, server)
@@ -1215,7 +1215,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.system)
+    @db_objects.objectify(objects.system)
     def isystem_get_one(self):
         query = model_query(models.isystem)
 
@@ -1224,7 +1224,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NotFound()
 
-    @objects.objectify(objects.system)
+    @db_objects.objectify(objects.system)
     def isystem_get_list(self, limit=None, marker=None,
                          sort_key=None, sort_dir=None):
         query = model_query(models.isystem)
@@ -1232,7 +1232,7 @@ class Connection(api.Connection):
         return _paginate_query(models.isystem, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.system)
+    @db_objects.objectify(objects.system)
     def isystem_get_by_systemname(self, systemname):
         result = model_query(models.isystem, read_deleted="no").\
                              filter_by(name=systemname).\
@@ -1243,7 +1243,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.system)
+    @db_objects.objectify(objects.system)
     def isystem_update(self, server, values):
         with _session_for_write() as session:
             query = model_query(models.isystem, session=session)
@@ -1276,7 +1276,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.ServerNotFound(server=server)
 
-    @objects.objectify(objects.host)
+    @db_objects.objectify(objects.host)
     def ihost_create(self, values, software_load=None):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -1292,11 +1292,11 @@ class Connection(api.Connection):
             self._kube_host_upgrade_create(host.id)
             return self._host_get(values['uuid'])
 
-    @objects.objectify(objects.host)
+    @db_objects.objectify(objects.host)
     def ihost_get(self, server):
         return self._host_get(server)
 
-    @objects.objectify(objects.host)
+    @db_objects.objectify(objects.host)
     def ihost_get_list(self, limit=None, marker=None,
                        sort_key=None, sort_dir=None, recordtype="standard"):
         query = model_query(models.ihost)
@@ -1307,7 +1307,7 @@ class Connection(api.Connection):
         return _paginate_query(models.ihost, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.host)
+    @db_objects.objectify(objects.host)
     def ihost_get_by_hostname(self, hostname):
         query = model_query(models.ihost)
         query = add_host_options(query)
@@ -1318,7 +1318,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NodeNotFound(node=hostname)
 
-    @objects.objectify(objects.host)
+    @db_objects.objectify(objects.host)
     def ihost_get_by_isystem(self, isystem_id, limit=None, marker=None,
                              sort_key=None, sort_dir=None):
         query = model_query(models.ihost)
@@ -1327,7 +1327,7 @@ class Connection(api.Connection):
         return _paginate_query(models.ihost, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.host)
+    @db_objects.objectify(objects.host)
     def ihost_get_by_personality(self, personality,
                                  limit=None, marker=None,
                                  sort_key=None, sort_dir=None):
@@ -1378,7 +1378,7 @@ class Connection(api.Connection):
                 query = query.filter_by(reboot_needed=reboot_needed)
         return query.count()
 
-    @objects.objectify(objects.host)
+    @db_objects.objectify(objects.host)
     def ihost_get_by_function(self, function,
                               limit=None, marker=None,
                               sort_key=None, sort_dir=None):
@@ -1389,7 +1389,7 @@ class Connection(api.Connection):
         return _paginate_query(models.ihost, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.host)
+    @db_objects.objectify(objects.host)
     def ihost_get_by_mgmt_mac(self, mgmt_mac):
 
         try:
@@ -1407,7 +1407,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NodeNotFound(node=mgmt_mac)
 
-    @objects.objectify(objects.host)
+    @db_objects.objectify(objects.host)
     def ihost_update(self, server, values, context=None):
         with _session_for_write() as session:
             query = model_query(models.ihost, session=session)
@@ -1470,7 +1470,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.node)
+    @db_objects.objectify(objects.node)
     def inode_create(self, forihostid, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -1486,24 +1486,24 @@ class Connection(api.Connection):
 
             return self._node_get(values['uuid'])
 
-    @objects.objectify(objects.node)
+    @db_objects.objectify(objects.node)
     def inode_get_all(self, forihostid=None):
         query = model_query(models.inode, read_deleted="no")
         if forihostid:
             query = query.filter_by(forihostid=forihostid)
         return query.all()
 
-    @objects.objectify(objects.node)
+    @db_objects.objectify(objects.node)
     def inode_get(self, inode_id):
         return self._node_get(inode_id)
 
-    @objects.objectify(objects.node)
+    @db_objects.objectify(objects.node)
     def inode_get_list(self, limit=None, marker=None,
                        sort_key=None, sort_dir=None):
         return _paginate_query(models.inode, limit, marker,
                                sort_key, sort_dir)
 
-    @objects.objectify(objects.node)
+    @db_objects.objectify(objects.node)
     def inode_get_by_ihost(self, ihost,
                            limit=None, marker=None,
                            sort_key=None, sort_dir=None):
@@ -1513,7 +1513,7 @@ class Connection(api.Connection):
         return _paginate_query(models.inode, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.node)
+    @db_objects.objectify(objects.node)
     def inode_update(self, inode_id, values):
         with _session_for_write() as session:
             # May need to reserve in multi controller system; ref sysinv
@@ -1554,7 +1554,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.cpu)
+    @db_objects.objectify(objects.cpu)
     def icpu_create(self, forihostid, values):
 
         if utils.is_int_like(forihostid):
@@ -1578,7 +1578,7 @@ class Connection(api.Connection):
                 raise exception.CPUAlreadyExists(cpu=values['cpu'])
             return self._cpu_get(values['uuid'])
 
-    @objects.objectify(objects.cpu)
+    @db_objects.objectify(objects.cpu)
     def icpu_get_all(self, forihostid=None, forinodeid=None):
         query = model_query(models.icpu, read_deleted="no")
         if forihostid:
@@ -1587,17 +1587,17 @@ class Connection(api.Connection):
             query = query.filter_by(forinodeid=forinodeid)
         return query.all()
 
-    @objects.objectify(objects.cpu)
+    @db_objects.objectify(objects.cpu)
     def icpu_get(self, cpu_id, forihostid=None):
         return self._cpu_get(cpu_id, forihostid)
 
-    @objects.objectify(objects.cpu)
+    @db_objects.objectify(objects.cpu)
     def icpu_get_list(self, limit=None, marker=None,
                       sort_key=None, sort_dir=None):
         return _paginate_query(models.icpu, limit, marker,
                                sort_key, sort_dir)
 
-    @objects.objectify(objects.cpu)
+    @db_objects.objectify(objects.cpu)
     def icpu_get_by_ihost(self, ihost,
                           limit=None, marker=None,
                           sort_key=None, sort_dir=None):
@@ -1607,7 +1607,7 @@ class Connection(api.Connection):
         return _paginate_query(models.icpu, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.cpu)
+    @db_objects.objectify(objects.cpu)
     def icpu_get_by_inode(self, inode,
                           limit=None, marker=None,
                           sort_key=None, sort_dir=None):
@@ -1617,7 +1617,7 @@ class Connection(api.Connection):
         return _paginate_query(models.icpu, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.cpu)
+    @db_objects.objectify(objects.cpu)
     def icpu_get_by_ihost_inode(self, ihost, inode,
                                 limit=None, marker=None,
                                 sort_key=None, sort_dir=None):
@@ -1627,7 +1627,7 @@ class Connection(api.Connection):
         return _paginate_query(models.icpu, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.cpu)
+    @db_objects.objectify(objects.cpu)
     def icpu_update(self, cpu_id, values, forihostid=None):
         with _session_for_write() as session:
             # May need to reserve in multi controller system; ref sysinv
@@ -1671,7 +1671,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.memory)
+    @db_objects.objectify(objects.memory)
     def imemory_create(self, forihostid, values):
         if utils.is_int_like(forihostid):
             values['forihostid'] = int(forihostid)
@@ -1695,7 +1695,7 @@ class Connection(api.Connection):
                 raise exception.MemoryAlreadyExists(uuid=values['uuid'])
             return self._memory_get(values['uuid'])
 
-    @objects.objectify(objects.memory)
+    @db_objects.objectify(objects.memory)
     def imemory_get_all(self, forihostid=None, forinodeid=None):
         query = model_query(models.imemory, read_deleted="no")
         if forihostid:
@@ -1704,17 +1704,17 @@ class Connection(api.Connection):
             query = query.filter_by(forinodeid=forinodeid)
         return query.all()
 
-    @objects.objectify(objects.memory)
+    @db_objects.objectify(objects.memory)
     def imemory_get(self, memory_id, forihostid=None):
         return self._memory_get(memory_id, forihostid)
 
-    @objects.objectify(objects.memory)
+    @db_objects.objectify(objects.memory)
     def imemory_get_list(self, limit=None, marker=None,
                       sort_key=None, sort_dir=None):
         return _paginate_query(models.imemory, limit, marker,
                                sort_key, sort_dir)
 
-    @objects.objectify(objects.memory)
+    @db_objects.objectify(objects.memory)
     def imemory_get_by_ihost(self, ihost,
                           limit=None, marker=None,
                           sort_key=None, sort_dir=None):
@@ -1724,7 +1724,7 @@ class Connection(api.Connection):
         return _paginate_query(models.imemory, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.memory)
+    @db_objects.objectify(objects.memory)
     def imemory_get_by_inode(self, inode,
                              limit=None, marker=None,
                              sort_key=None, sort_dir=None):
@@ -1734,7 +1734,7 @@ class Connection(api.Connection):
         return _paginate_query(models.imemory, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.memory)
+    @db_objects.objectify(objects.memory)
     def imemory_get_by_ihost_inode(self, ihost, inode,
                                    limit=None, marker=None,
                                    sort_key=None, sort_dir=None):
@@ -1744,7 +1744,7 @@ class Connection(api.Connection):
         return _paginate_query(models.imemory, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.memory)
+    @db_objects.objectify(objects.memory)
     def imemory_update(self, memory_id, values, forihostid=None):
         with _session_for_write() as session:
             # May need to reserve in multi controller system; ref sysinv
@@ -1776,7 +1776,7 @@ class Connection(api.Connection):
                             filter_by(id=memory_id).\
                             delete()
 
-    @objects.objectify(objects.fpga_device)
+    @db_objects.objectify(objects.fpga_device)
     def fpga_device_create(self, hostid, values):
 
         if utils.is_int_like(hostid):
@@ -1821,11 +1821,11 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.fpga_device)
+    @db_objects.objectify(objects.fpga_device)
     def fpga_device_get(self, deviceid, hostid=None):
         return self._fpga_device_get(deviceid, hostid)
 
-    @objects.objectify(objects.fpga_device)
+    @db_objects.objectify(objects.fpga_device)
     def fpga_device_update(self, device_id, values, forihostid=None):
         with _session_for_write() as session:
             # May need to reserve in multi controller system; ref sysinv
@@ -1849,7 +1849,7 @@ class Connection(api.Connection):
 
             return query.one()
 
-    @objects.objectify(objects.fpga_device)
+    @db_objects.objectify(objects.fpga_device)
     def fpga_device_get_by_host(self, host, limit=None, marker=None,
                                sort_key=None, sort_dir=None):
         query = model_query(models.FpgaDevice)
@@ -1857,7 +1857,7 @@ class Connection(api.Connection):
         return _paginate_query(models.FpgaDevice, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.pci_device)
+    @db_objects.objectify(objects.pci_device)
     def pci_device_create(self, hostid, values):
 
         if utils.is_int_like(hostid):
@@ -1892,7 +1892,7 @@ class Connection(api.Connection):
                                                      host=values['host_id'])
             return self._pci_device_get(values['pciaddr'], values['host_id'])
 
-    @objects.objectify(objects.pci_device)
+    @db_objects.objectify(objects.pci_device)
     def pci_device_get_all(self, hostid=None):
         query = model_query(models.PciDevice, read_deleted="no")
         if hostid:
@@ -1911,17 +1911,17 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.pci_device)
+    @db_objects.objectify(objects.pci_device)
     def pci_device_get(self, deviceid, hostid=None):
         return self._pci_device_get(deviceid, hostid)
 
-    @objects.objectify(objects.pci_device)
+    @db_objects.objectify(objects.pci_device)
     def pci_device_get_list(self, limit=None, marker=None,
                            sort_key=None, sort_dir=None):
         return _paginate_query(models.PciDevice, limit, marker,
                                sort_key, sort_dir)
 
-    @objects.objectify(objects.pci_device)
+    @db_objects.objectify(objects.pci_device)
     def pci_device_get_by_host(self, host, limit=None, marker=None,
                                sort_key=None, sort_dir=None):
         query = model_query(models.PciDevice)
@@ -1929,7 +1929,7 @@ class Connection(api.Connection):
         return _paginate_query(models.PciDevice, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.pci_device)
+    @db_objects.objectify(objects.pci_device)
     def pci_device_update(self, device_id, values, forihostid=None):
         with _session_for_write() as session:
             # May need to reserve in multi controller system; ref sysinv
@@ -1979,17 +1979,17 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.ServerNotFound(server=portid)
 
-    @objects.objectify(objects.port)
+    @db_objects.objectify(objects.port)
     def port_get(self, portid, hostid=None):
         return self._port_get(portid, hostid)
 
-    @objects.objectify(objects.port)
+    @db_objects.objectify(objects.port)
     def port_get_list(self, limit=None, marker=None,
                       sort_key=None, sort_dir=None):
         return _paginate_query(models.Ports, limit, marker,
                                sort_key, sort_dir)
 
-    @objects.objectify(objects.port)
+    @db_objects.objectify(objects.port)
     def port_get_all(self, hostid=None, interfaceid=None):
         query = model_query(models.Ports, read_deleted="no")
         if hostid:
@@ -1998,7 +1998,7 @@ class Connection(api.Connection):
             query = query.filter_by(interface_id=interfaceid)
         return query.all()
 
-    @objects.objectify(objects.port)
+    @db_objects.objectify(objects.port)
     def port_get_by_host(self, host,
                          limit=None, marker=None,
                          sort_key=None, sort_dir=None):
@@ -2007,7 +2007,7 @@ class Connection(api.Connection):
         return _paginate_query(models.Ports, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.port)
+    @db_objects.objectify(objects.port)
     def port_get_by_interface(self, interface,
                               limit=None, marker=None,
                               sort_key=None, sort_dir=None):
@@ -2016,7 +2016,7 @@ class Connection(api.Connection):
         return _paginate_query(models.Ports, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.port)
+    @db_objects.objectify(objects.port)
     def port_get_by_host_interface(self, host, interface,
                                    limit=None, marker=None,
                                    sort_key=None, sort_dir=None):
@@ -2025,7 +2025,7 @@ class Connection(api.Connection):
         return _paginate_query(models.Ports, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.port)
+    @db_objects.objectify(objects.port)
     def port_get_by_numa_node(self, node,
                               limit=None, marker=None,
                               sort_key=None, sort_dir=None):
@@ -2048,7 +2048,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.PortNotFound(port=portid)
 
-    @objects.objectify(objects.ethernet_port)
+    @db_objects.objectify(objects.ethernet_port)
     def ethernet_port_create(self, hostid, values):
         if utils.is_int_like(hostid):
             host = self.ihost_get(int(hostid))
@@ -2082,11 +2082,11 @@ class Connection(api.Connection):
 
             return self._ethernet_port_get(values['uuid'])
 
-    @objects.objectify(objects.ethernet_port)
+    @db_objects.objectify(objects.ethernet_port)
     def ethernet_port_get(self, portid, hostid=None):
         return self._ethernet_port_get(portid, hostid)
 
-    @objects.objectify(objects.ethernet_port)
+    @db_objects.objectify(objects.ethernet_port)
     def ethernet_port_get_by_mac(self, mac):
         query = model_query(models.EthernetPorts).filter_by(mac=mac)
         try:
@@ -2094,13 +2094,13 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.PortNotFound(port=mac)
 
-    @objects.objectify(objects.ethernet_port)
+    @db_objects.objectify(objects.ethernet_port)
     def ethernet_port_get_list(self, limit=None, marker=None,
                                sort_key=None, sort_dir=None):
         return _paginate_query(models.EthernetPorts, limit, marker,
                                sort_key, sort_dir)
 
-    @objects.objectify(objects.ethernet_port)
+    @db_objects.objectify(objects.ethernet_port)
     def ethernet_port_get_all(self, hostid=None, interfaceid=None):
         query = model_query(models.EthernetPorts, read_deleted="no")
         if hostid:
@@ -2109,7 +2109,7 @@ class Connection(api.Connection):
             query = query.filter_by(interface_id=interfaceid)
         return query.all()
 
-    @objects.objectify(objects.ethernet_port)
+    @db_objects.objectify(objects.ethernet_port)
     def ethernet_port_get_by_host(self, host,
                                   limit=None, marker=None,
                                   sort_key=None, sort_dir=None):
@@ -2118,7 +2118,7 @@ class Connection(api.Connection):
         return _paginate_query(models.EthernetPorts, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.ethernet_port)
+    @db_objects.objectify(objects.ethernet_port)
     def ethernet_port_get_by_interface(self, interface,
                                        limit=None, marker=None,
                                        sort_key=None, sort_dir=None):
@@ -2127,7 +2127,7 @@ class Connection(api.Connection):
         return _paginate_query(models.EthernetPorts, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.ethernet_port)
+    @db_objects.objectify(objects.ethernet_port)
     def ethernet_port_get_by_numa_node(self, node,
                                        limit=None, marker=None,
                                        sort_key=None, sort_dir=None):
@@ -2136,7 +2136,7 @@ class Connection(api.Connection):
         return _paginate_query(models.EthernetPorts, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.ethernet_port)
+    @db_objects.objectify(objects.ethernet_port)
     def ethernet_port_update(self, portid, values):
         with _session_for_write() as session:
             # May need to reserve in multi controller system; ref sysinv
@@ -2171,7 +2171,7 @@ class Connection(api.Connection):
                     filter_by(id=portid).\
                     delete()
 
-    @objects.objectify(objects.interface)
+    @db_objects.objectify(objects.interface)
     def iinterface_create(self, forihostid, values):
         if values['iftype'] == constants.INTERFACE_TYPE_AE:
             interface = models.AeInterfaces()
@@ -2200,7 +2200,7 @@ class Connection(api.Connection):
 
         return interfaces
 
-    @objects.objectify(objects.interface)
+    @db_objects.objectify(objects.interface)
     def _iinterface_get_all(self, forihostid=None, session=None):
         interfaces = with_polymorphic(models.Interfaces, '*')
         query = model_query(interfaces, read_deleted="no", session=session)
@@ -2230,11 +2230,11 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.interface)
+    @db_objects.objectify(objects.interface)
     def iinterface_get(self, iinterface_id, ihost=None, network=None):
         return self._iinterface_get(iinterface_id, ihost)
 
-    @objects.objectify(objects.interface)
+    @db_objects.objectify(objects.interface)
     def iinterface_get_list(self, limit=None, marker=None,
                       sort_key=None, sort_dir=None):
 
@@ -2266,7 +2266,7 @@ class Connection(api.Connection):
                                                        sort_dir=sort_dir)
         return interfaces
 
-    @objects.objectify(objects.interface)
+    @db_objects.objectify(objects.interface)
     def _iinterface_get_by_ihost(self, ihost, session=None,
                                 limit=None, marker=None,
                                 sort_key=None, sort_dir=None):
@@ -2281,7 +2281,7 @@ class Connection(api.Connection):
         return _paginate_query(models.Interfaces, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.interface)
+    @db_objects.objectify(objects.interface)
     def iinterface_update(self, iinterface_id, values):
         self._interface_ratelimit_encode(values)
         with _session_for_write() as session:
@@ -2496,33 +2496,33 @@ class Connection(api.Connection):
                     filter_by(id=interface_id).\
                     delete()
 
-    @objects.objectify(objects.ethernet_interface)
+    @db_objects.objectify(objects.ethernet_interface)
     def ethernet_interface_create(self, forihostid, values):
         interface = models.EthernetInterfaces()
         return self._interface_create(interface, forihostid, values)
 
-    @objects.objectify(objects.ethernet_interface)
+    @db_objects.objectify(objects.ethernet_interface)
     def ethernet_interface_get_all(self, forihostid=None):
         return self._interface_get_all(models.EthernetInterfaces, forihostid)
 
-    @objects.objectify(objects.ethernet_interface)
+    @db_objects.objectify(objects.ethernet_interface)
     def ethernet_interface_get(self, interface_id):
         return self._interface_get(models.EthernetInterfaces, interface_id)
 
-    @objects.objectify(objects.ethernet_interface)
+    @db_objects.objectify(objects.ethernet_interface)
     def ethernet_interface_get_list(self, limit=None, marker=None,
                            sort_key=None, sort_dir=None):
         return self._interface_get_list(models.EthernetInterfaces, limit, marker,
                                         sort_key, sort_dir)
 
-    @objects.objectify(objects.ethernet_interface)
+    @db_objects.objectify(objects.ethernet_interface)
     def ethernet_interface_get_by_ihost(self, ihost,
                                limit=None, marker=None,
                                sort_key=None, sort_dir=None):
         return self._interface_get_by_ihost(models.EthernetInterfaces, ihost, limit,
                                             marker, sort_key, sort_dir)
 
-    @objects.objectify(objects.ethernet_interface)
+    @db_objects.objectify(objects.ethernet_interface)
     def ethernet_interface_update(self, interface_id, values):
         return self._interface_update(models.EthernetInterfaces, interface_id,
                                       values)
@@ -2530,99 +2530,99 @@ class Connection(api.Connection):
     def ethernet_interface_destroy(self, interface_id):
         return self._interface_destroy(models.EthernetInterfaces, interface_id)
 
-    @objects.objectify(objects.ae_interface)
+    @db_objects.objectify(objects.ae_interface)
     def ae_interface_create(self, forihostid, values):
         interface = models.AeInterfaces()
         return self._interface_create(interface, forihostid, values)
 
-    @objects.objectify(objects.ae_interface)
+    @db_objects.objectify(objects.ae_interface)
     def ae_interface_get_all(self, forihostid=None):
         return self._interface_get_all(models.AeInterfaces, forihostid)
 
-    @objects.objectify(objects.ae_interface)
+    @db_objects.objectify(objects.ae_interface)
     def ae_interface_get(self, interface_id):
         return self._interface_get(models.AeInterfaces, interface_id)
 
-    @objects.objectify(objects.ae_interface)
+    @db_objects.objectify(objects.ae_interface)
     def ae_interface_get_list(self, limit=None, marker=None,
                            sort_key=None, sort_dir=None):
         return self._interface_get_list(models.AeInterfaces, limit, marker,
                                         sort_key, sort_dir)
 
-    @objects.objectify(objects.ae_interface)
+    @db_objects.objectify(objects.ae_interface)
     def ae_interface_get_by_ihost(self, ihost,
                                limit=None, marker=None,
                                sort_key=None, sort_dir=None):
         return self._interface_get_by_ihost(models.AeInterfaces, ihost, limit,
                                             marker, sort_key, sort_dir)
 
-    @objects.objectify(objects.ae_interface)
+    @db_objects.objectify(objects.ae_interface)
     def ae_interface_update(self, interface_id, values):
         return self._interface_update(models.AeInterfaces, interface_id, values)
 
     def ae_interface_destroy(self, interface_id):
         return self._interface_destroy(models.AeInterfaces, interface_id)
 
-    @objects.objectify(objects.vlan_interface)
+    @db_objects.objectify(objects.vlan_interface)
     def vlan_interface_create(self, forihostid, values):
         interface = models.VlanInterfaces()
         return self._interface_create(interface, forihostid, values)
 
-    @objects.objectify(objects.vlan_interface)
+    @db_objects.objectify(objects.vlan_interface)
     def vlan_interface_get_all(self, forihostid=None):
         return self._interface_get_all(models.VlanInterfaces, forihostid)
 
-    @objects.objectify(objects.vlan_interface)
+    @db_objects.objectify(objects.vlan_interface)
     def vlan_interface_get(self, interface_id):
         return self._interface_get(models.VlanInterfaces, interface_id)
 
-    @objects.objectify(objects.vlan_interface)
+    @db_objects.objectify(objects.vlan_interface)
     def vlan_interface_get_list(self, limit=None, marker=None,
                            sort_key=None, sort_dir=None):
         return self._interface_get_list(models.VlanInterfaces, limit, marker,
                                         sort_key, sort_dir)
 
-    @objects.objectify(objects.vlan_interface)
+    @db_objects.objectify(objects.vlan_interface)
     def vlan_interface_get_by_ihost(self, ihost,
                                limit=None, marker=None,
                                sort_key=None, sort_dir=None):
         return self._interface_get_by_ihost(models.VlanInterfaces, ihost, limit,
                                             marker, sort_key, sort_dir)
 
-    @objects.objectify(objects.vlan_interface)
+    @db_objects.objectify(objects.vlan_interface)
     def vlan_interface_update(self, interface_id, values):
         return self._interface_update(models.VlanInterfaces, interface_id, values)
 
     def vlan_interface_destroy(self, interface_id):
         return self._interface_destroy(models.VlanInterfaces, interface_id)
 
-    @objects.objectify(objects.virtual_interface)
+    @db_objects.objectify(objects.virtual_interface)
     def virtual_interface_create(self, forihostid, values):
         interface = models.VirtualInterfaces()
         return self._interface_create(interface, forihostid, values)
 
-    @objects.objectify(objects.virtual_interface)
+    @db_objects.objectify(objects.virtual_interface)
     def virtual_interface_get_all(self, forihostid=None):
         return self._interface_get_all(models.EthernetInterfaces, forihostid)
 
-    @objects.objectify(objects.virtual_interface)
+    @db_objects.objectify(objects.virtual_interface)
     def virtual_interface_get(self, interface_id):
         return self._interface_get(models.VirtualInterfaces, interface_id)
 
-    @objects.objectify(objects.virtual_interface)
+    @db_objects.objectify(objects.virtual_interface)
     def virtual_interface_get_list(self, limit=None, marker=None,
                                    sort_key=None, sort_dir=None):
         return self._interface_get_list(models.VirtualInterfaces, limit,
                                         marker, sort_key, sort_dir)
 
-    @objects.objectify(objects.virtual_interface)
+    @db_objects.objectify(objects.virtual_interface)
     def virtual_interface_get_by_ihost(self, ihost,
                                        limit=None, marker=None,
                                        sort_key=None, sort_dir=None):
         return self._interface_get_by_ihost(models.VirtualInterfaces, ihost,
                                             limit, marker, sort_key, sort_dir)
 
-    @objects.objectify(objects.virtual_interface)
+    @db_objects.objectify(objects.virtual_interface)
     def virtual_interface_update(self, interface_id, values):
         return self._interface_update(models.VirtualInterfaces, interface_id,
                                       values)
@@ -2630,33 +2630,33 @@ class Connection(api.Connection):
     def virtual_interface_destroy(self, interface_id):
         return self._interface_destroy(models.VirtualInterfaces, interface_id)
 
-    @objects.objectify(objects.sriov_vf_interface)
+    @db_objects.objectify(objects.sriov_vf_interface)
     def sriov_vf_interface_create(self, forihostid, values):
         interface = models.SriovVFInterfaces()
         return self._interface_create(interface, forihostid, values)
 
-    @objects.objectify(objects.sriov_vf_interface)
+    @db_objects.objectify(objects.sriov_vf_interface)
     def sriov_vf_interface_get_all(self, forihostid=None):
         return self._interface_get_all(models.SriovVFInterfaces, forihostid)
 
-    @objects.objectify(objects.sriov_vf_interface)
+    @db_objects.objectify(objects.sriov_vf_interface)
     def sriov_vf_interface_get(self, interface_id):
         return self._interface_get(models.SriovVFInterfaces, interface_id)
 
-    @objects.objectify(objects.sriov_vf_interface)
+    @db_objects.objectify(objects.sriov_vf_interface)
     def sriov_vf_interface_get_list(self, limit=None, marker=None,
                                     sort_key=None, sort_dir=None):
         return self._interface_get_list(models.SriovVFInterfaces, limit, marker,
                                         sort_key, sort_dir)
 
-    @objects.objectify(objects.sriov_vf_interface)
+    @db_objects.objectify(objects.sriov_vf_interface)
     def sriov_vf_interface_get_by_ihost(self, ihost,
                                         limit=None, marker=None,
                                         sort_key=None, sort_dir=None):
         return self._interface_get_by_ihost(models.SriovVFInterfaces, ihost, limit,
                                             marker, sort_key, sort_dir)
 
-    @objects.objectify(objects.sriov_vf_interface)
+    @db_objects.objectify(objects.sriov_vf_interface)
     def sriov_vf_interface_update(self, interface_id, values):
         return self._interface_update(models.SriovVFInterfaces, interface_id, values)
 
@@ -2678,7 +2678,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.disk)
+    @db_objects.objectify(objects.disk)
     def idisk_create(self, forihostid, values):
 
         if utils.is_int_like(forihostid):
@@ -2703,7 +2703,7 @@ class Connection(api.Connection):
 
             return self._disk_get(values['uuid'])
 
-    @objects.objectify(objects.disk)
+    @db_objects.objectify(objects.disk)
     def idisk_get_all(self, forihostid=None, foristorid=None, foripvid=None):
         query = model_query(models.idisk, read_deleted="no")
         if forihostid:
@@ -2714,17 +2714,17 @@ class Connection(api.Connection):
             query = query.filter_by(foripvid=foripvid)
         return query.all()
 
-    @objects.objectify(objects.disk)
+    @db_objects.objectify(objects.disk)
     def idisk_get(self, disk_id, forihostid=None):
         return self._disk_get(disk_id, forihostid)
 
-    @objects.objectify(objects.disk)
+    @db_objects.objectify(objects.disk)
     def idisk_get_list(self, limit=None, marker=None,
                       sort_key=None, sort_dir=None):
         return _paginate_query(models.idisk, limit, marker,
                                sort_key, sort_dir)
 
-    @objects.objectify(objects.disk)
+    @db_objects.objectify(objects.disk)
     def idisk_get_by_ihost(self, ihost,
                           limit=None, marker=None,
                           sort_key=None, sort_dir=None):
@@ -2734,7 +2734,7 @@ class Connection(api.Connection):
         return _paginate_query(models.idisk, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.disk)
+    @db_objects.objectify(objects.disk)
     def idisk_get_by_istor(self, istor_uuid,
                            limit=None, marker=None,
                            sort_key=None, sort_dir=None):
@@ -2744,7 +2744,7 @@ class Connection(api.Connection):
         return _paginate_query(models.idisk, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.disk)
+    @db_objects.objectify(objects.disk)
     def idisk_get_by_ihost_istor(self, ihost, istor,
                                  limit=None, marker=None,
                                  sort_key=None, sort_dir=None):
@@ -2754,7 +2754,7 @@ class Connection(api.Connection):
         return _paginate_query(models.idisk, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.disk)
+    @db_objects.objectify(objects.disk)
     def idisk_get_by_ipv(self, ipv,
                          limit=None, marker=None,
                          sort_key=None, sort_dir=None):
@@ -2764,7 +2764,7 @@ class Connection(api.Connection):
         return _paginate_query(models.idisk, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.disk)
+    @db_objects.objectify(objects.disk)
     def idisk_get_by_device_id(self, device_id,
                                limit=None, marker=None,
                                sort_key=None, sort_dir=None):
@@ -2774,7 +2774,7 @@ class Connection(api.Connection):
         return _paginate_query(models.idisk, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.disk)
+    @db_objects.objectify(objects.disk)
     def idisk_get_by_device_path(self, device_path,
                                  limit=None, marker=None,
                                  sort_key=None, sort_dir=None):
@@ -2784,7 +2784,7 @@ class Connection(api.Connection):
         return _paginate_query(models.idisk, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.disk)
+    @db_objects.objectify(objects.disk)
     def idisk_get_by_device_wwn(self, device_wwn,
                                limit=None, marker=None,
                                sort_key=None, sort_dir=None):
@@ -2794,7 +2794,7 @@ class Connection(api.Connection):
         return _paginate_query(models.idisk, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.disk)
+    @db_objects.objectify(objects.disk)
     def idisk_get_by_ihost_ipv(self, ihost, ipv,
                                limit=None, marker=None,
                                sort_key=None, sort_dir=None):
@@ -2804,7 +2804,7 @@ class Connection(api.Connection):
         return _paginate_query(models.idisk, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.disk)
+    @db_objects.objectify(objects.disk)
     def idisk_update(self, disk_id, values, forihostid=None):
         with _session_for_write() as session:
             # May need to reserve in multi controller system; ref sysinv
@@ -2849,7 +2849,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.partition)
+    @db_objects.objectify(objects.partition)
     def partition_get_all(self, forihostid=None, foripvid=None):
         query = model_query(models.partition, read_deleted="no")
         if forihostid:
@@ -2858,11 +2858,11 @@ class Connection(api.Connection):
             query = query.filter_by(foripvid=foripvid)
         return query.all()
 
-    @objects.objectify(objects.partition)
+    @db_objects.objectify(objects.partition)
     def partition_get(self, partition_id, forihostid=None):
         return self._partition_get(partition_id, forihostid)
 
-    @objects.objectify(objects.partition)
+    @db_objects.objectify(objects.partition)
     def partition_get_by_ihost(self, ihost,
                            limit=None, marker=None,
                            sort_key=None, sort_dir=None):
@@ -2872,7 +2872,7 @@ class Connection(api.Connection):
         return _paginate_query(models.partition, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.partition)
+    @db_objects.objectify(objects.partition)
     def partition_get_by_idisk(self, idisk,
                                limit=None, marker=None,
                                sort_key=None, sort_dir=None):
@@ -2882,7 +2882,7 @@ class Connection(api.Connection):
         return _paginate_query(models.partition, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.partition)
+    @db_objects.objectify(objects.partition)
     def partition_get_by_ipv(self, ipv,
                              limit=None, marker=None,
                              sort_key=None, sort_dir=None):
@@ -2892,7 +2892,7 @@ class Connection(api.Connection):
         return _paginate_query(models.partition, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.partition)
+    @db_objects.objectify(objects.partition)
     def partition_create(self, forihostid, values):
 
         if utils.is_int_like(forihostid):
@@ -2917,7 +2917,7 @@ class Connection(api.Connection):
 
             return self._partition_get(values['uuid'])
 
-    @objects.objectify(objects.partition)
+    @db_objects.objectify(objects.partition)
     def partition_update(self, partition_id, values, forihostid=None):
         with _session_for_write():
             query = model_query(models.partition, read_deleted="no")
@@ -2943,7 +2943,7 @@ class Connection(api.Connection):
                     filter_by(id=partition_id). \
                     delete()
 
-    @objects.objectify(objects.journal)
+    @db_objects.objectify(objects.journal)
     def journal_create(self, foristorid, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -2962,7 +2962,7 @@ class Connection(api.Connection):
 
             return journal
 
-    @objects.objectify(objects.journal)
+    @db_objects.objectify(objects.journal)
     def journal_update(self, journal_id, values):
         with _session_for_write() as session:
             # May need to reserve in multi controller system; ref sysinv
@@ -3021,14 +3021,14 @@ class Connection(api.Connection):
             partition_index += 1
             # Update output
 
-    @objects.objectify(objects.journal)
+    @db_objects.objectify(objects.journal)
     def journal_get_all(self, onistor_uuid=None):
         query = model_query(models.journal, read_deleted="no")
         if onistor_uuid:
             query = query.filter_by(onistor_uuid=onistor_uuid)
         return query.all()
 
-    @objects.objectify(objects.journal)
+    @db_objects.objectify(objects.journal)
     def journal_get(self, journal_id):
         query = model_query(models.journal)
         query = add_identity_filter(query, journal_id)
@@ -3040,7 +3040,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.journal)
+    @db_objects.objectify(objects.journal)
     def journal_get_by_istor_id(self, istor_id,
                                 limit=None, marker=None,
                                 sort_key=None, sort_dir=None):
@@ -3078,7 +3078,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.storage)
+    @db_objects.objectify(objects.storage)
     def istor_create(self, forihostid, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -3095,24 +3095,24 @@ class Connection(api.Connection):
 
             return self._stor_get(values['uuid'])
 
-    @objects.objectify(objects.storage)
+    @db_objects.objectify(objects.storage)
     def istor_get_all(self, forihostid=None):
         query = model_query(models.istor, read_deleted="no")
         if forihostid:
             query = query.filter_by(forihostid=forihostid)
         return query.all()
 
-    @objects.objectify(objects.storage)
+    @db_objects.objectify(objects.storage)
     def istor_get(self, istor_id):
         return self._stor_get(istor_id)
 
-    @objects.objectify(objects.storage)
+    @db_objects.objectify(objects.storage)
     def istor_get_list(self, limit=None, marker=None,
                        sort_key=None, sort_dir=None):
         return _paginate_query(models.istor, limit, marker,
                                sort_key, sort_dir)
 
-    @objects.objectify(objects.storage)
+    @db_objects.objectify(objects.storage)
     def istor_get_by_ihost(self, ihost,
                            limit=None, marker=None,
                            sort_key=None, sort_dir=None):
@@ -3122,7 +3122,7 @@ class Connection(api.Connection):
         return _paginate_query(models.istor, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.storage)
+    @db_objects.objectify(objects.storage)
     def istor_get_by_tier(self, tier,
                           limit=None, marker=None,
                           sort_key=None, sort_dir=None):
@@ -3165,7 +3165,7 @@ class Connection(api.Connection):
         self.journal_update(obj.id, journal_vals)
         return values
 
-    @objects.objectify(objects.storage)
+    @db_objects.objectify(objects.storage)
     def istor_get_by_ihost_function(self, ihost, function,
                            limit=None, marker=None,
                            sort_key=None, sort_dir=None):
@@ -3177,7 +3177,7 @@ class Connection(api.Connection):
         return _paginate_query(models.istor, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.storage)
+    @db_objects.objectify(objects.storage)
     def istor_update(self, istor_id, values):
 
         # Obtain all istor object.
@@ -3228,7 +3228,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.lvg)
+    @db_objects.objectify(objects.lvg)
     def ilvg_create(self, forihostid, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -3245,24 +3245,24 @@ class Connection(api.Connection):
 
             return self._lvg_get(values['uuid'])
 
-    @objects.objectify(objects.lvg)
+    @db_objects.objectify(objects.lvg)
     def ilvg_get_all(self, forihostid=None):
         query = model_query(models.ilvg, read_deleted="no")
         if forihostid:
             query = query.filter_by(forihostid=forihostid)
         return query.all()
 
-    @objects.objectify(objects.lvg)
+    @db_objects.objectify(objects.lvg)
     def ilvg_get(self, ilvg_id):
         return self._lvg_get(ilvg_id)
 
-    @objects.objectify(objects.lvg)
+    @db_objects.objectify(objects.lvg)
     def ilvg_get_list(self, limit=None, marker=None,
                       sort_key=None, sort_dir=None):
         return _paginate_query(models.ilvg, limit, marker,
                                sort_key, sort_dir)
 
-    @objects.objectify(objects.lvg)
+    @db_objects.objectify(objects.lvg)
     def ilvg_get_by_ihost(self, ihost,
                           limit=None, marker=None,
                           sort_key=None, sort_dir=None):
@@ -3272,7 +3272,7 @@ class Connection(api.Connection):
         return _paginate_query(models.ilvg, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.lvg)
+    @db_objects.objectify(objects.lvg)
     def ilvg_update(self, ilvg_id, values):
         with _session_for_write() as session:
             query = model_query(models.ilvg, read_deleted="no",
@@ -3308,7 +3308,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.pv)
+    @db_objects.objectify(objects.pv)
     def ipv_create(self, forihostid, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -3325,24 +3325,24 @@ class Connection(api.Connection):
 
             return self._pv_get(values['uuid'])
 
-    @objects.objectify(objects.pv)
+    @db_objects.objectify(objects.pv)
     def ipv_get_all(self, forihostid=None):
         query = model_query(models.ipv, read_deleted="no")
         if forihostid:
             query = query.filter_by(forihostid=forihostid)
         return query.all()
 
-    @objects.objectify(objects.pv)
+    @db_objects.objectify(objects.pv)
     def ipv_get(self, ipv_id):
         return self._pv_get(ipv_id)
 
-    @objects.objectify(objects.pv)
+    @db_objects.objectify(objects.pv)
     def ipv_get_list(self, limit=None, marker=None,
                      sort_key=None, sort_dir=None):
         return _paginate_query(models.ipv, limit, marker,
                                sort_key, sort_dir)
 
-    @objects.objectify(objects.pv)
+    @db_objects.objectify(objects.pv)
     def ipv_get_by_ihost(self, ihost,
                          limit=None, marker=None,
                          sort_key=None, sort_dir=None):
@@ -3352,7 +3352,7 @@ class Connection(api.Connection):
         return _paginate_query(models.ipv, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.pv)
+    @db_objects.objectify(objects.pv)
     def ipv_update(self, ipv_id, values):
         with _session_for_write() as session:
             query = model_query(models.ipv, read_deleted="no",
@@ -3389,7 +3389,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.ServerNotFound(server=server)
 
-    @objects.objectify(objects.user)
+    @db_objects.objectify(objects.user)
     def iuser_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -3403,11 +3403,11 @@ class Connection(api.Connection):
                 raise exception.UserAlreadyExists(uuid=values['uuid'])
             return self._user_get(values['uuid'])
 
-    @objects.objectify(objects.user)
+    @db_objects.objectify(objects.user)
     def iuser_get(self, server):
         return self._user_get(server)
 
-    @objects.objectify(objects.user)
+    @db_objects.objectify(objects.user)
     def iuser_get_one(self):
         query = model_query(models.iuser)
 
@@ -3416,7 +3416,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NotFound()
 
-    @objects.objectify(objects.user)
+    @db_objects.objectify(objects.user)
     def iuser_get_list(self, limit=None, marker=None,
                        sort_key=None, sort_dir=None):
 
@@ -3425,7 +3425,7 @@ class Connection(api.Connection):
         return _paginate_query(models.iuser, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.user)
+    @db_objects.objectify(objects.user)
     def iuser_get_by_isystem(self, isystem_id, limit=None, marker=None,
                              sort_key=None, sort_dir=None):
         # isystem_get() to raise an exception if the isystem is not found
@@ -3435,7 +3435,7 @@ class Connection(api.Connection):
         return _paginate_query(models.iuser, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.user)
+    @db_objects.objectify(objects.user)
     def iuser_update(self, server, values):
         with _session_for_write() as session:
             query = model_query(models.iuser, session=session)
@@ -3476,7 +3476,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.ServerNotFound(server=server)
 
-    @objects.objectify(objects.dns)
+    @db_objects.objectify(objects.dns)
     def idns_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -3490,11 +3490,11 @@ class Connection(api.Connection):
                 raise exception.DNSAlreadyExists(uuid=values['uuid'])
             return self._dns_get(values['uuid'])
 
-    @objects.objectify(objects.dns)
+    @db_objects.objectify(objects.dns)
     def idns_get(self, server):
         return self._dns_get(server)
 
-    @objects.objectify(objects.dns)
+    @db_objects.objectify(objects.dns)
     def idns_get_one(self):
         query = model_query(models.idns)
 
@@ -3503,7 +3503,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NotFound()
 
-    @objects.objectify(objects.dns)
+    @db_objects.objectify(objects.dns)
     def idns_get_list(self, limit=None, marker=None,
                       sort_key=None, sort_dir=None):
 
@@ -3512,7 +3512,7 @@ class Connection(api.Connection):
         return _paginate_query(models.idns, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.dns)
+    @db_objects.objectify(objects.dns)
     def idns_get_by_isystem(self, isystem_id, limit=None, marker=None,
                             sort_key=None, sort_dir=None):
         # isystem_get() to raise an exception if the isystem is not found
@@ -3522,7 +3522,7 @@ class Connection(api.Connection):
         return _paginate_query(models.idns, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.dns)
+    @db_objects.objectify(objects.dns)
     def idns_update(self, server, values):
         with _session_for_write() as session:
             query = model_query(models.idns, session=session)
@@ -3563,7 +3563,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NTPNotFound(intp_id=intp_id)
 
-    @objects.objectify(objects.ntp)
+    @db_objects.objectify(objects.ntp)
     def intp_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -3577,11 +3577,11 @@ class Connection(api.Connection):
                 raise exception.NTPAlreadyExists(uuid=values['uuid'])
             return self._ntp_get(values['uuid'])
 
-    @objects.objectify(objects.ntp)
+    @db_objects.objectify(objects.ntp)
     def intp_get(self, server):
         return self._ntp_get(server)
 
-    @objects.objectify(objects.ntp)
+    @db_objects.objectify(objects.ntp)
     def intp_get_one(self):
         query = model_query(models.intp)
 
@@ -3590,7 +3590,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NotFound()
 
-    @objects.objectify(objects.ntp)
+    @db_objects.objectify(objects.ntp)
     def intp_get_list(self, limit=None, marker=None,
                       sort_key=None, sort_dir=None):
 
@@ -3599,7 +3599,7 @@ class Connection(api.Connection):
         return _paginate_query(models.intp, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.ntp)
+    @db_objects.objectify(objects.ntp)
     def intp_get_by_isystem(self, isystem_id, limit=None, marker=None,
                             sort_key=None, sort_dir=None):
         # isystem_get() to raise an exception if the isystem is not found
@@ -3609,7 +3609,7 @@ class Connection(api.Connection):
         return _paginate_query(models.intp, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.ntp)
+    @db_objects.objectify(objects.ntp)
     def intp_update(self, intp_id, values):
         with _session_for_write() as session:
             query = model_query(models.intp, session=session)
@@ -3650,7 +3650,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.PTPNotFound(ptp_id=ptp_id)
 
-    @objects.objectify(objects.ptp)
+    @db_objects.objectify(objects.ptp)
     def ptp_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -3664,11 +3664,11 @@ class Connection(api.Connection):
                 raise exception.PTPAlreadyExists(uuid=values['uuid'])
             return self._ptp_get(values['uuid'])
 
-    @objects.objectify(objects.ptp)
+    @db_objects.objectify(objects.ptp)
     def ptp_get(self, ptp_id):
         return self._ptp_get(ptp_id)
 
-    @objects.objectify(objects.ptp)
+    @db_objects.objectify(objects.ptp)
     def ptp_get_one(self):
         query = model_query(models.PTP)
 
@@ -3677,7 +3677,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NotFound()
 
-    @objects.objectify(objects.ptp)
+    @db_objects.objectify(objects.ptp)
     def ptp_get_list(self, limit=None, marker=None,
                      sort_key=None, sort_dir=None):
 
@@ -3686,7 +3686,7 @@ class Connection(api.Connection):
         return _paginate_query(models.PTP, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.ptp)
+    @db_objects.objectify(objects.ptp)
     def ptp_get_by_isystem(self, isystem_id, limit=None, marker=None,
                            sort_key=None, sort_dir=None):
         # isystem_get() to raise an exception if the isystem is not found
@@ -3696,7 +3696,7 @@ class Connection(api.Connection):
         return _paginate_query(models.PTP, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.ptp)
+    @db_objects.objectify(objects.ptp)
     def ptp_update(self, ptp_id, values):
         with _session_for_write() as session:
             query = model_query(models.PTP, session=session)
@@ -3736,7 +3736,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.PtpInstanceNotFound(uuid=ptp_instance_id)
 
-    @objects.objectify(objects.ptp_instance)
+    @db_objects.objectify(objects.ptp_instance)
     def ptp_instance_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -3751,11 +3751,11 @@ class Connection(api.Connection):
                 raise exception.PtpInstanceAlreadyExists(name=values['name'])
             return self._ptp_instance_get(values['uuid'])
 
-    @objects.objectify(objects.ptp_instance)
+    @db_objects.objectify(objects.ptp_instance)
     def ptp_instance_get(self, ptp_instance_id):
         return self._ptp_instance_get(ptp_instance_id)
 
-    @objects.objectify(objects.ptp_instance)
+    @db_objects.objectify(objects.ptp_instance)
     def ptp_instances_get_list(self, host=None, limit=None, marker=None,
                                sort_key=None, sort_dir=None):
         query = model_query(models.PtpInstances)
@@ -3772,7 +3772,7 @@ class Connection(api.Connection):
     def ptp_instance_parameter_remove(self, ptp_instance, ptp_parameter):
         self._ptp_parameter_remove(ptp_instance, ptp_parameter)
 
-    @objects.objectify(objects.ptp_instance_map)
+    @db_objects.objectify(objects.ptp_instance_map)
     def ptp_instance_assign(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -3804,7 +3804,7 @@ class Connection(api.Connection):
                 return
             query.delete()
 
-    @objects.objectify(objects.host)
+    @db_objects.objectify(objects.host)
     def ptp_instance_get_assignees(self, ptp_instance_id, limit=None,
                                    marker=None, sort_key=None, sort_dir=None):
         query = model_query(models.ihost)
@@ -3834,7 +3834,7 @@ class Connection(api.Connection):
                 raise exception.NotFound()
             query.delete()
 
-    @objects.objectify(objects.ptp_instance_map)
+    @db_objects.objectify(objects.ptp_instance_map)
     def ptp_instance_map_get(self, ptp_instance_map_id):
         query = model_query(models.PtpInstanceMaps)
         query = add_identity_filter(query, ptp_instance_map_id)
@@ -3851,7 +3851,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.PtpInterfaceNotFound(uuid=ptp_interface_id)
 
-    @objects.objectify(objects.ptp_interface)
+    @db_objects.objectify(objects.ptp_interface)
     def ptp_interface_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -3867,11 +3867,11 @@ class Connection(api.Connection):
                 raise exception.PtpInterfaceAlreadyExists(name=values['name'])
             return self._ptp_interface_get(values['uuid'])
 
-    @objects.objectify(objects.ptp_interface)
+    @db_objects.objectify(objects.ptp_interface)
     def ptp_interface_get(self, ptp_interface_id):
         return self._ptp_interface_get(ptp_interface_id)
 
-    @objects.objectify(objects.ptp_interface)
+    @db_objects.objectify(objects.ptp_interface)
     def ptp_interfaces_get_list(self, host=None, interface=None,
                                 ptp_instance=None, limit=None, marker=None,
                                 sort_key=None, sort_dir=None):
@@ -3901,7 +3901,7 @@ class Connection(api.Connection):
     def ptp_interface_parameter_remove(self, ptp_interface, ptp_parameter):
         self._ptp_parameter_remove(ptp_interface, ptp_parameter)
 
-    @objects.objectify(objects.ptp_interface_map)
+    @db_objects.objectify(objects.ptp_interface_map)
     def ptp_interface_assign(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -3934,7 +3934,7 @@ class Connection(api.Connection):
                 return
             query.delete()
 
-    @objects.objectify(objects.interface)
+    @db_objects.objectify(objects.interface)
     def ptp_interface_get_assignees(self, ptp_interface_id, limit=None,
                                     marker=None, sort_key=None, sort_dir=None):
         query = model_query(models.Interfaces)
@@ -3964,7 +3964,7 @@ class Connection(api.Connection):
                 raise exception.NotFound()
             query.delete()
 
-    @objects.objectify(objects.ptp_interface_map)
+    @db_objects.objectify(objects.ptp_interface_map)
     def ptp_interface_map_get(self, ptp_interface_map_id):
         query = model_query(models.PtpInterfaceMaps)
         query = add_identity_filter(query, ptp_interface_map_id)
@@ -3982,7 +3982,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.PtpParameterNotFound(uuid=ptp_parameter_id)
 
-    @objects.objectify(objects.ptp_parameter)
+    @db_objects.objectify(objects.ptp_parameter)
     def ptp_parameter_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -3995,11 +3995,11 @@ class Connection(api.Connection):
                 raise exception.PtpParameterAlreadyExists(uuid=values['uuid'])
             return self._ptp_parameter_get(values['uuid'])
 
-    @objects.objectify(objects.ptp_parameter)
+    @db_objects.objectify(objects.ptp_parameter)
     def ptp_parameter_get(self, ptp_parameter_id):
         return self._ptp_parameter_get(ptp_parameter_id)
 
-    @objects.objectify(objects.ptp_parameter)
+    @db_objects.objectify(objects.ptp_parameter)
     def ptp_parameter_get_by_namevalue(self, name, value):
         query = model_query(models.PtpParameters)
         query = query.filter_by(name=name, value=value)
@@ -4008,7 +4008,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NotFound
 
-    @objects.objectify(objects.ptp_parameter)
+    @db_objects.objectify(objects.ptp_parameter)
     def ptp_parameters_get_list(self, ptp_instance=None, ptp_interface=None,
                                 limit=None, marker=None, sort_key=None,
                                 sort_dir=None):
@@ -4029,7 +4029,7 @@ class Connection(api.Connection):
         return _paginate_query(models.PtpParameters, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.ptp_parameter)
+    @db_objects.objectify(objects.ptp_parameter)
     def ptp_parameters_get_list_by_type(self, type, limit=None, marker=None,
                                         sort_key=None, sort_dir=None):
         query = model_query(models.PtpParameters)
@@ -4038,7 +4038,7 @@ class Connection(api.Connection):
         return _paginate_query(models.PtpParameters, limit, marker, sort_key,
                                sort_dir, query)
 
-    @objects.objectify(objects.ptp_paramowner)
+    @db_objects.objectify(objects.ptp_paramowner)
     def ptp_parameter_get_owners(self, ptp_parameter_uuid, limit=None,
                                  marker=None, sort_key=None, sort_dir=None):
         query = model_query(models.PtpParameterOwners)
@@ -4047,7 +4047,7 @@ class Connection(api.Connection):
         return _paginate_query(models.PtpParameterOwners, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.ptp_parameter)
+    @db_objects.objectify(objects.ptp_parameter)
     def ptp_parameter_update(self, ptp_parameter_id, values):
         with _session_for_write() as session:
             query = model_query(models.PtpParameters, session=session)
@@ -4067,7 +4067,7 @@ class Connection(api.Connection):
                 raise exception.PtpParameterNotFound(uuid=ptp_parameter_id)
             query.delete()
 
-    @objects.objectify(objects.ptp_paramowner)
+    @db_objects.objectify(objects.ptp_paramowner)
     def ptp_paramowner_get(self, ptp_paramowner_id):
         query = model_query(models.PtpParameterOwners)
         query = add_identity_filter(query, ptp_paramowner_id)
@@ -4085,11 +4085,11 @@ class Connection(api.Connection):
             raise exception.PtpParameterOwnershipNotFound(
                 uuid=ptp_paramownership_id)
 
-    @objects.objectify(objects.ptp_paramownership)
+    @db_objects.objectify(objects.ptp_paramownership)
     def ptp_paramownership_get(self, ptp_paramownership_id):
         return self._ptp_paramownership_get(ptp_paramownership_id)
 
-    @objects.objectify(objects.ptp_paramownership)
+    @db_objects.objectify(objects.ptp_paramownership)
     def _ptp_parameter_add(self, ptp_parameter_owner, ptp_parameter):
         with _session_for_write() as session:
             values = dict()
@@ -4116,13 +4116,13 @@ class Connection(api.Connection):
 
     # NOTE: method is deprecated and provided for API compatibility.
     # object class will convert Network entity to an iextoam object
-    @objects.objectify(objects.oam_network)
+    @db_objects.objectify(objects.oam_network)
     def iextoam_get_one(self):
         return self._network_get_by_type(constants.NETWORK_TYPE_OAM)
 
     # NOTE: method is deprecated and provided for API compatibility.
     # object class will convert Network entity to an iextoam object
-    @objects.objectify(objects.oam_network)
+    @db_objects.objectify(objects.oam_network)
     def iextoam_get_list(self, limit=None, marker=None,
                          sort_key=None, sort_dir=None):
         return self._networks_get_by_type(constants.NETWORK_TYPE_OAM,
@@ -4139,7 +4139,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.controller_fs)
+    @db_objects.objectify(objects.controller_fs)
     def controller_fs_create(self, values):
         if values.get('isystem_uuid'):
             system = self.isystem_get(values.get('isystem_uuid'))
@@ -4162,11 +4162,11 @@ class Connection(api.Connection):
                 raise exception.ControllerFSAlreadyExists(uuid=values['uuid'])
             return self._controller_fs_get(values['uuid'])
 
-    @objects.objectify(objects.controller_fs)
+    @db_objects.objectify(objects.controller_fs)
     def controller_fs_get(self, controller_fs_id):
         return self._controller_fs_get(controller_fs_id)
 
-    @objects.objectify(objects.controller_fs)
+    @db_objects.objectify(objects.controller_fs)
     def controller_fs_get_one(self):
         query = model_query(models.ControllerFs)
 
@@ -4175,7 +4175,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NotFound()
 
-    @objects.objectify(objects.controller_fs)
+    @db_objects.objectify(objects.controller_fs)
     def controller_fs_get_list(self, limit=None, marker=None,
                                sort_key=None, sort_dir=None):
 
@@ -4184,7 +4184,7 @@ class Connection(api.Connection):
         return _paginate_query(models.ControllerFs, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.controller_fs)
+    @db_objects.objectify(objects.controller_fs)
     def controller_fs_get_by_isystem(self, isystem_id, limit=None, marker=None,
                                      sort_key=None, sort_dir=None):
         # isystem_get() to raise an exception if the isystem is not found
@@ -4194,7 +4194,7 @@ class Connection(api.Connection):
         return _paginate_query(models.ControllerFs, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.controller_fs)
+    @db_objects.objectify(objects.controller_fs)
     def controller_fs_update(self, controller_fs_id, values):
         with _session_for_write() as session:
             query = model_query(models.ControllerFs, read_deleted="no",
@@ -4236,7 +4236,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.ServerNotFound(server=ceph_mon_id)
 
-    @objects.objectify(objects.ceph_mon)
+    @db_objects.objectify(objects.ceph_mon)
     def ceph_mon_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -4250,11 +4250,11 @@ class Connection(api.Connection):
                 raise exception.CephMonAlreadyExists(uuid=values['uuid'])
             return self._ceph_mon_get(values['uuid'])
 
-    @objects.objectify(objects.ceph_mon)
+    @db_objects.objectify(objects.ceph_mon)
     def ceph_mon_get(self, ceph_mon_id):
         return self._ceph_mon_get(ceph_mon_id)
 
-    @objects.objectify(objects.ceph_mon)
+    @db_objects.objectify(objects.ceph_mon)
     def ceph_mon_get_list(self, limit=None, marker=None,
                           sort_key=None, sort_dir=None):
 
@@ -4263,7 +4263,7 @@ class Connection(api.Connection):
         return _paginate_query(models.CephMon, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.ceph_mon)
+    @db_objects.objectify(objects.ceph_mon)
     def ceph_mon_get_by_ihost(self, ihost_id_or_uuid,
                               limit=None, marker=None,
                               sort_key=None, sort_dir=None):
@@ -4273,7 +4273,7 @@ class Connection(api.Connection):
         return _paginate_query(models.CephMon, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.ceph_mon)
+    @db_objects.objectify(objects.ceph_mon)
     def ceph_mon_update(self, ceph_mon_id, values):
         with _session_for_write() as session:
             query = model_query(models.CephMon, session=session)
@@ -4305,11 +4305,11 @@ class Connection(api.Connection):
             raise exception.StorageTierNotFound(storage_tier_uuid=uuid)
         return result
 
-    @objects.objectify(objects.storage_tier)
+    @db_objects.objectify(objects.storage_tier)
     def storage_tier_get(self, storage_tier_uuid):
         return self._storage_tier_get(storage_tier_uuid)
 
-    @objects.objectify(objects.storage_tier)
+    @db_objects.objectify(objects.storage_tier)
     def storage_tier_get_by_cluster(self, cluster,
                                     limit=None, marker=None,
                                     sort_key=None, sort_dir=None):
@@ -4329,11 +4329,11 @@ class Connection(api.Connection):
             raise exception.StorageTierNotFoundByName(name=values['name'])
         return result
 
-    @objects.objectify(objects.storage_tier)
+    @db_objects.objectify(objects.storage_tier)
     def storage_tier_query(self, values):
         return self._storage_tier_query(values)
 
-    @objects.objectify(objects.storage_tier)
+    @db_objects.objectify(objects.storage_tier)
     def storage_tier_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -4348,7 +4348,7 @@ class Connection(api.Connection):
                 exception.StorageTierAlreadyExists(uuid=values['uuid'])
             return self._storage_tier_get(values['uuid'])
 
-    @objects.objectify(objects.storage_tier)
+    @db_objects.objectify(objects.storage_tier)
     def storage_tier_update(self, storage_tier_uuid, values):
         with _session_for_write() as session:
             storage_tier = self._storage_tier_get(storage_tier_uuid,
@@ -4358,7 +4358,7 @@ class Connection(api.Connection):
             session.flush()
             return storage_tier
 
-    @objects.objectify(objects.storage_tier)
+    @db_objects.objectify(objects.storage_tier)
     def storage_tier_get_list(self, limit=None, marker=None,
                           sort_key=None, sort_dir=None):
         query = model_query(models.StorageTier)
@@ -4391,7 +4391,7 @@ class Connection(api.Connection):
                 storage_tier_uuid=storage_tier_uuid)
         query.delete()
 
-    @objects.objectify(objects.storage_backend)
+    @db_objects.objectify(objects.storage_backend)
     def storage_backend_create(self, values):
         if values['backend'] == constants.SB_TYPE_CEPH:
             backend = models.StorageCeph()
@@ -4425,7 +4425,7 @@ class Connection(api.Connection):
 
         return self._storage_backend_get_by_cls(type(obj), values['uuid'])
 
-    @objects.objectify(objects.storage_backend)
+    @db_objects.objectify(objects.storage_backend)
     def storage_backend_get(self, storage_backend_id):
         return self._storage_backend_get(storage_backend_id)
 
@@ -4486,7 +4486,7 @@ class Connection(api.Connection):
         else:
             return objects.storage_backend.from_db_object(result)
 
-    @objects.objectify(objects.storage_backend)
+    @db_objects.objectify(objects.storage_backend)
     def storage_backend_get_list(self, limit=None, marker=None,
                                  sort_key=None, sort_dir=None):
 
@@ -4500,7 +4500,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.storage_backend)
+    @db_objects.objectify(objects.storage_backend)
     def storage_backend_get_list_by_type(self, backend_type=None, limit=None,
                                          marker=None, sort_key=None,
                                          sort_dir=None):
@@ -4538,7 +4538,7 @@ class Connection(api.Connection):
                                   sort_key=None, sort_dir=None):
         return _paginate_query(cls, limit, marker, sort_key, sort_dir)
 
-    @objects.objectify(objects.storage_backend)
+    @db_objects.objectify(objects.storage_backend)
     def storage_backend_get_by_isystem(self, isystem_id, limit=None,
                                        marker=None, sort_key=None,
                                        sort_dir=None):
@@ -4549,7 +4549,7 @@ class Connection(api.Connection):
         return _paginate_query(models.StorageBackend, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.storage_backend)
+    @db_objects.objectify(objects.storage_backend)
     def storage_backend_update(self, storage_backend_id, values):
         with _session_for_write():
             query = model_query(models.StorageBackend, read_deleted="no")
@@ -4622,154 +4622,154 @@ class Connection(api.Connection):
                     filter_by(id=storage_backend_id).\
                     delete()
 
-    @objects.objectify(objects.storage_ceph)
+    @db_objects.objectify(objects.storage_ceph)
     def storage_ceph_create(self, values):
         backend = models.StorageCeph()
         return self._storage_backend_create(backend, values)
 
-    @objects.objectify(objects.storage_ceph)
+    @db_objects.objectify(objects.storage_ceph)
     def storage_ceph_get(self, storage_ceph_id):
         return self._storage_backend_get_by_cls(models.StorageCeph, storage_ceph_id)
 
-    @objects.objectify(objects.storage_ceph)
+    @db_objects.objectify(objects.storage_ceph)
     def storage_ceph_get_list(self, limit=None, marker=None,
                               sort_key=None, sort_dir=None):
         return self._storage_backend_get_list(models.StorageCeph, limit, marker,
                                               sort_key, sort_dir)
 
-    @objects.objectify(objects.storage_ceph)
+    @db_objects.objectify(objects.storage_ceph)
     def storage_ceph_update(self, storage_ceph_id, values):
         return self._storage_backend_update(models.StorageCeph, storage_ceph_id,
                                             values)
 
-    @objects.objectify(objects.storage_ceph)
+    @db_objects.objectify(objects.storage_ceph)
     def storage_ceph_destroy(self, storage_ceph_id):
         return self._storage_backend_destroy(models.StorageCeph, storage_ceph_id)
 
-    @objects.objectify(objects.storage_external)
+    @db_objects.objectify(objects.storage_external)
     def storage_external_create(self, values):
         backend = models.StorageExternal()
         return self._storage_backend_create(backend, values)
 
-    @objects.objectify(objects.storage_external)
+    @db_objects.objectify(objects.storage_external)
     def storage_external_get(self, storage_external_id):
         return self._storage_backend_get_by_cls(models.StorageExternal, storage_external_id)
 
-    @objects.objectify(objects.storage_external)
+    @db_objects.objectify(objects.storage_external)
     def storage_external_get_list(self, limit=None, marker=None,
                               sort_key=None, sort_dir=None):
         return self._storage_backend_get_list(models.StorageExternal, limit, marker,
                                               sort_key, sort_dir)
 
-    @objects.objectify(objects.storage_external)
+    @db_objects.objectify(objects.storage_external)
     def storage_external_update(self, storage_external_id, values):
         return self._storage_backend_update(models.StorageExternal, storage_external_id,
                                             values)
 
-    @objects.objectify(objects.storage_external)
+    @db_objects.objectify(objects.storage_external)
     def storage_external_destroy(self, storage_external_id):
         return self._storage_backend_destroy(models.StorageExternal, storage_external_id)
 
-    @objects.objectify(objects.storage_file)
+    @db_objects.objectify(objects.storage_file)
     def storage_file_create(self, values):
         backend = models.StorageFile()
         return self._storage_backend_create(backend, values)
 
-    @objects.objectify(objects.storage_file)
+    @db_objects.objectify(objects.storage_file)
     def storage_file_get(self, storage_file_id):
         return self._storage_backend_get_by_cls(models.StorageFile, storage_file_id)
 
-    @objects.objectify(objects.storage_file)
+    @db_objects.objectify(objects.storage_file)
     def storage_file_get_list(self, limit=None, marker=None,
                               sort_key=None, sort_dir=None):
         return self._storage_backend_get_list(models.StorageFile, limit, marker,
                                               sort_key, sort_dir)
 
-    @objects.objectify(objects.storage_file)
+    @db_objects.objectify(objects.storage_file)
     def storage_file_update(self, storage_file_id, values):
         return self._storage_backend_update(models.StorageFile, storage_file_id,
                                             values)
 
-    @objects.objectify(objects.storage_file)
+    @db_objects.objectify(objects.storage_file)
     def storage_file_destroy(self, storage_file_id):
         return self._storage_backend_destroy(models.StorageFile, storage_file_id)
 
-    @objects.objectify(objects.storage_lvm)
+    @db_objects.objectify(objects.storage_lvm)
     def storage_lvm_create(self, values):
         backend = models.StorageLvm()
         return self._storage_backend_create(backend, values)
 
-    @objects.objectify(objects.storage_lvm)
+    @db_objects.objectify(objects.storage_lvm)
     def storage_lvm_get(self, storage_lvm_id):
         return self._storage_backend_get_by_cls(models.StorageLvm, storage_lvm_id)
 
-    @objects.objectify(objects.storage_lvm)
+    @db_objects.objectify(objects.storage_lvm)
     def storage_lvm_get_list(self, limit=None, marker=None,
                              sort_key=None, sort_dir=None):
         return self._storage_backend_get_list(models.StorageLvm, limit, marker,
                                               sort_key, sort_dir)
 
-    @objects.objectify(objects.storage_lvm)
+    @db_objects.objectify(objects.storage_lvm)
     def storage_lvm_update(self, storage_lvm_id, values):
         return self._storage_backend_update(models.StorageLvm, storage_lvm_id,
                                             values)
 
-    @objects.objectify(objects.storage_lvm)
+    @db_objects.objectify(objects.storage_lvm)
     def storage_lvm_destroy(self, storage_lvm_id):
         return self._storage_backend_destroy(models.StorageLvm, storage_lvm_id)
 
-    @objects.objectify(objects.storage_ceph_external)
+    @db_objects.objectify(objects.storage_ceph_external)
     def storage_ceph_external_create(self, values):
         backend = models.StorageCephExternal()
         return self._storage_backend_create(backend, values)
 
-    @objects.objectify(objects.storage_ceph_external)
+    @db_objects.objectify(objects.storage_ceph_external)
     def storage_ceph_external_get(self, storage_ceph_external_id):
         return self._storage_backend_get_by_cls(models.StorageCephExternal,
                                                 storage_ceph_external_id)
 
-    @objects.objectify(objects.storage_ceph_external)
+    @db_objects.objectify(objects.storage_ceph_external)
     def storage_ceph_external_get_list(self, limit=None, marker=None,
                                        sort_key=None, sort_dir=None):
         return self._storage_backend_get_list(models.StorageCephExternal, limit,
                                               marker,
                                               sort_key, sort_dir)
 
-    @objects.objectify(objects.storage_ceph_external)
+    @db_objects.objectify(objects.storage_ceph_external)
     def storage_ceph_external_update(self, storage_ceph_external_id, values):
         return self._storage_backend_update(models.StorageCephExternal,
                                             storage_ceph_external_id,
                                             values)
 
-    @objects.objectify(objects.storage_ceph_external)
+    @db_objects.objectify(objects.storage_ceph_external)
     def storage_ceph_external_destroy(self, storage_ceph_external_id):
         return self._storage_backend_destroy(models.StorageCephExternal,
                                              storage_ceph_external_id)
 
-    @objects.objectify(objects.storage_ceph_rook)
+    @db_objects.objectify(objects.storage_ceph_rook)
     def storage_ceph_rook_create(self, values):
         backend = models.StorageCephRook()
         return self._storage_backend_create(backend, values)
 
-    @objects.objectify(objects.storage_ceph_rook)
+    @db_objects.objectify(objects.storage_ceph_rook)
     def storage_ceph_rook_get(self, storage_ceph_rook_id):
         return self._storage_backend_get_by_cls(models.StorageCephRook,
                                                 storage_ceph_rook_id)
 
-    @objects.objectify(objects.storage_ceph_rook)
+    @db_objects.objectify(objects.storage_ceph_rook)
     def storage_ceph_rook_get_list(self, limit=None, marker=None,
                               sort_key=None, sort_dir=None):
         return self._storage_backend_get_list(models.StorageCephRook, limit,
                                               marker,
                                               sort_key, sort_dir)
 
-    @objects.objectify(objects.storage_ceph_rook)
+    @db_objects.objectify(objects.storage_ceph_rook)
     def storage_ceph_rook_update(self, storage_ceph_rook_id, values):
         return self._storage_backend_update(models.StorageCephRook,
                                             storage_ceph_rook_id,
                                             values)
 
-    @objects.objectify(objects.storage_ceph_rook)
+    @db_objects.objectify(objects.storage_ceph_rook)
     def storage_ceph_rook_destroy(self, storage_ceph_rook_id):
         return self._storage_backend_destroy(models.StorageCephRook,
                                              storage_ceph_rook_id)
@@ -4783,7 +4783,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.ServerNotFound(server=server)
 
-    @objects.objectify(objects.drbdconfig)
+    @db_objects.objectify(objects.drbdconfig)
     def drbdconfig_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -4797,11 +4797,11 @@ class Connection(api.Connection):
                 raise exception.DRBDAlreadyExists(uuid=values['uuid'])
             return self._drbdconfig_get(values['uuid'])
 
-    @objects.objectify(objects.drbdconfig)
+    @db_objects.objectify(objects.drbdconfig)
     def drbdconfig_get(self, server):
         return self._drbdconfig_get(server)
 
-    @objects.objectify(objects.drbdconfig)
+    @db_objects.objectify(objects.drbdconfig)
     def drbdconfig_get_one(self):
         query = model_query(models.drbdconfig)
 
@@ -4810,7 +4810,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NotFound()
 
-    @objects.objectify(objects.drbdconfig)
+    @db_objects.objectify(objects.drbdconfig)
     def drbdconfig_get_list(self, limit=None, marker=None,
                             sort_key=None, sort_dir=None):
 
@@ -4819,7 +4819,7 @@ class Connection(api.Connection):
         return _paginate_query(models.drbdconfig, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.drbdconfig)
+    @db_objects.objectify(objects.drbdconfig)
     def drbdconfig_get_by_isystem(self, isystem_id, limit=None, marker=None,
                                   sort_key=None, sort_dir=None):
         # isystem_get() to raise an exception if the isystem is not found
@@ -4829,7 +4829,7 @@ class Connection(api.Connection):
         return _paginate_query(models.drbdconfig, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.drbdconfig)
+    @db_objects.objectify(objects.drbdconfig)
     def drbdconfig_update(self, server, values):
         with _session_for_write() as session:
             query = model_query(models.drbdconfig, session=session)
@@ -4870,7 +4870,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.ServerNotFound(server=server)
 
-    @objects.objectify(objects.remotelogging)
+    @db_objects.objectify(objects.remotelogging)
     def remotelogging_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -4884,11 +4884,11 @@ class Connection(api.Connection):
                 raise exception.RemoteLoggingAlreadyExists(uuid=values['uuid'])
             return self._remotelogging_get(values['uuid'])
 
-    @objects.objectify(objects.remotelogging)
+    @db_objects.objectify(objects.remotelogging)
     def remotelogging_get(self, server):
         return self._remotelogging_get(server)
 
-    @objects.objectify(objects.remotelogging)
+    @db_objects.objectify(objects.remotelogging)
     def remotelogging_get_one(self):
         query = model_query(models.remotelogging)
 
@@ -4897,7 +4897,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NotFound()
 
-    @objects.objectify(objects.remotelogging)
+    @db_objects.objectify(objects.remotelogging)
     def remotelogging_get_list(self, limit=None, marker=None,
                                sort_key=None, sort_dir=None):
 
@@ -4906,7 +4906,7 @@ class Connection(api.Connection):
         return _paginate_query(models.remotelogging, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.remotelogging)
+    @db_objects.objectify(objects.remotelogging)
     def remotelogging_get_by_isystem(self, isystem_id, limit=None, marker=None,
                                      sort_key=None, sort_dir=None):
         # isystem_get() to raise an exception if the isystem is not found
@@ -4916,7 +4916,7 @@ class Connection(api.Connection):
         return _paginate_query(models.remotelogging, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.remotelogging)
+    @db_objects.objectify(objects.remotelogging)
     def remotelogging_update(self, server, values):
         with _session_for_write() as session:
             query = model_query(models.remotelogging, session=session)
@@ -4956,7 +4956,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.ServiceNotFound(service=name)
 
-    @objects.objectify(objects.service)
+    @db_objects.objectify(objects.service)
     def service_create(self, values):
         service = models.Services()
         service.update(values)
@@ -4968,11 +4968,11 @@ class Connection(api.Connection):
                 raise exception.ServiceAlreadyExists(uuid=values['uuid'])
             return self._service_get(values['name'])
 
-    @objects.objectify(objects.service)
+    @db_objects.objectify(objects.service)
     def service_get(self, name):
         return self._service_get(name)
 
-    @objects.objectify(objects.service)
+    @db_objects.objectify(objects.service)
     def service_get_one(self):
         query = model_query(models.Services)
 
@@ -4981,7 +4981,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NotFound()
 
-    @objects.objectify(objects.service)
+    @db_objects.objectify(objects.service)
     def service_get_list(self, limit=None, marker=None,
                       sort_key=None, sort_dir=None):
 
@@ -4990,12 +4990,12 @@ class Connection(api.Connection):
         return _paginate_query(models.Services, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.service)
+    @db_objects.objectify(objects.service)
     def service_get_all(self):
         query = model_query(models.Services, read_deleted="no")
         return query.all()
 
-    @objects.objectify(objects.service)
+    @db_objects.objectify(objects.service)
     def service_update(self, name, values):
         with _session_for_write() as session:
             query = model_query(models.Services, session=session)
@@ -5059,7 +5059,7 @@ class Connection(api.Connection):
         return _paginate_query(models.Networks, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.network)
+    @db_objects.objectify(objects.network)
     def network_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -5072,36 +5072,36 @@ class Connection(api.Connection):
                 raise exception.NetworkAlreadyExists(uuid=values['uuid'])
             return self._network_get(values['uuid'])
 
-    @objects.objectify(objects.network)
+    @db_objects.objectify(objects.network)
     def network_get(self, network_uuid):
         return self._network_get(network_uuid)
 
-    @objects.objectify(objects.network)
+    @db_objects.objectify(objects.network)
     def network_get_by_id(self, network_id):
         return self._network_get_by_id(network_id)
 
-    @objects.objectify(objects.network)
+    @db_objects.objectify(objects.network)
     def network_get_by_type(self, networktype):
         return self._network_get_by_type(networktype)
 
-    @objects.objectify(objects.network)
+    @db_objects.objectify(objects.network)
     def networks_get_all(self, limit=None, marker=None,
                          sort_key=None, sort_dir=None):
         query = model_query(models.Networks)
         return _paginate_query(models.Networks, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.network)
+    @db_objects.objectify(objects.network)
     def networks_get_by_type(self, networktype, limit=None, marker=None,
                              sort_key=None, sort_dir=None):
         return self._networks_get_by_type(networktype, limit, marker,
                                           sort_key, sort_dir)
 
-    @objects.objectify(objects.network)
+    @db_objects.objectify(objects.network)
     def network_get_by_name(self, networkname):
         return self._network_get_by_name(networkname)
 
-    @objects.objectify(objects.network)
+    @db_objects.objectify(objects.network)
     def networks_get_by_pool(self, pool_id, limit=None, marker=None,
                              sort_key=None, sort_dir=None):
         query = model_query(models.Networks)
@@ -5109,7 +5109,7 @@ class Connection(api.Connection):
         return _paginate_query(models.Networks, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.network)
+    @db_objects.objectify(objects.network)
     def network_update(self, network_uuid, values):
         with _session_for_write() as session:
             query = model_query(models.Networks, session=session)
@@ -5183,7 +5183,7 @@ class Connection(api.Connection):
                 network_id=values['network_id'])
         return result
 
-    @objects.objectify(objects.interface_network)
+    @db_objects.objectify(objects.interface_network)
     def interface_network_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -5198,25 +5198,25 @@ class Connection(api.Connection):
                     network_id=values['network_id'])
             return self._interface_network_get(values['uuid'])
 
-    @objects.objectify(objects.interface_network)
+    @db_objects.objectify(objects.interface_network)
     def interface_network_get(self, uuid):
         return self._interface_network_get(uuid)
 
-    @objects.objectify(objects.interface_network)
+    @db_objects.objectify(objects.interface_network)
     def interface_network_get_all(
             self, limit=None, marker=None,
             sort_key=None, sort_dir=None):
         return self._interface_network_get_all(
             limit, marker, sort_key, sort_dir)
 
-    @objects.objectify(objects.interface_network)
+    @db_objects.objectify(objects.interface_network)
     def interface_network_get_by_host(
             self, host_id, limit=None, marker=None,
             sort_key=None, sort_dir=None):
         return self._interface_network_get_by_host(
             host_id, limit, marker, sort_key, sort_dir)
 
-    @objects.objectify(objects.interface_network)
+    @db_objects.objectify(objects.interface_network)
     def interface_network_get_by_interface(
             self, interface_id, limit=None, marker=None,
             sort_key=None, sort_dir=None):
@@ -5232,7 +5232,7 @@ class Connection(api.Connection):
             raise exception.InterfaceNetworkNotFound(uuid=uuid)
         query.delete()
 
-    @objects.objectify(objects.interface_network)
+    @db_objects.objectify(objects.interface_network)
     def interface_network_query(self, values):
         return self._interface_network_query(values)
 
@@ -5255,7 +5255,7 @@ class Connection(api.Connection):
             raise exception.AddressNotFoundByAddress(address=values['address'])
         return result
 
-    @objects.objectify(objects.address)
+    @db_objects.objectify(objects.address)
     def address_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -5269,11 +5269,11 @@ class Connection(api.Connection):
                                                      prefix=values['prefix'])
             return self._address_get(values['uuid'])
 
-    @objects.objectify(objects.address)
+    @db_objects.objectify(objects.address)
     def address_get(self, address_uuid):
         return self._address_get(address_uuid)
 
-    @objects.objectify(objects.address)
+    @db_objects.objectify(objects.address)
     def address_get_by_name(self, name):
         query = model_query(models.Addresses)
         query = query.filter_by(name=name)
@@ -5283,7 +5283,7 @@ class Connection(api.Connection):
             raise exception.AddressNotFoundByName(name=name)
         return result
 
-    @objects.objectify(objects.address)
+    @db_objects.objectify(objects.address)
     def address_get_by_address(self, address):
         query = model_query(models.Addresses)
         query = query.filter_by(address=address)
@@ -5293,7 +5293,7 @@ class Connection(api.Connection):
             raise exception.AddressNotFoundByAddress(address=address)
         return result
 
-    @objects.objectify(objects.address)
+    @db_objects.objectify(objects.address)
     def address_update(self, address_uuid, values):
         with _session_for_write() as session:
             query = model_query(models.Addresses, session=session)
@@ -5304,18 +5304,18 @@ class Connection(api.Connection):
                 raise exception.AddressNotFound(address_uuid=address_uuid)
             return query.one()
 
-    @objects.objectify(objects.address)
+    @db_objects.objectify(objects.address)
     def address_query(self, values):
         return self._address_query(values)
 
-    @objects.objectify(objects.address)
+    @db_objects.objectify(objects.address)
     def addresses_get_all(self, limit=None, marker=None,
                           sort_key=None, sort_dir=None):
         query = model_query(models.Addresses)
         return _paginate_query(models.Addresses, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.address)
+    @db_objects.objectify(objects.address)
     def addresses_get_by_interface(self, interface_id, family=None,
                                    limit=None, marker=None,
                                    sort_key=None, sort_dir=None):
@@ -5330,7 +5330,7 @@ class Connection(api.Connection):
         return _paginate_query(models.Addresses, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.address)
+    @db_objects.objectify(objects.address)
     def addresses_get_by_host(self, host_id, family=None,
                               limit=None, marker=None,
                               sort_key=None, sort_dir=None):
@@ -5347,7 +5347,7 @@ class Connection(api.Connection):
         return _paginate_query(models.Addresses, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.address)
+    @db_objects.objectify(objects.address)
     def addresses_get_by_pool(self, pool_id,
                               limit=None, marker=None,
                               sort_key=None, sort_dir=None):
@@ -5376,7 +5376,7 @@ class Connection(api.Connection):
                     LOG.debug(address.interface.imac)
             return result
 
-    @objects.objectify(objects.address)
+    @db_objects.objectify(objects.address)
     def addresses_get_by_pool_uuid(self, pool_uuid,
                                    limit=None, marker=None,
                                    sort_key=None, sort_dir=None):
@@ -5384,7 +5384,7 @@ class Connection(api.Connection):
                                                 limit, marker,
                                                 sort_key, sort_dir)
 
-    @objects.objectify(objects.address)
+    @db_objects.objectify(objects.address)
     def addresses_get_by_interface_pool(self, interface_uuid, pool_uuid,
                                    limit=None, marker=None,
                                    sort_key=None, sort_dir=None):
@@ -5469,7 +5469,7 @@ class Connection(api.Connection):
                                                 gateway=values['gateway'])
         return result
 
-    @objects.objectify(objects.route)
+    @db_objects.objectify(objects.route)
     def route_create(self, interface_id, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -5483,22 +5483,22 @@ class Connection(api.Connection):
                 raise exception.RouteAlreadyExists(uuid=values['uuid'])
             return self._route_get(values['uuid'])
 
-    @objects.objectify(objects.route)
+    @db_objects.objectify(objects.route)
     def route_get(self, route_uuid):
         return self._route_get(route_uuid)
 
-    @objects.objectify(objects.route)
+    @db_objects.objectify(objects.route)
     def route_query(self, host_id, values):
         return self._route_query(host_id, values)
 
-    @objects.objectify(objects.route)
+    @db_objects.objectify(objects.route)
     def routes_get_all(self, limit=None, marker=None,
                        sort_key=None, sort_dir=None):
         query = model_query(models.Routes)
         return _paginate_query(models.Routes, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.route)
+    @db_objects.objectify(objects.route)
     def routes_get_by_interface(self, interface_id, limit=None, marker=None,
                                 sort_key=None, sort_dir=None):
         query = model_query(models.Routes)
@@ -5509,7 +5509,7 @@ class Connection(api.Connection):
         return _paginate_query(models.Routes, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.route)
+    @db_objects.objectify(objects.route)
     def routes_get_by_host(self, host_id, limit=None, marker=None,
                            sort_key=None, sort_dir=None):
         query = model_query(models.Routes)
@@ -5563,15 +5563,15 @@ class Connection(api.Connection):
             raise exception.AddressModeNotFound(mode_uuid=mode_uuid)
         return result
 
-    @objects.objectify(objects.address_mode)
+    @db_objects.objectify(objects.address_mode)
     def address_mode_get(self, mode_uuid):
         return self._address_mode_get(mode_uuid)
 
-    @objects.objectify(objects.address_mode)
+    @db_objects.objectify(objects.address_mode)
     def address_mode_query(self, interface_id, family):
         return self._address_mode_query(interface_id, family)
 
-    @objects.objectify(objects.address_mode)
+    @db_objects.objectify(objects.address_mode)
     def address_mode_update(self, interface_id, values, context=None):
         try:
             # Update it if it exists.
@@ -5633,7 +5633,7 @@ class Connection(api.Connection):
             raise exception.AddressPoolNotFoundByName(name=values['name'])
         return result
 
-    @objects.objectify(objects.address_pool)
+    @db_objects.objectify(objects.address_pool)
     def address_pool_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -5663,7 +5663,7 @@ class Connection(api.Connection):
             new_range = models.AddressPoolRanges(**range_values)
             address_pool.ranges.append(new_range)
 
-    @objects.objectify(objects.address_pool)
+    @db_objects.objectify(objects.address_pool)
     def address_pool_update(self, address_pool_uuid, values):
         with _session_for_write() as session:
             address_pool = self._address_pool_get(address_pool_uuid,
@@ -5678,22 +5678,22 @@ class Connection(api.Connection):
 
             return address_pool
 
-    @objects.objectify(objects.address_pool)
+    @db_objects.objectify(objects.address_pool)
     def address_pool_get(self, address_pool_uuid):
         return self._address_pool_get(address_pool_uuid)
 
-    @objects.objectify(objects.address_pool)
+    @db_objects.objectify(objects.address_pool)
     def address_pool_query(self, values):
         return self._address_pool_query(values)
 
-    @objects.objectify(objects.address_pool)
+    @db_objects.objectify(objects.address_pool)
     def address_pools_get_all(self, limit=None, marker=None,
                               sort_key=None, sort_dir=None):
         query = model_query(models.AddressPools)
         return _paginate_query(models.AddressPools, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.address_pool)
+    @db_objects.objectify(objects.address_pool)
     def address_pools_get_by_interface(self, interface_id,
                                        limit=None, marker=None,
                                        sort_key=None, sort_dir=None):
@@ -5709,7 +5709,7 @@ class Connection(api.Connection):
         return _paginate_query(models.AddressPools, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.address_pool)
+    @db_objects.objectify(objects.address_pool)
     def address_pools_get_by_id(self, address_pool_id):
         query = model_query(models.AddressPools)
         query = query.filter(models.AddressPools.id == address_pool_id)
@@ -5847,38 +5847,38 @@ class Connection(api.Connection):
                             filter_by(id=sensorid).\
                             delete()
 
-    @objects.objectify(objects.sensor_analog)
+    @db_objects.objectify(objects.sensor_analog)
     def isensor_analog_create(self, hostid, values):
         return self._sensor_analog_create(hostid, values)
 
-    @objects.objectify(objects.sensor_analog)
+    @db_objects.objectify(objects.sensor_analog)
     def isensor_analog_get(self, sensorid, hostid=None):
         return self._sensor_analog_get(sensorid, hostid)
 
-    @objects.objectify(objects.sensor_analog)
+    @db_objects.objectify(objects.sensor_analog)
     def isensor_analog_get_list(self, limit=None, marker=None,
                                 sort_key=None, sort_dir=None):
         return self._sensor_analog_get_list(limit, marker, sort_key, sort_dir)
 
-    @objects.objectify(objects.sensor_analog)
+    @db_objects.objectify(objects.sensor_analog)
     def isensor_analog_get_all(self, hostid=None, sensorgroupid=None):
         return self._sensor_analog_get_all(hostid, sensorgroupid)
 
-    @objects.objectify(objects.sensor_analog)
+    @db_objects.objectify(objects.sensor_analog)
     def isensor_analog_get_by_host(self, host,
                                    limit=None, marker=None,
                                    sort_key=None, sort_dir=None):
         return self._sensor_analog_get_by_host(host, limit, marker,
                                                sort_key, sort_dir)
 
-    @objects.objectify(objects.sensor_analog)
+    @db_objects.objectify(objects.sensor_analog)
     def isensor_analog_get_by_isensorgroup(self, sensorgroup,
                                            limit=None, marker=None,
                                            sort_key=None, sort_dir=None):
         return self._sensor_analog_get_by_isensorgroup(sensorgroup, limit, marker,
                                                        sort_key, sort_dir)
 
-    @objects.objectify(objects.sensor_analog)
+    @db_objects.objectify(objects.sensor_analog)
     def isensor_analog_get_by_host_isensorgroup(self, host, sensorgroup,
                                                 limit=None, marker=None,
                                                 sort_key=None, sort_dir=None):
@@ -5886,7 +5886,7 @@ class Connection(api.Connection):
                                                             limit, marker,
                                                             sort_key, sort_dir)
 
-    @objects.objectify(objects.sensor_analog)
+    @db_objects.objectify(objects.sensor_analog)
     def isensor_analog_update(self, sensorid, values, hostid=None):
         return self._sensor_analog_update(sensorid, values, hostid)
 
@@ -6007,38 +6007,38 @@ class Connection(api.Connection):
                             filter_by(id=sensorid).\
                             delete()
 
-    @objects.objectify(objects.sensor_discrete)
+    @db_objects.objectify(objects.sensor_discrete)
     def isensor_discrete_create(self, hostid, values):
         return self._sensor_discrete_create(hostid, values)
 
-    @objects.objectify(objects.sensor_discrete)
+    @db_objects.objectify(objects.sensor_discrete)
     def isensor_discrete_get(self, sensorid, hostid=None):
         return self._sensor_discrete_get(sensorid, hostid)
 
-    @objects.objectify(objects.sensor_discrete)
+    @db_objects.objectify(objects.sensor_discrete)
     def isensor_discrete_get_list(self, limit=None, marker=None,
                                   sort_key=None, sort_dir=None):
         return self._sensor_discrete_get_list(limit, marker, sort_key, sort_dir)
 
-    @objects.objectify(objects.sensor_discrete)
+    @db_objects.objectify(objects.sensor_discrete)
     def isensor_discrete_get_all(self, hostid=None, sensorgroupid=None):
         return self._sensor_discrete_get_all(hostid, sensorgroupid)
 
-    @objects.objectify(objects.sensor_discrete)
+    @db_objects.objectify(objects.sensor_discrete)
     def isensor_discrete_get_by_host(self, host,
                                      limit=None, marker=None,
                                      sort_key=None, sort_dir=None):
         return self._sensor_discrete_get_by_host(host, limit, marker,
                                                  sort_key, sort_dir)
 
-    @objects.objectify(objects.sensor_discrete)
+    @db_objects.objectify(objects.sensor_discrete)
     def isensor_discrete_get_by_isensorgroup(self, sensorgroup,
                                              limit=None, marker=None,
                                              sort_key=None, sort_dir=None):
         return self._sensor_discrete_get_by_isensorgroup(sensorgroup, limit, marker,
                                                          sort_key, sort_dir)
 
-    @objects.objectify(objects.sensor_discrete)
+    @db_objects.objectify(objects.sensor_discrete)
     def isensor_discrete_get_by_host_isensorgroup(self, host, sensorgroup,
                                                   limit=None, marker=None,
                                                   sort_key=None, sort_dir=None):
@@ -6046,7 +6046,7 @@ class Connection(api.Connection):
                                                               limit, marker,
                                                               sort_key, sort_dir)
 
-    @objects.objectify(objects.sensor_discrete)
+    @db_objects.objectify(objects.sensor_discrete)
     def isensor_discrete_update(self, sensorid, values, hostid=None):
         return self._sensor_discrete_update(sensorid, values, hostid)
 
@@ -6100,7 +6100,7 @@ class Connection(api.Connection):
                 raise exception.SensorAlreadyExists(uuid=values['uuid'])
             return self._isensor_get(type(obj), values['uuid'])
 
-    @objects.objectify(objects.sensor)
+    @db_objects.objectify(objects.sensor)
     def isensor_create(self, hostid, values):
         if values['datatype'] == 'discrete':
             sensor = models.SensorsDiscrete()
@@ -6113,18 +6113,18 @@ class Connection(api.Connection):
 
         return self._isensor_create(sensor, hostid, values)
 
-    @objects.objectify(objects.sensor)
+    @db_objects.objectify(objects.sensor)
     def isensor_get(self, sensorid, hostid=None):
         return self._isensor_get(models.Sensors, sensorid, hostid)
 
-    @objects.objectify(objects.sensor)
+    @db_objects.objectify(objects.sensor)
     def isensor_get_list(self, limit=None, marker=None,
                          sort_key=None, sort_dir=None):
         model_query(models.Sensors)
         return _paginate_query(models.Sensors, limit, marker,
                                sort_key, sort_dir)
 
-    @objects.objectify(objects.sensor)
+    @db_objects.objectify(objects.sensor)
     def isensor_get_all(self, host_id=None, sensorgroupid=None):
         query = model_query(models.Sensors, read_deleted="no")
 
@@ -6134,7 +6134,7 @@ class Connection(api.Connection):
             query = query.filter_by(sensorgroup_id=sensorgroupid)
         return query.all()
 
-    @objects.objectify(objects.sensor)
+    @db_objects.objectify(objects.sensor)
     def isensor_get_by_ihost(self, ihost,
                              limit=None, marker=None,
                              sort_key=None, sort_dir=None):
@@ -6150,7 +6150,7 @@ class Connection(api.Connection):
         query = add_sensor_filter_by_sensorgroup(query, sensorgroup)
         return _paginate_query(cls, limit, marker, sort_key, sort_dir, query)
 
-    @objects.objectify(objects.sensor)
+    @db_objects.objectify(objects.sensor)
     def isensor_get_by_sensorgroup(self, sensorgroup,
                                    limit=None, marker=None,
                                    sort_key=None, sort_dir=None):
@@ -6159,7 +6159,7 @@ class Connection(api.Connection):
         return _paginate_query(models.Sensors, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.sensor)
+    @db_objects.objectify(objects.sensor)
     def isensor_get_by_ihost_sensorgroup(self, ihost, sensorgroup,
                                          limit=None, marker=None,
                                          sort_key=None, sort_dir=None):
@@ -6189,7 +6189,7 @@ class Connection(api.Connection):
 
             return query.one()
 
-    @objects.objectify(objects.sensor)
+    @db_objects.objectify(objects.sensor)
     def isensor_update(self, isensor_id, values):
         with _session_for_write():
             query = model_query(models.Sensors, read_deleted="no")
@@ -6229,7 +6229,7 @@ class Connection(api.Connection):
         return self._isensor_destroy(models.Sensors, sensor_id)
 
     # SENSOR GROUPS
-    @objects.objectify(objects.sensorgroup)
+    @db_objects.objectify(objects.sensorgroup)
     def isensorgroup_create(self, host_id, values):
         if values['datatype'] == 'discrete':
             sensorgroup = models.SensorGroupsDiscrete()
@@ -6260,20 +6260,20 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.sensorgroup)
+    @db_objects.objectify(objects.sensorgroup)
     def isensorgroup_get(self, isensorgroup_id, ihost=None):
         return self._isensorgroup_get(models.SensorGroups,
                                       isensorgroup_id,
                                       ihost)
 
-    @objects.objectify(objects.sensorgroup)
+    @db_objects.objectify(objects.sensorgroup)
     def isensorgroup_get_list(self, limit=None, marker=None,
                               sort_key=None, sort_dir=None):
         query = model_query(models.SensorGroups)
         return _paginate_query(models.SensorGroupsAnalog, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.sensorgroup)
+    @db_objects.objectify(objects.sensorgroup)
     def isensorgroup_get_by_ihost_sensor(self, ihost, sensor,
                                          limit=None, marker=None,
                                          sort_key=None, sort_dir=None):
@@ -6292,7 +6292,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.sensorgroup)
+    @db_objects.objectify(objects.sensorgroup)
     def isensorgroup_get_by_ihost(self, ihost,
                                   limit=None, marker=None,
                                   sort_key=None, sort_dir=None):
@@ -6301,7 +6301,7 @@ class Connection(api.Connection):
         return _paginate_query(models.SensorGroups, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.sensorgroup)
+    @db_objects.objectify(objects.sensorgroup)
     def isensorgroup_update(self, isensorgroup_id, values):
         with _session_for_write():
             query = model_query(models.SensorGroups, read_deleted="no")
@@ -6451,28 +6451,28 @@ class Connection(api.Connection):
     def isensorgroup_destroy(self, sensorgroup_id):
         return self._isensorgroup_destroy(models.SensorGroups, sensorgroup_id)
 
-    @objects.objectify(objects.sensorgroup_analog)
+    @db_objects.objectify(objects.sensorgroup_analog)
     def isensorgroup_analog_create(self, host_id, values):
         sensorgroup = models.SensorGroupsAnalog()
         return self._isensorgroup_create(sensorgroup, host_id, values)
 
-    @objects.objectify(objects.sensorgroup_analog)
+    @db_objects.objectify(objects.sensorgroup_analog)
     def isensorgroup_analog_get_all(self, host_id=None):
         return self._isensorgroup_get_all(models.SensorGroupsAnalog, host_id)
 
-    @objects.objectify(objects.sensorgroup_analog)
+    @db_objects.objectify(objects.sensorgroup_analog)
     def isensorgroup_analog_get(self, sensorgroup_id):
         return self._isensorgroup_get(models.SensorGroupsAnalog,
                                       sensorgroup_id)
 
-    @objects.objectify(objects.sensorgroup_analog)
+    @db_objects.objectify(objects.sensorgroup_analog)
     def isensorgroup_analog_get_list(self, limit=None, marker=None,
                                      sort_key=None, sort_dir=None):
         return self._isensorgroup_get_list(models.SensorGroupsAnalog,
                                            limit, marker,
                                            sort_key, sort_dir)
 
-    @objects.objectify(objects.sensorgroup_analog)
+    @db_objects.objectify(objects.sensorgroup_analog)
     def isensorgroup_analog_get_by_ihost(self, ihost,
                                          limit=None, marker=None,
                                          sort_key=None, sort_dir=None):
@@ -6480,7 +6480,7 @@ class Connection(api.Connection):
                                                limit, marker,
                                                sort_key, sort_dir)
 
-    @objects.objectify(objects.sensorgroup_analog)
+    @db_objects.objectify(objects.sensorgroup_analog)
     def isensorgroup_analog_update(self, sensorgroup_id, values):
         return self._isensorgroup_update(models.SensorGroupsAnalog,
                                          sensorgroup_id,
@@ -6490,34 +6490,34 @@ class Connection(api.Connection):
         return self._isensorgroup_destroy(models.SensorGroupsAnalog,
                                           sensorgroup_id)
 
-    @objects.objectify(objects.sensorgroup_discrete)
+    @db_objects.objectify(objects.sensorgroup_discrete)
     def isensorgroup_discrete_create(self, host_id, values):
         sensorgroup = models.SensorGroupsDiscrete()
         return self._isensorgroup_create(sensorgroup, host_id, values)
 
-    @objects.objectify(objects.sensorgroup_discrete)
+    @db_objects.objectify(objects.sensorgroup_discrete)
     def isensorgroup_discrete_get_all(self, host_id=None):
         return self._isensorgroup_get_all(models.SensorGroupsDiscrete, host_id)
 
-    @objects.objectify(objects.sensorgroup_discrete)
+    @db_objects.objectify(objects.sensorgroup_discrete)
     def isensorgroup_discrete_get(self, sensorgroup_id):
         return self._isensorgroup_get(models.SensorGroupsDiscrete, sensorgroup_id)
 
-    @objects.objectify(objects.sensorgroup_discrete)
+    @db_objects.objectify(objects.sensorgroup_discrete)
     def isensorgroup_discrete_get_list(self, limit=None, marker=None,
                                        sort_key=None, sort_dir=None):
         return self._isensorgroup_get_list(models.SensorGroupsDiscrete,
                                            limit, marker,
                                            sort_key, sort_dir)
 
-    @objects.objectify(objects.sensorgroup_discrete)
+    @db_objects.objectify(objects.sensorgroup_discrete)
     def isensorgroup_discrete_get_by_ihost(self, ihost,
                                            limit=None, marker=None,
                                            sort_key=None, sort_dir=None):
         return self._isensorgroup_get_by_ihost(models.SensorGroupsDiscrete, ihost,
                                                limit, marker, sort_key, sort_dir)
 
-    @objects.objectify(objects.sensorgroup_discrete)
+    @db_objects.objectify(objects.sensorgroup_discrete)
     def isensorgroup_discrete_update(self, sensorgroup_id, values):
         return self._isensorgroup_update(models.SensorGroupsDiscrete,
                                          sensorgroup_id, values)
@@ -6525,7 +6525,7 @@ class Connection(api.Connection):
     def isensorgroup_discrete_destroy(self, sensorgroup_id):
         return self._isensorgroup_destroy(models.SensorGroupsDiscrete, sensorgroup_id)
 
-    @objects.objectify(objects.load)
+    @db_objects.objectify(objects.load)
     def load_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -6539,7 +6539,7 @@ class Connection(api.Connection):
                 raise exception.LoadAlreadyExists(uuid=values['uuid'])
         return load
 
-    @objects.objectify(objects.load)
+    @db_objects.objectify(objects.load)
     def load_get(self, load):
         # load may be passed as a string. It may be uuid or Int.
         query = model_query(models.Load)
@@ -6552,7 +6552,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.load)
+    @db_objects.objectify(objects.load)
     def load_get_by_version(self, version):
         query = model_query(models.Load)
         query = query.filter_by(software_version=version)
@@ -6564,7 +6564,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.load)
+    @db_objects.objectify(objects.load)
     def load_get_list(self, limit=None, marker=None, sort_key=None,
                       sort_dir=None):
 
@@ -6573,7 +6573,7 @@ class Connection(api.Connection):
         return _paginate_query(models.Load, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.load)
+    @db_objects.objectify(objects.load)
     def load_update(self, load, values):
         with _session_for_write() as session:
             query = model_query(models.Load, session=session)
@@ -6616,7 +6616,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.software_upgrade)
+    @db_objects.objectify(objects.software_upgrade)
     def software_upgrade_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -6631,11 +6631,11 @@ class Connection(api.Connection):
 
             return self._software_upgrade_get(values['uuid'])
 
-    @objects.objectify(objects.software_upgrade)
+    @db_objects.objectify(objects.software_upgrade)
     def software_upgrade_get(self, id):
         return self._software_upgrade_get(id)
 
-    @objects.objectify(objects.software_upgrade)
+    @db_objects.objectify(objects.software_upgrade)
     def software_upgrade_get_list(self, limit=None, marker=None,
                                   sort_key=None, sort_dir=None):
 
@@ -6644,7 +6644,7 @@ class Connection(api.Connection):
         return _paginate_query(models.SoftwareUpgrade, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.software_upgrade)
+    @db_objects.objectify(objects.software_upgrade)
     def software_upgrade_get_one(self):
         query = model_query(models.SoftwareUpgrade)
 
@@ -6653,7 +6653,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NotFound()
 
-    @objects.objectify(objects.software_upgrade)
+    @db_objects.objectify(objects.software_upgrade)
     def software_upgrade_update(self, uuid, values):
         with _session_for_write() as session:
             query = model_query(models.SoftwareUpgrade, session=session)
@@ -6709,11 +6709,11 @@ class Connection(api.Connection):
                 raise exception.UpgradeAlreadyExists(uuid=values['uuid'])
             return upgrade
 
-    @objects.objectify(objects.host_upgrade)
+    @db_objects.objectify(objects.host_upgrade)
     def host_upgrade_create(self, host_id, version, values):
         return self._host_upgrade_create(host_id, version, values)
 
-    @objects.objectify(objects.host_upgrade)
+    @db_objects.objectify(objects.host_upgrade)
     def host_upgrade_get(self, id):
         query = model_query(models.HostUpgrade)
 
@@ -6730,7 +6730,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.host_upgrade)
+    @db_objects.objectify(objects.host_upgrade)
     def host_upgrade_get_by_host(self, host_id):
         query = model_query(models.HostUpgrade)
         query = query.filter_by(forihostid=host_id)
@@ -6742,7 +6742,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.host_upgrade)
+    @db_objects.objectify(objects.host_upgrade)
     def host_upgrade_get_list(self, limit=None, marker=None, sort_key=None,
                               sort_dir=None):
         query = model_query(models.HostUpgrade)
@@ -6750,7 +6750,7 @@ class Connection(api.Connection):
         return _paginate_query(models.HostUpgrade, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.host_upgrade)
+    @db_objects.objectify(objects.host_upgrade)
     def host_upgrade_update(self, object_id, values):
         with _session_for_write() as session:
             query = model_query(models.HostUpgrade, session=session)
@@ -6762,7 +6762,7 @@ class Connection(api.Connection):
             session.flush()
             return query.one()
 
-    @objects.objectify(objects.service_parameter)
+    @db_objects.objectify(objects.service_parameter)
     def service_parameter_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -6781,7 +6781,7 @@ class Connection(api.Connection):
                     resource=values.get('resource'))
             return parameter
 
-    @objects.objectify(objects.service_parameter)
+    @db_objects.objectify(objects.service_parameter)
     def service_parameter_get(self, id):
         query = model_query(models.ServiceParameter)
         if utils.is_uuid_like(id):
@@ -6797,7 +6797,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.service_parameter)
+    @db_objects.objectify(objects.service_parameter)
     def service_parameter_get_one(self, service=None, section=None, name=None,
                                   personality=None, resource=None):
         query = model_query(models.ServiceParameter)
@@ -6821,7 +6821,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.service_parameter)
+    @db_objects.objectify(objects.service_parameter)
     def service_parameter_get_list(self, limit=None, marker=None,
                                    sort_key=None, sort_dir=None):
 
@@ -6830,7 +6830,7 @@ class Connection(api.Connection):
         return _paginate_query(models.ServiceParameter, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.service_parameter)
+    @db_objects.objectify(objects.service_parameter)
     def service_parameter_get_all(self, uuid=None, service=None,
                                   section=None, name=None, limit=None,
                                   sort_key=None, sort_dir=None):
@@ -6846,7 +6846,7 @@ class Connection(api.Connection):
         return _paginate_query(models.ServiceParameter, limit, None,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.service_parameter)
+    @db_objects.objectify(objects.service_parameter)
     def service_parameter_update(self, uuid, values):
         with _session_for_write() as session:
             query = model_query(models.ServiceParameter, session=session)
@@ -6906,7 +6906,7 @@ class Connection(api.Connection):
             raise exception.ClusterNotFoundByName(name=values['name'])
         return result
 
-    @objects.objectify(objects.cluster)
+    @db_objects.objectify(objects.cluster)
     def cluster_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -6919,7 +6919,7 @@ class Connection(api.Connection):
                 exception.ClusterAlreadyExists(uuid=values['uuid'])
             return self._cluster_get(values['uuid'])
 
-    @objects.objectify(objects.cluster)
+    @db_objects.objectify(objects.cluster)
     def cluster_update(self, cluster_uuid, values):
         with _session_for_write() as session:
             cluster = self._cluster_get(cluster_uuid,
@@ -6932,15 +6932,15 @@ class Connection(api.Connection):
             session.flush()
             return cluster
 
-    @objects.objectify(objects.cluster)
+    @db_objects.objectify(objects.cluster)
     def cluster_get(self, cluster_uuid):
         return self._cluster_get(cluster_uuid)
 
-    @objects.objectify(objects.cluster)
+    @db_objects.objectify(objects.cluster)
     def cluster_query(self, values):
         return self._cluster_query(values)
 
-    @objects.objectify(objects.cluster)
+    @db_objects.objectify(objects.cluster)
     def clusters_get_list(self, limit=None, marker=None,
                           sort_key=None, sort_dir=None):
         query = model_query(models.Clusters)
@@ -6983,7 +6983,7 @@ class Connection(api.Connection):
                 peer_uuid=peer_uuid)
         return result
 
-    @objects.objectify(objects.peer)
+    @db_objects.objectify(objects.peer)
     def peer_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -6996,7 +6996,7 @@ class Connection(api.Connection):
                 raise exception.PeerAlreadyExists(uuid=values['uuid'])
             return self._peer_get(values['uuid'])
 
-    @objects.objectify(objects.peer)
+    @db_objects.objectify(objects.peer)
     def peers_get_all_by_cluster(self, cluster_id, name=None):
         # cluster_get() to raise an exception if the isystem is not found
         query = model_query(models.Peers)
@@ -7012,7 +7012,7 @@ class Connection(api.Connection):
                       "return an empty peer list.")
         return peer_list
 
-    @objects.objectify(objects.peer)
+    @db_objects.objectify(objects.peer)
     def peer_get(self, peer_uuid):
         return self._peer_get(peer_uuid)
 
@@ -7039,7 +7039,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.ServerNotFound(server=agentid)
 
-    @objects.objectify(objects.lldp_agent)
+    @db_objects.objectify(objects.lldp_agent)
     def lldp_agent_create(self, portid, hostid, values):
         host = self.ihost_get(hostid)
         port = self.port_get(portid)
@@ -7065,17 +7065,17 @@ class Connection(api.Connection):
                                                 host=values['host_id'])
             return self._lldp_agent_get(values['uuid'])
 
-    @objects.objectify(objects.lldp_agent)
+    @db_objects.objectify(objects.lldp_agent)
     def lldp_agent_get(self, agentid, hostid=None):
         return self._lldp_agent_get(agentid, hostid)
 
-    @objects.objectify(objects.lldp_agent)
+    @db_objects.objectify(objects.lldp_agent)
     def lldp_agent_get_list(self, limit=None, marker=None,
                             sort_key=None, sort_dir=None):
         return _paginate_query(models.LldpAgents, limit, marker,
                                sort_key, sort_dir)
 
-    @objects.objectify(objects.lldp_agent)
+    @db_objects.objectify(objects.lldp_agent)
     def lldp_agent_get_all(self, hostid=None, portid=None):
         query = model_query(models.LldpAgents, read_deleted="no")
         if hostid:
@@ -7084,7 +7084,7 @@ class Connection(api.Connection):
             query = query.filter_by(port_id=portid)
         return query.all()
 
-    @objects.objectify(objects.lldp_agent)
+    @db_objects.objectify(objects.lldp_agent)
     def lldp_agent_get_by_host(self, host,
                                limit=None, marker=None,
                                sort_key=None, sort_dir=None):
@@ -7093,7 +7093,7 @@ class Connection(api.Connection):
         return _paginate_query(models.LldpAgents, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.lldp_agent)
+    @db_objects.objectify(objects.lldp_agent)
     def lldp_agent_get_by_port(self, port):
         query = model_query(models.LldpAgents)
         query = add_lldp_filter_by_port(query, port)
@@ -7106,7 +7106,7 @@ class Connection(api.Connection):
                 raise exception.InvalidParameterValue(
                     err="Multiple entries found for agent on port %s" % port)
 
-    @objects.objectify(objects.lldp_agent)
+    @db_objects.objectify(objects.lldp_agent)
     def lldp_agent_update(self, uuid, values):
         with _session_for_write():
             query = model_query(models.LldpAgents, read_deleted="no")
@@ -7152,7 +7152,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.ServerNotFound(server=neighbourid)
 
-    @objects.objectify(objects.lldp_neighbour)
+    @db_objects.objectify(objects.lldp_neighbour)
     def lldp_neighbour_create(self, portid, hostid, values):
         if utils.is_int_like(hostid):
             host = self.ihost_get(int(hostid))
@@ -7193,17 +7193,17 @@ class Connection(api.Connection):
 
             return self._lldp_neighbour_get(values['uuid'])
 
-    @objects.objectify(objects.lldp_neighbour)
+    @db_objects.objectify(objects.lldp_neighbour)
     def lldp_neighbour_get(self, neighbourid, hostid=None):
         return self._lldp_neighbour_get(neighbourid, hostid)
 
-    @objects.objectify(objects.lldp_neighbour)
+    @db_objects.objectify(objects.lldp_neighbour)
     def lldp_neighbour_get_list(self, limit=None, marker=None,
                                 sort_key=None, sort_dir=None):
         return _paginate_query(models.LldpNeighbours, limit, marker,
                                sort_key, sort_dir)
 
-    @objects.objectify(objects.lldp_neighbour)
+    @db_objects.objectify(objects.lldp_neighbour)
     def lldp_neighbour_get_all(self, hostid=None, interfaceid=None):
         query = model_query(models.LldpNeighbours, read_deleted="no")
         if hostid:
@@ -7212,7 +7212,7 @@ class Connection(api.Connection):
             query = query.filter_by(interface_id=interfaceid)
         return query.all()
 
-    @objects.objectify(objects.lldp_neighbour)
+    @db_objects.objectify(objects.lldp_neighbour)
     def lldp_neighbour_get_by_host(self, host,
                                    limit=None, marker=None,
                                    sort_key=None, sort_dir=None):
@@ -7221,7 +7221,7 @@ class Connection(api.Connection):
         return _paginate_query(models.LldpNeighbours, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.lldp_neighbour)
+    @db_objects.objectify(objects.lldp_neighbour)
     def lldp_neighbour_get_by_port(self, port,
                                    limit=None, marker=None,
                                    sort_key=None, sort_dir=None):
@@ -7230,7 +7230,7 @@ class Connection(api.Connection):
         return _paginate_query(models.LldpNeighbours, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.lldp_neighbour)
+    @db_objects.objectify(objects.lldp_neighbour)
     def lldp_neighbour_get_by_msap(self, msap,
                                    portid=None,
                                    limit=None, marker=None,
@@ -7246,7 +7246,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.lldp_neighbour)
+    @db_objects.objectify(objects.lldp_neighbour)
     def lldp_neighbour_update(self, uuid, values):
         with _session_for_write():
             query = model_query(models.LldpNeighbours, read_deleted="no")
@@ -7301,7 +7301,7 @@ class Connection(api.Connection):
             raise exception.InvalidParameterValue(
                 err="Multiple entries found")
 
-    @objects.objectify(objects.lldp_tlv)
+    @db_objects.objectify(objects.lldp_tlv)
     def lldp_tlv_create(self, values, agentid=None, neighbourid=None):
         if not agentid and not neighbourid:
             raise exception.InvalidParameterValue(
@@ -7347,7 +7347,7 @@ class Connection(api.Connection):
                                       agentid=values.get('agent_id'),
                                       neighbourid=values.get('neighbour_id'))
 
-    @objects.objectify(objects.lldp_tlv)
+    @db_objects.objectify(objects.lldp_tlv)
     def lldp_tlv_create_bulk(self, values, agentid=None, neighbourid=None):
         if not agentid and not neighbourid:
             raise exception.InvalidParameterValue(
@@ -7396,11 +7396,11 @@ class Connection(api.Connection):
 
         return tlvs
 
-    @objects.objectify(objects.lldp_tlv)
+    @db_objects.objectify(objects.lldp_tlv)
     def lldp_tlv_get(self, type, agentid=None, neighbourid=None):
         return self._lldp_tlv_get(type, agentid, neighbourid)
 
-    @objects.objectify(objects.lldp_tlv)
+    @db_objects.objectify(objects.lldp_tlv)
     def lldp_tlv_get_by_id(self, id, agentid=None, neighbourid=None):
         query = model_query(models.LldpTlvs)
 
@@ -7415,13 +7415,13 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.lldp_tlv)
+    @db_objects.objectify(objects.lldp_tlv)
     def lldp_tlv_get_list(self, limit=None, marker=None,
                           sort_key=None, sort_dir=None):
         return _paginate_query(models.LldpTlvs, limit, marker,
                                sort_key, sort_dir)
 
-    @objects.objectify(objects.lldp_tlv)
+    @db_objects.objectify(objects.lldp_tlv)
     def lldp_tlv_get_all(self, agentid=None, neighbourid=None):
         query = model_query(models.LldpTlvs, read_deleted="no")
         if agentid:
@@ -7430,7 +7430,7 @@ class Connection(api.Connection):
             query = query.filter_by(neighbour_id=neighbourid)
         return query.all()
 
-    @objects.objectify(objects.lldp_tlv)
+    @db_objects.objectify(objects.lldp_tlv)
     def lldp_tlv_get_by_agent(self, agent,
                               limit=None, marker=None,
                               sort_key=None, sort_dir=None):
@@ -7439,7 +7439,7 @@ class Connection(api.Connection):
         return _paginate_query(models.LldpTlvs, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.lldp_tlv)
+    @db_objects.objectify(objects.lldp_tlv)
     def lldp_tlv_get_by_neighbour(self, neighbour,
                                   limit=None, marker=None,
                                   sort_key=None, sort_dir=None):
@@ -7449,7 +7449,7 @@ class Connection(api.Connection):
         return _paginate_query(models.LldpTlvs, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.lldp_tlv)
+    @db_objects.objectify(objects.lldp_tlv)
     def lldp_tlv_update(self, values, agentid=None, neighbourid=None):
         if not agentid and not neighbourid:
                 raise exception.InvalidParameterValue(
@@ -7479,7 +7479,7 @@ class Connection(api.Connection):
                 raise exception.InvalidParameterValue(
                     err="Multiple entries found")
 
-    @objects.objectify(objects.lldp_tlv)
+    @db_objects.objectify(objects.lldp_tlv)
     def lldp_tlv_update_bulk(self, values, agentid=None, neighbourid=None):
         results = []
 
@@ -7519,7 +7519,7 @@ class Connection(api.Connection):
                 filter_by(id=id).\
                 delete()
 
-    @objects.objectify(objects.sdn_controller)
+    @db_objects.objectify(objects.sdn_controller)
     def sdn_controller_create(self, values):
 
         if not values.get('uuid'):
@@ -7538,7 +7538,7 @@ class Connection(api.Connection):
                 raise exception.SDNControllerAlreadyExists(uuid=values['uuid'])
             return sdn_controller
 
-    @objects.objectify(objects.sdn_controller)
+    @db_objects.objectify(objects.sdn_controller)
     def sdn_controller_get(self, uuid):
         query = model_query(models.sdn_controller)
         query = query.filter_by(uuid=uuid)
@@ -7549,7 +7549,7 @@ class Connection(api.Connection):
                 err="No SDN controller entry found for %s" % uuid)
         return result
 
-    @objects.objectify(objects.sdn_controller)
+    @db_objects.objectify(objects.sdn_controller)
     def sdn_controller_get_list(self, limit=None, marker=None,
                                 sort_key=None, sort_dir=None):
         query = model_query(models.sdn_controller)
@@ -7557,7 +7557,7 @@ class Connection(api.Connection):
         return _paginate_query(models.sdn_controller, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.sdn_controller)
+    @db_objects.objectify(objects.sdn_controller)
     def sdn_controller_update(self, uuid, values):
         with _session_for_write() as session:
             query = model_query(models.sdn_controller, session=session)
@@ -7579,7 +7579,7 @@ class Connection(api.Connection):
                 raise exception.SDNControllerNotFound(uuid)
             query.delete()
 
-    @objects.objectify(objects.tpmconfig)
+    @db_objects.objectify(objects.tpmconfig)
     def tpmconfig_get(self, uuid):
         query = model_query(models.tpmconfig)
         query = query.filter_by(uuid=uuid)
@@ -7590,7 +7590,7 @@ class Connection(api.Connection):
                 err="No TPM configuration entry found for %s" % uuid)
         return result
 
-    @objects.objectify(objects.tpmconfig)
+    @db_objects.objectify(objects.tpmconfig)
     def tpmconfig_get_one(self):
         query = model_query(models.tpmconfig)
         try:
@@ -7598,7 +7598,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NotFound()
 
-    @objects.objectify(objects.tpmconfig)
+    @db_objects.objectify(objects.tpmconfig)
     def tpmconfig_get_list(self, limit=None, marker=None,
                            sort_key=None, sort_dir=None):
         query = model_query(models.tpmconfig)
@@ -7606,7 +7606,7 @@ class Connection(api.Connection):
         return _paginate_query(models.tpmconfig, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.tpmconfig)
+    @db_objects.objectify(objects.tpmconfig)
     def tpmconfig_update(self, uuid, values):
         with _session_for_write() as session:
             query = model_query(models.tpmconfig, session=session)
@@ -7638,7 +7638,7 @@ class Connection(api.Connection):
             raise exception.TPMDeviceNotFound(uuid=tpmdevice_id)
         return result
 
-    @objects.objectify(objects.tpmdevice)
+    @db_objects.objectify(objects.tpmdevice)
     def tpmdevice_create(self, host_id, values):
 
         if not values.get('uuid'):
@@ -7658,7 +7658,7 @@ class Connection(api.Connection):
                 raise exception.TPMDeviceAlreadyExists(uuid=values['uuid'])
             return self._tpmdevice_get(values['uuid'])
 
-    @objects.objectify(objects.tpmdevice)
+    @db_objects.objectify(objects.tpmdevice)
     def tpmdevice_get(self, uuid):
         query = model_query(models.tpmdevice)
         query = query.filter_by(uuid=uuid)
@@ -7669,14 +7669,14 @@ class Connection(api.Connection):
                 err="No TPM device entry found for %s" % uuid)
         return result
 
-    @objects.objectify(objects.tpmdevice)
+    @db_objects.objectify(objects.tpmdevice)
     def tpmdevice_get_list(self, limit=None, marker=None,
                            sort_key=None, sort_dir=None):
         query = model_query(models.tpmdevice)
         return _paginate_query(models.tpmdevice, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.tpmdevice)
+    @db_objects.objectify(objects.tpmdevice)
     def tpmdevice_get_by_host(self, host_id,
                               limit=None, marker=None,
                               sort_key=None, sort_dir=None):
@@ -7693,7 +7693,7 @@ class Connection(api.Connection):
         return _paginate_query(models.tpmdevice, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.tpmdevice)
+    @db_objects.objectify(objects.tpmdevice)
     def tpmdevice_update(self, uuid, values):
         with _session_for_write() as session:
             query = model_query(models.tpmdevice, session=session)
@@ -7715,7 +7715,7 @@ class Connection(api.Connection):
                 raise exception.TPMDeviceNotFound(uuid)
             query.delete()
 
-    @objects.objectify(objects.certificate)
+    @db_objects.objectify(objects.certificate)
     def certificate_create(self, values):
 
         if not values.get('uuid'):
@@ -7734,7 +7734,7 @@ class Connection(api.Connection):
                 raise exception.CertificateAlreadyExists(uuid=values['uuid'])
             return certificate
 
-    @objects.objectify(objects.certificate)
+    @db_objects.objectify(objects.certificate)
     def certificate_get(self, uuid):
         query = model_query(models.certificate)
         query = query.filter_by(uuid=uuid)
@@ -7745,7 +7745,7 @@ class Connection(api.Connection):
                 err="No Certificate entry found for %s" % uuid)
         return result
 
-    @objects.objectify(objects.certificate)
+    @db_objects.objectify(objects.certificate)
     def certificate_get_one(self):
         query = model_query(models.certificate)
         try:
@@ -7753,7 +7753,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NotFound()
 
-    @objects.objectify(objects.certificate)
+    @db_objects.objectify(objects.certificate)
     def certificate_get_by_certtype(self, certtype):
         query = model_query(models.certificate)
         query = query.filter_by(certtype=certtype)
@@ -7763,7 +7763,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.CertificateTypeNotFound(certtype=certtype)
 
-    @objects.objectify(objects.certificate)
+    @db_objects.objectify(objects.certificate)
     def certificate_get_list(self, limit=None, marker=None,
                            sort_key=None, sort_dir=None):
         query = model_query(models.certificate)
@@ -7771,7 +7771,7 @@ class Connection(api.Connection):
         return _paginate_query(models.certificate, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.certificate)
+    @db_objects.objectify(objects.certificate)
     def certificate_update(self, uuid, values):
         with _session_for_write() as session:
             query = model_query(models.certificate, session=session)
@@ -7803,7 +7803,7 @@ class Connection(api.Connection):
             raise exception.HelmOverrideNotFound(name=name,
                                                  namespace=namespace)
 
-    @objects.objectify(objects.helm_overrides)
+    @db_objects.objectify(objects.helm_overrides)
     def helm_override_create(self, values):
 
         overrides = models.HelmOverrides()
@@ -7822,17 +7822,17 @@ class Connection(api.Connection):
                                            values['name'],
                                            values['namespace'])
 
-    @objects.objectify(objects.helm_overrides)
+    @db_objects.objectify(objects.helm_overrides)
     def helm_override_get(self, app_id, name, namespace):
         return self._helm_override_get(app_id, name, namespace)
 
-    @objects.objectify(objects.helm_overrides)
+    @db_objects.objectify(objects.helm_overrides)
     def helm_override_get_all(self, app_id):
         query = model_query(models.HelmOverrides, read_deleted="no")
         query = query.filter_by(app_id=app_id)
         return query.all()
 
-    @objects.objectify(objects.helm_overrides)
+    @db_objects.objectify(objects.helm_overrides)
     def helm_override_update(self, app_id, name, namespace, values):
         with _session_for_write() as session:
             query = model_query(models.HelmOverrides, session=session)
@@ -7868,7 +7868,7 @@ class Connection(api.Connection):
             raise exception.HostLabelNotFound(uuid=label_id)
         return result
 
-    @objects.objectify(objects.label)
+    @db_objects.objectify(objects.label)
     def label_create(self, host_uuid, values):
 
         if not values.get('uuid'):
@@ -7889,7 +7889,7 @@ class Connection(api.Connection):
                     label=values['label_key'], host=values['host_uuid'])
             return self._label_get(values['uuid'])
 
-    @objects.objectify(objects.label)
+    @db_objects.objectify(objects.label)
     def label_get(self, uuid):
         query = model_query(models.Label)
         query = query.filter_by(uuid=uuid)
@@ -7900,14 +7900,14 @@ class Connection(api.Connection):
                 err="No label entry found for %s" % uuid)
         return result
 
-    @objects.objectify(objects.label)
+    @db_objects.objectify(objects.label)
     def label_get_all(self, hostid=None):
         query = model_query(models.Label, read_deleted="no")
         if hostid:
             query = query.filter_by(host_id=hostid)
         return query.all()
 
-    @objects.objectify(objects.label)
+    @db_objects.objectify(objects.label)
     def label_update(self, uuid, values):
         with _session_for_write() as session:
             query = model_query(models.Label, session=session)
@@ -7928,7 +7928,7 @@ class Connection(api.Connection):
                 raise exception.HostLabelNotFound(uuid)
             query.delete()
 
-    @objects.objectify(objects.label)
+    @db_objects.objectify(objects.label)
     def label_get_by_host(self, host,
                           limit=None, marker=None,
                           sort_key=None, sort_dir=None):
@@ -7947,7 +7947,7 @@ class Connection(api.Connection):
             raise exception.HostLabelNotFoundByKey(label=label_key)
         return result
 
-    @objects.objectify(objects.label)
+    @db_objects.objectify(objects.label)
     def label_query(self, host_id, label_key):
         return self._label_query(host_id, label_key)
 
@@ -7967,7 +7967,7 @@ class Connection(api.Connection):
             raise exception.KubeAppNotFound(name=name)
         return result
 
-    @objects.objectify(objects.kube_app)
+    @db_objects.objectify(objects.kube_app)
     def kube_app_get_inactive(self, name, limit=None, marker=None,
                               sort_key=None, sort_dir=None):
         query = model_query(models.KubeApp)
@@ -7977,7 +7977,7 @@ class Connection(api.Connection):
         return _paginate_query(models.KubeApp, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.kube_app)
+    @db_objects.objectify(objects.kube_app)
     def kube_app_get_inactive_by_name_version(self, name, version):
         query = model_query(models.KubeApp)
         query = query.filter(
@@ -7992,7 +7992,7 @@ class Connection(api.Connection):
                                                     version=version)
         return result
 
-    @objects.objectify(objects.kube_app)
+    @db_objects.objectify(objects.kube_app)
     def kube_app_create(self, values):
         app = models.KubeApp()
         app.update(values)
@@ -8009,18 +8009,18 @@ class Connection(api.Connection):
                     version=values['app_version'])
             return self.kube_app_get(values['name'])
 
-    @objects.objectify(objects.kube_app)
+    @db_objects.objectify(objects.kube_app)
     def kube_app_get_all(self):
         query = model_query(models.KubeApp)
         query = query.filter(
             models.KubeApp.status != constants.APP_INACTIVE_STATE)
         return query.all()
 
-    @objects.objectify(objects.kube_app)
+    @db_objects.objectify(objects.kube_app)
     def kube_app_get(self, name):
         return self._kube_app_get(name)
 
-    @objects.objectify(objects.kube_app)
+    @db_objects.objectify(objects.kube_app)
     def kube_app_get_endswith(self, name):
         query = model_query(models.KubeApp)
         try:
@@ -8036,7 +8036,7 @@ class Connection(api.Connection):
             )
             return query.filter(models.KubeApp.name.endswith(name)).first()
 
-    @objects.objectify(objects.kube_app)
+    @db_objects.objectify(objects.kube_app)
     def kube_app_update(self, app_id, values):
         with _session_for_write() as session:
             query = model_query(models.KubeApp, session=session)
@@ -8060,7 +8060,7 @@ class Connection(api.Connection):
             if query.all():
                 query.delete()
 
-    @objects.objectify(objects.kube_app_releases)
+    @db_objects.objectify(objects.kube_app_releases)
     def kube_app_chart_release_get(self, app_id, release, namespace):
         query = model_query(models.KubeAppReleases)
         query = query.filter(models.KubeAppReleases.app_id == app_id,
@@ -8075,7 +8075,7 @@ class Connection(api.Connection):
                 app_id=app_id)
         return result
 
-    @objects.objectify(objects.kube_app_releases)
+    @db_objects.objectify(objects.kube_app_releases)
     def kube_app_chart_release_update(self, app_id, release, namespace, values):
         with _session_for_write() as session:
             query = model_query(models.KubeAppReleases, session=session)
@@ -8091,7 +8091,7 @@ class Connection(api.Connection):
                     app_id=app_id)
             return query.one()
 
-    @objects.objectify(objects.kube_app_releases)
+    @db_objects.objectify(objects.kube_app_releases)
     def kube_app_chart_release_create(self, values):
         app_release = models.KubeAppReleases()
         app_release.update(values)
@@ -8111,7 +8111,7 @@ class Connection(api.Connection):
             return self.kube_app_chart_release_get(
                 values['app_id'], values['release'], values['namespace'])
 
-    @objects.objectify(objects.kube_app_releases)
+    @db_objects.objectify(objects.kube_app_releases)
     def kube_app_chart_release_get_all(self, app_id, limit=None, marker=None,
                                        sort_key=None, sort_dir=None):
         query = model_query(models.KubeAppReleases)
@@ -8179,7 +8179,7 @@ class Connection(api.Connection):
 
         return self._datanetwork_get(type(obj), values['uuid'])
 
-    @objects.objectify(objects.datanetwork)
+    @db_objects.objectify(objects.datanetwork)
     def datanetwork_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -8196,7 +8196,7 @@ class Connection(api.Connection):
                 network_type=network_type)
         return self._datanetwork_create(datanetwork, values)
 
-    @objects.objectify(objects.datanetwork)
+    @db_objects.objectify(objects.datanetwork)
     def datanetwork_get(self, datanetwork_id):
         return self._datanetwork_get_one(datanetwork_id)
 
@@ -8218,7 +8218,7 @@ class Connection(api.Connection):
 
         return query
 
-    @objects.objectify(objects.datanetwork)
+    @db_objects.objectify(objects.datanetwork)
     def datanetworks_get_all(self, filters=None, limit=None, marker=None,
                              sort_key=None, sort_dir=None):
 
@@ -8230,7 +8230,7 @@ class Connection(api.Connection):
         return _paginate_query(models.DataNetworks, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.datanetwork)
+    @db_objects.objectify(objects.datanetwork)
     def datanetwork_update(self, datanetwork_uuid, values):
         with _session_for_write() as session:
             query = model_query(models.DataNetworks, session=session)
@@ -8319,7 +8319,7 @@ class Connection(api.Connection):
                 datanetwork_id=values['datanetwork_id'])
         return result
 
-    @objects.objectify(objects.interface_datanetwork)
+    @db_objects.objectify(objects.interface_datanetwork)
     def interface_datanetwork_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -8335,32 +8335,32 @@ class Connection(api.Connection):
                     datanetwork_id=values['datanetwork_id'])
             return self._interface_datanetwork_get(values['uuid'], session)
 
-    @objects.objectify(objects.interface_datanetwork)
+    @db_objects.objectify(objects.interface_datanetwork)
     def interface_datanetwork_get(self, uuid):
         return self._interface_datanetwork_get(uuid)
 
-    @objects.objectify(objects.interface_datanetwork)
+    @db_objects.objectify(objects.interface_datanetwork)
     def interface_datanetwork_get_all(
             self, limit=None, marker=None,
             sort_key=None, sort_dir=None):
         return self._interface_datanetwork_get_all(
             limit, marker, sort_key, sort_dir)
 
-    @objects.objectify(objects.interface_datanetwork)
+    @db_objects.objectify(objects.interface_datanetwork)
     def interface_datanetwork_get_by_host(
             self, host_id, limit=None, marker=None,
             sort_key=None, sort_dir=None):
         return self._interface_datanetwork_get_by_host(
             host_id, limit, marker, sort_key, sort_dir)
 
-    @objects.objectify(objects.interface_datanetwork)
+    @db_objects.objectify(objects.interface_datanetwork)
     def interface_datanetwork_get_by_interface(
             self, interface_id, limit=None, marker=None,
             sort_key=None, sort_dir=None):
         return self._interface_datanetwork_get_by_interface(
             interface_id, limit, marker, sort_key, sort_dir)
 
-    @objects.objectify(objects.interface_datanetwork)
+    @db_objects.objectify(objects.interface_datanetwork)
     def interface_datanetwork_get_by_datanetwork(
             self, datanetwork_id, limit=None, marker=None,
             sort_key=None, sort_dir=None):
@@ -8376,7 +8376,7 @@ class Connection(api.Connection):
             raise exception.InterfaceDataNetworkNotFound(uuid=uuid)
         query.delete()
 
-    @objects.objectify(objects.interface_datanetwork)
+    @db_objects.objectify(objects.interface_datanetwork)
     def interface_datanetwork_query(self, values):
         return self._interface_datanetwork_query(values)
 
@@ -8391,7 +8391,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.host_fs)
+    @db_objects.objectify(objects.host_fs)
     def host_fs_create(self, forihostid, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -8408,24 +8408,24 @@ class Connection(api.Connection):
 
             return self._host_fs_get(values['uuid'])
 
-    @objects.objectify(objects.host_fs)
+    @db_objects.objectify(objects.host_fs)
     def host_fs_get_all(self, forihostid=None):
         query = model_query(models.HostFs, read_deleted="no")
         if forihostid:
             query = query.filter_by(forihostid=forihostid)
         return query.all()
 
-    @objects.objectify(objects.host_fs)
+    @db_objects.objectify(objects.host_fs)
     def host_fs_get(self, fs_id):
         return self._host_fs_get(fs_id)
 
-    @objects.objectify(objects.host_fs)
+    @db_objects.objectify(objects.host_fs)
     def host_fs_get_list(self, limit=None, marker=None,
                          sort_key=None, sort_dir=None):
         return _paginate_query(models.HostFs, limit, marker,
                                sort_key, sort_dir)
 
-    @objects.objectify(objects.host_fs)
+    @db_objects.objectify(objects.host_fs)
     def host_fs_get_by_ihost(self, ihost, limit=None, marker=None,
                              sort_key=None, sort_dir=None):
 
@@ -8434,7 +8434,7 @@ class Connection(api.Connection):
         return _paginate_query(models.HostFs, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.host_fs)
+    @db_objects.objectify(objects.host_fs)
     def host_fs_update(self, fs_id, values):
         with _session_for_write() as session:
             query = model_query(models.HostFs, read_deleted="no",
@@ -8488,15 +8488,15 @@ class Connection(api.Connection):
                     uuid=values['uuid'], host=host_id)
             return self._kube_host_upgrade_get(values['uuid'])
 
-    @objects.objectify(objects.kube_host_upgrade)
+    @db_objects.objectify(objects.kube_host_upgrade)
     def kube_host_upgrade_create(self, host_id, values):
         return self._kube_host_upgrade_create(host_id, values)
 
-    @objects.objectify(objects.kube_host_upgrade)
+    @db_objects.objectify(objects.kube_host_upgrade)
     def kube_host_upgrade_get(self, host_upgrade_id):
         return self._kube_host_upgrade_get(host_upgrade_id)
 
-    @objects.objectify(objects.kube_host_upgrade)
+    @db_objects.objectify(objects.kube_host_upgrade)
     def kube_host_upgrade_get_list(self, limit=None, marker=None,
                                    sort_key=None, sort_dir=None):
         query = model_query(models.KubeHostUpgrade)
@@ -8511,13 +8511,13 @@ class Connection(api.Connection):
         return _paginate_query(models.KubeHostUpgrade, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.kube_host_upgrade)
+    @db_objects.objectify(objects.kube_host_upgrade)
     def kube_host_upgrade_get_by_host(self, host_id):
         query = model_query(models.KubeHostUpgrade)
         query = add_kube_host_upgrade_filter_by_host(query, host_id)
         return query.one()
 
-    @objects.objectify(objects.kube_host_upgrade)
+    @db_objects.objectify(objects.kube_host_upgrade)
     def kube_host_upgrade_update(self, host_upgrade_id, values):
         with _session_for_write() as session:
             query = model_query(models.KubeHostUpgrade, read_deleted="no",
@@ -8551,7 +8551,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.KubeUpgradeNotFound(upgrade_id=upgrade_id)
 
-    @objects.objectify(objects.kube_upgrade)
+    @db_objects.objectify(objects.kube_upgrade)
     def kube_upgrade_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -8565,11 +8565,11 @@ class Connection(api.Connection):
                 raise exception.KubeUpgradeAlreadyExists(uuid=values['uuid'])
             return self._kube_upgrade_get(values['uuid'])
 
-    @objects.objectify(objects.kube_upgrade)
+    @db_objects.objectify(objects.kube_upgrade)
     def kube_upgrade_get(self, upgrade_id):
         return self._kube_upgrade_get(upgrade_id)
 
-    @objects.objectify(objects.kube_upgrade)
+    @db_objects.objectify(objects.kube_upgrade)
     def kube_upgrade_get_one(self):
         query = model_query(models.KubeUpgrade)
 
@@ -8578,7 +8578,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NotFound()
 
-    @objects.objectify(objects.kube_upgrade)
+    @db_objects.objectify(objects.kube_upgrade)
     def kube_upgrade_get_list(self, limit=None, marker=None,
                               sort_key=None, sort_dir=None):
 
@@ -8587,7 +8587,7 @@ class Connection(api.Connection):
         return _paginate_query(models.KubeUpgrade, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.kube_upgrade)
+    @db_objects.objectify(objects.kube_upgrade)
     def kube_upgrade_update(self, upgrade_id, values):
         with _session_for_write() as session:
             query = model_query(models.KubeUpgrade, session=session)
@@ -8668,7 +8668,7 @@ class Connection(api.Connection):
 
         return self._deviceimage_get(type(obj), values['uuid'])
 
-    @objects.objectify(objects.device_image)
+    @db_objects.objectify(objects.device_image)
     def deviceimage_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -8685,7 +8685,7 @@ class Connection(api.Connection):
                 bitstream_type=bitstream_type)
         return self._deviceimage_create(deviceimage, values)
 
-    @objects.objectify(objects.device_image)
+    @db_objects.objectify(objects.device_image)
     def deviceimage_get(self, deviceimage_id):
         return self._deviceimage_get_one(deviceimage_id)
 
@@ -8707,7 +8707,7 @@ class Connection(api.Connection):
 
         return query
 
-    @objects.objectify(objects.device_image)
+    @db_objects.objectify(objects.device_image)
     def deviceimages_get_all(self, filters=None, limit=None, marker=None,
                              sort_key=None, sort_dir=None):
 
@@ -8719,7 +8719,7 @@ class Connection(api.Connection):
         return _paginate_query(models.DeviceImage, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.device_image)
+    @db_objects.objectify(objects.device_image)
     def deviceimage_update(self, deviceimage_uuid, values):
         with _session_for_write() as session:
             query = model_query(models.DeviceImage, session=session)
@@ -8751,7 +8751,7 @@ class Connection(api.Connection):
             raise exception.DeviceLabelNotFound(uuid=device_label_id)
         return result
 
-    @objects.objectify(objects.device_label)
+    @db_objects.objectify(objects.device_label)
     def device_label_create(self, device_uuid, values):
 
         if not values.get('uuid'):
@@ -8772,7 +8772,7 @@ class Connection(api.Connection):
                     label=values['label_key'], host=values['host_uuid'])
             return self._device_label_get(values['uuid'])
 
-    @objects.objectify(objects.device_label)
+    @db_objects.objectify(objects.device_label)
     def device_label_get(self, uuid):
         query = model_query(models.DeviceLabel)
         query = query.filter_by(uuid=uuid)
@@ -8783,20 +8783,20 @@ class Connection(api.Connection):
                 err="No device label entry found for %s" % uuid)
         return result
 
-    @objects.objectify(objects.device_label)
+    @db_objects.objectify(objects.device_label)
     def device_label_get_all(self, deviceid=None):
         query = model_query(models.DeviceLabel, read_deleted="no")
         if deviceid:
             query = query.filter_by(device_id=deviceid)
         return query.all()
 
-    @objects.objectify(objects.device_label)
+    @db_objects.objectify(objects.device_label)
     def device_label_get_list(self, limit=None, marker=None,
                               sort_key=None, sort_dir=None):
         return _paginate_query(models.DeviceLabel, limit, marker,
                                sort_key, sort_dir)
 
-    @objects.objectify(objects.device_label)
+    @db_objects.objectify(objects.device_label)
     def device_label_get_by_label(self, label_key, label_value,
                                   limit=None, marker=None,
                                   sort_key=None, sort_dir=None):
@@ -8806,7 +8806,7 @@ class Connection(api.Connection):
         return _paginate_query(models.DeviceLabel, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.device_label)
+    @db_objects.objectify(objects.device_label)
     def device_label_update(self, uuid, values):
         with _session_for_write() as session:
             query = model_query(models.DeviceLabel, session=session)
@@ -8827,7 +8827,7 @@ class Connection(api.Connection):
                 raise exception.DeviceLabelNotFound(uuid)
             query.delete()
 
-    @objects.objectify(objects.device_label)
+    @db_objects.objectify(objects.device_label)
     def device_label_get_by_device(self, device_uuid,
                           limit=None, marker=None,
                           sort_key=None, sort_dir=None):
@@ -8842,7 +8842,7 @@ class Connection(api.Connection):
         query = query.filter(models.DeviceLabel.label_key == label_key)
         return query.all()
 
-    @objects.objectify(objects.device_label)
+    @db_objects.objectify(objects.device_label)
     def device_label_query(self, device_id, label_key):
         return self._device_label_query(device_id, label_key)
 
@@ -8861,7 +8861,7 @@ class Connection(api.Connection):
             raise exception.DeviceLabelNotFound(uuid=device_image_label_id)
         return result
 
-    @objects.objectify(objects.device_image_label)
+    @db_objects.objectify(objects.device_image_label)
     def device_image_label_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -8877,7 +8877,7 @@ class Connection(api.Connection):
                     uuid=values['uuid'])
             return self._device_image_label_get(values['uuid'])
 
-    @objects.objectify(objects.device_image_label)
+    @db_objects.objectify(objects.device_image_label)
     def device_image_label_get(self, uuid):
         query = model_query(models.DeviceImageLabel)
         query = query.filter_by(uuid=uuid)
@@ -8888,7 +8888,7 @@ class Connection(api.Connection):
                 err="No device image label entry found for %s" % uuid)
         return result
 
-    @objects.objectify(objects.device_image_label)
+    @db_objects.objectify(objects.device_image_label)
     def device_image_label_update(self, uuid, values):
         with _session_for_write() as session:
             query = model_query(models.DeviceImageLabel, session=session)
@@ -8899,7 +8899,7 @@ class Connection(api.Connection):
                 raise exception.DeviceImageLabelNotFound(uuid)
             return query.one()
 
-    @objects.objectify(objects.device_image_label)
+    @db_objects.objectify(objects.device_image_label)
     def device_image_label_get_by_image(self, image_id,
                                   limit=None, marker=None,
                                   sort_key=None, sort_dir=None):
@@ -8907,7 +8907,7 @@ class Connection(api.Connection):
         query = query.filter_by(image_id=image_id)
         return query.all()
 
-    @objects.objectify(objects.device_image_label)
+    @db_objects.objectify(objects.device_image_label)
     def device_image_label_get_by_label(self, label_id,
                                   limit=None, marker=None,
                                   sort_key=None, sort_dir=None):
@@ -8915,7 +8915,7 @@ class Connection(api.Connection):
         query = query.filter_by(label_id=label_id)
         return query.all()
 
-    @objects.objectify(objects.device_image_label)
+    @db_objects.objectify(objects.device_image_label)
     def device_image_label_get_by_image_label(self, image_id, label_id,
                                   limit=None, marker=None,
                                   sort_key=None, sort_dir=None):
@@ -8947,7 +8947,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.DeviceImageStateNotFound(id=id)
 
-    @objects.objectify(objects.device_image_state)
+    @db_objects.objectify(objects.device_image_state)
     def device_image_state_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -8961,11 +8961,11 @@ class Connection(api.Connection):
                 raise exception.DeviceImageStateAlreadyExists(uuid=values['uuid'])
             return self._device_image_state_get(values['uuid'])
 
-    @objects.objectify(objects.device_image_state)
+    @db_objects.objectify(objects.device_image_state)
     def device_image_state_get(self, id):
         return self._device_image_state_get(id)
 
-    @objects.objectify(objects.device_image_state)
+    @db_objects.objectify(objects.device_image_state)
     def device_image_state_get_one(self):
         query = model_query(models.DeviceImageState)
 
@@ -8974,7 +8974,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NotFound()
 
-    @objects.objectify(objects.device_image_state)
+    @db_objects.objectify(objects.device_image_state)
     def device_image_state_get_list(self, limit=None, marker=None,
                               sort_key=None, sort_dir=None):
 
@@ -8983,7 +8983,7 @@ class Connection(api.Connection):
         return _paginate_query(models.DeviceImageState, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.device_image_state)
+    @db_objects.objectify(objects.device_image_state)
     def device_image_state_update(self, id, values):
         with _session_for_write() as session:
             query = model_query(models.DeviceImageState, session=session)
@@ -9005,7 +9005,7 @@ class Connection(api.Connection):
                 raise exception.DeviceImageStateNotFound(id=id)
             query.delete()
 
-    @objects.objectify(objects.device_image_state)
+    @db_objects.objectify(objects.device_image_state)
     def device_image_state_get_by_image_device(self, image_id, pcidevice_id,
                                                limit=None, marker=None,
                                                sort_key=None, sort_dir=None):
@@ -9018,7 +9018,7 @@ class Connection(api.Connection):
             raise exception.DeviceImageStateNotFoundByKey(image_id=image_id,
                     device_id=pcidevice_id)
 
-    @objects.objectify(objects.device_image_state)
+    @db_objects.objectify(objects.device_image_state)
     def device_image_state_get_all(self, host_id=None, pcidevice_id=None,
                                    image_id=None, status=None,
                                    limit=None, marker=None,
@@ -9051,7 +9051,7 @@ class Connection(api.Connection):
 
         return result
 
-    @objects.objectify(objects.restore)
+    @db_objects.objectify(objects.restore)
     def restore_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -9066,11 +9066,11 @@ class Connection(api.Connection):
 
             return restore
 
-    @objects.objectify(objects.restore)
+    @db_objects.objectify(objects.restore)
     def restore_get(self, id):
         return self._restore_get(id)
 
-    @objects.objectify(objects.restore)
+    @db_objects.objectify(objects.restore)
     def restore_get_list(self, limit=None, marker=None,
                          sort_key=None, sort_dir=None):
         query = model_query(models.Restore)
@@ -9078,7 +9078,7 @@ class Connection(api.Connection):
         return _paginate_query(models.Restore, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.restore)
+    @db_objects.objectify(objects.restore)
     def restore_get_one(self, filters):
         query = model_query(models.Restore)
 
@@ -9090,7 +9090,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NotFound()
 
-    @objects.objectify(objects.restore)
+    @db_objects.objectify(objects.restore)
     def restore_update(self, uuid, values):
         with _session_for_write() as session:
             query = model_query(models.Restore, session=session)
@@ -9142,15 +9142,15 @@ class Connection(api.Connection):
                     rootca_host_update_id=values['uuid'], host_id=host_id)
             return self._kube_rootca_host_update_get(values['uuid'])
 
-    @objects.objectify(objects.kube_rootca_host_update)
+    @db_objects.objectify(objects.kube_rootca_host_update)
     def kube_rootca_host_update_create(self, host_id, values):
         return self._kube_rootca_host_update_create(host_id, values)
 
-    @objects.objectify(objects.kube_rootca_host_update)
+    @db_objects.objectify(objects.kube_rootca_host_update)
     def kube_rootca_host_update_get(self, rootca_host_update_id):
         return self._kube_rootca_host_update_get(rootca_host_update_id)
 
-    @objects.objectify(objects.kube_rootca_host_update)
+    @db_objects.objectify(objects.kube_rootca_host_update)
     def kube_rootca_host_update_get_by_host(self, host_id):
         query = model_query(models.KubeRootCAHostUpdate)
         query = add_kube_rootca_host_update_filter_by_host(query, host_id)
@@ -9159,7 +9159,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NotFound()
 
-    @objects.objectify(objects.kube_rootca_host_update)
+    @db_objects.objectify(objects.kube_rootca_host_update)
     def kube_rootca_host_update_update(self, rootca_host_update_id, values):
         with _session_for_write() as session:
             query = model_query(models.KubeRootCAHostUpdate, read_deleted="no",
@@ -9198,7 +9198,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.KubeRootCAUpdateNotFound(rootca_update_id=rootca_update_id)
 
-    @objects.objectify(objects.kube_rootca_update)
+    @db_objects.objectify(objects.kube_rootca_update)
     def kube_rootca_update_create(self, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -9212,11 +9212,11 @@ class Connection(api.Connection):
                 raise exception.KubeRootCAUpdateAlreadyExists(rootca_update_id=values['uuid'])
             return self._kube_rootca_update_get(values['uuid'])
 
-    @objects.objectify(objects.kube_rootca_update)
+    @db_objects.objectify(objects.kube_rootca_update)
     def kube_rootca_update_get(self, rootca_update_id):
         return self._kube_rootca_update_get(rootca_update_id)
 
-    @objects.objectify(objects.kube_rootca_update)
+    @db_objects.objectify(objects.kube_rootca_update)
     def kube_rootca_update_get_one(self):
         query = model_query(models.KubeRootCAUpdate)
 
@@ -9225,7 +9225,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NotFound()
 
-    @objects.objectify(objects.kube_rootca_update)
+    @db_objects.objectify(objects.kube_rootca_update)
     def kube_rootca_update_get_list(self, limit=None, marker=None,
                               sort_key=None, sort_dir=None):
 
@@ -9234,14 +9234,14 @@ class Connection(api.Connection):
         return _paginate_query(models.KubeRootCAUpdate, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.kube_rootca_host_update)
+    @db_objects.objectify(objects.kube_rootca_host_update)
     def kube_rootca_host_update_get_list(self, limit=None, marker=None,
                                    sort_key=None, sort_dir=None):
         query = model_query(models.KubeRootCAHostUpdate)
         return _paginate_query(models.KubeRootCAHostUpdate, limit, marker,
                                sort_key, sort_dir, query)
 
-    @objects.objectify(objects.kube_rootca_update)
+    @db_objects.objectify(objects.kube_rootca_update)
     def kube_rootca_update_update(self, rootca_update_id, values):
         with _session_for_write() as session:
             query = model_query(models.KubeRootCAUpdate, session=session)
@@ -9263,7 +9263,7 @@ class Connection(api.Connection):
                 raise exception.KubeRootCAUpdateNotFound(rootca_update_id=rootca_update_id)
             query.delete()
 
-    @objects.objectify(objects.kube_cmd_version)
+    @db_objects.objectify(objects.kube_cmd_version)
     def kube_cmd_version_get(self):
         query = model_query(models.KubeCmdVersions)
         try:
@@ -9271,7 +9271,7 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.NotFound()
 
-    @objects.objectify(objects.kube_cmd_version)
+    @db_objects.objectify(objects.kube_cmd_version)
     def kube_cmd_version_update(self, values):
         with _session_for_write() as session:
             query = model_query(models.KubeCmdVersions, session=session)

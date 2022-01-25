@@ -1,8 +1,7 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
 # coding=utf-8
 #
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2019-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -11,6 +10,7 @@ import mock
 
 from sysinv.db import api as db_api
 from sysinv.db.sqlalchemy import models
+from sysinv.db.sqlalchemy import objects as db_objects
 from sysinv import objects
 from sysinv.tests.db import base
 from sysinv.tests.db import utils
@@ -64,7 +64,7 @@ class TestKubeHostUpgradesObject(base.DbTestCase):
 
     def test_objectify(self):
 
-        @objects.objectify(objects.kube_host_upgrade)
+        @db_objects.objectify(objects.kube_host_upgrade)
         def _convert_db_data():
             return self._get_db_data(self.fake_upgrade_data)
 
@@ -79,7 +79,7 @@ class TestKubeHostUpgradesObject(base.DbTestCase):
                 data.append(self._get_db_data(self.fake_upgrade_data))
             return data
 
-        @objects.objectify(objects.kube_host_upgrade)
+        @db_objects.objectify(objects.kube_host_upgrade)
         def _convert_db_data_many():
             return _get_db_data_many()
 
