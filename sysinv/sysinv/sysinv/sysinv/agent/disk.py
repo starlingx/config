@@ -80,6 +80,11 @@ class DiskOperator(object):
                             device = os.path.basename(os.readlink(symlink))
                         else:
                             device = os.path.basename(params[1])
+                    elif params[0] == "ostree_root":
+                        if "LABEL=" in params[1]:
+                            key, label = params[1].split("=")
+                            symlink = "/dev/disk/by-label/%s" % label
+                            device = os.path.basename(os.readlink(symlink))
 
         if device is not None:
             if constants.DEVICE_NAME_NVME in device:
