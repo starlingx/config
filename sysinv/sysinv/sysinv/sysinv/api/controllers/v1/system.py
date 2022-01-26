@@ -408,8 +408,15 @@ class SystemController(rest.RestController):
         vswitch_type = None
         new_system_mode = None
 
-        # prevent description field from being updated
         for p in jsonpatch.JsonPatch(patch):
+            try:
+                p['value'].encode().decode('ascii')
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                raise wsme.exc.ClientSideError(_("System values must not "
+                                               "contain special characters."))
+            except AttributeError:
+                pass
+
             if p['path'] == '/software_version':
                 raise wsme.exc.ClientSideError(_("software_version field "
                                                  "cannot be modified."))
