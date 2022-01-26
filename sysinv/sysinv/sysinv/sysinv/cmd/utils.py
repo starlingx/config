@@ -202,7 +202,7 @@ def create_host_overrides(filename):
             # Get the docker no-proxy info if it exists
             if docker.name == constants.SERVICE_PARAM_NAME_DOCKER_NO_PROXY:
                 # Remove the open and close parenthesis if address is IPV6
-                _value = docker.value.strip("[]")
+                _value = docker.value.replace("[", "").replace("]", "")
                 no_proxy_list = _value.split(',')
                 data.update({'docker_no_proxy': no_proxy_list})
 
