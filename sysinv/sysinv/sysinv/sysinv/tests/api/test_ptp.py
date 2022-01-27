@@ -76,14 +76,17 @@ class PTPModifyTestCase(PTPTestCase):
             self.assertIn(error_message, response.json['error_message'])
 
     def test_modify_ptp_transport_valid(self):
+        # This API is now DEPRECATED:
+        message = "Single-instance PTP service API is deprecated"
+
         # With no ptp hosts we should be able to modify ptp transport
-        self.modify_ptp(self.transport_udp)
-        self.modify_ptp(self.transport_l2)
+        self.modify_ptp_failure(self.transport_udp, message)
+        self.modify_ptp_failure(self.transport_l2, message)
 
         # If the host is locked we can set the transport to UDP
         self.dbapi.ihost_update(self.worker.id, {'clock_synchronization': constants.PTP})
-        self.modify_ptp(self.transport_udp)
-        self.modify_ptp(self.transport_l2)
+        self.modify_ptp_failure(self.transport_udp, message)
+        self.modify_ptp_failure(self.transport_l2, message)
 
         # If the host is unlocked it must have a ptp interface with an IP to set to UDP
         self.dbapi.ihost_update(self.worker.id, {'administrative': constants.ADMIN_UNLOCKED})
@@ -105,8 +108,8 @@ class PTPModifyTestCase(PTPTestCase):
                    'prefix': 24,
                    'address': '192.168.1.2'}
         dbutils.create_test_address(**address)
-        self.modify_ptp(self.transport_udp)
-        self.modify_ptp(self.transport_l2)
+        self.modify_ptp_failure(self.transport_udp, message)
+        self.modify_ptp_failure(self.transport_l2, message)
 
     def test_modify_ptp_transport_invalid(self):
         # If the host is unlocked it must have a ptp interface with an IP to set to UDP
@@ -123,7 +126,7 @@ class PTPModifyTestCase(PTPTestCase):
                      }
 
         dbutils.create_test_interface(**interface)
-        self.modify_ptp_failure(self.transport_udp, "Invalid system configuration for UDP based PTP transport")
+        self.modify_ptp_failure(self.transport_udp, "Single-instance PTP service API is deprecated")
 
 
 class PTPApplyTestCase(PTPTestCase):
@@ -134,5 +137,8 @@ class PTPApplyTestCase(PTPTestCase):
         # This is basically a null operation for the API but we should test that the function exists
         apply_path = self._get_path() + "/apply"
         # The apply takes no parameters
-        response = self.post_json(apply_path, {})
-        self.assertEqual(http_client.NO_CONTENT, response.status_int)
+        response = self.post_json(apply_path, {}, expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("Single-instance PTP service API is deprecated",
+                      response.json['error_message'])

@@ -1,12 +1,11 @@
 ########################################################################
 #
-# Copyright (c) 2018-2019 Wind River Systems, Inc.
+# Copyright (c) 2018-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 ########################################################################
 
-import jsonpatch
 import pecan
 from pecan import rest
 import wsme
@@ -185,48 +184,9 @@ class PTPController(rest.RestController):
     @wsme_pecan.wsexpose(PTP, types.uuid,
                          body=[PTPPatchType])
     def patch(self, ptp_uuid, patch):
-        """Update the current PTP configuration."""
-
-        rpc_ptp = objects.ptp.get_by_uuid(pecan.request.context, ptp_uuid)
-        patch_obj = jsonpatch.JsonPatch(patch)
-
-        state_rel_path = ['/uuid', '/id']
-        if any(p['path'] in state_rel_path for p in patch_obj):
-            raise wsme.exc.ClientSideError(_("The following fields can not be "
-                                             "modified: %s" %
-                                             state_rel_path))
-
-        try:
-            ptp = PTP(**jsonpatch.apply_patch(rpc_ptp.as_dict(),
-                                              patch_obj))
-
-        except utils.JSONPATCH_EXCEPTIONS as e:
-            raise exception.PatchError(patch=patch, reason=e)
-
-        ptp = ptp.as_dict()
-
-        try:
-            # Update only the fields that have changed
-            for field in objects.ptp.fields:
-                if rpc_ptp[field] != ptp[field]:
-                    rpc_ptp[field] = ptp[field]
-
-            delta = rpc_ptp.obj_what_changed()
-            if 'transport' in delta and rpc_ptp.transport == constants.PTP_TRANSPORT_UDP:
-                self._validate_ptp_udp_transport()
-            if delta:
-                rpc_ptp.save()
-                # perform rpc to conductor to perform config apply
-                pecan.request.rpcapi.update_ptp_config(pecan.request.context)
-            else:
-                LOG.info("No PTP config changes")
-
-            return PTP.convert_with_links(rpc_ptp)
-
-        except exception.HTTPNotFound:
-            msg = _("PTP update failed: %s %s %s : patch %s" %
-                    (ptp['mode'], ptp['transport'], ptp['mechanism'], patch))
-            raise wsme.exc.ClientSideError(msg)
+        """(DEPRECATED) Update the current PTP configuration."""
+        raise wsme.exc.ClientSideError(
+            'Single-instance PTP service API is deprecated')
 
     def _validate_ptp_udp_transport(self):
         # Ensure all hosts using ptp have addresses associated with their ptp interfaces
@@ -262,9 +222,6 @@ class PTPController(rest.RestController):
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(None, status_code=204)
     def apply(self):
-        """Apply the ptp configuration."""
-        try:
-            pecan.request.rpcapi.update_ptp_config(pecan.request.context, do_apply=True)
-        except exception.HTTPNotFound:
-            msg = _("PTP apply failed")
-            raise wsme.exc.ClientSideError(msg)
+        """(DEPRECATED) Apply the ptp configuration."""
+        raise wsme.exc.ClientSideError(
+            'Single-instance PTP service API is deprecated')

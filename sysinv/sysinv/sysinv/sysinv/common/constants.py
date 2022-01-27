@@ -1865,9 +1865,23 @@ PTP_INSTANCE_TYPE_PHC2SYS = 'phc2sys'
 PTP_INSTANCE_TYPE_TS2PHC = 'ts2phc'
 PTP_INSTANCE_TYPE_CLOCK = 'clock'
 
+# PTP instances created during migration from service parameters
+PTP_INSTANCE_LEGACY_PTP4L = 'ptp4l-legacy'
+PTP_INSTANCE_LEGACY_PHC2SYS = 'phc2sys-legacy'
+
 # PTP parameter: owner types
 PTP_PARAMETER_OWNER_INSTANCE = 'ptp-instance'
 PTP_PARAMETER_OWNER_INTERFACE = 'ptp-interface'
+
+# Global PTP configuration migrated to legacy instance
+PTP_PARAMETER_MECHANISM = 'mechanism'
+PTP_PARAMETER_MODE = 'mode'
+PTP_PARAMETER_TRANSPORT = 'transport'
+
+# Special PTP service parameters migrated from legacy configuration
+PTP_PARAMETER_UDS_ADDRESS = 'uds_address'
+PTP_PARAMETER_DOMAIN_NUMBER = 'domainNumber'
+PTP_PARAMETER_DEFAULT_DOMAIN = '0'
 
 # Patching PTP entities
 PTP_INSTANCE_ARRAY_PATH = '/ptp_instances/-'

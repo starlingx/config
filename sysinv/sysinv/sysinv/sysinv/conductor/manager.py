@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 
 """Conduct all activity related system inventory.
@@ -251,8 +251,12 @@ class ConductorManager(service.PeriodicService):
         # initializing conductor manager service
         super(ConductorManager, self).start()
 
+        # greenthreads must be called after super.start for it to work properly
+
+        # Move PTP parameters from legacy configuration to multi-instance.
+        greenthread.spawn(self._update_ptp_parameters)
+
         # Upgrade/Downgrade kubernetes components.
-        # greenthread must be called after super.start for it to work properly.
         greenthread.spawn(self._upgrade_downgrade_kube_components)
 
         # monitor keystone user update event to check whether admin password is
@@ -7125,6 +7129,10 @@ class ConductorManager(service.PeriodicService):
 
     def _update_ptp_host_configs(self, context, do_apply=False):
         """Issue config updates to hosts with ptp clocks"""
+
+        # With deprecation of single-instance PTP API, this call is now
+        # supposed to happen only when a PTP service parameter is DELETED
+        # (with do_apply=False)
         personalities = [constants.CONTROLLER,
                          constants.WORKER,
                          constants.STORAGE]
@@ -7133,24 +7141,179 @@ class ConductorManager(service.PeriodicService):
         ptp_hosts = [host.uuid for host in hosts if host.clock_synchronization == constants.PTP]
 
         if ptp_hosts:
-            config_uuid = self._config_update_hosts(context, personalities, host_uuids=ptp_hosts)
+            self._config_update_hosts(context, personalities, host_uuids=ptp_hosts)
             if do_apply:
-                runtime_hosts = []
-                for host in hosts:
-                    if (host.clock_synchronization == constants.PTP and
-                        host.administrative == constants.ADMIN_UNLOCKED and
-                        host.operational == constants.OPERATIONAL_ENABLED and
-                        not (self._config_out_of_date(context, host) and
-                                 utils.config_is_reboot_required(host.config_target))):
-                        runtime_hosts.append(host.uuid)
+                LOG.warning("Legacy PTP configuration is DEPRECATED")
 
-                if runtime_hosts:
-                    config_dict = {
-                        "personalities": personalities,
-                        "classes": ['platform::ptp::runtime'],
-                        "host_uuids": runtime_hosts
-                    }
-                    self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+    def _update_ptp_create_instance(self, name, service):
+        values = dict(name=name, service=service)
+        new_ptp_instance = self.dbapi.ptp_instance_create(values)
+        LOG.debug("Created PTP instance %s id %d uuid %s" %
+                  (name, new_ptp_instance.id, new_ptp_instance.uuid))
+        return (new_ptp_instance.id, new_ptp_instance.uuid)
+
+    def _update_ptp_add_parameter_to_instance(self, instance_uuid, name, value):
+        try:
+            ptp_parameter = self.dbapi.ptp_parameter_get_by_namevalue(name,
+                                                                      value)
+        except exception.NotFound:
+            values = dict(name=name, value=value)
+            LOG.debug("Creating PTP parameter %s=%s" % (name, value))
+            ptp_parameter = self.dbapi.ptp_parameter_create(values)
+
+        param_uuid = ptp_parameter.uuid
+        self.dbapi.ptp_instance_parameter_add(instance_uuid, param_uuid)
+        LOG.debug("Adding PTP parameter %s to %s" %
+                  (param_uuid, instance_uuid))
+
+    def _update_ptp_assign_instance_to_host(self, instance_id, host_id):
+        values = dict(host_id=host_id, ptp_instance_id=instance_id)
+        self.dbapi.ptp_instance_assign(values)
+        LOG.debug("Assigned PTP instance %d to host %d" %
+                  (instance_id, host_id))
+
+    def _update_ptp_parameters(self):
+        # TODO: this method is supposed to be called in the context of the same
+        # patch that is deprecating the former PTP APIs. Thus, in a future
+        # release (probably the next one) it can be removed
+        LOG.info("Checking for pending update of PTP parameters")
+
+        """This function moves PTP legacy configuration from other tables. Once
+        it is done, the subsequent calls will find the generated PTP instance at
+        database and will return quickly.
+        The following is moved from some tables to others:
+        - Global (system-wide) ptp4l configuration in 'ptp' table, by creating
+          a "legacy" 'ptp4l' entry in 'ptp_instances' table and inserting the
+          corresponding entries in 'ptp_parameters';
+        - If advanced (specialized) ptp4l configuration is found in
+          'service_parameter' table, it inserts the corresponding entry(ies) in
+          'ptp_parameters' and refers to the "legacy" 'ptp4l' instance created
+           for global (system-wide) configuration;
+        - If phc2sys configuration is found in 'service_parameter' table, it
+          inserts a 'phc2sys' entry in 'ptp_instances' table and inserts the
+          corresponding entry(ies) in 'ptp_parameters';
+        - If any interface has 'ptp_role' not equal to 'none', it inserts a
+          'ptp4l' entry in 'ptp_instances' and inserts the corresponding entry
+          in 'ptp_parameters'.
+        """
+        try:
+            # Look for legacy ptp4l instance already in database, which is an
+            # indication this migration was performed before (probably when
+            # upgrading the release)
+            try:
+                ptp_instance = self.dbapi.ptp_instance_get_by_name(
+                    constants.PTP_INSTANCE_LEGACY_PTP4L)
+                LOG.debug("Legacy ptp4l instance found with id = %s" %
+                          ptp_instance['id'])
+                return
+            except exception.NotFound:
+                LOG.debug("No legacy ptp4l instance found")
+
+            # List all the hosts with clock_synchronization=ptp
+            hosts_list = self.dbapi.ihost_get_list()
+            ptp_hosts_list = [
+                host
+                for host in hosts_list
+                if host['clock_synchronization'] == constants.PTP]
+            LOG.debug("There are %d hosts with clock_synchronization=ptp" %
+                      len(ptp_hosts_list))
+
+            # List all PTP parameters in service-parameters table (to be
+            # migrated)
+            ptp_svc_parameters_list = self.dbapi.service_parameter_get_all(
+                service=constants.SERVICE_TYPE_PTP)
+            LOG.debug("There are %d PTP rows in 'service_parameter' table" %
+                      len(ptp_svc_parameters_list))
+
+            if len(ptp_hosts_list) == 0 and len(ptp_svc_parameters_list) == 0:
+                # No need for upgrade
+                return
+
+            LOG.info("Creating PTP instances for legacy parameters")
+
+            # Legacy instance for system-wide parameters and those of section
+            # "global" in service-parameters table
+            (ptp4l_id, ptp4l_uuid) = self._update_ptp_create_instance(
+                constants.PTP_INSTANCE_LEGACY_PTP4L,
+                constants.PTP_INSTANCE_TYPE_PTP4L)
+
+            # Legacy instance for parameters of section "phc2sys"
+            (phc2sys_id, phc2sys_uuid) = self._update_ptp_create_instance(
+                constants.PTP_INSTANCE_LEGACY_PHC2SYS,
+                constants.PTP_INSTANCE_TYPE_PHC2SYS)
+
+            # Add 'uds_address' parameter to phy2sys instance for linkage with
+            # ptp4l instance
+            uds_address_path = \
+                '/var/run/%s' % constants.PTP_INSTANCE_LEGACY_PTP4L
+            self._update_ptp_add_parameter_to_instance(
+                phc2sys_uuid,
+                constants.PTP_PARAMETER_UDS_ADDRESS,
+                uds_address_path)
+
+            # Assign legacy instances to all hosts with
+            # clock_synchronization=ptp
+            for host in ptp_hosts_list:
+                self._update_ptp_assign_instance_to_host(ptp4l_id, host['id'])
+                self._update_ptp_assign_instance_to_host(phc2sys_id, host['id'])
+
+            # Copy global PTP configuration
+            ptp_config = self.dbapi.ptp_get_one()  # there is a single entry
+            self._update_ptp_add_parameter_to_instance(
+                ptp4l_uuid,
+                constants.PTP_PARAMETER_MECHANISM,
+                ptp_config.mechanism)
+            self._update_ptp_add_parameter_to_instance(
+                ptp4l_uuid,
+                constants.PTP_PARAMETER_MODE,
+                ptp_config.mode)
+            self._update_ptp_add_parameter_to_instance(
+                ptp4l_uuid,
+                constants.PTP_PARAMETER_TRANSPORT,
+                ptp_config.transport)
+
+            # Copy service-parameter PTP entries, if any
+            domain_number = constants.PTP_PARAMETER_DEFAULT_DOMAIN
+            for param in ptp_svc_parameters_list:
+
+                if param['name'] == constants.PTP_PARAMETER_DOMAIN_NUMBER:
+                    domain_number = param['value']  # overwrite default
+                    continue  # skip it for below
+
+                if param['section'] == \
+                        constants.SERVICE_PARAM_SECTION_PTP_GLOBAL:
+                    owner_uuid = ptp4l_uuid
+                elif param['section'] == \
+                        constants.SERVICE_PARAM_SECTION_PTP_PHC2SYS:
+                    owner_uuid = phc2sys_uuid
+                else:
+                    raise Exception("Unexpected PTP section in "
+                                    "'service-parameter' table")
+
+                self._update_ptp_add_parameter_to_instance(owner_uuid,
+                                                           param['name'],
+                                                           param['value'])
+
+                # Whatever 'global' parameter has been found, it must be
+                # added also to phc2sys instance, since now this has own
+                # configuration file
+                if param['section'] == \
+                        constants.SERVICE_PARAM_SECTION_PTP_GLOBAL:
+                    self._update_ptp_add_parameter_to_instance(phc2sys_uuid,
+                                                               param['name'],
+                                                               param['value'])
+
+            self._update_ptp_add_parameter_to_instance(
+                ptp4l_uuid,
+                constants.PTP_PARAMETER_DOMAIN_NUMBER,
+                domain_number)
+            self._update_ptp_add_parameter_to_instance(
+                phc2sys_uuid,
+                constants.PTP_PARAMETER_DOMAIN_NUMBER,
+                domain_number)
+
+        except Exception as e:
+            LOG.exception(e)
 
     def update_ptp_instances_config(self, context):
         personalities = [constants.CONTROLLER,

@@ -247,6 +247,10 @@ class ServiceParameterController(rest.RestController):
         name = svc_param['name']
         value = svc_param['value']
 
+        if service == constants.SERVICE_TYPE_PTP:
+            msg = _("%s service is deprecated" % service)
+            raise wsme.exc.ClientSideError(msg)
+
         schema = service_parameter.SERVICE_PARAMETER_SCHEMA[service][section]
         parameters = (schema.get(service_parameter.SERVICE_PARAM_MANDATORY, []) +
                       schema.get(service_parameter.SERVICE_PARAM_OPTIONAL, []))
@@ -280,6 +284,10 @@ class ServiceParameterController(rest.RestController):
         value = svc_param['value']
         personality = svc_param['personality']
         resource = svc_param['resource']
+
+        if service == constants.SERVICE_TYPE_PTP:
+            msg = _("%s service is deprecated" % service)
+            raise wsme.exc.ClientSideError(msg)
 
         if personality is not None and personality not in constants.PERSONALITIES:
             msg = _("%s is not a supported personality type" % personality)
@@ -749,6 +757,10 @@ class ServiceParameterController(rest.RestController):
 
         elif service == constants.SERVICE_TYPE_KUBERNETES:
             self._service_parameter_apply_semantic_check_kubernetes()
+
+        elif service == constants.SERVICE_TYPE_PTP:
+            msg = _("%s service is deprecated" % service)
+            raise wsme.exc.ClientSideError(msg)
 
     def _get_service(self, body):
         service = body.get('service') or ""

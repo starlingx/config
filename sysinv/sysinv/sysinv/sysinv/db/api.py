@@ -1928,6 +1928,14 @@ class Connection(object):
         """
 
     @abc.abstractmethod
+    def ptp_instance_get_by_name(self, name):
+        """Returns a PTP service instance given its name.
+
+        :param name: The name of a PTP instance.
+        :returns: A PTP service instance.
+        """
+
+    @abc.abstractmethod
     def ptp_instances_get_list(self, host=None, limit=None, marker=None,
                                sort_key=None, sort_dir=None):
         """Returns a list of PTP service instances.
@@ -4003,6 +4011,24 @@ class Connection(object):
                                    sort_key=None, sort_dir=None):
         """Return a list of service_parameter entries.
 
+        :param limit: Maximum number of service_parameter entries to return.
+        :param marker: the last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted.
+        :param sort_dir: direction in which results should be sorted.
+                         (asc, desc)
+        """
+
+    @abc.abstractmethod
+    def service_parameter_get_all(self, uuid=None, service=None,
+                                  section=None, name=None, limit=None,
+                                  sort_key=None, sort_dir=None):
+        """Return service_parameter(s) entry(ies) matching some criteria.
+
+        :param uuid: UUID to filter by.
+        :param service: Service to filter by.
+        :param section: Section to filter by.
+        :param name: Name to filter by.
         :param limit: Maximum number of service_parameter entries to return.
         :param marker: the last item of the previous page; we return the next
                        result set.

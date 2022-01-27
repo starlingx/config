@@ -3756,6 +3756,15 @@ class Connection(api.Connection):
         return self._ptp_instance_get(ptp_instance_id)
 
     @db_objects.objectify(objects.ptp_instance)
+    def ptp_instance_get_by_name(self, name):
+        query = model_query(models.PtpInstances)
+        query = query.filter_by(name=name)
+        try:
+            return query.one()
+        except NoResultFound:
+            raise exception.NotFound
+
+    @db_objects.objectify(objects.ptp_instance)
     def ptp_instances_get_list(self, host=None, limit=None, marker=None,
                                sort_key=None, sort_dir=None):
         query = model_query(models.PtpInstances)

@@ -223,11 +223,12 @@ class ApiServiceParameterPostTestSuiteMixin(ApiServiceParameterTestCaseMixin):
         post_object.update({'service': 'not_valid'})
         self.post(post_object, expect_errors=True, error_message="Invalid service name")
 
-    def test_create_wildcard_success(self):
+    def test_create_wildcard_deprecated(self):
         # Test creation of a section that allows wildcard parameter names
         post_object = self.service_parameter_wildcard
-        response = self.post(post_object)
-        self.validate_data(post_object, response)
+        self.post(post_object,
+                  expect_errors=True,
+                  error_message="ptp service is deprecated")
 
     def test_apply_kubernetes_apiserver_oidc_parameters_semantic(self):
         # applying kubernetes service parameters with no OIDC parameters
@@ -333,14 +334,6 @@ class ApiServiceParameterPatchTestSuiteMixin(ApiServiceParameterTestCaseMixin):
         new_data = {'value': 'a_string'}
         self.patch(self.patch_object.uuid, new_data, expect_errors=True,
                    error_message="must be an integer value")
-
-    def test_patch_wildcard_success(self):
-        # Test modification of a section that allows wildcard parameter names
-        wildcard_object = self._create_db_object(self.service_parameter_wildcard)
-        new_data = {'value': 'UDPv4'}
-        response = self.patch(wildcard_object.uuid, new_data)
-        wildcard_object.update(new_data)
-        self.validate_data(wildcard_object, response)
 
 
 class PlatformIPv4ControllerApiServiceParameterDeleteTestCase(ApiServiceParameterDeleteTestSuiteMixin,
