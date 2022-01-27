@@ -45,7 +45,7 @@ def do_ptp_instance_list(cc, args):
            help="Name of PTP instance [REQUIRED]")
 @utils.arg('service',
            metavar='<service type>',
-           choices=['ptp4l', 'phc2sys', 'ts2phc'],
+           choices=['ptp4l', 'phc2sys', 'ts2phc', 'clock'],
            help="Service type [REQUIRED]")
 def do_ptp_instance_add(cc, args):
     """Add a PTP instance."""
