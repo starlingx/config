@@ -1,16 +1,10 @@
 ########################################################################
 #
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2021-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 ########################################################################
-
-# TODO: restore imports
-# Story: 2009248
-# Task: 43497
-# import uuid
-# from datetime import datetime
 
 from sqlalchemy import Integer, String, DateTime, Text
 from sqlalchemy import Column, MetaData, Table, ForeignKey, UniqueConstraint
@@ -22,22 +16,6 @@ CHARSET = 'utf8'
 
 
 def _populate_ptp_tables(meta, tables):
-    """This function moves PTP configuration from other tables:
-       - If advanced (specialized) ptp4l configuration is found in
-         'service_parameter' table, it inserts a 'ptp4l' entry in
-         'ptp_instances' table and inserts the corresponding entry(ies) in
-         'ptp_parameters';
-       - If phc2sys configuration is found in 'service_parameter' table, it
-         inserts a 'phc2sys' entry in 'ptp_instances' table and inserts the
-         corresponding entry(ies) in 'ptp_parameters';
-       - If any interface has 'ptp_role' not equal to 'none', it inserts a
-         'ptp4l' entry in 'ptp_instances' and inserts the corresponding entry
-         in 'ptp_parameters'.
-    """
-
-    # TODO: implementation
-    # Story: 2009248
-    # Task: 43497
     pass
 
 
