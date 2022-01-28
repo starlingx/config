@@ -127,3 +127,120 @@ class TestCommonUtils(base.TestCase):
         utils.acquire_shared_nb_flock.assert_called_once()
         self.assertEqual(mock_decorated_func.call_count, 0)
         self.assertEqual(utils.release_flock.call_count, 0)
+
+    @mock.patch('sysinv.common.utils.get_vswitch_type')
+    def test_has_vswitch_enabled_vswitch_type_none_label_enabled(self, mock_get_vswitch_type):
+        mock_get_vswitch_type.return_value = None
+        mock_host_label = mock.Mock()
+        mock_host_label.label_key = 'openvswitch'
+        mock_host_label.label_value = 'enabled'
+        self.assertFalse(utils.has_vswitch_enabled([mock_host_label], mock.Mock()))
+        mock_get_vswitch_type.assert_called_once()
+
+    @mock.patch('sysinv.common.utils.get_vswitch_type')
+    def test_has_vswitch_enabled_vswitch_type_none_label_disabled(self, mock_get_vswitch_type):
+        mock_get_vswitch_type.return_value = None
+        mock_host_label = mock.Mock()
+        mock_host_label.label_key = 'openvswitch'
+        mock_host_label.label_value = 'disabled'
+        self.assertFalse(utils.has_vswitch_enabled([mock_host_label], mock.Mock()))
+        mock_get_vswitch_type.assert_called_once()
+
+    @mock.patch('sysinv.common.utils.get_vswitch_type')
+    def test_has_vswitch_enabled_vswitch_type_none_label_empty(self, mock_get_vswitch_type):
+        mock_get_vswitch_type.return_value = None
+        mock_host_label = mock.Mock()
+        mock_host_label.label_key = ''
+        mock_host_label.label_value = ''
+        self.assertFalse(utils.has_vswitch_enabled([mock_host_label], mock.Mock()))
+        mock_get_vswitch_type.assert_called_once()
+
+    @mock.patch('sysinv.common.utils.get_vswitch_type')
+    def test_has_vswitch_enabled_vswitch_type_none_label_none(self, mock_get_vswitch_type):
+        mock_get_vswitch_type.return_value = None
+        mock_host_label = mock.Mock()
+        mock_host_label.label_key = None
+        mock_host_label.label_value = None
+        self.assertFalse(utils.has_vswitch_enabled([mock_host_label], mock.Mock()))
+        mock_get_vswitch_type.assert_called_once()
+
+    @mock.patch('sysinv.common.utils.get_vswitch_type')
+    def test_has_vswitch_enabled_vswitch_type_ovs_dpdk_label_enabled(self, mock_get_vswitch_type):
+        mock_get_vswitch_type.return_value = 'ovs-dpdk'
+        mock_host_label = mock.Mock()
+        mock_host_label.label_key = 'openvswitch'
+        mock_host_label.label_value = 'enabled'
+        self.assertTrue(utils.has_vswitch_enabled([mock_host_label], mock.Mock()))
+        mock_get_vswitch_type.assert_called_once()
+
+    @mock.patch('sysinv.common.utils.get_vswitch_type')
+    def test_has_vswitch_enabled_vswitch_type_ovs_dpdk_label_disabled(self, mock_get_vswitch_type):
+        mock_get_vswitch_type.return_value = 'ovs-dpdk'
+        mock_host_label = mock.Mock()
+        mock_host_label.label_key = 'openvswitch'
+        mock_host_label.label_value = 'disabled'
+        self.assertFalse(utils.has_vswitch_enabled([mock_host_label], mock.Mock()))
+        mock_get_vswitch_type.assert_called_once()
+
+    @mock.patch('sysinv.common.utils.get_vswitch_type')
+    def test_has_vswitch_enabled_vswitch_type_ovs_dpdk_label_random(self, mock_get_vswitch_type):
+        mock_get_vswitch_type.return_value = 'ovs-dpdk'
+        mock_host_label = mock.Mock()
+        mock_host_label.label_key = '123123'
+        mock_host_label.label_value = '123123'
+        self.assertFalse(utils.has_vswitch_enabled([mock_host_label], mock.Mock()))
+        mock_get_vswitch_type.assert_called_once()
+
+    @mock.patch('sysinv.common.utils.get_vswitch_type')
+    def test_has_vswitch_enabled_vswitch_type_random_label_enabled(self, mock_get_vswitch_type):
+        mock_get_vswitch_type.return_value = '123123'
+        mock_host_label = mock.Mock()
+        mock_host_label.label_key = 'openvswitch'
+        mock_host_label.label_value = 'enabled'
+        self.assertFalse(utils.has_vswitch_enabled([mock_host_label], mock.Mock()))
+        mock_get_vswitch_type.assert_called_once()
+
+    @mock.patch('sysinv.common.utils.get_vswitch_type')
+    def test_has_vswitch_enabled_vswitch_type_random_label_disabled(self, mock_get_vswitch_type):
+        mock_get_vswitch_type.return_value = '123123'
+        mock_host_label = mock.Mock()
+        mock_host_label.label_key = 'openvswitch'
+        mock_host_label.label_value = 'disabled'
+        self.assertFalse(utils.has_vswitch_enabled([mock_host_label], mock.Mock()))
+        mock_get_vswitch_type.assert_called_once()
+
+    @mock.patch('sysinv.common.utils.get_vswitch_type')
+    def test_has_vswitch_enabled_vswitch_type_random_label_random(self, mock_get_vswitch_type):
+        mock_get_vswitch_type.return_value = '123123'
+        mock_host_label = mock.Mock()
+        mock_host_label.label_key = '123123'
+        mock_host_label.label_value = '123123'
+        self.assertFalse(utils.has_vswitch_enabled([mock_host_label], mock.Mock()))
+        mock_get_vswitch_type.assert_called_once()
+
+    @mock.patch('sysinv.common.utils.get_vswitch_type')
+    def test_has_vswitch_enabled_vswitch_type_downstream_label_enabled(self, mock_get_vswitch_type):
+        mock_get_vswitch_type.return_value = 'downstream_vswitch'
+        mock_host_label = mock.Mock()
+        mock_host_label.label_key = 'downstream_vswitch'
+        mock_host_label.label_value = 'enabled'
+        self.assertTrue(utils.has_vswitch_enabled([mock_host_label], mock.Mock()))
+        mock_get_vswitch_type.assert_called_once()
+
+    @mock.patch('sysinv.common.utils.get_vswitch_type')
+    def test_has_vswitch_enabled_vswitch_type_downstream_label_disabled(self, mock_get_vswitch_type):
+        mock_get_vswitch_type.return_value = 'downstream_vswitch'
+        mock_host_label = mock.Mock()
+        mock_host_label.label_key = 'downstream_vswitch'
+        mock_host_label.label_value = 'disabled'
+        self.assertFalse(utils.has_vswitch_enabled([mock_host_label], mock.Mock()))
+        mock_get_vswitch_type.assert_called_once()
+
+    @mock.patch('sysinv.common.utils.get_vswitch_type')
+    def test_has_vswitch_enabled_vswitch_type_downstream_label_none(self, mock_get_vswitch_type):
+        mock_get_vswitch_type.return_value = 'downstream_vswitch'
+        mock_host_label = mock.Mock()
+        mock_host_label.label_key = 'downstream_vswitch'
+        mock_host_label.label_value = None
+        self.assertFalse(utils.has_vswitch_enabled([mock_host_label], mock.Mock()))
+        mock_get_vswitch_type.assert_called_once()
