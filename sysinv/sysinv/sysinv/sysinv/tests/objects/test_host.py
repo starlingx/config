@@ -1,8 +1,7 @@
-# vim: tabstop=4 shiftwidth=4 softtabstop=4
 # coding=utf-8
 #
 #
-# Copyright (c) 2013-2014 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -11,6 +10,7 @@ import mock
 
 from sysinv.db import api as db_api
 from sysinv.db.sqlalchemy import models
+from sysinv.db.sqlalchemy import objects as db_objects
 from sysinv import objects
 from sysinv.tests.db import base
 from sysinv.tests.db import utils
@@ -61,7 +61,7 @@ class TestHostObject(base.DbTestCase):
 
     def test_objectify(self):
 
-        @objects.objectify(objects.host)
+        @db_objects.objectify(objects.host)
         def _convert_db_node():
             return self._get_db_node(self.fake_node)
 
@@ -75,7 +75,7 @@ class TestHostObject(base.DbTestCase):
                 nodes.append(self._get_db_node(self.fake_node))
             return nodes
 
-        @objects.objectify(objects.host)
+        @db_objects.objectify(objects.host)
         def _convert_db_nodes():
             return _get_db_nodes()
 
