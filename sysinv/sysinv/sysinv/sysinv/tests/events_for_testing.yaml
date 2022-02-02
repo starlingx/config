@@ -2320,22 +2320,6 @@
     Service_Affecting: false
 
 
-800.003:
-    Type: Alarm
-    Description: |-
-        Storage Alarm Condition:
-        total ceph cluster size greater than sum of individual pool quotas
-    Entity_Instance_ID: cluster=<dist-fs-uuid>
-    Severity: minor
-    Proposed_Repair_Action: "Update ceph storage pool quotas to use all available cluster space."
-    Maintenance_Action:
-    Inhibit_Alarms:
-    Alarm_Type: operational-violation
-    Probable_Cause: configuration-out-of-date
-    Service_Affecting: false
-    Suppression: false
-
-
 # ---------------------------------------------------------------------------
 #   SOFTWARE
 # ---------------------------------------------------------------------------

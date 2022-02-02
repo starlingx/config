@@ -286,22 +286,6 @@ class CephOperator(object):
                 reason=response.reason)
         return response, body
 
-    # TODO(rchurch): remove this method and just use get_osd_pool_quota
-    def osd_get_pool_quota(self, pool_name):
-        """Get the quota for an OSD pool
-        :param pool_name:
-        """
-
-        resp, quota = self._ceph_api.osd_get_pool_quota(pool_name, body='json')
-        if resp.ok:
-            return {"max_objects": quota["output"]["quota_max_objects"],
-                    "max_bytes": quota["output"]["quota_max_bytes"]}
-        else:
-            LOG.error("Getting the quota for %(name)s pool failed:%(reason)s)"
-                      % {"name": pool_name, "reason": resp.reason})
-            raise exception.CephPoolGetQuotaFailure(pool=pool_name,
-                                                    reason=resp.reason)
-
     def osd_create(self, stor_uuid, **kwargs):
         """ Create osd via ceph api
         :param stor_uuid: uuid of stor object
@@ -467,110 +451,6 @@ class CephOperator(object):
         else:
             return pools['output']
 
-    def get_osd_pool_quota(self, pool_name):
-        """Get the quota for an OSD pool
-        :param pool_name:
-        """
-
-        resp, quota = self._ceph_api.osd_get_pool_quota(pool_name, body='json')
-        if not resp.ok:
-            e = exception.CephPoolGetQuotaFailure(pool=pool_name,
-                                                  reason=resp.reason)
-            LOG.error(e)
-            raise e
-        else:
-            return {"max_objects": quota["output"]["quota_max_objects"],
-                    "max_bytes": quota["output"]["quota_max_bytes"]}
-
-    # TODO(CephPoolsDecouple): remove
-    def set_osd_pool_quota(self, pool, max_bytes=0, max_objects=0):
-        """Set the quota for an OSD pool
-        Setting max_bytes or max_objects to 0 will disable that quota param
-        :param pool:         OSD pool
-        :param max_bytes:    maximum bytes for OSD pool
-        :param max_objects:  maximum objects for OSD pool
-        """
-
-        # Update quota if needed
-        prev_quota = self.get_osd_pool_quota(pool)
-        if prev_quota["max_bytes"] != max_bytes:
-            resp, b = self._ceph_api.osd_set_pool_quota(pool, 'max_bytes',
-                                                        max_bytes, body='json')
-            if resp.ok:
-                LOG.info(_("Set OSD pool quota: "
-                           "pool={}, max_bytes={}").format(pool, max_bytes))
-            else:
-                e = exception.CephPoolSetQuotaFailure(
-                    pool=pool, name='max_bytes', value=max_bytes, reason=resp.reason)
-                LOG.error(e)
-                raise e
-        if prev_quota["max_objects"] != max_objects:
-            resp, b = self._ceph_api.osd_set_pool_quota(pool, 'max_objects',
-                                                        max_objects,
-                                                        body='json')
-            if resp.ok:
-                LOG.info(_("Set OSD pool quota: "
-                           "pool={}, max_objects={}").format(pool, max_objects))
-            else:
-                e = exception.CephPoolSetQuotaFailure(
-                    pool=pool, name='max_objects', value=max_objects, reason=resp.reason)
-                LOG.error(e)
-                raise e
-
-    # TODO(CephPoolsDecouple): rework if needed: we determine the existing
-    # pools on the spot
-    def get_pools_values(self):
-        """Create or resize all of the osd pools as needed
-        """
-
-        default_quota_map = {'cinder': constants.CEPH_POOL_VOLUMES_QUOTA_GIB,
-                             'glance': constants.CEPH_POOL_IMAGES_QUOTA_GIB,
-                             'ephemeral': constants.CEPH_POOL_EPHEMERAL_QUOTA_GIB,
-                             'object': constants.CEPH_POOL_OBJECT_GATEWAY_QUOTA_GIB,
-                             'kube': constants.CEPH_POOL_KUBE_QUOTA_GIB}
-
-        storage_ceph = StorageBackendConfig.get_configured_backend_conf(
-            self._db_api,
-            constants.CINDER_BACKEND_CEPH
-        )
-
-        quotas = []
-        for p in ['cinder', 'glance', 'ephemeral', 'object', 'kube']:
-            quota_attr = p + '_pool_gib'
-            quota_val = getattr(storage_ceph, quota_attr)
-
-            if quota_val is None:
-                quota_val = default_quota_map[p]
-                self._db_api.storage_ceph_update(storage_ceph.uuid,
-                                                 {quota_attr: quota_val})
-
-            quotas.append(quota_val)
-
-        LOG.debug("Pool Quotas: %s" % quotas)
-        return tuple(quotas)
-
-    # TODO(CephPoolsDecouple): remove
-    def set_quota_gib(self, pool_name):
-        quota_gib_value = None
-        cinder_pool_gib, glance_pool_gib, ephemeral_pool_gib, \
-            object_pool_gib, kube_pool_gib = self.get_pools_values()
-
-        if pool_name.find(constants.CEPH_POOL_VOLUMES_NAME) != -1:
-            quota_gib_value = cinder_pool_gib
-        elif pool_name.find(constants.CEPH_POOL_KUBE_NAME) != -1:
-            quota_gib_value = kube_pool_gib
-        elif pool_name.find(constants.CEPH_POOL_IMAGES_NAME) != -1:
-            quota_gib_value = glance_pool_gib
-        elif pool_name.find(constants.CEPH_POOL_EPHEMERAL_NAME) != -1:
-            quota_gib_value = ephemeral_pool_gib
-        elif pool_name.find(constants.CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL) != -1 or \
-                 pool_name.find(constants.CEPH_POOL_OBJECT_GATEWAY_NAME_HAMMER) != -1:
-            quota_gib_value = object_pool_gib
-        else:
-            quota_gib_value = 0
-
-        return quota_gib_value
-
     def get_ceph_object_pool_name(self):
         response, body = self._ceph_api.osd_pool_get(
             constants.CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL,
@@ -653,22 +533,6 @@ class CephOperator(object):
         return rc
 
     # TODO(CephPoolsDecouple): remove
-    def _configure_primary_tier_pool(self, pool, size, min_size):
-        """Configure the default Ceph tier pools."""
-
-        pool['quota_gib'] = self.set_quota_gib(pool['pool_name'])
-        try:
-            self.create_or_resize_osd_pool(pool['pool_name'],
-                                           pool['pg_num'],
-                                           pool['pgp_num'],
-                                           size,
-                                           min_size)
-            self.set_osd_pool_quota(pool['pool_name'],
-                                    pool['quota_gib'] * 1024 ** 3)
-        except exception.CephFailure:
-            pass
-
-    # TODO(CephPoolsDecouple): remove
     def _configure_secondary_tier_pools(self, tier_obj, size, min_size):
         """Configure the service pools that are allowed for additional ceph tiers.
         """
@@ -710,11 +574,6 @@ class CephOperator(object):
                 # create/update the pool
                 self._pool_create(pool_name, p['pg_num'], p['pgp_num'],
                                   ruleset, size, min_size)
-
-                # apply the quota to the tier
-                if backend:
-                    self.set_osd_pool_quota(pool_name,
-                                            quota_gib_value * 1024 ** 3)
 
             else:
                 e = exception.CephPoolRulesetFailure(
@@ -1272,8 +1131,6 @@ class CephOperator(object):
                     self._db_api.storage_ceph_update(storage_ceph.uuid,
                                                      {'cinder_pool_gib':
                                                       cinder_pool_gib})
-                    self.set_osd_pool_quota(constants.CEPH_POOL_VOLUMES_NAME,
-                                            cinder_pool_gib * 1024 ** 3)
                 else:
                     glance_pool_gib = primary_tier_gib // 2
                     kube_pool_gib = primary_tier_gib - glance_pool_gib
@@ -1282,15 +1139,11 @@ class CephOperator(object):
                     self._db_api.storage_ceph_update(storage_ceph.uuid,
                                                      {'glance_pool_gib':
                                                       glance_pool_gib})
-                    self.set_osd_pool_quota(constants.CEPH_POOL_IMAGES_NAME,
-                                            glance_pool_gib * 1024 ** 3)
 
                     # Set the quota for the k8s pool.
                     self._db_api.storage_ceph_update(storage_ceph.uuid,
                                                      {'kube_pool_gib':
                                                       kube_pool_gib})
-                    self.set_osd_pool_quota(constants.CEPH_POOL_KUBE_NAME,
-                                            kube_pool_gib * 1024 ** 3)
 
                 self.executed_default_quota_check_by_tier[tier_obj.name] = True
             elif (upgrade is not None and
@@ -1305,15 +1158,11 @@ class CephOperator(object):
                     self._db_api.storage_ceph_update(storage_ceph.uuid,
                                                      {'cinder_pool_gib':
                                                       cinder_pool_gib})
-                    self.set_osd_pool_quota(constants.CEPH_POOL_VOLUMES_NAME,
-                                            cinder_pool_gib * 1024 ** 3)
                 else:
                     glance_pool_gib = primary_tier_gib
                     self._db_api.storage_ceph_update(storage_ceph.uuid,
                                                      {'glance_pool_gib':
                                                       glance_pool_gib})
-                    self.set_osd_pool_quota(constants.CEPH_POOL_IMAGES_NAME,
-                                            glance_pool_gib * 1024 ** 3)
 
                 self.executed_default_quota_check_by_tier[tier_obj.name] = True
             elif (primary_tier_gib > 0 and
@@ -1354,14 +1203,10 @@ class CephOperator(object):
             # Set the quota for the cinder-volumes pool.
             self._db_api.storage_ceph_update(
                 storage_ceph.uuid, {'cinder_pool_gib': cinder_pool_gib})
-            self.set_osd_pool_quota(
-                constants.CEPH_POOL_VOLUMES_NAME, cinder_pool_gib * 1024 ** 3)
 
             # Set the quota for the k8s pool.
             self._db_api.storage_ceph_update(
                 storage_ceph.uuid, {'kube_pool_gib': kube_pool_gib})
-            self.set_osd_pool_quota(
-                constants.CEPH_POOL_KUBE_NAME, kube_pool_gib * 1024 ** 3)
 
             # Adjust pool quotas based on pool relationships.
             if tier_size_gib == tier_pools_sum:

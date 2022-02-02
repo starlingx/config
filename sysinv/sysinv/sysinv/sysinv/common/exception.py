@@ -195,16 +195,6 @@ class CephPoolRulesetFailure(CephFailure):
     message = _("Assigning crush ruleset to OSD pool %(name)s failed: %(reason)s")
 
 
-class CephPoolSetQuotaFailure(CephFailure):
-    message = _("Error seting the OSD pool quota %(name)s for %(pool)s to %(value)s") \
-                + ": %(reason)s"
-
-
-class CephPoolGetQuotaFailure(CephFailure):
-    message = _("Error geting the OSD pool quota for %(pool)s") \
-                + ": %(reason)s"
-
-
 class CephGetClusterUsageFailure(CephFailure):
     message = _("Getting the cluster usage information failed: %(reason)s")
 

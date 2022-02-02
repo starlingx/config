@@ -691,28 +691,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('list_osd_pools'))
 
-    def get_osd_pool_quota(self, context, pool_name):
-        """Get the quota for an OSD pool
-
-        :param context: request context.
-        :param pool_name: the name of the OSD pool
-        :returns: dictionary with {"max_objects": num, "max_bytes": num}
-        """
-        return self.call(context,
-                         self.make_msg('get_osd_pool_quota',
-                                       pool_name=pool_name))
-
-    def set_osd_pool_quota(self, context, pool, max_bytes=0, max_objects=0):
-        """Set the quota for an OSD pool
-
-        :param context: request context.
-        :param pool: the name of the OSD pool
-        """
-        return self.call(context,
-                         self.make_msg('set_osd_pool_quota',
-                                       pool=pool, max_bytes=max_bytes,
-                                       max_objects=max_objects))
-
     def get_ceph_primary_tier_size(self, context):
         """Get the size of the primary storage tier in the ceph cluster.
 
