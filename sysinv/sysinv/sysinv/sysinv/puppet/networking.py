@@ -32,7 +32,7 @@ class NetworkingPuppet(base.BasePuppet):
         config.update(self._get_mgmt_interface_config())
         config.update(self._get_cluster_interface_config())
         config.update(self._get_ironic_interface_config())
-        config.update(self._get_ptp_interface_config())
+        config.update(self._get_ptp_interface_config(host))
         config.update(self._get_storage_interface_config())
         config.update(self._get_instance_ptp_config(host))
         if host.personality == constants.CONTROLLER:
@@ -277,18 +277,49 @@ class NetworkingPuppet(base.BasePuppet):
 
     def _set_ptp_instance_interface_parameters(self, ptp_instances, ptp_parameters_interface):
 
-        default_interface_parameters = {}
+        default_interface_parameters = {
+            'ptp4l': {},
+            'phc2sys': {},
+            'ts2phc': {
+                'ts2phc.extts_polarity': 'rising'
+            },
+            'clock': {}
+        }
 
         for instance in ptp_instances:
             for iface in ptp_instances[instance]['interfaces']:
                 # Add default interface values
-                iface['parameters'].update(default_interface_parameters)
+                iface['parameters'].update(default_interface_parameters
+                                          [ptp_instances[instance]['service']])
                 # Add supplied params to the interface
                 for param in ptp_parameters_interface:
                     if iface['uuid'] in param['owners']:
                         iface['parameters'][param['name']] = param['value']
 
         return ptp_instances
+
+    def _generate_clock_port_dict(self, nic_clock_config, host_port_list):
+        port_dict = {}
+        for instance in nic_clock_config:
+            for iface in nic_clock_config[instance]['interfaces']:
+                # Rebuild list by port_names rather than interface names
+                for port in iface['port_names']:
+                    port_dict[port] = iface
+                    port_dict[port]['base_port'] = ""
+                # Get port 0 for the configured NIC
+                for p in host_port_list:
+                    if port_dict.get(p['name'], None):
+                        port_dict_name = p['name']
+                        # Take the PCI address of the supplied port and replace the end
+                        # value with 0 to identify the base port on that nic
+                        port_pci_base = p['pciaddr'].split('.')[0] + ".0"
+                        # Find the port that has the matching pci address and take this
+                        # as the base port
+                        for q in host_port_list:
+                            if q['pciaddr'] == port_pci_base:
+                                port_dict[port_dict_name]['base_port'] = q['name']
+                                break
+        return port_dict
 
     def _get_instance_ptp_config(self, host):
 
@@ -298,7 +329,7 @@ class NetworkingPuppet(base.BasePuppet):
         else:
             ptpinstance_enabled = True
 
-        # Get the database entries for instances, interfaces and parameters
+        # Get the database entries for instances, interfaces, parameters, ports
         ptp_instances = self.dbapi.ptp_instances_get_list(host=host.id)
         ptp_interfaces = self.dbapi.ptp_interfaces_get_list(host=host.uuid)
         ptp_parameters_instance = self.dbapi.ptp_parameters_get_list_by_type(
@@ -306,8 +337,18 @@ class NetworkingPuppet(base.BasePuppet):
         ptp_parameters_interface = self.dbapi.ptp_parameters_get_list_by_type(
                                    constants.PTP_PARAMETER_OWNER_INTERFACE)
 
+        nic_clocks = {}
+        nic_clock_config = {}
+        nic_clock_enabled = False
+
         for index, instance in enumerate(ptp_instances):
-            ptp_instances[index] = instance.as_dict()
+            if ptp_instances[index]['service'] == constants.PTP_INSTANCE_TYPE_CLOCK:
+                clock_instance = ptp_instances.pop(index)
+                nic_clocks[instance['name']] = clock_instance.as_dict()
+                nic_clocks[instance['name']]['interfaces'] = []
+            else:
+                ptp_instances[index][instance['name']] = instance.as_dict()
+                ptp_instances[index][instance['name']]['interfaces'] = []
         for index, iface in enumerate(ptp_interfaces):
             ptp_interfaces[index] = iface.as_dict()
         for index, param in enumerate(ptp_parameters_instance):
@@ -315,23 +356,45 @@ class NetworkingPuppet(base.BasePuppet):
         for index, param in enumerate(ptp_parameters_interface):
             ptp_parameters_interface[index] = param.as_dict()
 
-        ptp_config = self._set_ptp_instance_global_parameters(ptp_instances,
-                                                              ptp_parameters_instance)
-        ptp_config = self._set_ptp_instance_interfaces(host, ptp_config,
-                                                       ptp_interfaces)
-        ptp_config = self._set_ptp_instance_interface_parameters(ptp_config,
-                                                                 ptp_parameters_interface)
+        # Generate the nic clock config
+        if len(nic_clocks) > 0:
+            nic_clock_enabled = True
+            host_port_list = self.dbapi.port_get_all(hostid=host.id)
+            nic_clock_config = self._set_ptp_instance_interfaces(host, nic_clocks, ptp_interfaces)
+            nic_clock_config = self._set_ptp_instance_interface_parameters(nic_clock_config,
+                                                                           ptp_parameters_interface)
+            nic_clock_config = self._generate_clock_port_dict(nic_clock_config, host_port_list)
+
+        # Generate the ptp instance config if ptp is enabled
+        if ptpinstance_enabled:
+            ptp_config = self._set_ptp_instance_global_parameters(ptp_instances,
+                                                                  ptp_parameters_instance)
+            ptp_config = self._set_ptp_instance_interfaces(host, ptp_config,
+                                                           ptp_interfaces)
+            ptp_config = self._set_ptp_instance_interface_parameters(ptp_config,
+                                                                     ptp_parameters_interface)
+        else:
+            ptp_config = {}
 
         return {'platform::ptpinstance::config': ptp_config,
-                'platform::ptpinstance::enabled': ptpinstance_enabled}
+                'platform::ptpinstance::enabled': ptpinstance_enabled,
+                'platform::ptpinstance::nic_clock::nic_clock_config': nic_clock_config,
+                'platform::ptpinstance::nic_clock::nic_clock_enabled': nic_clock_enabled}
 
-    def _get_ptp_interface_config(self):
+    def _get_ptp_interface_config(self, host):
         config = {}
         ptp_devices = {
             constants.INTERFACE_PTP_ROLE_MASTER: [],
             constants.INTERFACE_PTP_ROLE_SLAVE: []
         }
         ptp_interfaces = interface.get_ptp_interfaces(self.context)
+
+        ptp_enabled = False
+        if (ptp_interfaces and host.clock_synchronization == constants.PTP):
+            ptp_enabled = True
+        else:
+            return {'platform::ptp::enabled': ptp_enabled}
+
         ptp = self.dbapi.ptp_get_one()
         is_udp = (ptp.transport == constants.PTP_TRANSPORT_UDP)
         for network_interface in ptp_interfaces:
@@ -344,9 +407,11 @@ class NetworkingPuppet(base.BasePuppet):
                     address_family = netaddr.IPAddress(address['address']).version
 
             for device in interface_devices:
-                ptp_devices[network_interface['ptp_role']].append({'device': device, 'family': address_family})
+                ptp_devices[network_interface['ptp_role']].append({'device': device,
+                                                                   'family': address_family})
 
         config.update({
+            'platform::ptp::enabled': ptp_enabled,
             'platform::ptp::master_devices': ptp_devices[constants.INTERFACE_PTP_ROLE_MASTER],
             'platform::ptp::slave_devices': ptp_devices[constants.INTERFACE_PTP_ROLE_SLAVE]
         })

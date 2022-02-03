@@ -72,7 +72,8 @@ class PtpInstance(base.APIBase):
     service = wtypes.Enum(str,
                           constants.PTP_INSTANCE_TYPE_PTP4L,
                           constants.PTP_INSTANCE_TYPE_PHC2SYS,
-                          constants.PTP_INSTANCE_TYPE_TS2PHC)
+                          constants.PTP_INSTANCE_TYPE_TS2PHC,
+                          constants.PTP_INSTANCE_TYPE_CLOCK)
     "Type of service of the PTP instance"
 
     hostnames = types.MultiType([list])

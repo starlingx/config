@@ -1863,6 +1863,7 @@ PTP_LEAPFILE_PATH = '/usr/share/zoneinfo/leap-seconds.list'
 PTP_INSTANCE_TYPE_PTP4L = 'ptp4l'
 PTP_INSTANCE_TYPE_PHC2SYS = 'phc2sys'
 PTP_INSTANCE_TYPE_TS2PHC = 'ts2phc'
+PTP_INSTANCE_TYPE_CLOCK = 'clock'
 
 # PTP parameter: owner types
 PTP_PARAMETER_OWNER_INSTANCE = 'ptp-instance'

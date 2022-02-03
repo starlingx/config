@@ -412,9 +412,7 @@ class PlatformPuppet(base.BasePuppet):
     def _get_host_ptp_config(self, host):
         ptp = self.dbapi.ptp_get_one()
 
-        if host.clock_synchronization == constants.PTP:
-            ptp_enabled = True
-        else:
+        if host.clock_synchronization != constants.PTP:
             ptp_enabled = False
             return {'platform::ptp::enabled': ptp_enabled}
 
@@ -467,7 +465,6 @@ class PlatformPuppet(base.BasePuppet):
             phc2sys_options += '-' + constants.PTP_PHC2SYS_OPTIONS_MAP[key] + ' ' + str(value) + ' '
 
         return {
-            'platform::ptp::enabled': ptp_enabled,
             'platform::ptp::transport': transport,
             'platform::ptp::ptp4l_options': ptp4l_options,
             'platform::ptp::phc2sys_options': phc2sys_options
