@@ -125,6 +125,14 @@ def collect_certificate_data_from_file(certname, pem_file):
     expiration_date = get_cert_expiration_date(cert)
     annotation_data = get_default_annotation_values()
     mode_metadata = get_file_mode_metadata(certname, pem_file)
+
+    # The kubernetes rootCA certificate will have an earlier alarm-before
+    # value than other certificates.  This accomodates certificate
+    # renewel for large system deployments
+    if certname is constants.CERT_MODE_KUBERNETES_ROOT_CA:
+        annotation_data[constants.CERT_ALARM_ANNOTATION_ALARM_BEFORE] = \
+            constants.CERT_ALARM_DEFAULT_ANNOTATION_ALARM_BEFORE_CA
+
     return (certname, expiration_date, annotation_data, mode_metadata)
 
 
