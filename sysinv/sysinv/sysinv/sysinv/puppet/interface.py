@@ -1,11 +1,12 @@
 #
-# Copyright (c) 2017-2021 Wind River Systems, Inc.
+# Copyright (c) 2017-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
 import collections
 import copy
+import os
 import six
 
 from netaddr import IPAddress
@@ -60,6 +61,13 @@ ROUTE_CONFIG_RESOURCE = 'platform::network::routes::route_config'
 
 DATA_IFACE_LIST_RESOURCE = 'platform::lmon::params::data_iface_devices'
 
+IFACE_UP_OP = 1
+IFACE_PRE_UP_OP = 2
+IFACE_POST_UP_OP = 3
+IFACE_DOWN_OP = 4
+IFACE_PRE_DOWN_OP = 5
+IFACE_POST_DOWN_OP = 6
+
 
 class InterfacePuppet(base.BasePuppet):
     """Class to encapsulate puppet operations for interface configuration"""
@@ -79,7 +87,6 @@ class InterfacePuppet(base.BasePuppet):
         Generate the hiera data for the puppet network config and route config
         resources for the host.
         """
-
         # Normalize some of the host info into formats that are easier to
         # use when parsing the interface list.
         context = self._create_interface_context(host)
@@ -818,7 +825,10 @@ def get_basic_network_config(ifname, ensure='present',
               'onboot': onboot,
               'options': {}}
     if mtu:
-        config['mtu'] = str(mtu)
+        if is_syscfg_network():
+            config['mtu'] = str(mtu)
+        else:
+            config['options']['mtu'] = str(mtu)
     return config
 
 
@@ -871,11 +881,7 @@ def get_duplex_direct_network_config(context, iface, config, sysctl_ifname):
     Disable dad on the specified interface for duplex-direct config
     """
     new_pre_up = "sysctl -wq net.ipv6.conf.%s.accept_dad=0" % sysctl_ifname
-    old_pre_up = config['options'].get('pre_up')
-    if old_pre_up:
-        new_pre_up = "%s ; %s" % (old_pre_up, new_pre_up)
-    options = {'pre_up': new_pre_up}
-    config['options'].update(options)
+    fill_interface_config_option_operation(config['options'], IFACE_PRE_UP_OP, new_pre_up)
     return config
 
 
@@ -885,14 +891,17 @@ def get_vlan_network_config(context, iface, config):
     interface.
     """
     lower_os_ifname = get_lower_interface_os_ifname(context, iface)
-    options = {'VLAN': 'yes',
-               'PHYSDEV': lower_os_ifname,
-               'pre_up': '/sbin/modprobe -q 8021q'}
+    if is_syscfg_network():
+        options = {'VLAN': 'yes', 'PHYSDEV': lower_os_ifname}
+    else:
+        options = {'vlan-raw-device': lower_os_ifname}
+    fill_interface_config_option_operation(options, IFACE_PRE_UP_OP,
+                                           '/sbin/modprobe -q 8021q')
     config['options'].update(options)
     return config
 
 
-def get_bond_interface_options(iface, primary_iface):
+def get_bond_interface_options_sysconfig(iface, primary_iface):
     """
     Get the interface config attribute for bonding options
     """
@@ -914,22 +923,60 @@ def get_bond_interface_options(iface, primary_iface):
     return options
 
 
+def get_bond_interface_options_ifupdown(iface, primary_iface):
+    """
+    Get the interface config attribute for bonding options
+    """
+    ae_mode = iface['aemode']
+    tx_hash_policy = iface['txhashpolicy']
+    options = dict()
+    options['bond-miimon'] = '100'
+    if ae_mode in ACTIVE_STANDBY_AE_MODES:
+        # Requires the active device in an active_standby LAG
+        # configuration to be determined based on the lowest MAC address
+        options['bond-mode'] = 'active-backup'
+        options['bond-primary'] = primary_iface['ifname']
+        if iface['primary_reselect']:
+            options['bond-primary-reselect'] = iface['primary_reselect']
+    else:
+        options['bond-xmit-hash-policy'] = tx_hash_policy
+        if ae_mode in BALANCED_AE_MODES:
+            options['bond-mode'] = 'balance-xor'
+        elif ae_mode in LACP_AE_MODES:
+            options['bond-mode'] = '802.3ad'
+            options['bond-lacp-rate'] = 'fast'
+    return options
+
+
 def get_bond_network_config(context, iface, config, network_id):
     """
     Augments a basic config dictionary with the attributes specific to a bond
     interface.
     """
-    options = {'MACADDR': iface['imac'].rstrip()}
     primary_iface = get_primary_bond_interface(context, iface)
-    bonding_options = get_bond_interface_options(iface, primary_iface)
+    options = dict()
+    bonding_options = None
+    iface_mac = iface['imac'].rstrip()
+
+    if is_syscfg_network():
+        options['MACADDR'] = iface_mac
+        bonding_options = get_bond_interface_options_sysconfig(iface, primary_iface)
+        if bonding_options:
+            options['BONDING_OPTS'] = bonding_options
+    else:
+        options['hwaddress'] = iface_mac
+        bonding_options = get_bond_interface_options_ifupdown(iface, primary_iface)
+        if bonding_options:
+            options.update(bonding_options)
+
     if bonding_options:
-        options['BONDING_OPTS'] = bonding_options
-        options['up'] = 'sleep 10'
+        fill_interface_config_option_operation(options, IFACE_UP_OP, 'sleep 10')
         networktype = find_networktype_by_network_id(context, network_id)
         if (networktype and networktype in [constants.NETWORK_TYPE_MGMT,
                                             constants.NETWORK_TYPE_CLUSTER_HOST]):
-            options['pre_up'] = "/sbin/modprobe bonding; echo +%s > /sys/class/net/bonding_masters" % (
+            command = "/sbin/modprobe bonding; echo +%s > /sys/class/net/bonding_masters" % (
                 iface['ifname'])
+            fill_interface_config_option_operation(options, IFACE_PRE_UP_OP, command)
     config['options'].update(options)
     return config
 
@@ -973,9 +1020,14 @@ def get_ethernet_network_config(context, iface, config):
     options = {}
     # Increased to accommodate devices that require more time to
     # complete link auto-negotiation
-    options['LINKDELAY'] = '20'
+    if is_syscfg_network():
+        options['LINKDELAY'] = '20'
+    else:
+        command = 'sleep {}'.format('20')
+        fill_interface_config_option_operation(options, IFACE_PRE_UP_OP, command)
     if is_bridged_interface(context, iface):
-        options['BRIDGE'] = get_bridge_interface_name(context, iface)
+        if is_syscfg_network():
+            options['BRIDGE'] = get_bridge_interface_name(context, iface)
     elif is_slave_interface(context, iface):
         if not is_data_interface(context, iface):
             # Data interfaces that require a network configuration are not
@@ -983,9 +1035,15 @@ def get_ethernet_network_config(context, iface, config):
             # rely on the Linux device driver to setup some or all functions
             # on the device (e.g., the Mellanox DPDK driver relies on the
             # Linux driver to set the proper MTU value).
-            options['SLAVE'] = 'yes'
-            options['MASTER'] = get_master_interface(context, iface)
-            options['PROMISC'] = 'yes'
+            if is_syscfg_network():
+                options['SLAVE'] = 'yes'
+                options['MASTER'] = get_master_interface(context, iface)
+                options['PROMISC'] = 'yes'
+            else:
+                options['bond-master'] = get_master_interface(context, iface)
+                osname = get_interface_os_ifname(context, iface)
+                command = '/usr/sbin/ip link set dev {} promisc on'.format(osname)
+                fill_interface_config_option_operation(options, IFACE_POST_UP_OP, command)
     elif interface_class == constants.INTERFACE_CLASS_PCI_SRIOV:
         if not is_a_mellanox_cx3_device(context, iface):
             # CX3 device can only use kernel module options to enable vfs
@@ -994,13 +1052,15 @@ def get_ethernet_network_config(context, iface, config):
             if iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
                 sriovfs_path = ("/sys/class/net/%s/device/sriov_numvfs" %
                                 get_interface_port_name(context, iface))
-                options['pre_up'] = "echo 0 > %s; echo %s > %s" % (
-                    sriovfs_path, iface['sriov_numvfs'], sriovfs_path)
+                command = "echo 0 > %s; echo %s > %s" % (sriovfs_path, iface['sriov_numvfs'],
+                                                         sriovfs_path)
+                fill_interface_config_option_operation(options, IFACE_PRE_UP_OP, command)
     elif interface_class == constants.INTERFACE_CLASS_PCI_PASSTHROUGH:
         sriovfs_path = ("/sys/class/net/%s/device/sriov_numvfs" %
                         get_interface_port_name(context, iface))
-        options['pre_up'] = "if [ -f  %s ]; then echo 0 > %s; fi" % (
+        command = "if [ -f  %s ]; then echo 0 > %s; fi" % (
             sriovfs_path, sriovfs_path)
+        fill_interface_config_option_operation(options, IFACE_PRE_UP_OP, command)
 
     config['options'].update(options)
     return config
@@ -1188,7 +1248,8 @@ def get_common_network_config(context, iface, config, network_id=None):
         # post-up scripts do not work for aliases.
         traffic_classifier = get_interface_traffic_classifier(context, iface)
         if traffic_classifier:
-            config['options']['post_up'] = traffic_classifier
+            fill_interface_config_option_operation(config['options'], IFACE_POST_UP_OP,
+                                                   traffic_classifier)
 
     method = get_interface_address_method(context, iface, network_id)
     if method == STATIC_METHOD:
@@ -1202,7 +1263,10 @@ def get_common_network_config(context, iface, config, network_id=None):
         networktype = find_networktype_by_network_id(context, network_id)
         gateway = get_interface_gateway_address(context, networktype)
         if gateway:
-            config['gateway'] = gateway
+            if is_syscfg_network():
+                config['gateway'] = gateway
+            else:
+                config['options']['gateway'] = gateway
     return config
 
 
@@ -1250,7 +1314,10 @@ def get_interface_network_config(context, iface, network_id=None):
 
     # ensure addresses have host scope when configured against the loopback
     if os_ifname == LOOPBACK_IFNAME:
-        options = {'SCOPE': 'scope host'}
+        if is_syscfg_network():
+            options = {'SCOPE': 'scope host'}
+        else:
+            options = {'scope': 'host'}
         config['options'].update(options)
 
     # Add type specific options
@@ -1266,12 +1333,20 @@ def get_interface_network_config(context, iface, network_id=None):
     config = get_final_network_config(context, iface, config, network_id)
 
     # disable ipv6 autoconfig
-    config['options'].update({'IPV6_AUTOCONF': 'no'})
+    if is_syscfg_network():
+        config['options'].update({'IPV6_AUTOCONF': 'no'})
+    else:
+        autoconf_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/autoconf'.format(os_ifname)
+        fill_interface_config_option_operation(config['options'], IFACE_POST_UP_OP, autoconf_off)
+        accept_ra_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/accept_ra'.format(os_ifname)
+        fill_interface_config_option_operation(config['options'], IFACE_POST_UP_OP, accept_ra_off)
+        accept_redir_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/accept_redirects'.format(os_ifname)
+        fill_interface_config_option_operation(config['options'], IFACE_POST_UP_OP, accept_redir_off)
 
     return config
 
 
-def generate_network_config(context, config, iface):
+def generate_network_config(context, hiera_config, iface):
     """
     Produce the puppet network config resources necessary to configure the
     given interface.  In some cases this will emit a single network_config
@@ -1285,7 +1360,7 @@ def generate_network_config(context, config, iface):
     # it will act as the parent device for the aliases
     net_config = get_interface_network_config(context, iface)
     if net_config:
-        config[NETWORK_CONFIG_RESOURCE].update({
+        hiera_config[NETWORK_CONFIG_RESOURCE].update({
             net_config['ifname']: format_network_config(net_config)
         })
 
@@ -1293,14 +1368,14 @@ def generate_network_config(context, config, iface):
         net_id = find_network_id_by_networktype(context, net_type)
         net_config = get_interface_network_config(context, iface, net_id)
         if net_config:
-            config[NETWORK_CONFIG_RESOURCE].update({
+            hiera_config[NETWORK_CONFIG_RESOURCE].update({
                 net_config['ifname']: format_network_config(net_config)
             })
 
     # Add complementary puppet resource definitions (if needed)
     for route in get_interface_routes(context, iface):
         route_config = get_route_config(route, ifname)
-        config[ROUTE_CONFIG_RESOURCE].update({
+        hiera_config[ROUTE_CONFIG_RESOURCE].update({
             route_config['name']: route_config
         })
 
@@ -1308,13 +1383,13 @@ def generate_network_config(context, config, iface):
     if interface_class == constants.INTERFACE_CLASS_PCI_SRIOV:
         sriov_config = get_sriov_config(context, iface)
         if sriov_config:
-            config[SRIOV_CONFIG_RESOURCE].update({
+            hiera_config[SRIOV_CONFIG_RESOURCE].update({
                 sriov_config['ifname']: format_sriov_config(sriov_config)
             })
 
     fpga_config = get_fpga_config(context, iface)
     if fpga_config:
-        config[FPGA_CONFIG_RESOURCE].update({
+        hiera_config[FPGA_CONFIG_RESOURCE].update({
             fpga_config['ifname']: format_fpga_config(fpga_config)
         })
 
@@ -1564,3 +1639,33 @@ def format_fpga_config(config):
     fpga_config = copy.copy(config)
     del fpga_config['ifname']
     return fpga_config
+
+
+def fill_interface_config_option_operation(options, operation, command):
+    """
+    Join new command to previous commands on the same operation
+    """
+    if_op = {IFACE_UP_OP: 'up', IFACE_PRE_UP_OP: 'pre_up', IFACE_POST_UP_OP: 'post_up',
+         IFACE_DOWN_OP: 'down', IFACE_PRE_DOWN_OP: 'pre_down', IFACE_POST_DOWN_OP: 'post_down'}
+    if not is_syscfg_network():
+        if_op[IFACE_PRE_UP_OP] = 'pre-up'
+        if_op[IFACE_POST_UP_OP] = 'post-up'
+        if_op[IFACE_PRE_DOWN_OP] = 'pre-down'
+        if_op[IFACE_POST_DOWN_OP] = 'post-down'
+
+    if operation in if_op.keys():
+        if if_op[operation] in options.keys():
+            previous_command = options[if_op[operation]]
+            options[if_op[operation]] = "{}; {}".format(previous_command,
+                                                        command)
+        else:
+            options[if_op[operation]] = command
+
+
+def is_syscfg_network():
+    """
+    Detect if the system is using sysconfig network interface file format
+    """
+    if not os.path.isdir("/etc/sysconfig/network-scripts/"):
+        return False
+    return True
