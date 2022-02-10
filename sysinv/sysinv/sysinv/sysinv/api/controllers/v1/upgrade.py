@@ -124,6 +124,7 @@ class UpgradeController(rest.RestController):
     _custom_actions = {
         'check_reinstall': ['GET'],
         'in_upgrade': ['GET'],
+        'upgrade_in_progress': ['GET'],
     }
 
     def __init__(self, parent=None, **kwargs):
@@ -449,3 +450,20 @@ class UpgradeController(rest.RestController):
         except exception.NotFound:
             return False
         return True
+
+    @wsme_pecan.wsexpose(wtypes.text, six.text_type)
+    def upgrade_in_progress(self, uuid):
+        # uuid is added here for potential future use
+        try:
+            upgrade = pecan.request.dbapi.software_upgrade_get_one()
+
+            # upgrade in progress only when upgrade starts and not abort
+            if upgrade.state and upgrade.state not in [
+                    constants.UPGRADE_ABORTING_ROLLBACK,
+                    constants.UPGRADE_ABORTING,
+                    constants.UPGRADE_ABORT_COMPLETING]:
+                return True
+
+        except exception.NotFound:
+            return False
+        return False

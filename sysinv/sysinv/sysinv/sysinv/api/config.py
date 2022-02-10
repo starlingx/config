@@ -33,5 +33,6 @@ app = {
                           '/v1/ihosts/[a-z0-9\-]+/icpus/platform_cpu_list',
                           '/v1/ihosts/[a-z0-9\-]+/icpus/vswitch_cpu_list',
                           '/v1/upgrade/[a-zA-Z0-9\-]+/in_upgrade',
+                          '/v1/upgrade/[a-zA-Z0-9\-]+/upgrade_in_progress',
                           ]
 }
