@@ -4120,7 +4120,10 @@ class Connection(api.Connection):
                                 session=session)
             query = query.filter_by(parameter_uuid=ptp_parameter,
                                     owner_uuid=ptp_parameter_owner)
-            query.one()
+            try:
+                query.one()
+            except NoResultFound:
+                raise exception.NotFound
             query.delete()
 
     # NOTE: method is deprecated and provided for API compatibility.
