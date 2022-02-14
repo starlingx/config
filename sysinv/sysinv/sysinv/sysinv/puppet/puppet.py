@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2020 Wind River Systems, Inc.
+# Copyright (c) 2017-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -85,6 +85,22 @@ class PuppetOperator(object):
             LOG.exception("failed to create static config")
             raise
 
+    def get_hieradata_path(self, version):
+        if version:
+            path = self.path.replace(tsconfig.SW_VERSION, version)
+        else:
+            path = self.path
+        return path
+
+    def read_static_config(self, version=None):
+        try:
+            filename = 'static.yaml'
+            path = self.get_hieradata_path(version)
+            return self._read_config(filename, path)
+        except Exception:
+            LOG.exception("failed to read secure_system config")
+            raise
+
     @puppet_context
     def create_secure_config(self):
         """
@@ -107,6 +123,15 @@ class PuppetOperator(object):
             LOG.exception("failed to create secure config")
             raise
 
+    def read_secure_static_config(self, version=None):
+        try:
+            filename = 'secure_static.yaml'
+            path = self.get_hieradata_path(version)
+            return self._read_config(filename, path)
+        except Exception:
+            LOG.exception("failed to read secure_system config")
+            raise
+
     @puppet_context
     def update_system_config(self):
         """Update the configuration for the system"""
@@ -120,6 +145,15 @@ class PuppetOperator(object):
             self._write_config(filename, config)
         except Exception:
             LOG.exception("failed to create system config")
+            raise
+
+    def read_system_config(self, version=None):
+        try:
+            filename = 'system.yaml'
+            path = self.get_hieradata_path(version)
+            return self._read_config(filename, path)
+        except Exception:
+            LOG.exception("failed to read secure_system config")
             raise
 
     @puppet_context
@@ -137,6 +171,15 @@ class PuppetOperator(object):
             LOG.exception("failed to create secure_system config")
             raise
 
+    def read_secure_system_config(self, version=None):
+        try:
+            filename = 'secure_system.yaml'
+            path = self.get_hieradata_path(version)
+            return self._read_config(filename, path)
+        except Exception:
+            LOG.exception("failed to read secure_system config")
+            raise
+
     @puppet_context
     def update_host_config(self, host, config_uuid=None):
         """Update the host hiera configuration files for the supplied host"""
@@ -149,6 +192,11 @@ class PuppetOperator(object):
             config.update(puppet_plugin.obj.get_host_config(host))
 
         self._write_host_config(host, config)
+
+    def read_host_config(self, host, version=None):
+        """"""
+        path = self.get_hieradata_path(version)
+        return self._read_host_config(host, path)
 
     @puppet_context
     def update_host_config_upgrade(self, host, target_load, config_uuid):
@@ -193,6 +241,20 @@ class PuppetOperator(object):
         """Update the configuration for a specific host"""
         filename = "%s.yaml" % host.mgmt_ip
         self._write_config(filename, config, path)
+
+    def _read_host_config(self, host, path):
+        filename = "%s.yaml" % host.mgmt_ip
+        return self._read_config(filename, path)
+
+    def _read_config(self, filename, path):
+        filepath = os.path.join(path, filename)
+        try:
+            LOG.debug("Reading config at %s", filepath)
+            with open(filepath, 'r') as f:
+                return yaml.load(f, Loader=yaml.Loader)
+        except Exception:
+            LOG.exception("Failed to read config file at %s" % filepath)
+            raise
 
     def _write_config(self, filename, config, path=None):
         if path is None:

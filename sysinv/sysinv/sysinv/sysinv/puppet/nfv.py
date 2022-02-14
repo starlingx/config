@@ -1,9 +1,8 @@
 #
-# Copyright (c) 2017-2018 Wind River Systems, Inc.
+# Copyright (c) 2017-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-
 from sysinv.common import constants
 from sysinv.common import utils
 from sysinv.helm import helm
@@ -89,141 +88,188 @@ class NfvPuppet(openstack.OpenstackBasePuppet):
         }
 
         if utils.is_openstack_applied(self.dbapi):
-            helm_data = helm.HelmOperatorData(self.dbapi)
+            is_upgrading, upgrade = utils.is_upgrade_in_progress(self.dbapi)
+            if is_upgrading:
+                old_config = self._operator.read_system_config(upgrade.from_release)
+                keys_to_copy = [
+                    'nfv::nfvi::openstack_username',
+                    'nfv::nfvi::openstack_tenant',
+                    'nfv::nfvi::openstack_auth_host',
+                    'nfv::nfvi::openstack_auth_port',
+                    'nfv::nfvi::openstack_user_domain',
+                    'nfv::nfvi::openstack_project_domain',
+                    'nfv::nfvi::openstack_keyring_service',
+                    'nfv::alarm::openstack_username',
+                    'nfv::alarm::openstack_tenant',
+                    'nfv::alarm::openstack_auth_host',
+                    'nfv::alarm::openstack_auth_port',
+                    'nfv::alarm::openstack_user_domain',
+                    'nfv::alarm::openstack_project_domain',
+                    'nfv::alarm::openstack_keyring_service',
+                    'nfv::event_log::openstack_username',
+                    'nfv::event_log::openstack_tenant',
+                    'nfv::event_log::openstack_auth_host',
+                    'nfv::event_log::openstack_auth_port',
+                    'nfv::event_log::openstack_user_domain',
+                    'nfv::event_log::openstack_project_domain',
+                    'nfv::event_log::openstack_keyring_service',
+                    'nfv::nfvi::nova_endpoint_override',
+                    'nfv::nfvi::nova_region_name',
+                    'nfv::nfvi::cinder_region_name',
+                    'nfv::nfvi::cinder_service_name',
+                    'nfv::nfvi::cinder_service_type',
+                    'nfv::nfvi::glance_region_name',
+                    'nfv::nfvi::glance_service_name',
+                    'nfv::nfvi::glance_service_type',
+                    'nfv::nfvi::neutron_region_name',
+                    'nfv::nfvi::heat_region_name',
+                    'nfv::nfvi::ceilometer_region_name',
+                    'nfv::nfvi::rabbit_host',
+                    'nfv::nfvi::rabbit_port',
+                    'nfv::nfvi::rabbit_virtual_host',
+                    'nfv::nfvi::rabbit_userid',
+                    'nfv::nfvi::rabbit_password',
+                    'nfv::nfvi::compute_rest_api_host',
+                ]
+                for key in keys_to_copy:
+                    config[key] = old_config.get(key)
 
-            # The openstack services are authenticated with pod based
-            # keystone.
-            keystone_auth_data = helm_data.get_keystone_auth_data()
-            openstack_auth_config = {
-                'nfv::nfvi::openstack_username':
-                    keystone_auth_data['admin_user_name'],
-                'nfv::nfvi::openstack_tenant':
-                    keystone_auth_data['admin_project_name'],
-                'nfv::nfvi::openstack_auth_host':
-                    keystone_auth_data['auth_host'],
-                'nfv::nfvi::openstack_auth_port':
-                    keystone_auth_data['auth_port'],
-                'nfv::nfvi::openstack_user_domain':
-                    keystone_auth_data['admin_user_domain'],
-                'nfv::nfvi::openstack_project_domain':
-                    keystone_auth_data['admin_project_domain'],
-                'nfv::nfvi::openstack_keyring_service':
-                    self.PLATFORM_KEYRING_SERVICE,
+            else:
+                helm_data = helm.HelmOperatorData(self.dbapi)
 
-                'nfv::alarm::openstack_username':
-                    keystone_auth_data['admin_user_name'],
-                'nfv::alarm::openstack_tenant':
-                    keystone_auth_data['admin_project_name'],
-                'nfv::alarm::openstack_auth_host':
-                    keystone_auth_data['auth_host'],
-                'nfv::alarm::openstack_auth_port':
-                    keystone_auth_data['auth_port'],
-                'nfv::alarm::openstack_user_domain':
-                    keystone_auth_data['admin_user_domain'],
-                'nfv::alarm::openstack_project_domain':
-                    keystone_auth_data['admin_project_domain'],
-                'nfv::alarm::openstack_keyring_service':
-                    self.PLATFORM_KEYRING_SERVICE,
+                # The openstack services are authenticated with pod based
+                # keystone.
+                keystone_auth_data = helm_data.get_keystone_auth_data()
+                openstack_auth_config = {
+                    'nfv::nfvi::openstack_username':
+                        keystone_auth_data['admin_user_name'],
+                    'nfv::nfvi::openstack_tenant':
+                        keystone_auth_data['admin_project_name'],
+                    'nfv::nfvi::openstack_auth_host':
+                        keystone_auth_data['auth_host'],
+                    'nfv::nfvi::openstack_auth_port':
+                        keystone_auth_data['auth_port'],
+                    'nfv::nfvi::openstack_user_domain':
+                        keystone_auth_data['admin_user_domain'],
+                    'nfv::nfvi::openstack_project_domain':
+                        keystone_auth_data['admin_project_domain'],
+                    'nfv::nfvi::openstack_keyring_service':
+                        self.PLATFORM_KEYRING_SERVICE,
 
-                'nfv::event_log::openstack_username':
-                    keystone_auth_data['admin_user_name'],
-                'nfv::event_log::openstack_tenant':
-                    keystone_auth_data['admin_project_name'],
-                'nfv::event_log::openstack_auth_host':
-                    keystone_auth_data['auth_host'],
-                'nfv::event_log::openstack_auth_port':
-                    keystone_auth_data['auth_port'],
-                'nfv::event_log::openstack_user_domain':
-                    keystone_auth_data['admin_user_domain'],
-                'nfv::event_log::openstack_project_domain':
-                    keystone_auth_data['admin_project_domain'],
-                'nfv::event_log::openstack_keyring_service':
-                    self.PLATFORM_KEYRING_SERVICE,
-            }
-            config.update(openstack_auth_config)
+                    'nfv::alarm::openstack_username':
+                        keystone_auth_data['admin_user_name'],
+                    'nfv::alarm::openstack_tenant':
+                        keystone_auth_data['admin_project_name'],
+                    'nfv::alarm::openstack_auth_host':
+                        keystone_auth_data['auth_host'],
+                    'nfv::alarm::openstack_auth_port':
+                        keystone_auth_data['auth_port'],
+                    'nfv::alarm::openstack_user_domain':
+                        keystone_auth_data['admin_user_domain'],
+                    'nfv::alarm::openstack_project_domain':
+                        keystone_auth_data['admin_project_domain'],
+                    'nfv::alarm::openstack_keyring_service':
+                        self.PLATFORM_KEYRING_SERVICE,
 
-            # Nova is running in a pod
-            nova_endpoint_data = helm_data.get_nova_endpoint_data()
-            nova_config = {
-                'nfv::nfvi::nova_endpoint_override':
-                    nova_endpoint_data['endpoint_override'],
-                'nfv::nfvi::nova_region_name':
-                    nova_endpoint_data['region_name'],
-            }
-            config.update(nova_config)
+                    'nfv::event_log::openstack_username':
+                        keystone_auth_data['admin_user_name'],
+                    'nfv::event_log::openstack_tenant':
+                        keystone_auth_data['admin_project_name'],
+                    'nfv::event_log::openstack_auth_host':
+                        keystone_auth_data['auth_host'],
+                    'nfv::event_log::openstack_auth_port':
+                        keystone_auth_data['auth_port'],
+                    'nfv::event_log::openstack_user_domain':
+                        keystone_auth_data['admin_user_domain'],
+                    'nfv::event_log::openstack_project_domain':
+                        keystone_auth_data['admin_project_domain'],
+                    'nfv::event_log::openstack_keyring_service':
+                        self.PLATFORM_KEYRING_SERVICE,
+                }
+                config.update(openstack_auth_config)
 
-            # Cinder is running in a pod
-            cinder_endpoint_data = helm_data.get_cinder_endpoint_data()
-            cinder_config = {
-                'nfv::nfvi::cinder_region_name':
-                    cinder_endpoint_data['region_name'],
-                'nfv::nfvi::cinder_service_name':
-                    cinder_endpoint_data['service_name'],
-                'nfv::nfvi::cinder_service_type':
-                    cinder_endpoint_data['service_type'],
-            }
-            config.update(cinder_config)
+                # Nova is running in a pod
+                nova_endpoint_data = helm_data.get_nova_endpoint_data()
+                nova_config = {
+                    'nfv::nfvi::nova_endpoint_override':
+                        nova_endpoint_data['endpoint_override'],
+                    'nfv::nfvi::nova_region_name':
+                        nova_endpoint_data['region_name'],
+                }
+                config.update(nova_config)
 
-            # Glance is running in a pod
-            glance_endpoint_data = helm_data.get_glance_endpoint_data()
-            glance_config = {
-                'nfv::nfvi::glance_region_name':
-                    glance_endpoint_data['region_name'],
-                'nfv::nfvi::glance_service_name':
-                    glance_endpoint_data['service_name'],
-                'nfv::nfvi::glance_service_type':
-                    glance_endpoint_data['service_type'],
-            }
-            config.update(glance_config)
+                # Cinder is running in a pod
+                cinder_endpoint_data = helm_data.get_cinder_endpoint_data()
+                cinder_config = {
+                    'nfv::nfvi::cinder_region_name':
+                        cinder_endpoint_data['region_name'],
+                    'nfv::nfvi::cinder_service_name':
+                        cinder_endpoint_data['service_name'],
+                    'nfv::nfvi::cinder_service_type':
+                        cinder_endpoint_data['service_type'],
+                }
+                config.update(cinder_config)
 
-            # Neutron is running in a pod
-            neutron_endpoint_data = helm_data.get_neutron_endpoint_data()
-            neutron_config = {
-                'nfv::nfvi::neutron_region_name':
-                    neutron_endpoint_data['region_name'],
-            }
-            config.update(neutron_config)
+                # Glance is running in a pod
+                glance_endpoint_data = helm_data.get_glance_endpoint_data()
+                glance_config = {
+                    'nfv::nfvi::glance_region_name':
+                        glance_endpoint_data['region_name'],
+                    'nfv::nfvi::glance_service_name':
+                        glance_endpoint_data['service_name'],
+                    'nfv::nfvi::glance_service_type':
+                        glance_endpoint_data['service_type'],
+                }
+                config.update(glance_config)
 
-            # Heat is running in a pod
-            heat_endpoint_data = helm_data.get_heat_endpoint_data()
-            heat_config = {
-                'nfv::nfvi::heat_region_name':
-                    heat_endpoint_data['region_name'],
-            }
-            config.update(heat_config)
+                # Neutron is running in a pod
+                neutron_endpoint_data = helm_data.get_neutron_endpoint_data()
+                neutron_config = {
+                    'nfv::nfvi::neutron_region_name':
+                        neutron_endpoint_data['region_name'],
+                }
+                config.update(neutron_config)
 
-            # Ceilometer is running in a pod
-            ceilometer_endpoint_data = \
-                helm_data.get_ceilometer_endpoint_data()
-            ceilometer_config = {
-                'nfv::nfvi::ceilometer_region_name':
-                    ceilometer_endpoint_data['region_name'],
-            }
-            config.update(ceilometer_config)
+                # Heat is running in a pod
+                heat_endpoint_data = helm_data.get_heat_endpoint_data()
+                heat_config = {
+                    'nfv::nfvi::heat_region_name':
+                        heat_endpoint_data['region_name'],
+                }
+                config.update(heat_config)
 
-            # The openstack rabbitmq is running in a pod
-            nova_oslo_messaging_data = \
-                helm_data.get_nova_oslo_messaging_data()
-            rabbit_config = {
-                'nfv::nfvi::rabbit_host':
-                    nova_oslo_messaging_data['host'],
-                'nfv::nfvi::rabbit_port':
-                    nova_oslo_messaging_data['port'],
-                'nfv::nfvi::rabbit_virtual_host':
-                    nova_oslo_messaging_data['virt_host'],
-                'nfv::nfvi::rabbit_userid':
-                    nova_oslo_messaging_data['username'],
-                'nfv::nfvi::rabbit_password':
-                    nova_oslo_messaging_data['password'],
-            }
-            config.update(rabbit_config)
+                # Ceilometer is running in a pod
+                ceilometer_endpoint_data = \
+                    helm_data.get_ceilometer_endpoint_data()
+                ceilometer_config = {
+                    'nfv::nfvi::ceilometer_region_name':
+                        ceilometer_endpoint_data['region_name'],
+                }
+                config.update(ceilometer_config)
 
-            # Listen to nova api proxy on management address
-            nova_api_proxy_config = {
-                'nfv::nfvi::compute_rest_api_host':
-                    self._get_management_address(),
-            }
-            config.update(nova_api_proxy_config)
+                # The openstack rabbitmq is running in a pod
+                nova_oslo_messaging_data = \
+                    helm_data.get_nova_oslo_messaging_data()
+                rabbit_config = {
+                    'nfv::nfvi::rabbit_host':
+                        nova_oslo_messaging_data['host'],
+                    'nfv::nfvi::rabbit_port':
+                        nova_oslo_messaging_data['port'],
+                    'nfv::nfvi::rabbit_virtual_host':
+                        nova_oslo_messaging_data['virt_host'],
+                    'nfv::nfvi::rabbit_userid':
+                        nova_oslo_messaging_data['username'],
+                    'nfv::nfvi::rabbit_password':
+                        nova_oslo_messaging_data['password'],
+                }
+                config.update(rabbit_config)
+
+                # Listen to nova api proxy on management address
+                nova_api_proxy_config = {
+                    'nfv::nfvi::compute_rest_api_host':
+                        self._get_management_address(),
+                }
+                config.update(nova_api_proxy_config)
         else:
             # The openstack auth info is still required as the VIM will
             # audit some keystone entities (e.g. tenants). Point it to

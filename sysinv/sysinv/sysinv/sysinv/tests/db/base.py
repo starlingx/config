@@ -17,6 +17,8 @@
 
 import abc
 import itertools
+import os
+
 import netaddr
 import six
 
@@ -125,6 +127,7 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self.hosts = []
         self.address_pools = []
         self.networks = []
+        self.datanetworks = []
         self._create_test_common()
 
     def tearDown(self):
@@ -140,6 +143,7 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self.hosts = []
         self.address_pools = []
         self.networks = []
+        self.datanetworks = []
         self.oam = None
 
     def _create_test_common(self):
@@ -152,6 +156,7 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self._create_test_ntp()
         self._create_test_ptp()
         self._create_test_networks()
+        self._create_test_datanetworks()
         self._create_test_static_ips()
         self._create_test_oam()
         self._create_test_multicast_ips()
@@ -202,6 +207,11 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self.networks.append(network)
         return network
 
+    def _create_test_datanetwork(self, name, network_type):
+        datanetwork = dbutils.create_test_datanetwork(name=name, network_type=network_type)
+        self.datanetworks.append(datanetwork)
+        return datanetwork
+
     def _create_test_address_pool(self, name, subnet, ranges=None):
         if not ranges:
             ranges = [(str(subnet[2]), str(subnet[-2]))]
@@ -251,6 +261,14 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self._create_test_network('system-controller-oam',
                                   constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM,
                                   self.system_controller_oam_subnet)
+
+    def _create_test_datanetworks(self):
+
+        self._create_test_datanetwork('data0',
+                                      constants.DATANETWORK_TYPE_VLAN)
+
+        self._create_test_datanetwork('data1',
+                                      constants.DATANETWORK_TYPE_VLAN)
 
     def _create_test_addresses(self, hostnames, subnet, network_type,
                                start=1, stop=None):
@@ -427,17 +445,17 @@ class BaseHostTestCase(BaseSystemTestCase):
             if (host.personality == constants.WORKER and
                     nt == constants.NETWORK_TYPE_OAM):
                 continue
-            dbutils.create_test_ethernet_port(
-                name='eth%s' % index,
-                host_id=host['id'],
-                interface_id=index,
-                pciaddr='0000:00:00.%s' % index,
-                dev_id=0)
             interface = dbutils.create_test_interface(
                 ifname=name,
                 ifclass=constants.INTERFACE_CLASS_PLATFORM,
                 forihostid=host['id'],
                 ihost_uuid=host['uuid'])
+            dbutils.create_test_ethernet_port(
+                name='eth%s' % index,
+                host_id=host['id'],
+                interface_id=interface['id'],
+                pciaddr='0000:00:00.%s' % index,
+                dev_id=0)
             iface = self.dbapi.iinterface_get(interface['uuid'])
             ifaces.append(iface)
             network = self.dbapi.network_get_by_type(nt)
@@ -573,3 +591,92 @@ class ProvisionedAIODuplexSystemTestCase(ProvisionedAIOHostTestCase):
                                             invprovision=constants.PROVISIONED)
         self._create_test_host_cpus(self.host2, platform=2, vswitch=2,
                                     application=11)
+
+
+class AppTestCase(ProvisionedAIODuplexSystemTestCase):
+
+    def _create_app(self, name, version, manifest_name, manifest_file, status, active, **kwargs):
+        return dbutils.create_test_kube_app(
+            name=name,
+            app_version=version,
+            manifest_name=manifest_name,
+            manifest_file=manifest_file,
+            status=status,
+            active=active,
+            **kwargs
+        )
+
+    def setUp(self):
+        super(AppTestCase, self).setUp()
+
+    def tearDown(self):
+        super(AppTestCase, self).tearDown()
+
+
+class OpenstackTestCase(AppTestCase):
+
+    def _create_openstack_app(self):
+        return self._create_app(
+            name='stx-openstack',
+            version='6.0',
+            manifest_name='application-manifest',
+            manifest_file='application-manifest.yaml',
+            status='applied',
+            active=True
+        )
+
+    def _create_test_host_data_interface(self, host):
+        ifs_to_network = {
+            'data-if0': 'data0',
+            'data-if1': 'data1',
+        }
+        # Platform ifaces were created previously, so start from interface_id=4
+        index = 4
+        ifaces = []
+        for ifname, datanetwork in ifs_to_network.items():
+            interface = dbutils.create_test_interface(
+                ifname=ifname,
+                ifclass=constants.INTERFACE_CLASS_DATA,
+                forihostid=host['id'],
+                ihost_uuid=host['uuid'],
+            )
+            dbutils.create_test_ethernet_port(
+                name='eth%s' % index,
+                host_id=host['id'],
+                interface_id=interface['id'],
+                pciaddr='0000:00:00.%s' % index,
+                dev_id=1)
+            iface = self.dbapi.iinterface_get(interface['uuid'])
+            ifaces.append(iface)
+            network = self.dbapi.datanetwork_get_by_name(datanetwork)
+            dbutils.create_test_interface_network(
+                interface_id=iface.id,
+                network_id=network.id)
+            index = index + 1
+        return ifaces
+
+    def setUp(self):
+        super(OpenstackTestCase, self).setUp()
+        self._create_openstack_app()
+        self._create_test_host_platform_interface(self.host)
+        self._create_test_host_data_interface(self.host)
+        self._create_test_host_platform_interface(self.host2)
+        self._create_test_host_data_interface(self.host2)
+        self.fake_hieradata = ""
+        with open(os.path.join(os.getcwd(), "sysinv", "tests", "puppet", "fake_hieradata.yaml")) as fake_data:
+            self.fake_hieradata = fake_data.read()
+
+
+class PlatformUpgradeTestCase(OpenstackTestCase):
+
+    def _create_platform_upgrade(self):
+        self.upgrade = dbutils.create_test_upgrade(
+            state=constants.UPGRADE_STARTING
+        )
+
+    def setUp(self):
+        super(PlatformUpgradeTestCase, self).setUp()
+        self._create_platform_upgrade()
+
+    def tearDown(self):
+        super(PlatformUpgradeTestCase, self).tearDown()

@@ -18,7 +18,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 
 
@@ -1683,26 +1683,36 @@ def perform_distributed_cloud_config(dbapi, mgmt_iface_id):
                   cc_gtwy_addr.address, mgmt_iface_id))
 
 
+def is_upgrade_in_progress(dbapi):
+    """ Checks whether a platform upgrade is in progress
+
+    """
+    try:
+        upgrade = dbapi.software_upgrade_get_one()
+        LOG.debug("Platform Upgrade in Progress: state=%s" % upgrade.state)
+        return True, upgrade
+    except exception.NotFound:
+        LOG.debug("No Platform Upgrades in Progress")
+        return False, None
+
+
 def _check_upgrade(dbapi, host_obj=None):
     """ Check whether partition operation may be allowed.
 
         If there is an upgrade in place, reject the operation if the
         host was not created after upgrade start.
     """
-    try:
-        upgrade = dbapi.software_upgrade_get_one()
-    except exception.NotFound:
-        return
+    is_upgrading, upgrade = is_upgrade_in_progress(dbapi)
+    if is_upgrading:
+        if host_obj:
+            if host_obj.created_at > upgrade.created_at:
+                LOG.info("New host %s created after upgrade, allow partition" %
+                         host_obj.hostname)
+                return
 
-    if host_obj:
-        if host_obj.created_at > upgrade.created_at:
-            LOG.info("New host %s created after upgrade, allow partition" %
-                     host_obj.hostname)
-            return
-
-    raise wsme.exc.ClientSideError(
-        _("ERROR: Disk partition operations are not allowed during a "
-          "software upgrade. Try again after the upgrade is completed."))
+        raise wsme.exc.ClientSideError(
+            _("ERROR: Disk partition operations are not allowed during a "
+              "software upgrade. Try again after the upgrade is completed."))
 
 
 def get_dhcp_client_iaid(mac_address):
@@ -1914,7 +1924,9 @@ def find_openstack_app(dbapi):
 def is_openstack_applied(dbapi):
     """ Checks whether the OpenStack application is applied successfully. """
     try:
-        return find_openstack_app(dbapi).active
+        applied = find_openstack_app(dbapi).active
+        LOG.debug("is Openstack app applied? %s", applied)
+        return applied
     except exception.KubeAppNotFound:
         return False
 

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -157,22 +157,33 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
         }
 
         if utils.is_openstack_applied(self.dbapi):
-            helm_data = helm.HelmOperatorData(self.dbapi)
-            endpoints_data = helm_data.get_keystone_endpoint_data()
-            auth_data = helm_data.get_keystone_auth_data()
+            is_upgrading, upgrade = utils.is_upgrade_in_progress(self.dbapi)
+            if is_upgrading:
+                old_config = self._operator.read_system_config(upgrade.from_release)
+                keys_to_copy = [
+                    'dcorch::stx_openstack::keystone_identity_uri',
+                    'dcorch::stx_openstack::keystone_admin_user',
+                    'dcorch::stx_openstack::keystone_admin_tenant',
+                ]
+                for key in keys_to_copy:
+                    config[key] = old_config.get(key)
+            else:
+                helm_data = helm.HelmOperatorData(self.dbapi)
+                endpoints_data = helm_data.get_keystone_endpoint_data()
+                auth_data = helm_data.get_keystone_auth_data()
 
-            app_config = {
-                'dcorch::stx_openstack::'
-                'keystone_identity_uri':
-                    endpoints_data['endpoint_override'],
-                'dcorch::stx_openstack::'
-                'keystone_admin_user':
-                    auth_data['admin_user_name'],
-                'dcorch::stx_openstack::'
-                'keystone_admin_tenant':
-                    auth_data['admin_project_name'],
-            }
-            config.update(app_config)
+                app_config = {
+                    'dcorch::stx_openstack::'
+                    'keystone_identity_uri':
+                        endpoints_data['endpoint_override'],
+                    'dcorch::stx_openstack::'
+                    'keystone_admin_user':
+                        auth_data['admin_user_name'],
+                    'dcorch::stx_openstack::'
+                    'keystone_admin_tenant':
+                        auth_data['admin_project_name'],
+                }
+                config.update(app_config)
 
         return config
 
@@ -187,25 +198,30 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
             'dcorch::database_connection':
                 self._format_database_connection(self.SERVICE_NAME),
             'dcorch::db::postgresql::password': dbpass,
-
             'dcorch::keystone::auth::password': kspass,
-
             'dcorch::api_proxy::keystone_password': kspass,
-
             'dcorch::api_proxy::keystone_admin_password': admin_password,
-
             'dcorch::api_proxy::dcmanager_keystone_password': dm_kspass,
         }
 
         if utils.is_openstack_applied(self.dbapi):
-            helm_data = helm.HelmOperatorData(self.dbapi)
-            auth_data = helm_data.get_keystone_auth_data()
-            app_auth_config = {
-                'dcorch::stx_openstack::'
-                'keystone_admin_password':
-                    auth_data['admin_password'],
-            }
-            config.update(app_auth_config)
+            is_upgrading, upgrade = utils.is_upgrade_in_progress(self.dbapi)
+            if is_upgrading:
+                old_config = self._operator.read_secure_system_config(upgrade.from_release)
+                keys_to_copy = [
+                    'dcorch::stx_openstack::keystone_admin_password'
+                ]
+                for key in keys_to_copy:
+                    config[key] = old_config.get(key)
+            else:
+                helm_data = helm.HelmOperatorData(self.dbapi)
+                auth_data = helm_data.get_keystone_auth_data()
+                app_auth_config = {
+                    'dcorch::stx_openstack::'
+                    'keystone_admin_password':
+                        auth_data['admin_password'],
+                }
+                config.update(app_auth_config)
 
         return config
 

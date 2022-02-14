@@ -1,7 +1,9 @@
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2019-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+
+import mock
 
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.puppet import base
@@ -89,9 +91,54 @@ class PlatformIPv6AIOHostTestCase(PuppetOperatorTestSuiteMixin,
     pass
 
 
+class PlatformIPv6AIODuplexHostTestCase(PuppetOperatorTestSuiteMixin,
+                                        dbbase.BaseIPv6Mixin,
+                                        dbbase.AIODuplexHostTestCase):
+    pass
+
+
 #  ============= Ceph Backend environment tests ==============
 # Tests all puppet operations for an AIO Host using IPv4 and Ceph Backend
 class PlatformCephBackendAIOHostTestCase(PuppetOperatorTestSuiteMixin,
                                          dbbase.BaseCephStorageBackendMixin,
                                          dbbase.AIOHostTestCase):
     pass
+
+
+# Tests all puppet operations for an AIO-DX Host using IPv4 and Ceph Backend
+class PlatformCephBackendAIODuplexHostTestCase(PuppetOperatorTestSuiteMixin,
+                                               dbbase.BaseCephStorageBackendMixin,
+                                               dbbase.AIODuplexHostTestCase):
+    pass
+
+
+#  ============= Openstack environment tests ==============
+class PlatformUpgradeOpenstackAIODuplexHostTestCase(PuppetOperatorTestSuiteMixin,
+                                                    dbbase.BaseCephStorageBackendMixin,
+                                                    dbbase.PlatformUpgradeTestCase):
+
+    def test_update_system_config(self):
+        mock_open = mock.mock_open(read_data=self.fake_hieradata)
+        with mock.patch('six.moves.builtins.open', mock_open):
+            super(PlatformUpgradeOpenstackAIODuplexHostTestCase, self).test_update_system_config()
+            mock_open.assert_has_calls(
+                [
+                    mock.call("/opt/platform/puppet/0.0/hieradata/system.yaml", "r"),  # ceph
+                    mock.call("/opt/platform/puppet/0.0/hieradata/system.yaml", "r"),  # dcdbsync
+                    mock.call("/opt/platform/puppet/0.0/hieradata/system.yaml", "r"),  # dcorch
+                    mock.call("/opt/platform/puppet/0.0/hieradata/system.yaml", "r"),  # nfv
+                ],
+                any_order=True
+            )
+
+    def test_update_secure_system_config(self):
+        mock_open = mock.mock_open(read_data=self.fake_hieradata)
+        with mock.patch('six.moves.builtins.open', mock_open):
+            super(PlatformUpgradeOpenstackAIODuplexHostTestCase, self).test_update_secure_system_config()
+            mock_open.assert_has_calls(
+                [
+                    mock.call("/opt/platform/puppet/0.0/hieradata/secure_system.yaml", "r"),  # dcdbsync
+                    mock.call("/opt/platform/puppet/0.0/hieradata/secure_system.yaml", "r"),  # dcorch
+                ],
+                any_order=True
+            )
