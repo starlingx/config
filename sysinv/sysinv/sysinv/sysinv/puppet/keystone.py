@@ -93,6 +93,13 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
             'keystone::endpoint::admin_url': self.get_admin_url(),
             'keystone::endpoint::region': self._region_name(),
 
+            # For puppet-keystone that uses bootstrap class to bootstrap
+            # keystone.
+            'keystone::bootstrap::public_url': self.get_public_url(),
+            'keystone::bootstrap::internal_url': self.get_internal_url(),
+            'keystone::bootstrap::admin_url': self.get_admin_url(),
+            'keystone::bootstrap::region': self._region_name(),
+
             'keystone::roles::admin::admin': admin_username,
 
             'platform::client::params::admin_username': admin_username,
