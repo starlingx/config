@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2021 Wind River Systems, Inc.
+# Copyright (c) 2017-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -210,7 +210,7 @@ class NetworkingPuppet(base.BasePuppet):
 
         default_cmdline_opts = {
             'ptp4l': '',
-            'phc2sys': '-a -r',
+            'phc2sys': '-a -r -R 2 -u 600',
             'ts2phc': '-s nmea'
         }
 
@@ -231,7 +231,12 @@ class NetworkingPuppet(base.BasePuppet):
                 instance['global_parameters'].update({
                     'uds_address': '/var/run/' + instance['service'] + '-' + instance['name'],
                     'uds_ro_address': '/var/run/' + instance['service'] + '-' + instance['name']
-                    + 'ro'
+                    + 'ro',
+                    'message_tag': instance['name']
+                })
+            elif instance['service'] == constants.PTP_INSTANCE_TYPE_PHC2SYS:
+                instance['global_parameters'].update({
+                    'message_tag': instance['name']
                 })
 
             for global_param in ptp_parameters_instance:
