@@ -308,13 +308,7 @@ class CephMonController(rest.RestController):
                 if rpc_cephmon.ceph_mon_gib != p['value']:
                     is_ceph_mon_gib_changed = True
 
-        # TODO This should be removed after resize operation is supported in AIO-DX systems
-        if is_ceph_mon_gib_changed and cutils.is_aio_duplex_system(pecan.request.dbapi):
-            raise exception.CephCommandUnsupported(
-                _("Resize of ceph monitor is not allowed in duplex system.")
-            )
-
-        elif not is_ceph_mon_gib_changed:
+        if not is_ceph_mon_gib_changed:
             LOG.info("ceph_mon parameters are not changed")
             raise wsme.exc.ClientSideError(
                 _("Warning: ceph_mon parameters are not changed."))
