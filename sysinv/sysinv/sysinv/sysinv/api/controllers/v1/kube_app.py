@@ -279,20 +279,22 @@ class KubeAppController(rest.RestController):
             raise wsme.exc.ClientSideError(_(
                 "Application-{} rejected: application not found.".format(directive)))
 
+        plugin_name = cutils.find_app_plugin_name(name)
+
         if directive == 'apply':
             if not values:
                 mode = None
-            elif name not in constants.HELM_APP_APPLY_MODES:
+            elif plugin_name not in constants.HELM_APP_APPLY_MODES:
                 raise wsme.exc.ClientSideError(_(
                     "Application-apply rejected: Mode is not supported "
                     "for app {}.".format(name)))
             elif (values['mode'] and
-                    values['mode'] not in constants.HELM_APP_APPLY_MODES[name]):
+                    values['mode'] not in constants.HELM_APP_APPLY_MODES[plugin_name]):
                 raise wsme.exc.ClientSideError(_(
                     "Application-apply rejected: Mode {} for app {} is not "
                     "valid. Valid modes are {}.".format(
                         values['mode'], name,
-                        constants.HELM_APP_APPLY_MODES[name])))
+                        constants.HELM_APP_APPLY_MODES[plugin_name])))
             else:
                 mode = values['mode']
 
