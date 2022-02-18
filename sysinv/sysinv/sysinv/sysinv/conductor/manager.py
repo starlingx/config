@@ -7152,6 +7152,13 @@ class ConductorManager(service.PeriodicService):
                   (name, new_ptp_instance.id, new_ptp_instance.uuid))
         return (new_ptp_instance.id, new_ptp_instance.uuid)
 
+    def _update_ptp_create_interface(self, name, instance_id):
+        values = dict(name=name, ptp_instance_id=instance_id)
+        new_ptp_interface = self.dbapi.ptp_interface_create(values)
+        LOG.debug("Created PTP interface %s id %d uuid %s" %
+                  (name, new_ptp_interface.id, new_ptp_interface.uuid))
+        return new_ptp_interface.id
+
     def _update_ptp_add_parameter_to_instance(self, instance_uuid, name, value):
         try:
             ptp_parameter = self.dbapi.ptp_parameter_get_by_namevalue(name,
@@ -7171,6 +7178,15 @@ class ConductorManager(service.PeriodicService):
         self.dbapi.ptp_instance_assign(values)
         LOG.debug("Assigned PTP instance %d to host %d" %
                   (instance_id, host_id))
+
+    def _update_ptp_assign_ptp_to_interface(self,
+                                            ptp_interface_id,
+                                            interface_id):
+        values = dict(interface_id=interface_id,
+                      ptp_interface_id=ptp_interface_id)
+        self.dbapi.ptp_interface_assign(values)
+        LOG.debug("Assigned PTP interface %d to interface %d" %
+                  (ptp_interface_id, interface_id))
 
     def _update_ptp_parameters(self):
         # TODO: this method is supposed to be called in the context of the same
@@ -7229,7 +7245,22 @@ class ConductorManager(service.PeriodicService):
                 # No need for upgrade
                 return
 
+            # List all the interfaces with ptp_role=slave
+            ifaces_list = self.dbapi.iinterface_get_list()
+            slave_ifaces_list = [
+                iface
+                for iface in ifaces_list
+                if iface['ptp_role'] == constants.INTERFACE_PTP_ROLE_SLAVE]
+            LOG.debug("There are %d interfaces with ptp_role=slave" %
+                      len(slave_ifaces_list))
+
             LOG.info("Creating PTP instances for legacy parameters")
+
+            # Take system-wide parameters from legacy configuration
+            ptp_config = self.dbapi.ptp_get_one()  # there is a single entry
+            delay_mechanism = str(ptp_config.mechanism).upper()
+            time_stamping = str(ptp_config.mode).lower()
+            network_transport = str(ptp_config.transport).upper()
 
             # Legacy instance for system-wide parameters and those of section
             # "global" in service-parameters table
@@ -7237,10 +7268,18 @@ class ConductorManager(service.PeriodicService):
                 constants.PTP_INSTANCE_LEGACY_PTP4L,
                 constants.PTP_INSTANCE_TYPE_PTP4L)
 
+            # Legacy PTP interface associated to legacy ptp4l instance
+            ptp4lif_id = self._update_ptp_create_interface(
+                constants.PTP_INTERFACE_LEGACY_PTP4L, ptp4l_id)
+
             # Legacy instance for parameters of section "phc2sys"
             (phc2sys_id, phc2sys_uuid) = self._update_ptp_create_instance(
                 constants.PTP_INSTANCE_LEGACY_PHC2SYS,
                 constants.PTP_INSTANCE_TYPE_PHC2SYS)
+
+            # Legacy PTP interface associated to legacy phc2sys instance
+            phc2sysif_id = self._update_ptp_create_interface(
+                constants.PTP_INTERFACE_LEGACY_PHC2SYS, phc2sys_id)
 
             # Add 'uds_address' parameter to phy2sys instance for linkage with
             # ptp4l instance
@@ -7257,20 +7296,13 @@ class ConductorManager(service.PeriodicService):
                 self._update_ptp_assign_instance_to_host(ptp4l_id, host['id'])
                 self._update_ptp_assign_instance_to_host(phc2sys_id, host['id'])
 
-            # Copy global PTP configuration
-            ptp_config = self.dbapi.ptp_get_one()  # there is a single entry
-            self._update_ptp_add_parameter_to_instance(
-                ptp4l_uuid,
-                constants.PTP_PARAMETER_MECHANISM,
-                ptp_config.mechanism)
-            self._update_ptp_add_parameter_to_instance(
-                ptp4l_uuid,
-                constants.PTP_PARAMETER_MODE,
-                ptp_config.mode)
-            self._update_ptp_add_parameter_to_instance(
-                ptp4l_uuid,
-                constants.PTP_PARAMETER_TRANSPORT,
-                ptp_config.transport)
+            # Assign legacy PTP interfaces to all interfaces with
+            # ptp_role=slave
+            for iface in slave_ifaces_list:
+                self._update_ptp_assign_ptp_to_interface(ptp4lif_id,
+                                                         iface['id'])
+                self._update_ptp_assign_ptp_to_interface(phc2sysif_id,
+                                                         iface['id'])
 
             # Copy service-parameter PTP entries, if any
             domain_number = constants.PTP_PARAMETER_DEFAULT_DOMAIN
@@ -7278,6 +7310,18 @@ class ConductorManager(service.PeriodicService):
 
                 if param['name'] == constants.PTP_PARAMETER_DOMAIN_NUMBER:
                     domain_number = param['value']  # overwrite default
+                    continue  # skip it for below
+
+                if param['name'] == constants.PTP_PARAMETER_DELAY_MECHANISM:
+                    delay_mechanism = str(param['value']).upper()  # overwrite
+                    continue  # skip it for below
+
+                if param['name'] == constants.PTP_PARAMETER_TIME_STAMPING:
+                    time_stamping = str(param['value']).lower()  # overwrite
+                    continue  # skip it for below
+
+                if param['name'] == constants.PTP_PARAMETER_NETWORK_TRANSPORT:
+                    network_transport = str(param['value']).upper()  # overwrt
                     continue  # skip it for below
 
                 if param['section'] == \
@@ -7311,6 +7355,38 @@ class ConductorManager(service.PeriodicService):
                 phc2sys_uuid,
                 constants.PTP_PARAMETER_DOMAIN_NUMBER,
                 domain_number)
+            self._update_ptp_add_parameter_to_instance(
+                ptp4l_uuid,
+                constants.PTP_PARAMETER_DELAY_MECHANISM,
+                delay_mechanism)
+            self._update_ptp_add_parameter_to_instance(
+                phc2sys_uuid,
+                constants.PTP_PARAMETER_DELAY_MECHANISM,
+                delay_mechanism)
+            self._update_ptp_add_parameter_to_instance(
+                ptp4l_uuid,
+                constants.PTP_PARAMETER_TIME_STAMPING,
+                time_stamping)
+            self._update_ptp_add_parameter_to_instance(
+                phc2sys_uuid,
+                constants.PTP_PARAMETER_TIME_STAMPING,
+                time_stamping)
+            self._update_ptp_add_parameter_to_instance(
+                ptp4l_uuid,
+                constants.PTP_PARAMETER_NETWORK_TRANSPORT,
+                network_transport)
+            self._update_ptp_add_parameter_to_instance(
+                phc2sys_uuid,
+                constants.PTP_PARAMETER_NETWORK_TRANSPORT,
+                network_transport)
+
+            # Add 'boundary_clock_jbod' parameter to ptp4l instance if mode is
+            # "hardware"
+            if time_stamping == 'hardware':
+                self._update_ptp_add_parameter_to_instance(
+                    ptp4l_uuid,
+                    constants.PTP_PARAMETER_BC_JBOD,
+                    constants.PTP_BOUNDARY_CLOCK_JBOD_1)
 
         except Exception as e:
             LOG.exception(e)
