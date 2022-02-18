@@ -7008,21 +7008,6 @@ class ConductorManager(service.PeriodicService):
 
         return response
 
-    def get_osd_pool_quota(self, context, pool_name):
-        """Get the quota for an OSD pool"""
-
-        response = self._ceph.osd_get_pool_quota(pool_name)
-
-        return response
-
-    def set_osd_pool_quota(self, context, pool, max_bytes, max_objects):
-        """Set the quota for an OSD pool
-
-           Setting max_bytes or max_objects to 0 will disable that quota param
-        """
-
-        self._ceph.set_osd_pool_quota(pool, max_bytes, max_objects)
-
     def unconfigure_osd_istor(self, context, istor_obj):
         """Synchronously, have a conductor unconfigure an OSD istor.
 

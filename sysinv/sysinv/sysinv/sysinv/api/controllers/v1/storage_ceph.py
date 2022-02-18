@@ -1195,45 +1195,6 @@ def _check_pool_quotas_data(ostorceph, storceph):
                 % (total_quota_gib, int(tier_size)))
 
 
-# TODO(CephPoolsDecouple): remove
-def _update_pool_quotas(storceph):
-    # In R4, the object data pool name could be either
-    # CEPH_POOL_OBJECT_GATEWAY_NAME_HAMMER or CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL
-    object_pool_name = pecan.request.rpcapi.get_ceph_object_pool_name(pecan.request.context)
-    if object_pool_name is None:
-        raise wsme.exc.ClientSideError(_("Ceph object data pool does not exist."))
-
-    if api_helper.is_primary_ceph_tier(storceph['tier_name']):
-        pools = [{'name': constants.CEPH_POOL_VOLUMES_NAME,
-                  'quota_key': 'cinder_pool_gib'},
-                 {'name': constants.CEPH_POOL_IMAGES_NAME,
-                  'quota_key': 'glance_pool_gib'},
-                 {'name': constants.CEPH_POOL_EPHEMERAL_NAME,
-                  'quota_key': 'ephemeral_pool_gib'},
-                 {'name': object_pool_name,
-                  'quota_key': 'object_pool_gib'},
-                 {'name': constants.CEPH_POOL_KUBE_NAME,
-                  'quota_key': 'kube_pool_gib'}]
-    else:
-        pools = [{'name': "{0}-{1}".format(constants.CEPH_POOL_VOLUMES_NAME,
-                                           storceph['tier_name']),
-                  'quota_key': 'cinder_pool_gib'},
-                 {'name': "{0}-{1}".format(constants.CEPH_POOL_KUBE_NAME,
-                                           storceph['tier_name']),
-                  'quota_key': 'kube_pool_gib'}
-                 ]
-
-    for p in pools:
-        if storceph[p['quota_key']] is not None:
-            LOG.info("Setting %s pool quota to: %s GB",
-                     p['name'],
-                     storceph[p['quota_key']])
-            pool_max_bytes = storceph[p['quota_key']] * 1024 ** 3
-            pecan.request.rpcapi.set_osd_pool_quota(pecan.request.context,
-                                                    p['name'],
-                                                    pool_max_bytes)
-
-
 def _check_object_gateway_install(dbapi):
     # Ensure we have the required number of monitors
     if cutils.is_aio_system(dbapi):
