@@ -489,6 +489,11 @@ class StorageController(rest.RestController):
                                                 ihost['hostname']))
 
             self.delete_stor(stor_uuid)
+        elif _satisfy_other_conditions_to_delete_osd():
+            if ihost['administrative'] != constants.ADMIN_LOCKED:
+                raise wsme.exc.ClientSideError(_("Host %s must be locked." %
+                                                ihost['hostname']))
+            self.delete_stor(stor_uuid)
         else:
             raise wsme.exc.ClientSideError(_(
                    "Deleting a Storage Function other than '%s' and '%s' in "
@@ -516,6 +521,64 @@ class StorageController(rest.RestController):
         except Exception as e:
             LOG.exception(e)
             raise
+
+
+def _satisfy_other_conditions_to_delete_osd():
+    is_simplex = cutils.is_aio_simplex_system(pecan.request.dbapi)
+    is_ceph_backend_configured = StorageBackendConfig.has_backend_configured(
+        pecan.request.dbapi,
+        constants.SB_TYPE_CEPH
+    )
+    if is_simplex and is_ceph_backend_configured:
+        LOG.info('Verifying simplex is allowed to delete OSD')
+
+        all_stors_gt_one, amount_osd_err_msg = \
+            _amount_stors_function_osd_greater_than(1)
+
+        all_pools_size_gt_one, pools_size_err_msg = \
+            _all_pools_size_greater_than(1)
+
+        # I'm raising these ClientSideError exceptions here because this method
+        # should be called only by StorageController.delete method.
+        # This should be modified if this method is to be called in another
+        # place.
+        if not all_stors_gt_one:
+            raise wsme.exc.ClientSideError(_(amount_osd_err_msg))
+        if not all_pools_size_gt_one:
+            raise wsme.exc.ClientSideError(_(pools_size_err_msg))
+        return True
+    else:
+        LOG.info('System is not allowed to delete stor. is simplex ? {}.'
+                 'is ceph configured ? {}.'
+                 .format(is_simplex, is_ceph_backend_configured))
+    return False
+
+
+def _amount_stors_function_osd_greater_than(size):
+    amount_stors_function_osd = 0
+    stors = pecan.request.dbapi.istor_get_list()
+    for stor in stors:
+        if stor.function == constants.STOR_FUNCTION_OSD:
+            amount_stors_function_osd += 1
+    info_msg = 'Amount of stors having OSD function: {}. It must be greater' \
+               ' than {}.'.format(amount_stors_function_osd, size)
+    LOG.info(info_msg)
+    return amount_stors_function_osd > size, info_msg
+
+
+def _all_pools_size_greater_than(size):
+    ceph_helper = ceph.CephApiOperator()
+    pools = ceph_helper.list_osd_pools()
+    for name in pools:
+        pool_data = ceph_helper.osd_get_pool_param(name, 'size')
+        pool_size = pool_data['size']
+        if pool_size <= size:
+            error_msg = 'pool {} size is {} and it should be greater' \
+                        ' than {}.'.format(name, pool_size, size)
+            LOG.info(error_msg)
+            return False, error_msg
+    LOG.info('all pools size greater than {}'.format(size))
+    return True, None
 
 
 def _check_host(stor):

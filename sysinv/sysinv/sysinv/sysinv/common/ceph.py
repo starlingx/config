@@ -878,6 +878,16 @@ class CephApiOperator(object):
         else:
             return pools['output']
 
+    def osd_get_pool_param(self, pool_name, param):
+        response, body = self._ceph_api.osd_pool_get(pool_name, param,
+                                                     body='json')
+        if not response.ok:
+            raise exception.CephPoolGetParamFailure(
+                pool_name=pool_name,
+                param=param,
+                reason=response.reason)
+        return body['output']
+
 
 def fix_crushmap(dbapi=None):
     """ Set Ceph's CRUSH Map based on storage model """
