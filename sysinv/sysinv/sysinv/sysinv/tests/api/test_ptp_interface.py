@@ -191,6 +191,40 @@ class TestUpdatePtpInterface(BasePtpInterfaceTestCase):
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
 
+    def test_update_ptp_interface_delete_parameter_failed_not_found(self):
+        fake_param_keypair = "fakeParam=fakeValue"
+        error_message = ("No PTP parameter object found for %s" %
+            fake_param_keypair)
+        response = self.patch_json(
+            self.get_single_url(self.uuid),
+            [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'value': fake_param_keypair,
+              'op': constants.PTP_PATCH_OPERATION_DELETE}],
+            headers=self.API_HEADERS,
+            expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn(error_message, response.json['error_message'])
+
+    def test_update_ptp_interface_delete_parameter_failed_not_owned(self):
+        fake_param_name = "fakeParam"
+        fake_param_value = "fakeValue"
+        fake_param_keypair = "%s=%s" % (fake_param_name, fake_param_value)
+        error_message = ("No PTP parameter object %s is owned by the given "
+            "interface" % fake_param_keypair)
+        dbutils.create_test_ptp_parameter(name=fake_param_name,
+            value=fake_param_value)
+        response = self.patch_json(
+            self.get_single_url(self.uuid),
+            [{'path': constants.PTP_PARAMETER_ARRAY_PATH,
+              'value': fake_param_keypair,
+              'op': constants.PTP_PATCH_OPERATION_DELETE}],
+            headers=self.API_HEADERS,
+            expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn(error_message, response.json['error_message'])
+
 
 class TestInterfacePtpInterface(BasePtpInterfaceTestCase):
     def setUp(self):

@@ -277,8 +277,15 @@ class PtpInterfaceController(rest.RestController):
                 LOG.debug("PtpInterfaceController.patch: added %s to %s" %
                           (param_keypair, uuid))
             else:
-                pecan.request.dbapi.ptp_interface_parameter_remove(uuid,
-                                                                   param_uuid)
+                try:
+                    pecan.request.dbapi.ptp_interface_parameter_remove(
+                        uuid, param_uuid)
+
+                except exception.NotFound:
+                    raise wsme.exc.ClientSideError(
+                        _("No PTP parameter object %s is owned by the given "
+                          "interface" % param_keypair))
+
                 LOG.debug("PtpInterfaceController.patch: removed %s from %s" %
                           (param_keypair, uuid))
 
