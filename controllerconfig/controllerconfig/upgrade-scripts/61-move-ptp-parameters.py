@@ -27,20 +27,28 @@ from psycopg2.extras import DictCursor
 
 LOG = log.get_logger(__name__)
 
-PTP_PARAMETER_OWNER_INSTANCE = 'ptp-instance'
+INTERFACE_PTP_ROLE_SLAVE = 'slave'
 
 # PTP instance types
 PTP_INSTANCE_TYPE_PTP4L = 'ptp4l'
 PTP_INSTANCE_TYPE_PHC2SYS = 'phc2sys'
 
-# PTP instances created during migration from service parameters
+# PTP instances created during migration
 PTP_INSTANCE_LEGACY_PTP4L = 'ptp4l-legacy'
 PTP_INSTANCE_LEGACY_PHC2SYS = 'phc2sys-legacy'
 
+# PTP interfaces created during migration
+PTP_INTERFACE_LEGACY_PTP4L = 'ptp4lif-legacy'
+PTP_INTERFACE_LEGACY_PHC2SYS = 'phc2sysif-legacy'
+
+# PTP parameter: owner types
+PTP_PARAMETER_OWNER_INSTANCE = 'ptp-instance'
+PTP_PARAMETER_OWNER_INTERFACE = 'ptp-interface'
+
 # Global PTP configuration migrated to legacy instance
-PTP_PARAMETER_MECHANISM = 'mechanism'
-PTP_PARAMETER_MODE = 'mode'
-PTP_PARAMETER_TRANSPORT = 'transport'
+PTP_PARAMETER_DELAY_MECHANISM = 'delay_mechanism'
+PTP_PARAMETER_TIME_STAMPING = 'time_stamping'
+PTP_PARAMETER_NETWORK_TRANSPORT = 'network_transport'
 
 # PTP service parameter sections
 SERVICE_PARAM_SECTION_PTP_GLOBAL = 'global'
@@ -50,6 +58,8 @@ SERVICE_PARAM_SECTION_PTP_PHC2SYS = 'phc2sys'
 PTP_PARAMETER_UDS_ADDRESS = 'uds_address'
 PTP_PARAMETER_DOMAIN_NUMBER = 'domainNumber'
 PTP_PARAMETER_DEFAULT_DOMAIN = '0'
+PTP_PARAMETER_BC_JBOD = 'boundary_clock_jbod'
+PTP_BOUNDARY_CLOCK_JBOD_1 = '1'
 
 
 def main():
@@ -109,9 +119,7 @@ def _legacy_ptp4l_not_found(connection):
         return True
 
 
-def _insert_ptp_parameter_owner(connection,
-                                type=PTP_PARAMETER_OWNER_INSTANCE,
-                                capabilities=None):
+def _insert_ptp_parameter_owner(connection, type, capabilities=None):
     owner_uuid = uuidutils.generate_uuid()
 
     with connection.cursor(cursor_factory=DictCursor) as cur:
@@ -139,6 +147,19 @@ def _insert_ptp_instance(connection,
                     "(id, name, service, extra_info) "
                     "VALUES (%s, %s, %s, %s);",
                     (id, name, service, extra_info))
+
+
+def _insert_ptp_interface(connection,
+                          id,
+                          name,
+                          instance_id,
+                          extra_info=None):
+    with connection.cursor(cursor_factory=DictCursor) as cur:
+        LOG.debug("Creating PTP interface %s id %d" % (name, id))
+        cur.execute("INSERT INTO ptp_interfaces "
+                    "(id, name, ptp_instance_id, extra_info) "
+                    "VALUES (%s, %s, %s, %s);",
+                    (id, name, instance_id, extra_info))
 
 
 def _insert_ptp_parameter(connection, name, value):
@@ -175,6 +196,17 @@ def _assign_instance_to_host(connection, instance_id, host_id):
                      instance_id))
 
 
+def _assign_ptp_to_interface(connection, ptp_interface_id, interface_id):
+    with connection.cursor(cursor_factory=DictCursor) as cur:
+        LOG.debug("Assigning PTP interface %d to interface %d" %
+                  (ptp_interface_id, interface_id))
+        cur.execute("INSERT INTO ptp_interface_maps "
+                    "(created_at, uuid, interface_id, ptp_interface_id) "
+                    "VALUES (%s, %s, %s, %s);",
+                    (datetime.now(), uuidutils.generate_uuid(), interface_id,
+                     ptp_interface_id))
+
+
 def _move_ptp_parameters(connection):
     with connection.cursor(cursor_factory=DictCursor) as cur:
         # List all the hosts with clock_synchronization=ptp
@@ -196,27 +228,57 @@ def _move_ptp_parameters(connection):
         # No need for upgrade
         return
 
+    with connection.cursor(cursor_factory=DictCursor) as cur:
+        # List all the interfaces with ptp_role=slave
+        cur.execute("SELECT id FROM interfaces WHERE ptp_role = %s;",
+                    (INTERFACE_PTP_ROLE_SLAVE,))
+        slave_ifaces = cur.fetchall()
+        LOG.debug("There are %d interfaces with ptp_role=slave" %
+                  len(slave_ifaces))
+
     LOG.info("Creating PTP instances for legacy parameters")
 
+    # Take system-wide parameters from legacy configuration
     with connection.cursor(cursor_factory=DictCursor) as cur:
-        # Copy global PTP configuration
         cur.execute("SELECT mechanism, mode, transport FROM ptp;")
         ptp_config = cur.fetchone()
 
+    delay_mechanism = str(ptp_config['mechanism']).upper()
+    time_stamping = str(ptp_config['mode']).lower()
+    network_transport = str(ptp_config['transport']).upper()
+
     # Legacy instance for system-wide parameters and those of
     # section "global" in service-parameters table
-    (ptp4l_id, ptp4l_uuid) = _insert_ptp_parameter_owner(connection)
+    (ptp4l_id, ptp4l_uuid) = _insert_ptp_parameter_owner(
+        connection, PTP_PARAMETER_OWNER_INSTANCE)
     _insert_ptp_instance(connection,
                          ptp4l_id,
                          PTP_INSTANCE_LEGACY_PTP4L,
                          PTP_INSTANCE_TYPE_PTP4L)
 
+    # Legacy PTP interface associated to legacy ptp4l instance
+    (ptp4lif_id, ptp4lif_uuid) = _insert_ptp_parameter_owner(
+        connection, PTP_PARAMETER_OWNER_INTERFACE)
+    _insert_ptp_interface(connection,
+                          ptp4lif_id,
+                          PTP_INTERFACE_LEGACY_PTP4L,
+                          ptp4l_id)
+
     # Legacy instance for parameters of section "phc2sys"
-    (phc2sys_id, phc2sys_uuid) = _insert_ptp_parameter_owner(connection)
+    (phc2sys_id, phc2sys_uuid) = _insert_ptp_parameter_owner(
+        connection, PTP_PARAMETER_OWNER_INSTANCE)
     _insert_ptp_instance(connection,
                          phc2sys_id,
                          PTP_INSTANCE_LEGACY_PHC2SYS,
                          PTP_INSTANCE_TYPE_PHC2SYS)
+
+    # Legacy PTP interface associated to legacy phc2sys instance
+    (phc2sysif_id, phc2sysif_uuid) = _insert_ptp_parameter_owner(
+        connection, PTP_PARAMETER_OWNER_INTERFACE)
+    _insert_ptp_interface(connection,
+                          phc2sysif_id,
+                          PTP_INTERFACE_LEGACY_PHC2SYS,
+                          phc2sys_id)
 
     # Add 'uds_address' parameter to phy2sys instance for linkage
     # with ptp4l instance
@@ -226,60 +288,94 @@ def _move_ptp_parameters(connection):
                                              uds_address_path)
     _add_parameter_to_instance(connection, phc2sys_uuid, uds_address_uuid)
 
-    # Assign legacy instances to all hosts with
-    # clock_synchronization=ptp
+    # Assign legacy instances to all hosts with clock_synchronization=ptp
     for host in ptp_hosts:
         _assign_instance_to_host(connection, ptp4l_id, host['id'])
         _assign_instance_to_host(connection, phc2sys_id, host['id'])
 
-        ptp_mechanism_uuid = _insert_ptp_parameter(
-            connection, PTP_PARAMETER_MECHANISM,
-            ptp_config[PTP_PARAMETER_MECHANISM])
-        _add_parameter_to_instance(connection, ptp4l_uuid, ptp_mechanism_uuid)
-        ptp_mode_uuid = _insert_ptp_parameter(
-            connection, PTP_PARAMETER_MODE,
-            ptp_config[PTP_PARAMETER_MODE])
-        _add_parameter_to_instance(connection, ptp4l_uuid, ptp_mode_uuid)
-        ptp_transport_uuid = _insert_ptp_parameter(
-            connection, PTP_PARAMETER_TRANSPORT,
-            ptp_config[PTP_PARAMETER_TRANSPORT])
-        _add_parameter_to_instance(connection, ptp4l_uuid, ptp_transport_uuid)
+    # Assign legacy PTP interfaces to all interfaces with ptp_role=slave
+    for iface in slave_ifaces:
+        _assign_ptp_to_interface(connection, ptp4lif_id, iface['id'])
+        _assign_ptp_to_interface(connection, phc2sysif_id, iface['id'])
 
-        # Copy service-parameter PTP entries, if any
-        domain_number = PTP_PARAMETER_DEFAULT_DOMAIN
-        for param in param_entries:
+    # Copy service-parameter PTP entries, if any
+    domain_number = PTP_PARAMETER_DEFAULT_DOMAIN
+    for param in param_entries:
 
-            if param['name'] == PTP_PARAMETER_DOMAIN_NUMBER:
-                domain_number = param['value']  # overwrite default
-                continue  # skip it for below
+        if param['name'] == PTP_PARAMETER_DOMAIN_NUMBER:
+            domain_number = param['value']  # overwrite default
+            continue  # skip it for below
 
-            if param['section'] == SERVICE_PARAM_SECTION_PTP_GLOBAL:
-                owner_uuid = ptp4l_uuid
-            elif param['section'] == SERVICE_PARAM_SECTION_PTP_PHC2SYS:
-                owner_uuid = phc2sys_uuid
-            else:
-                raise Exception("Unexpected PTP section in "
-                                "'service-parameter' table")
+        if param['name'] == PTP_PARAMETER_DELAY_MECHANISM:
+            delay_mechanism = str(param['value']).upper()  # overwrite global
+            continue  # skip it for below
 
-            param_uuid = _insert_ptp_parameter(connection,
-                                               param['name'],
-                                               param['value'])
-            _add_parameter_to_instance(connection, owner_uuid, param_uuid)
+        if param['name'] == PTP_PARAMETER_TIME_STAMPING:
+            time_stamping = str(param['value']).lower()  # overwrite global
+            continue  # skip it for below
 
-            # Whatever 'global' parameter has been found, it must be
-            # added also to phc2sys instance, since now this has own
-            # configuration file
-            if param['section'] == SERVICE_PARAM_SECTION_PTP_GLOBAL:
-                _add_parameter_to_instance(connection,
-                                           phc2sys_uuid,
-                                           param_uuid)
+        if param['name'] == PTP_PARAMETER_NETWORK_TRANSPORT:
+            network_transport = str(param['value']).upper()  # overwrite global
+            continue  # skip it for below
 
-        domain_number_uuid = _insert_ptp_parameter(
-            connection, PTP_PARAMETER_DOMAIN_NUMBER, domain_number)
-        _add_parameter_to_instance(connection, ptp4l_uuid, domain_number_uuid)
-        _add_parameter_to_instance(connection,
-                                   phc2sys_uuid,
-                                   domain_number_uuid)
+        if param['section'] == SERVICE_PARAM_SECTION_PTP_GLOBAL:
+            owner_uuid = ptp4l_uuid
+        elif param['section'] == SERVICE_PARAM_SECTION_PTP_PHC2SYS:
+            owner_uuid = phc2sys_uuid
+        else:
+            raise Exception("Unexpected PTP section in "
+                            "'service-parameter' table")
+
+        param_uuid = _insert_ptp_parameter(connection,
+                                           param['name'],
+                                           param['value'])
+        _add_parameter_to_instance(connection, owner_uuid, param_uuid)
+
+        # Whatever 'global' parameter has been found, it must be
+        # added also to phc2sys instance, since now this has own
+        # configuration file
+        if param['section'] == SERVICE_PARAM_SECTION_PTP_GLOBAL:
+            _add_parameter_to_instance(connection,
+                                       phc2sys_uuid,
+                                       param_uuid)
+
+    domain_number_uuid = _insert_ptp_parameter(
+        connection, PTP_PARAMETER_DOMAIN_NUMBER, domain_number)
+    _add_parameter_to_instance(connection, ptp4l_uuid, domain_number_uuid)
+    _add_parameter_to_instance(connection,
+                               phc2sys_uuid,
+                               domain_number_uuid)
+    ptp_delay_mechanism_uuid = _insert_ptp_parameter(
+        connection, PTP_PARAMETER_DELAY_MECHANISM, delay_mechanism)
+    _add_parameter_to_instance(connection,
+                               ptp4l_uuid,
+                               ptp_delay_mechanism_uuid)
+    _add_parameter_to_instance(connection,
+                               phc2sys_uuid,
+                               ptp_delay_mechanism_uuid)
+    ptp_time_stamping_uuid = _insert_ptp_parameter(
+        connection, PTP_PARAMETER_TIME_STAMPING, time_stamping)
+    _add_parameter_to_instance(connection,
+                               ptp4l_uuid,
+                               ptp_time_stamping_uuid)
+    _add_parameter_to_instance(connection,
+                               phc2sys_uuid,
+                               ptp_time_stamping_uuid)
+    ptp_network_transport_uuid = _insert_ptp_parameter(
+        connection, PTP_PARAMETER_NETWORK_TRANSPORT, network_transport)
+    _add_parameter_to_instance(connection,
+                               ptp4l_uuid,
+                               ptp_network_transport_uuid)
+    _add_parameter_to_instance(connection,
+                               phc2sys_uuid,
+                               ptp_network_transport_uuid)
+
+    # Add 'boundary_clock_jbod' parameter to ptp4l instance if mode is
+    # "hardware"
+    if time_stamping == 'hardware':
+        bc_clock_jbod_uuid = _insert_ptp_parameter(
+            connection, PTP_PARAMETER_BC_JBOD, PTP_BOUNDARY_CLOCK_JBOD_1)
+        _add_parameter_to_instance(connection, ptp4l_uuid, bc_clock_jbod_uuid)
 
 
 if __name__ == "__main__":
