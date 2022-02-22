@@ -7235,8 +7235,8 @@ class ConductorManager(service.PeriodicService):
             slave_ifaces_list = [
                 iface
                 for iface in ifaces_list
-                if iface['ptp_role'] == constants.INTERFACE_PTP_ROLE_SLAVE]
-            LOG.debug("There are %d interfaces with ptp_role=slave" %
+                if iface['ptp_role'] != constants.INTERFACE_PTP_ROLE_NONE]
+            LOG.debug("There are %d interfaces with ptp_role != none" %
                       len(slave_ifaces_list))
 
             LOG.info("Creating PTP instances for legacy parameters")
@@ -7269,7 +7269,7 @@ class ConductorManager(service.PeriodicService):
             # Add 'uds_address' parameter to phy2sys instance for linkage with
             # ptp4l instance
             uds_address_path = \
-                '/var/run/%s' % constants.PTP_INSTANCE_LEGACY_PTP4L
+                '/var/run/ptp4l-%s' % constants.PTP_INSTANCE_LEGACY_PTP4L
             self._update_ptp_add_parameter_to_instance(
                 phc2sys_uuid,
                 constants.PTP_PARAMETER_UDS_ADDRESS,
@@ -7292,6 +7292,12 @@ class ConductorManager(service.PeriodicService):
             # Copy service-parameter PTP entries, if any
             domain_number = constants.PTP_PARAMETER_DEFAULT_DOMAIN
             for param in ptp_svc_parameters_list:
+
+                if param['name'] == constants.PTP_PARAMETER_UPDATE_RATE or \
+                        (param['name'] ==
+                         constants.PTP_PARAMETER_SUMMARY_UPDATES):
+                    LOG.info("Found %s parameter, ignored" % param['name'])
+                    continue
 
                 if param['name'] == constants.PTP_PARAMETER_DOMAIN_NUMBER:
                     domain_number = param['value']  # overwrite default

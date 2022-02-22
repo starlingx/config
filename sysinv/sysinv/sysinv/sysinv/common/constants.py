@@ -1888,6 +1888,10 @@ PTP_PARAMETER_DOMAIN_NUMBER = 'domainNumber'
 PTP_PARAMETER_DEFAULT_DOMAIN = '0'
 PTP_PARAMETER_BC_JBOD = 'boundary_clock_jbod'
 
+# PTP service parameters NOT migrated from legacy configuration
+PTP_PARAMETER_UPDATE_RATE = 'update-rate'
+PTP_PARAMETER_SUMMARY_UPDATES = 'summary-updates'
+
 # Patching PTP entities
 PTP_INSTANCE_ARRAY_PATH = '/ptp_instances/-'
 PTP_INTERFACE_ARRAY_PATH = '/ptp_interfaces/-'
