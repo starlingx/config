@@ -115,9 +115,8 @@ KUBE_ROOTCA_UPDATED_HOST_TRUSTNEWCA = 'updated-host-trust-new-ca'
 KUBE_ROOTCA_UPDATING_HOST_TRUSTNEWCA_FAILED = 'updating-host-trust-new-ca-failed'
 
 # Kubeadm and Kubelet initial versions
-# This matches the version at the time the kube_cmd_versions table
-# was introduced.
-K8S_INITIAL_CMD_VERSION = '1.18.1'
+# This corresponds to the latest K8s version from the previous release
+K8S_INITIAL_CMD_VERSION = '1.21.8'
 
 # Kubernetes constants
 MANIFEST_APPLY_TIMEOUT = 60 * 15
