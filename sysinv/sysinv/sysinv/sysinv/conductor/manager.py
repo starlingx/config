@@ -8570,21 +8570,6 @@ class ConductorManager(service.PeriodicService):
                                             config_uuid,
                                             config_dict)
 
-    def _update_pciirqaffinity_config(self, context):
-        """ Update the PciIrqAffinity's configuration. """
-        personalities = [constants.WORKER]
-
-        config_uuid = self._config_update_hosts(context, personalities)
-
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::pciirqaffinity::runtime']
-        }
-
-        self._config_apply_runtime_manifest(context,
-                                            config_uuid,
-                                            config_dict)
-
     def _config_sm_stx_openstack(self, context):
         """ provision dbmon """
         personalities = [constants.CONTROLLER]
