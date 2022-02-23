@@ -27,7 +27,7 @@ from psycopg2.extras import DictCursor
 
 LOG = log.get_logger(__name__)
 
-INTERFACE_PTP_ROLE_SLAVE = 'slave'
+INTERFACE_PTP_ROLE_NONE = 'none'
 
 # PTP instance types
 PTP_INSTANCE_TYPE_PTP4L = 'ptp4l'
@@ -60,6 +60,10 @@ PTP_PARAMETER_DOMAIN_NUMBER = 'domainNumber'
 PTP_PARAMETER_DEFAULT_DOMAIN = '0'
 PTP_PARAMETER_BC_JBOD = 'boundary_clock_jbod'
 PTP_BOUNDARY_CLOCK_JBOD_1 = '1'
+
+# PTP service parameters NOT migrated from legacy configuration
+PTP_PARAMETER_UPDATE_RATE = 'update-rate'
+PTP_PARAMETER_SUMMARY_UPDATES = 'summary-updates'
 
 
 def main():
@@ -230,10 +234,10 @@ def _move_ptp_parameters(connection):
 
     with connection.cursor(cursor_factory=DictCursor) as cur:
         # List all the interfaces with ptp_role=slave
-        cur.execute("SELECT id FROM interfaces WHERE ptp_role = %s;",
-                    (INTERFACE_PTP_ROLE_SLAVE,))
+        cur.execute("SELECT id FROM interfaces WHERE ptp_role <> %s;",
+                    (INTERFACE_PTP_ROLE_NONE,))
         slave_ifaces = cur.fetchall()
-        LOG.debug("There are %d interfaces with ptp_role=slave" %
+        LOG.debug("There are %d interfaces with ptp_role != none" %
                   len(slave_ifaces))
 
     LOG.info("Creating PTP instances for legacy parameters")
@@ -282,7 +286,7 @@ def _move_ptp_parameters(connection):
 
     # Add 'uds_address' parameter to phy2sys instance for linkage
     # with ptp4l instance
-    uds_address_path = '/var/run/%s' % PTP_INSTANCE_LEGACY_PTP4L
+    uds_address_path = '/var/run/ptp4l-%s' % PTP_INSTANCE_LEGACY_PTP4L
     uds_address_uuid = _insert_ptp_parameter(connection,
                                              PTP_PARAMETER_UDS_ADDRESS,
                                              uds_address_path)
@@ -301,6 +305,11 @@ def _move_ptp_parameters(connection):
     # Copy service-parameter PTP entries, if any
     domain_number = PTP_PARAMETER_DEFAULT_DOMAIN
     for param in param_entries:
+
+        if (param['name'] == PTP_PARAMETER_UPDATE_RATE or
+                param['name'] == PTP_PARAMETER_SUMMARY_UPDATES):
+            LOG.info("Found %s parameter, ignored" % param['name'])
+            continue
 
         if param['name'] == PTP_PARAMETER_DOMAIN_NUMBER:
             domain_number = param['value']  # overwrite default
