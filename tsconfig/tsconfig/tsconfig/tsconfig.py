@@ -241,6 +241,11 @@ UPGRADE_ROLLBACK_FLAG = os.path.join(
 UPGRADE_ABORT_FILE = '.upgrade_abort'
 UPGRADE_ABORT_FLAG = os.path.join(
     CONFIG_PATH, UPGRADE_ABORT_FILE)
+# Update/upgrade from legacy PTP configuration has been already run
+# TODO(douglashenrique.koerich): remove it in a later release # pylint: disable=fixme
+PTP_UPDATE_PARAMETERS_DONE = '.update_ptp_parameters_done'
+PTP_UPDATE_PARAMETERS_FLAG = os.path.join(CONFIG_PATH,
+                                          PTP_UPDATE_PARAMETERS_DONE)
 
 # Set on controller-0 (by controller-1) to indicate that data migration has
 # started

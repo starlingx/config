@@ -7174,11 +7174,6 @@ class ConductorManager(service.PeriodicService):
                   (ptp_interface_id, interface_id))
 
     def _update_ptp_parameters(self):
-        # TODO: this method is supposed to be called in the context of the same
-        # patch that is deprecating the former PTP APIs. Thus, in a future
-        # release (probably the next one) it can be removed
-        LOG.info("Checking for pending update of PTP parameters")
-
         """This function moves PTP legacy configuration from other tables. Once
         it is done, the subsequent calls will find the generated PTP instance at
         database and will return quickly.
@@ -7197,18 +7192,32 @@ class ConductorManager(service.PeriodicService):
           'ptp4l' entry in 'ptp_instances' and inserts the corresponding entry
           in 'ptp_parameters'.
         """
+        # TODO: this method is supposed to be called in the context of the same
+        # patch that is deprecating the former PTP APIs. Thus, in a future
+        # release (probably the next one) it can be removed
+        check_file = tsc.PTP_UPDATE_PARAMETERS_FLAG
+        if os.path.isfile(check_file):
+            LOG.debug("Already done with legacy PTP configuration")
+            return
+
+        # Add check file to avoid re-running this method (with late creation of
+        # legacy instances)
+        open(check_file, 'w').close()
+
         try:
-            # Look for legacy ptp4l instance already in database, which is an
-            # indication this migration was performed before (probably when
-            # upgrading the release)
-            try:
-                ptp_instance = self.dbapi.ptp_instance_get_by_name(
-                    constants.PTP_INSTANCE_LEGACY_PTP4L)
-                LOG.debug("Legacy ptp4l instance found with id = %s" %
-                          ptp_instance['id'])
-                return
-            except exception.NotFound:
-                LOG.debug("No legacy ptp4l instance found")
+            # This additional check ensures that patch re-apply won't fail
+            # because legacy entries weren't removed together with the check
+            # file and the patch itself, when it got removed earlier
+            legacy_names = [constants.PTP_INSTANCE_LEGACY_PTP4L,
+                            constants.PTP_INSTANCE_LEGACY_PHC2SYS]
+            for name in legacy_names:
+                try:
+                    ptp_instance = self.dbapi.ptp_instance_get_by_name(name)
+                    LOG.info("Legacy PTP instance %s found with id = %s, "
+                             "skipping update" % (name, ptp_instance['id']))
+                    return
+                except exception.NotFound:
+                    LOG.debug("Legacy PTP instance %s not found" % name)
 
             # List all the hosts with clock_synchronization=ptp
             hosts_list = self.dbapi.ihost_get_list()
@@ -7230,14 +7239,14 @@ class ConductorManager(service.PeriodicService):
                 # No need for upgrade
                 return
 
-            # List all the interfaces with ptp_role=slave
+            # List all the interfaces with ptp_role!=none
             ifaces_list = self.dbapi.iinterface_get_list()
-            slave_ifaces_list = [
+            ptp_ifaces_list = [
                 iface
                 for iface in ifaces_list
                 if iface['ptp_role'] != constants.INTERFACE_PTP_ROLE_NONE]
             LOG.debug("There are %d interfaces with ptp_role != none" %
-                      len(slave_ifaces_list))
+                      len(ptp_ifaces_list))
 
             LOG.info("Creating PTP instances for legacy parameters")
 
@@ -7281,9 +7290,8 @@ class ConductorManager(service.PeriodicService):
                 self._update_ptp_assign_instance_to_host(ptp4l_id, host['id'])
                 self._update_ptp_assign_instance_to_host(phc2sys_id, host['id'])
 
-            # Assign legacy PTP interfaces to all interfaces with
-            # ptp_role=slave
-            for iface in slave_ifaces_list:
+            # Assign legacy PTP interfaces to all interfaces with ptp_role!=none
+            for iface in ptp_ifaces_list:
                 self._update_ptp_assign_ptp_to_interface(ptp4lif_id,
                                                          iface['id'])
                 self._update_ptp_assign_ptp_to_interface(phc2sysif_id,

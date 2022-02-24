@@ -18,6 +18,7 @@
 #   'ptp4l' entry in 'ptp_instances' and inserts the corresponding entry
 #   in 'ptp_parameters'.
 
+import os
 import sys
 import psycopg2
 from controllerconfig.common import log
@@ -28,6 +29,11 @@ from psycopg2.extras import DictCursor
 LOG = log.get_logger(__name__)
 
 INTERFACE_PTP_ROLE_NONE = 'none'
+PLATFORM_PATH = '/opt/platform'  # following tsconfig
+
+# Hidden file indicating the update/upgrade from legacy configuration
+# has been already run
+PTP_UPDATE_PARAMETERS_DONE = '.update_ptp_parameters_done'
 
 # PTP instance types
 PTP_INSTANCE_TYPE_PTP4L = 'ptp4l'
@@ -88,42 +94,52 @@ def main():
 
     LOG.info("%s invoked from_release = %s to_release = %s action = %s"
              % (sys.argv[0], from_release, to_release, action))
+    res = 0
     if action == "migrate" and (
        from_release == '21.05' or from_release == '21.12'):
-        conn = psycopg2.connect("dbname=sysinv user=postgres")
-        try:
-            if _legacy_ptp4l_not_found(conn):
-                _move_ptp_parameters(conn)
-            res = 0
-        except psycopg2.Error as ex:
-            LOG.exception(ex)
-            res = 1
-        except Exception as ex:
-            LOG.exception(ex)
-            res = 1
-        finally:
-            conn.close()
-            return res
+        # Avoid attempt of updating PTP configuration after this upgrade
+        TO_CONFIG_PATH = PLATFORM_PATH + '/config/' + to_release + '/'
+        to_file = os.path.join(TO_CONFIG_PATH, PTP_UPDATE_PARAMETERS_DONE)
+        open(to_file, 'w').close()
+
+        # First check on filesystem to detect if some update from old PTP
+        # configuration has been already done (before upgrading)
+        FROM_CONFIG_PATH = PLATFORM_PATH + '/config/' + from_release + '/'
+        from_file = os.path.join(FROM_CONFIG_PATH, PTP_UPDATE_PARAMETERS_DONE)
+        if not os.path.isfile(from_file):
+            conn = psycopg2.connect("dbname=sysinv user=postgres")
+            try:
+                # Second check, using the restored database contents
+                if _legacy_instances_not_found(conn):
+                    _move_ptp_parameters(conn)
+            except psycopg2.Error as ex:
+                LOG.exception(ex)
+                res = 1
+            except Exception as ex:
+                LOG.exception(ex)
+                res = 1
+            finally:
+                conn.close()
+
+    return res
 
 
-def _legacy_ptp4l_not_found(connection):
+def _legacy_instances_not_found(connection):
     with connection.cursor(cursor_factory=DictCursor) as cur:
-        # Look for legacy ptp4l instance already in database, which is an
-        # indication this migration was performed before (probably when
-        # applying an update/patch)
-        cur.execute("SELECT id FROM ptp_instances WHERE name = %s;",
-                    (PTP_INSTANCE_LEGACY_PTP4L,))
-        ptp4l_instance = cur.fetchone()
-        if ptp4l_instance is not None:
-            LOG.info("Legacy ptp4l instance found with id = %s" %
-                     ptp4l_instance['id'])
+        cur.execute("SELECT id FROM ptp_instances WHERE "
+                    "name = %s OR name = %s;",
+                    (PTP_INSTANCE_LEGACY_PTP4L,
+                     PTP_INSTANCE_LEGACY_PHC2SYS))
+        instance = cur.fetchone()
+        if instance is not None:
+            LOG.info("Legacy instance found with id = %s" % instance['id'])
             return False
 
-        LOG.info("No legacy ptp4l instance found")
-        return True
+    LOG.info("No legacy instances found")
+    return True
 
 
-def _insert_ptp_parameter_owner(connection, type, capabilities=None):
+def _insert_ptp_parameter_owner(connection, owner_type, capabilities=None):
     owner_uuid = uuidutils.generate_uuid()
 
     with connection.cursor(cursor_factory=DictCursor) as cur:
@@ -131,7 +147,7 @@ def _insert_ptp_parameter_owner(connection, type, capabilities=None):
         cur.execute("INSERT INTO ptp_parameter_owners "
                     "(created_at, uuid, type, capabilities)"
                     "VALUES (%s, %s, %s, %s);",
-                    (datetime.now(), owner_uuid, type, capabilities))
+                    (datetime.now(), owner_uuid, owner_type, capabilities))
         cur.execute("SELECT id FROM ptp_parameter_owners WHERE uuid = %s;",
                     (owner_uuid,))
         row = cur.fetchone()
@@ -233,12 +249,12 @@ def _move_ptp_parameters(connection):
         return
 
     with connection.cursor(cursor_factory=DictCursor) as cur:
-        # List all the interfaces with ptp_role=slave
+        # List all the interfaces with ptp_role!=none
         cur.execute("SELECT id FROM interfaces WHERE ptp_role <> %s;",
                     (INTERFACE_PTP_ROLE_NONE,))
-        slave_ifaces = cur.fetchall()
+        ptp_ifaces = cur.fetchall()
         LOG.debug("There are %d interfaces with ptp_role != none" %
-                  len(slave_ifaces))
+                  len(ptp_ifaces))
 
     LOG.info("Creating PTP instances for legacy parameters")
 
@@ -297,8 +313,8 @@ def _move_ptp_parameters(connection):
         _assign_instance_to_host(connection, ptp4l_id, host['id'])
         _assign_instance_to_host(connection, phc2sys_id, host['id'])
 
-    # Assign legacy PTP interfaces to all interfaces with ptp_role=slave
-    for iface in slave_ifaces:
+    # Assign legacy PTP interfaces to all interfaces with ptp_role!=none
+    for iface in ptp_ifaces:
         _assign_ptp_to_interface(connection, ptp4lif_id, iface['id'])
         _assign_ptp_to_interface(connection, phc2sysif_id, iface['id'])
 
@@ -385,6 +401,10 @@ def _move_ptp_parameters(connection):
         bc_clock_jbod_uuid = _insert_ptp_parameter(
             connection, PTP_PARAMETER_BC_JBOD, PTP_BOUNDARY_CLOCK_JBOD_1)
         _add_parameter_to_instance(connection, ptp4l_uuid, bc_clock_jbod_uuid)
+
+    # Committing all changes
+    LOG.info("Committing PTP legacy configuration into database")
+    connection.commit()
 
 
 if __name__ == "__main__":
