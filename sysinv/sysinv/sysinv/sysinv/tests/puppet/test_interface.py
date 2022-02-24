@@ -326,6 +326,10 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
     def setUp(self):
         super(InterfaceTestCase, self).setUp()
         self._setup_context()
+        p = mock.patch('sysinv.puppet.interface.is_syscfg_network')
+        self.mock_puppet_interface_sysconfig = p.start()
+        self.mock_puppet_interface_sysconfig.return_value = True
+        self.addCleanup(p.stop)
 
     def _setup_configuration(self):
         # Create a single port/interface for basic function testing
@@ -1111,6 +1115,33 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             ifname=ifname, method=method,
             ipaddress=ipaddress, netmask=netmask, **kwargs)
 
+    def _get_network_config_ifupdown(self, ifname='eth0', ensure='present',
+                            family='inet', method='dhcp',
+                            hotplug='false', onboot='true',
+                            ipaddress=None, netmask=None,
+                            options=None):
+        config = {'ifname': ifname,
+                  'ensure': ensure,
+                  'family': family,
+                  'method': method,
+                  'hotplug': hotplug,
+                  'onboot': onboot}
+        if ipaddress:
+            config['ipaddress'] = ipaddress
+        if netmask:
+            config['netmask'] = netmask
+        config['options'] = options or {}
+        return config
+
+    def _get_static_network_config_ifupdown(self, **kwargs):
+        ifname = kwargs.pop('ifname', 'eth0')
+        method = kwargs.pop('method', 'static')
+        ipaddress = kwargs.pop('ipaddress', '192.168.1.2')
+        netmask = kwargs.pop('netmask', '255.255.255.0')
+        return self._get_network_config_ifupdown(
+            ifname=ifname, method=method,
+            ipaddress=ipaddress, netmask=netmask, **kwargs)
+
     def _get_route_config(self, name='default', ensure='present',
                           gateway='1.2.3.1', interface='eth0',
                           netmask='0.0.0.0', network='default',
@@ -1153,6 +1184,13 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             ifname=interface.LOOPBACK_IFNAME, method=interface.LOOPBACK_METHOD)
         return interface.format_network_config(network_config)
 
+    def _get_ipv6_autoconf_off(self, os_ifname):
+        autoconf_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/autoconf'.format(os_ifname)
+        accept_ra_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/accept_ra'.format(os_ifname)
+        accept_redir_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/accept_redirects'.format(os_ifname)
+        ipv6_autocnf_off = '{}; {}; {}'.format(autoconf_off, accept_ra_off, accept_redir_off)
+        return ipv6_autocnf_off
+
     def test_generate_loopback_config(self):
         config = {
             interface.NETWORK_CONFIG_RESOURCE: {},
@@ -1182,6 +1220,28 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
+    def test_get_controller_ethernet_config_oam_ifupdown(self):
+        self.mock_puppet_interface_sysconfig.return_value = False
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
+        self.iface['networktype'] = constants.NETWORK_TYPE_OAM
+        self.iface['networks'] = self._get_network_ids_by_type(
+            constants.NETWORK_TYPE_OAM)
+        self._update_context()
+        self._update_interface_address_pool(
+            self.iface, constants.NETWORK_TYPE_OAM)
+        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_OAM)
+        config = interface.get_interface_network_config(
+            self.context, self.iface, network.id)
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
+        options = {'pre-up': 'sleep 20',
+                   'post-up': '{}'.format(ipv6_autocnf_off),
+                   'mtu': '1500',
+                   'gateway': '10.10.10.1'}
+        expected = self._get_static_network_config_ifupdown(
+            ifname=self.port['name'], options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
     def test_get_controller_ethernet_config_mgmt(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktypelist'] = [constants.NETWORK_TYPE_MGMT]
@@ -1206,6 +1266,30 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
+    def test_get_controller_ethernet_config_mgmt_ifupdown(self):
+        self.mock_puppet_interface_sysconfig.return_value = False
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
+        self.iface['networktypelist'] = [constants.NETWORK_TYPE_MGMT]
+        self.iface['networks'] = self._get_network_ids_by_type(
+            constants.NETWORK_TYPE_MGMT)
+        self._update_context()
+        self._update_interface_address_pool(
+            self.iface, constants.NETWORK_TYPE_MGMT)
+        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
+        config = interface.get_interface_network_config(
+            self.context, self.iface, network.id)
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
+        options = {'pre-up': 'sleep 20',
+                   'post-up': '%s %s %s %s > /dev/null; %s' % (constants.TRAFFIC_CONTROL_SCRIPT,
+                        self.port['name'], constants.NETWORK_TYPE_MGMT, constants.LINK_SPEED_10G,
+                        ipv6_autocnf_off),
+                   'mtu': '1500',
+                   'gateway': '192.168.204.1'}
+        expected = self._get_static_network_config_ifupdown(
+            ifname=self.port['name'], options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
     def test_get_controller_ethernet_config_cluster_host(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_CLUSTER_HOST
@@ -1226,6 +1310,28 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
+    def test_get_controller_ethernet_config_cluster_host_ifupdown(self):
+        self.mock_puppet_interface_sysconfig.return_value = False
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
+        self.iface['networktype'] = constants.NETWORK_TYPE_CLUSTER_HOST
+        self.iface['networks'] = self._get_network_ids_by_type(
+            constants.NETWORK_TYPE_CLUSTER_HOST)
+        self._update_context()
+        self._update_interface_address_pool(
+            self.iface, constants.NETWORK_TYPE_CLUSTER_HOST)
+        network = self.dbapi.network_get_by_type(
+            constants.NETWORK_TYPE_CLUSTER_HOST)
+        config = interface.get_interface_network_config(
+            self.context, self.iface, network.id)
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
+        options = {'pre-up': 'sleep 20',
+                   'post-up': '{}'.format(ipv6_autocnf_off),
+                   'mtu': '1500'}
+        expected = self._get_static_network_config_ifupdown(
+            ifname=self.port['name'], options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
     def test_get_controller_ethernet_config_slave(self):
         bond = self._create_bond_test("bond0")
         self._update_context()
@@ -1242,6 +1348,24 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
+    def test_get_controller_ethernet_config_slave_ifupdown(self):
+        self.mock_puppet_interface_sysconfig.return_value = False
+        bond = self._create_bond_test("bond0")
+        self._update_context()
+        iface = self.context['interfaces'][bond['uses'][0]]
+        port = self.context['ports'][iface['id']]
+        config = interface.get_interface_network_config(self.context, iface)
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(port['name'])
+        options = {'pre-up': 'sleep 20',
+                   'bond-master': 'bond0',
+                   'post-up': '/usr/sbin/ip link set dev {} promisc on; {}'.format(port['name'],
+                                                                             ipv6_autocnf_off),
+                   'mtu': '1500'}
+        expected = self._get_network_config_ifupdown(
+            ifname=port['name'], method='manual', options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
     def test_get_controller_bond_config_balanced(self):
         bond = self._create_bond_test("bond0")
         self._update_context()
@@ -1253,6 +1377,24 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                        'mode=balance-xor xmit_hash_policy=layer2 miimon=100'}
         expected = self._get_network_config(
             ifname=bond['ifname'], mtu=1500, method='manual', options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
+    def test_get_controller_bond_config_balanced_ifupdown(self):
+        self.mock_puppet_interface_sysconfig.return_value = False
+        bond = self._create_bond_test("bond0")
+        self._update_context()
+        config = interface.get_interface_network_config(self.context, bond)
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(bond['ifname'])
+        options = {'bond-miimon': '100',
+                  'bond-mode': 'balance-xor',
+                  'bond-xmit-hash-policy': 'layer2',
+                  'hwaddress': bond['imac'],
+                  'mtu': '1500',
+                  'post-up': '{}'.format(ipv6_autocnf_off),
+                  'up': 'sleep 10'}
+        expected = self._get_network_config_ifupdown(
+            ifname=bond['ifname'], method='manual', options=options)
         print(expected)
         self.assertEqual(expected, config)
 
@@ -1272,6 +1414,26 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
+    def test_get_controller_bond_config_8023ad_ifupdown(self):
+        self.mock_puppet_interface_sysconfig.return_value = False
+        bond = self._create_bond_test("bond0")
+        bond['aemode'] = '802.3ad'
+        self._update_context()
+        config = interface.get_interface_network_config(self.context, bond)
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(bond['ifname'])
+        options = {'bond-lacp-rate': 'fast',
+                   'bond-miimon': '100',
+                   'bond-mode': '802.3ad',
+                   'bond-xmit-hash-policy': 'layer2',
+                   'hwaddress': bond['imac'],
+                   'mtu': '1500',
+                   'post-up': '{}'.format(ipv6_autocnf_off),
+                   'up': 'sleep 10'}
+        expected = self._get_network_config_ifupdown(
+            ifname=bond['ifname'], method='manual', options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
     def test_get_controller_bond_config_active_standby(self):
         bond = self._create_bond_test("bond0")
         bond['aemode'] = 'active_standby'
@@ -1284,6 +1446,27 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'BONDING_OPTS': 'mode=active-backup miimon=100 primary=eth1 primary_reselect=always'}
         expected = self._get_network_config(
             ifname=bond['ifname'], mtu=1500, method='manual', options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
+    def test_get_controller_bond_config_active_standby_ifupdown(self):
+        self.mock_puppet_interface_sysconfig.return_value = False
+        bond = self._create_bond_test("bond0")
+        bond['aemode'] = 'active_standby'
+        bond['primary_reselect'] = constants.PRIMARY_RESELECT_ALWAYS
+        self._update_context()
+        config = interface.get_interface_network_config(self.context, bond)
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(bond['ifname'])
+        options = {'bond-miimon': '100',
+                   'bond-mode': 'active-backup',
+                   'bond-primary': 'eth1',
+                   'bond-primary-reselect': 'always',
+                   'hwaddress': bond['imac'],
+                   'mtu': '1500',
+                   'post-up': '{}'.format(ipv6_autocnf_off),
+                   'up': 'sleep 10'}
+        expected = self._get_network_config_ifupdown(
+            ifname=bond['ifname'], method='manual', options=options)
         print(expected)
         self.assertEqual(expected, config)
 
@@ -1303,6 +1486,28 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
+    def test_get_controller_bond_config_active_standby_primary_reselect_ifupdown(self):
+        self.mock_puppet_interface_sysconfig.return_value = False
+        bond = self._create_bond_test("bond0", constants.INTERFACE_CLASS_PLATFORM,
+                                      constants.NETWORK_TYPE_MGMT)
+        bond['aemode'] = 'active_standby'
+        bond['primary_reselect'] = constants.PRIMARY_RESELECT_BETTER
+        self._update_context()
+        config = interface.get_interface_network_config(self.context, bond)
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(bond['ifname'])
+        options = {'bond-miimon': '100',
+                   'bond-mode': 'active-backup',
+                   'bond-primary': 'eth1',
+                   'bond-primary-reselect': 'better',
+                   'hwaddress': bond['imac'],
+                   'mtu': '1500',
+                   'post-up': '{}'.format(ipv6_autocnf_off),
+                   'up': 'sleep 10'}
+        expected = self._get_network_config_ifupdown(
+            ifname=bond['ifname'], method='manual', options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
     def test_get_controller_vlan_config(self):
         vlan = self._create_vlan_test("vlan1", None, None, 1, self.iface)
         self._update_context()
@@ -1314,6 +1519,22 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         expected = self._get_network_config(
             ifname=self.port['name'] + ".1", mtu=1500, method='manual',
             options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
+    def test_get_controller_vlan_config_ifupdown(self):
+        self.mock_puppet_interface_sysconfig.return_value = False
+        vlan = self._create_vlan_test("vlan1", None, None, 1, self.iface)
+        self._update_context()
+        config = interface.get_interface_network_config(self.context, vlan)
+        vlan_ifname = self.port['name'] + ".1"
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(vlan_ifname)
+        options = {'mtu': '1500',
+                   'pre-up': '/sbin/modprobe -q 8021q',
+                   'post-up': '{}'.format(ipv6_autocnf_off),
+                   'vlan-raw-device': '{}'.format(self.port['name'])}
+        expected = self._get_network_config_ifupdown(
+            ifname=vlan_ifname, method='manual', options=options)
         print(expected)
         self.assertEqual(expected, config)
 
@@ -1329,6 +1550,23 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         expected = self._get_network_config(
             ifname=bond['ifname'] + ".1", mtu=1500, method='manual',
             options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
+    def test_get_controller_vlan_config_over_bond_ifupdown(self):
+        self.mock_puppet_interface_sysconfig.return_value = False
+        bond = self._create_bond_test("bond0")
+        vlan = self._create_vlan_test("vlan1", None, None, 1, bond)
+        self._update_context()
+        config = interface.get_interface_network_config(self.context, vlan)
+        vlan_ifname = bond['ifname'] + ".1"
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(vlan_ifname)
+        options = {'mtu': '1500',
+                   'pre-up': '/sbin/modprobe -q 8021q',
+                   'post-up': '{}'.format(ipv6_autocnf_off),
+                   'vlan-raw-device': '{}'.format(bond['ifname'])}
+        expected = self._get_network_config_ifupdown(
+            ifname=vlan_ifname, method='manual', options=options)
         print(expected)
         self.assertEqual(expected, config)
 
@@ -1356,6 +1594,28 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
+    def test_get_worker_ethernet_config_mgmt_ifupdown(self):
+        self.mock_puppet_interface_sysconfig.return_value = False
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
+        self.iface['networktypelist'] = [constants.NETWORK_TYPE_MGMT]
+        self.iface['networks'] = self._get_network_ids_by_type(
+            constants.NETWORK_TYPE_MGMT)
+        self.host['personality'] = constants.WORKER
+        self._update_context()
+        self._update_interface_address_pool(
+            self.iface, constants.NETWORK_TYPE_MGMT)
+        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
+        config = interface.get_interface_network_config(
+            self.context, self.iface, network.id)
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
+        options = {'mtu': '1500',
+                   'post-up': '/usr/local/bin/tc_setup.sh {} mgmt 10000 > '
+                           '/dev/null; {}'.format(self.port['name'], ipv6_autocnf_off),
+                   'pre-up': 'sleep 20'}
+        expected = self._get_network_config_ifupdown(ifname=self.port['name'], options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
     def test_get_worker_ethernet_config_cluster_host(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['networktype'] = constants.NETWORK_TYPE_CLUSTER_HOST
@@ -1373,6 +1633,29 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'LINKDELAY': '20'}
         expected = self._get_static_network_config(
             ifname=self.port['name'], mtu=1500, options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
+    def test_get_worker_ethernet_config_cluster_host_ifupdown(self):
+        self.mock_puppet_interface_sysconfig.return_value = False
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
+        self.iface['networktype'] = constants.NETWORK_TYPE_CLUSTER_HOST
+        self.iface['networks'] = self._get_network_ids_by_type(
+            constants.NETWORK_TYPE_CLUSTER_HOST)
+        self.host['personality'] = constants.WORKER
+        self._update_context()
+        self._update_interface_address_pool(
+            self.iface, constants.NETWORK_TYPE_CLUSTER_HOST)
+        network = self.dbapi.network_get_by_type(
+            constants.NETWORK_TYPE_CLUSTER_HOST)
+        config = interface.get_interface_network_config(
+            self.context, self.iface, network.id)
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
+        options = {'mtu': '1500',
+                   'pre-up': 'sleep 20',
+                   'post-up': '{}'.format(ipv6_autocnf_off)}
+        expected = self._get_static_network_config_ifupdown(
+            ifname=self.port['name'], options=options)
         print(expected)
         self.assertEqual(expected, config)
 
@@ -1394,6 +1677,26 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
+    def test_get_worker_ethernet_config_pci_sriov_ifupdown(self):
+        self.mock_puppet_interface_sysconfig.return_value = False
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
+        self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
+        self.host['personality'] = constants.WORKER
+        self._update_context()
+        config = interface.get_interface_network_config(
+            self.context, self.iface)
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
+        options = {'mtu': '1500',
+                   'pre-up': 'sleep 20;'
+                        ' echo 0 > /sys/class/net/{}/device/sriov_numvfs;'
+                        ' echo 0 > /sys/class/net/{}/device/sriov_numvfs'.format(self.port['name'],
+                                                                                 self.port['name']),
+                   'post-up': '{}'.format(ipv6_autocnf_off)}
+        expected = self._get_network_config_ifupdown(
+            ifname=self.port['name'], method='manual', options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
     def test_get_worker_ethernet_config_pci_pthru(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_PASSTHROUGH
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_PASSTHROUGH
@@ -1409,6 +1712,26 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         expected = self._get_network_config(
             ifname=self.port['name'], mtu=1500, method='manual',
             options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
+    def test_get_worker_ethernet_config_pci_pthru_ifupdown(self):
+        self.mock_puppet_interface_sysconfig.return_value = False
+        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_PASSTHROUGH
+        self.iface['networktype'] = constants.NETWORK_TYPE_PCI_PASSTHROUGH
+        self.host['personality'] = constants.WORKER
+        self._update_context()
+        config = interface.get_interface_network_config(
+            self.context, self.iface)
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
+        options = {'mtu': '1500',
+                   'pre-up': 'sleep 20;'
+                      ' if [ -f  /sys/class/net/{}/device/sriov_numvfs ];'
+                        ' then echo 0 > /sys/class/net/{}/device/sriov_numvfs; fi'.format(
+                            self.port['name'], self.port['name']),
+                   'post-up': '{}'.format(ipv6_autocnf_off)}
+        expected = self._get_network_config_ifupdown(
+            ifname=self.port['name'], method='manual', options=options)
         print(expected)
         self.assertEqual(expected, config)
 
@@ -1810,6 +2133,10 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.expected_slave_interfaces = []
         self.expected_mlx_interfaces = []
         self.expected_bmc_interface = None
+        p = mock.patch('sysinv.puppet.interface.is_syscfg_network')
+        self.mock_puppet_interface_sysconfig = p.start()
+        self.mock_puppet_interface_sysconfig.return_value = True
+        self.addCleanup(p.stop)
 
     def _setup_configuration(self):
         # Personality is set to worker to avoid issues due to missing OAM
@@ -1833,6 +2160,15 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         return os.path.join(hiera_directory, class_name) + ".yaml"
 
     def test_generate_interface_config(self):
+        hieradata_directory = self._create_hieradata_directory()
+        config_filename = self._get_config_filename(hieradata_directory)
+        with open(config_filename, 'w') as config_file:
+            config = self.operator.interface.get_host_config(self.host)  # pylint: disable=no-member
+            self.assertIsNotNone(config)
+            yaml.dump(config, config_file, default_flow_style=False)
+
+    def test_generate_interface_config_ifupdown(self):
+        self.mock_puppet_interface_sysconfig.return_value = False
         hieradata_directory = self._create_hieradata_directory()
         config_filename = self._get_config_filename(hieradata_directory)
         with open(config_filename, 'w') as config_file:
