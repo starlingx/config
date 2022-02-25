@@ -2414,8 +2414,8 @@ def has_openstack_compute(labels):
         return False
 
     for label in labels:
-        if label.label_key == helm_common.LABEL_COMPUTE_LABEL:
-            return helm_common.LABEL_VALUE_ENABLED == label.label_value.lower()
+        if label.label_key == helm_common.LABEL_COMPUTE_LABEL and label.label_value:
+                return helm_common.LABEL_VALUE_ENABLED == label.label_value.lower()
 
     # We haven't found the openstack compute node key. Return False
     return False
@@ -2427,8 +2427,7 @@ def has_sriovdp_enabled(labels):
         return False
 
     for label in labels:
-        if (label.label_key == helm_common.LABEL_SRIOVDP and
-                label.label_value):
+        if label.label_key == helm_common.LABEL_SRIOVDP and label.label_value:
             return helm_common.LABEL_VALUE_ENABLED == label.label_value.lower()
 
     # We haven't found the sriovdp node key. Return False

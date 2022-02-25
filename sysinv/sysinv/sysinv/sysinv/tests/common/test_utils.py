@@ -244,3 +244,39 @@ class TestCommonUtils(base.TestCase):
         mock_host_label.label_value = None
         self.assertFalse(utils.has_vswitch_enabled([mock_host_label], mock.Mock()))
         mock_get_vswitch_type.assert_called_once()
+
+    def test_has_openstack_compute_label_enabled(self):
+        mock_host_label = mock.Mock()
+        mock_host_label.label_key = 'openstack-compute-node'
+        mock_host_label.label_value = 'enabled'
+        self.assertTrue(utils.has_openstack_compute([mock_host_label]))
+
+    def test_has_openstack_compute_label_disabled(self):
+        mock_host_label = mock.Mock()
+        mock_host_label.label_key = 'openstack-compute-node'
+        mock_host_label.label_value = 'disabled'
+        self.assertFalse(utils.has_openstack_compute([mock_host_label]))
+
+    def test_has_openstack_compute_label_none(self):
+        mock_host_label = mock.Mock()
+        mock_host_label.label_key = 'openstack-compute-node'
+        mock_host_label.label_value = None
+        self.assertFalse(utils.has_openstack_compute([mock_host_label]))
+
+    def test_has_sriovdp_enabled_label_enabled(self):
+        mock_host_label = mock.Mock()
+        mock_host_label.label_key = 'sriovdp'
+        mock_host_label.label_value = 'enabled'
+        self.assertTrue(utils.has_sriovdp_enabled([mock_host_label]))
+
+    def test_has_sriovdp_enabled_label_disabled(self):
+        mock_host_label = mock.Mock()
+        mock_host_label.label_key = 'sriovdp'
+        mock_host_label.label_value = 'disabled'
+        self.assertFalse(utils.has_sriovdp_enabled([mock_host_label]))
+
+    def test_has_sriovdp_enabled_label_none(self):
+        mock_host_label = mock.Mock()
+        mock_host_label.label_key = 'sriovdp'
+        mock_host_label.label_value = None
+        self.assertFalse(utils.has_sriovdp_enabled([mock_host_label]))
