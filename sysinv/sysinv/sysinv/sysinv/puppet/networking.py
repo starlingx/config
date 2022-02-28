@@ -246,6 +246,12 @@ class NetworkingPuppet(base.BasePuppet):
                 if 'cmdline_opts' in instance['global_parameters']:
                     instance['cmdline_opts'] = instance['global_parameters'].pop('cmdline_opts')
 
+            if instance['service'] == constants.PTP_INSTANCE_TYPE_PTP4L:
+                if (instance['global_parameters']['time_stamping'] ==
+                        constants.PTP_TIME_STAMPING_HARDWARE):
+                    instance['global_parameters'][constants.PTP_PARAMETER_BC_JBOD] = (
+                        constants.PTP_BOUNDARY_CLOCK_JBOD_1)
+
             # Prune fields and add the instance to the config
             # Change 'name' key to '_name' because it is unusable in puppet
             pruned_instance = {r: instance[r] for r in allowed_instance_fields}
