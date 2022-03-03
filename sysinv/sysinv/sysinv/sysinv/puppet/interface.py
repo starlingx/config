@@ -117,9 +117,6 @@ class InterfacePuppet(base.BasePuppet):
         # Generate the actual interface config resources
         generate_address_configs(context, config)
 
-        # Generate driver specific configuration
-        generate_driver_config(context, config)
-
         # Generate data iface list configuration
         generate_data_iface_list_config(context, config)
 
@@ -449,20 +446,6 @@ def is_a_mellanox_device(context, iface):
         return False
     port = get_interface_port(context, iface)
     if port['driver'] in constants.MELLANOX_DRIVERS:
-        return True
-    return False
-
-
-def is_a_mellanox_cx3_device(context, iface):
-    """
-    Determine if the underlying device is a Mellanox CX3 device.
-    """
-    if iface['iftype'] != constants.INTERFACE_TYPE_ETHERNET:
-        # We only care about configuring specific settings for related ethernet
-        # devices.
-        return False
-    port = get_interface_port(context, iface)
-    if port['driver'] == constants.DRIVER_MLX_CX3:
         return True
     return False
 
@@ -1045,16 +1028,12 @@ def get_ethernet_network_config(context, iface, config):
                 command = '/usr/sbin/ip link set dev {} promisc on'.format(osname)
                 fill_interface_config_option_operation(options, IFACE_POST_UP_OP, command)
     elif interface_class == constants.INTERFACE_CLASS_PCI_SRIOV:
-        if not is_a_mellanox_cx3_device(context, iface):
-            # CX3 device can only use kernel module options to enable vfs
-            # others share the same pci-sriov sysfs enabling mechanism
-
-            if iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
-                sriovfs_path = ("/sys/class/net/%s/device/sriov_numvfs" %
-                                get_interface_port_name(context, iface))
-                command = "echo 0 > %s; echo %s > %s" % (sriovfs_path, iface['sriov_numvfs'],
-                                                         sriovfs_path)
-                fill_interface_config_option_operation(options, IFACE_PRE_UP_OP, command)
+        if iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
+            sriovfs_path = ("/sys/class/net/%s/device/sriov_numvfs" %
+                            get_interface_port_name(context, iface))
+            command = "echo 0 > %s; echo %s > %s" % (sriovfs_path, iface['sriov_numvfs'],
+                                                        sriovfs_path)
+            fill_interface_config_option_operation(options, IFACE_PRE_UP_OP, command)
     elif interface_class == constants.INTERFACE_CLASS_PCI_PASSTHROUGH:
         sriovfs_path = ("/sys/class/net/%s/device/sriov_numvfs" %
                         get_interface_port_name(context, iface))
@@ -1184,8 +1163,7 @@ def get_sriov_config(context, iface):
     # Include the desired number of VFs if the device supports SR-IOV
     # config via sysfs and is not a sub-interface
     num_vfs = None
-    if (not is_a_mellanox_cx3_device(context, iface)
-            and iface['iftype'] != constants.INTERFACE_TYPE_VF):
+    if iface['iftype'] != constants.INTERFACE_TYPE_VF:
         num_vfs = iface['sriov_numvfs']
 
     get_sriov_vf_config(context, iface, port, vf_config)
@@ -1536,51 +1514,6 @@ def generate_address_configs(context, config):
                 })
 
 
-def build_mlx4_num_vfs_options(context):
-    """
-    Generate the manifest fragment that will create mlx4_core
-    modprobe conf file in which VF is set and reload the mlx4_core
-    kernel module
-    """
-    ifaces = find_sriov_interfaces_by_driver(context, constants.DRIVER_MLX_CX3)
-    if not ifaces:
-        return ""
-
-    num_vfs_options = ""
-    for iface in ifaces:
-        port = get_interface_port(context, iface)
-        # For CX3 SR-IOV configuration, we only configure VFs on the 1st port
-        # Since two ports share the same PCI address, if the first port has
-        # been configured, we need to skip the second port
-        if port['pciaddr'] in num_vfs_options:
-            continue
-
-        if not num_vfs_options:
-            num_vfs_options = "%s-%d;0;0" % (port['pciaddr'],
-                                             iface['sriov_numvfs'])
-        else:
-            num_vfs_options += ",%s-%d;0;0" % (port['pciaddr'],
-                                               iface['sriov_numvfs'])
-
-    return num_vfs_options
-
-
-def generate_mlx4_core_options(context, config):
-    """
-    Generate the config options that will create mlx4_core modprobe
-    conf file in which VF is set and execute mlx4_core_conf.sh in which
-    /var/run/.mlx4_cx3_reboot_required is created to indicate a reboot
-    is needed for goenable and /etc/modprobe.d/mlx4_sriov.conf is injected
-    into initramfs, this way mlx4_core options can be applied after reboot
-    """
-    num_vfs_options = build_mlx4_num_vfs_options(context)
-    if not num_vfs_options:
-        return
-
-    mlx4_core_options = "port_type_array=2,2 num_vfs=%s" % num_vfs_options
-    config['platform::networking::mlx4_core_options'] = mlx4_core_options
-
-
 def generate_data_iface_list_config(context, config):
     """
     Generate the puppet resource for data-network iface name.
@@ -1589,14 +1522,6 @@ def generate_data_iface_list_config(context, config):
         if is_data_interface(context, iface):
             ifname = get_interface_os_ifname(context, iface)
             config[DATA_IFACE_LIST_RESOURCE].append(ifname)
-
-
-def generate_driver_config(context, config):
-    """
-    Generate custom configuration for driver specific parameters.
-    """
-    if is_worker_subfunction(context):
-        generate_mlx4_core_options(context, config)
 
 
 def generate_loopback_config(config):
