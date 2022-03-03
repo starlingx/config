@@ -336,6 +336,9 @@ class AuditLogging(hooks.PecanHook):
             # rest service does not fail even if audit logging fails
             auditLOG.exception("Exception in AuditLogging on event 'after'")
 
+    def on_error(self, state, e):
+        auditLOG.exception("Exception in AuditLogging passed to event 'on_error': " + str(e))
+
 
 class DBTransactionHook(hooks.PecanHook):
     """Custom hook for SysInv database transactions.
