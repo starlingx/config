@@ -85,6 +85,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         self.dc_monitor = None
         self.restapicert_monitor = None
         self.registrycert_monitor = None
+        self.openldapcert_monitor = None
         self.reattempt_monitor_tasks = []
         self.sc_audit_queue = subcloud_audit_queue.SubcloudAuditPriorityQueue()
         if CONF.certmon.audit_greenpool_size > 0:
@@ -344,6 +345,10 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         self.registrycert_monitor = watcher.RegistryCert_CertWatcher()
         self.registrycert_monitor.initialize()
 
+    def init_openldapcert_monitor(self):
+        self.openldapcert_monitor = watcher.OpenldapCert_CertWatcher()
+        self.openldapcert_monitor.initialize()
+
     def start_monitor(self):
         utils.init_keystone_auth_opts()
         dc_role = utils.get_dc_role()
@@ -352,6 +357,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
                 # init platform cert monitors
                 self.init_restapicert_monitor()
                 self.init_registrycert_monitor()
+                self.init_openldapcert_monitor()
 
                 # init dc monitor only if running in DC role
                 if dc_role in (constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER,

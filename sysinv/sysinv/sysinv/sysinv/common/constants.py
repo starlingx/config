@@ -1457,14 +1457,17 @@ CERT_MODE_SSL_CA = 'ssl_ca'
 CERT_MODE_DOCKER_REGISTRY = 'docker_registry'
 CERT_MODE_OPENSTACK = 'openstack'
 CERT_MODE_OPENSTACK_CA = 'openstack_ca'
+CERT_MODE_OPENLDAP = 'openldap'
 CERT_MODES_SUPPORTED = [CERT_MODE_SSL,
                         CERT_MODE_SSL_CA,
                         CERT_MODE_DOCKER_REGISTRY,
                         CERT_MODE_OPENSTACK,
                         CERT_MODE_OPENSTACK_CA,
+                        CERT_MODE_OPENLDAP,
                         ]
 CERT_MODES_SUPPORTED_CERT_MANAGER = [CERT_MODE_SSL,
-                                     CERT_MODE_DOCKER_REGISTRY]
+                                     CERT_MODE_DOCKER_REGISTRY,
+                                     CERT_MODE_OPENLDAP]
 
 KUBERNETES_ROOTCA_FILE = '/etc/kubernetes/pki/ca.crt'
 ETCD_ROOTCA_FILE = '/etc/etcd/ca.crt'
@@ -1969,12 +1972,13 @@ ADMIN_EP_CERT_FORMAT = '{tls_key}'
 # Platform certificates
 RESTAPI_CERT_SECRET_NAME = "system-restapi-gui-certificate"
 REGISTRY_CERT_SECRET_NAME = "system-registry-local-certificate"
+OPENLDAP_CERT_SECRET_NAME = "system-openldap-local-certificate"
 CERT_NAMESPACE_PLATFORM_CERTS = 'deployment'
 
 CERT_MODE_TO_SECRET_NAME = {
     CERT_MODE_SSL: RESTAPI_CERT_SECRET_NAME,
-    CERT_MODE_DOCKER_REGISTRY: REGISTRY_CERT_SECRET_NAME
-
+    CERT_MODE_DOCKER_REGISTRY: REGISTRY_CERT_SECRET_NAME,
+    CERT_MODE_OPENLDAP: OPENLDAP_CERT_SECRET_NAME
 }
 
 # Storage associated networks
