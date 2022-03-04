@@ -23,7 +23,6 @@ from eventlet.green import subprocess
 import jsonpatch
 import pecan
 from pecan import rest
-import re
 import six
 import wsme
 from wsme import types as wtypes
@@ -163,16 +162,16 @@ class Storage(base.APIBase):
                 for d in disks:
                     if (stor.journal_path is not None and
                             d.device_path is not None and
-                            d.device_path in stor.journal_path):
-                        partition_number = (re.match('.*?([0-9]+)$',
-                                                     stor.journal_path).group(1))
+                            cutils.is_part_of_disk(stor.journal_path,
+                                                   d.device_path)):
+                        part_number = cutils.get_part_number(stor.journal_path)
                         if (d.device_node is not None and
                                 constants.DEVICE_NAME_NVME in d.device_node):
                             stor.journal_node = "{}p{}".format(d.device_node,
-                                                               partition_number)
+                                                               part_number)
                         else:
                             stor.journal_node = "{}{}".format(d.device_node,
-                                                              partition_number)
+                                                              part_number)
                         break
 
         # never expose the ihost_id attribute, allow exposure for now
@@ -1024,12 +1023,14 @@ def _create_journal(journal_location, journal_size_mib, stor):
     # Determine if the journal partition is collocated or not.
     if stor.uuid == journal_location:
         # The collocated journal is always on /dev/sdX2.
-        journal_device_path = journal_onistor_idisk.device_path + "-part" + "2"
+        journal_device_path = cutils.get_part_device_path(
+                              journal_onistor_idisk.device_path, "2")
     else:
         # Obtain the last partition index on which the journal will reside.
         last_index = len(pecan.request.dbapi.journal_get_all(journal_location))
-        journal_device_path = (journal_onistor_idisk.device_path + "-part" +
-                               str(last_index + 1))
+        journal_device_path = cutils.get_part_device_path(
+                              journal_onistor_idisk.device_path,
+                              str(last_index + 1))
 
     journal_values = {'device_path': journal_device_path,
                       'size_mib': journal_size_mib,

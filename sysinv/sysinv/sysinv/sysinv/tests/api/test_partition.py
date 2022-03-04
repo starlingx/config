@@ -50,7 +50,7 @@ class TestPartition(base.FunctionalTest):
     API_HEADERS = {'User-Agent': 'sysinv-test'}
 
     disk_device_path = '/dev/disk/by-path/pci-0000:00:0d.0-ata-1.0'
-    partition_device_path = '/dev/disk/by-path/pci-0000:00:0d.0-ata-1.1'
+    partition_device_path = '/dev/disk/by-path/pci-0000:00:0d.0-ata-1.0-part1'
 
     def setUp(self):
         super(TestPartition, self).setUp()

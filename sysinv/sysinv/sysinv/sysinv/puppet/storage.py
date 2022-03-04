@@ -8,6 +8,7 @@ import json
 import re
 
 from sysinv.common import constants
+from sysinv.common import utils
 from sysinv.puppet import base
 
 
@@ -299,7 +300,7 @@ class StoragePuppet(base.BasePuppet):
                     # add the disk partition to the disk path
                     partition_number = re.match('.*?([0-9]+)$',
                                                 pv.lvm_pv_name).group(1)
-                    pv_path += "-part%s" % partition_number
+                    pv_path = utils.get_part_device_path(pv_path, partition_number)
 
                 if (pv.pv_state == constants.PV_ADD):
                     adding_pvs.append(pv_path)

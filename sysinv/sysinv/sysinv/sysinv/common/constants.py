@@ -808,6 +808,9 @@ DEVICE_TYPE_NVME = 'NVME'
 DEVICE_TYPE_UNDETERMINED = 'Undetermined'
 DEVICE_TYPE_NA = 'N/A'
 DEVICE_NAME_NVME = 'nvme'
+DEVICE_NAME_DM = 'dm-'
+DEVICE_NAME_MPATH = 'mpath'
+DEVICE_FS_TYPE_MPATH = 'mpath_member'
 
 # Disk model types.
 DEVICE_MODEL_UNKNOWN = 'Unknown'

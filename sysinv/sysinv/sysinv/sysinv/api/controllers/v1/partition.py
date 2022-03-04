@@ -411,13 +411,14 @@ def _build_device_node_path(partition):
                           (idisk.device_node, len(partitions) + 1)
         else:
             device_node = "%s%s" % (idisk.device_node, len(partitions) + 1)
-        device_path = "%s-part%s" % (idisk.device_path, len(partitions) + 1)
+        device_path = cutils.get_part_device_path(idisk.device_path,
+                                                 str(len(partitions) + 1))
     else:
         if constants.DEVICE_NAME_NVME in idisk.device_node:
             device_node = idisk.device_node + "p1"
         else:
             device_node = idisk.device_node + '1'
-        device_path = idisk.device_path + '-part1'
+        device_path = cutils.get_part_device_path(idisk.device_path, "1")
 
     return device_node, device_path
 

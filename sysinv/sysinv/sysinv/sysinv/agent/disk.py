@@ -89,6 +89,8 @@ class DiskOperator(object):
         if device is not None:
             if constants.DEVICE_NAME_NVME in device:
                 re_line = re.compile(r'^(nvme[0-9]*n[0-9]*)')
+            elif constants.DEVICE_NAME_DM in device:
+                return utils.get_mpath_from_dm(os.path.join("/dev", device))
             else:
                 re_line = re.compile(r'^(\D*)')
             match = re_line.search(device)
@@ -251,9 +253,16 @@ class DiskOperator(object):
                 continue
 
             if device['MAJOR'] in constants.VALID_MAJOR_LIST:
+                device_node = device.device_node
                 if 'ID_PATH' in device:
                     device_path = "/dev/disk/by-path/" + device['ID_PATH']
                     LOG.debug("[DiskEnum] device_path: %s ", device_path)
+                elif (constants.DEVICE_NAME_MPATH in device.get("DM_NAME", "")
+                      and 'DM_UUID' in device):
+                    device_path = "/dev/disk/by-id/dm-uuid-" + device['DM_UUID']
+                    LOG.debug("[DiskEnum] device_path: %s ", device_path)
+                    device_node = utils.get_mpath_from_dm(device.device_node)
+                    LOG.debug("[DiskEnum] device_node: %s ", device_node)
                 else:
                     # We should always have a udev supplied /dev/disk/by-path
                     # value as a matter of normal operation. We do not expect
@@ -266,7 +275,7 @@ class DiskOperator(object):
                     # system.
                     device_path = None
                     LOG.error("Device %s does not have an ID_PATH value provided "
-                              "by udev" % device.device_node)
+                              "by udev" % device_node)
 
                 size_mib = 0
                 available_mib = 0
@@ -276,14 +285,14 @@ class DiskOperator(object):
                 # Can merge all try/except in one block but this allows at
                 # least attributes with no exception to be filled
                 try:
-                    size_mib = utils.get_disk_capacity_mib(device.device_node)
+                    size_mib = utils.get_disk_capacity_mib(device_node)
                 except Exception as e:
                     self.handle_exception("Could not retrieve disk size - %s "
                                           % e)
 
                 try:
                     available_mib = self.get_disk_available_mib(
-                        device_node=device.device_node)
+                        device_node=device_node)
                 except Exception as e:
                     self.handle_exception("Could not retrieve disk %s free space" % e)
 
@@ -331,6 +340,8 @@ class DiskOperator(object):
                 try:
                     if 'ID_SCSI_SERIAL' in device:
                         serial_id = device['ID_SCSI_SERIAL']
+                    elif constants.DEVICE_NAME_MPATH in device.get('DM_UUID', ''):
+                        serial_id = device.get('DM_UUID').split('-')[1]
                     else:
                         serial_id = device['ID_SERIAL_SHORT']
                 except Exception as e:
@@ -341,7 +352,7 @@ class DiskOperator(object):
                 if model_num:
                     capabilities.update({'model_num': model_num})
 
-                if self.get_rootfs_node() == device.device_node:
+                if self.get_rootfs_node() == device_node:
                     capabilities.update({'stor_function': 'rootfs'})
 
                 rotational = self.is_rotational(device)
@@ -365,7 +376,7 @@ class DiskOperator(object):
                 device_id, device_wwn = self.get_device_id_wwn(device)
 
                 attr = {
-                        'device_node': device.device_node,
+                        'device_node': device_node,
                         'device_num': device.device_number,
                         'device_type': device_type,
                         'device_path': device_path,
