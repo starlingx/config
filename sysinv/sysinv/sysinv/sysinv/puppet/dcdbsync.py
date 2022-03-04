@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2019-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -74,20 +74,31 @@ class DCDBsyncPuppet(openstack.OpenstackBasePuppet):
         }
 
         if utils.is_openstack_applied(self.dbapi):
-            helm_data = helm.HelmOperatorData(self.dbapi)
+            is_upgrading, upgrade = utils.is_upgrade_in_progress(self.dbapi)
+            if is_upgrading:
+                old_config = self._operator.read_system_config(upgrade.from_release)
+                keys_to_copy = [
+                    'dcdbsync::openstack_init::region_name',
+                    'dcdbsync::openstack_api::keystone_auth_uri',
+                    'dcdbsync::openstack_api::keystone_identity_uri',
+                ]
+                for key in keys_to_copy:
+                    config[key] = old_config.get(key)
+            else:
+                helm_data = helm.HelmOperatorData(self.dbapi)
 
-            # The dcdbsync instance for openstack is authenticated with
-            # pod based keystone.
-            endpoints_data = helm_data.get_keystone_endpoint_data()
-            service_config = {
-                'dcdbsync::openstack_init::region_name':
-                    endpoints_data['region_name'],
-                'dcdbsync::openstack_api::keystone_auth_uri':
-                    endpoints_data['endpoint_override'],
-                'dcdbsync::openstack_api::keystone_identity_uri':
-                    endpoints_data['endpoint_override'],
-            }
-            config.update(service_config)
+                # The dcdbsync instance for openstack is authenticated with
+                # pod based keystone.
+                endpoints_data = helm_data.get_keystone_endpoint_data()
+                service_config = {
+                    'dcdbsync::openstack_init::region_name':
+                        endpoints_data['region_name'],
+                    'dcdbsync::openstack_api::keystone_auth_uri':
+                        endpoints_data['endpoint_override'],
+                    'dcdbsync::openstack_api::keystone_identity_uri':
+                        endpoints_data['endpoint_override'],
+                }
+                config.update(service_config)
 
         return config
 
@@ -106,20 +117,30 @@ class DCDBsyncPuppet(openstack.OpenstackBasePuppet):
         }
 
         if utils.is_openstack_applied(self.dbapi):
-            helm_data = helm.HelmOperatorData(self.dbapi)
+            is_upgrading, upgrade = utils.is_upgrade_in_progress(self.dbapi)
+            if is_upgrading:
+                old_config = self._operator.read_secure_system_config(upgrade.from_release)
+                keys_to_copy = [
+                    'dcdbsync::openstack_api::keystone_password',
+                    'dcdbsync::openstack_init::database_connection',
+                ]
+                for key in keys_to_copy:
+                    config[key] = old_config.get(key)
+            else:
+                helm_data = helm.HelmOperatorData(self.dbapi)
 
-            # The dcdbsync instance for openstack is authenticated with
-            # pod based keystone.
-            endpoints_data = helm_data.get_dcdbsync_endpoint_data()
-            db_data = helm_data.get_keystone_oslo_db_data()
+                # The dcdbsync instance for openstack is authenticated with
+                # pod based keystone.
+                endpoints_data = helm_data.get_dcdbsync_endpoint_data()
+                db_data = helm_data.get_keystone_oslo_db_data()
 
-            service_auth_config = {
-                'dcdbsync::openstack_api::keystone_password':
-                    endpoints_data['keystone_password'],
-                'dcdbsync::openstack_init::database_connection':
-                    db_data['connection'],
-            }
-            config.update(service_auth_config)
+                service_auth_config = {
+                    'dcdbsync::openstack_api::keystone_password':
+                        endpoints_data['keystone_password'],
+                    'dcdbsync::openstack_init::database_connection':
+                        db_data['connection'],
+                }
+                config.update(service_auth_config)
 
         return config
 

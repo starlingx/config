@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 
 """Sysinv test utilities."""
@@ -1119,7 +1119,7 @@ def get_test_ethernet_port(**kw):
 
 def get_test_datanetwork(**kw):
     datanetwork = {
-        'uuid': kw.get('uuid', '60d41820-a4a0-4c25-a6a0-2a3b98746640'),
+        'uuid': kw.get('uuid'),
         'name': kw.get('name'),
         'network_type': kw.get('network_type', 'vxlan'),
         'mtu': kw.get('mtu', '1500'),
@@ -1138,6 +1138,9 @@ def create_test_datanetwork(**kw):
     :returns: Test datanetwork DB object.
     """
     datanetwork = get_test_datanetwork(**kw)
+
+    if 'uuid' not in kw:
+        del datanetwork['uuid']
 
     if kw['network_type'] != constants.DATANETWORK_TYPE_VXLAN:
         # Remove DB fields which are specific to VXLAN
@@ -1272,6 +1275,29 @@ def post_get_test_interface_network(**kw):
     return inv
 
 
+def create_test_interface_datanetwork(**kw):
+    """Create test datanetwork interface entry in DB and return Network DB
+    object. Function to be used to create test Network objects in the database.
+    :param kw: kwargs with overriding values for network's attributes.
+    :returns: Test Network DB object.
+    """
+    interface_network = get_test_interface_datanetwork(**kw)
+    if 'id' not in kw:
+        del interface_network['id']
+    dbapi = db_api.get_instance()
+    return dbapi.interface_datanetwork_create(interface_network)
+
+
+def get_test_interface_datanetwork(**kw):
+    inv = {
+        'id': kw.get('id'),
+        'uuid': kw.get('uuid'),
+        'interface_id': kw.get('interface_id'),
+        'datanetwork_id': kw.get('datanetwork_id'),
+    }
+    return inv
+
+
 def get_test_partition(**kw):
     """get_test_partition will fail unless
        forihostid is provided
@@ -1317,29 +1343,6 @@ def post_get_test_partition(**kw):
     del partition['status']
 
     return partition
-
-
-def get_test_interface_datanetwork(**kw):
-    inv = {
-        'id': kw.get('id'),
-        'uuid': kw.get('uuid'),
-        'interface_id': kw.get('interface_id'),
-        'datanetwork_id': kw.get('datanetwork_id'),
-    }
-    return inv
-
-
-def create_test_interface_datanetwork(**kw):
-    """Create test network interface entry in DB and return Network DB
-    object. Function to be used to create test Network objects in the database.
-    :param kw: kwargs with overriding values for network's attributes.
-    :returns: Test Network DB object.
-    """
-    interface_datanetwork = get_test_interface_datanetwork(**kw)
-    if 'id' not in kw:
-        del interface_datanetwork['id']
-    dbapi = db_api.get_instance()
-    return dbapi.interface_datanetwork_create(interface_datanetwork)
 
 
 def post_get_test_interface_datanetwork(**kw):
@@ -1619,3 +1622,25 @@ def create_test_device_image(**kw):
         del device_image['uuid']
     dbapi = db_api.get_instance()
     return dbapi.deviceimage_create(device_image)
+
+
+def get_test_kube_app(**kw):
+    kube_app = {
+        'name': kw.get('name'),
+        'app_version': kw.get('app_version'),
+        'manifest_name': kw.get('manifest_name'),
+        'manifest_file': kw.get('manifest_file'),
+        'status': kw.get('status'),
+        'progress': kw.get('progress'),
+        'active': kw.get('active'),
+        'recovery_attempts': kw.get('recovery_attempts'),
+        'mode': kw.get('mode'),
+        'app_metadata': kw.get('app_metadata'),
+    }
+    return kube_app
+
+
+def create_test_kube_app(**kw):
+    kube_app = get_test_kube_app(**kw)
+    dbapi = db_api.get_instance()
+    return dbapi.kube_app_create(kube_app)

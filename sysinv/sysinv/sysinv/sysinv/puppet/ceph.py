@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2018 Wind River Systems, Inc.
+# Copyright (c) 2017-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -142,35 +142,50 @@ class CephPuppet(openstack.OpenstackBasePuppet):
                 config['platform::ceph::params::cephfs_filesystems'] = cephfs_filesystems
 
         if utils.is_openstack_applied(self.dbapi):
-            openstack_app = utils.find_openstack_app(self.dbapi)
+            is_upgrading, upgrade = utils.is_upgrade_in_progress(self.dbapi)
+            if is_upgrading:
+                old_config = self._operator.read_system_config(upgrade.from_release)
+                keys_to_copy = [
+                    'platform::ceph::rgw::keystone::swift_endpts_enabled',
+                    'platform::ceph::rgw::keystone::rgw_admin_user',
+                    'platform::ceph::rgw::keystone::rgw_admin_password',
+                    'platform::ceph::rgw::keystone::rgw_admin_domain',
+                    'platform::ceph::rgw::keystone::rgw_admin_project',
+                ]
+                for key in keys_to_copy:
+                    if key in config:
+                        config[key] = old_config.get(key)
 
-            if utils.is_chart_enabled(
-                    self.dbapi,
-                    openstack_app.name,
-                    self.HELM_CHART_SWIFT,
-                    common.HELM_NS_OPENSTACK
-            ):
-                override = self.dbapi.helm_override_get(
-                            openstack_app.id,
-                            self.SERVICE_NAME_RGW,
-                            common.HELM_NS_OPENSTACK)
-                password = override.system_overrides.get(
-                            self.SERVICE_NAME_RGW, None)
-                if password:
-                    swift_auth_password = password.encode('utf8', 'strict')
-                    config.update(
-                        {'platform::ceph::rgw::keystone::swift_endpts_enabled':
-                         True})
-                    config.pop('platform::ceph::rgw::keystone::rgw_admin_user')
-                    config.update({'platform::ceph::rgw::keystone::rgw_admin_password':
-                                   swift_auth_password})
-                    config.update({'platform::ceph::rgw::keystone::rgw_admin_domain':
-                                   self.RADOSGW_SERVICE_DOMAIN_NAME})
-                    config.update({'platform::ceph::rgw::keystone::rgw_admin_project':
-                                   self.RADOSGW_SERVICE_PROJECT_NAME})
-                else:
-                    raise exception.SysinvException(
-                        "Unable to retreive containerized swift auth password")
+            else:
+                openstack_app = utils.find_openstack_app(self.dbapi)
+
+                if utils.is_chart_enabled(
+                        self.dbapi,
+                        openstack_app.name,
+                        self.HELM_CHART_SWIFT,
+                        common.HELM_NS_OPENSTACK
+                ):
+                    override = self.dbapi.helm_override_get(
+                                openstack_app.id,
+                                self.SERVICE_NAME_RGW,
+                                common.HELM_NS_OPENSTACK)
+                    password = override.system_overrides.get(
+                                self.SERVICE_NAME_RGW, None)
+                    if password:
+                        swift_auth_password = password.encode('utf8', 'strict')
+                        config.update(
+                            {'platform::ceph::rgw::keystone::swift_endpts_enabled':
+                             True})
+                        config.pop('platform::ceph::rgw::keystone::rgw_admin_user')
+                        config.update({'platform::ceph::rgw::keystone::rgw_admin_password':
+                                       swift_auth_password})
+                        config.update({'platform::ceph::rgw::keystone::rgw_admin_domain':
+                                       self.RADOSGW_SERVICE_DOMAIN_NAME})
+                        config.update({'platform::ceph::rgw::keystone::rgw_admin_project':
+                                       self.RADOSGW_SERVICE_PROJECT_NAME})
+                    else:
+                        raise exception.SysinvException(
+                            "Unable to retreive containerized swift auth password")
 
         return config
 
@@ -255,13 +270,8 @@ class CephPuppet(openstack.OpenstackBasePuppet):
         if ceph_mon:
             # During an upgrade from STX.5.0 -> STX.6.0, enforce msgr v1
             # addressing on all monitors. Can revert this change in STX.7.0
-            try:
-                upgrade = self.dbapi.software_upgrade_get_one()
-                LOG.info("Platform Upgrade in Progress %s" % upgrade.state)
-            except Exception:
-                # Use default values from the system config if no upgrade in progress
-                pass
-            else:
+            is_upgrading, upgrade = utils.is_upgrade_in_progress(self.dbapi)
+            if is_upgrading:
                 # When in any activating state, we'll update the monitors to
                 # drop the v1 enforcement (so skip the special formatting below)
                 if upgrade.state not in [constants.UPGRADE_ACTIVATION_REQUESTED,

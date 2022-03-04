@@ -8167,6 +8167,15 @@ class Connection(api.Connection):
 
         return result
 
+    def _datanetwork_get_by_name(self, datanetworkname):
+        query = model_query(models.DataNetworks)
+        query = query.filter_by(name=datanetworkname)
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.DataNetworkNameNotFound(name=datanetworkname)
+        return result
+
     def _datanetwork_create(self, obj, values):
         if not values.get('uuid'):
             values['uuid'] = uuidutils.generate_uuid()
@@ -8211,6 +8220,10 @@ class Connection(api.Connection):
     @db_objects.objectify(objects.datanetwork)
     def datanetwork_get(self, datanetwork_id):
         return self._datanetwork_get_one(datanetwork_id)
+
+    @db_objects.objectify(objects.datanetwork)
+    def datanetwork_get_by_name(self, datanetworkname):
+        return self._datanetwork_get_by_name(datanetworkname)
 
     def _add_datanetworks_filters(self, query, filters):
         if filters is None:
