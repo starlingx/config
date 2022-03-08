@@ -373,6 +373,20 @@ class RegistryCert_CertWatcher(CertWatcher):
         self.register_listener(RegistryCertRenew(self.context))
 
 
+class OpenldapCert_CertWatcher(CertWatcher):
+    def __init__(self):
+        super(OpenldapCert_CertWatcher, self).__init__()
+
+    def initialize(self):
+        self.context.initialize()
+
+        platcert_ns = constants.CERT_NAMESPACE_PLATFORM_CERTS
+        LOG.info('setting ns for Openldap cert : %s & registering listener' % platcert_ns)
+        self.namespace = platcert_ns
+        self.context.kubernete_namespace = platcert_ns
+        self.register_listener(OpenldapCertRenew(self.context))
+
+
 class CertificateRenew(CertWatcherListener):
     def __init__(self, context):
         super(CertificateRenew, self).__init__(context)
@@ -680,3 +694,13 @@ class RegistryCertRenew(PlatformCertRenew):
         LOG.info('RegistryCertRenew: Secret changes detected. Initiating certificate update')
 
         self.update_platform_certificate(event_data, constants.CERT_MODE_DOCKER_REGISTRY, force=True)
+
+
+class OpenldapCertRenew(PlatformCertRenew):
+    def __init__(self, context):
+        super(OpenldapCertRenew, self).__init__(context, constants.OPENLDAP_CERT_SECRET_NAME)
+
+    def update_certificate(self, event_data):
+        LOG.info('OpenldapCertRenew: Secret changes detected. Initiating certificate update')
+
+        self.update_platform_certificate(event_data, constants.CERT_MODE_OPENLDAP, force=True)

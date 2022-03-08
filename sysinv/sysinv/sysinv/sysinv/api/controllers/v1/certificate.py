@@ -348,11 +348,12 @@ class CertificateController(rest.RestController):
 
                 continue
 
-            # validation checking for ssl, docker_registry
-            # and openstack certficcates
+            # validation checking for ssl, docker_registry, openldap
+            # and openstack certificates
             if mode in [constants.CERT_MODE_SSL,
                         constants.CERT_MODE_DOCKER_REGISTRY,
                         constants.CERT_MODE_OPENSTACK,
+                        constants.CERT_MODE_OPENLDAP,
                         ]:
                 try:
                     hash_issuers.append(cutils.get_cert_issuer_hash(cert))
@@ -413,11 +414,12 @@ class CertificateController(rest.RestController):
         # information returned from conductor manager.
         certificate_dicts = []
         for inv_cert in inv_certs:
-            # for ssl, tmp_mode, docker_registry and openstack certs, if the
-            # cert is ICA signed cert (ie, the pem_contents contains
+            # for ssl, tmp_mode, docker_registry, openldap and openstack certs,
+            # if the cert is ICA signed cert (ie, the pem_contents contains
             # intermediate CA certs), skip these intermediate CA certs.
             if mode in [constants.CERT_MODE_SSL,
                         constants.CERT_MODE_DOCKER_REGISTRY,
+                        constants.CERT_MODE_OPENLDAP,
                         constants.CERT_MODE_OPENSTACK] \
                     and inv_cert.get('is_ca', None):
                 continue
