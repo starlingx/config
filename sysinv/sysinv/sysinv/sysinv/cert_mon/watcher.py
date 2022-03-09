@@ -17,16 +17,20 @@
 # of this software may be licensed only pursuant to the terms
 # of an applicable Wind River license agreement.
 #
-import re
 import hashlib
+import json
+import os
+import re
+
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
 from dateutil.parser import parse
 from kubernetes import __version__ as K8S_MODULE_VERSION
 from kubernetes import client
-from kubernetes.client.rest import ApiException
+from kubernetes import config
 from kubernetes import watch
 from kubernetes.client import Configuration
-from kubernetes import config
-import os
+from kubernetes.client.rest import ApiException
 from oslo_config import cfg
 from oslo_log import log
 from oslo_serialization import base64
@@ -35,6 +39,7 @@ from six.moves.urllib.error import URLError
 
 from sysinv.cert_mon import utils
 from sysinv.common import constants
+from sysinv.common import exception
 from sysinv.common import kubernetes as sys_kube
 
 K8S_MODULE_MAJOR_VERSION = int(K8S_MODULE_VERSION.split('.')[0])
@@ -43,6 +48,7 @@ LOG = log.getLogger(__name__)
 
 SECRET_ACTION_TYPE_ADDED = 'ADDED'
 SECRET_ACTION_TYPE_DELETED = 'DELETED'
+SECRET_ACTION_TYPE_EXISTING = 'EXISTING'
 SECRET_ACTION_TYPE_MODIFIED = 'MODIFIED'
 
 CONF = cfg.CONF
@@ -176,6 +182,7 @@ class CertWatcherListener(object):
     def notify_changed(self, event_data):
         if self.check_filter(event_data):
             self.do_action(event_data)
+            return True
         else:
             return False
 
@@ -210,6 +217,7 @@ class CertWatcher(object):
         self.namespace = None
         self.context = MonitorContext()
         self.last_resource_version = None
+        self.is_check_existing_certificates = True
 
     def register_listener(self, listener):
         return self.listeners.append(listener)
@@ -238,7 +246,49 @@ class CertWatcher(object):
                 "Failed to retrieve resource_version, namespace: %s"
                 % self.namespace)
 
-    def start_watch(self, on_success, on_error):
+    def handle_secret_event(self, event, on_success, on_error):
+        """Handles an individual secret event and calls appropriate CertWatcherListener
+        to take action on that event e.g. install the certificate
+        :param event: an event object wrapping a kubernetes secret
+        :param on_success: function to be called on successful execution
+        :param on_error: function to be called on failed execution
+        """
+        LOG.debug('%s watch received new event: %s, %s'
+                  % (self.__class__.__name__, type(event.get('object')), event))
+        event_type = event.get('type')
+        if not event_type:
+            LOG.error(("%s: received unexpected event on watch, "
+                       "restarting it: %s")
+                      % (self.__class__.__name__, event))
+            self.last_resource_version = None
+            raise exception.UnexpectedEvent(event=event)
+        # Note: we should no longer receive event_type == 'ERROR'
+        # (see client code - it now raises an ApiException):
+        if event_type == 'ERROR':
+            # Unexpected error. Restart without resourceVersion.
+            self.last_resource_version = None
+            LOG.error(
+                ("%s: received unexpected type=ERROR event on watch, "
+                 "restarting it: %s") % (self.__class__.__name__, event))
+            raise exception.UnexpectedEvent(event=event)
+
+        event_data = CertUpdateEventData(event)
+
+        for listener in self.listeners:
+            update_event = CertUpdateEvent(listener, event_data)
+
+            try:
+                if listener.notify_changed(event_data):
+                    on_success(update_event.get_id())
+            except Exception as e:
+                LOG.error("%s: monitor action in namespace=%s failed: %s,  %s"
+                          % (self.__class__.__name__, self.namespace, event_data, e))
+                if not isinstance(e, URLError):
+                    LOG.exception(e)
+                on_error(update_event)
+
+    def _get_kubernetes_core_client(self):
+        """Returns the kubernetes CoreV1Api according to k8s version"""
         config.load_kube_config(KUBE_CONFIG_PATH)
         if K8S_MODULE_MAJOR_VERSION < 12:
             c = Configuration()
@@ -246,8 +296,36 @@ class CertWatcher(object):
             c = Configuration().get_default_copy()
         c.verify_ssl = True
         Configuration.set_default(c)
-        ccApi = client.CoreV1Api()
+        return client.CoreV1Api()
+
+    def start_watch(self, on_success, on_error):
+        """Monitors events on secrets in the watched namespaces (CertWatcher.namespace)
+        and calls handle_secret_event to process each new event.
+        :param on_success: function to be called on successful execution
+        :param on_error: function to be called on failed execution
+        """
+        ccApi = self._get_kubernetes_core_client()
         kube_watch = watch.Watch()
+
+        # First Checks for existing certificates in the watched namespace.
+        # This allows for certificates existing before cert-mon startup to get detected
+        if self.is_check_existing_certificates:
+            try:
+                response = ccApi.list_namespaced_secret(self.namespace, _preload_content=False)
+                secrets = json.loads(response.read())
+                for secret in secrets['items']:
+                    secret_event = {
+                        "type": SECRET_ACTION_TYPE_EXISTING,
+                        "object": secret,
+                        "raw_object": secret
+                    }
+                    self.handle_secret_event(secret_event, on_success, on_error)
+                self.is_check_existing_certificates = False
+            except Exception as e:
+                LOG.exception(
+                    ("%s: Unexpected error occurred during the initial check for existing certificates: %s"
+                     % (self.__class__.__name__, e)))
+                raise
 
         kwargs = {'namespace': self.namespace}
         self._update_latest_resource_version(ccApi)
@@ -264,41 +342,12 @@ class CertWatcher(object):
                     self.last_resource_version))
 
         try:
-            for item in kube_watch.stream(ccApi.list_namespaced_secret, **kwargs):
-                LOG.debug('%s watch received new event: %s, %s'
-                          % (self.__class__.__name__, type(item.get('object')), item))
-                event_type = item.get('type')
-                if not event_type:
-                    LOG.error(("%s: received unexpected event on watch, "
-                               "restarting it: %s")
-                              % (self.__class__.__name__, item))
-                    self.last_resource_version = None
+            for secret_event in kube_watch.stream(ccApi.list_namespaced_secret, **kwargs):
+                try:
+                    self.handle_secret_event(secret_event, on_success, on_error)
+                except exception.UnexpectedEvent:
                     kube_watch.stop()
                     return
-                # Note: we should no longer receive event_type == 'ERROR'
-                # (see client code - it now raises an ApiException):
-                if event_type == 'ERROR':
-                    # Unexpected error. Restart without resourceVersion.
-                    self.last_resource_version = None
-                    LOG.error(
-                        ("%s: received unexpected type=ERROR event on watch, "
-                         "restarting it: %s") % (self.__class__.__name__, item))
-                    kube_watch.stop()
-                    return
-
-                event_data = CertUpdateEventData(item)
-                for listener in self.listeners:
-                    update_event = CertUpdateEvent(listener, event_data)
-                    try:
-                        if listener.notify_changed(event_data):
-                            on_success(update_event.get_id())
-                    except Exception as e:
-                        LOG.error("%s: monitor action in namespace=%s failed: %s,  %s"
-                                  % (self.__class__.__name__, self.namespace, event_data, e))
-                        if not isinstance(e, URLError):
-                            LOG.exception(e)
-                        on_error(update_event)
-
         except ApiException as ex:
             if ex.status == 410:
                 # Expired watch. Retrieve current resource_version for use
@@ -317,8 +366,10 @@ class CertWatcher(object):
                      "restarting it") % (self.__class__.__name__))
             kube_watch.stop()
             return
-        except Exception:
+        except Exception as e:
             kube_watch.stop()
+            LOG.exception(
+                "%s: Unexpected error occurred: %s" % (self.__class__.__name__, e))
             raise
 
 
@@ -392,9 +443,10 @@ class CertificateRenew(CertWatcherListener):
         super(CertificateRenew, self).__init__(context)
 
     def certificate_is_ready(self, event_data):
-        if event_data.action in (SECRET_ACTION_TYPE_ADDED, SECRET_ACTION_TYPE_MODIFIED)\
-                and event_data.ca_crt and event_data.tls_crt and \
-                event_data.tls_key:
+        supported_actions = \
+            (SECRET_ACTION_TYPE_ADDED, SECRET_ACTION_TYPE_MODIFIED, SECRET_ACTION_TYPE_EXISTING)
+        if event_data.action in supported_actions and event_data.ca_crt \
+                and event_data.tls_crt and event_data.tls_key:
             return True
         else:
             return False
@@ -427,7 +479,7 @@ class CertificateRenew(CertWatcherListener):
         # processing certificate signing request far less than 1 sec (in ms) when process
         # a single CSR. When DC root CA certificate is renewed, a large number of CSRs
         # are triggered to renew all intermediate CA certificates, cert-manager is
-        # observed to have significiant delay of processing CSRs. Setting the delay
+        # observed to have significant delay of processing CSRs. Setting the delay
         # threshold to 1 hour can support very large number (1000s) of concurrent CSR
         # requests with proper hardware and software configuration.
         reasonable_delay = 3600  # 1 hour
@@ -666,10 +718,25 @@ class PlatformCertRenew(CertificateRenew):
         :param force: whether to bypass semantic checks and force the update,
             defaults to False
         """
-        pem_file_path = utils.update_pemfile(event_data.tls_crt, event_data.tls_key)
-
         token = self.context.get_token()
-        utils.update_platform_cert(token, cert_type, pem_file_path, force)
+        try:
+            cert_to_be_installed = x509.load_pem_x509_certificate(event_data.tls_crt.encode(),
+                                                                  default_backend())
+
+            installed_certificates = utils.list_platform_certificates(token)
+
+            for certificate in installed_certificates['certificates']:
+                if str(cert_to_be_installed.serial_number) in certificate['signature']:
+                    LOG.info('Certificate %s is already installed. Skipping installation.' %
+                             certificate['signature'])
+                    return
+
+            pem_file_path = utils.update_pemfile(event_data.tls_crt, event_data.tls_key)
+            utils.update_platform_cert(token, cert_type, pem_file_path, force)
+
+        except Exception as e:
+            LOG.error("Error when updating certificates: %s" % e)
+            raise
 
 
 class RestApiCertRenew(PlatformCertRenew):

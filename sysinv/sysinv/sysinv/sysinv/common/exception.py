@@ -1639,3 +1639,7 @@ class KubeRootCAUpdateAlreadyExists(NotFound):
 
 class KubeRootCAUpdateNotFound(NotFound):
     message = _("Kubernetes RootCA Update with id %(rootca_update_id)s not found")
+
+
+class UnexpectedEvent(SysinvException):
+    message = _("Unexpected event received: %(event)s")
