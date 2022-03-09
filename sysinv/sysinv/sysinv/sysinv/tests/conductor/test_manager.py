@@ -17,7 +17,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 
 """Test class for Sysinv ManagerService."""
@@ -25,7 +25,6 @@
 import copy
 import mock
 import os.path
-import tsconfig.tsconfig as tsc
 import uuid
 
 from cryptography import x509
@@ -139,6 +138,12 @@ class ManagerTestCase(base.DbTestCase):
         self.mock_upgrade_downgrade_kube_components = \
             self.upgrade_downgrade_kube_components_patcher.start()
         self.addCleanup(self.mock_upgrade_downgrade_kube_components.stop)
+
+        self.write_config_patcher = mock.patch.object(
+            manager.ConductorManager, '_write_config')
+        self.mock_write_config = \
+            self.write_config_patcher.start()
+        self.addCleanup(self.mock_write_config.stop)
 
         self.service.fm_api = mock.Mock()
         self.service.fm_api.set_fault.side_effect = self._raise_alarm
@@ -1484,21 +1489,6 @@ class ManagerTestCase(base.DbTestCase):
     def fake_rename(self, old, new):
         self.executes.append(('mv', old, new))
 
-    @staticmethod
-    def scope_open(*args, **kwargs):
-        fake_contents = "lorem ipsum"
-        fake_file = mock.Mock()
-        fake_file.read.return_value = fake_contents
-        fake_context_manager = mock.MagicMock()
-        fake_context_manager.__enter__.return_value = fake_file
-        fake_context_manager.__exit__.return_value = None
-
-        if not args[0].startswith(  # filename
-                os.path.join(tsc.CONFIG_PATH, 'resolv.conf')):
-            return open(*args, **kwargs)
-        else:
-            return fake_context_manager
-
     def test_deferred_runtime_config_file(self):
 
         # Create controller-0
@@ -1533,30 +1523,27 @@ class ManagerTestCase(base.DbTestCase):
         p.return_value = ['one', 'two', 'three']
         self.addCleanup(p.stop)
 
-        mock_open = mock.mock_open()
-        with mock.patch('six.moves.builtins.open', mock_open):
-            mock_open.side_effect = self.scope_open
-            self.mock_ready_to_apply_runtime_config.return_value = False
-            self.service.update_dns_config(self.context)
-            chost_updated = self.dbapi.ihost_get(chost.uuid)
+        self.mock_ready_to_apply_runtime_config.return_value = False
+        self.service.update_dns_config(self.context)
+        chost_updated = self.dbapi.ihost_get(chost.uuid)
 
-            # Verify that the config is updated and alarm is raised
-            self.assertNotEqual(chost_updated.config_applied,
-                                chost_updated.config_target)
-            self.assertEqual(self.alarm_raised, True)
+        # Verify that the config is updated and alarm is raised
+        self.assertNotEqual(chost_updated.config_applied,
+                            chost_updated.config_target)
+        self.assertEqual(self.alarm_raised, True)
 
-            self.mock_ready_to_apply_runtime_config.return_value = True
-            self.service._audit_deferred_runtime_config(self.context)
+        self.mock_ready_to_apply_runtime_config.return_value = True
+        self.service._audit_deferred_runtime_config(self.context)
 
-            # Simulate agent update
-            chost_updated = self.dbapi.ihost_get(chost.uuid)
-            self.service._update_host_config_applied(
-                self.context, chost_updated, chost_updated.config_applied)
+        # Simulate agent update
+        chost_updated = self.dbapi.ihost_get(chost.uuid)
+        self.service._update_host_config_applied(
+            self.context, chost_updated, chost_updated.config_applied)
 
-            # Verify the config is up to date.
-            self.assertEqual(chost_updated.config_target,
-                             chost_updated.config_applied)
-            self.assertEqual(self.alarm_raised, False)
+        # Verify the config is up to date.
+        self.assertEqual(chost_updated.config_target,
+                         chost_updated.config_applied)
+        self.assertEqual(self.alarm_raised, False)
 
     def test_deferred_runtime_config_manifest(self):
         # Create controller-0
@@ -1629,45 +1616,42 @@ class ManagerTestCase(base.DbTestCase):
         p.return_value = ['one', 'two', 'three']
         self.addCleanup(p.stop)
 
-        mock_open = mock.mock_open()
-        with mock.patch('six.moves.builtins.open', mock_open):
-            mock_open.side_effect = self.scope_open
-            # Attempt to apply a runtime config, which is deferred
-            self.mock_ready_to_apply_runtime_config.return_value = False
-            self.service.update_dns_config(self.context)
-            c1host_updated = self.dbapi.ihost_get(chost.uuid)
+        # Attempt to apply a runtime config, which is deferred
+        self.mock_ready_to_apply_runtime_config.return_value = False
+        self.service.update_dns_config(self.context)
+        c1host_updated = self.dbapi.ihost_get(chost.uuid)
 
-            # Verify that the config is updated and alarm is raised
-            self.assertNotEqual(c1host_updated.config_applied,
-                                c1host_updated.config_target)
-            self.assertEqual(self.alarm_raised, True)
+        # Verify that the config is updated and alarm is raised
+        self.assertNotEqual(c1host_updated.config_applied,
+                            c1host_updated.config_target)
+        self.assertEqual(self.alarm_raised, True)
 
-            # Attempt another runtime config, which is also deferred
-            self.service.update_user_config(self.context)
-            c2host_updated = self.dbapi.ihost_get(chost.uuid)
+        # Attempt another runtime config, which is also deferred
+        self.service.update_user_config(self.context)
+        c2host_updated = self.dbapi.ihost_get(chost.uuid)
 
-            # Verify that the target is updated and alarm is still raised
-            self.assertNotEqual(c1host_updated.config_target,
-                                c2host_updated.config_target)
-            self.assertEqual(c1host_updated.config_applied,
-                             c1host_updated.config_applied)
-            self.assertNotEqual(c2host_updated.config_applied,
-                                c2host_updated.config_target)
-            self.assertEqual(self.alarm_raised, True)
+        # Verify that the target is updated and alarm is still raised
+        self.assertNotEqual(c1host_updated.config_target,
+                            c2host_updated.config_target)
+        self.assertEqual(c1host_updated.config_applied,
+                         c1host_updated.config_applied)
+        self.assertNotEqual(c2host_updated.config_applied,
+                            c2host_updated.config_target)
+        self.assertEqual(self.alarm_raised, True)
 
-            # Run the audit for deferred runtime config
-            self.mock_ready_to_apply_runtime_config.return_value = True
-            self.service._audit_deferred_runtime_config(self.context)
+        # Run the audit for deferred runtime config
+        self.mock_ready_to_apply_runtime_config.return_value = True
+        self.service._audit_deferred_runtime_config(self.context)
 
-            # Simulate agent update
-            chost_updated = self.dbapi.ihost_get(chost.uuid)
-            self.service._update_host_config_applied(
-                self.context, chost_updated, chost_updated.config_applied)
+        # Simulate agent update
+        chost_updated = self.dbapi.ihost_get(chost.uuid)
+        self.service._update_host_config_applied(
+            self.context, chost_updated, chost_updated.config_applied)
 
-            # Verify the config is up to date.
-            self.assertEqual(chost_updated.config_target,
-                             chost_updated.config_applied)
-            self.assertEqual(self.alarm_raised, False)
+        # Verify the config is up to date.
+        self.assertEqual(chost_updated.config_target,
+                         chost_updated.config_applied)
+        self.assertEqual(self.alarm_raised, False)
 
     def _raise_alarm(self, fault):
         self.alarm_raised = True

@@ -129,6 +129,7 @@ class InterfacePuppet(base.BasePuppet):
         return config
 
     def _create_interface_context(self, host):
+        host_interfaces = self.dbapi.iinterface_get_by_ihost(host.uuid)
         context = {
             'hostname': host.hostname,
             'personality': host.personality,
@@ -136,8 +137,9 @@ class InterfacePuppet(base.BasePuppet):
             'system_uuid': host.isystem_uuid,
             'system_mode': self._get_system().system_mode,
             'ports': self._get_port_interface_id_index(host),
-            'interfaces': self._get_interface_name_index(host),
-            'interfaces_datanets': self._get_interface_name_datanets(host),
+            'interfaces': self._get_interface_name_index(host_interfaces),
+            'interfaces_datanets': self._get_interface_name_datanets(
+                host.hostname, host_interfaces),
             'devices': self._get_port_pciaddr_index(host),
             'addresses': self._get_address_interface_name_index(host),
             'routes': self._get_routes_interface_name_index(host),
@@ -149,12 +151,12 @@ class InterfacePuppet(base.BasePuppet):
         }
         return context
 
-    def _find_host_interface(self, host, networktype):
+    def _find_host_interface(self, host_interfaces, networktype):
         """
         Search the host interface list looking for an interface with a given
         primary network type.
         """
-        for iface in self.dbapi.iinterface_get_by_ihost(host.id):
+        for iface in host_interfaces:
             for ni in self.dbapi.interface_network_get_by_interface(
                     iface['id']):
                 network = self.dbapi.network_get(ni.id)
@@ -167,17 +169,18 @@ class InterfacePuppet(base.BasePuppet):
         """
         return interface._get_port_interface_id_index(self.dbapi, host)
 
-    def _get_interface_name_index(self, host):
+    def _get_interface_name_index(self, host_interfaces):
         """
         Builds a dictionary of interfaces indexed by interface name.
         """
-        return interface._get_interface_name_index(self.dbapi, host)
+        return interface._get_interface_name_index(host_interfaces)
 
-    def _get_interface_name_datanets(self, host):
+    def _get_interface_name_datanets(self, hostname, host_interfaces):
         """
         Builds a dictionary of datanets indexed by interface name.
         """
-        return interface._get_interface_name_datanets(self.dbapi, host)
+        return interface._get_interface_name_datanets(
+            self.dbapi, hostname, host_interfaces)
 
     def _get_port_pciaddr_index(self, host):
         """

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2019-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -34,22 +34,22 @@ def _get_port_interface_id_index(dbapi, host):
     return ports
 
 
-def _get_interface_name_index(dbapi, host):
+def _get_interface_name_index(host_interfaces):
     """
     Builds a dictionary of interfaces indexed by interface name.
     """
     interfaces = {}
-    for iface in dbapi.iinterface_get_by_ihost(host.id):
+    for iface in host_interfaces:
         interfaces[iface.ifname] = iface
     return interfaces
 
 
-def _get_interface_name_datanets(dbapi, host):
+def _get_interface_name_datanets(dbapi, hostname, host_interfaces):
     """
     Builds a dictionary of datanets indexed by interface name.
     """
     datanets = {}
-    for iface in dbapi.iinterface_get_by_ihost(host.id):
+    for iface in host_interfaces:
         ifdatanets = dbapi.interface_datanetwork_get_by_interface(iface.uuid)
 
         datanetworks = []
@@ -74,7 +74,7 @@ def _get_interface_name_datanets(dbapi, host):
         datanets[iface.ifname] = datanetworks_list
 
     LOG.debug('_get_interface_name_datanets '
-              'host=%s, datanets=%s', host.hostname, datanets)
+              'host=%s, datanets=%s', hostname, datanets)
 
     return datanets
 

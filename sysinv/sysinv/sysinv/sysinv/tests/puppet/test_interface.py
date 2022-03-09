@@ -375,7 +375,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             self.assertIn(port, index[port['pciaddr']])
 
     def test_get_interface_name_index(self):
-        index = self.operator.interface._get_interface_name_index(self.host)  # pylint: disable=no-member
+        index = self.operator.interface._get_interface_name_index(self.interfaces)  # pylint: disable=no-member
         for iface in self.interfaces:
             self.assertTrue(iface['ifname'] in index)
             self.assertEqual(index[iface['ifname']], iface)
