@@ -12,4 +12,5 @@ override_dh_auto_install:
 		SYSTEMDDIR=`pwd`/debian/tmp/lib/systemd/system install
 
 override_dh_installsystemd:
-	dh_installsystemd -pconfig-gate-worker worker-config-gate.service
+	dh_installsystemd -pconfig-gate-worker --no-start worker-config-gate.service
+	dh_installsystemd -pconfig-gate --no-start config.service

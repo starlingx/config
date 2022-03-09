@@ -1,2 +1,3 @@
 usr/sbin/wait_for_config_init.sh
 lib/systemd/system/config.service
+debian/systemd/00-config-gate.preset /etc/systemd/system-preset
