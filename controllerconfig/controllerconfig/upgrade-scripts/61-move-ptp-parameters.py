@@ -119,6 +119,12 @@ def main():
                 LOG.exception(ex)
                 res = 1
             finally:
+                if to_release.startswith('22'):
+                    _cleanup_ptp_service_parameters(conn)
+
+                # Committing all changes
+                LOG.info("Committing all PTP-related changes into database")
+                conn.commit()
                 conn.close()
 
     return res
@@ -132,10 +138,25 @@ def _legacy_instances_not_found(connection):
                      PTP_INSTANCE_LEGACY_PHC2SYS))
         instance = cur.fetchone()
         if instance is not None:
-            LOG.info("Legacy instance found with id = %s" % instance['id'])
+            LOG.info("PTP legacy instance found with id = %s" % instance['id'])
             return False
 
-    LOG.info("No legacy instances found")
+    LOG.info("No PTP legacy instances found")
+
+    # If no legacy instances are present BUT any other instance is found,
+    # it would mean that instance must have been created after patching the
+    # current release making the new API fully functional, while legacy API was
+    # deprecated since then.
+    # In such case, legacy instances shouldn't be created automatically, even
+    # even based on the still existing (but now legacy and potentially
+    # untouched) 'ptp' table, because that would be an undesired behavior
+    with connection.cursor(cursor_factory=DictCursor) as cur:
+        cur.execute("SELECT id FROM ptp_instances;")
+        instance = cur.fetchone()
+        if instance is not None:
+            LOG.info("PTP legacy instances dismissed")
+            return False
+
     return True
 
 
@@ -225,6 +246,12 @@ def _assign_ptp_to_interface(connection, ptp_interface_id, interface_id):
                     "VALUES (%s, %s, %s, %s);",
                     (datetime.now(), uuidutils.generate_uuid(), interface_id,
                      ptp_interface_id))
+
+
+def _cleanup_ptp_service_parameters(connection):
+    with connection.cursor(cursor_factory=DictCursor) as cur:
+        LOG.info("Removing PTP configuration from 'service_parameter' table")
+        cur.execute("DELETE FROM service_parameter WHERE service = 'ptp';")
 
 
 def _move_ptp_parameters(connection):
@@ -401,10 +428,6 @@ def _move_ptp_parameters(connection):
         bc_clock_jbod_uuid = _insert_ptp_parameter(
             connection, PTP_PARAMETER_BC_JBOD, PTP_BOUNDARY_CLOCK_JBOD_1)
         _add_parameter_to_instance(connection, ptp4l_uuid, bc_clock_jbod_uuid)
-
-    # Committing all changes
-    LOG.info("Committing PTP legacy configuration into database")
-    connection.commit()
 
 
 if __name__ == "__main__":
