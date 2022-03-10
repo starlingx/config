@@ -13,7 +13,7 @@ scripts/query_pci_id usr/bin
 scripts/kube-cert-rotation.sh usr/bin
 scripts/ceph_k8s_update_monitors.sh usr/bin
 usr/lib/python*/dist-packages/*
-etc/motd.d/10-system
+etc/update-motd.d/10-system
 usr/bin/cert-alarm
 usr/bin/cert-mon
 usr/bin/sysinv-agent
