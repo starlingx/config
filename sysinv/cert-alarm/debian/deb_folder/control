@@ -8,9 +8,11 @@ Rules-Requires-Root: no
 
 Package: cert-alarm
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends},
- logrotate,
- syslog-ng
+Depends: logrotate,
+         stx-ocf-scripts,
+         syslog-ng,
+         ${misc:Depends},
+         ${shlibs:Depends}
 Description: Starlingx certificate alarm
  Manages the StarlingX's platform system certificate alarm
  process as a HA resource.
