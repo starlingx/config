@@ -186,7 +186,7 @@ def get_upgrade_token(from_release,
     keystone_upgrade_token = (
         "openstack "
         "--os-username {} "
-        "--os-password {} "
+        "--os-password '{}' "
         "--os-auth-url {} "
         "--os-project-name admin "
         "--os-user-domain-name {} "
