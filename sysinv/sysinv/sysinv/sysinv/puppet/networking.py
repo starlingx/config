@@ -351,15 +351,17 @@ class NetworkingPuppet(base.BasePuppet):
         nic_clocks = {}
         nic_clock_config = {}
         nic_clock_enabled = False
+        ptp_instance_configs = []
 
         for index, instance in enumerate(ptp_instances):
             if ptp_instances[index]['service'] == constants.PTP_INSTANCE_TYPE_CLOCK:
-                clock_instance = ptp_instances.pop(index)
+                clock_instance = ptp_instances[index]
                 nic_clocks[instance['name']] = clock_instance.as_dict()
                 nic_clocks[instance['name']]['interfaces'] = []
             else:
                 ptp_instances[index][instance['name']] = instance.as_dict()
                 ptp_instances[index][instance['name']]['interfaces'] = []
+                ptp_instance_configs.append(ptp_instances[index])
         for index, iface in enumerate(ptp_interfaces):
             ptp_interfaces[index] = iface.as_dict()
         for index, param in enumerate(ptp_parameters_instance):
@@ -378,7 +380,7 @@ class NetworkingPuppet(base.BasePuppet):
 
         # Generate the ptp instance config if ptp is enabled
         if ptpinstance_enabled:
-            ptp_config = self._set_ptp_instance_global_parameters(ptp_instances,
+            ptp_config = self._set_ptp_instance_global_parameters(ptp_instance_configs,
                                                                   ptp_parameters_instance)
             ptp_config = self._set_ptp_instance_interfaces(host, ptp_config,
                                                            ptp_interfaces)
