@@ -15,4 +15,4 @@ override_dh_installinit:
 	dh_installinit --only-scripts
 
 override_dh_installsystemd:
-	dh_installsystemd --name sysinv-agent
+	dh_installsystemd -psysinv-agent sysinv-agent.service
