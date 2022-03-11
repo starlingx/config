@@ -596,14 +596,6 @@ class PlatformPuppet(base.BasePuppet):
             cpu_options = ""
             cpu_ranges = {}
             if constants.LOWLATENCY in host.subfunctions:
-                # set PM QoS latency that achieves C1 state for all cpus
-                config.update({
-                    'platform::compute::pmqos::low_wakeup_cpus':
-                        "\"%s\"" % host_ranges,
-                    'platform::compute::pmqos::hight_wakeup_cpus':
-                        "\"%s\"" % "",
-                })
-
                 # Linux kernel 4.15 is the first release with the following
                 # commit which appears to tie together nohz_full and isolcpus.
                 #
