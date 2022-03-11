@@ -2436,16 +2436,7 @@ class HostController(rest.RestController):
         if (personality is not None and
                 personality.find(constants.STORAGE_HOSTNAME) != -1 and
                 not skip_ceph_checks):
-            num_monitors, required_monitors, __ = \
-                    self._ceph.get_monitors_status(pecan.request.dbapi)
-            if num_monitors < required_monitors:
-                raise wsme.exc.ClientSideError(_(
-                             "Only %d storage "
-                             "monitor available. At least %s unlocked and "
-                             "enabled hosts with monitors are required. Please"
-                             " ensure hosts with monitors are unlocked and "
-                             "enabled.") %
-                             (num_monitors, required_monitors))
+            utils.check_node_lock_ceph_mon(ihost, force=True, ceph_helper=self._ceph)
 
             # If it is the last storage node to delete, we need to delete
             # ceph osd pools and update additional tier status to "defined"
@@ -5603,18 +5594,10 @@ class HostController(rest.RestController):
                             and hostupdate.ihost_orig['hostname'] == \
                             constants.CONTROLLER_1_HOSTNAME:
                         check_storage_monitors = False
+
                 if check_storage_monitors:
-                    num_monitors, required_monitors, quorum_names = \
-                        self._ceph.get_monitors_status(pecan.request.dbapi)
-                    if (hostupdate.ihost_orig['hostname'] in quorum_names and
-                         num_monitors - 1 < required_monitors):
-                        raise wsme.exc.ClientSideError(_(
-                             "Only %d storage "
-                             "monitor available. At least %s unlocked and "
-                             "enabled hosts with monitors are required. Please"
-                             " ensure hosts with monitors are unlocked and "
-                             "enabled.") %
-                             (num_monitors, required_monitors))
+                    utils.check_node_lock_ceph_mon(
+                        hostupdate.ihost_orig, force=force, ceph_helper=self._ceph)
 
         if not force:
             # sm-lock-pre-check
@@ -6232,18 +6215,8 @@ class HostController(rest.RestController):
                 constants.ADMIN_UNLOCKED and
                 hostupdate.ihost_orig['operational'] ==
                 constants.OPERATIONAL_ENABLED):
-            num_monitors, required_monitors, quorum_names = \
-                self._ceph.get_monitors_status(pecan.request.dbapi)
-
-            if (hostupdate.ihost_orig['hostname'] in quorum_names and
-                 num_monitors - 1 < required_monitors):
-                raise wsme.exc.ClientSideError(_(
-                             "Only %d storage "
-                             "monitor available. At least %s unlocked and "
-                             "enabled hosts with monitors are required. Please"
-                             " ensure hosts with monitors are unlocked and "
-                             "enabled.") %
-                             (num_monitors, required_monitors))
+            utils.check_node_lock_ceph_mon(
+                hostupdate.ihost_orig, force=force, ceph_helper=self._ceph)
 
             storage_nodes = pecan.request.dbapi.ihost_get_by_personality(
                 constants.STORAGE)
@@ -6387,17 +6360,8 @@ class HostController(rest.RestController):
                     constants.ADMIN_UNLOCKED and
                     hostupdate.ihost_orig['operational'] ==
                     constants.OPERATIONAL_ENABLED):
-                num_monitors, required_monitors, quorum_names = \
-                    self._ceph.get_monitors_status(pecan.request.dbapi)
-                if (hostname in quorum_names and
-                     num_monitors - 1 < required_monitors):
-                    raise wsme.exc.ClientSideError(_(
-                         "Only %d Ceph "
-                         "monitors available. At least %s unlocked and "
-                         "enabled hosts with monitors are required. "
-                         "Please ensure hosts with monitors are "
-                         "unlocked and enabled.") %
-                         (num_monitors, required_monitors))
+                utils.check_node_lock_ceph_mon(
+                    hostupdate.ihost_orig, force=force, ceph_helper=self._ceph)
 
     def check_unlock_interfaces(self, hostupdate):
         """Semantic check for interfaces on host-unlock."""

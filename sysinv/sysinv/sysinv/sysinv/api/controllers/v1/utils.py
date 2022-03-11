@@ -35,6 +35,7 @@ import tsconfig.tsconfig as tsc
 from oslo_config import cfg
 from oslo_log import log
 from sysinv._i18n import _
+from sysinv.common import ceph
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import health
@@ -580,6 +581,27 @@ def check_all_ceph_mon_growth(ceph_mon_gib, host=None):
         cgtsvg_max_free_gib = get_node_cgtsvg_limit(ceph_mon_host)
         check_node_ceph_mon_growth(ceph_mon_host, ceph_mon_gib,
             cgtsvg_max_free_gib)
+
+
+def check_node_lock_ceph_mon(ihost, force=False, ceph_helper=None):
+    if not ceph_helper:
+        ceph_helper = ceph.CephApiOperator()
+
+    num_monitors, required_monitors, active_monitors = \
+        ceph_helper.get_monitors_status(pecan.request.dbapi)
+
+    host_has_last_mon = (num_monitors == 1 and
+                         ihost['hostname'] in active_monitors)
+
+    if (num_monitors - 1 < required_monitors and
+            not force or host_has_last_mon):
+        raise wsme.exc.ClientSideError(_(
+                "Only %d storage "
+                "monitor available. At least %d unlocked and "
+                "enabled hosts with monitors are required. Please"
+                " ensure hosts with monitors are unlocked and "
+                "enabled.") %
+                (num_monitors, required_monitors))
 
 
 class SBApiHelper(object):

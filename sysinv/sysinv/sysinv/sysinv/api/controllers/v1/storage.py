@@ -623,20 +623,11 @@ def _check_host(stor):
         raise wsme.exc.ClientSideError(_(
             "System must have a %s backend" % constants.SB_TYPE_CEPH))
 
-    # semantic check: whether at least 2 unlocked hosts are monitors
+    # semantic check: whether host can be locked or force locked based on
+    # ceph monitors availability
     if not cutils.is_aio_system(pecan.request.dbapi):
-        ceph_helper = ceph.CephApiOperator()
-        num_monitors, required_monitors, __ = \
-            ceph_helper.get_monitors_status(pecan.request.dbapi)
-        # CGTS 503 for now update monitors requirement until controller-0 is
-        # inventoried
-        # CGTS 1448
-        if num_monitors < required_monitors:
-            raise wsme.exc.ClientSideError(_(
-                "Only %d storage monitor available. "
-                "At least %s unlocked and enabled hosts with monitors are "
-                "required. Please ensure hosts with monitors are unlocked "
-                "and enabled.") % (num_monitors, required_monitors))
+        force = ihost['action'] == constants.FORCE_LOCK_ACTION
+        utils.check_node_lock_ceph_mon(ihost, force=force)
 
 
 def _check_disk(stor):
