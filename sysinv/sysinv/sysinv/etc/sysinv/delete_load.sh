@@ -11,6 +11,7 @@
 VERSION=$1
 
 FEED_DIR=/var/www/pages/feed/rel-$VERSION
+PRESTAGE_DIR=/opt/platform/deploy/$VERSION
 
 rm -f /var/pxeboot/pxelinux.cfg.files/*-$VERSION
 rm -rf /var/pxeboot/rel-$VERSION
@@ -18,3 +19,7 @@ rm -rf /var/pxeboot/rel-$VERSION
 rm -f /usr/sbin/pxeboot-update-$VERSION.sh
 
 rm -rf $FEED_DIR
+
+if [ -d $PRESTAGE_DIR ]; then
+    rm -rf $PRESTAGE_DIR
+fi
