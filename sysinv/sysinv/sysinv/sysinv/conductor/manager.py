@@ -7509,7 +7509,7 @@ class ConductorManager(service.PeriodicService):
         config_dict = {
             "personalities": personalities,
             'host_uuids': [host_uuid],
-            "classes": ['platform::interfaces::sriov::runtime',
+            "classes": ['platform::network::interfaces::sriov::runtime',
                         'platform::devices::fpga::fec::runtime'],
             puppet_common.REPORT_INVENTORY_UPDATE:
                 puppet_common.REPORT_PCI_SRIOV_CONFIG,
@@ -7533,7 +7533,7 @@ class ConductorManager(service.PeriodicService):
         config_dict = {
             "personalities": personalities,
             'host_uuids': [host_uuid],
-            "classes": ['platform::interfaces::sriov::vf::runtime']
+            "classes": ['platform::network::interfaces::sriov::vf::runtime']
         }
 
         self._config_apply_runtime_manifest(

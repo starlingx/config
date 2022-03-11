@@ -53,9 +53,9 @@ STATIC_METHOD = 'static'
 MANUAL_METHOD = 'manual'
 DHCP_METHOD = 'dhcp'
 
-NETWORK_CONFIG_RESOURCE = 'platform::interfaces::network_config'
-SRIOV_CONFIG_RESOURCE = 'platform::interfaces::sriov::sriov_config'
-FPGA_CONFIG_RESOURCE = 'platform::interfaces::fpga::fpga_config'
+NETWORK_CONFIG_RESOURCE = 'platform::network::interfaces::network_config'
+SRIOV_CONFIG_RESOURCE = 'platform::network::interfaces::sriov::sriov_config'
+FPGA_CONFIG_RESOURCE = 'platform::network::interfaces::fpga::fpga_config'
 ADDRESS_CONFIG_RESOURCE = 'platform::network::addresses::address_config'
 ROUTE_CONFIG_RESOURCE = 'platform::network::routes::route_config'
 
