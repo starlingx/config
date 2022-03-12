@@ -448,6 +448,15 @@ class KubeOperator(object):
             LOG.error("Kubernetes exception in kube_get_secret: %s" % e)
             raise
 
+    def kube_patch_namespace(self, namespace, body):
+        c = self._get_kubernetesclient_core()
+        try:
+            c.patch_namespace(namespace, body)
+        except Exception as e:
+            LOG.error("Failed to patch namespace %s with patch %s: %s"
+                      % (namespace, body, e))
+            raise
+
     def kube_create_secret(self, namespace, body):
         c = self._get_kubernetesclient_core()
         try:

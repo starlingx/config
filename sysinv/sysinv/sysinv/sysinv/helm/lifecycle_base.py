@@ -81,6 +81,7 @@ class AppLifecycleOperator(object):
             if hook_info.operation == constants.APP_APPLY_OP and \
                     hook_info.relative_timing == constants.APP_LIFECYCLE_TIMING_PRE:
                 lifecycle_utils.create_local_registry_secrets(app_op, app, hook_info)
+                lifecycle_utils.add_pod_security_admission_controller_labels(app_op, app, hook_info)
             elif hook_info.operation == constants.APP_REMOVE_OP and \
                     hook_info.relative_timing == constants.APP_LIFECYCLE_TIMING_POST:
                 lifecycle_utils.delete_local_registry_secrets(app_op, app, hook_info)
