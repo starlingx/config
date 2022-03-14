@@ -8037,12 +8037,14 @@ class Connection(api.Connection):
         except NoResultFound:
             raise exception.KubeAppNotFound(name="endswith '{}'".format(name))
         except MultipleResultsFound:
-            LOG.exception(
+            msg = "Multiple app entries found ending with {}, returning " \
+                  "the first occurrence".format(name)
+            LOG.debug(
                 exception.InvalidParameterValue(
-                    err="Multiple app entries found ending with {}, returning "
-                        "the first occurrence".format(name)
+                    err=msg
                 )
             )
+            LOG.info(msg)
             return query.filter(models.KubeApp.name.endswith(name)).first()
 
     @db_objects.objectify(objects.kube_app)
