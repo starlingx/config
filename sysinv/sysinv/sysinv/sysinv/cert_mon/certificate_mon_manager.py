@@ -55,7 +55,7 @@ cert_mon_opts = [
                help='Max times to reattempt accessing external system '
                     'if network failure occurred'),
     cfg.IntOpt('network_max_retry',
-               default=5,
+               default=30,
                help='Interval to reattempt accessing external system '
                     'if network failure occurred'),
     cfg.IntOpt('audit_batch_size',
