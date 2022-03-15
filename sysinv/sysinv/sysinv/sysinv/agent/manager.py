@@ -1028,10 +1028,13 @@ class AgentManager(service.PeriodicService):
                                                self._ihost_uuid)
             self._inventoried_initial = True
 
-    def _report_config_applied(self, context):
+    def _report_config_applied(self, context, config_dict=None, status=None, error=None):
         """Report the latest configuration applied for this host to the
         conductor.
         :param context: an admin context
+        :param config_dict: configuration applied
+        :param status: config status
+        :param error: config error
         """
         rpcapi = conductor_rpcapi.ConductorAPI(
             topic=conductor_rpcapi.MANAGER_TOPIC)
@@ -1041,6 +1044,10 @@ class AgentManager(service.PeriodicService):
             LOG.info("Agent config applied  %s" % config_uuid)
 
             imsg_dict = {'config_applied': config_uuid}
+            if config_dict:
+                imsg_dict.update({'config_dict': config_dict,
+                                  'status': status,
+                                  'error': error})
             rpcapi.iconfig_update_by_ihost(context,
                                            self._ihost_uuid,
                                            imsg_dict)
@@ -1720,21 +1727,21 @@ class AgentManager(service.PeriodicService):
                                             error=error)
             raise
 
-        if config_dict.get(puppet.REPORT_STATUS_CFG):
-            config_dict['host_uuid'] = self._ihost_uuid
-            LOG.debug("Manifests application succeeded. "
-                      "Reporting success to conductor. "
-                      "Details: %s." % config_dict)
-            rpcapi = conductor_rpcapi.ConductorAPI(
-                topic=conductor_rpcapi.MANAGER_TOPIC)
-            rpcapi.report_config_status(context, config_dict,
-                                        status=puppet.REPORT_SUCCESS,
-                                        error=None)
-
         if config_dict.get(puppet.REPORT_INVENTORY_UPDATE):
             self._report_inventory(context, config_dict)
 
-        self._report_config_applied(context)
+        report_status_config = config_dict.get(puppet.REPORT_STATUS_CFG)
+        if report_status_config:
+            config_dict['host_uuid'] = self._ihost_uuid
+            LOG.info("config runtime manifests application succeeded. "
+                     "Reporting %s apply success to conductor." %
+                     report_status_config)
+            LOG.debug("config runtime details: %s." % config_dict)
+
+            self._report_config_applied(
+                context, config_dict, status=puppet.REPORT_SUCCESS, error=None)
+        else:
+            self._report_config_applied(context)
 
     def _apply_runtime_manifest(self, config_dict, hieradata_path=PUPPET_HIERADATA_PATH):
 

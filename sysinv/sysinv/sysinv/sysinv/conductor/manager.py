@@ -178,6 +178,7 @@ CONFIG_UPDATE_FILE = 'config_update_file'
 
 LOCK_NAME_UPDATE_CONFIG = 'update_config_'
 LOCK_APP_AUTO_MANAGE = 'AppAutoManageLock'
+LOCK_RUNTIME_CONFIG_CHECK = 'runtime_config_check'
 
 
 AppTarBall = namedtuple(
@@ -220,6 +221,9 @@ class ConductorManager(service.PeriodicService):
 
         # track deferred runtime config which need to be applied
         self._host_deferred_runtime_config = []
+
+        # track whether runtime class apply may be in progress
+        self._runtime_class_apply_in_progress = []
 
         # Guard for a function that should run only once per conductor start
         self._do_detect_swact = True
@@ -5421,6 +5425,12 @@ class ConductorManager(service.PeriodicService):
             LOG.exception("Invalid ihost_uuid %s" % ihost_uuid)
             return
 
+        config_dict = imsg_dict.get('config_dict')
+        if config_dict:
+            status = imsg_dict.get('status')
+            error = imsg_dict.get('error')
+            self.report_config_status(context, config_dict, status, error)
+
         config_uuid = imsg_dict['config_applied']
         self._update_host_config_applied(context, ihost, config_uuid)
 
@@ -5860,15 +5870,25 @@ class ConductorManager(service.PeriodicService):
                                         {'install_state': host.install_state,
                                          'install_state_info':
                                              host.install_state_info})
+    PUPPET_RUNTIME_CLASS_ROUTES = 'platform::network::routes::runtime'
+
+    PUPPET_RUNTIME_FILTER_CLASSES = [
+        PUPPET_RUNTIME_CLASS_ROUTES,
+    ]
+
+    def _check_ready_route_runtime_config(self):
+        if self._check_runtime_class_apply_in_progress(
+                [self.PUPPET_RUNTIME_CLASS_ROUTES]):
+            return False
+        return True
 
     def _ready_to_apply_runtime_config(
-            self, context, personalities=None, host_uuids=None):
+            self, context, personalities=None, host_uuids=None, filter_classes=None):
         """Determine whether ready to apply runtime config"""
 
-        # Scope to the active controller since do not want to block runtime
-        # manifest apply due to other hosts here.  The config target will
-        # still track for any missed config (on other hosts in case other
-        # hosts are unavailable).
+        if filter_classes is None:
+            filter_classes = set()
+
         if personalities is None:
             personalities = []
         if host_uuids is None:
@@ -5882,7 +5902,7 @@ class ConductorManager(service.PeriodicService):
         if host_uuids and self.host_uuid not in host_uuids:
             check_required = False
 
-        if not check_required:
+        if not check_required and not filter_classes:
             return True
 
         if not os.path.exists(constants.SYSINV_REPORTED):
@@ -5890,8 +5910,17 @@ class ConductorManager(service.PeriodicService):
                      constants.SYSINV_REPORTED)
             return False
 
+        # check if need to wait for filter class
+        for filter_class in filter_classes:
+            if filter_class == self.PUPPET_RUNTIME_CLASS_ROUTES:
+                if not self._check_ready_route_runtime_config():
+                    LOG.info("config runtime filter_mapping %s False (wait)" % filter_class)
+                    return False
+            LOG.info("config runtime filter_mapping %s True (continue)" % filter_class)
+
         return True
 
+    @cutils.synchronized(LOCK_RUNTIME_CONFIG_CHECK)
     def _audit_deferred_runtime_config(self, context):
         """Apply deferred config runtime manifests when ready"""
 
@@ -5905,23 +5934,30 @@ class ConductorManager(service.PeriodicService):
                 config_type = config.get('config_type')
                 LOG.info("found _audit_deferred_runtime_config request apply %s" %
                          config)
-
+                self._host_deferred_runtime_config.remove(config)
                 if config_type == CONFIG_APPLY_RUNTIME_MANIFEST:
+                    # config runtime manifest system allows for filtering on scoped runtime classes
+                    # to allow for more efficient handling while another scoped class apply may
+                    # already be in progress
+                    config_dict = config.get('config_dict') or {}
+                    classes_list = list(config_dict.get('classes') or [])
+                    filter_classes = [x for x in self.PUPPET_RUNTIME_FILTER_CLASSES if x in classes_list]
+                    LOG.info("config runtime found route config filter_classes=%s cd= %s" %
+                             (filter_classes, config_dict))
                     self._config_apply_runtime_manifest(
                         context,
                         config['config_uuid'],
                         config['config_dict'],
-                        force=config.get('force', False))
+                        force=config.get('force', False),
+                        filter_classes=filter_classes)
                 elif config_type == CONFIG_UPDATE_FILE:
                     self._config_update_file(
                         context,
                         config['config_uuid'],
                         config['config_dict'])
                 else:
-                    LOG.error("Removing unsupported deferred config_type %s" %
+                    LOG.error("Removed unsupported deferred config_type %s" %
                               config_type)
-
-                self._host_deferred_runtime_config.remove(config)
 
     @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
     def _kubernetes_local_secrets_audit(self, context):
@@ -7488,10 +7524,13 @@ class ConductorManager(service.PeriodicService):
         config_dict = {
             "personalities": personalities,
             'host_uuids': [host.uuid],
-            "classes": 'platform::network::routes::runtime'
+            "classes": 'platform::network::routes::runtime',
+            puppet_common.REPORT_STATUS_CFG:
+                puppet_common.REPORT_ROUTE_CONFIG,
         }
 
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict,
+                                            filter_classes=[self.PUPPET_RUNTIME_CLASS_ROUTES])
 
     def update_sriov_config(self, context, host_uuid):
         """update sriov configuration for a host
@@ -8259,9 +8298,23 @@ class ConductorManager(service.PeriodicService):
                       " a reported configuration! iconfig: %s" % iconfig)
             return
 
-        # Identify the executed set of manifests executed
+        # Identify the set of manifests executed
         success = False
-        if reported_cfg == puppet_common.REPORT_UPGRADE_ACTIONS:
+        if reported_cfg == puppet_common.REPORT_ROUTE_CONFIG:
+            # The agent is reporting the runtime route config has been applied.  Clear the corresponding
+            # runtime class in progress flag and check for outstanding deferred runtime config.
+            if status == puppet_common.REPORT_SUCCESS:
+                success = True
+                LOG.info("config runtime success, clear runtime apply in progress classes %s  host_uuids=%s" %
+                         (iconfig.get('classes'), iconfig.get('host_uuids')))
+                self._clear_runtime_class_apply_in_progress(classes_list=iconfig.get('classes'),
+                                                            host_uuids=iconfig.get('host_uuids'))
+                self._audit_deferred_runtime_config(context)
+            else:
+                # Config out of date alarm will be raised
+                host_uuid = iconfig.get('host_uuid')
+                LOG.info("Route config manifest failed for host: %s" % host_uuid)
+        elif reported_cfg == puppet_common.REPORT_UPGRADE_ACTIONS:
             if status == puppet_common.REPORT_SUCCESS:
                 success = True
             else:
@@ -9864,6 +9917,18 @@ class ConductorManager(service.PeriodicService):
                                                 config_dict,
                                                 force=force)
 
+    @staticmethod
+    def _write_config(filename, path, file_content):
+        filepath = os.path.join(path, filename)
+        fd, tmppath = tempfile.mkstemp(dir=path, prefix=filename,
+                                       text=True)
+
+        with open(tmppath, 'w') as f:
+            f.write(file_content)
+        # Atomically replace the updated file
+        os.close(fd)
+        os.rename(tmppath, filepath)
+
     def _update_resolv_file(self, context, config_uuid, personalities):
         """Generate and update the resolv.conf files on the system"""
 
@@ -9881,14 +9946,9 @@ class ConductorManager(service.PeriodicService):
             file_content += "nameserver %s\n" % server
 
         # Write contents to master resolv.conf in the platform config
-        resolv_file = os.path.join(tsc.CONFIG_PATH, 'resolv.conf')
-        resolv_file_temp = resolv_file + '.temp'
-
-        with open(resolv_file_temp, 'w') as f:
-            f.write(file_content)
-
-        # Atomically replace the updated file
-        os.rename(resolv_file_temp, resolv_file)
+        filename = 'resolv.conf'
+        filepath = tsc.CONFIG_PATH
+        self._write_config(filename, filepath, file_content)
 
         config_dict = {
             'personalities': personalities,
@@ -10506,8 +10566,8 @@ class ConductorManager(service.PeriodicService):
                 entity_type_id=fm_constants.FM_ENTITY_TYPE_HOST,
                 entity_instance_id=entity_instance_id,
                 severity=fm_constants.FM_ALARM_SEVERITY_MAJOR,
-                reason_text=(_("%s Configuration is out-of-date.") %
-                               ihost_obj.hostname),
+                reason_text=(_("%s Configuration is out-of-date. (applied: %s target: %s)") %
+                             (ihost_obj.hostname, ihost_obj.config_applied, ihost_obj.config_target)),
                 alarm_type=fm_constants.FM_ALARM_TYPE_7,  # operational
                 probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_75,
                 proposed_repair_action=_(
@@ -10536,6 +10596,8 @@ class ConductorManager(service.PeriodicService):
             self.fm_api.clear_fault(
                 fm_constants.FM_ALARM_ID_SYSCONFIG_OUT_OF_DATE,
                 entity_instance_id)
+
+            self._clear_runtime_class_apply_in_progress(host_uuids=[ihost_obj.uuid])
 
             # Do not clear the config status if there is a reinstall pending.
             if (ihost_obj.config_status != constants.CONFIG_STATUS_REINSTALL):
@@ -10762,7 +10824,7 @@ class ConductorManager(service.PeriodicService):
                  })
             LOG.info("defer update file to _host_deferred_runtime_config %s" %
                      self._host_deferred_runtime_config)
-            return
+            return False
 
         # Ensure hiera data is updated prior to active apply.
         self._config_update_puppet(config_uuid, config_dict)
@@ -10774,16 +10836,100 @@ class ConductorManager(service.PeriodicService):
                                        iconfig_dict=config_dict)
         except Exception as e:
             LOG.info("Error: %s" % str(e))
+            return False
+
+        return True
+
+    @cutils.synchronized(LOCK_RUNTIME_CONFIG_CHECK)
+    def _clear_runtime_class_apply_in_progress(self, classes_list=None, host_uuids=None):
+        if classes_list is None:
+            classes_list = []
+        if host_uuids is None:
+            host_uuids = []
+        else:
+            host_uuids = [host_uuids] if isinstance(host_uuids, str) else host_uuids
+
+        for c, h in self._runtime_class_apply_in_progress:
+            host_intersection = [i for i in host_uuids if i in h]
+            LOG.info("config runtime c=%s, h=%s host_uuids=%s host_intersection=%s" %
+                     (c, h, host_uuids, host_intersection))
+            if c in classes_list:
+                if host_intersection:
+                    LOG.info("config runtime removing host_uuids=%s from %s" %
+                             (host_uuids, self._runtime_class_apply_in_progress))
+                    self._runtime_class_apply_in_progress.remove((c, h))
+            elif not classes_list and host_intersection:
+                LOG.info("config runtime removing host_uuids=%s from %s" %
+                         (host_uuids, self._runtime_class_apply_in_progress))
+                self._runtime_class_apply_in_progress.remove((c, h))
+            elif not classes_list and not host_uuids:
+                LOG.info("config runtime in classes_list c=%s, classes_list=%s" % (c, classes_list))
+                self._runtime_class_apply_in_progress = list()
+
+            LOG.info("config runtime end of _clear_runtime_class_apply_in_progress=%s" %
+                     self._runtime_class_apply_in_progress)
+
+    @cutils.synchronized(LOCK_RUNTIME_CONFIG_CHECK)
+    def _add_runtime_class_apply_in_progress(self, classes_list, host_uuids=None):
+        if host_uuids is None:
+            host_uuids = []
+        else:
+            host_uuids = [host_uuids] if isinstance(host_uuids, str) else host_uuids
+
+        for c in classes_list:
+            self._runtime_class_apply_in_progress.append((c, host_uuids))
+
+    def _check_runtime_class_apply_in_progress(self, classes_list, host_uuids=None):
+        if host_uuids is None:
+            host_uuids = []
+        else:
+            host_uuids = [host_uuids] if isinstance(host_uuids, str) else host_uuids
+
+        for c, h in self._runtime_class_apply_in_progress:
+            if c in classes_list:
+                if host_uuids and host_uuids in h:
+                    LOG.info("config runtime  host_uuids=%s from %s" %
+                             (host_uuids, h))
+                    return True
+                else:
+                    return True
+        return False
+
+    @cutils.synchronized(LOCK_RUNTIME_CONFIG_CHECK)
+    def _update_host_deferred_runtime_config(
+            self, config_type, config_uuid, config_dict, force=None):
+        # check if already in deferred list, and if so, replace duplicate with latest config
+        for drc in self._host_deferred_runtime_config:
+            if (drc['config_type'] == config_type and
+                    drc['config_dict'].get('classes') == config_dict.get('classes') and
+                    drc['config_dict'].get('personalities') == config_dict.get('personalities') and
+                    drc['config_dict'].get('host_uuids') == config_dict.get('host_uuids') and
+                    drc.get('force') == force):
+                LOG.info("config runtime replacing entry duplicate config %s with config_uuid=%s" %
+                         (drc, config_uuid))
+                drc['config_uuid'] = config_uuid
+                break
+        else:
+            self._host_deferred_runtime_config.append(
+                {'config_type': CONFIG_APPLY_RUNTIME_MANIFEST,
+                 'config_uuid': config_uuid,
+                 'config_dict': config_dict,
+                 'force': force,
+                 })
 
     def _config_apply_runtime_manifest(self,
                                        context,
                                        config_uuid,
                                        config_dict,
-                                       force=False):
+                                       force=False,
+                                       filter_classes=None):
         """Apply manifests on all hosts affected by the supplied personalities.
            If host_uuids is set in config_dict, only update hiera data and apply
            manifests for these hosts.
         """
+        if filter_classes is None:
+            filter_classes = []
+
         host_uuids = config_dict.get('host_uuids')
 
         try:
@@ -10820,19 +10966,18 @@ class ConductorManager(service.PeriodicService):
         else:
             LOG.info("applying runtime manifest config_uuid=%s" % config_uuid)
 
-        # only apply runtime manifests to active controller if agent ready,
+        # only apply runtime manifests to active controller if ready,
         # otherwise will append to the list of outstanding runtime manifests
         if not self._ready_to_apply_runtime_config(
                 context,
                 config_dict.get('personalities'),
-                config_dict.get('host_uuids')):
-            # append to deferred for audit
-            self._host_deferred_runtime_config.append(
-                {'config_type': CONFIG_APPLY_RUNTIME_MANIFEST,
-                 'config_uuid': config_uuid,
-                 'config_dict': config_dict,
-                 'force': force,
-                 })
+                config_dict.get('host_uuids'),
+                filter_classes=filter_classes):
+            self._update_host_deferred_runtime_config(
+                CONFIG_APPLY_RUNTIME_MANIFEST,
+                config_uuid,
+                config_dict,
+                force)
             LOG.info("defer apply runtime manifest %s" %
                      self._host_deferred_runtime_config)
             return
@@ -10856,6 +11001,12 @@ class ConductorManager(service.PeriodicService):
         rpcapi.config_apply_runtime_manifest(context,
                                              config_uuid=config_uuid,
                                              config_dict=config_dict)
+
+        if filter_classes and config_dict['classes'] in filter_classes:
+            LOG.info("config runtime filter_clasess add %s %s" %
+                     (filter_classes, config_dict))
+            self._add_runtime_class_apply_in_progress(filter_classes,
+                                                      host_uuids=config_dict.get('host_uuids', None))
 
     def _update_ipv_device_path(self, idisk, ipv):
         if not idisk.device_path:
@@ -11421,6 +11572,7 @@ class ConductorManager(service.PeriodicService):
 
         if host_upgrade.software_load != host_upgrade.target_load:
             entity_instance_id = self._get_fm_entity_instance_id(host)
+
             fault = fm_api.Fault(
                 alarm_id=fm_constants.FM_ALARM_ID_HOST_VERSION_MISMATCH,
                 alarm_state=fm_constants.FM_ALARM_STATE_SET,

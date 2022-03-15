@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2015-2016 Wind River Systems, Inc.
+# Copyright (c) 2015-2022 Wind River Systems, Inc.
 #
 
 import netaddr
@@ -335,6 +335,15 @@ class RouteController(rest.RestController):
         self._check_duplicate_route(host_id, route)
         self._check_duplicate_subnet(host_id, route)
 
+    @cutils.synchronized(LOCK_NAME)
+    def _create_route_atomic(self, host_id, interface_id, route):
+        self._check_route_conflicts(host_id, route)
+        # Attempt to create the new route record
+        result = pecan.request.dbapi.route_create(interface_id, route)
+        pecan.request.rpcapi.update_route_config(pecan.request.context,
+                                                 result.forihostid)
+        return result
+
     def _create_route(self, route):
         route.validate_syntax()
         route = route.as_dict()
@@ -344,13 +353,10 @@ class RouteController(rest.RestController):
         host_id, interface_id = self._get_parent_id(interface_uuid)
         # Check for semantic conflicts
         self._check_interface_type(interface_id)
-        self._check_route_conflicts(host_id, route)
         self._check_local_gateway(host_id, route)
         self._check_reachable_gateway(interface_id, route)
-        # Attempt to create the new route record
-        result = pecan.request.dbapi.route_create(interface_id, route)
-        pecan.request.rpcapi.update_route_config(pecan.request.context,
-                                                 result.forihostid)
+
+        result = self._create_route_atomic(host_id, interface_id, route)
 
         return Route.convert_with_links(result)
 
@@ -371,7 +377,6 @@ class RouteController(rest.RestController):
     def get_one(self, route_uuid):
         return self._get_one(route_uuid)
 
-    @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(Route, body=Route)
     def post(self, route):
         """Create a new IP route."""
