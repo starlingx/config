@@ -658,6 +658,16 @@ def update_pemfile(tls_crt, tls_key):
     return tmppath
 
 
+def list_platform_certificates(token):
+    """Lists platform certificates using the sysinv API
+    :param token: the token to access the sysinv API
+    """
+    sysinv_url = token.get_service_internal_url(
+        constants.SERVICE_TYPE_PLATFORM, constants.SYSINV_USERNAME)
+    api_cmd = sysinv_url + "/certificate"
+    return rest_api_request(token, "GET", api_cmd)
+
+
 def update_platform_cert(token, cert_type, pem_file_path, force=False):
     """Update a platform certificate using the sysinv API
     :param token: the token to access the sysinv API
