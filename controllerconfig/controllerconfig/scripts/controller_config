@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -433,16 +433,22 @@ start()
         fi
     fi
 
-    # Copy over kube api server encryption provider config
-    if [ -e $CONFIG_DIR/kubernetes/encryption-provider.yaml ]
+    # Copy over kube-apiserver encryption provider config, admission control config and
+    # extra files referenced in admission control config
+    if [ -e $CONFIG_DIR/kubernetes/ ]
     then
-        cp $CONFIG_DIR/kubernetes/encryption-provider.yaml /etc/kubernetes/
-        if [ $? -ne 0 ]
-        then
-            fatal_error "Unable to copy kube api server encryption provider config file"
-        else
-            chmod 600 /etc/kubernetes/encryption-provider.yaml
-        fi
+        FILES=`ls $CONFIG_DIR/kubernetes/*.yaml`
+        for FILE in $FILES
+        do
+            cp $FILE /etc/kubernetes/
+            if [ $? -ne 0 ]
+            then
+                fatal_error "Unable to copy kube-apiserver config file: $FILE"
+            else
+                FILENAME=`basename $FILE`
+                chmod 600 /etc/kubernetes/$FILENAME
+            fi
+        done
     fi
 
     if [ ! -e "${ACTIVE_CONTROLLER_NOT_FOUND_FLAG}" ]
