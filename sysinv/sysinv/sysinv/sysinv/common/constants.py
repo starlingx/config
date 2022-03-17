@@ -1912,11 +1912,9 @@ CEPH_MON_2 = 'ceph-mon-2-ip'
 CEPH_FLOATING_MON = 'ceph-floating-mon-ip'
 
 # Mellanox interface definitions
-DRIVER_MLX_CX3 = 'mlx4_core'
 DRIVER_MLX_CX4 = 'mlx5_core'
 
-MELLANOX_DRIVERS = [DRIVER_MLX_CX3,
-                    DRIVER_MLX_CX4]
+MELLANOX_DRIVERS = [DRIVER_MLX_CX4]
 
 # Traffic control
 TRAFFIC_CONTROL_SCRIPT = '/usr/local/bin/tc_setup.sh'
