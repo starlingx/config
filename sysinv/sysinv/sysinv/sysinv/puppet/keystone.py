@@ -215,6 +215,17 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
                     'keystone::security_compliance::password_regex_description':
                         passwd_rules['password_regex_description']
                 })
+                if passwd_rules.get('lockout_duration'):
+                    password_rule.update({
+                        'keystone::security_compliance::lockout_duration':
+                            passwd_rules['lockout_duration'],
+                    })
+                if passwd_rules.get('lockout_failure_attempts'):
+                    password_rule.update({
+                        'keystone::security_compliance::lockout_failure_attempts':
+                            passwd_rules['lockout_failure_attempts'],
+                    })
+
             except Exception:
                 pass
         return password_rule
