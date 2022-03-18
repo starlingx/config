@@ -18,6 +18,7 @@ from sysinv._i18n import _
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
+from sysinv.common.storage_backend_conf import StorageBackendConfig
 
 LOG = log.getLogger(__name__)
 
@@ -428,6 +429,18 @@ def _validate_regex(name, value):
             "Parameter %s must be a valid regex" % name))
 
 
+def _validate_auth_id_reclaim_enabled(name, value):
+    if not StorageBackendConfig.has_backend_configured(
+            pecan.request.dbapi,
+            constants.CINDER_BACKEND_CEPH):
+        raise wsme.exc.ClientSideError(_(
+            "A Ceph backend must be configured before trying to set '%s' parameter." %
+            name))
+    if not cutils.is_valid_boolstr(value):
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' must be a valid bool string." % name))
+
+
 PLATFORM_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL,
 ]
@@ -814,6 +827,23 @@ PTP_PHC2SYS_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_PTP_SUMMARY_UPDATES: lambda name, value: _validate_range(name, value, 0, 2 ** 32 - 1)
 }
 
+CEPH_MONITOR_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_CEPH_MONITOR_AUTH_ID_RECLAIM
+]
+
+CEPH_MONITOR_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_CEPH_MONITOR_AUTH_ID_RECLAIM: _validate_auth_id_reclaim_enabled,
+}
+
+CEPH_MONITOR_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_CEPH_MONITOR_AUTH_ID_RECLAIM:
+        'platform::ceph::params::auth_id_reclaim',
+}
+
+CEPH_MONITOR_PARAMETER_DATA_FORMAT = {
+    constants.SERVICE_PARAM_NAME_CEPH_MONITOR_AUTH_ID_RECLAIM: SERVICE_PARAMETER_DATA_FORMAT_BOOLEAN,
+}
+
 # Service Parameter Schema
 SERVICE_PARAM_MANDATORY = 'mandatory'
 SERVICE_PARAM_OPTIONAL = 'optional'
@@ -958,6 +988,14 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: OPENSTACK_HELM_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: OPENSTACK_HELM_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: OPENSTACK_HELM_PARAMETER_RESOURCE,
+        },
+    },
+    constants.SERVICE_TYPE_CEPH: {
+        constants.SERVICE_PARAM_SECTION_CEPH_MONITOR: {
+            SERVICE_PARAM_OPTIONAL: CEPH_MONITOR_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: CEPH_MONITOR_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: CEPH_MONITOR_PARAMETER_RESOURCE,
+            SERVICE_PARAM_DATA_FORMAT: CEPH_MONITOR_PARAMETER_DATA_FORMAT,
         },
     },
 }

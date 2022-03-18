@@ -9790,6 +9790,29 @@ class ConductorManager(service.PeriodicService):
                     "classes": ['platform::docker::runtime']
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+            elif service == constants.SERVICE_TYPE_CEPH:
+                if StorageBackendConfig.has_backend(
+                        self.dbapi, constants.CINDER_BACKEND_CEPH):
+
+                    personalities = [constants.CONTROLLER,
+                                    constants.WORKER,
+                                    constants.STORAGE]
+
+                    monitors = self.dbapi.ceph_mon_get_list()
+                    host_uuids = []
+                    for mon in monitors:
+                        host_uuids.append(mon.ihost_uuid)
+                    config_uuid = self._config_update_hosts(context,
+                                                            personalities,
+                                                            host_uuids)
+                    config_dict = {
+                        "personalities": personalities,
+                        "host_uuids": host_uuids,
+                        "classes": ['platform::ceph::mon::runtime']
+                    }
+                    self._config_apply_runtime_manifest(context,
+                                                        config_uuid=config_uuid,
+                                                        config_dict=config_dict)
 
     def update_security_feature_config(self, context):
         """Update the kernel options configuration"""

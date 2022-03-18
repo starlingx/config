@@ -1009,6 +1009,7 @@ SERVICE_TYPE_HTTP = 'http'
 SERVICE_TYPE_OPENSTACK = 'openstack'
 SERVICE_TYPE_KUBERNETES = 'kubernetes'
 SERVICE_TYPE_PTP = 'ptp'
+SERVICE_TYPE_CEPH = 'ceph'
 
 # For service parameter sections that include a wildcard, any 'name' field will be
 # allowed by the API. The wildcard card name will only be matched if no other matches
@@ -1197,6 +1198,10 @@ SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_LOCKOUT_FAILURE_ATTEMPTS = \
     'lockout_retries'
 SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_LOCKOUT_DURATION_DEFAULT = 1800
 SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_LOCKOUT_FAILURE_ATTEMPTS_DEFAULT = 5
+
+# Ceph Service Parameters
+SERVICE_PARAM_SECTION_CEPH_MONITOR = 'monitor'
+SERVICE_PARAM_NAME_CEPH_MONITOR_AUTH_ID_RECLAIM = 'auth_id_reclaim'
 
 # TIS part number, CPE = combined load, STD = standard load
 TIS_STD_BUILD = 'Standard'
