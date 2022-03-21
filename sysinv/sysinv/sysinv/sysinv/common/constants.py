@@ -1596,6 +1596,8 @@ APP_SYNCED_ARMADA_DATA_PATH = os.path.join(tsc.PLATFORM_PATH, 'armada', tsc.SW_V
 APP_METADATA_FILE = 'metadata.yaml'
 APP_PENDING_REAPPLY_FLAG = os.path.join(
     tsc.ARMADA_PATH, ".app_reapply")
+APP_FLUXCD_MANIFEST_DIR = 'fluxcd-manifests'
+APP_FLUXCD_DATA_PATH = os.path.join(tsc.PLATFORM_PATH, 'fluxcd', tsc.SW_VERSION)
 
 # State constants
 APP_NOT_PRESENT = 'missing'
@@ -1613,6 +1615,7 @@ APP_RECOVER_IN_PROGRESS = 'recovering'
 APP_RESTORE_REQUESTED = 'restore-requested'
 
 # Operation constants
+APP_VALIDATE_OP = 'validate'
 APP_UPLOAD_OP = 'upload'
 APP_APPLY_OP = 'apply'
 APP_REMOVE_OP = 'remove'
@@ -1639,6 +1642,8 @@ APP_LIFECYCLE_TYPE_RESOURCE = 'resource'
 APP_LIFECYCLE_TYPE_MANIFEST = 'manifest'
 # inside the function that has a retry decorator
 APP_LIFECYCLE_TYPE_ARMADA_REQUEST = 'armada-request'
+# same as armada
+APP_LIFECYCLE_TYPE_FLUXCD_REQUEST = 'fluxcd-request'
 
 APP_LIFECYCLE_MODE_MANUAL = 'manual'
 APP_LIFECYCLE_MODE_AUTO = 'auto'

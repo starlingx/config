@@ -2392,6 +2392,23 @@ def find_manifest_file(path):
     return mfiles
 
 
+def find_manifest_directory(path):
+    """For FluxCD apps we expect to have 1 manifest directory
+       that has the name of constants.APP_FLUXCD_MANIFEST_DIR
+      and we validate that and its structure"""
+    def _is_manifest_dir(path):
+        """check if the directory has the desired FluxCD app structure"""
+        mandatory_components = ("base", "kustomization.yaml")
+        check_mandatory = all(comp in os.listdir(path)
+                              for comp in mandatory_components)
+        return check_mandatory
+
+    manifest_dir_abs = os.path.join(path, constants.APP_FLUXCD_MANIFEST_DIR)
+    if os.path.isdir(manifest_dir_abs) and _is_manifest_dir(manifest_dir_abs):
+        return constants.APP_FLUXCD_MANIFEST_DIR, manifest_dir_abs
+    return None
+
+
 def get_http_port(dbapi):
     http_port = constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT
     try:
@@ -2541,6 +2558,22 @@ def generate_synced_armada_manifest_fqpn(app_name, app_version, manifest_filenam
 def generate_synced_metadata_fqpn(app_name, app_version):
     return os.path.join(
         constants.APP_SYNCED_ARMADA_DATA_PATH, app_name, app_version,
+        'metadata.yaml')
+
+
+def generate_synced_fluxcd_dir(app_name, app_version):
+    return os.path.join(constants.APP_FLUXCD_DATA_PATH, app_name, app_version)
+
+
+def generate_synced_fluxcd_manifest_fqpn(app_name, app_version, manifest):
+    return os.path.join(
+        constants.APP_FLUXCD_DATA_PATH, app_name, app_version,
+        app_name + '-' + manifest)
+
+
+def generate_synced_fluxcd_metadata_fqpn(app_name, app_version):
+    return os.path.join(
+        constants.APP_FLUXCD_DATA_PATH, app_name, app_version,
         'metadata.yaml')
 
 

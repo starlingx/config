@@ -1502,7 +1502,7 @@ class KubeAppReleasesNotFound(NotFound):
 
 
 class KubeAppProgressMonitorTimeout(SysinvException):
-    message = "Armada execution progress monitor timed out."
+    message = "Kube Application execution progress monitor timed out."
 
 
 class KubeNamespaceDeleteTimeout(SysinvException):
