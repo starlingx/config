@@ -1102,6 +1102,32 @@ def get_sw_version():
     return SW_VERSION
 
 
+def _get_from_os_release(file_contents, key):
+    r = re.compile('^{}\=[\'\"]*([^\'\"\n]*)'.format(key), re.MULTILINE)
+    match = r.search(file_contents)
+    if match:
+        return match.group(1)
+    else:
+        return ''
+
+
+# Read /etc/os-release file and return 3 element list [ ID, VERSION, '' ]
+def get_os_release():
+    linux_distro = ('', '', '')
+    file_name = '/etc/os-release'
+    if os.path.isfile(file_name):
+        try:
+            with open(file_name, 'r') as f:
+                data = f.read()
+                linux_distro = (
+                    _get_from_os_release(data, 'ID'),
+                    _get_from_os_release(data, 'VERSION'), '')
+        except Exception as e:
+            raise exception.SysinvException(_(
+                "Failed to open %s : %s") % (file_name, str(e)))
+    return linux_distro
+
+
 class ISO(object):
 
     def __init__(self, iso_path, mount_dir):

@@ -1099,6 +1099,8 @@ class ConductorManager(service.PeriodicService):
         :param host: host object.
         """
         sw_version = tsc.SW_VERSION
+        os_release = cutils.get_os_release()[0]
+
         if load:
             sw_version = load.software_version
         else:
@@ -1132,56 +1134,59 @@ class ConductorManager(service.PeriodicService):
         rootfs_device = host.get('rootfs_device') or "/dev/sda"
         install_opts += ['-r', rootfs_device]
 
-        install_output = host.get('install_output') or "text"
-        if install_output == "text":
-            install_output_arg = "-t"
-        elif install_output == "graphical":
-            install_output_arg = "-g"
+        if os_release == 'debian':
+            install_opts += ['-d']
         else:
-            LOG.warning("install_output set to invalid value (%s)"
-                        % install_output)
-            install_output_arg = "-t"
-        install_opts += [install_output_arg]
+            install_output = host.get('install_output') or "text"
+            if install_output == "text":
+                install_output_arg = "-t"
+            elif install_output == "graphical":
+                install_output_arg = "-g"
+            else:
+                LOG.warning("install_output set to invalid value (%s)"
+                            % install_output)
+                install_output_arg = "-t"
+            install_opts += [install_output_arg]
 
-        # This method is called during upgrades to
-        # re-generate the host's pxe config files to the appropriate host's
-        # software version. It is required specifically when we downgrade a
-        # host or when we lock/unlock a host.
-        host_uuid = host.get('uuid')
-        notify_url = \
-            "http://pxecontroller:%d/v1/ihosts/%s/install_progress" % \
-            (CONF.sysinv_api_port, host_uuid)
-        install_opts += ['-u', notify_url]
+            # This method is called during upgrades to
+            # re-generate the host's pxe config files to the appropriate host's
+            # software version. It is required specifically when we downgrade a
+            # host or when we lock/unlock a host.
+            host_uuid = host.get('uuid')
+            notify_url = \
+                "http://pxecontroller:%d/v1/ihosts/%s/install_progress" % \
+                (CONF.sysinv_api_port, host_uuid)
+            install_opts += ['-u', notify_url]
 
-        system = self.dbapi.isystem_get_one()
+            system = self.dbapi.isystem_get_one()
 
-        secprofile = system.security_profile
-        # ensure that the securtiy profile selection is valid
-        if secprofile not in [constants.SYSTEM_SECURITY_PROFILE_STANDARD,
-                              constants.SYSTEM_SECURITY_PROFILE_EXTENDED]:
-            LOG.error("Security Profile (%s) not a valid selection. "
-                      "Defaulting to: %s" % (secprofile,
-                                             constants.SYSTEM_SECURITY_PROFILE_STANDARD))
-            secprofile = constants.SYSTEM_SECURITY_PROFILE_STANDARD
-        install_opts += ['-s', secprofile]
+            secprofile = system.security_profile
+            # ensure that the securtiy profile selection is valid
+            if secprofile not in [constants.SYSTEM_SECURITY_PROFILE_STANDARD,
+                                  constants.SYSTEM_SECURITY_PROFILE_EXTENDED]:
+                LOG.error("Security Profile (%s) not a valid selection. "
+                          "Defaulting to: %s" % (secprofile,
+                                                 constants.SYSTEM_SECURITY_PROFILE_STANDARD))
+                secprofile = constants.SYSTEM_SECURITY_PROFILE_STANDARD
+            install_opts += ['-s', secprofile]
 
-        # If 'console' is not present in ihost_obj, we want to use the default.
-        # If, however, it is present and is explicitly set to None or "", then
-        # we don't specify the -c argument at all.
-        if 'console' not in host:
-            console = "ttyS0,115200"
-        else:
-            console = host.get('console')
-        if console is not None and console != "":
-            install_opts += ['-c', console]
+            # If 'console' is not present in ihost_obj, we use the default.
+            # If, however, it is present and is explicitly set to None or "",
+            # then we don't specify the -c argument at all.
+            if 'console' not in host:
+                console = "ttyS0,115200"
+            else:
+                console = host.get('console')
+            if console is not None and console != "":
+                install_opts += ['-c', console]
 
-        # If 'tboot' is present in ihost_obj, retrieve and send the value
-        if 'tboot' in host:
-            tboot = host.get('tboot')
-            if tboot is not None and tboot != "":
-                install_opts += ['-T', tboot]
+            # If 'tboot' is present in ihost_obj, retrieve and send the value
+            if 'tboot' in host:
+                tboot = host.get('tboot')
+                if tboot is not None and tboot != "":
+                    install_opts += ['-T', tboot]
 
-        install_opts += ['-k', system.security_feature]
+            install_opts += ['-k', system.security_feature]
 
         base_url = "http://pxecontroller:%d" % cutils.get_http_port(self.dbapi)
         install_opts += ['-l', base_url]
