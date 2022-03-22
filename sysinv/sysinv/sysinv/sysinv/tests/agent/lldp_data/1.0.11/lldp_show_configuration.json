@@ -1,0 +1,121 @@
+{
+  "configuration": [
+    {
+      "config": [
+        {
+          "tx-delay": [
+            {
+              "value": "30"
+            }
+          ],
+          "tx-delay-ms": [
+            {
+              "value": "30000"
+            }
+          ],
+          "tx-hold": [
+            {
+              "value": "4"
+            }
+          ],
+          "max-neighbors": [
+            {
+              "value": "32"
+            }
+          ],
+          "rx-only": [
+            {
+              "value": "no"
+            }
+          ],
+          "mgmt-pattern": [
+            {
+              "value": "(none)"
+            }
+          ],
+          "iface-pattern": [
+            {
+              "value": "*,!br*,!ovs*,!tap*,!cali*,!tunl*,!docker*"
+            }
+          ],
+          "perm-iface-pattern": [
+            {
+              "value": "(none)"
+            }
+          ],
+          "cid-pattern": [
+            {
+              "value": "(none)"
+            }
+          ],
+          "cid-string": [
+            {
+              "value": "(none)"
+            }
+          ],
+          "description": [
+            {
+              "value": "(none)"
+            }
+          ],
+          "platform": [
+            {
+              "value": "Linux"
+            }
+          ],
+          "hostname": [
+            {
+              "value": "controller-0:bd0a9e89-7fd7-4729-bc67-df0c39c0db8f"
+            }
+          ],
+          "advertise-version": [
+            {
+              "value": "yes"
+            }
+          ],
+          "ifdescr-update": [
+            {
+              "value": "no"
+            }
+          ],
+          "iface-promisc": [
+            {
+              "value": "no"
+            }
+          ],
+          "lldpmed-no-inventory": [
+            {
+              "value": "yes"
+            }
+          ],
+          "lldpmed-faststart": [
+            {
+              "value": "yes"
+            }
+          ],
+          "lldpmed-faststart-interval": [
+            {
+              "value": "1"
+            }
+          ],
+          "bond-slave-src-mac-type": [
+            {
+              "value": "local"
+            }
+          ],
+          "lldp-portid-type": [
+            {
+              "value": "unknown"
+            }
+          ],
+          "lldp-agent-type": [
+            {
+              "value": "unknown"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+

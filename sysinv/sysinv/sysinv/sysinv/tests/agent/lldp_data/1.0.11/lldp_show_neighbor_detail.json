@@ -1,0 +1,73 @@
+{
+  "lldp": [
+    {
+      "interface": [
+        {
+          "name": "enp0s3",
+          "via": "LLDP",
+          "rid": "1",
+          "age": "0 day, 00:09:43",
+          "chassis": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "0a:00:27:00:00:0d"
+                }
+              ]
+            }
+          ],
+          "port": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "0a:00:27:00:00:0d"
+                }
+              ],
+              "ttl": [
+                {
+                  "value": "3601"
+                }
+              ],
+              "auto-negotiation": [
+                {
+                  "supported": true,
+                  "enabled": true,
+                  "advertised": [
+                    {
+                      "type": "1000Base-T",
+                      "hd": false,
+                      "fd": true
+                    }
+                  ],
+                  "current": [
+                    {
+                      "value": "unknown"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "lldp-med": [
+            {
+              "device-type": [
+                {
+                  "value": "Generic Endpoint (Class I)"
+                }
+              ],
+              "capability": [
+                {
+                  "type": "Capabilities",
+                  "available": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+

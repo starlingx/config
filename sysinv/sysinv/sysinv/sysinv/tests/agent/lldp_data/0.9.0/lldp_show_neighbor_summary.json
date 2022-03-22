@@ -1,0 +1,47 @@
+{
+   "lldp": [
+     {
+       "interface": [
+         {
+           "name": "eno1",
+           "via": "LLDP",
+           "chassis": [
+             {
+               "id": [
+                 {
+                   "type": "mac",
+                   "value": "c0:62:6b:a9:62:80"
+                 }
+               ],
+               "name": [
+                 {
+                   "value": "yow-cisco-b2u47"
+                 }
+               ]
+             }
+           ],
+           "port": [
+             {
+               "id": [
+                 {
+                   "type": "ifname",
+                   "value": "Gi0\/39"
+                 }
+               ],
+               "descr": [
+                 {
+                   "value": "GigabitEthernet0\/39"
+                 }
+               ],
+               "ttl": [
+                 {
+                   "value": "109"
+                 }
+               ]
+             }
+           ]
+         }
+       ]
+     }
+   ]
+ }

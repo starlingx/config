@@ -9,6 +9,7 @@ from __future__ import print_function
 import json
 import netaddr
 import os
+import six
 import subprocess
 import sys
 import time
@@ -16,6 +17,12 @@ import time
 import controllerconfig.common.exceptions as exeptions
 import controllerconfig.utils as utils
 from six.moves import input
+
+
+if six.PY3:
+    JSON_MODE = "json0"
+else:
+    JSON_MODE = "json"
 
 
 def is_valid_management_address(ip_address, management_subnet):
@@ -67,7 +74,7 @@ def configure_management():
 
     print("Retrieving neighbor details... ", end=' ')
     lldpcli_show_output = subprocess.check_output(
-        ['sudo', 'lldpcli', 'show', 'neighbors', 'summary', '-f', 'json'],
+        ['sudo', 'lldpcli', 'show', 'neighbors', 'summary', '-f', JSON_MODE],
         universal_newlines=True)
     try:
         lldp_interfaces = json.loads(

@@ -1,0 +1,61 @@
+{
+  "local-chassis": [
+    {
+      "chassis": [
+        {
+          "id": [
+            {
+              "type": "mac",
+              "value": "08:00:27:59:9e:6b"
+            }
+          ],
+          "name": [
+            {
+              "value": "controller-0:bd0a9e89-7fd7-4729-bc67-df0c39c0db8f"
+            }
+          ],
+          "descr": [
+            {
+              "value": "Debian GNU/Linux 11 (bullseye) Linux 5.10.0-6-amd64 #1 SMP PREEMPT Debian 5.10.74-1.stx.3 (2022-04-02) x86_64"
+            }
+          ],
+          "mgmt-ip": [
+            {
+              "value": "192.168.204.2"
+            },
+            {
+              "value": "fe80::a00:27ff:fe09:595d"
+            }
+          ],
+          "mgmt-iface": [
+            {
+              "value": "1"
+            },
+            {
+              "value": "4"
+            }
+          ],
+          "capability": [
+            {
+              "type": "Bridge",
+              "enabled": true
+            },
+            {
+              "type": "Router",
+              "enabled": true
+            },
+            {
+              "type": "Wlan",
+              "enabled": false
+            },
+            {
+              "type": "Station",
+              "enabled": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+

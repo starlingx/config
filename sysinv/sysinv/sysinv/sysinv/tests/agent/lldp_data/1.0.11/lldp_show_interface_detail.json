@@ -1,0 +1,503 @@
+{
+  "lldp": [
+    {
+      "interface": [
+        {
+          "name": "enp0s10",
+          "status": [
+            {
+              "value": "RX and TX"
+            }
+          ],
+          "chassis": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "08:00:27:59:9e:6b"
+                }
+              ],
+              "name": [
+                {
+                  "value": "controller-0:bd0a9e89-7fd7-4729-bc67-df0c39c0db8f"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "Debian GNU/Linux 11 (bullseye) Linux 5.10.0-6-amd64 #1 SMP PREEMPT Debian 5.10.74-1.stx.3 (2022-04-02) x86_64"
+                }
+              ],
+              "mgmt-ip": [
+                {
+                  "value": "192.168.204.2"
+                },
+                {
+                  "value": "fe80::a00:27ff:fe09:595d"
+                }
+              ],
+              "mgmt-iface": [
+                {
+                  "value": "1"
+                },
+                {
+                  "value": "4"
+                }
+              ],
+              "capability": [
+                {
+                  "type": "Bridge",
+                  "enabled": true
+                },
+                {
+                  "type": "Router",
+                  "enabled": true
+                },
+                {
+                  "type": "Wlan",
+                  "enabled": false
+                },
+                {
+                  "type": "Station",
+                  "enabled": false
+                }
+              ]
+            }
+          ],
+          "port": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "08:00:27:59:9e:6b"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "enp0s10"
+                }
+              ]
+            }
+          ],
+          "ttl": [
+            {
+              "ttl": "120"
+            }
+          ]
+        },
+        {
+          "name": "enp0s16",
+          "status": [
+            {
+              "value": "RX and TX"
+            }
+          ],
+          "chassis": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "08:00:27:59:9e:6b"
+                }
+              ],
+              "name": [
+                {
+                  "value": "controller-0:bd0a9e89-7fd7-4729-bc67-df0c39c0db8f"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "Debian GNU/Linux 11 (bullseye) Linux 5.10.0-6-amd64 #1 SMP PREEMPT Debian 5.10.74-1.stx.3 (2022-04-02) x86_64"
+                }
+              ],
+              "mgmt-ip": [
+                {
+                  "value": "192.168.204.2"
+                },
+                {
+                  "value": "fe80::a00:27ff:fe09:595d"
+                }
+              ],
+              "mgmt-iface": [
+                {
+                  "value": "1"
+                },
+                {
+                  "value": "4"
+                }
+              ],
+              "capability": [
+                {
+                  "type": "Bridge",
+                  "enabled": true
+                },
+                {
+                  "type": "Router",
+                  "enabled": true
+                },
+                {
+                  "type": "Wlan",
+                  "enabled": false
+                },
+                {
+                  "type": "Station",
+                  "enabled": false
+                }
+              ]
+            }
+          ],
+          "port": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "08:00:27:d4:cc:09"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "enp0s16"
+                }
+              ]
+            }
+          ],
+          "ttl": [
+            {
+              "ttl": "120"
+            }
+          ]
+        },
+        {
+          "name": "enp0s3",
+          "status": [
+            {
+              "value": "RX and TX"
+            }
+          ],
+          "chassis": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "08:00:27:59:9e:6b"
+                }
+              ],
+              "name": [
+                {
+                  "value": "controller-0:bd0a9e89-7fd7-4729-bc67-df0c39c0db8f"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "Debian GNU/Linux 11 (bullseye) Linux 5.10.0-6-amd64 #1 SMP PREEMPT Debian 5.10.74-1.stx.3 (2022-04-02) x86_64"
+                }
+              ],
+              "mgmt-ip": [
+                {
+                  "value": "192.168.204.2"
+                },
+                {
+                  "value": "fe80::a00:27ff:fe09:595d"
+                }
+              ],
+              "mgmt-iface": [
+                {
+                  "value": "1"
+                },
+                {
+                  "value": "4"
+                }
+              ],
+              "capability": [
+                {
+                  "type": "Bridge",
+                  "enabled": true
+                },
+                {
+                  "type": "Router",
+                  "enabled": true
+                },
+                {
+                  "type": "Wlan",
+                  "enabled": false
+                },
+                {
+                  "type": "Station",
+                  "enabled": false
+                }
+              ]
+            }
+          ],
+          "port": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "08:00:27:09:59:5d"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "enp0s3"
+                }
+              ],
+              "auto-negotiation": [
+                {
+                  "supported": true,
+                  "enabled": true,
+                  "advertised": [
+                    {
+                      "type": "10Base-T",
+                      "hd": true,
+                      "fd": true
+                    },
+                    {
+                      "type": "100Base-TX",
+                      "hd": true,
+                      "fd": true
+                    },
+                    {
+                      "type": "1000Base-T",
+                      "hd": false,
+                      "fd": true
+                    }
+                  ],
+                  "current": [
+                    {
+                      "value": "1000BaseTFD - Four-pair Category 5 UTP, full duplex mode"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "ttl": [
+            {
+              "ttl": "120"
+            }
+          ]
+        },
+        {
+          "name": "enp0s8",
+          "status": [
+            {
+              "value": "RX and TX"
+            }
+          ],
+          "chassis": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "08:00:27:59:9e:6b"
+                }
+              ],
+              "name": [
+                {
+                  "value": "controller-0:bd0a9e89-7fd7-4729-bc67-df0c39c0db8f"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "Debian GNU/Linux 11 (bullseye) Linux 5.10.0-6-amd64 #1 SMP PREEMPT Debian 5.10.74-1.stx.3 (2022-04-02) x86_64"
+                }
+              ],
+              "mgmt-ip": [
+                {
+                  "value": "192.168.204.2"
+                },
+                {
+                  "value": "fe80::a00:27ff:fe09:595d"
+                }
+              ],
+              "mgmt-iface": [
+                {
+                  "value": "1"
+                },
+                {
+                  "value": "4"
+                }
+              ],
+              "capability": [
+                {
+                  "type": "Bridge",
+                  "enabled": true
+                },
+                {
+                  "type": "Router",
+                  "enabled": true
+                },
+                {
+                  "type": "Wlan",
+                  "enabled": false
+                },
+                {
+                  "type": "Station",
+                  "enabled": false
+                }
+              ]
+            }
+          ],
+          "port": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "08:00:27:a7:26:d8"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "enp0s8"
+                }
+              ],
+              "auto-negotiation": [
+                {
+                  "supported": true,
+                  "enabled": true,
+                  "advertised": [
+                    {
+                      "type": "10Base-T",
+                      "hd": true,
+                      "fd": true
+                    },
+                    {
+                      "type": "100Base-TX",
+                      "hd": true,
+                      "fd": true
+                    },
+                    {
+                      "type": "1000Base-T",
+                      "hd": false,
+                      "fd": true
+                    }
+                  ],
+                  "current": [
+                    {
+                      "value": "1000BaseTFD - Four-pair Category 5 UTP, full duplex mode"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "ttl": [
+            {
+              "ttl": "120"
+            }
+          ]
+        },
+        {
+          "name": "enp0s9",
+          "status": [
+            {
+              "value": "RX and TX"
+            }
+          ],
+          "chassis": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "08:00:27:59:9e:6b"
+                }
+              ],
+              "name": [
+                {
+                  "value": "controller-0:bd0a9e89-7fd7-4729-bc67-df0c39c0db8f"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "Debian GNU/Linux 11 (bullseye) Linux 5.10.0-6-amd64 #1 SMP PREEMPT Debian 5.10.74-1.stx.3 (2022-04-02) x86_64"
+                }
+              ],
+              "mgmt-ip": [
+                {
+                  "value": "192.168.204.2"
+                },
+                {
+                  "value": "fe80::a00:27ff:fe09:595d"
+                }
+              ],
+              "mgmt-iface": [
+                {
+                  "value": "1"
+                },
+                {
+                  "value": "4"
+                }
+              ],
+              "capability": [
+                {
+                  "type": "Bridge",
+                  "enabled": true
+                },
+                {
+                  "type": "Router",
+                  "enabled": true
+                },
+                {
+                  "type": "Wlan",
+                  "enabled": false
+                },
+                {
+                  "type": "Station",
+                  "enabled": false
+                }
+              ]
+            }
+          ],
+          "port": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "08:00:27:cc:d2:2c"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "enp0s9"
+                }
+              ],
+              "auto-negotiation": [
+                {
+                  "supported": true,
+                  "enabled": true,
+                  "advertised": [
+                    {
+                      "type": "10Base-T",
+                      "hd": true,
+                      "fd": true
+                    },
+                    {
+                      "type": "100Base-TX",
+                      "hd": true,
+                      "fd": true
+                    },
+                    {
+                      "type": "1000Base-T",
+                      "hd": false,
+                      "fd": true
+                    }
+                  ],
+                  "current": [
+                    {
+                      "value": "1000BaseTFD - Four-pair Category 5 UTP, full duplex mode"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "ttl": [
+            {
+              "ttl": "120"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+

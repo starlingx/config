@@ -8,17 +8,23 @@
 
 # All Rights Reserved.
 #
-
 from eventlet.green import subprocess
 from oslo_log import log as logging
-
 import simplejson as json
 
 from sysinv.agent.lldp.drivers import base
 from sysinv.agent.lldp import plugin
 from sysinv.common import constants
+from sysinv.common import utils
 
 LOG = logging.getLogger(__name__)
+
+
+def get_json_mode():
+    if utils.is_centos():
+        return "json"
+    else:
+        return "json0"
 
 
 class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
@@ -40,12 +46,15 @@ class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
     @staticmethod
     def _lldpd_get_agent_status():
         json_obj = json
-        p = subprocess.Popen(["lldpcli", "-f", "json", "show",
+        p = subprocess.Popen(["lldpcli", "-f", get_json_mode(), "show",
                               "configuration"],
                              universal_newlines=True,
                              stdout=subprocess.PIPE)
         data = json_obj.loads(p.communicate()[0])
 
+        # No special handling required in this method.
+        # lldp 0.9.0 json  and lldp 1.0.11 json0 both
+        # return the same format for 'show configuration'
         configuration = data['configuration'][0]
         config = configuration['config'][0]
         rx_only = config['rx-only'][0]
@@ -56,7 +65,13 @@ class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
             return "rx=enabled,tx=disabled"
 
     @staticmethod
-    def _lldpd_get_attrs(iface):
+    def _lldpd_get_attrs(iface, iface_mode=False):
+        """
+        In json0 mode, the fields for iface are different
+        for neighbors and agents.
+        iface_mode means that json0 results are for show interface
+        which puts ttl at the interface level, rather than under ports
+        """
         name_or_uuid = None
         chassis_id = None
         system_name = None
@@ -92,9 +107,19 @@ class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
             return attrs
         port_id = port["id"][0].get("value")
 
-        if not port.get('ttl'):
-            return attrs
-        ttl = port['ttl'][0].get("value")
+        # Special case: iface_mode (debian only)
+        # lldp 0.9.0 puts ttl under port for neighbors and agents
+        # lldp 1.0.11 puts ttyl under ports for neighbors
+        # but puts it under in a different location (iface) for agents
+        if iface_mode:
+            # ttl is stored under iface as ttl: [ { "ttl: "val" } ]
+            if not iface.get('ttl'):
+                return attrs
+            ttl = iface['ttl'][0].get("ttl")
+        else:
+            if not port.get('ttl'):
+                return attrs
+            ttl = port['ttl'][0].get("value")
 
         if chassis.get("name"):
             system_name = chassis['name'][0].get("value")
@@ -257,7 +282,7 @@ class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
         json_obj = json
         lldp_agents = []
 
-        p = subprocess.Popen(["lldpcli", "-f", "json", "show", "interface",
+        p = subprocess.Popen(["lldpcli", "-f", get_json_mode(), "show", "interface",
                               "detail"], stdout=subprocess.PIPE,
                               universal_newlines=True)
         data = json_obj.loads(p.communicate()[0])
@@ -268,7 +293,12 @@ class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
             return lldp_agents
 
         for iface in lldp['interface']:
-            agent_attrs = self._lldpd_get_attrs(iface)
+            # json0 results for the interfaces of agents are not
+            # the same as when querying neighbors.
+            # json0 puts ttl under interface rather than port
+            iface_mode = (get_json_mode() == "json0")
+            agent_attrs = self._lldpd_get_attrs(iface,
+                                                iface_mode=iface_mode)
             status = self._lldpd_get_agent_status()
             agent_attrs.update({"status": status})
             agent = plugin.Agent(**agent_attrs)
@@ -283,7 +313,7 @@ class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
     def lldp_neighbours_list(self):
         json_obj = json
         lldp_neighbours = []
-        p = subprocess.Popen(["lldpcli", "-f", "json", "show", "neighbor",
+        p = subprocess.Popen(["lldpcli", "-f", get_json_mode(), "show", "neighbor",
                               "detail"], stdout=subprocess.PIPE,
                               universal_newlines=True)
         data = json_obj.loads(p.communicate()[0])
@@ -294,6 +324,9 @@ class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
             return lldp_neighbours
 
         for iface in lldp['interface']:
+            # json0 results for the interfaces of neighbors are not
+            # the same as when querying agents.
+            # json0 puts ttl under ports (same as json)
             neighbour_attrs = self._lldpd_get_attrs(iface)
             neighbour = plugin.Neighbour(**neighbour_attrs)
             lldp_neighbours.append(neighbour)
@@ -305,7 +338,7 @@ class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
         self.previous_neighbours = []
 
     def lldp_update_systemname(self, systemname):
-        p = subprocess.Popen(["lldpcli", "-f", "json", "show", "chassis"],
+        p = subprocess.Popen(["lldpcli", "-f", get_json_mode(), "show", "chassis"],
                              stdout=subprocess.PIPE, universal_newlines=True)
         data = json.loads(p.communicate()[0])
 

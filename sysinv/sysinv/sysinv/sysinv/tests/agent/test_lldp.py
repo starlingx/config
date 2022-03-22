@@ -18,6 +18,7 @@ import mock
 import os
 
 from sysinv.agent.lldp.drivers.lldpd.driver import SysinvLldpdAgentDriver
+from sysinv.common import constants
 
 from sysinv.tests import base
 
@@ -48,6 +49,8 @@ class LldpInterfaceDetailTestsMixin(object):
       lldp_show_configuration.json
       lldp_show_interface_detail.json
       lldp_show_neighbor_detail.json
+      lldp_show_neighbor_summary.json
+      lldp_show_chassis.json
     """
     def setUp(self):
         super(LldpInterfaceDetailTestsMixin, self).setUp()
@@ -60,6 +63,8 @@ class LldpInterfaceDetailTestsMixin(object):
                                               "lldp_show_neighbor_detail.json")
         self.show_chassis_data = load_data(self.version_dir,
                                            "lldp_show_chassis.json")
+        self.neighbours_summary_data = load_data(self.version_dir,
+                                                 "lldp_show_neighbor_summary.json")
 
     def test_initialize(self):
         """
@@ -138,7 +143,7 @@ class LldpInterfaceDetailTestsMixin(object):
         agents = self.driver.lldp_agents_list()
 
         # Validate the agents have been parsed
-        self.assertNotEqual(0, len(agents))
+        self.assertEqual(self.num_expected_agents, len(agents))
 
     @mock.patch('sysinv.agent.lldp.drivers.lldpd.driver.subprocess.Popen')
     def test_lldp_neighbours_list(self, mock_popen):
@@ -158,7 +163,9 @@ class LldpInterfaceDetailTestsMixin(object):
         neighbors = self.driver.lldp_neighbours_list()
 
         # Validate the neighbors have been parsed correctly
-        self.assertNotEqual(0, len(neighbors))
+        self.assertEqual(self.num_expected_neighbors, len(neighbors))
+        for n in neighbors:
+            self.assertEqual(self.expected_neighbor_ttl, n.ttl)
 
     @mock.patch('sysinv.agent.lldp.drivers.lldpd.driver.subprocess.Popen')
     def test_lldp_update_systemname(self, mock_popen):
@@ -187,9 +194,71 @@ class LldpInterfaceDetailTestsMixin(object):
         mock_popen.assert_called_with(
             ["lldpcli", "configure", "system", "hostname", newname], stdout=mock.ANY)
 
+    def test_config_controller(self):
+        """
+        See controllerconfig/controllerconfig/controllerconfig/config_management.py
+        This test isolates the code in the large methods that interact with lldp
+        This just tests that the parsed results in config controller are valid
+        """
+        lldpcli_show_output = self.neighbours_summary_data
+        # step 1. call load
+        lldp_interfaces = json.loads(lldpcli_show_output)['lldp'][0]['interface']
+        # step 2. walk the list
+        for interface in lldp_interfaces:
+            i_name = interface['name']
+            i_val = interface['port'][0]['id'][0]['value']
+            self.assertIn(i_name, self.expected_neighbor_interfaces)
+            self.assertIn(i_val, self.expected_neighbor_port_ids)
+
 
 # Centos environment is shipped with lldpcli version 0.9.0
 class TestCentosLldpInterfaceDetail(LldpInterfaceDetailTestsMixin,
                                     base.TestCase):
     version_dir = "0.9.0"
-    hostname = 'controller-0'
+    hostname = "controller-0"
+    # num_expected_agents
+    # parsed from lldp_show_interface_detail.json
+    num_expected_agents = 5
+    # num_expected_neighbors and expected_neighbor_ttl
+    # parsed from  lldp_show_neighbor_detail.json
+    num_expected_neighbors = 1
+    expected_neighbor_ttl = "3544"
+    # expected_neighbor_interfaces and expected_neighbor_port_ids
+    # parsed from  lldp_show_neighbor_summary.json
+    # centos has the port value as a 'ifname'
+    expected_neighbor_interfaces = ["eno1", ]
+    expected_neighbor_port_ids = ["Gi0/39"]
+
+    def setUp(self):
+        super(TestCentosLldpInterfaceDetail, self).setUp()
+        self.mocked_get_os_type = mock.patch(
+            'sysinv.common.utils.get_os_type',
+            return_value=constants.OS_CENTOS)
+        self.mocked_get_os_type.start()
+        self.addCleanup(self.mocked_get_os_type.stop)
+
+
+class TestDebianLldpInterfaceDetail(LldpInterfaceDetailTestsMixin,
+                                    base.TestCase):
+    version_dir = "1.0.11"
+    hostname = "controller-0"
+    # num_expected_agents
+    # parsed from lldp_show_interface_detail.json
+    num_expected_agents = 5
+    # num_expected_neighbors and expected_neighbor_ttl
+    # are parsed from  lldp_show_neighbor_detail.json
+    num_expected_neighbors = 1
+    expected_neighbor_ttl = "3601"
+    # expected_neighbor_interfaces and expected_neighbor_port_ids
+    # parsed from  lldp_show_neighbor_summary.json
+    # debian has the port value as a 'mac'
+    expected_neighbor_interfaces = ["enp0s3", ]
+    expected_neighbor_port_ids = ["0a:00:27:00:00:0d"]
+
+    def setUp(self):
+        super(TestDebianLldpInterfaceDetail, self).setUp()
+        self.mocked_get_os_type = mock.patch(
+            'sysinv.common.utils.get_os_type',
+            return_value=constants.OS_DEBIAN)
+        self.mocked_get_os_type.start()
+        self.addCleanup(self.mocked_get_os_type.stop)
