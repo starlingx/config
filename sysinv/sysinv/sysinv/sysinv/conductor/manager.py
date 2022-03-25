@@ -5471,6 +5471,16 @@ class ConductorManager(service.PeriodicService):
         ihost_val = {'subfunctions': subfunctions}
         self.dbapi.ihost_update(ihost_uuid, ihost_val)
 
+    def get_isystem(self, context):
+        """Return isystem object
+
+        This method returns a isystem object
+
+        :returns: isystem object, including all fields
+        """
+        system = self.dbapi.isystem_get_one()
+        return system
+
     def get_ihost_by_macs(self, context, ihost_macs):
         """Finds ihost db entry based upon the mac list
 
@@ -9420,15 +9430,20 @@ class ConductorManager(service.PeriodicService):
         """
         database_storage = 0
 
+        # Get the distributed cloud role to determine filesystems size
+        system = self.dbapi.isystem_get_one()
+        system_dc_role = system.get("distributed_cloud_role", None)
+        system_type = system.get("system_type", None)
+
         # Set default filesystem sizes
         platform_storage = constants.DEFAULT_PLATFORM_STOR_SIZE
+        if (system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and
+                system_type == constants.TIS_STD_BUILD):
+            platform_storage = constants.DEFAULT_PLATFORM_SYSTEMCONTROLLER_STOR_SIZE
         extension_lv_size = constants.DEFAULT_EXTENSION_STOR_SIZE
         etcd_lv_size = constants.ETCD_STOR_SIZE
         docker_distribution_lv_size = \
             constants.DOCKER_DISTRIBUTION_STOR_SIZE
-
-        system = self.dbapi.isystem_get_one()
-        system_dc_role = system.get('distributed_cloud_role', None)
 
         LOG.info("Local Region Name: %s" % system.region_name)
 
@@ -9446,10 +9461,11 @@ class ConductorManager(service.PeriodicService):
             #          2 G - pgsql_lv (DRBD bootstrap manifest)
             #          2 G - rabbit_lv (DRBD bootstrap manifest)
             #         10 G - platform_lv (DRBD bootstrap manifest)
+            #                (20 G if Standard System Controller)
             #          1 G - extension_lv (DRBD bootstrap manifest)
             #        -----
             #         39 G - cgts-vg contents when we get to these checks
-            #
+            #        (49 G if Standard System Controller)
             #
             #       Final defaults view after controller manifests
             #          8 G - /var/log (reserved in kickstart)
@@ -9457,8 +9473,10 @@ class ConductorManager(service.PeriodicService):
             #         20 G - /var/lib/postgresql
             #          2 G - /var/lib/rabbitmq
             #         10 G - /opt/platform
+            #                (20 G if Standard System Controller)
             #          1 G - /opt/extension
             #         25 G - /opt/backup
+            #                (35 G if Standard System Controller)
             #         30 G - /var/lib/docker
             #         16 G - /var/lib/docker-distribution
             #          5 G - /opt/etcd
@@ -9467,6 +9485,7 @@ class ConductorManager(service.PeriodicService):
             #         15 G - /opt/dc-vault (DRBD ctlr manifest for DCSC)
             #        -----
             #        178 G
+            #       (198 G if Standard System Controller)
             #
             #  The absolute minimum disk size for these default settings:
             #      2.0 G - buffer
@@ -9476,6 +9495,7 @@ class ConductorManager(service.PeriodicService):
             #    178.0 G - cgts-vg PV
             #   -------
             #    ~ 210 G min size disk
+            #     (230 G if Standard System Controller)
             #
             database_storage = constants.DEFAULT_DATABASE_STOR_SIZE
 

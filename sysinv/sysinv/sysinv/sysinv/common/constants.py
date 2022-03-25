@@ -310,7 +310,10 @@ VSWITCH_TYPE_NUAGE_VRS = "nuage_vrs"
 VSWITCH_TYPE_NONE = "none"
 
 # Partition default sizes
+# These values must be aligned with the values used by
+# the apply_bootstrap_manifest task during the bootstrap
 DEFAULT_PLATFORM_STOR_SIZE = 10
+DEFAULT_PLATFORM_SYSTEMCONTROLLER_STOR_SIZE = 20
 DEFAULT_DOCKER_STOR_SIZE = 1
 DEFAULT_DOCKER_DISTRIBUTION_STOR_SIZE = 1
 DEFAULT_DATABASE_STOR_SIZE = 10
