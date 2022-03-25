@@ -73,7 +73,6 @@
     required-projects:
       - starlingx/fault
       - starlingx/utilities
-      - starlingx/root
       - starlingx/update
     files:
       - sysinv/sysinv/*
@@ -142,7 +141,6 @@
     nodeset: debian-bullseye
     required-projects:
       - starlingx/fault
-      - starlingx/root
     files:
       - controllerconfig/*
     vars:
