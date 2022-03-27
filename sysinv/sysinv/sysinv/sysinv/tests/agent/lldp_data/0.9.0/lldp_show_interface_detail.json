@@ -1,0 +1,482 @@
+{
+   "lldp": [
+     {
+       "interface": [
+         {
+           "name": "eth1000",
+           "via": "unknown",
+           "rid": "0",
+           "age": "0 day, 00:33:15",
+           "chassis": [
+             {
+               "id": [
+                 {
+                   "type": "mac",
+                   "value": "08:00:27:c5:60:a8"
+                 }
+               ],
+               "name": [
+                 {
+                   "value": "controller-0"
+                 }
+               ],
+               "descr": [
+                 {
+                   "value": "CentOS Linux 7 (Core) Linux 5.10.99-200.28.tis.el7.x86_64 #1 SMP PREEMPT Wed Mar 30 19:24:34 CDT 2022 x86_64"
+                 }
+               ],
+               "mgmt-ip": [
+                 {
+                   "value": "10.10.10.3"
+                 },
+                 {
+                   "value": "fe80::a00:27ff:fec5:60a8"
+                 }
+               ],
+               "capability": [
+                 {
+                   "type": "Bridge",
+                   "enabled": true
+                 },
+                 {
+                   "type": "Router",
+                   "enabled": true
+                 },
+                 {
+                   "type": "Wlan",
+                   "enabled": false
+                 },
+                 {
+                   "type": "Station",
+                   "enabled": false
+                 }
+               ]
+             }
+           ],
+           "port": [
+             {
+               "id": [
+                 {
+                   "type": "mac",
+                   "value": "08:00:27:c5:60:a8"
+                 }
+               ],
+               "descr": [
+                 {
+                   "value": "eth1000"
+                 }
+               ],
+               "ttl": [
+                 {
+                   "value": "120"
+                 }
+               ],
+               "link-aggregation": [
+                 {
+                   "supported": true,
+                   "enabled": false
+                 }
+               ]
+             }
+           ]
+         },
+         {
+           "name": "eth1001",
+           "via": "unknown",
+           "rid": "0",
+           "age": "0 day, 00:33:15",
+           "chassis": [
+             {
+               "id": [
+                 {
+                   "type": "mac",
+                   "value": "08:00:27:c5:60:a8"
+                 }
+               ],
+               "name": [
+                 {
+                   "value": "controller-0"
+                 }
+               ],
+               "descr": [
+                 {
+                   "value": "CentOS Linux 7 (Core) Linux 5.10.99-200.28.tis.el7.x86_64 #1 SMP PREEMPT Wed Mar 30 19:24:34 CDT 2022 x86_64"
+                 }
+               ],
+               "mgmt-ip": [
+                 {
+                   "value": "10.10.10.3"
+                 },
+                 {
+                   "value": "fe80::a00:27ff:fec5:60a8"
+                 }
+               ],
+               "capability": [
+                 {
+                   "type": "Bridge",
+                   "enabled": true
+                 },
+                 {
+                   "type": "Router",
+                   "enabled": true
+                 },
+                 {
+                   "type": "Wlan",
+                   "enabled": false
+                 },
+                 {
+                   "type": "Station",
+                   "enabled": false
+                 }
+               ]
+             }
+           ],
+           "port": [
+             {
+               "id": [
+                 {
+                   "type": "mac",
+                   "value": "08:00:27:8f:2f:f6"
+                 }
+               ],
+               "descr": [
+                 {
+                   "value": "eth1001"
+                 }
+               ],
+               "ttl": [
+                 {
+                   "value": "120"
+                 }
+               ],
+               "link-aggregation": [
+                 {
+                   "supported": true,
+                   "enabled": false
+                 }
+               ]
+             }
+           ]
+         },
+         {
+           "name": "enp0s3",
+           "via": "unknown",
+           "rid": "0",
+           "age": "0 day, 00:33:16",
+           "chassis": [
+             {
+               "id": [
+                 {
+                   "type": "mac",
+                   "value": "08:00:27:c5:60:a8"
+                 }
+               ],
+               "name": [
+                 {
+                   "value": "controller-0"
+                 }
+               ],
+               "descr": [
+                 {
+                   "value": "CentOS Linux 7 (Core) Linux 5.10.99-200.28.tis.el7.x86_64 #1 SMP PREEMPT Wed Mar 30 19:24:34 CDT 2022 x86_64"
+                 }
+               ],
+               "mgmt-ip": [
+                 {
+                   "value": "10.10.10.3"
+                 },
+                 {
+                   "value": "fe80::a00:27ff:fec5:60a8"
+                 }
+               ],
+               "capability": [
+                 {
+                   "type": "Bridge",
+                   "enabled": true
+                 },
+                 {
+                   "type": "Router",
+                   "enabled": true
+                 },
+                 {
+                   "type": "Wlan",
+                   "enabled": false
+                 },
+                 {
+                   "type": "Station",
+                   "enabled": false
+                 }
+               ]
+             }
+           ],
+           "port": [
+             {
+               "id": [
+                 {
+                   "type": "mac",
+                   "value": "08:00:27:89:34:f8"
+                 }
+               ],
+               "descr": [
+                 {
+                   "value": "enp0s3"
+                 }
+               ],
+               "ttl": [
+                 {
+                   "value": "120"
+                 }
+               ],
+               "link-aggregation": [
+                 {
+                   "supported": true,
+                   "enabled": false
+                 }
+               ],
+               "auto-negotiation": [
+                 {
+                   "supported": true,
+                   "enabled": true,
+                   "advertised": [
+                     {
+                       "type": "10Base-T",
+                       "hd": true,
+                       "fd": true
+                     },
+                     {
+                       "type": "100Base-TX",
+                       "hd": true,
+                       "fd": true
+                     },
+                     {
+                       "type": "1000Base-T",
+                       "hd": false,
+                       "fd": true
+                     }
+                   ],
+                   "current": [
+                     {
+                       "value": "1000BaseTFD - Four-pair Category 5 UTP, full duplex mode"
+                     }
+                   ]
+                 }
+               ]
+             }
+           ]
+         },
+         {
+           "name": "enp0s8",
+           "via": "unknown",
+           "rid": "0",
+           "age": "0 day, 00:33:15",
+           "chassis": [
+             {
+               "id": [
+                 {
+                   "type": "mac",
+                   "value": "08:00:27:c5:60:a8"
+                 }
+               ],
+               "name": [
+                 {
+                   "value": "controller-0"
+                 }
+               ],
+               "descr": [
+                 {
+                   "value": "CentOS Linux 7 (Core) Linux 5.10.99-200.28.tis.el7.x86_64 #1 SMP PREEMPT Wed Mar 30 19:24:34 CDT 2022 x86_64"
+                 }
+               ],
+               "mgmt-ip": [
+                 {
+                   "value": "10.10.10.3"
+                 },
+                 {
+                   "value": "fe80::a00:27ff:fec5:60a8"
+                 }
+               ],
+               "capability": [
+                 {
+                   "type": "Bridge",
+                   "enabled": true
+                 },
+                 {
+                   "type": "Router",
+                   "enabled": true
+                 },
+                 {
+                   "type": "Wlan",
+                   "enabled": false
+                 },
+                 {
+                   "type": "Station",
+                   "enabled": false
+                 }
+               ]
+             }
+           ],
+           "port": [
+             {
+               "id": [
+                 {
+                   "type": "mac",
+                   "value": "08:00:27:fe:94:90"
+                 }
+               ],
+               "descr": [
+                 {
+                   "value": "enp0s8"
+                 }
+               ],
+               "ttl": [
+                 {
+                   "value": "120"
+                 }
+               ],
+               "link-aggregation": [
+                 {
+                   "supported": true,
+                   "enabled": false
+                 }
+               ],
+               "auto-negotiation": [
+                 {
+                   "supported": true,
+                   "enabled": true,
+                   "advertised": [
+                     {
+                       "type": "10Base-T",
+                       "hd": true,
+                       "fd": true
+                     },
+                     {
+                       "type": "100Base-TX",
+                       "hd": true,
+                       "fd": true
+                     },
+                     {
+                       "type": "1000Base-T",
+                       "hd": false,
+                       "fd": true
+                     }
+                   ],
+                   "current": [
+                     {
+                       "value": "1000BaseTFD - Four-pair Category 5 UTP, full duplex mode"
+                     }
+                   ]
+                 }
+               ]
+             }
+           ]
+         },
+         {
+           "name": "enp0s9",
+           "via": "unknown",
+           "rid": "0",
+           "age": "0 day, 00:33:15",
+           "chassis": [
+             {
+               "id": [
+                 {
+                   "type": "mac",
+                   "value": "08:00:27:c5:60:a8"
+                 }
+               ],
+               "name": [
+                 {
+                   "value": "controller-0"
+                 }
+               ],
+               "descr": [
+                 {
+                   "value": "CentOS Linux 7 (Core) Linux 5.10.99-200.28.tis.el7.x86_64 #1 SMP PREEMPT Wed Mar 30 19:24:34 CDT 2022 x86_64"
+                 }
+               ],
+               "mgmt-ip": [
+                 {
+                   "value": "10.10.10.3"
+                 },
+                 {
+                   "value": "fe80::a00:27ff:fec5:60a8"
+                 }
+               ],
+               "capability": [
+                 {
+                   "type": "Bridge",
+                   "enabled": true
+                 },
+                 {
+                   "type": "Router",
+                   "enabled": true
+                 },
+                 {
+                   "type": "Wlan",
+                   "enabled": false
+                 },
+                 {
+                   "type": "Station",
+                   "enabled": false
+                 }
+               ]
+             }
+           ],
+           "port": [
+             {
+               "id": [
+                 {
+                   "type": "mac",
+                   "value": "08:00:27:88:f1:eb"
+                 }
+               ],
+               "descr": [
+                 {
+                   "value": "enp0s9"
+                 }
+               ],
+               "ttl": [
+                 {
+                   "value": "120"
+                 }
+               ],
+               "link-aggregation": [
+                 {
+                   "supported": true,
+                   "enabled": false
+                 }
+               ],
+               "auto-negotiation": [
+                 {
+                   "supported": true,
+                   "enabled": true,
+                   "advertised": [
+                     {
+                       "type": "10Base-T",
+                       "hd": true,
+                       "fd": true
+                     },
+                     {
+                       "type": "100Base-TX",
+                       "hd": true,
+                       "fd": true
+                     },
+                     {
+                       "type": "1000Base-T",
+                       "hd": false,
+                       "fd": true
+                     }
+                   ],
+                   "current": [
+                     {
+                       "value": "1000BaseTFD - Four-pair Category 5 UTP, full duplex mode"
+                     }
+                   ]
+                 }
+               ]
+             }
+           ]
+         }
+       ]
+     }
+   ]
+ }

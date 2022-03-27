@@ -1,0 +1,95 @@
+{
+   "configuration": [
+     {
+       "config": [
+         {
+           "tx-delay": [
+             {
+               "value": "30"
+             }
+           ],
+           "tx-hold": [
+             {
+               "value": "4"
+             }
+           ],
+           "rx-only": [
+             {
+               "value": "no"
+             }
+           ],
+           "mgmt-pattern": [
+             {
+               "value": "(none)"
+             }
+           ],
+           "iface-pattern": [
+             {
+               "value": "(none)"
+             }
+           ],
+           "cid-pattern": [
+             {
+               "value": "(none)"
+             }
+           ],
+           "description": [
+             {
+               "value": "(none)"
+             }
+           ],
+           "platform": [
+             {
+               "value": "Linux"
+             }
+           ],
+           "hostname": [
+             {
+               "value": "(none)"
+             }
+           ],
+           "advertise-version": [
+             {
+               "value": "yes"
+             }
+           ],
+           "ifdescr-update": [
+             {
+               "value": "no"
+             }
+           ],
+           "iface-promisc": [
+             {
+               "value": "no"
+             }
+           ],
+           "lldpmed-no-inventory": [
+             {
+               "value": "yes"
+             }
+           ],
+           "lldpmed-faststart": [
+             {
+               "value": "yes"
+             }
+           ],
+           "lldpmed-faststart-interval": [
+             {
+               "value": "1"
+             }
+           ],
+           "bond-slave-src-mac-type": [
+             {
+               "value": "local"
+             }
+           ],
+           "lldp_portid-type": [
+             {
+               "value": "unknown"
+             }
+           ]
+         }
+       ]
+     }
+   ]
+ }
