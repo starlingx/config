@@ -199,6 +199,49 @@ def delete_configmap(app_op, namespace, configmap):
         raise
 
 
+def add_pod_security_admission_controller_labels(app_op, app, hook_info):
+    """ adds labels to newly created namespaces
+
+    Pod security admission controllers uses labels to enforce policies
+    this method adds labels used by pod security admission controller
+    this is needed because new applications can create new namespaces
+    as they are deployed.
+
+    :param app_op: AppOperator object
+    :param app: AppOperator.Application object
+    :param hook_info: LifecycleHookInfo object
+
+    """
+    app_ns = app_op._helm.get_helm_application_namespaces(app.name)
+
+    namespaces = \
+        list(set([ns for ns_list in app_ns.values() for ns in ns_list]))
+
+    for ns in namespaces:
+
+        security_level = 'baseline'
+        if ns in common.PRIVILEGED_NS:
+            security_level = 'privileged'
+
+        body = {
+            "metadata": {
+                "labels": {
+                    "pod-security.kubernetes.io/enforce": security_level,
+                    "pod-security.kubernetes.io/warn": security_level,
+                    "pod-security.kubernetes.io/audit": security_level,
+                    "pod-security.kubernetes.io/enforce-version": common.POD_SECURITY_VERSION,
+                    "pod-security.kubernetes.io/warn-version": common.POD_SECURITY_VERSION,
+                    "pod-security.kubernetes.io/audit-version": common.POD_SECURITY_VERSION}
+            }
+        }
+
+        try:
+            app_op._kube.kube_patch_namespace(ns, body)
+        except Exception as e:
+            LOG.error(e)
+            raise
+
+
 def create_local_registry_secrets(app_op, app, hook_info):
     # Temporary function to create default registry secret
     # which would be used by kubernetes to pull images from
