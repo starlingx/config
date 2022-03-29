@@ -199,6 +199,8 @@ PATCH_DEFAULT_TIMEOUT_IN_SECS = 6
 
 # ihost field attributes
 IHOST_STOR_FUNCTION = 'stor_function'
+IHOST_MAX_CPU_CONFIG = 'max_cpu_config'
+IHOST_MAX_CPU_DEFAULT = 'max_cpu_default'
 
 # ihost config_status field values
 CONFIG_STATUS_OUT_OF_DATE = "Config out-of-date"
@@ -2052,3 +2054,7 @@ OS_RELEASE_FILE = '/etc/os-release'
 OS_CENTOS = 'centos'
 OS_DEBIAN = 'debian'
 SUPPORTED_OS_TYPES = [OS_CENTOS, OS_DEBIAN]
+
+# Configuration support placeholders
+CONFIGURABLE = 'configurable'
+NOT_CONFIGURABLE = 'not-configurable'

@@ -5332,6 +5332,7 @@ class ConductorManager(service.PeriodicService):
         ihost_uuid.strip()
         LOG.info("Updating platform data for host: %s "
                  "with: %s" % (ihost_uuid, imsg_dict))
+
         try:
             ihost = self.dbapi.ihost_get(ihost_uuid)
         except exception.ServerNotFound:
@@ -5339,6 +5340,7 @@ class ConductorManager(service.PeriodicService):
             return
 
         availability = imsg_dict.get('availability')
+        max_cpu_dict = imsg_dict.get('max_cpu_dict')
 
         val = {}
 
@@ -5353,6 +5355,14 @@ class ConductorManager(service.PeriodicService):
             LOG.info("%s updating iscsi initiator=%s" %
                         (ihost.hostname, iscsi_initiator_name))
             val['iscsi_initiator_name'] = iscsi_initiator_name
+
+        if max_cpu_dict:
+            ihost.capabilities.update({
+                constants.IHOST_MAX_CPU_CONFIG:
+                max_cpu_dict.get(constants.IHOST_MAX_CPU_CONFIG)})
+            ihost.max_cpu_default = max_cpu_dict.get('max_cpu_default')
+            val.update({'capabilities': ihost.capabilities,
+                        constants.IHOST_MAX_CPU_DEFAULT: ihost.max_cpu_default})
 
         if val:
             ihost = self.dbapi.ihost_update(ihost_uuid, val)
@@ -13222,6 +13232,20 @@ class ConductorManager(service.PeriodicService):
             msg = "delete_certificate unsupported mode=%s" % mode
             LOG.error(msg)
             raise exception.SysinvException(_(msg))
+
+    def update_host_max_cpu_frequency(self, context, host):
+        personalities = [constants.WORKER]
+
+        config_uuid = self._config_update_hosts(context,
+                                                personalities,
+                                                [host['uuid']])
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::compute::config::runtime']
+        }
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid,
+                                            config_dict)
 
     def update_admin_ep_certificate(self, context):
         """

@@ -288,6 +288,28 @@ class AgentManager(service.PeriodicService):
         else:
             LOG.debug("ttys_dcd is not configured")
 
+    def _max_cpu_frequency_configurable(self):
+        fail_result = "System does not support"
+
+        output = utils.execute('/usr/bin/cpupower', 'info', run_as_root=True)
+
+        if isinstance(output, tuple):
+            cpu_info = output[0] or ''
+            if not cpu_info.startswith(fail_result):
+                return constants.CONFIGURABLE
+        return constants.NOT_CONFIGURABLE
+
+    def _max_cpu_frequency_default(self):
+        output = utils.execute(
+            "lscpu | grep 'CPU max MHz' | awk '{ print $4 }' | cut -d ',' -f 1",
+            shell=True)
+
+        if isinstance(output, tuple):
+            default_max = output[0]
+            if default_max:
+                LOG.info("Default CPU max frequency: {}".format(default_max))
+                return int(default_max.split('.')[0])
+
     @staticmethod
     def _get_active_device():
         # the list of currently configured console devices,
@@ -550,8 +572,14 @@ class AgentManager(service.PeriodicService):
             Action State to reinstalled, and remove the flag.
         """
         if os.path.exists(FIRST_BOOT_FLAG):
+            max_cpu_freq_dict = {
+                constants.IHOST_MAX_CPU_CONFIG:
+                self._max_cpu_frequency_configurable(),
+                constants.IHOST_MAX_CPU_DEFAULT:
+                self._max_cpu_frequency_default()}
             msg_dict.update({constants.HOST_ACTION_STATE:
-                             constants.HAS_REINSTALLED})
+                             constants.HAS_REINSTALLED,
+                             'max_cpu_dict': max_cpu_freq_dict})
 
         # Is this the first time since boot we are reporting to conductor?
         msg_dict.update({constants.SYSINV_AGENT_FIRST_REPORT:
