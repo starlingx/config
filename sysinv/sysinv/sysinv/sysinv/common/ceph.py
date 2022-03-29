@@ -855,6 +855,12 @@ class CephApiOperator(object):
         # hosts and the monitors reported in the quorum via the ceph API.
         active_monitors = list(set(inventory_monitor_names) & set(quorum_names))
         num_active_monitors = len(active_monitors)
+
+        # Floating controller on AIO controllers systems must be taken into account
+        # as an active ceph monitor.
+        if constants.CONTROLLER_HOSTNAME in quorum_names:
+            num_active_monitors += 1
+
         if (num_inv_monitors and num_active_monitors == 0 and
                 cutils.is_initial_config_complete() and
                 not cutils.is_aio_system(db_api)):

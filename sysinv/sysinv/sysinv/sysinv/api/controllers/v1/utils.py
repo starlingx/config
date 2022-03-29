@@ -590,11 +590,12 @@ def check_node_lock_ceph_mon(ihost, force=False, ceph_helper=None):
     num_monitors, required_monitors, active_monitors = \
         ceph_helper.get_monitors_status(pecan.request.dbapi)
 
-    host_has_last_mon = (num_monitors == 1 and
-                         ihost['hostname'] in active_monitors)
+    is_in_active_monitors = ihost['hostname'] in active_monitors
+    host_has_last_mon = num_monitors == 1 and is_in_active_monitors
 
-    if (num_monitors - 1 < required_monitors and
-            not force or host_has_last_mon):
+    if (num_monitors < required_monitors and
+            not force and is_in_active_monitors or
+            host_has_last_mon):
         raise wsme.exc.ClientSideError(_(
                 "Only %d storage "
                 "monitor available. At least %d unlocked and "
