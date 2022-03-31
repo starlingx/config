@@ -12674,6 +12674,7 @@ class ConductorManager(service.PeriodicService):
         if mode in [constants.CERT_MODE_SSL,
                     constants.CERT_MODE_DOCKER_REGISTRY,
                     constants.CERT_MODE_OPENSTACK,
+                    constants.CERT_MODE_OPENLDAP,
                     ]:
             private_mode = True
 
@@ -12971,6 +12972,18 @@ class ConductorManager(service.PeriodicService):
                 'permissions': constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY,
             }
             self._config_update_file(context, config_uuid, config_dict)
+        elif mode == constants.CERT_MODE_OPENLDAP:
+            LOG.info("OpenLDAP certificate install")
+            # install certificate, key to controllers
+            config_uuid = self._config_update_hosts(context, personalities)
+            config_dict = {
+                "personalities": personalities,
+                "classes": ['platform::ldap::secure::runtime']
+            }
+            self._config_apply_runtime_manifest(context,
+                                                config_uuid,
+                                                config_dict)
+
         elif mode == constants.CERT_MODE_OPENSTACK:
             config_uuid = self._config_update_hosts(context, personalities)
             key_path = constants.OPENSTACK_CERT_KEY_FILE
