@@ -178,6 +178,7 @@ class TestKubeRootCAUpdate(base.FunctionalTest):
 class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
                         dbbase.ProvisionedControllerHostTestCase):
 
+    @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
     def test_create(self):
         # Test creation of kubernetes rootca update
         create_dict = dbutils.get_test_kube_rootca_update()
@@ -197,6 +198,7 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
         self.assertEqual(host_updates[0]['target_rootca_cert'], None)
         self.assertEqual(host_updates[0]['effective_rootca_cert'], 'current_cert_serial')
 
+    @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
     def test_create_rootca_update_unhealthy_from_alarms(self):
         """ Test creation of kube rootca update while there are alarms"""
         # Test creation of kubernetes rootca update when system health check fails
@@ -360,6 +362,7 @@ class TestKubeRootCAUpdateComplete(TestKubeRootCAUpdate,
         super(TestKubeRootCAUpdateComplete, self).setUp()
         self.url = '/kube_rootca_update'
 
+    @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
     def test_update_complete_update_exists(self):
         dbutils.create_test_kube_rootca_update(state=kubernetes.KUBE_ROOTCA_UPDATED_PODS_TRUSTNEWCA)
         dbutils.create_test_kube_rootca_host_update(host_id=self.host.id,
