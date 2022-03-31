@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2021 Wind River Systems, Inc.
+# Copyright (c) 2018-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -142,8 +142,8 @@ class KubeAppController(rest.RestController):
                     app_version = self._make_db_placeholder(
                                   constants.APP_VERSION_PLACEHOLDER, app_tarfile)
                 mname = constants.APP_MANIFEST_NAME_PLACEHOLDER
-                mfile = constants.APP_TARFILE_NAME_PLACEHOLDER
-                return app_name, app_version, mname, mfile
+                manifest = constants.APP_TARFILE_NAME_PLACEHOLDER
+                return app_name, app_version, mname, manifest
 
             if not os.path.isfile(app_tarfile):
                 _handle_upload_failure(
@@ -167,10 +167,10 @@ class KubeAppController(rest.RestController):
                 try:
                     name, version, patches = app_helper._verify_metadata_file(
                         app_path, app_name, app_version)
-                    mname, mfile = app_helper._find_manifest_file(app_path)
+                    mname, manifest = app_helper._find_manifest(app_path)
                     app_helper._extract_helm_charts(app_path)
                     LOG.info("Tar file of application %s verified." % name)
-                    return name, version, mname, mfile
+                    return name, version, mname, manifest
                 except exception.SysinvException as e:
                     _handle_upload_failure(str(e))
         else:
@@ -227,7 +227,7 @@ class KubeAppController(rest.RestController):
                 raise wsme.exc.ClientSideError(_(
                     "Could not save the application on path {}".format(tarfile_path)))
 
-        name, version, mname, mfile = self._check_tarfile(tarfile_path, name, version,
+        name, version, mname, manifest = self._check_tarfile(tarfile_path, name, version,
                                                           constants.APP_UPLOAD_OP)
 
         try:
@@ -243,7 +243,7 @@ class KubeAppController(rest.RestController):
         app_data = {'name': name,
                     'app_version': version,
                     'manifest_name': mname,
-                    'manifest_file': os.path.basename(mfile),
+                    'manifest_file': os.path.basename(manifest),
                     'status': constants.APP_UPLOAD_IN_PROGRESS}
         try:
             new_app = pecan.request.dbapi.kube_app_create(app_data)
@@ -413,7 +413,7 @@ class KubeAppController(rest.RestController):
         tarfile = body.get('tarfile')
         name = body.get('name', '')
         version = body.get('app_version', '')
-        name, version, mname, mfile = self._check_tarfile(tarfile, name, version,
+        name, version, mname, manifest = self._check_tarfile(tarfile, name, version,
                                                           constants.APP_UPDATE_OP)
 
         reuse_overrides_flag = body.get('reuse_user_overrides', None)
@@ -492,7 +492,7 @@ class KubeAppController(rest.RestController):
                 'name': name,
                 'app_version': version,
                 'manifest_name': mname,
-                'manifest_file': os.path.basename(mfile),
+                'manifest_file': os.path.basename(manifest),
                 'status': constants.APP_UPDATE_IN_PROGRESS,
                 'active': True
             }
@@ -669,7 +669,12 @@ class KubeAppHelper(object):
                     raise exception.IncompatibleKubeVersion(
                         name=app_name, version=app_version, kube_version=kube_version)
 
-    def _find_manifest_file(self, app_path):
+    def _find_manifest(self, app_path):
+        mdir = cutils.find_manifest_directory(app_path)
+
+        if mdir:
+            return mdir
+
         # It is expected that there is only one manifest file
         # per application and the file exists at top level of
         # the application path.
@@ -686,9 +691,9 @@ class KubeAppHelper(object):
                 raise exception.SysinvException(_(
                     "Application-upload rejected: tar file contains more "
                     "than one manifest file."))
-        else:
-            raise exception.SysinvException(_(
-                "Application-upload rejected: manifest file is missing."))
+
+        raise exception.SysinvException(_(
+            "Application-upload rejected: manifest file/directory is missing."))
 
     def _verify_metadata_file(self, app_path, app_name, app_version,
                               upgrade_from_release=None):

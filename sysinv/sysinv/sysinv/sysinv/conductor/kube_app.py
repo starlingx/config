@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2018-2021 Wind River Systems, Inc.
+# Copyright (c) 2018-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -10,6 +10,7 @@
 """ System Inventory Kubernetes Application Operator."""
 
 import copy
+
 import docker
 from eventlet.green import subprocess
 import glob
@@ -115,6 +116,12 @@ def generate_synced_app_plugins_dir(app_name, app_version):
         'plugins')
 
 
+def generate_synced_fluxcd_images_fqpn(app_name, app_version):
+    return os.path.join(
+        constants.APP_FLUXCD_DATA_PATH, app_name, app_version,
+        app_name + '-images.yaml')
+
+
 def create_app_path(path):
     uid = pwd.getpwnam(constants.SYSINV_USERNAME).pw_uid
     gid = os.getgid()
@@ -134,6 +141,8 @@ def get_app_install_root_path_ownership():
 
 
 Chart = namedtuple('Chart', 'metadata_name name namespace location release labels sequenced')
+FluxCDChart = namedtuple('FluxCDChart', 'metadata_name name namespace '
+                                        'location release chart_os_path')
 
 
 class AppOperator(object):
@@ -155,6 +164,7 @@ class AppOperator(object):
         self._image = AppImageParser()
         self._lock = threading.Lock()
         self._armada = ArmadaHelper(self._kube)
+        self._fluxcd = FluxCDHelper(self._kube)
 
         if not os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG):
             self._clear_stuck_applications()
@@ -294,6 +304,14 @@ class AppOperator(object):
                 if app_dir:
                     shutil.rmtree(os.path.dirname(
                         app.inst_path))
+
+            if app.is_fluxcd_app:
+                if os.path.exists(app.sync_fluxcd_manifest_dir):
+                    shutil.rmtree(app.sync_fluxcd_manifest_dir)
+                    if app_dir:
+                        shutil.rmtree(os.path.dirname(
+                            app.sync_fluxcd_manifest_dir))
+
         except OSError as e:
             LOG.error(e)
             raise
@@ -459,12 +477,21 @@ class AppOperator(object):
         orig_uid, orig_gid = get_app_install_root_path_ownership()
 
         try:
-            # One time set up of base armada manifest path for the system
-            if not os.path.isdir(constants.APP_SYNCED_ARMADA_DATA_PATH):
-                os.makedirs(constants.APP_SYNCED_ARMADA_DATA_PATH)
 
-            if not os.path.isdir(app.sync_armada_mfile_dir):
-                os.makedirs(app.sync_armada_mfile_dir)
+            if app.is_fluxcd_app:
+                # One time set up of fluxcd manifest path for the system
+                if not os.path.isdir(constants.APP_FLUXCD_DATA_PATH):
+                    os.makedirs(constants.APP_FLUXCD_DATA_PATH)
+
+                if not os.path.isdir(app.sync_fluxcd_manifest_dir):
+                    os.makedirs(app.sync_fluxcd_manifest_dir)
+            else:
+                # One time set up of base armada manifest path for the system
+                if not os.path.isdir(constants.APP_SYNCED_ARMADA_DATA_PATH):
+                    os.makedirs(constants.APP_SYNCED_ARMADA_DATA_PATH)
+
+                if not os.path.isdir(app.sync_armada_mfile_dir):
+                    os.makedirs(app.sync_armada_mfile_dir)
 
             if not os.path.isdir(app.inst_path):
                 create_app_path(app.inst_path)
@@ -487,10 +514,11 @@ class AppOperator(object):
 
                 if not cutils.verify_checksum(app.inst_path):
                     _handle_extract_failure('checksum validation failed.')
-                mname, mfile = self._utils._find_manifest_file(app.inst_path)
+
+                mname, manifest = self._utils._find_manifest(app.inst_path)
                 # Save the official manifest file info. They will be persisted
                 # in the next status update
-                app.regenerate_manifest_filename(mname, os.path.basename(mfile))
+                app.regenerate_manifest_filename(mname, os.path.basename(manifest))
             else:
                 name, version, patches = cutils.find_metadata_file(
                     app.inst_path, constants.APP_METADATA_FILE)
@@ -506,7 +534,7 @@ class AppOperator(object):
         finally:
             os.chown(constants.APP_INSTALL_ROOT_PATH, orig_uid, orig_gid)
 
-    def get_image_tags_by_charts(self, app_images_file, app_manifest_file, overrides_dir):
+    def get_image_tags_by_charts(self, app):
         """ Mine the image tags for charts from the images file. Add the
             image tags to the manifest file if the image tags from the
             charts do not exist in the manifest file. Convert the image
@@ -518,6 +546,128 @@ class AppOperator(object):
             (ie..registry.local:9001/docker.io/mariadb:10.2.13)
 
         """
+        if app.is_fluxcd_app:
+            return self._get_image_tags_by_charts_fluxcd(app.sync_imgfile,
+                                                         app.sync_fluxcd_manifest,
+                                                         app.sync_overrides_dir)
+        else:
+            return self._get_image_tags_by_charts_armada(app.sync_imgfile,
+                                                         app.sync_armada_mfile,
+                                                         app.sync_overrides_dir)
+
+    def _get_image_tags_by_charts_fluxcd(self, app_images_file, manifest, overrides_dir):
+        app_imgs = []
+
+        if os.path.exists(app_images_file):
+            with io.open(app_images_file, 'r', encoding='utf-8') as f:
+                images_file = yaml.safe_load(f)
+
+        helmrepo_path = os.path.join(manifest, "base", "helmrepository.yaml")
+        root_kustomization_path = os.path.join(manifest, "kustomization.yaml")
+        for f in (helmrepo_path, root_kustomization_path):
+            if not os.path.isfile(f):
+                raise exception.SysinvException(_(
+                    "Mandatory FluxCD yaml file doesn't exist "
+                    "%s" % helmrepo_path))
+
+        # get namespace
+        with io.open(root_kustomization_path, 'r', encoding='utf-8') as f:
+            root_kustomization_yaml = next(yaml.safe_load_all(f))
+            global_namespace = root_kustomization_yaml["namespace"]
+            charts_groups = root_kustomization_yaml["resources"]
+
+        for chart_group in charts_groups:
+            if chart_group != "base":
+                chart_path = os.path.join(manifest, chart_group)
+                helmrelease_path = os.path.join(chart_path, "helmrelease.yaml")
+                chart_kustomization_path = os.path.join(chart_path, "kustomization.yaml")
+                if not os.path.isfile(chart_kustomization_path) or \
+                        not os.path.isfile(helmrelease_path):
+                    continue
+                with io.open(chart_kustomization_path, 'r', encoding='utf-8') as f:
+                    chart_kustomization_yaml = next(yaml.safe_load_all(f))
+                chart_namespace = chart_kustomization_yaml.get("namespace", global_namespace)
+                with io.open(helmrelease_path, 'r', encoding='utf-8') as f:
+                    helmrelease_yaml = next(yaml.safe_load_all(f))
+                    chart_name = helmrelease_yaml["metadata"]["name"]
+
+                # Get the image tags by chart from the images file
+                helm_chart_imgs = {}
+                if chart_name in images_file:
+                    helm_chart_imgs = images_file[chart_name]
+
+                # Get the image tags from the chart overrides file
+                overrides = chart_namespace + '-' + chart_name + '.yaml'
+                app_overrides_file = os.path.join(overrides_dir, overrides)
+                overrides_file = {}
+                if os.path.exists(app_overrides_file):
+                    with io.open(app_overrides_file, 'r', encoding='utf-8') as f:
+                        overrides_file = yaml.safe_load(f)
+
+                override_imgs = self._image.find_images_in_dict(
+                    overrides_file.get('data', {}).get('values', {}))
+                override_imgs_copy = copy.deepcopy(override_imgs)
+
+                # Get the image tags from the fluxcd static overrides file
+                static_overrides_path = None
+                if "valuesFrom" not in helmrelease_yaml["spec"]:
+                    raise exception.SysinvException(_(
+                        "FluxCD app chart doesn't have overrides files "
+                        "defined in helmrelease.yaml"
+                        "%s" % chart_name))
+
+                for override_file in helmrelease_yaml["spec"]["valuesFrom"]:
+                    if override_file["valuesKey"].endswith("static-overrides.yaml"):
+                        static_overrides_path = os.path.join(chart_path,
+                                                             override_file["valuesKey"])
+
+                if not static_overrides_path or \
+                        not os.path.isfile(static_overrides_path):
+                    raise exception.SysinvException(_(
+                        "FluxCD app chart static overrides file doesn't exist "
+                        "%s" % chart_name))
+
+                with io.open(static_overrides_path, 'r', encoding='utf-8') as f:
+                    static_overrides_file = yaml.safe_load(f) or {}
+
+                # get the image tags from the static overrides file
+                static_overrides_imgs = self._image.find_images_in_dict(static_overrides_file)
+                static_overrides_imgs_copy = copy.deepcopy(static_overrides_imgs)
+                static_overrides_imgs = self._image.merge_dict(helm_chart_imgs, static_overrides_imgs)
+
+                # Update image tags with local registry prefix
+                override_imgs = self._image.update_images_with_local_registry(override_imgs)
+                static_overrides_imgs = self._image.update_images_with_local_registry(static_overrides_imgs)
+
+                # Generate a list of required images by chart
+                download_imgs = copy.deepcopy(static_overrides_imgs)
+                download_imgs = self._image.merge_dict(download_imgs, override_imgs)
+                download_imgs_list = self._image.generate_download_images_list(download_imgs, [])
+                app_imgs.extend(download_imgs_list)
+
+                # Update chart override file if needed
+                if override_imgs != override_imgs_copy:
+                    with open(app_overrides_file, 'w') as f:
+                        try:
+                            overrides_file['data']['values'] = self._image.merge_dict(
+                                overrides_file['data']['values'], override_imgs)
+                            yaml.safe_dump(overrides_file, f, default_flow_style=False)
+                            LOG.info("Overrides file %s updated with new image tags" %
+                                     app_overrides_file)
+                        except (TypeError, KeyError):
+                            LOG.error("Overrides file %s fails to update" %
+                                      app_overrides_file)
+
+                # Update static overrides if needed
+                if static_overrides_imgs != static_overrides_imgs_copy:
+                    static_overrides_to_dump = self._image.merge_dict(static_overrides_file,
+                                                                      static_overrides_imgs)
+                    with io.open(static_overrides_path, 'w', encoding='utf-8') as f:
+                        yaml.safe_dump(static_overrides_to_dump, f, default_flow_style=False)
+
+        return list(set(app_imgs))
+
+    def _get_image_tags_by_charts_armada(self, app_images_file, app_manifest_file, overrides_dir):
         app_imgs = []
         manifest_update_required = False
 
@@ -631,19 +781,19 @@ class AppOperator(object):
         # Extract the list of images from the charts and overrides where
         # applicable. Save the list to the same location as the armada manifest
         # so it can be sync'ed.
-        app.charts = self._get_list_of_charts(app.sync_armada_mfile)
+        app.charts = self._get_list_of_charts(app)
 
         self._plugins.activate_plugins(app)
         LOG.info("Generating application overrides to discover required images.")
         self._helm.generate_helm_application_overrides(
             app.sync_overrides_dir, app.name, mode=None, cnamespace=None,
-            armada_format=True, armada_chart_info=app.charts, combined=True)
+            armada_format=True, armada_chart_info=app.charts, combined=True,
+            is_fluxcd_app=app.is_fluxcd_app)
         self._plugins.deactivate_plugins(app)
 
         self._save_images_list_by_charts(app)
         # Get the list of images from the updated images overrides
-        images_to_download = self.get_image_tags_by_charts(
-            app.sync_imgfile, app.sync_armada_mfile, app.sync_overrides_dir)
+        images_to_download = self.get_image_tags_by_charts(app)
 
         if not images_to_download:
             # TODO(tngo): We may want to support the deployment of apps that
@@ -713,8 +863,7 @@ class AppOperator(object):
             # saved images list.
             saved_images_list = self._retrieve_images_list(app.sync_imgfile)
             saved_download_images_list = list(saved_images_list.get("download_images"))
-            images_to_download = self.get_image_tags_by_charts(
-                app.sync_imgfile, app.sync_armada_mfile, app.sync_overrides_dir)
+            images_to_download = self.get_image_tags_by_charts(app)
             if set(saved_download_images_list) != set(images_to_download):
                 saved_images_list.update({"download_images": images_to_download})
                 with open(app.sync_imgfile, 'w') as f:
@@ -1054,7 +1203,80 @@ class AppOperator(object):
             LOG.error(e)
             raise
 
-    def _get_list_of_charts(self, manifest_file):
+    def _get_list_of_charts(self, app):
+        if app.is_fluxcd_app:
+            return self._get_list_of_charts_fluxcd(app.sync_fluxcd_manifest)
+        else:
+            return self._get_list_of_charts_armada(app.sync_armada_mfile)
+
+    def _get_list_of_charts_fluxcd(self, manifest):
+        """Get the charts information from the manifest directory
+
+        The following chart data for each chart in the manifest file
+        are extracted and stored into a namedtuple Chart object:
+         - metadata_name
+         - chart_name
+         - namespace
+         - location
+         - release
+         """
+
+        helmrepo_path = os.path.join(manifest, "base", "helmrepository.yaml")
+        root_kustomization_path = os.path.join(manifest, "kustomization.yaml")
+        for f in (helmrepo_path, root_kustomization_path):
+            if not os.path.isfile(f):
+                raise exception.SysinvException(_(
+                    "Mandatory FluxCD yaml file doesn't exist "
+                    "%s" % helmrepo_path))
+
+        # get global namespace
+        with io.open(root_kustomization_path, 'r', encoding='utf-8') as f:
+            root_kustomization_yaml = next(yaml.safe_load_all(f))
+            global_namespace = root_kustomization_yaml["namespace"]
+            charts_groups = root_kustomization_yaml["resources"]
+
+        # get the helm repo base url
+        with io.open(helmrepo_path, 'r', encoding='utf-8') as f:
+            helm_repo_yaml = next(yaml.safe_load_all(f))
+            helm_repo_url = helm_repo_yaml["spec"]["url"]
+
+        charts = []
+        for chart_group in charts_groups:
+            if chart_group != "base":
+                chart_path = os.path.join(manifest, chart_group)
+                helmrelease_path = os.path.join(chart_path, "helmrelease.yaml")
+                chart_kustomization_path = os.path.join(chart_path, "kustomization.yaml")
+                if not os.path.isfile(chart_kustomization_path) or \
+                        not os.path.isfile(helmrelease_path):
+                    continue
+                with io.open(chart_kustomization_path, 'r', encoding='utf-8') as f:
+                    chart_kustomization_yaml = next(yaml.safe_load_all(f))
+                namespace = chart_kustomization_yaml.get("namespace", global_namespace)
+                with io.open(helmrelease_path, 'r', encoding='utf-8') as f:
+                    helmrelease_yaml = next(yaml.safe_load_all(f))
+                    metadata_name = helmrelease_yaml["metadata"]["name"]
+                    chart_spec = helmrelease_yaml["spec"]["chart"]
+                    chart_name = chart_spec["spec"]["chart"]
+                    location = "%s/%s-%s%s" % (helm_repo_url.rstrip("/"),
+                                               chart_name,
+                                               chart_spec["spec"]["version"],
+                                               ".tgz")
+                    release = helmrelease_yaml["spec"]["releaseName"]
+
+                    # Dunno if we need to return these in order respecting dependsOn?
+                    # dependencies = [dep["name"] for dep in helmrelease_yaml["spec"].get(["dependsOn"], [])]
+                    chart_obj = FluxCDChart(
+                        metadata_name=metadata_name,
+                        name=metadata_name,
+                        namespace=namespace,
+                        location=location,
+                        release=release,
+                        chart_os_path=chart_path
+                    )
+                    charts.append(chart_obj)
+        return charts
+
+    def _get_list_of_charts_armada(self, manifest_file):
         """Get the charts information from the manifest file
 
         The following chart data for each chart in the manifest file
@@ -1171,10 +1393,36 @@ class AppOperator(object):
 
         return charts
 
-    def _get_overrides_files(self, overrides_dir, charts, app_name, mode):
+    def _get_overrides_files(self, app, mode):
+        if app.is_fluxcd_app:
+            return self._get_overrides_files_fluxcd(app.sync_overrides_dir,
+                                                    app.charts), []
+        else:
+            return self._get_overrides_files_armada(app.sync_overrides_dir,
+                                                    app.charts,
+                                                    app.name,
+                                                    mode)
+
+    def _get_overrides_files_fluxcd(self, overrides_dir, charts):
+        return self._get_overrides_from_charts(overrides_dir, charts)
+
+    def _get_overrides_files_armada(self, overrides_dir, charts, app_name, mode):
         """Returns list of override files or None, used in
            application-install and application-delete."""
 
+        helm_overrides = \
+            self._get_overrides_from_charts(overrides_dir, charts)
+
+        if not helm_overrides:
+            return None
+
+        # Get the armada manifest overrides files
+        manifest_op = self._helm.get_armada_manifest_operator(app_name)
+        armada_overrides = manifest_op.load_summary(overrides_dir)
+
+        return (helm_overrides, armada_overrides)
+
+    def _get_overrides_from_charts(self, overrides_dir, charts):
         missing_helm_overrides = []
         available_helm_overrides = []
 
@@ -1190,11 +1438,25 @@ class AppOperator(object):
             LOG.error("Missing the following overrides: %s" % missing_helm_overrides)
             return None
 
-        # Get the armada manifest overrides files
-        manifest_op = self._helm.get_armada_manifest_operator(app_name)
-        armada_overrides = manifest_op.load_summary(overrides_dir)
+        return available_helm_overrides
 
-        return (available_helm_overrides, armada_overrides)
+    def _write_fluxcd_overrides(self, charts, helm_files):
+
+        for chart in charts:
+            override_file = chart.namespace + '-' + chart.name + '.yaml'
+
+            for f in os.listdir(chart.chart_os_path):
+                if f.endswith("system-overrides.yaml"):
+                    chart_system_overrides_path = os.path.join(chart.chart_os_path, f)
+                    break
+            else:
+                LOG.error("Missing system-overrides.yaml file for chart %s" % chart.name)
+                continue
+
+            # copy helm chart overrides file to chart's system-overrides.yaml file
+            for helm_file in helm_files:
+                if os.path.basename(helm_file) == override_file:
+                    shutil.copy(helm_file, chart_system_overrides_path)
 
     def _generate_armada_overrides_str(self, app_name, app_version,
                                        helm_files, armada_files):
@@ -1215,8 +1477,8 @@ class AppOperator(object):
             ])
         return overrides_str
 
-    def _remove_chart_overrides(self, overrides_dir, manifest_file):
-        charts = self._get_list_of_charts(manifest_file)
+    def _remove_chart_overrides(self, overrides_dir, app):
+        charts = self._get_list_of_charts(app)
         for chart in charts:
             if chart.name in self._helm.chart_operators:
                 self._helm.remove_helm_chart_overrides(overrides_dir,
@@ -1366,6 +1628,98 @@ class AppOperator(object):
                 LOG.info("Application %s (%s) will apply the user overrides for"
                          "Chart %s from version %s" % (to_app.name, to_app.version,
                                                        chart.name, from_app.version))
+
+    def _make_app_request(self, app, request, overrides_str=None):
+        if app.is_fluxcd_app:
+            return self._make_fluxcd_operation_with_monitor(app, request)
+
+        else:
+            return self._make_armada_request_with_monitor(app, request, overrides_str)
+
+    @retry(retry_on_exception=lambda x: isinstance(x, exception.ApplicationApplyFailure),
+           stop_max_attempt_number=5, wait_fixed=30 * 1000)
+    def _make_fluxcd_operation_with_monitor(self, app, request):
+        def _check_progress():
+            try:
+                adjust = self._get_metadata_value(app,
+                                                  constants.APP_METADATA_APPLY_PROGRESS_ADJUST,
+                                                  constants.APP_METADATA_APPLY_PROGRESS_ADJUST_DEFAULT_VALUE)
+                with Timeout(INSTALLATION_TIMEOUT,
+                             exception.KubeAppProgressMonitorTimeout()):
+
+                    # store release_name and namespace in a dict
+                    # to delete faster the releases that completed
+                    charts = {c.metadata_name: c.namespace for c in app.charts}
+                    group = "helm.toolkit.fluxcd.io"
+                    version = "v2beta1"
+                    plural = "helmreleases"
+                    charts_count = len(charts)
+
+                    if app.system_app:
+                        tadjust = adjust
+                        if tadjust >= charts_count:
+                            LOG.error("Application metadata key '{}'"
+                                      "has an invalid value {} (too few charts)".
+                                      format(constants.APP_METADATA_APPLY_PROGRESS_ADJUST,
+                                             adjust))
+                            tadjust = 0
+
+                    while charts:
+                        if AppOperator.is_app_aborted(app.name):
+                            return False
+                        num = charts_count - len(charts)
+
+                        percent = round((float(num) /  # pylint: disable=W1619
+                                         (charts_count - tadjust)) * 100)
+                        progress_str = "Applying app, overall completion: {}%". \
+                            format(percent)
+
+                        if app.progress != progress_str:
+                            LOG.info("%s" % progress_str)
+                            self._update_app_status(app, new_progress=progress_str)
+
+                        for release_name, namespace in charts.items():
+                            res = self._kube.get_custom_resource(group,
+                                                                 version,
+                                                                 namespace,
+                                                                 plural,
+                                                                 release_name)
+                            if res and "status" in res and "conditions" in res["status"]:
+                                for cond in res["status"]["conditions"]:
+                                    if cond["type"] == "Released" and cond["status"] == "True":
+                                        charts.pop(release_name)
+                                        break
+                        time.sleep(1)
+                    return True
+            except Exception as e:
+                # timeout or subprocess error
+                LOG.exception(e)
+                return False
+
+        # This check is for cases where an abort is issued while
+        # this function waits between retries. In such cases, it
+        # should just return False
+        if AppOperator.is_app_aborted(app.name):
+            return False
+
+        lifecycle_hook_info = LifecycleHookInfo()
+        lifecycle_hook_info.operation = request
+        lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
+        lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_FLUXCD_REQUEST
+        self.app_lifecycle_actions(None, None, app._kube_app, lifecycle_hook_info)
+
+        rc = self._fluxcd.make_fluxcd_operation(request, app.sync_fluxcd_manifest)
+
+        # check progress only for apply for now
+        if rc and request == constants.APP_APPLY_OP:
+            rc = _check_progress()
+
+        # Here a manifest retry can be performed by throwing ApplicationApplyFailure
+        lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
+        lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_FLUXCD_REQUEST
+        lifecycle_hook_info[LifecycleConstants.EXTRA][LifecycleConstants.RETURN_CODE] = rc
+        self.app_lifecycle_actions(None, None, app._kube_app, lifecycle_hook_info)
+        return rc
 
     @retry(retry_on_exception=lambda x: isinstance(x, exception.ApplicationApplyFailure),
            stop_max_attempt_number=5, wait_fixed=30 * 1000)
@@ -1597,10 +1951,10 @@ class AppOperator(object):
             rc = True
             if armada_process_required:
                 overrides_str = ''
-                old_app.charts = self._get_list_of_charts(old_app.sync_armada_mfile)
+                old_app.charts = self._get_list_of_charts(old_app)
                 if old_app.system_app:
                     (helm_files, armada_files) = self._get_overrides_files(
-                        old_app.sync_overrides_dir, old_app.charts, old_app.name, mode=None)
+                        old_app, mode=None)
 
                     overrides_str = self._generate_armada_overrides_str(
                         old_app.name, old_app.version, helm_files, armada_files)
@@ -1608,9 +1962,7 @@ class AppOperator(object):
                 # Ensure that the old app plugins are enabled prior to armada process.
                 _activate_old_app_plugins(old_app)
 
-                if self._make_armada_request_with_monitor(old_app,
-                                                          constants.APP_APPLY_OP,
-                                                          overrides_str):
+                if self._make_app_request(old_app, constants.APP_APPLY_OP, overrides_str):
                     old_app_charts = [c.release for c in old_app.charts]
                     deployed_releases = helm_utils.retrieve_helm_releases()
                     for new_chart in new_app.charts:
@@ -1716,8 +2068,7 @@ class AppOperator(object):
             if AppOperator.is_app_aborted(to_app.name):
                 raise exception.KubeAppAbort()
 
-            if self._make_armada_request_with_monitor(to_app,
-                                                      constants.APP_ROLLBACK_OP):
+            if self._make_app_request(to_app, constants.APP_ROLLBACK_OP):
                 self._update_app_status(to_app, constants.APP_APPLY_SUCCESS,
                                         constants.APP_PROGRESS_COMPLETED)
                 LOG.info("Application %s (%s) rollback completed."
@@ -1796,17 +2147,31 @@ class AppOperator(object):
                 self._extract_tarfile(app)
                 self._plugins.install_plugins(app)
 
-            # Copy the armada manfest and metadata file to the drbd
-            shutil.copy(app.inst_armada_mfile, app.sync_armada_mfile)
+            if app.is_fluxcd_app:
+                manifest_sync_path = app.sync_fluxcd_manifest
+                manifest_sync_dir_path = app.sync_fluxcd_manifest_dir
+                validate_manifest = manifest_sync_path
+                validate_function = self._fluxcd.make_fluxcd_operation
+            else:
+                manifest_sync_path = app.sync_armada_mfile
+                manifest_sync_dir_path = app.sync_armada_mfile_dir
+                validate_manifest = app.armada_service_mfile
+                validate_function = self._armada.make_armada_request
+
+            # Copy the manifest and metadata file to the drbd
+            if os.path.isdir(app.inst_mfile):
+                shutil.copytree(app.inst_mfile, manifest_sync_path)
+            else:
+                shutil.copy(app.inst_mfile, manifest_sync_path)
             inst_metadata_file = os.path.join(
                 app.inst_path, constants.APP_METADATA_FILE)
             if os.path.exists(inst_metadata_file):
                 sync_metadata_file = os.path.join(
-                    app.sync_armada_mfile_dir, constants.APP_METADATA_FILE)
+                    manifest_sync_dir_path, constants.APP_METADATA_FILE)
                 shutil.copy(inst_metadata_file, sync_metadata_file)
 
-            if not self._armada.make_armada_request(
-                    'validate', manifest_file=app.armada_service_mfile):
+            if not validate_function(constants.APP_VALIDATE_OP,
+                                     validate_manifest):
                 raise exception.KubeAppUploadFailure(
                     name=app.name,
                     version=app.version,
@@ -2286,7 +2651,7 @@ class AppOperator(object):
         overrides_str = ''
         ready = True
         try:
-            app.charts = self._get_list_of_charts(app.sync_armada_mfile)
+            app.charts = self._get_list_of_charts(app)
 
             if AppOperator.is_app_aborted(app.name):
                 raise exception.KubeAppAbort()
@@ -2310,14 +2675,19 @@ class AppOperator(object):
             LOG.info("Generating application overrides...")
             self._helm.generate_helm_application_overrides(
                 app.sync_overrides_dir, app.name, mode, cnamespace=None,
-                armada_format=True, armada_chart_info=app.charts, combined=True)
-            (helm_files, armada_files) = self._get_overrides_files(
-                app.sync_overrides_dir, app.charts, app.name, mode)
+                armada_format=True, armada_chart_info=app.charts, combined=True,
+                is_fluxcd_app=app.is_fluxcd_app)
 
+            overrides_str = None
+            (helm_files, armada_files) = self._get_overrides_files(app, mode)
             if helm_files or armada_files:
                 LOG.info("Application overrides generated.")
-                overrides_str = self._generate_armada_overrides_str(
-                    app.name, app.version, helm_files, armada_files)
+                if app.is_fluxcd_app:
+                    # put the helm_overrides in the chart's system-overrides.yaml
+                    self._write_fluxcd_overrides(app.charts, helm_files)
+                else:
+                    overrides_str = self._generate_armada_overrides_str(
+                        app.name, app.version, helm_files, armada_files)
 
                 self._update_app_status(
                     app, new_progress=constants.APP_PROGRESS_DOWNLOAD_IMAGES)
@@ -2362,9 +2732,8 @@ class AppOperator(object):
 
                 if AppOperator.is_app_aborted(app.name):
                     raise exception.KubeAppAbort()
-                if self._make_armada_request_with_monitor(app,
-                                                          constants.APP_APPLY_OP,
-                                                          overrides_str):
+
+                if self._make_app_request(app, constants.APP_APPLY_OP, overrides_str):
                     self._update_app_releases_version(app.name)
                     self._update_app_status(app,
                                             constants.APP_APPLY_SUCCESS,
@@ -2570,7 +2939,7 @@ class AppOperator(object):
 
             # App apply/rollback succeeded or it failed but skip_recovery was set
             # Starting cleanup old application
-            from_app.charts = self._get_list_of_charts(from_app.sync_armada_mfile)
+            from_app.charts = self._get_list_of_charts(from_app)
             to_app_charts = [c.release for c in to_app.charts]
             deployed_releases = helm_utils.retrieve_helm_releases()
             for from_chart in from_app.charts:
@@ -2654,12 +3023,12 @@ class AppOperator(object):
         LOG.info("Application (%s) remove started." % app.name)
         rc = True
 
-        app.charts = self._get_list_of_charts(app.sync_armada_mfile)
+        app.charts = self._get_list_of_charts(app)
         app.update_active(False)
         self._update_app_status(
             app, new_progress=constants.APP_PROGRESS_DELETE_MANIFEST)
 
-        if self._make_armada_request_with_monitor(app, constants.APP_DELETE_OP):
+        if self._make_app_request(app, constants.APP_DELETE_OP):
             # After armada delete, the data for the releases are purged from
             # tiller/etcd, the releases info for the active app stored in sysinv
             # db should be set back to 0 and the inactive apps require to be
@@ -2750,16 +3119,16 @@ class AppOperator(object):
             # Turn on the abort flag so the processing thread that is
             # in progress can bail out in the next opportunity.
             self._set_abort_flag(app.name)
-
-            # Stop the Armada request in case it has reached this far and
-            # remove locks.
-            # TODO(jgauld): Need to correct lock mechanism, something is no
-            # longer working for application aborts. The lock lingers around,
-            # and only automatically get cleaned up after a long period.
-            # Subsequent reapply fails since it we cannot get lock.
-            with self._lock:
-                self._armada.stop_armada_request()
-                self._armada.clear_armada_locks()
+            if not app.is_fluxcd_app:
+                # Stop the Armada request in case it has reached this far and
+                # remove locks.
+                # TODO(jgauld): Need to correct lock mechanism, something is no
+                # longer working for application aborts. The lock lingers around,
+                # and only automatically get cleaned up after a long period.
+                # Subsequent reapply fails since it we cannot get lock.
+                with self._lock:
+                    self._armada.stop_armada_request()
+                    self._armada.clear_armada_locks()
         else:
             # Either the previous operation has completed or already failed
             LOG.info("Abort request ignored. The previous operation for app %s "
@@ -2828,7 +3197,7 @@ class AppOperator(object):
             self.inst_plugins_dir = os.path.join(self.inst_path, 'plugins')
 
             # Files: Installation specific, local to a controller. Not synced
-            self.inst_armada_mfile = generate_install_manifest_fqpn(
+            self.inst_mfile = generate_install_manifest_fqpn(
                 self._kube_app.get('name'),
                 self._kube_app.get('app_version'),
                 self._kube_app.get('manifest_file'))
@@ -2862,9 +3231,32 @@ class AppOperator(object):
                 self._kube_app.get('app_version'),
                 self._kube_app.get('manifest_file'))
 
+            # FluxCD variables
+            if self.is_fluxcd_app:
+                self.sync_fluxcd_manifest_dir = cutils.generate_synced_fluxcd_dir(
+                    self._kube_app.get('name'),
+                    self._kube_app.get('app_version'))
+                self.sync_fluxcd_manifest = cutils.generate_synced_fluxcd_manifest_fqpn(
+                    self._kube_app.get('name'),
+                    self._kube_app.get('app_version'),
+                    self._kube_app.get('manifest_file'))
+
+                # override the common variables
+                self.sync_metadata_file = cutils.generate_synced_fluxcd_metadata_fqpn(
+                    self._kube_app.get('name'),
+                    self._kube_app.get('app_version'))
+                self.sync_imgfile = generate_synced_fluxcd_images_fqpn(
+                    self._kube_app.get('name'),
+                    self._kube_app.get('app_version'))
+
             self.patch_dependencies = []
             self.charts = []
             self.releases = []
+
+        @property
+        def is_fluxcd_app(self):
+            return self._kube_app.get('manifest_name') \
+                   == constants.APP_FLUXCD_MANIFEST_DIR
 
         @property
         def system_app(self):
@@ -2926,22 +3318,37 @@ class AppOperator(object):
         def regenerate_manifest_filename(self, new_mname, new_mfile):
             self._kube_app.manifest_name = new_mname
             self._kube_app.manifest_file = new_mfile
-            self.armada_service_mfile = generate_armada_service_manifest_fqpn(
+            self.inst_mfile = generate_install_manifest_fqpn(
                 self.name, self.version, new_mfile)
-            self.sync_armada_mfile = cutils.generate_synced_armada_manifest_fqpn(
-                self.name, self.version, new_mfile)
-            self.inst_armada_mfile = generate_install_manifest_fqpn(
-                self.name, self.version, new_mfile)
+            if self.is_fluxcd_app:
+                self.sync_fluxcd_manifest = cutils.generate_synced_fluxcd_manifest_fqpn(
+                    self.name,
+                    self.version,
+                    new_mfile)
+            else:
+                self.armada_service_mfile = generate_armada_service_manifest_fqpn(
+                    self.name, self.version, new_mfile)
+                self.sync_armada_mfile = cutils.generate_synced_armada_manifest_fqpn(
+                    self.name, self.version, new_mfile)
 
         def regenerate_application_info(self, new_name, new_version, new_patch_dependencies):
             self._kube_app.name = new_name
             self._kube_app.app_version = new_version
 
-            new_armada_dir = cutils.generate_synced_armada_dir(
-                self.name, self.version)
-            shutil.move(self.sync_armada_mfile_dir, new_armada_dir)
-            shutil.rmtree(os.path.dirname(self.sync_armada_mfile_dir))
-            self.sync_armada_mfile_dir = new_armada_dir
+            if self.is_fluxcd_app:
+                new_fluxcd_dir = cutils.generate_synced_fluxcd_dir(
+                    self.name, self.version)
+                shutil.move(self.sync_fluxcd_manifest_dir, new_fluxcd_dir)
+                shutil.rmtree(os.path.dirname(self.sync_fluxcd_manifest_dir))
+                self.sync_fluxcd_manifest_dir = new_fluxcd_dir
+                new_sync_imgfile = generate_synced_fluxcd_images_fqpn(self.name, self.version)
+            else:
+                new_armada_dir = cutils.generate_synced_armada_dir(
+                    self.name, self.version)
+                shutil.move(self.sync_armada_mfile_dir, new_armada_dir)
+                shutil.rmtree(os.path.dirname(self.sync_armada_mfile_dir))
+                self.sync_armada_mfile_dir = new_armada_dir
+                new_sync_imgfile = generate_synced_images_fqpn(self.name, self.version)
 
             new_path = os.path.join(
                 constants.APP_INSTALL_PATH, self.name, self.version)
@@ -2951,7 +3358,7 @@ class AppOperator(object):
 
             self.inst_charts_dir = os.path.join(self.inst_path, 'charts')
             self.inst_images_dir = os.path.join(self.inst_path, 'images')
-            self.sync_imgfile = generate_synced_images_fqpn(self.name, self.version)
+            self.sync_imgfile = new_sync_imgfile
             self.sync_overrides_dir = generate_synced_helm_overrides_dir(self.name, self.version)
             self.patch_dependencies = new_patch_dependencies
             self.inst_plugins_dir = os.path.join(self.inst_path, 'plugins')
@@ -3980,3 +4387,54 @@ class PluginHelper(object):
             # purge this plugin from the stevedore plugin cache so this version
             # of the plugin endoints are not discoverable
             self._helm_op.purge_cache_by_location(app.sync_plugins_dir)
+
+
+class FluxCDHelper(object):
+    """ FluxCD class to encapsulate FluxCD related operations """
+
+    def __init__(self, kube):
+        self._kube = kube
+
+    def make_fluxcd_operation(self, operation, manifest_dir=""):
+
+        LOG.info("Doing FluxCD operation %s with the following manifest: %s"
+                 % (operation, manifest_dir))
+        rc = True
+        try:
+            if operation == constants.APP_APPLY_OP:
+                rc = self._apply(manifest_dir)
+            elif operation == constants.APP_DELETE_OP:
+                rc = self._delete(manifest_dir)
+            elif operation == constants.APP_ROLLBACK_OP:
+                pass
+            elif operation == constants.APP_VALIDATE_OP:
+                self._validate(manifest_dir)
+            else:
+                LOG.error("Unsupported FluxCD app operation %s" % operation)
+                rc = False
+        except Exception as e:
+            LOG.error("FluxCD operation %s failed for manifest %s : %s" %
+                      (operation, manifest_dir, e))
+            rc = False
+        return rc
+
+    def _apply(self, manifest_dir):
+        cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
+               'apply', '-k', manifest_dir]
+        _, stderr = cutils.trycmd(*cmd)
+        return True if not stderr else False
+
+    def _delete(self, manifest_dir):
+        cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
+               'delete', '-k', manifest_dir]
+        _, stderr = cutils.trycmd(*cmd)
+        return True if not stderr else False
+
+    def _validate(self, manifest_dir):
+        cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
+               'apply', '-k', manifest_dir, '--dry-run=server']
+        _, stderr = cutils.trycmd(*cmd)
+        return True if not stderr else False
+
+    def _rollback(self, manifest_dir):
+        pass

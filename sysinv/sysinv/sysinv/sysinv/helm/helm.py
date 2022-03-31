@@ -689,7 +689,8 @@ class HelmOperator(object):
                                             cnamespace=None,
                                             armada_format=False,
                                             armada_chart_info=None,
-                                            combined=False):
+                                            combined=False,
+                                            is_fluxcd_app=False):
         """Create the system overrides files for a supported application
 
         This method will generate system helm chart overrides yaml files for a
@@ -708,18 +709,23 @@ class HelmOperator(object):
             overrides
         :param combined: (optional) whether to apply user overrides on top of
             system overrides
+        :param is_fluxcd_app: whether the app is fluxcd or not
         """
 
         app, plugin_name = self._find_kube_app_and_app_plugin_name(app_name)
 
-        # Get a manifest operator to provide a single point of
-        # manipulation for the chart, chart group and manifest schemas
-        manifest_op = self.get_armada_manifest_operator(app.name)
+        if is_fluxcd_app:
+            armada_format = False
 
-        # Load the manifest into the operator
-        armada_manifest = utils.generate_synced_armada_manifest_fqpn(
-            app.name, app.app_version, app.manifest_file)
-        manifest_op.load(armada_manifest)
+        else:
+            # Get a manifest operator to provide a single point of
+            # manipulation for the chart, chart group and manifest schemas
+            manifest_op = self.get_armada_manifest_operator(app.name)
+
+            # Load the manifest into the operator
+            armada_manifest = utils.generate_synced_armada_manifest_fqpn(
+                app.name, app.app_version, app.manifest_file)
+            manifest_op.load(armada_manifest)
 
         if plugin_name in self.helm_system_applications:
             app_overrides = self._get_helm_application_overrides(plugin_name,
@@ -770,17 +776,19 @@ class HelmOperator(object):
                         overrides[key] = new_overrides
                 self._write_chart_overrides(path, chart_name, cnamespace, overrides)
 
-                # Update manifest docs based on the plugin directives. If the
-                # application does not provide a manifest operator, the
-                # GenericArmadaManifestOperator is used and chart specific
-                # operations can be skipped.
-                if manifest_op.APP:
-                    if chart_name in self.chart_operators:
-                        self.chart_operators[chart_name].execute_manifest_updates(
-                            manifest_op)
+                if not is_fluxcd_app:
 
-            # Update the manifest based on platform conditions
-            manifest_op.platform_mode_manifest_updates(self.dbapi, mode)
+                    # Update manifest docs based on the plugin directives. If the
+                    # application does not provide a manifest operator, the
+                    # GenericArmadaManifestOperator is used and chart specific
+                    # operations can be skipped.
+                    if manifest_op.APP:
+                        if chart_name in self.chart_operators:
+                            self.chart_operators[chart_name].execute_manifest_updates(
+                                manifest_op)
+            if not is_fluxcd_app:
+                # Update the manifest based on platform conditions
+                manifest_op.platform_mode_manifest_updates(self.dbapi, mode)
 
         else:
             # Generic applications
@@ -822,11 +830,12 @@ class HelmOperator(object):
                 self._write_chart_overrides(path, chart.name,
                                             cnamespace, user_overrides)
 
-        # Write the manifest doc overrides, a summmary file for easy --value
-        # generation on the apply, and a unified manifest for deletion.
-        manifest_op.save_overrides()
-        manifest_op.save_summary(path=path)
-        manifest_op.save_delete_manifest()
+        if not is_fluxcd_app:
+            # Write the manifest doc overrides, a summmary file for easy --value
+            # generation on the apply, and a unified manifest for deletion.
+            manifest_op.save_overrides()
+            manifest_op.save_summary(path=path)
+            manifest_op.save_delete_manifest()
 
     def _find_kube_app_and_app_plugin_name(self, app_name):
         return utils.find_kube_app(self.dbapi, app_name), \

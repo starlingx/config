@@ -1860,8 +1860,7 @@ class ConductorManager(service.PeriodicService):
         try:
             for kapp in self.dbapi.kube_app_get_all():
                 app = self._app.Application(kapp)
-                images_to_download = self._app.get_image_tags_by_charts(
-                    app.sync_imgfile, app.sync_armada_mfile, app.sync_overrides_dir)
+                images_to_download = self._app.get_image_tags_by_charts(app)
                 stripped_images = [x.replace(constants.DOCKER_REGISTRY_HOST + ':' +
                                              constants.DOCKER_REGISTRY_PORT + '/', '')
                                    for x in images_to_download]
@@ -6372,7 +6371,7 @@ class ConductorManager(service.PeriodicService):
                     self._kube_app_helper._verify_metadata_file(
                         app_path, app_name, None)
                 manifest_name, manifest_file = \
-                    self._kube_app_helper._find_manifest_file(app_path)
+                    self._kube_app_helper._find_manifest(app_path)
                 self._kube_app_helper._extract_helm_charts(app_path)
             except exception.SysinvException as e:
                 LOG.error("Extracting tarfile for %s failed: %s." % (
@@ -13651,9 +13650,8 @@ class ConductorManager(service.PeriodicService):
             # TODO these hashes can be stored in the db to reduce overhead,
             # as well as removing the writing to disk of the new overrides
             old_hash = {}
-            app.charts = self._app._get_list_of_charts(app.sync_armada_mfile)
-            (helm_files, armada_files) = self._app._get_overrides_files(
-                app.sync_overrides_dir, app.charts, app.name, None)
+            app.charts = self._app._get_list_of_charts(app)
+            (helm_files, armada_files) = self._app._get_overrides_files(app, None)
             for f in helm_files + armada_files:
                 with open(f, 'rb') as file:
                     old_hash[f] = hashlib.md5(file.read()).hexdigest()
@@ -13661,12 +13659,11 @@ class ConductorManager(service.PeriodicService):
             # Regenerate overrides and compute new hash
             try:
                 new_hash = {}
-                app.charts = self._app._get_list_of_charts(app.sync_armada_mfile)
+                app.charts = self._app._get_list_of_charts(app)
                 self._helm.generate_helm_application_overrides(
                     app.sync_overrides_dir, app.name, app.mode, cnamespace=None,
                     armada_format=True, armada_chart_info=app.charts, combined=True)
-                (helm_files, armada_files) = self._app._get_overrides_files(
-                    app.sync_overrides_dir, app.charts, app.name, None)
+                (helm_files, armada_files) = self._app._get_overrides_files(app, None)
                 for f in helm_files + armada_files:
                     with open(f, 'rb') as file:
                         new_hash[f] = hashlib.md5(file.read()).hexdigest()
