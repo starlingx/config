@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2021 Wind River Systems, Inc.
+# Copyright (c) 2015-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -328,26 +328,38 @@ class PCIDeviceController(rest.RestController):
 
         sriov_update = _check_device_sriov(device.as_dict(), host)
 
-        # Update fields that have changed
+        if not rpc_device['extra_info']:
+            extra_info = dict()
+        else:
+            extra_info = literal_eval(rpc_device['extra_info'])
+
+        update_extra = False
         for field in objects.pci_device.fields:
             value = getattr(device, field)
+            if field in ['sriov_vf_driver', 'driver'] and value == 'none':
+                value = None
+            # Update fields that have changed
             if rpc_device[field] != value:
                 _check_field(field)
-                if (field in ['sriov_vf_driver', 'driver'] and
-                        value == 'none'):
-                    rpc_device[field] = None
+                rpc_device[field] = value
+
+            if field in ['driver', 'sriov_vf_driver', 'sriov_numvfs']:
+                # Save configured value in extra_info since the field
+                # may get overwritten with temporary value by
+                # concurrent inventory report
+                if field == 'driver':
+                    key = 'expected_driver'
+                elif field == 'sriov_vf_driver':
+                    key = 'expected_vf_driver'
                 else:
-                    rpc_device[field] = getattr(device, field)
-                    if field == 'sriov_numvfs':
-                        # Save desired number of VFs in extra_info since
-                        # sriov_numvfs may get overwritten by concurrent inventory report
-                        expected_numvfs = {'expected_numvfs': rpc_device[field]}
-                        if not rpc_device['extra_info']:
-                            rpc_device['extra_info'] = str(expected_numvfs)
-                        else:
-                            extra_info = literal_eval(rpc_device['extra_info'])
-                            extra_info.update(expected_numvfs)
-                            rpc_device['extra_info'] = str(extra_info)
+                    key = 'expected_numvfs'
+
+                update_extra = True
+                extra_info.update({key: rpc_device[field]})
+
+        if update_extra:
+            rpc_device['extra_info'] = str(extra_info)
+            LOG.debug("Updated 'extra_info': %s" % rpc_device['extra_info'])
 
         rpc_device.save()
 
@@ -369,7 +381,7 @@ def _check_host(host):
 
 
 def _check_field(field):
-    if field not in ["enabled", "name", "driver", "sriov_numvfs", "sriov_vf_driver", "extra_info"]:
+    if field not in ["enabled", "name", "driver", "sriov_numvfs", "sriov_vf_driver"]:
         raise wsme.exc.ClientSideError(_('Modifying %s attribute restricted') % field)
 
 

@@ -1,17 +1,20 @@
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
 import collections
 from ast import literal_eval
+from oslo_log import log as logging
 
 from sysinv.common import constants
 from sysinv.common import device as dconstants
 
 from sysinv.puppet import base
 from sysinv.puppet import quoted_str
+
+LOG = logging.getLogger(__name__)
 
 
 class DevicePuppet(base.BasePuppet):
@@ -79,6 +82,42 @@ class DevicePuppet(base.BasePuppet):
 
                 name = 'pci-%s' % device.pciaddr
 
+                # Get intended fields from extra_info, falling back to original
+                # fields if not found
+                extra_info_s = device.get('extra_info', None)
+                if extra_info_s is None:
+                    extra_info = dict()
+                else:
+                    extra_info = literal_eval(extra_info_s)
+                fallback = False
+                num_vfs = extra_info.get('expected_numvfs', None)
+                if num_vfs is None:
+                    num_vfs = device.get('sriov_numvfs', 0)
+                    LOG.info("num_vfs fallback = %d" % num_vfs)
+                    fallback = True
+                    extra_info.update({'expected_numvfs': num_vfs})
+                driver = extra_info.get('expected_driver', '?')  # None is ok
+                if driver == '?':
+                    driver = device.get('driver', None)
+                    LOG.info("driver fallback = %s" % driver)
+                    fallback = True
+                    extra_info.update({'expected_driver': driver})
+                vf_driver = extra_info.get('expected_vf_driver', '?')
+                if vf_driver == '?':
+                    vf_driver = device.get('sriov_vf_driver', None)
+                    LOG.info("vf_driver fallback = %s" % vf_driver)
+                    fallback = True
+                    extra_info.update({'expected_vf_driver': vf_driver})
+
+                LOG.debug("num_vfs = %d, driver = %s, vf_driver = %s" %
+                          (num_vfs, driver, vf_driver))
+
+                # Update extra info if necessary
+                if fallback:
+                    values = {'extra_info': str(extra_info)}
+                    self.dbapi.pci_device_update(device.uuid, values)
+                    LOG.debug("Updated 'extra_info': %s" % extra_info)
+
                 # Format the vf addresses as quoted strings in order to prevent
                 # puppet from treating the address as a time/date value
                 vf_addrs = device.get('sriov_vfs_pci_address', [])
@@ -86,7 +125,6 @@ class DevicePuppet(base.BasePuppet):
                     vf_addrs = [quoted_str(addr.strip())
                                 for addr in vf_addrs.split(",") if addr]
                     if len(vf_addrs) == device.get('sriov_numvfs', 0):
-                        vf_driver = device.get('sriov_vf_driver', None)
                         if vf_driver:
                             if constants.SRIOV_DRIVER_TYPE_VFIO in vf_driver:
                                 vf_driver = constants.SRIOV_DRIVER_VFIO_PCI
@@ -98,18 +136,11 @@ class DevicePuppet(base.BasePuppet):
                                 }
                             })
 
-                extra_info = device.get('extra_info', None)
-                if not extra_info:
-                    num_vfs = 0
-                else:
-                    extra_params = literal_eval(extra_info)
-                    num_vfs = int(extra_params['expected_numvfs'])
-
                 pf_config = {
                     device.pciaddr: {
                         'num_vfs': num_vfs,
                         'addr': quoted_str(device['pciaddr'].strip()),
-                        'driver': device['driver'],
+                        'driver': driver,
                         'device_id': device['pdevice_id']
                     }
                 }
