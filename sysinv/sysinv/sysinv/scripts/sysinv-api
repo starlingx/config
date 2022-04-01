@@ -358,12 +358,12 @@ sysinv_api_confirm_stop() {
     local my_processes
 
     my_binary=`which ${OCF_RESKEY_binary}`
-    my_processes=`pgrep -l -f "^(python|/usr/bin/python|/usr/bin/python2) ${my_binary}([^\w-]|$)"`
+    my_processes=`pgrep -l -f "^(python|/usr/bin/python|/usr/bin/python2|/usr/bin/python3) ${my_binary}([^\w-]|$)"`
 
     if [ -n "${my_processes}" ]
     then
         ocf_log info "About to SIGKILL the following: ${my_processes}"
-        pkill -KILL -f "^(python|/usr/bin/python|/usr/bin/python2) ${my_binary}([^\w-]|$)"
+        pkill -KILL -f "^(python|/usr/bin/python|/usr/bin/python2|/usr/bin/python3) ${my_binary}([^\w-]|$)"
     fi
 }
 
