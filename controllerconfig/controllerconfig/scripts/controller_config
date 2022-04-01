@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -140,10 +140,19 @@ mount_platform_dir()
         mount $PLATFORM_DIR
         if [ $? -ne 0 ]
         then
-            drbdadm secondary drbd-platform
-            drbdadm down drbd-platform
-            systemctl stop drbd.service
-            fatal_error "Unable to mount $PLATFORM_DIR"
+            # Try mount without fstab
+            echo "Retrying mount platform without fstab"
+            mount /dev/drbd2 $PLATFORM_DIR
+            if [ $? -ne 0 ]
+            then
+                # Add sleep to avoid "Device is held open by someone" error
+                sleep 1
+                drbdadm secondary drbd-platform
+                drbdadm down drbd-platform
+                systemctl stop drbd.service
+                fatal_error "Unable to mount $PLATFORM_DIR"
+            fi
+
         fi
     else
         mkdir -p $PLATFORM_DIR
