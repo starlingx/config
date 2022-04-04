@@ -43,9 +43,12 @@ def upgrade(migrate_engine):
                               'reserve2',
                               name='accessEnum')
 
-        old_typeEnum.drop(bind=migrate_engine, checkfirst=False)
-        old_transportEnum.drop(bind=migrate_engine, checkfirst=False)
-        old_accessEnum.drop(bind=migrate_engine, checkfirst=False)
+        # The enumerations are not defined in metadata, and therefore
+        # are usually deleted when the table is dropped.
+        # checkfirst=True means these will not drop if already dropped
+        old_typeEnum.drop(bind=migrate_engine, checkfirst=True)
+        old_transportEnum.drop(bind=migrate_engine, checkfirst=True)
+        old_accessEnum.drop(bind=migrate_engine, checkfirst=True)
 
 
 def downgrade(migrate_engine):
