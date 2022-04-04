@@ -26,6 +26,7 @@ import string
 
 from oslo_config import cfg
 
+from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.tests import base
@@ -64,6 +65,24 @@ class BareMetalUtilsTestCase(base.TestCase):
             symlink_mock.side_effect = OSError(errno.EEXIST)
             utils.create_link_without_raise("/fake/source", "/fake/link")
             symlink_mock.assert_called_once_with("/fake/source", "/fake/link")
+
+    def test_determine_os_type_centos(self):
+        fd, tmpfile = tempfile.mkstemp()
+        with open(tmpfile, 'w') as f:
+            f.write('ID="centos\n"')
+        os.close(fd)
+        os_type = utils.determine_os_type(tmpfile)
+        self.assertEqual(os_type, constants.OS_CENTOS)
+        os.remove(tmpfile)
+
+    def test_determine_os_type_debian(self):
+        fd, tmpfile = tempfile.mkstemp()
+        with open(tmpfile, 'w') as f:
+            f.write('ID=debian')
+        os.close(fd)
+        os_type = utils.determine_os_type(tmpfile)
+        self.assertEqual(os_type, constants.OS_DEBIAN)
+        os.remove(tmpfile)
 
 
 class ExecuteTestCase(base.TestCase):

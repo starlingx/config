@@ -3460,3 +3460,29 @@ def get_module_name_from_entry_point(entry_point):
     raise exception.SysinvException(_(
             "Module name for entry point {} "
             "could not be determined.".format(entry_point)))
+
+
+@memoized
+def determine_os_type(release_file=constants.OS_RELEASE_FILE):
+    """
+    Function to read release information.
+    Ignore newline, ignore apostrophe, ignore quotation mark.
+
+    :param release_file: file to read from.
+    """
+    os_type = 'centos'
+    with open(release_file, 'r') as f:
+        for line in f.readlines():
+            if line.startswith('ID='):
+                os_type = line[3:].strip('\n"\'').lower()
+                break
+
+    return os_type
+
+
+def is_debian():
+    return determine_os_type() == constants.OS_DEBIAN
+
+
+def is_centos():
+    return determine_os_type() == constants.OS_CENTOS
