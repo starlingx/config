@@ -1099,7 +1099,6 @@ class ConductorManager(service.PeriodicService):
         :param host: host object.
         """
         sw_version = tsc.SW_VERSION
-        os_release = cutils.get_os_release()[0]
 
         if load:
             sw_version = load.software_version
@@ -1134,7 +1133,7 @@ class ConductorManager(service.PeriodicService):
         rootfs_device = host.get('rootfs_device') or "/dev/sda"
         install_opts += ['-r', rootfs_device]
 
-        if os_release == 'debian':
+        if cutils.is_debian():
             install_opts += ['-d']
         else:
             install_output = host.get('install_output') or "text"
