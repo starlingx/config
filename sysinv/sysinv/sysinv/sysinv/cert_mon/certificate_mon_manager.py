@@ -376,6 +376,9 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         self.mon_threads.append(
             eventlet.greenthread.spawn(self.monitor_cert,
                                        self.registrycert_monitor))
+        self.mon_threads.append(
+            eventlet.greenthread.spawn(self.monitor_cert,
+                                       self.openldapcert_monitor))
 
         if dc_role in (constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER,
                        constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
