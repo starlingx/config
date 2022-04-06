@@ -117,52 +117,89 @@ class HelmOperator(object):
     def purge_cache_by_location(self, install_location):
         """Purge the stevedore entry point cache."""
         for lifecycle_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_LIFECYCLE]:
-            lifecycle_distribution = utils.get_distribution_from_entry_point(lifecycle_ep)
-            (project_name, project_location) = \
-                utils.get_project_name_and_location_from_distribution(lifecycle_distribution)
+            lifecycle_distribution = None
 
-            if project_location == install_location:
-                extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_LIFECYCLE].remove(lifecycle_ep)
-                break
+            try:
+                lifecycle_distribution = utils.get_distribution_from_entry_point(lifecycle_ep)
+                (project_name, project_location) = \
+                    utils.get_project_name_and_location_from_distribution(lifecycle_distribution)
+
+                if project_location == install_location:
+                    extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_LIFECYCLE].remove(lifecycle_ep)
+                    break
+            except exception.SysinvException:
+                # Temporary suppress errors on Debian until Stevedore is reworked.
+                # See https://storyboard.openstack.org/#!/story/2009101
+                if utils.is_debian():
+                    LOG.info("Didn't find distribution for {}. Deleting from cache".format(lifecycle_ep))
+                    try:
+                        extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_LIFECYCLE].remove(lifecycle_ep)
+                    except Exception as e:
+                        LOG.info("Tried removing lifecycle_ep {}, error: {}".format(lifecycle_ep, e))
+                else:
+                    raise
         else:
             LOG.info("Couldn't find endpoint distribution located at %s for "
                      "%s" % (install_location, lifecycle_distribution))
 
         for armada_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_ARMADA]:
-            armada_distribution = utils.get_distribution_from_entry_point(armada_ep)
-            (project_name, project_location) = \
-                utils.get_project_name_and_location_from_distribution(armada_distribution)
+            armada_distribution = None
 
-            if project_location == install_location:
-                extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_ARMADA].remove(armada_ep)
-                break
+            try:
+                armada_distribution = utils.get_distribution_from_entry_point(armada_ep)
+                (project_name, project_location) = \
+                    utils.get_project_name_and_location_from_distribution(armada_distribution)
+
+                if project_location == install_location:
+                    extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_ARMADA].remove(armada_ep)
+                    break
+            except exception.SysinvException:
+                # Temporary suppress errors on Debian until Stevedore is reworked.
+                # See https://storyboard.openstack.org/#!/story/2009101
+                if utils.is_debian():
+                    LOG.info("Didn't find distribution for {}. Deleting from cache".format(armada_ep))
+                    try:
+                        extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_ARMADA].remove(armada_ep)
+                    except Exception as e:
+                        LOG.info("Tried removing armada_ep {}, error: {}".format(armada_ep, e))
+                else:
+                    raise
         else:
             LOG.info("Couldn't find endpoint distribution located at %s for "
                      "%s" % (install_location, armada_distribution))
 
         for app_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS]:
-            app_distribution = utils.get_distribution_from_entry_point(app_ep)
-            (app_project_name, app_project_location) = \
-                utils.get_project_name_and_location_from_distribution(app_distribution)
+            try:
+                app_distribution = utils.get_distribution_from_entry_point(app_ep)
+                (app_project_name, app_project_location) = \
+                    utils.get_project_name_and_location_from_distribution(app_distribution)
 
-            if app_project_location == install_location:
-                namespace = utils.get_module_name_from_entry_point(app_ep)
+                if app_project_location == install_location:
+                    namespace = utils.get_module_name_from_entry_point(app_ep)
 
-                purged_list = []
-                for helm_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]:
-                    helm_distribution = utils.get_distribution_from_entry_point(helm_ep)
-                    (helm_project_name, helm_project_location) = \
-                        utils.get_project_name_and_location_from_distribution(helm_distribution)
+                    purged_list = []
+                    for helm_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]:
+                        helm_distribution = utils.get_distribution_from_entry_point(helm_ep)
+                        (helm_project_name, helm_project_location) = \
+                            utils.get_project_name_and_location_from_distribution(helm_distribution)
 
-                    if helm_project_location != install_location:
-                        purged_list.append(helm_ep)
+                        if helm_project_location != install_location:
+                            purged_list.append(helm_ep)
 
-                if purged_list:
-                    extension.ExtensionManager.ENTRY_POINT_CACHE[namespace] = purged_list
+                    if purged_list:
+                        extension.ExtensionManager.ENTRY_POINT_CACHE[namespace] = purged_list
+                    else:
+                        del extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]
+                        extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS].remove(app_ep)
+                        LOG.info("Removed stevedore namespace: %s" % namespace)
+            except Exception as e:
+                # Temporary suppress errors on Debian until Stevedore is reworked.
+                # See https://storyboard.openstack.org/#!/story/2009101
+                if utils.is_debian():
+                    LOG.info("Tried removing app_ep {}, error: {}".format(armada_ep, e))
+                    continue
                 else:
-                    del extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]
-                    extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS].remove(app_ep)
-                    LOG.info("Removed stevedore namespace: %s" % namespace)
+                    raise
 
     def purge_cache(self):
         """Purge the stevedore entry point cache."""

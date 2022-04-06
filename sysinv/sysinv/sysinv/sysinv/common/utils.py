@@ -3409,7 +3409,7 @@ def get_distribution_from_entry_point(entry_point):
         except ValueError:
             pass
         else:
-            if relative in distribution.files:
+            if distribution.files and relative in distribution.files:
                 return distribution
 
     raise exception.SysinvException(_(
