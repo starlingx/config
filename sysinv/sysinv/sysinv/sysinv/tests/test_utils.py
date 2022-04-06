@@ -66,22 +66,44 @@ class BareMetalUtilsTestCase(base.TestCase):
             utils.create_link_without_raise("/fake/source", "/fake/link")
             symlink_mock.assert_called_once_with("/fake/source", "/fake/link")
 
-    def test_determine_os_type_centos(self):
+    def test_get_os_type_centos(self):
         fd, tmpfile = tempfile.mkstemp()
         with open(tmpfile, 'w') as f:
             f.write('ID="centos\n"')
         os.close(fd)
-        os_type = utils.determine_os_type(tmpfile)
+        os_type = utils.get_os_type(tmpfile)
         self.assertEqual(os_type, constants.OS_CENTOS)
         os.remove(tmpfile)
 
-    def test_determine_os_type_debian(self):
+    def test_get_os_type_debian(self):
         fd, tmpfile = tempfile.mkstemp()
         with open(tmpfile, 'w') as f:
             f.write('ID=debian')
         os.close(fd)
-        os_type = utils.determine_os_type(tmpfile)
+        os_type = utils.get_os_type(tmpfile)
         self.assertEqual(os_type, constants.OS_DEBIAN)
+        os.remove(tmpfile)
+
+    def test_get_os_type_missing(self):
+        fd, tmpfile = tempfile.mkstemp()
+        with open(tmpfile, 'w') as f:
+            # Just an empty file
+            f.write('')
+        os.close(fd)
+        self.assertRaises(exception.SysinvException,
+                          utils.get_os_type,
+                          tmpfile)
+        os.remove(tmpfile)
+
+    def test_get_os_type_unsupported(self):
+        fd, tmpfile = tempfile.mkstemp()
+        with open(tmpfile, 'w') as f:
+            # Just a random OS type that we don't support
+            f.write('ID=unsupportedOS')
+        os.close(fd)
+        self.assertRaises(exception.SysinvException,
+                          utils.get_os_type,
+                          tmpfile)
         os.remove(tmpfile)
 
 

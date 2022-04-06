@@ -1102,7 +1102,15 @@ def get_sw_version():
     return SW_VERSION
 
 
-def _get_from_os_release(file_contents, key):
+def _get_key_from_file(file_contents, key):
+    """
+    Extract value from KEY=VALUE entries.
+    Ignore newline, ignore apostrophe, ignore quotation mark.
+
+    :param file_contents: contents of file
+    :param key: key to search
+    :return: found value or ''
+    """
     r = re.compile('^{}\=[\'\"]*([^\'\"\n]*)'.format(key), re.MULTILINE)
     match = r.search(file_contents)
     if match:
@@ -1111,21 +1119,55 @@ def _get_from_os_release(file_contents, key):
         return ''
 
 
-# Read /etc/os-release file and return 3 element list [ ID, VERSION, '' ]
-def get_os_release():
+@memoized
+def get_os_release(release_file=constants.OS_RELEASE_FILE):
+    """
+    Function to read release information.
+    Ignore newline, ignore apostrophe, ignore quotation mark.
+
+    :param release_file: file to read from
+    :return: 3 element list [ ID, VERSION, '' ]
+    """
     linux_distro = ('', '', '')
-    file_name = '/etc/os-release'
-    if os.path.isfile(file_name):
-        try:
-            with open(file_name, 'r') as f:
-                data = f.read()
-                linux_distro = (
-                    _get_from_os_release(data, 'ID'),
-                    _get_from_os_release(data, 'VERSION'), '')
-        except Exception as e:
-            raise exception.SysinvException(_(
-                "Failed to open %s : %s") % (file_name, str(e)))
+
+    try:
+        with open(release_file, 'r') as f:
+            data = f.read()
+            linux_distro = (
+                _get_key_from_file(data, 'ID'),
+                _get_key_from_file(data, 'VERSION'),
+                '')
+    except Exception as e:
+        raise exception.SysinvException(_(
+            "Failed to open %s : %s") % (release_file, str(e)))
+
+    if linux_distro[0] == '':
+        raise exception.SysinvException(_(
+            "Could not determine os type from %s") % release_file)
+
+    # Hint: This code is added here to aid future unit test.
+    # Probably running unit tests on a non-supported OS (example at
+    # time of writing: ubuntu), which is perfect, because code reaching
+    # here will fail, and we just identified a place that would split
+    # logic between OSs. The failing tests should mock this function
+    # (get_os_release) for each supported OS.
+    if linux_distro[0] not in constants.SUPPORTED_OS_TYPES:
+        raise exception.SysinvException(_(
+            "Unsupported OS detected %s") % linux_distro[0])
+
     return linux_distro
+
+
+def get_os_type(release_file=constants.OS_RELEASE_FILE):
+    return get_os_release(release_file)[0]
+
+
+def is_debian():
+    return get_os_type() == constants.OS_DEBIAN
+
+
+def is_centos():
+    return get_os_type() == constants.OS_CENTOS
 
 
 class ISO(object):
@@ -3460,29 +3502,3 @@ def get_module_name_from_entry_point(entry_point):
     raise exception.SysinvException(_(
             "Module name for entry point {} "
             "could not be determined.".format(entry_point)))
-
-
-@memoized
-def determine_os_type(release_file=constants.OS_RELEASE_FILE):
-    """
-    Function to read release information.
-    Ignore newline, ignore apostrophe, ignore quotation mark.
-
-    :param release_file: file to read from.
-    """
-    os_type = 'centos'
-    with open(release_file, 'r') as f:
-        for line in f.readlines():
-            if line.startswith('ID='):
-                os_type = line[3:].strip('\n"\'').lower()
-                break
-
-    return os_type
-
-
-def is_debian():
-    return determine_os_type() == constants.OS_DEBIAN
-
-
-def is_centos():
-    return determine_os_type() == constants.OS_CENTOS
