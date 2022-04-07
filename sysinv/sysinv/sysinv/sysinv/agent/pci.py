@@ -15,6 +15,7 @@ from eventlet.green import subprocess
 import glob
 import os
 import shlex
+import time
 
 from oslo_log import log as logging
 from sysinv._i18n import _
@@ -63,7 +64,7 @@ prevision = 4
 psvendor = 5
 psdevice = 6
 
-VALID_PORT_SPEED = ['10', '100', '1000', '10000', '40000', '100000']
+VALID_PORT_SPEED = ['10', '100', '1000', '10000', '25000', '40000', '100000']
 
 # Network device flags (from include/uapi/linux/if.h)
 IFF_UP = 1 << 0
@@ -511,6 +512,24 @@ class PCIOperator(object):
             flags = None
         return flags
 
+    def _get_netdev_operstate(self, dirpcinet, pci):
+        foperstate = dirpcinet + pci + '/operstate'
+        try:
+            with open(foperstate, 'r') as f:
+                operstate = f.readline().rstrip()
+        except Exception:
+            operstate = None
+        return operstate
+
+    def _get_netdev_speed(self, dirpcinet, pci):
+        fspeed = dirpcinet + pci + '/speed'
+        try:
+            with open(fspeed, 'r') as f:
+                speed = f.readline().rstrip()
+        except Exception:
+            speed = None
+        return speed
+
     def _get_netdev_flags(self, dirpcinet, pci):
         fflags = dirpcinet + pci + '/flags'
         return self._read_flags(fflags)
@@ -526,6 +545,38 @@ class PCIOperator(object):
             if os.path.isdir('/sys/class/net/' + name):
                 names.append(name)
         return names
+
+    def _pci_wait_for_operational_state(self, iface, pci_addr, driver):
+        """
+        Waits for an interface to become operational, up to 1.5 seconds,
+        but only for drivers that require this.
+
+        Some network adapters may take up to 1 second to become operational,
+        even though "flags" indicate that the interface is up.
+
+        This function waits for the interface to become operational by polling
+        the driver 16 times with 0.1 seconds in between each attempt.
+        """
+
+        if driver not in constants.DRIVERS_NOT_IMMEDIATELY_OPERATIONAL:
+            return
+
+        num_tries = 16
+        sleep_dur = 0.1
+
+        dirpcinet = self.get_pci_net_directory(pci_addr)
+
+        for attempt in range(num_tries):
+            operstate = self._get_netdev_operstate(dirpcinet, iface)
+            if operstate == "up":
+                return
+
+            # Do not sleep at the end of the last iteration.
+            if attempt < (num_tries - 1):
+                time.sleep(sleep_dur)
+
+        LOG.warning("%s did not become operational after %d attempts" %
+                (iface, num_tries))
 
     def pci_get_net_attrs(self, pciaddr):
         ''' For this pciaddr, build a list of network attributes per port '''
@@ -653,26 +704,30 @@ class PCIOperator(object):
                     if not(flags & IFF_UP):
                         LOG.warning("Enabling device %s to query link speed" % n)
                         cmd = 'ip link set dev %s up' % n
-                        subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                         shell=True)
+                        _p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                              shell=True)
+                        _p.wait()
+
+                        self._pci_wait_for_operational_state(n, a, driver)
+
                     # Read the speed
-                    fspeed = dirpcinet + n + '/' + "speed"
-                    try:
-                        with open(fspeed, 'r') as f:
-                            speed = f.readline().rstrip()
-                            if speed not in VALID_PORT_SPEED:
-                                LOG.error("Invalid port speed = %s for %s " %
-                                         (speed, n))
-                                speed = None
-                    except Exception:
+                    speed = self._get_netdev_speed(dirpcinet, n)
+                    if speed is None:
                         LOG.warning("ATTR speed unknown for: %s (flags: %s)" % (n, hex(flags)))
+                    elif speed == '-1':
+                        LOG.warning("Port speed detected as -1 for: %s (link operstate: %s)" %
+                            (n, self._get_netdev_operstate(dirpcinet, n)))
+                        speed = None
+                    elif speed not in VALID_PORT_SPEED:
+                        LOG.error("Invalid port speed = %s for %s " % (speed, n))
                         speed = None
                     # If the administrative state was down, take it back down
                     if not(flags & IFF_UP):
                         LOG.warning("Disabling device %s after querying link speed" % n)
                         cmd = 'ip link set dev %s down' % n
-                        subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                         shell=True)
+                        _p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                              shell=True)
+                        _p.wait()
 
                     flink_mode = dirpcinet + n + '/' + "link_mode"
                     try:

@@ -1036,13 +1036,15 @@ def get_ethernet_network_config(context, iface, config):
                             get_interface_port_name(context, iface))
             command = "echo 0 > %s; echo %s > %s" % (sriovfs_path, iface['sriov_numvfs'],
                                                         sriovfs_path)
-            fill_interface_config_option_operation(options, IFACE_PRE_UP_OP, command)
+            iface_op = get_device_sriov_setup_op(context, iface)
+            fill_interface_config_option_operation(options, iface_op, command)
     elif interface_class == constants.INTERFACE_CLASS_PCI_PASSTHROUGH:
         sriovfs_path = ("/sys/class/net/%s/device/sriov_numvfs" %
                         get_interface_port_name(context, iface))
         command = "if [ -f  %s ]; then echo 0 > %s; fi" % (
             sriovfs_path, sriovfs_path)
-        fill_interface_config_option_operation(options, IFACE_PRE_UP_OP, command)
+        iface_op = get_device_sriov_setup_op(context, iface)
+        fill_interface_config_option_operation(options, iface_op, command)
 
     config['options'].update(options)
     return config
@@ -1069,6 +1071,33 @@ def get_route_config(route, ifname):
 
     }
     return config
+
+
+def get_device_sriov_setup_op(context, iface):
+    """
+    Determines if the interface has a driver that requires it to be up before
+    SR-IOV/virtual function interfaces can be set up. Returns the corresponding
+    interface pre/post-up operation code.
+    """
+    port = get_interface_port(context, iface)
+
+    if port['driver'] in constants.DRIVERS_UP_BEFORE_SRIOV:
+        return IFACE_POST_UP_OP
+    else:
+        return IFACE_PRE_UP_OP
+
+
+def get_sriov_interface_up_requirement(context, iface):
+    """
+    Determines if an interface has a driver that requires it to be
+    administratively up before VFs can be set up.
+    """
+    port = get_interface_port(context, iface)
+
+    if port['driver'] in constants.DRIVERS_UP_BEFORE_SRIOV:
+        return True
+    else:
+        return False
 
 
 def get_sriov_interface_port(context, iface):
@@ -1177,6 +1206,7 @@ def get_sriov_config(context, iface):
         'num_vfs': num_vfs,
         'device_id': interface.get_sriov_interface_device_id(context, iface),
         'port_name': port['name'],
+        'up_requirement': get_sriov_interface_up_requirement(context, iface),
         'vf_config': vf_config
     }
     return config
