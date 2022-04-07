@@ -129,7 +129,7 @@ def _calculate_requested_growth(host_fs_list, host_fs_list_new):
     return cgtsvg_growth_gib
 
 
-LOCK_NAME = 'HostFsController'
+LOCK_NAME = 'FsController'
 
 
 class HostFsController(rest.RestController):
@@ -258,6 +258,11 @@ class HostFsController(rest.RestController):
             elif not cutils.is_int_like(size):
                 msg = _("HostFs update failed: filesystem '%s' "
                         "size must be an integer " % fs_display_name)
+                raise wsme.exc.ClientSideError(msg)
+
+            elif utils.is_drbd_fs_resizing():
+                msg = _("HostFs update failed: there is a drdb filesystem "
+                        "resize in progress, please retry again later.")
                 raise wsme.exc.ClientSideError(msg)
 
             current_size = [fs['size'] for

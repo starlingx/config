@@ -466,7 +466,7 @@ def _check_controller_multi_fs_data(context, controller_fs_list_new):
     return cgtsvg_growth_gib
 
 
-LOCK_NAME = 'ControllerFsController'
+LOCK_NAME = 'FsController'
 
 
 class ControllerFsController(rest.RestController):
