@@ -4533,8 +4533,7 @@ class ConductorManager(service.PeriodicService):
         # modifications.
         for ipart in ipart_dict_array:
             # Not to add ceph osd related partitions
-            if (ipart['type_guid'] == constants.CEPH_DATA_PARTITION or
-                   ipart['type_guid'] == constants.CEPH_JOURNAL_PARTITION):
+            if (ipart['type_guid'] in constants.CEPH_PARTITIONS):
                 continue
 
             part_dict = {
