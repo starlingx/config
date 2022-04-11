@@ -1590,6 +1590,11 @@ class KubeNotConfigured(SysinvException):
                 "will not be available.")
 
 
+class KubeCmdFailed(SysinvException):
+    message = _("Kubectl operation failed, return code: %(rc)s, "
+                "command: %(command)s")
+
+
 class RestoreAlreadyExists(Conflict):
     message = _("A Restore with UUID %(uuid)s already exists.")
 
