@@ -1,0 +1,52 @@
+{
+   "local-chassis": [
+     {
+       "chassis": [
+         {
+           "id": [
+             {
+               "type": "mac",
+               "value": "08:00:27:50:23:ff"
+             }
+           ],
+           "name": [
+             {
+               "value": "controller-0:7cff4720-2531-4df9-b66d-3741d10f342a"
+             }
+           ],
+           "descr": [
+             {
+               "value": "CentOS Linux 7 (Core) Linux 5.10.99-200.31.tis.el7.x86_64 #1 SMP PREEMPT Fri Apr 1 15:26:41 CDT 2022 x86_64"
+             }
+           ],
+           "mgmt-ip": [
+             {
+               "value": "192.168.204.3"
+             },
+             {
+               "value": "fe80::a00:27ff:fe3d:ad50"
+             }
+           ],
+           "capability": [
+             {
+               "type": "Bridge",
+               "enabled": true
+             },
+             {
+               "type": "Router",
+               "enabled": true
+             },
+             {
+               "type": "Wlan",
+               "enabled": false
+             },
+             {
+               "type": "Station",
+               "enabled": false
+             }
+           ]
+         }
+       ]
+     }
+   ]
+ }
