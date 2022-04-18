@@ -454,6 +454,18 @@ start()
         fi
     fi
 
+    # Copy over default audit policy config
+    if [ -e $CONFIG_DIR/kubernetes/default-audit-policy.yaml ]
+    then
+        cp $CONFIG_DIR/kubernetes/default-audit-policy.yaml /etc/kubernetes/
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy default audit policy config file"
+        else
+            chmod 600 /etc/kubernetes/default-audit-policy.yaml
+        fi
+    fi
+
     if [ ! -e "${ACTIVE_CONTROLLER_NOT_FOUND_FLAG}" ]
     then
         # Keep the /opt/branding directory to preserve any new files
