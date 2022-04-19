@@ -25,6 +25,7 @@ import ruamel.yaml as yaml
 import shutil
 import site
 import six
+from six.moves.urllib.parse import urlparse
 import sys
 import threading
 import time
@@ -141,8 +142,8 @@ def get_app_install_root_path_ownership():
 
 
 Chart = namedtuple('Chart', 'metadata_name name namespace location release labels sequenced')
-FluxCDChart = namedtuple('FluxCDChart', 'metadata_name name namespace '
-                                        'location release chart_os_path')
+FluxCDChart = namedtuple('FluxCDChart', 'metadata_name name namespace location '
+                                        'release chart_os_path chart_label')
 
 
 class AppOperator(object):
@@ -1271,7 +1272,8 @@ class AppOperator(object):
                         namespace=namespace,
                         location=location,
                         release=release,
-                        chart_os_path=chart_path
+                        chart_os_path=chart_path,
+                        chart_label=chart_name
                     )
                     charts.append(chart_obj)
         return charts
@@ -1640,61 +1642,89 @@ class AppOperator(object):
            stop_max_attempt_number=5, wait_fixed=30 * 1000)
     def _make_fluxcd_operation_with_monitor(self, app, request):
         def _check_progress():
-            try:
-                adjust = self._get_metadata_value(app,
-                                                  constants.APP_METADATA_APPLY_PROGRESS_ADJUST,
-                                                  constants.APP_METADATA_APPLY_PROGRESS_ADJUST_DEFAULT_VALUE)
-                with Timeout(INSTALLATION_TIMEOUT,
-                             exception.KubeAppProgressMonitorTimeout()):
+            tadjust = 0
+            adjust = self._get_metadata_value(app,
+                                              constants.APP_METADATA_APPLY_PROGRESS_ADJUST,
+                                              constants.APP_METADATA_APPLY_PROGRESS_ADJUST_DEFAULT_VALUE)
 
-                    # store release_name and namespace in a dict
-                    # to delete faster the releases that completed
-                    charts = {c.metadata_name: c.namespace for c in app.charts}
-                    group = "helm.toolkit.fluxcd.io"
-                    version = "v2beta1"
-                    plural = "helmreleases"
-                    charts_count = len(charts)
+            charts = {
+                c.metadata_name: {"namespace": c.namespace, "chart_label": c.chart_label}
+                for c in app.charts
+            }
+            group = "helm.toolkit.fluxcd.io"
+            version = "v2beta1"
+            plural = "helmreleases"
+            charts_count = len(charts)
 
-                    if app.system_app:
-                        tadjust = adjust
-                        if tadjust >= charts_count:
-                            LOG.error("Application metadata key '{}'"
-                                      "has an invalid value {} (too few charts)".
-                                      format(constants.APP_METADATA_APPLY_PROGRESS_ADJUST,
-                                             adjust))
-                            tadjust = 0
+            if app.system_app:
+                tadjust = adjust
+                if tadjust >= charts_count:
+                    LOG.error("Application metadata key '{}'"
+                              "has an invalid value {} (too few charts)".
+                              format(constants.APP_METADATA_APPLY_PROGRESS_ADJUST,
+                                     adjust))
+                    tadjust = 0
 
-                    while charts:
-                        if AppOperator.is_app_aborted(app.name):
-                            return False
-                        num = charts_count - len(charts)
+            while charts:
+                if AppOperator.is_app_aborted(app.name):
+                    return False
+                num = charts_count - len(charts)
 
-                        percent = round((float(num) /  # pylint: disable=W1619
-                                         (charts_count - tadjust)) * 100)
-                        progress_str = "Applying app, overall completion: {}%". \
-                            format(percent)
+                percent = round((float(num) /  # pylint: disable=W1619, W1633
+                                 (charts_count - tadjust)) * 100)
+                progress_str = "Applying app, overall completion: {}%". \
+                    format(percent)
 
-                        if app.progress != progress_str:
-                            LOG.info("%s" % progress_str)
-                            self._update_app_status(app, new_progress=progress_str)
+                if app.progress != progress_str:
+                    LOG.info("%s" % progress_str)
+                    self._update_app_status(app, new_progress=progress_str)
 
-                        for release_name, namespace in charts.items():
-                            res = self._kube.get_custom_resource(group,
-                                                                 version,
-                                                                 namespace,
-                                                                 plural,
-                                                                 release_name)
-                            if res and "status" in res and "conditions" in res["status"]:
-                                for cond in res["status"]["conditions"]:
-                                    if cond["type"] == "Released" and cond["status"] == "True":
+                for release_name, chart_obj in charts.items():
+                    namespace = chart_obj["namespace"]
+                    res = self._kube.get_custom_resource(group,
+                                                         version,
+                                                         namespace,
+                                                         plural,
+                                                         release_name)
+                    if res and "status" in res and "conditions" in res["status"]:
+                        for cond in res["status"]["conditions"]:
+                            if cond["type"] == "Released":
+                                if cond["status"] == "True":
+                                    # We will see this issue https://github.com/fluxcd/helm-controller/issues/81
+                                    # on AIO-SX if there are issues during chart install.
+                                    # Basically, the status of helmrelease ends up with
+                                    # ready but the pods are not actually ready/running. This is due to
+                                    # helm upstream issues https://github.com/helm/helm/issues/3173,
+                                    # https://github.com/helm/helm/issues/5814,
+                                    # https://github.com/helm/helm/issues/8660.
+                                    # To solve this we need to check if the pods of the helm chart
+                                    # are ready/running using the kubernetes python client
+                                    all_pods_ready = True
+                                    if cutils.is_aio_simplex_system(self._dbapi):
+                                        label_selector = "app.kubernetes.io/name={}" \
+                                            .format(chart_obj["chart_label"])
+                                        pods = self._kube.kube_get_pods_by_selector(namespace, label_selector, "")
+                                        if pods:
+                                            for pod in pods:
+                                                if not pod or pod.status.phase != 'Running' or \
+                                                        not self._armada.check_pod_ready_probe(pod):
+                                                    all_pods_ready = False
+                                                    break
+                                    if all_pods_ready:
                                         charts.pop(release_name)
-                                        break
-                        time.sleep(1)
-                    return True
-            except Exception as e:
-                # timeout or subprocess error
-                LOG.exception(e)
-                return False
+                                elif cond["status"] == "False":
+                                    # If the helmrelease failed
+                                    # the app must also be in a failed state
+                                    err_msg = cond["message"] if "message" in cond else ""
+                                    LOG.exception("Application {} failed while doing the {} operation! "
+                                                  "The helmrelease with the problem is {} "
+                                                  "and the detailed error msg is: '{}'."
+                                                  .format(app.name, request, release_name, err_msg))
+                                    return False
+
+                # wait a bit to check again if the charts are ready
+                time.sleep(1)
+            return True
 
         # This check is for cases where an abort is issued while
         # this function waits between retries. In such cases, it
@@ -1707,12 +1737,19 @@ class AppOperator(object):
         lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
         lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_FLUXCD_REQUEST
         self.app_lifecycle_actions(None, None, app._kube_app, lifecycle_hook_info)
+        try:
+            with Timeout(INSTALLATION_TIMEOUT,
+                         exception.KubeAppProgressMonitorTimeout()):
 
-        rc = self._fluxcd.make_fluxcd_operation(request, app.sync_fluxcd_manifest)
+                rc = self._fluxcd.make_fluxcd_operation(request, app.sync_fluxcd_manifest)
 
-        # check progress only for apply for now
-        if rc and request == constants.APP_APPLY_OP:
-            rc = _check_progress()
+                # check progress only for apply for now
+                if rc and request == constants.APP_APPLY_OP:
+                    rc = _check_progress()
+        except Exception as e:
+            # timeout or subprocess error
+            LOG.exception(e)
+            rc = False
 
         # Here a manifest retry can be performed by throwing ApplicationApplyFailure
         lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
@@ -2161,6 +2198,7 @@ class AppOperator(object):
             # Copy the manifest and metadata file to the drbd
             if os.path.isdir(app.inst_mfile):
                 shutil.copytree(app.inst_mfile, manifest_sync_path)
+                self._override_fluxcd_app_repo_url(manifest_sync_path)
             else:
                 shutil.copy(app.inst_mfile, manifest_sync_path)
             inst_metadata_file = os.path.join(
@@ -2217,6 +2255,39 @@ class AppOperator(object):
             self._abort_operation(app, constants.APP_UPLOAD_OP)
             raise exception.KubeAppUploadFailure(
                 name=app.name, version=app.version, reason=e)
+
+    def _override_fluxcd_app_repo_url(self, manifest):
+        """
+        Replace the host in the default helm repository url
+        with the network addr floating adress
+
+        :param manifest: the manifest dir path
+        """
+        if not os.path.isdir(manifest):
+            return
+
+        helmrepo_path = os.path.join(manifest, "base", "helmrepository.yaml")
+
+        # get the helm repo base url
+        with io.open(helmrepo_path, 'r', encoding='utf-8') as f:
+            helm_repo_yaml = next(yaml.safe_load_all(f))
+            helm_repo_url = helm_repo_yaml["spec"]["url"]
+
+        # replace the repo url with the network addr floating adress
+        parsed_helm_repo_url = urlparse(helm_repo_url)
+        sc_network = \
+            self._dbapi.network_get_by_type(constants.NETWORK_TYPE_CLUSTER_HOST)
+        sc_network_addr_pool = \
+            self._dbapi.address_pool_get(sc_network.pool_uuid)
+        sc_float_ip = sc_network_addr_pool.floating_address
+        if cutils.is_valid_ipv6(sc_float_ip):
+            sc_float_ip = '[' + sc_float_ip + ']'
+        helm_repo_yaml["spec"]["url"] = "http://{}:{}{}".format(
+            sc_float_ip,
+            cutils.get_http_port(self._dbapi),
+            parsed_helm_repo_url.path)
+        with open(helmrepo_path, "w") as f:
+            yaml.dump(helm_repo_yaml, f, default_flow_style=False)
 
     def set_reapply(self, app_name):
         lock_name = "%s_%s" % (LOCK_NAME_APP_REAPPLY, app_name)
