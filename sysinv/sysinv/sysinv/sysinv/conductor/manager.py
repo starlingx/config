@@ -5937,7 +5937,6 @@ class ConductorManager(service.PeriodicService):
                 config_type = config.get('config_type')
                 LOG.info("found _audit_deferred_runtime_config request apply %s" %
                          config)
-                self._host_deferred_runtime_config.remove(config)
                 if config_type == CONFIG_APPLY_RUNTIME_MANIFEST:
                     # config runtime manifest system allows for filtering on scoped runtime classes
                     # to allow for more efficient handling while another scoped class apply may
@@ -10838,19 +10837,28 @@ class ConductorManager(service.PeriodicService):
         :          }
         """
 
+        # try to get the config from deferred list
+        deferred_config = self._get_from_host_deferred_runtime_config(config_uuid)
+
         if not self._ready_to_apply_runtime_config(
                 context,
                 config_dict.get('personalities'),
                 config_dict.get('host_uuids')):
-            # append to deferred for audit
-            self._host_deferred_runtime_config.append(
-                {'config_type': CONFIG_UPDATE_FILE,
-                 'config_uuid': config_uuid,
-                 'config_dict': config_dict,
-                 })
+            if deferred_config is None:
+                # append to deferred for audit
+                self._host_deferred_runtime_config.append(
+                    {'config_type': CONFIG_UPDATE_FILE,
+                     'config_uuid': config_uuid,
+                     'config_dict': config_dict,
+                     })
             LOG.info("defer update file to _host_deferred_runtime_config %s" %
                      self._host_deferred_runtime_config)
             return False
+
+        # the config will be processed so remove from deferred list if it is a
+        # deferred one.
+        if deferred_config:
+            self._host_deferred_runtime_config.remove(deferred_config)
 
         # Ensure hiera data is updated prior to active apply.
         self._config_update_puppet(config_uuid, config_dict)
@@ -10943,6 +10951,15 @@ class ConductorManager(service.PeriodicService):
                  'force': force,
                  })
 
+    def _get_from_host_deferred_runtime_config(self, config_uuid):
+        # get the config from the deferred config list
+        config = None
+        for drc in self._host_deferred_runtime_config:
+            if (drc['config_uuid'] == config_uuid):
+                config = drc
+                break
+        return config
+
     def _config_apply_runtime_manifest(self,
                                        context,
                                        config_uuid,
@@ -10992,6 +11009,9 @@ class ConductorManager(service.PeriodicService):
         else:
             LOG.info("applying runtime manifest config_uuid=%s" % config_uuid)
 
+        # try to get the config from deferred list
+        deferred_config = self._get_from_host_deferred_runtime_config(config_uuid)
+
         # only apply runtime manifests to active controller if ready,
         # otherwise will append to the list of outstanding runtime manifests
         if not self._ready_to_apply_runtime_config(
@@ -10999,14 +11019,20 @@ class ConductorManager(service.PeriodicService):
                 config_dict.get('personalities'),
                 config_dict.get('host_uuids'),
                 filter_classes=filter_classes):
-            self._update_host_deferred_runtime_config(
-                CONFIG_APPLY_RUNTIME_MANIFEST,
-                config_uuid,
-                config_dict,
-                force)
+            if deferred_config is None:
+                self._update_host_deferred_runtime_config(
+                    CONFIG_APPLY_RUNTIME_MANIFEST,
+                    config_uuid,
+                    config_dict,
+                    force)
             LOG.info("defer apply runtime manifest %s" %
                      self._host_deferred_runtime_config)
             return
+
+        # the config will be processed so remove from deferred list if it is a
+        # deferred one.
+        if deferred_config:
+            self._host_deferred_runtime_config.remove(deferred_config)
 
         # Update hiera data for all hosts prior to runtime apply if host_uuid
         # is not set. If host_uuids is set only update hiera data for those hosts.
