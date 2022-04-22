@@ -31,7 +31,6 @@ collection of inventory data for each host.
 
 import errno
 import filecmp
-import fnmatch
 import hashlib
 import io
 import math
@@ -6330,7 +6329,7 @@ class ConductorManager(service.PeriodicService):
 
         tarfiles = []
         for f in os.listdir(constants.HELM_APP_ISO_INSTALL_PATH):
-            if fnmatch.fnmatch(f, '{}-*'.format(app_name)):
+            if re.match('{}-[^-]*-[^-]*.tgz'.format(app_name), f):
                 tarfiles.append(f)
 
         if not tarfiles:
@@ -6339,7 +6338,6 @@ class ConductorManager(service.PeriodicService):
         elif len(tarfiles) > 1:
             LOG.error("Found multiple application tarballs for {}.".format(app_name))
             return None
-
         tarball_name = '{}/{}'.format(
             constants.HELM_APP_ISO_INSTALL_PATH, tarfiles[0])
         return tarball_name
