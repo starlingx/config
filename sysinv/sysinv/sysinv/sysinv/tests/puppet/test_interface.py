@@ -1130,7 +1130,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
     def _get_sriov_config(self, ifname='default',
                           vf_driver=constants.SRIOV_DRIVER_TYPE_VFIO,
                           num_vfs=2, pf_addr=None, device_id='1572',
-                          port_name="eth0", vf_config=None):
+                          port_name="eth0", up_requirement=False,
+                          vf_config=None):
         if vf_config is None:
             vf_config = {}
         config = {'ifname': ifname,
@@ -1138,6 +1139,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                   'device_id': device_id,
                   'num_vfs': num_vfs,
                   'port_name': port_name,
+                  'up_requirement': up_requirement,
                   'vf_config': vf_config}
 
         return config

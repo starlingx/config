@@ -1921,10 +1921,21 @@ CEPH_MON_1 = 'ceph-mon-1-ip'
 CEPH_MON_2 = 'ceph-mon-2-ip'
 CEPH_FLOATING_MON = 'ceph-floating-mon-ip'
 
+# Broadcom interface definitions
+DRIVER_BNXT_EN = 'bnxt_en'
+
 # Mellanox interface definitions
 DRIVER_MLX_CX4 = 'mlx5_core'
 
 MELLANOX_DRIVERS = [DRIVER_MLX_CX4]
+
+# Drivers that require devices to be up before setting
+# up SR-IOV.
+DRIVERS_UP_BEFORE_SRIOV = [DRIVER_BNXT_EN]
+
+# Drivers that require additional time before they
+# become operational
+DRIVERS_NOT_IMMEDIATELY_OPERATIONAL = [DRIVER_BNXT_EN]
 
 # Traffic control
 TRAFFIC_CONTROL_SCRIPT = '/usr/local/bin/tc_setup.sh'
