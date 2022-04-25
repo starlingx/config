@@ -339,7 +339,7 @@ class RouteMaxPathsForSubnet(Conflict):
 
 class RouteGatewayNotReachable(Conflict):
     message = _("Route gateway %(gateway)s is not reachable by any address "
-                " on this interface")
+                "on this interface")
 
 
 class RouteGatewayCannotBeLocal(Conflict):
@@ -403,6 +403,10 @@ class LoadAlreadyExists(Conflict):
 
 class UpgradeAlreadyExists(Conflict):
     message = _("An Upgrade with UUID %(uuid)s already exists.")
+
+
+class UpgradeInProgress(Conflict):
+    message = _("An Upgrade is in progress with state %(state)s.")
 
 
 class PortAlreadyExists(Conflict):
