@@ -78,404 +78,584 @@ itemNotFound (404)
 ::
 
    {
-       "addresses": [
-           {
-               "href": "http://10.10.10.2:6385/v1/addresses/",
+      "restore": [
+         {
+               "href": "http://10.10.10.3:6385/v1/restore/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/addresses/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/restore/",
                "rel": "bookmark"
-           }
-       ],
-       "links": [
-           {
-               "href": "http://10.10.10.2:6385/v1/",
+         }
+      ],
+      "addresses": [
+         {
+               "href": "http://10.10.10.3:6385/v1/addresses/",
                "rel": "self"
-           },
-           {
+         },
+         {
+               "href": "http://10.10.10.3:6385/addresses/",
+               "rel": "bookmark"
+         }
+      ],
+      "links": [
+         {
+               "href": "http://10.10.10.3:6385/v1/",
+               "rel": "self"
+         },
+         {
                "href": "http://www.windriver.com/developer/sysinv/dev/api-spec-v1.html",
                "type": "text/html",
                "rel": "describedby"
-           }
-       ],
-       "remotelogging": [
-           {
-               "href": "http://10.10.10.2:6385/v1/remotelogging/",
+         }
+      ],
+      "storage_ceph_rook": [
+         {
+               "href": "http://10.10.10.3:6385/v1/storage_ceph_rook/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/remotelogging/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/storage_ceph_rook/",
                "rel": "bookmark"
-           }
-       ],
-       "ceph_mon": [
-           {
-               "href": "http://10.10.10.2:6385/v1/ceph_mon/",
+         }
+      ],
+      "registry_image": [
+         {
+               "href": "http://10.10.10.3:6385/v1/registry_image/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/ceph_mon/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/registry_image/",
                "rel": "bookmark"
-           }
-       ],
-       "lldp_neighbours": [
-           {
-               "href": "http://10.10.10.2:6385/v1/lldp_neighbours/",
+         }
+      ],
+      "device_image_state": [
+         {
+               "href": "http://10.10.10.3:6385/v1/device_image_state/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/lldp_neighbours/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/device_image_state/",
                "rel": "bookmark"
-           }
-       ],
-       "itrapdest": [
-           {
-               "href": "http://10.10.10.2:6385/v1/itrapdest/",
+         }
+      ],
+      "ceph_mon": [
+         {
+               "href": "http://10.10.10.3:6385/v1/ceph_mon/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/itrapdest/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/ceph_mon/",
                "rel": "bookmark"
-           }
-       ],
-       "iextoam": [
-           {
-               "href": "http://10.10.10.2:6385/v1/iextoam/",
+         }
+      ],
+      "lldp_neighbours": [
+         {
+               "href": "http://10.10.10.3:6385/v1/lldp_neighbours/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/iextoam/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/lldp_neighbours/",
                "rel": "bookmark"
-           }
-       ],
-       "intp": [
-           {
-               "href": "http://10.10.10.2:6385/v1/intp/",
+         }
+      ],
+      "remotelogging": [
+         {
+               "href": "http://10.10.10.3:6385/v1/remotelogging/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/intp/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/remotelogging/",
                "rel": "bookmark"
-           }
-       ],
-       "storage_file": [
-           {
-               "href": "http://10.10.10.2:6385/v1/storage_file/",
+         }
+      ],
+      "iextoam": [
+         {
+               "href": "http://10.10.10.3:6385/v1/iextoam/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/storage_file/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/iextoam/",
                "rel": "bookmark"
-           }
-       ],
-       "storage_lvm": [
-           {
-               "href": "http://10.10.10.2:6385/v1/storage_lvm/",
+         }
+      ],
+      "intp": [
+         {
+               "href": "http://10.10.10.3:6385/v1/intp/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/storage_lvm/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/intp/",
                "rel": "bookmark"
-           }
-       ],
-       "interface_networks": [
-           {
-               "href": "http://10.10.10.2:6385/v1/interface_networks/",
+         }
+      ],
+      "storage_file": [
+         {
+               "href": "http://10.10.10.3:6385/v1/storage_file/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/interface_networks/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/storage_file/",
                "rel": "bookmark"
-           }
-       ],
-       "inode": [
-           {
-               "href": "http://10.10.10.2:6385/v1/inode/",
+         }
+      ],
+      "device_labels": [
+         {
+               "href": "http://10.10.10.3:6385/v1/device_labels/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/inode/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/device_labels/",
                "rel": "bookmark"
-           }
-       ],
-       "id": "v1",
-       "ptp": [
-           {
-               "href": "http://10.10.10.2:6385/v1/ptp/",
+         }
+      ],
+      "storage_lvm": [
+         {
+               "href": "http://10.10.10.3:6385/v1/storage_lvm/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/ptp/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/storage_lvm/",
                "rel": "bookmark"
-           }
-       ],
-       "media_types": [
-           {
+         }
+      ],
+      "interface_networks": [
+         {
+               "href": "http://10.10.10.3:6385/v1/interface_networks/",
+               "rel": "self"
+         },
+         {
+               "href": "http://10.10.10.3:6385/interface_networks/",
+               "rel": "bookmark"
+         }
+      ],
+      "inode": [
+         {
+               "href": "http://10.10.10.3:6385/v1/inode/",
+               "rel": "self"
+         },
+         {
+               "href": "http://10.10.10.3:6385/inode/",
+               "rel": "bookmark"
+         }
+      ],
+      "id": "v1",
+      "ptp": [
+         {
+               "href": "http://10.10.10.3:6385/v1/ptp/",
+               "rel": "self"
+         },
+         {
+               "href": "http://10.10.10.3:6385/ptp/",
+               "rel": "bookmark"
+         }
+      ],
+      "media_types": [
+         {
                "base": "application/json",
                "type": "application/vnd.openstack.sysinv.v1+json"
-           }
-       ],
-       "servicegroup": [
-           {
-               "href": "http://10.10.10.2:6385/v1/servicegroup/",
+         }
+      ],
+      "servicegroup": [
+         {
+               "href": "http://10.10.10.3:6385/v1/servicegroup/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/servicegroup/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/servicegroup/",
                "rel": "bookmark"
-           }
-       ],
-       "upgrade": [
-           {
-               "href": "http://10.10.10.2:6385/v1/upgrade/",
+         }
+      ],
+      "upgrade": [
+         {
+               "href": "http://10.10.10.3:6385/v1/upgrade/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/upgrade/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/upgrade/",
                "rel": "bookmark"
-           }
-       ],
-       "imemory": [
-           {
-               "href": "http://10.10.10.2:6385/v1/imemory/",
+         }
+      ],
+      "datanetworks": [
+         {
+               "href": "http://10.10.10.3:6385/v1/datanetworks/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/imemory/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/datanetworks/",
                "rel": "bookmark"
-           }
-       ],
-       "networks": [
-           {
-               "href": "http://10.10.10.2:6385/v1/networks/",
+         }
+      ],
+      "imemory": [
+         {
+               "href": "http://10.10.10.3:6385/v1/imemory/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/networks/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/imemory/",
                "rel": "bookmark"
-           }
-       ],
-       "storage_ceph_external": [
-           {
-               "href": "http://10.10.10.2:6385/v1/storage_ceph_external/",
+         }
+      ],
+      "apps": [
+         {
+               "href": "http://10.10.10.3:6385/v1/apps/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/storage_ceph_external/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/apps/",
                "rel": "bookmark"
-           }
-       ],
-       "health": [
-           {
-               "href": "http://10.10.10.2:6385/v1/health/",
+         }
+      ],
+      "host_fs": [
+         {
+               "href": "http://10.10.10.3:6385/v1/host_fs/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/health/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/host_fs/",
                "rel": "bookmark"
-           }
-       ],
-       "clusters": [
-           {
-               "href": "http://10.10.10.2:6385/v1/clusters/",
+         }
+      ],
+      "kube_host_upgrades": [
+         {
+               "href": "http://10.10.10.3:6385/v1/kube_host_upgrades/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/clusters/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/kube_host_upgrades/",
                "rel": "bookmark"
-           }
-       ],
-       "drbdconfig": [
-           {
-               "href": "http://10.10.10.2:6385/v1/drbdconfig/",
+         }
+      ],
+      "networks": [
+         {
+               "href": "http://10.10.10.3:6385/v1/networks/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/drbdconfig/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/networks/",
                "rel": "bookmark"
-           }
-       ],
-       "icommunity": [
-           {
-               "href": "http://10.10.10.2:6385/v1/icommunity/",
+         }
+      ],
+      "storage_ceph_external": [
+         {
+               "href": "http://10.10.10.3:6385/v1/storage_ceph_external/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/icommunity/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/storage_ceph_external/",
                "rel": "bookmark"
-           }
-       ],
-       "helm_charts": [
-           {
-               "href": "http://10.10.10.2:6385/v1/helm_charts/",
+         }
+      ],
+      "health": [
+         {
+               "href": "http://10.10.10.3:6385/v1/health/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/helm_charts/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/health/",
                "rel": "bookmark"
-           }
-       ],
-       "ihosts": [
-           {
-               "href": "http://10.10.10.2:6385/v1/ihosts/",
+         }
+      ],
+      "ptp_parameters": [
+         {
+               "href": "http://10.10.10.3:6385/v1/ptp_parameters/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/ihosts/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/ptp_parameters/",
                "rel": "bookmark"
-           }
-       ],
-       "servicenodes": [
-           {
-               "href": "http://10.10.10.2:6385/v1/servicenodes/",
+         }
+      ],
+      "drbdconfig": [
+         {
+               "href": "http://10.10.10.3:6385/v1/drbdconfig/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/servicenodes/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/drbdconfig/",
                "rel": "bookmark"
-           }
-       ],
-       "storage_backend": [
-           {
-               "href": "http://10.10.10.2:6385/v1/storage_backend/",
+         }
+      ],
+      "helm_charts": [
+         {
+               "href": "http://10.10.10.3:6385/v1/helm_charts/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/storage_backend/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/helm_charts/",
                "rel": "bookmark"
-           }
-       ],
-       "controller_fs": [
-           {
-               "href": "http://10.10.10.2:6385/v1/controller_fs/",
+         }
+      ],
+      "ihosts": [
+         {
+               "href": "http://10.10.10.3:6385/v1/ihosts/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/controller_fs/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/ihosts/",
                "rel": "bookmark"
-           }
-       ],
-       "services": [
-           {
-               "href": "http://10.10.10.2:6385/v1/services/",
+         }
+      ],
+      "kube_versions": [
+         {
+               "href": "http://10.10.10.3:6385/v1/kube_versions/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/services/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/kube_versions/",
                "rel": "bookmark"
-           }
-       ],
-       "icpu": [
-           {
-               "href": "http://10.10.10.2:6385/v1/icpu/",
+         }
+      ],
+      "kube_cmd_versions": [
+         {
+               "href": "http://10.10.10.3:6385/v1/kube_cmd_versions/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/icpu/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/kube_cmd_versions/",
                "rel": "bookmark"
-           }
-       ],
-       "sdn_controller": [
-           {
-               "href": "http://10.10.10.2:6385/v1/sdn_controller/",
+         }
+      ],
+      "servicenodes": [
+         {
+               "href": "http://10.10.10.3:6385/v1/servicenodes/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/sdn_controller/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/servicenodes/",
                "rel": "bookmark"
-           }
-       ],
-       "addrpools": [
-           {
-               "href": "http://10.10.10.2:6385/v1/addrpools/",
+         }
+      ],
+      "ptp_instances": [
+         {
+               "href": "http://10.10.10.3:6385/v1/ptp_instances/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/addrpools/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/ptp_instances/",
                "rel": "bookmark"
-           }
-       ],
-       "license": [
-           {
-               "href": "http://10.10.10.2:6385/v1/license/",
+         }
+      ],
+      "storage_backend": [
+         {
+               "href": "http://10.10.10.3:6385/v1/storage_backend/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/license/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/storage_backend/",
                "rel": "bookmark"
-           }
-       ],
-       "service_parameter": [
-           {
-               "href": "http://10.10.10.2:6385/v1/service_parameter/",
+         }
+      ],
+      "controller_fs": [
+         {
+               "href": "http://10.10.10.3:6385/v1/controller_fs/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/service_parameter/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/controller_fs/",
                "rel": "bookmark"
-           }
-       ],
-       "storage_ceph": [
-           {
-               "href": "http://10.10.10.2:6385/v1/storage_ceph/",
+         }
+      ],
+      "services": [
+         {
+               "href": "http://10.10.10.3:6385/v1/services/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/storage_ceph/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/services/",
                "rel": "bookmark"
-           }
-       ],
-       "idns": [
-           {
-               "href": "http://10.10.10.2:6385/v1/idns/",
+         }
+      ],
+      "icpu": [
+         {
+               "href": "http://10.10.10.3:6385/v1/icpu/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/idns/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/icpu/",
                "rel": "bookmark"
-           }
-       ],
-       "isystems": [
-           {
-               "href": "http://10.10.10.2:6385/v1/isystems/",
+         }
+      ],
+      "kube_clusters": [
+         {
+               "href": "http://10.10.10.3:6385/v1/kube_clusters/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/isystems/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/kube_clusters/",
                "rel": "bookmark"
-           }
-       ],
-       "lldp_agents": [
-           {
-               "href": "http://10.10.10.2:6385/v1/lldp_agents/",
+         }
+      ],
+      "sdn_controller": [
+         {
+               "href": "http://10.10.10.3:6385/v1/sdn_controller/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/lldp_agents/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/sdn_controller/",
                "rel": "bookmark"
-           }
-       ],
-       "storage_external": [
-           {
-               "href": "http://10.10.10.2:6385/v1/storage_external/",
+         }
+      ],
+      "addrpools": [
+         {
+               "href": "http://10.10.10.3:6385/v1/addrpools/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/storage_external/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/addrpools/",
                "rel": "bookmark"
-           }
-       ],
-       "iuser": [
-           {
-               "href": "http://10.10.10.2:6385/v1/iuser/",
+         }
+      ],
+      "license": [
+         {
+               "href": "http://10.10.10.3:6385/v1/license/",
                "rel": "self"
-           },
-           {
-               "href": "http://10.10.10.2:6385/iuser/",
+         },
+         {
+               "href": "http://10.10.10.3:6385/license/",
                "rel": "bookmark"
-           }
-       ]
+         }
+      ],
+      "device_images": [
+         {
+               "href": "http://10.10.10.3:6385/v1/device_images/",
+               "rel": "self"
+         },
+         {
+               "href": "http://10.10.10.3:6385/device_images/",
+               "rel": "bookmark"
+         }
+      ],
+      "service_parameter": [
+         {
+               "href": "http://10.10.10.3:6385/v1/service_parameter/",
+               "rel": "self"
+         },
+         {
+               "href": "http://10.10.10.3:6385/service_parameter/",
+               "rel": "bookmark"
+         }
+      ],
+      "kube_rootca_update": [
+         {
+               "href": "http://10.10.10.3:6385/v1/kube_rootca_update/",
+               "rel": "self"
+         },
+         {
+               "href": "http://10.10.10.3:6385/kube_rootca_update/",
+               "rel": "bookmark"
+         }
+      ],
+      "storage_ceph": [
+         {
+               "href": "http://10.10.10.3:6385/v1/storage_ceph/",
+               "rel": "self"
+         },
+         {
+               "href": "http://10.10.10.3:6385/storage_ceph/",
+               "rel": "bookmark"
+         }
+      ],
+      "interface_datanetworks": [
+         {
+               "href": "http://10.10.10.3:6385/v1/interface_datanetworks/",
+               "rel": "self"
+         },
+         {
+               "href": "http://10.10.10.3:6385/interface_datanetworks/",
+               "rel": "bookmark"
+         }
+      ],
+      "idns": [
+         {
+               "href": "http://10.10.10.3:6385/v1/idns/",
+               "rel": "self"
+         },
+         {
+               "href": "http://10.10.10.3:6385/idns/",
+               "rel": "bookmark"
+         }
+      ],
+      "ptp_interfaces": [
+         {
+               "href": "http://10.10.10.3:6385/v1/ptp_interfaces/",
+               "rel": "self"
+         },
+         {
+               "href": "http://10.10.10.3:6385/ptp_interfaces/",
+               "rel": "bookmark"
+         }
+      ],
+      "fernet_repo": [
+         {
+               "href": "http://10.10.10.3:6385/v1/fernet_repo/",
+               "rel": "self"
+         },
+         {
+               "href": "http://10.10.10.3:6385/fernet_repo/",
+               "rel": "bookmark"
+         }
+      ],
+      "clusters": [
+         {
+               "href": "http://10.10.10.3:6385/v1/clusters/",
+               "rel": "self"
+         },
+         {
+               "href": "http://10.10.10.3:6385/clusters/",
+               "rel": "bookmark"
+         }
+      ],
+      "isystems": [
+         {
+               "href": "http://10.10.10.3:6385/v1/isystems/",
+               "rel": "self"
+         },
+         {
+               "href": "http://10.10.10.3:6385/isystems/",
+               "rel": "bookmark"
+         }
+      ],
+      "lldp_agents": [
+         {
+               "href": "http://10.10.10.3:6385/v1/lldp_agents/",
+               "rel": "self"
+         },
+         {
+               "href": "http://10.10.10.3:6385/lldp_agents/",
+               "rel": "bookmark"
+         }
+      ],
+      "storage_external": [
+         {
+               "href": "http://10.10.10.3:6385/v1/storage_external/",
+               "rel": "self"
+         },
+         {
+               "href": "http://10.10.10.3:6385/storage_external/",
+               "rel": "bookmark"
+         }
+      ],
+      "iuser": [
+         {
+               "href": "http://10.10.10.3:6385/v1/iuser/",
+               "rel": "self"
+         },
+         {
+               "href": "http://10.10.10.3:6385/iuser/",
+               "rel": "bookmark"
+         }
+      ],
+      "kube_upgrade": [
+         {
+               "href": "http://10.10.10.3:6385/v1/kube_upgrade/",
+               "rel": "self"
+         },
+         {
+               "href": "http://10.10.10.3:6385/kube_upgrade/",
+               "rel": "bookmark"
+         }
+      ]
    }
 
 This operation does not accept a request body.
@@ -3141,30 +3321,30 @@ itemNotFound (404)
 
    {
       "datanetworks":[
-	 {
-	    "description":null,
-	    "port_num":null,
-	    "uuid":"e1f6786d-df5a-4df8-9e6c-ced71797afe7",
-	    "mtu":1500,
-	    "multicast_group":null,
-	    "mode":null,
-	    "ttl":null,
-	    "id":1,
-	    "network_type":"vlan",
-	    "name":"group0-data0"
-	 },
-	 {
-	    "description":null,
-	    "port_num":4789,
-	    "uuid":"216c59cc-9713-4071-beab-c37dc2b6d153",
-	    "mtu":1400,
-	    "multicast_group":"239.0.6.10",
-	    "mode":"dynamic",
-	    "ttl":1,
-	    "id":2,
-	    "network_type":"vxlan",
-	    "name":"group0-data1"
-	 }
+         {
+            "description":null,
+            "port_num":null,
+            "uuid":"e1f6786d-df5a-4df8-9e6c-ced71797afe7",
+            "mtu":1500,
+            "multicast_group":null,
+            "mode":null,
+            "ttl":null,
+            "id":1,
+            "network_type":"vlan",
+            "name":"group0-data0"
+         },
+         {
+            "description":null,
+            "port_num":4789,
+            "uuid":"216c59cc-9713-4071-beab-c37dc2b6d153",
+            "mtu":1400,
+            "multicast_group":"239.0.6.10",
+            "mode":"dynamic",
+            "ttl":1,
+            "id":2,
+            "network_type":"vxlan",
+            "name":"group0-data1"
+         }
       ]
    }
 
@@ -3358,14 +3538,14 @@ badMediaType (415)
 
    [
       {
-	 "path":"/description",
-	 "value":"group2-data2 datanetwork description",
-	 "op":"replace"
+         "path":"/description",
+         "value":"group2-data2 datanetwork description",
+         "op":"replace"
       },
       {
-	 "path":"/mtu",
-	 "value":"1500",
-	 "op":"replace"
+         "path":"/mtu",
+         "value":"1500",
+         "op":"replace"
       }
    ]
 
@@ -3455,24 +3635,24 @@ itemNotFound (404)
 
    {
       "interface_datanetworks":[
-	 {
-	    "datanetwork_uuid":"1ea7d61d-e988-4457-83bf-3ba37f5f6f8d",
-	    "datanetwork_id":1,
-	    "uuid":"e3502084-22c4-4e1d-acd3-0f2594fa7281",
-	    "datanetwork_name":"group0-data0",
-	    "ifname":"data0",
-	    "interface_uuid":"2731d293-8124-4963-9d7c-36bdb220b38c",
-	    "id":1
-	 },
-	 {
-	    "datanetwork_uuid":"01bafd19-63ea-4a1e-8b3c-35e96b7d3a6c",
-	    "datanetwork_id":2,
-	    "uuid":"ffccd4ce-0c47-4bdc-b38d-549b2f2a0d03",
-	    "datanetwork_name":"group0-data1",
-	    "ifname":"data1",
-	    "interface_uuid":"cdd2e58b-abe7-4d27-b4ef-2ff6b5e5e774",
-	    "id":2
-	 }
+         {
+            "datanetwork_uuid":"1ea7d61d-e988-4457-83bf-3ba37f5f6f8d",
+            "datanetwork_id":1,
+            "uuid":"e3502084-22c4-4e1d-acd3-0f2594fa7281",
+            "datanetwork_name":"group0-data0",
+            "ifname":"data0",
+            "interface_uuid":"2731d293-8124-4963-9d7c-36bdb220b38c",
+            "id":1
+         },
+         {
+            "datanetwork_uuid":"01bafd19-63ea-4a1e-8b3c-35e96b7d3a6c",
+            "datanetwork_id":2,
+            "uuid":"ffccd4ce-0c47-4bdc-b38d-549b2f2a0d03",
+            "datanetwork_name":"group0-data1",
+            "ifname":"data1",
+            "interface_uuid":"cdd2e58b-abe7-4d27-b4ef-2ff6b5e5e774",
+            "id":2
+         }
       ]
    }
 
@@ -3885,17 +4065,240 @@ badMediaType (415)
    }
 
 
-----
-PTP
-----
+-------------
+PTP Instances
+-------------
 
-The PTP is the Precision Time Protocol entity for the system.
+Each PTP (Precision Time Protocol) service running in the system is linked to a PTP instance object. These APIs allow to create, display, modify, associate and delete of PTP instances.
 
-************************************
-Shows attributes of the PTP object
-************************************
+**********************
+List the PTP instances
+**********************
 
-.. rest_method:: GET /v1/ptp
+.. rest_method:: GET /v1/ptp_instances
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503),
+unauthorized (401), forbidden (403)
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_instances", "plain", "xsd:list", "The list of PTP instances"
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for this object"
+   "service", "plain", "xsd:string", "Indicates the type of PTP service: ``ptp4l``, ``phc2sys``, ``ts2phc``, ``clock``"
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created"
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated"
+   "capabilities", "plain", "xsd:string", "Extra information about the PTP instance"
+   "hostnames", "plain", "xsd:list", "List of hosts where this PTP instance is supposed to run"
+   "parameters", "plain", "xsd:list", "List of PTP parameters (key=value pairs) of this instance"
+   "type", "plain", "xsd:string", "The internal type of this PTP object, must be ``ptp-instance``"
+   "id", "plain", "xsd:integer", "The internal numeric identifier for this PTP instance"
+   "name", "plain", "xsd:string", "The user-specified name for this PTP instance"
+
+::
+
+   {
+      "ptp_instances": [
+         {
+               "uuid": "29e7d80d-0934-40d8-a2e5-7e51c4a20c34",
+               "service": "phc2sys",
+               "created_at": "2022-03-16T14:14:25.673030+00:00",
+               "updated_at": null,
+               "capabilities": {},
+               "hostnames": [
+                  "controller-0"
+               ],
+               "parameters": [
+                  "domainNumber=1",
+                  "uds_address=/var/run/ptp4l-ptp4lsvc0"
+               ],
+               "type": "ptp-instance",
+               "id": 2,
+               "name": "phc2syssvc0"
+         },
+         {
+               "uuid": "964d4966-f9ac-4acc-9a7e-f30b2effe3be",
+               "service": "ptp4l",
+               "created_at": "2022-03-16T11:59:12.238461+00:00",
+               "updated_at": null,
+               "capabilities": {},
+               "hostnames": [
+                  "controller-0"
+               ],
+               "parameters": [
+                  "domainNumber=1"
+               ],
+               "type": "ptp-instance",
+               "id": 1,
+               "name": "ptp4lsvc0"
+         }
+      ]
+   }
+
+This operation does not accept a request body.
+
+***************************************
+List the PTP instances assigned to host
+***************************************
+
+One host can be running many different PTP instances (services), and same PTP instance (set of PTP parameters) can be assumed by (and run in) different hosts.
+
+.. rest_method:: GET /v1/ihosts/{host_id}/ptp_instances
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503),
+unauthorized (401), forbidden (403), itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "host_id", "URI", "csapi:UUID", "The unique identifier of the host"
+
+This operation does not accept a request body.
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_instances", "plain", "xsd:list", "The list of PTP instances assigned to the given host"
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for this object"
+   "service", "plain", "xsd:string", "Indicates the type of PTP service: ``ptp4l``, ``phc2sys``, ``ts2phc``, ``clock``"
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created"
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated"
+   "capabilities", "plain", "xsd:string", "Extra information about the PTP instance"
+   "hostnames", "plain", "xsd:list", "List of hosts where this PTP instance is supposed to run (should contain the given one)"
+   "parameters", "plain", "xsd:list", "List of PTP parameters (key=value pairs) of this instance"
+   "type", "plain", "xsd:string", "The internal type of this PTP object, must be ``ptp-instance``"
+   "id", "plain", "xsd:integer", "The internal numeric identifier for this PTP instance"
+   "name", "plain", "xsd:string", "The user-specified name for this PTP instance"
+
+::
+
+   {
+      "ptp_instances": [
+         {
+               "uuid": "29e7d80d-0934-40d8-a2e5-7e51c4a20c34",
+               "service": "phc2sys",
+               "created_at": "2022-03-16T14:14:25.673030+00:00",
+               "updated_at": null,
+               "capabilities": {},
+               "hostnames": [
+                  "controller-0"
+               ],
+               "parameters": [
+                  "domainNumber=1",
+                  "uds_address=/var/run/ptp4l-ptp4lsvc0"
+               ],
+               "type": "ptp-instance",
+               "id": 2,
+               "name": "phc2syssvc0"
+         },
+         {
+               "uuid": "964d4966-f9ac-4acc-9a7e-f30b2effe3be",
+               "service": "ptp4l",
+               "created_at": "2022-03-16T11:59:12.238461+00:00",
+               "updated_at": null,
+               "capabilities": {},
+               "hostnames": [
+                  "controller-0"
+               ],
+               "parameters": [
+                  "domainNumber=1"
+               ],
+               "type": "ptp-instance",
+               "id": 1,
+               "name": "ptp4lsvc0"
+         }
+      ]
+   }
+
+*********************************************
+Shows information about specific PTP instance
+*********************************************
+
+.. rest_method:: GET /v1/ptp_instances/​{ptp_instance_id}​
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503),
+unauthorized (401), forbidden (403), itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_instance_id", "URI", "csapi:UUID", "The unique identifier of an existing PTP instance"
+
+This operation does not accept a request body.
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for this object"
+   "service", "plain", "xsd:string", "Indicates the type of PTP service: ``ptp4l``, ``phc2sys``, ``ts2phc``, ``clock``"
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created"
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated"
+   "capabilities", "plain", "xsd:string", "Extra information about the PTP instance"
+   "hostnames", "plain", "xsd:list", "List of hosts where this PTP instance is supposed to run"
+   "parameters", "plain", "xsd:list", "List of PTP parameters (key=value pairs) of this instance"
+   "type", "plain", "xsd:string", "The internal type of this PTP object, must be ``ptp-instance``"
+   "id", "plain", "xsd:integer", "The internal numeric identifier for this PTP instance"
+   "name", "plain", "xsd:string", "The user-specified name for this PTP instance"
+
+::
+
+   {
+      "uuid": "964d4966-f9ac-4acc-9a7e-f30b2effe3be",
+      "service": "ptp4l",
+      "created_at": "2022-03-16T11:59:12.238461+00:00",
+      "updated_at": null,
+      "capabilities": {},
+      "hostnames": [
+         "controller-0"
+      ],
+      "parameters": [
+         "domainNumber=1"
+      ],
+      "type": "ptp-instance",
+      "id": 1,
+      "name": "ptp4lsvc0"
+   }
+
+************************
+Creates new PTP instance
+************************
+
+.. rest_method:: POST /v1/ptp_instances/​
+
+Creates a PTP instance object, i.e, a new PTP associated service that will run in one or more hosts.
 
 **Normal response codes**
 
@@ -3904,71 +4307,7 @@ Shows attributes of the PTP object
 **Error response codes**
 
 computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
-unauthorized (401), forbidden (403), badMethod (405), overLimit (413),
-itemNotFound (404)
-
-**Response parameters**
-
-.. csv-table::
-   :header: "Parameter", "Style", "Type", "Description"
-   :widths: 20, 20, 20, 60
-
-   "mode (Optional)", "plain", "xsd:string", "PTP time stamping mode."
-   "transport (Optional)", "plain", "xsd:string", "PTP transport protocol."
-   "mechanism (Optional)", "plain", "xsd:string", "PTP delay mechanism."
-   "isystem_uuid (Optional)", "plain", "csapi:UUID", "The System UUID which the PTP belongs to."
-   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
-   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
-   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
-   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
-
-::
-
-   {
-      "ptp":[
-         {
-            "links":[
-               {
-                  "href":"http://192.168.204.2:6385/v1/ptps/70649b44-b462-445a-9fa5-9233a1b5842d",
-                  "rel":"self"
-               },
-               {
-                  "href":"http://192.168.204.2:6385/ptps/70649b44-b462-445a-9fa5-9233a1b5842d",
-                  "rel":"bookmark"
-               }
-            ],
-            "created_at":"2019-09-30T14:42:16.693209+00:00",
-            "updated_at":"2019-10-01T17:33:43.169595+00:00",
-            "mechanism":"e2e",
-            "mode":"hardware",
-            "transport":"l2",
-            "isystem_uuid":"ce178041-2b2c-405d-bf87-f19334a35582",
-            "uuid":"70649b44-b462-445a-9fa5-9233a1b5842d"
-         }
-      ]
-   }
-
-This operation does not accept a request body.
-
-***************************************
-Modifies attributes of the PTP object
-***************************************
-
-.. rest_method:: PATCH /v1/ptp/​{ptp_id}​
-
-The attributes of the PTP object that are configurable are:
-
--  mode
--  transport
--  mechanism
-
-**Normal response codes**
-
-200
-
-**Error response codes**
-
-badMediaType (415)
+unauthorized (401), forbidden (403), conflict (409)
 
 **Request parameters**
 
@@ -3976,10 +4315,15 @@ badMediaType (415)
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
-   "ptp_id", "URI", "csapi:UUID", "The unique identifier of the PTP for this system."
-   "mode (Optional)", "plain", "xsd:string", "PTP time stamping mode. Valid values are (is): ``hardware``, ``software`` or ``legacy``"
-   "transport (Optional)", "plain", "xsd:string", "PTP transport protocol. Valid values are (is): ``udp`` or ``l2``"
-   "mechanism (Optional)", "plain", "xsd:string", "PTP delay mechanism. Valid values are (is): ``e2e`` or ``p2p``"
+   "name", "plain", "xsd:string", "User-defined name of new PTP instance"
+   "service", "plain", "xsd:string", "PTP service type. Valid values are (is): ``ptp4l``, ``phc2sys``, ``ts2phc`` or ``clock``"
+
+::
+
+   {
+    "name": "phc2syssvc0",
+    "service": "phc2sys"
+   }
 
 **Response parameters**
 
@@ -3987,69 +4331,1009 @@ badMediaType (415)
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
-   "mode (Optional)", "plain", "xsd:string", "PTP time stamping mode."
-   "transport (Optional)", "plain", "xsd:string", "PTP transport protocol."
-   "mechanism (Optional)", "plain", "xsd:string", "PTP delay mechanism."
-   "isystem_uuid (Optional)", "plain", "csapi:UUID", "The System UUID which the NTP belongs to."
-   "uuid (Optional)", "plain", "csapi:UUID", "The universally unique identifier for this object."
-   "links (Optional)", "plain", "xsd:list", "For convenience, resources contain links to themselves. This allows a client to easily obtain rather than construct resource URIs. The following types of link relations are associated with resources: a self link containing a versioned link to the resource, and a bookmark link containing a permanent link to a resource that is appropriate for long term storage."
-   "created_at (Optional)", "plain", "xsd:dateTime", "The time when the object was created."
-   "updated_at (Optional)", "plain", "xsd:dateTime", "The time when the object was last updated."
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for the new object"
+   "service", "plain", "xsd:string", "Type of PTP service, should match the requested one"
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created"
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated (should be null)"
+   "capabilities", "plain", "xsd:string", "Extra information about the PTP instance (should be empty)"
+   "hostnames", "plain", "xsd:list", "List of hosts where this PTP instance is supposed to run (should be empty)"
+   "parameters", "plain", "xsd:list", "List of PTP parameters (key=value pairs) of this instance (should be empty)"
+   "type", "plain", "xsd:string", "The internal type of this PTP object, should be ``ptp-instance``"
+   "id", "plain", "xsd:integer", "The internal numeric identifier for this PTP instance"
+   "name", "plain", "xsd:string", "Name of the PTP instance, should match the requested one"
+
+::
+
+   {
+      "uuid": "29e7d80d-0934-40d8-a2e5-7e51c4a20c34",
+      "service": "phc2sys",
+      "created_at": "2022-03-16T14:14:25.673030+00:00",
+      "updated_at": null,
+      "capabilities": {},
+      "hostnames": [],
+      "parameters": [],
+      "type": "ptp-instance",
+      "id": 2,
+      "name": "phc2syssvc0"
+   }
+
+**************************************************
+Modifies a PTP instance (add or delete parameters)
+**************************************************
+
+.. rest_method:: PATCH /v1/ptp_instances/​{ptp_instance_id}​
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503),
+unauthorized (401), forbidden (403), itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_instance_id", "URI", "csapi:UUID", "The unique identifier of an existing PTP instance"
+   "path", "URI", "xsd:string", "``/ptp_parameters/-`` (always)"
+   "value", "plain", "xsd:string", "Key-value pair for the PTP instance parameter"
+   "op", "plain", "xsd:string", "Type of operation. Valid values are (is): ``add`` or ``remove`` (the parameter)"
 
 ::
 
    [
       {
-         "path": "/mode",
-         "value": "legacy",
-         "op": "replace"
+         "path": "/ptp_parameters/-",
+         "value": "domainNumber=1",
+         "op": "add"
       },
       {
-         "path": "/transport",
-         "value": "udp",
-         "op": "replace"
-      },
-      {
-         "path": "/mechanism",
-         "value": "p2p",
-         "op": "replace"
+         "path": "/ptp_parameters/-",
+         "value": "uds_address=/var/run/ptp4l-ptp4lsvc0",
+         "op": "add"
       }
    ]
 
+**Response parameters**
+
+Will reply with updated PTP instance object (see "parameters"):
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for this object"
+   "service", "plain", "xsd:string", "Indicates the type of PTP service: ``ptp4l``, ``phc2sys``, ``ts2phc``, ``clock``"
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created"
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated"
+   "capabilities", "plain", "xsd:string", "Extra information about the PTP instance"
+   "hostnames", "plain", "xsd:list", "List of hosts where this PTP instance is supposed to run"
+   "parameters", "plain", "xsd:list", "UPDATED list of PTP parameters (key=value pairs) of this instance"
+   "type", "plain", "xsd:string", "The internal type of this PTP object, must be ``ptp-instance``"
+   "id", "plain", "xsd:integer", "The internal numeric identifier for this PTP instance"
+   "name", "plain", "xsd:string", "The user-specified name for this PTP instance"
 
 ::
 
    {
-      "links":[
-         {
-            "href":"http://192.168.204.2:6385/v1/ptps/70649b44-b462-445a-9fa5-9233a1b5842d",
-            "rel":"self"
-         },
-         {
-            "href":"http://192.168.204.2:6385/ptps/70649b44-b462-445a-9fa5-9233a1b5842d",
-            "rel":"bookmark"
-         }
+      "uuid": "29e7d80d-0934-40d8-a2e5-7e51c4a20c34",
+      "service": "phc2sys",
+      "created_at": "2022-03-16T14:14:25.673030+00:00",
+      "updated_at": null,
+      "capabilities": {},
+      "hostnames": [],
+      "parameters": [
+         "domainNumber=1",
+         "uds_address=/var/run/ptp4l-ptp4lsvc0"
       ],
-      "created_at":"2014-09-30T14:42:16.693209+00:00",
-      "updated_at":"2014-10-01T17:35:43.162472+00:00",
-      "mechanism": "p2p"
-      "mode": "legacy"
-      "transport": "udp"
-      "isystem_uuid":"ce178041-2b2c-405d-bf87-f19334a35582",
-      "forisystemid":1,
-      "uuid":"70649b44-b462-445a-9fa5-9233a1b5842d"
+      "type": "ptp-instance",
+      "id": 2,
+      "name": "phc2syssvc0"
    }
 
-*******************************
-Applies the PTP configuration
-*******************************
+*************************************
+(Un)Assigns PTP instance(s) to a host
+*************************************
 
-.. rest_method:: POST /v1/ptp/apply
+This assignment makes the associated PTP service to run at that host, given it is configured with "clock_synchronization=ptp".
+
+.. rest_method:: PATCH /v1/ihosts/​{host_id}​
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503),
+unauthorized (401), forbidden (403), itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "host_id", "URI", "csapi:UUID", "The unique identifier of the host"
+   "path", "URI", "xsd:string", "``/ptp_instances/-`` (always)"
+   "value", "plain", "xsd:integer", "The internal numeric identifier of the PTP instance"
+   "op", "plain", "xsd:string", "Type of operation. Valid values are (is): ``add`` or ``remove`` (the instance)"
+
+::
+
+   [
+      {
+         "path": "/ptp_instances/-",
+         "value": 2,
+         "op": "add"
+      }
+   ]
+
+**Response parameters**
+
+Parameters of the (dis)associated host. Notice the PTP instance is NOT included in that list, since this is a bridged association.
+
+***********************
+Destroys a PTP instance
+***********************
+
+This operation removes PTP instance/service from the system. It requires all the parameters must have been already deleted, associated host been already unassigned (see operations above) and linked PTP interfaces been destroyed (see PTP interface API below).
+
+.. rest_method:: DELETE /v1/ptp_instances/​{ptp_instance_id}​
 
 **Normal response codes**
 
 204
 
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_instance_id", "URI", "csapi:UUID", "The unique identifier of the PTP instance"
+
+This operation does not accept a request body.
+
+*****************************
+Applies the PTP configuration
+*****************************
+
+.. rest_method:: POST /v1/ptp_instances/apply
+
+**Normal response codes**
+
+204
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), unauthorized (401)
+
+--------------
+PTP Interfaces
+--------------
+
+Each network interface with PTP (Precision Time Protocol) traffic is linked to a PTP interface object, and from that to the corresponding PTP service (instance). These APIs allow to create, display, modify, associate and delete of PTP interfaces.
+
+***********************
+List the PTP interfaces
+***********************
+
+.. rest_method:: GET /v1/ptp_interfaces
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503),
+unauthorized (401), forbidden (403)
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_interfaces", "plain", "xsd:list", "The list of PTP interfaces"
+   "ptp_instance_uuid", "plain", "csapi:UUID", "The universally unique identifier for the linked PTP instance"
+   "interface_names", "plain", "xsd:list", "List of interfaces (and their hosts) associated to this PTP interface (and the linked PTP instance)"
+   "ptp_instance_id", "plain", "xsd:integer", "The internal numeric identifier of the linked PTP instance"
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for this object"
+   "parameters", "plain", "xsd:list", "List of parameters (key=value pairs) of this PTP interface"
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created"
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated"
+   "capabilities", "plain", "xsd:string", "Extra information about the PTP interface"
+   "hostnames", "plain", "xsd:list", "List of hosts whose interfaces are associated to this PTP interface"
+   "ptp_instance_name", "plain", "xsd:string", "The user-specified name for the linked PTP instance"
+   "type", "plain", "xsd:string", "The internal type of this PTP object, must be ``ptp-interface``"
+   "id", "plain", "xsd:integer", "The internal numeric identifier for this PTP interface"
+   "name", "plain", "xsd:string", "The user-specified name for this PTP interface"
+
+::
+
+   {
+      "ptp_interfaces": [
+         {
+               "ptp_instance_uuid": "964d4966-f9ac-4acc-9a7e-f30b2effe3be",
+               "interface_names": [
+                  "controller-0/data0"
+               ],
+               "ptp_instance_id": 1,
+               "uuid": "8b64219d-2639-4599-b3d8-77d174cfafbf",
+               "parameters": [
+                  "delay_mechanism=P2P"
+               ],
+               "created_at": "2022-03-17T10:06:32.161067+00:00",
+               "updated_at": null,
+               "capabilities": {},
+               "hostnames": [
+                  "controller-0"
+               ],
+               "ptp_instance_name": "ptp4lsvc0",
+               "type": "ptp-interface",
+               "id": 3,
+               "name": "ptpif0"
+         },
+         {
+               "ptp_instance_uuid": "964d4966-f9ac-4acc-9a7e-f30b2effe3be",
+               "interface_names": [
+                  "controller-0/data1"
+               ],
+               "ptp_instance_id": 1,
+               "uuid": "bc069b30-1087-4b9d-8e1c-761f60646318",
+               "parameters": [
+                  "delay_mechanism=P2P",
+                  "network_transport=L2"
+               ],
+               "created_at": "2022-03-17T11:09:03.907320+00:00",
+               "updated_at": null,
+               "capabilities": {},
+               "hostnames": [
+                  "controller-0"
+               ],
+               "ptp_instance_name": "ptp4lsvc0",
+               "type": "ptp-interface",
+               "id": 4,
+               "name": "ptpif1"
+         }
+      ]
+   }
+
+This operation does not accept a request body.
+
+*******************************************************************
+List the PTP interfaces assigned to some interface at specific host
+*******************************************************************
+
+One host can have many network interfaces associated to PTP interfaces and from them to the linked PTP instances (services).
+
+.. rest_method:: GET /v1/ihosts/{host_id}/ptp_interfaces
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503),
+unauthorized (401), forbidden (403), itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "host_id", "URI", "csapi:UUID", "The unique identifier of the host"
+
+This operation does not accept a request body.
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_interfaces", "plain", "xsd:list", "The list of PTP interfaces assigned to some interface at given host"
+   "ptp_instance_uuid", "plain", "csapi:UUID", "The universally unique identifier for the linked PTP instance"
+   "interface_names", "plain", "xsd:list", "List of interfaces (and their hosts) associated to this PTP interface (and the linked PTP instance)"
+   "ptp_instance_id", "plain", "xsd:integer", "The internal numeric identifier of the linked PTP instance"
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for this object"
+   "parameters", "plain", "xsd:list", "List of parameters (key=value pairs) of this PTP interface"
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created"
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated"
+   "capabilities", "plain", "xsd:string", "Extra information about the PTP interface"
+   "hostnames", "plain", "xsd:list", "List of hosts whose interfaces are associated to this PTP interface (should contain the given one)"
+   "ptp_instance_name", "plain", "xsd:string", "The user-specified name for the linked PTP instance"
+   "type", "plain", "xsd:string", "The internal type of this PTP object, must be ``ptp-interface``"
+   "id", "plain", "xsd:integer", "The internal numeric identifier for this PTP interface"
+   "name", "plain", "xsd:string", "The user-specified name for this PTP interface"
+
+::
+
+   {
+      "ptp_interfaces": [
+         {
+               "ptp_instance_uuid": "964d4966-f9ac-4acc-9a7e-f30b2effe3be",
+               "interface_names": [
+                  "controller-0/data0"
+               ],
+               "ptp_instance_id": 1,
+               "uuid": "8b64219d-2639-4599-b3d8-77d174cfafbf",
+               "parameters": [
+                  "delay_mechanism=P2P"
+               ],
+               "created_at": "2022-03-17T10:06:32.161067+00:00",
+               "updated_at": null,
+               "capabilities": {},
+               "hostnames": [
+                  "controller-0"
+               ],
+               "ptp_instance_name": "ptp4lsvc0",
+               "type": "ptp-interface",
+               "id": 3,
+               "name": "ptpif0"
+         },
+         {
+               "ptp_instance_uuid": "964d4966-f9ac-4acc-9a7e-f30b2effe3be",
+               "interface_names": [
+                  "controller-0/data1"
+               ],
+               "ptp_instance_id": 1,
+               "uuid": "bc069b30-1087-4b9d-8e1c-761f60646318",
+               "parameters": [
+                  "delay_mechanism=P2P",
+                  "network_transport=L2"
+               ],
+               "created_at": "2022-03-17T11:09:03.907320+00:00",
+               "updated_at": null,
+               "capabilities": {},
+               "hostnames": [
+                  "controller-0"
+               ],
+               "ptp_instance_name": "ptp4lsvc0",
+               "type": "ptp-interface",
+               "id": 4,
+               "name": "ptpif1"
+         }
+      ]
+   }
+
+******************************************************
+List the PTP interfaces assigned to specific interface
+******************************************************
+
+One network interface can be serving to many PTP services (instances) through the linked PTP interfaces.
+
+.. rest_method:: GET /v1/iinterfaces/{interface_id}/ptp_interfaces
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503),
+unauthorized (401), forbidden (403), itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "interface_id", "URI", "csapi:UUID", "The unique identifier of the interface"
+
+This operation does not accept a request body.
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_interfaces", "plain", "xsd:list", "The list of PTP interfaces assigned to given interface"
+   "ptp_instance_uuid", "plain", "csapi:UUID", "The universally unique identifier for the linked PTP instance"
+   "interface_names", "plain", "xsd:list", "List of interfaces (and their hosts) associated to this PTP interface (should contain the given one)"
+   "ptp_instance_id", "plain", "xsd:integer", "The internal numeric identifier of the linked PTP instance"
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for this object"
+   "parameters", "plain", "xsd:list", "List of parameters (key=value pairs) of this PTP interface"
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created"
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated"
+   "capabilities", "plain", "xsd:string", "Extra information about the PTP interface"
+   "hostnames", "plain", "xsd:list", "List of hosts whose interfaces are associated to this PTP interface)"
+   "ptp_instance_name", "plain", "xsd:string", "The user-specified name for the linked PTP instance"
+   "type", "plain", "xsd:string", "The internal type of this PTP object, must be ``ptp-interface``"
+   "id", "plain", "xsd:integer", "The internal numeric identifier for this PTP interface"
+   "name", "plain", "xsd:string", "The user-specified name for this PTP interface"
+
+::
+
+   {
+      "ptp_interfaces": [
+         {
+               "ptp_instance_uuid": "964d4966-f9ac-4acc-9a7e-f30b2effe3be",
+               "interface_names": [
+                  "controller-0/data0"
+               ],
+               "ptp_instance_id": 1,
+               "uuid": "8b64219d-2639-4599-b3d8-77d174cfafbf",
+               "parameters": [
+                  "delay_mechanism=P2P"
+               ],
+               "created_at": "2022-03-17T10:06:32.161067+00:00",
+               "updated_at": null,
+               "capabilities": {},
+               "hostnames": [
+                  "controller-0"
+               ],
+               "ptp_instance_name": "ptp4lsvc0",
+               "type": "ptp-interface",
+               "id": 3,
+               "name": "ptpif0"
+         }
+      ]
+   }
+
+**********************************************
+Shows information about specific PTP interface
+**********************************************
+
+.. rest_method:: GET /v1/ptp_interfaces/​{ptp_interface_id}​
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503),
+unauthorized (401), forbidden (403), itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_interface_id", "URI", "csapi:UUID", "The unique identifier of an existing PTP interface"
+
+This operation does not accept a request body.
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_instance_uuid", "plain", "csapi:UUID", "The universally unique identifier for the linked PTP instance"
+   "interface_names", "plain", "xsd:list", "List of interfaces (and their hosts) associated to this PTP interface (and the linked PTP instance)"
+   "ptp_instance_id", "plain", "xsd:integer", "The internal numeric identifier of the linked PTP instance"
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for this object"
+   "parameters", "plain", "xsd:list", "List of parameters (key=value pairs) of this PTP interface"
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created"
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated"
+   "capabilities", "plain", "xsd:string", "Extra information about the PTP interface"
+   "hostnames", "plain", "xsd:list", "List of hosts whose interfaces are associated to this PTP interface"
+   "ptp_instance_name", "plain", "xsd:string", "The user-specified name for the linked PTP instance"
+   "type", "plain", "xsd:string", "The internal type of this PTP object, must be ``ptp-interface``"
+   "id", "plain", "xsd:integer", "The internal numeric identifier for this PTP interface"
+   "name", "plain", "xsd:string", "The user-specified name for this PTP interface"
+
+::
+
+   {
+      "ptp_instance_uuid": "964d4966-f9ac-4acc-9a7e-f30b2effe3be",
+      "interface_names": [
+         "controller-0/data0"
+      ],
+      "ptp_instance_id": 1,
+      "uuid": "8b64219d-2639-4599-b3d8-77d174cfafbf",
+      "parameters": [
+         "delay_mechanism=P2P"
+      ],
+      "created_at": "2022-03-17T10:06:32.161067+00:00",
+      "updated_at": null,
+      "capabilities": {},
+      "hostnames": [
+         "controller-0"
+      ],
+      "ptp_instance_name": "ptp4lsvc0",
+      "type": "ptp-interface",
+      "id": 3,
+      "name": "ptpif0"
+   }
+
+*************************
+Creates new PTP interface
+*************************
+
+.. rest_method:: POST /v1/ptp_interfaces/​
+
+Creates a PTP interface object that will be used to link network interface(s) with a PTP service (instance).
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), conflict (409)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "name", "plain", "xsd:string", "User-defined name of new PTP interface"
+   "ptp_instance_uuid", "plain", "csapi:UUID", "The universally unique identifier of the PTP instance to be linked"
+
+::
+
+   {
+      "name": "ptpif1",
+      "ptp_instance_uuid": "964d4966-f9ac-4acc-9a7e-f30b2effe3be"
+   }
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_instance_uuid", "plain", "csapi:UUID", "The universally unique identifier for the linked PTP instance, should match the given one"
+   "interface_names", "plain", "xsd:list", "List of interfaces associated to this PTP interface (should be empty)"
+   "ptp_instance_id", "plain", "xsd:integer", "The internal numeric identifier of the linked PTP instance"
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for the new object"
+   "parameters", "plain", "xsd:list", "List of parameters (key=value pairs) of this PTP interface (should be empty)"
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created"
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated (should be null)"
+   "capabilities", "plain", "xsd:string", "Extra information about the PTP interface (should be empty)"
+   "hostnames", "plain", "xsd:list", "List of hosts whose interfaces are associated to this PTP interface (should be empty)"
+   "ptp_instance_name", "plain", "xsd:string", "The user-specified name for the linked PTP instance"
+   "type", "plain", "xsd:string", "The internal type of this PTP object, must be ``ptp-interface``"
+   "id", "plain", "xsd:integer", "The internal numeric identifier for this PTP interface"
+   "name", "plain", "xsd:string", "Name of the PTP interface, should match the requested one"
+
+::
+
+   {
+      "ptp_instance_uuid": "964d4966-f9ac-4acc-9a7e-f30b2effe3be",
+      "interface_names": [],
+      "ptp_instance_id": 1,
+      "uuid": "bc069b30-1087-4b9d-8e1c-761f60646318",
+      "parameters": [],
+      "created_at": "2022-03-17T11:09:03.907320+00:00",
+      "updated_at": null,
+      "capabilities": {},
+      "hostnames": [],
+      "ptp_instance_name": "ptp4lsvc0",
+      "type": "ptp-interface",
+      "id": 4,
+      "name": "ptpif1"
+   }
+
+**************************************************
+Modifies a PTP interface (add or delete parameter)
+**************************************************
+
+.. rest_method:: PATCH /v1/ptp_interfaces/​{ptp_interface_id}​
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503),
+unauthorized (401), forbidden (403), itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_interface_id", "URI", "csapi:UUID", "The unique identifier of an existing PTP interface"
+   "path", "URI", "xsd:string", "``/ptp_parameters/-`` (always)"
+   "value", "plain", "xsd:string", "Key-value pair for the PTP interface parameter"
+   "op", "plain", "xsd:string", "Type of operation. Valid values are (is): ``add`` or ``remove`` (the parameter)"
+
+::
+
+   [
+      {
+         "path": "/ptp_parameters/-",
+         "value": "delay_mechanism=P2P",
+         "op": "add"
+      },
+      {
+         "path": "/ptp_parameters/-",
+         "value": "network_transport=L2",
+         "op": "add"
+      }
+   ]
+
+**Response parameters**
+
+Will reply with updated PTP interface object (see "parameters"):
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_instance_uuid", "plain", "csapi:UUID", "The universally unique identifier for the linked PTP instance"
+   "interface_names", "plain", "xsd:list", "List of interfaces (and their hosts) associated to this PTP interface (and the linked PTP instance)"
+   "ptp_instance_id", "plain", "xsd:integer", "The internal numeric identifier of the linked PTP instance"
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for this object"
+   "parameters", "plain", "xsd:list", "UPDATED list of parameters (key=value pairs) of this PTP interface"
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created"
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated"
+   "capabilities", "plain", "xsd:string", "Extra information about the PTP interface"
+   "hostnames", "plain", "xsd:list", "List of hosts whose interfaces are associated to this PTP interface"
+   "ptp_instance_name", "plain", "xsd:string", "The user-specified name for the linked PTP instance"
+   "type", "plain", "xsd:string", "The internal type of this PTP object, must be ``ptp-interface``"
+   "id", "plain", "xsd:integer", "The internal numeric identifier for this PTP interface"
+   "name", "plain", "xsd:string", "The user-specified name for this PTP interface"
+
+::
+
+   {
+      "ptp_instance_uuid": "964d4966-f9ac-4acc-9a7e-f30b2effe3be",
+      "interface_names": [],
+      "ptp_instance_id": 1,
+      "uuid": "bc069b30-1087-4b9d-8e1c-761f60646318",
+      "parameters": [
+         "delay_mechanism=P2P",
+         "network_transport=L2"
+      ],
+      "created_at": "2022-03-17T11:09:03.907320+00:00",
+      "updated_at": null,
+      "capabilities": {},
+      "hostnames": [],
+      "ptp_instance_name": "ptp4lsvc0",
+      "type": "ptp-interface",
+      "id": 4,
+      "name": "ptpif1"
+   }
+
+***********************************************
+(Un)Assigns a PTP interface to a host interface
+***********************************************
+
+This assignment makes the host interface being associated with the linked PTP service (instance) with corresponding protocol traffic flowing through, given the interface is configured with not-none "ptp-role".
+
+.. rest_method:: PATCH /v1/iinterfaces/​{interface_id}​
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503),
+unauthorized (401), forbidden (403), itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "interface_id", "URI", "csapi:UUID", "The unique identifier of the host interface"
+   "path", "URI", "xsd:string", "``/ptp_interfaces/-`` (always)"
+   "value", "plain", "xsd:integer", "The internal numeric identifier of the PTP interface"
+   "op", "plain", "xsd:string", "Type of operation. Valid values are (is): ``add`` or ``remove`` (the PTP interface)"
+
+::
+
+   [
+      {
+         "path": "/ptp_interfaces/-",
+         "value": 4,
+         "op": "add"
+      }
+   ]
+
+**Response parameters**
+
+Parameters of the (dis)associated interface. Notice the PTP interface is NOT included in that list, since this is a bridged association.
+
+************************
+Destroys a PTP interface
+************************
+
+This operation removes PTP interface from the system. It requires all the parameters must have been already deleted and associated host interfaces been already unassigned (see operations above).
+
+.. rest_method:: DELETE /v1/ptp_interfaces/​{ptp_interface_id}​
+
+**Normal response codes**
+
+204
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_interface_id", "URI", "csapi:UUID", "The unique identifier of the PTP interface"
+
+This operation does not accept a request body.
+
+--------------
+PTP Parameters
+--------------
+
+PTP (Precision Time Protocol) parameters can apply to services (instances) or interfaces where PTP traffic resides. PTP parameters aren't created or destroyed outside the scope of some PTP instance or PTP interface (see their APIs above), and can be shared among different PTP objects (for instance, two PTP instances - one for ptp4l and another for phc2sys can share the same PTP parameter "domainNumber=1"). These APIs allow to display and modify the value of a PTP parameter (which might have impact in all of PTP instances/interfaces sharing that parameter).
+
+***********************
+List the PTP parameters
+***********************
+
+.. rest_method:: GET /v1/ptp_parameters
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503),
+unauthorized (401), forbidden (403)
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_parameters", "plain", "xsd:list", "The list of all PTP parameters configured in the system"
+   "owners", "plain", "xsd:list", "List of unique identifiers for the PTP instances and/or PTP interfaces that link to this PTP parameter"
+   "name", "plain", "xsd:string", "The name (key) of this PTP parameter, usually taken from linuxptp configuration"
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created"
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated"
+   "value", "plain", "xsd:string", "The current value of this PTP parameter"
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for this object"
+
+::
+
+   {
+      "ptp_parameters": [
+         {
+               "owners": [
+                  "8b64219d-2639-4599-b3d8-77d174cfafbf",
+                  "bc069b30-1087-4b9d-8e1c-761f60646318"
+               ],
+               "name": "delay_mechanism",
+               "created_at": "2022-03-17T10:08:41.226883+00:00",
+               "updated_at": null,
+               "value": "P2P",
+               "uuid": "b1337a39-1a9e-4212-ab88-a92eca7556e4"
+         },
+         {
+               "owners": [
+                  "964d4966-f9ac-4acc-9a7e-f30b2effe3be"
+               ],
+               "name": "domainNumber",
+               "created_at": "2022-03-16T11:59:44.223616+00:00",
+               "updated_at": null,
+               "value": "1",
+               "uuid": "64fab445-f820-4e79-b8c8-8703b32ed4ca"
+         },
+         {
+               "owners": [
+                  "bc069b30-1087-4b9d-8e1c-761f60646318"
+               ],
+               "name": "network_transport",
+               "created_at": "2022-03-17T13:28:31.275889+00:00",
+               "updated_at": null,
+               "value": "L2",
+               "uuid": "e2ab5727-e272-4eb3-9b9d-7e989426aa59"
+         }
+      ]
+   }
+
+This operation does not accept a request body.
+
+***********************************************
+List the parameters of a specified PTP instance
+***********************************************
+
+.. rest_method:: GET /v1/ptp_instances/{ptp_instance_id}/ptp_parameters
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503),
+unauthorized (401), forbidden (403), itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_instance_id", "URI", "csapi:UUID", "The unique identifier of the PTP instance (service)"
+
+This operation does not accept a request body.
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_parameters", "plain", "xsd:list", "The list of all PTP parameters configured in the system"
+   "owners", "plain", "xsd:list", "List of unique identifiers for the PTP instances and/or PTP interfaces that link to this PTP parameter"
+   "name", "plain", "xsd:string", "The name (key) of this PTP parameter, usually taken from linuxptp configuration"
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created"
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated"
+   "value", "plain", "xsd:string", "The current value of this PTP parameter"
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for this object"
+
+::
+
+   {
+      "ptp_parameters": [
+         {
+               "owners": [
+                  "964d4966-f9ac-4acc-9a7e-f30b2effe3be"
+               ],
+               "name": "domainNumber",
+               "created_at": "2022-03-16T11:59:44.223616+00:00",
+               "updated_at": null,
+               "value": "1",
+               "uuid": "64fab445-f820-4e79-b8c8-8703b32ed4ca"
+         }
+      ]
+   }
+
+************************************************
+List the parameters of a specified PTP interface
+************************************************
+
+.. rest_method:: GET /v1/ptp_interfaces/{ptp_interface_id}/ptp_parameters
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503),
+unauthorized (401), forbidden (403), itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_interface_id", "URI", "csapi:UUID", "The unique identifier of the PTP interface"
+
+This operation does not accept a request body.
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_parameters", "plain", "xsd:list", "The list of all PTP parameters configured in the system"
+   "owners", "plain", "xsd:list", "List of unique identifiers for the PTP instances and/or PTP interfaces that link to this PTP parameter"
+   "name", "plain", "xsd:string", "The name (key) of this PTP parameter, usually taken from linuxptp configuration"
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created"
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated"
+   "value", "plain", "xsd:string", "The current value of this PTP parameter"
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for this object"
+
+::
+
+   {
+      "ptp_parameters": [
+         {
+               "owners": [
+                  "8b64219d-2639-4599-b3d8-77d174cfafbf",
+                  "bc069b30-1087-4b9d-8e1c-761f60646318"
+               ],
+               "name": "delay_mechanism",
+               "created_at": "2022-03-17T10:08:41.226883+00:00",
+               "updated_at": null,
+               "value": "P2P",
+               "uuid": "b1337a39-1a9e-4212-ab88-a92eca7556e4"
+         }
+      ]
+   }
+
+************************
+Modifies a PTP parameter
+************************
+
+This operation changes the value of a parameter (key). Notice that ALL owners of the original "key-value" pair (PTP parameter object) will be affected.
+
+.. rest_method:: PATCH /v1/ptp_parameters/​{ptp_parameter_id}​
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503),
+unauthorized (401), forbidden (403), itemNotFound (404)
+
+**Request parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "ptp_parameter_id", "URI", "csapi:UUID", "The unique identifier of an existing PTP parameter"
+   "path", "URI", "xsd:string", "``/value`` (always)"
+   "value", "plain", "xsd:string", "New value of the PTP parameter"
+   "op", "plain", "xsd:string", "Type of operation: ``replace`` (always)"
+
+::
+
+   [
+      {
+         "path": "/value",
+         "value": "P2P",
+         "op": "replace"
+      }
+   ]
+
+**Response parameters**
+
+Will reply with updated PTP parameter object (see "value"):
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "owners", "plain", "xsd:list", "List of unique identifiers for the PTP instances and/or PTP interfaces that link to this PTP parameter"
+   "name", "plain", "xsd:string", "The name (key) of this PTP parameter, usually taken from linuxptp configuration"
+   "created_at", "plain", "xsd:dateTime", "The time when the object was created"
+   "updated_at", "plain", "xsd:dateTime", "The time when the object was last updated"
+   "value", "plain", "xsd:string", "UPDATED value of this PTP parameter"
+   "uuid", "plain", "csapi:UUID", "The universally unique identifier for this object"
+
+::
+
+   {
+      "owners": [
+         "8b64219d-2639-4599-b3d8-77d174cfafbf",
+         "bc069b30-1087-4b9d-8e1c-761f60646318"
+      ],
+      "uuid": "b1337a39-1a9e-4212-ab88-a92eca7556e4",
+      "created_at": "2022-03-17T10:08:41.226883+00:00",
+      "updated_at": null,
+      "value": "P2P",
+      "id": 3,
+      "name": "delay_mechanism"
+   }
 
 -------------
 External OAM
