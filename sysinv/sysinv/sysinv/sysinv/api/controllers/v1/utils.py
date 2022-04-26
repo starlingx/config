@@ -861,3 +861,32 @@ class SBApiHelper(object):
         services.remove(svc_name)
         pecan.request.dbapi.storage_backend_update(
             sb.id, {'services': ','.join(services)})
+
+
+def is_host_lvg_updated(host_fs_list, host_lvg_list):
+    """ Check if there was a recent fs resize on the host and
+        if the lvg was not updated yet
+        returns: True if lvg is updated on the host
+                 False if not
+    """
+    last_resize = None
+
+    LOG.info("Checking host_fs: %s" % [fs['name'] for fs in host_fs_list])
+    for fs in host_fs_list:
+        if fs['name'] in constants.FILESYSTEM_CONTROLLER_SUPPORTED_LIST:
+            if fs['updated_at']:
+                if last_resize is None:
+                    last_resize = fs['updated_at']
+                elif last_resize < fs['updated_at']:
+                    last_resize = fs['updated_at']
+
+    if not last_resize:
+        return True
+    LOG.info("Last host_fs resize timestamp: %s" % last_resize)
+
+    LOG.info("Checking lvgs: %s" % [lvg['lvm_vg_name'] for lvg in host_lvg_list])
+    for lvg in host_lvg_list:
+        if lvg['lvm_vg_name'] == constants.LVG_CGTS_VG:
+            if last_resize < lvg['updated_at']:
+                return True
+            return False

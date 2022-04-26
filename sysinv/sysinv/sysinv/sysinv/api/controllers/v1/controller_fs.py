@@ -567,6 +567,18 @@ class ControllerFsController(rest.RestController):
             raise exception.InvalidParameterValue(_(
                 "System id not specified."))
 
+        # Validate if there are pending updates on the controllers lvg
+        controller_hosts = pecan.request.dbapi.ihost_get_by_personality(
+            constants.CONTROLLER
+        )
+
+        controllers_lvg_updated = True
+        for host in controller_hosts:
+            host_fs_list = pecan.request.dbapi.host_fs_get_by_ihost(host.uuid)
+            host_lvg_list = pecan.request.dbapi.ilvg_get_by_ihost(host.uuid)
+            controllers_lvg_updated = controllers_lvg_updated and \
+                utils.is_host_lvg_updated(host_fs_list, host_lvg_list)
+
         # Validate input filesystem names
         controller_fs_list = pecan.request.dbapi.controller_fs_get_list()
         valid_fs_list = []
@@ -602,6 +614,10 @@ class ControllerFsController(rest.RestController):
             elif int(size) <= int(valid_fs_list[fs_name]):
                 msg = _("ControllerFs update failed: size for filesystem '%s' "
                         "should be bigger than %s " % (fs_name, valid_fs_list[fs_name]))
+                raise wsme.exc.ClientSideError(msg)
+            elif not controllers_lvg_updated:
+                msg = _("ControllerFs update failed: controllers have pending LVG "
+                        "updates, please retry again later.")
                 raise wsme.exc.ClientSideError(msg)
 
             if fs_name in constants.SUPPORTED_REPLICATED_FILEYSTEM_LIST:
