@@ -95,6 +95,126 @@ class ApiServiceParameterTestCaseMixin(object):
             'section': constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER,
             'name': constants.SERVICE_PARAM_NAME_OIDC_GROUPS_CLAIM,
             'value': 'wad'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_PROCESS_SIZE_MAX,
+            'value': '2G'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_EXTERNAL_SIZE_MAX,
+            'value': '0'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_MAX_USE,
+            'value': '0.02T'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_KEEP_FREE,
+            'value': '1G'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_PROCESS_SIZE_MAX,
+            'value': '4MB'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_PROCESS_SIZE_MAX,
+            'value': '4.0MB'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_EXTERNAL_SIZE_MAX,
+            'value': '4'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_MAX_USE,
+            'value': '4g'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_MAX_USE,
+            'value': '-4'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_KEEP_FREE,
+            'value': '4,0G'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_PROCESS_SIZE_MAX,
+            'value': ''
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_EXTERNAL_SIZE_MAX,
+            'value': ''
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_MAX_USE,
+            'value': ''
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_KEEP_FREE,
+            'value': ''
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_PROCESS_SIZE_MAX,
+            'value': '-1G'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_EXTERNAL_SIZE_MAX,
+            'value': '-1G'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_MAX_USE,
+            'value': '-1G'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_KEEP_FREE,
+            'value': '-1G'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_KEEP_FREE,
+            'value': '1M'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+            'name': constants.SERVICE_PARAM_NAME_PLATFORM_KEEP_FREE,
+            'value': '0'
         }
     ]
 
@@ -261,6 +381,39 @@ class ApiServiceParameterPostTestSuiteMixin(ApiServiceParameterTestCaseMixin):
         self.validate_data(post_object, response)
         response = self.apply('kubernetes')
         self.assertEqual(http_client.NO_CONTENT, response.status_int)
+
+    def test_coredump_values_and_formats(self):
+        # test invalid value format
+        for param in range(11, 17):
+            post_object = self.service_parameter_data[param]
+            self.post(post_object, expect_errors=True, error_message="Parameter '" +
+                self.service_parameter_data[param]['name'] + "' has invalid value format.")
+
+        # test empty value
+        for param in range(17, 21):
+            post_object = self.service_parameter_data[param]
+            self.post(post_object, expect_errors=True,
+                error_message="The service parameter value is mandatory")
+
+        # test minimum value greater than or equal to 0
+        for param in range(21, 24):
+            post_object = self.service_parameter_data[param]
+            self.post(post_object, expect_errors=True, error_message="Parameter '" +
+                self.service_parameter_data[param]['name'] +
+                "' must be greater than or equal to 0.")
+
+        # test minimum value greater than or equal to 1G
+        for param in range(24, 27):
+            post_object = self.service_parameter_data[param]
+            self.post(post_object, expect_errors=True, error_message="Parameter '" +
+                self.service_parameter_data[param]['name'] +
+                "' must be greater than or equal to 1G.")
+
+        # test valid values
+        for param in range(7, 11):
+            post_object = self.service_parameter_data[param]
+            response = self.post(post_object)
+            self.validate_data(post_object, response)
 
 
 class ApiServiceParameterDeleteTestSuiteMixin(ApiServiceParameterTestCaseMixin):
