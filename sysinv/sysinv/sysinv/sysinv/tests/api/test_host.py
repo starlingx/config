@@ -46,6 +46,7 @@ class FakeConductorAPI(object):
         self.kube_upgrade_kubelet = mock.MagicMock()
         self.create_barbican_secret = mock.MagicMock()
         self.mtc_action_apps_semantic_checks = mock.MagicMock()
+        self.update_host_max_cpu_frequency = mock.MagicMock()
 
     def create_ihost(self, context, values):
         # Create the host in the DB as the code under test expects this
@@ -3366,6 +3367,70 @@ class RejectMaintananceActionByAppTestCase(TestHost):
                                            constants.FORCE_LOCK_ACTION,
                                            'sysinv-test',
                                            expect_errors=True)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+
+class TestHostModifyCPUMaxFrequency(TestHost):
+    def test_host_max_cpu_frequency_not_configurable(self):
+        worker = self._create_worker(
+            max_cpu_frequency=None,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            capabilities={constants.IHOST_MAX_CPU_CONFIG:
+                          constants.NOT_CONFIGURABLE})
+
+        self.assertRaises(
+            webtest.app.AppError,
+            self._patch_host,
+            worker.get('hostname'),
+            [{'path': '/max_cpu_frequency',
+            'value': '283487',
+            'op': 'replace'}],
+            'sysinv-test')
+
+    def test_host_max_cpu_frequency_configurable_bad_values(self):
+        worker = self._create_worker(
+            max_cpu_frequency=None,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            capabilities={constants.IHOST_MAX_CPU_CONFIG:
+                          constants.CONFIGURABLE})
+
+        for bad_value in ['AAAAA', '1A1A1A1', '-1', '0']:
+            self.assertRaises(
+                webtest.app.AppError,
+                self._patch_host,
+                worker.get('hostname'),
+                [{'path': '/max_cpu_frequency',
+                'value': bad_value,
+                'op': 'replace'}],
+                'sysinv-test')
+
+    def test_host_max_cpu_frequency_default(self):
+        max_cpu_default = 1000000
+
+        worker = self._create_worker(
+            max_cpu_frequency=None,
+            max_cpu_default=max_cpu_default,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            capabilities={constants.IHOST_MAX_CPU_CONFIG:
+                          constants.CONFIGURABLE})
+
+        response = self._patch_host(
+            worker.get('hostname'),
+            [{'path': '/max_cpu_frequency',
+            'value': 'max_cpu_default',
+            'op': 'replace'}],
+            'sysinv-test')
 
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)

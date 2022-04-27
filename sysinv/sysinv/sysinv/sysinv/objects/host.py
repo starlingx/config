@@ -100,6 +100,8 @@ class Host(base.SysinvObject):
             'iscsi_initiator_name': utils.str_or_none,
             'device_image_update': utils.str_or_none,
             'reboot_needed': utils.bool_or_none,
+            'max_cpu_frequency': utils.str_or_none,
+            'max_cpu_default': utils.str_or_none
              }
 
     _foreign_fields = {

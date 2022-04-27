@@ -550,6 +550,12 @@ class Host(base.APIBase):
     install_state_info = wtypes.text
     "Represent install state extra information if there is any"
 
+    max_cpu_frequency = wtypes.text
+    "Represent the CPU max frequency"
+
+    max_cpu_default = wtypes.text
+    "Represent the default CPU max frequency"
+
     iscsi_initiator_name = wtypes.text
     "The iscsi initiator name (only used for worker hosts)"
 
@@ -587,7 +593,8 @@ class Host(base.APIBase):
                           'install_state', 'install_state_info',
                           'iscsi_initiator_name',
                           'device_image_update', 'reboot_needed',
-                          'inv_state', 'clock_synchronization']
+                          'inv_state', 'clock_synchronization',
+                          'max_cpu_frequency', 'max_cpu_default']
 
         fields = minimum_fields if not expand else None
         uhost = Host.from_rpc_object(rpc_ihost, fields)
@@ -2076,6 +2083,15 @@ class HostController(rest.RestController):
                                              'bm_username': None,
                                              'bm_password': None})
 
+            if 'max_cpu_frequency' in delta:
+                self._check_max_cpu_frequency(hostupdate)
+                max_cpu_frequency = hostupdate.ihost_patch.get('max_cpu_frequency')
+                ihost_obj['max_cpu_frequency'] = max_cpu_frequency
+                pecan.request.dbapi.ihost_update(
+                    ihost_obj['uuid'],
+                    {'max_cpu_frequency': max_cpu_frequency})
+                hostupdate.configure_required = True
+
         if hostupdate.ihost_val_prenotify:
             # update value in db  prior to notifications
             LOG.info("update ihost_val_prenotify: %s" %
@@ -2126,6 +2142,9 @@ class HostController(rest.RestController):
                     _("Please provision 'hostname' and 'personality'."))
 
             ihost_ret = pecan.request.rpcapi.configure_ihost(
+                pecan.request.context, ihost_obj)
+
+            pecan.request.rpcapi.update_host_max_cpu_frequency(
                 pecan.request.context, ihost_obj)
 
             pecan.request.dbapi.ihost_update(
@@ -2865,6 +2884,31 @@ class HostController(rest.RestController):
                     _("All %s hosts must be using load %s before this "
                       "operation can proceed")
                     % (personality, load.software_version))
+
+    def _check_max_cpu_frequency(self, host):
+        max_cpu_frequency = host.ihost_patch.get('max_cpu_frequency')
+
+        if(constants.WORKER in host.ihost_orig[constants.SUBFUNCTIONS] and
+            host.ihost_orig.get('capabilities').get(constants.IHOST_MAX_CPU_CONFIG) ==
+                constants.CONFIGURABLE and max_cpu_frequency):
+
+            if max_cpu_frequency == constants.IHOST_MAX_CPU_DEFAULT:
+                max_cpu_default = host.ihost_orig['max_cpu_default']
+                host.ihost_patch['max_cpu_frequency'] = max_cpu_default
+                return
+
+            if not max_cpu_frequency.lstrip('-+').isdigit():
+                raise wsme.exc.ClientSideError(
+                    _("Max CPU frequency %s must be an integer")
+                    % (max_cpu_frequency))
+
+            if not int(max_cpu_frequency) >= 1:
+                raise wsme.exc.ClientSideError(
+                    _("Max CPU frequency %s must be greater than 0")
+                    % (max_cpu_frequency))
+        else:
+            raise wsme.exc.ClientSideError(
+                _("Host does not support CPU max frequency"))
 
     def _check_host_load(self, hostname, load):
         host = pecan.request.dbapi.ihost_get_by_hostname(hostname)
