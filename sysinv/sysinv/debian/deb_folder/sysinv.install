@@ -1,4 +1,3 @@
-etc/sysinv/sysinv_goenabled_check.sh etc/goenabled.d
 etc/sysinv/policy.json etc/sysinv
 etc/sysinv/crushmap-storage-model.txt etc/sysinv
 etc/sysinv/crushmap-controller-model.txt etc/sysinv
@@ -13,6 +12,7 @@ scripts/query_pci_id usr/bin
 scripts/kube-cert-rotation.sh usr/bin
 scripts/ceph_k8s_update_monitors.sh usr/bin
 usr/lib/python*/dist-packages/*
+etc/goenabled.d/sysinv_goenabled_check.sh
 etc/update-motd.d/10-system
 usr/bin/cert-alarm
 usr/bin/cert-mon
