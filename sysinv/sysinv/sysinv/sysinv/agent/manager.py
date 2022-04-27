@@ -1253,6 +1253,17 @@ class AgentManager(service.PeriodicService):
                 }
                 filesystems.append(data)
 
+            if utils.is_filesystem_supported(constants.FILESYSTEM_NAME_LOG,
+                                            self._ihost_personality):
+                log_lv_size = utils.get_current_fs_size("log")
+                data = {
+                    'name': constants.FILESYSTEM_NAME_LOG,
+                    'size': log_lv_size,
+                    'logical_volume': constants.FILESYSTEM_LV_DICT[
+                        constants.FILESYSTEM_NAME_LOG]
+                }
+                filesystems.append(data)
+
             if filesystems:
                 # Create the filesystems if they do not already exist.
                 # This audit does not check if the fs size has changed.

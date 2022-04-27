@@ -7828,6 +7828,8 @@ class ConductorManager(service.PeriodicService):
                     'platform::filesystem::kubelet::runtime',
                 constants.FILESYSTEM_NAME_IMAGE_CONVERSION:
                     'platform::filesystem::conversion::runtime',
+                constants.FILESYSTEM_NAME_LOG:
+                    'platform::filesystem::log::runtime',
             }
 
             puppet_class = [classmap.get(fs) for fs in filesystem_list]
