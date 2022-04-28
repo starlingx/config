@@ -13722,7 +13722,8 @@ class ConductorManager(service.PeriodicService):
                 app.charts = self._app._get_list_of_charts(app)
                 self._helm.generate_helm_application_overrides(
                     app.sync_overrides_dir, app.name, app.mode, cnamespace=None,
-                    armada_format=True, armada_chart_info=app.charts, combined=True)
+                    armada_format=True, armada_chart_info=app.charts, combined=True,
+                    is_fluxcd_app=app.is_fluxcd_app)
                 (helm_files, armada_files) = self._app._get_overrides_files(app, None)
                 for f in helm_files + armada_files:
                     with open(f, 'rb') as file:
