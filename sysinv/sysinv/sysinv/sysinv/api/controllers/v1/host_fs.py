@@ -229,6 +229,7 @@ class HostFsController(rest.RestController):
 
         # Validate input filesystem names
         current_host_fs_list = pecan.request.dbapi.host_fs_get_by_ihost(ihost_uuid)
+        current_host_lvg_list = pecan.request.dbapi.ilvg_get_by_ihost(ihost_uuid)
         host = pecan.request.dbapi.ihost_get(ihost_uuid)
 
         modified_fs = []
@@ -263,6 +264,11 @@ class HostFsController(rest.RestController):
             elif utils.is_drbd_fs_resizing():
                 msg = _("HostFs update failed: there is a drdb filesystem "
                         "resize in progress, please retry again later.")
+                raise wsme.exc.ClientSideError(msg)
+
+            elif not utils.is_host_lvg_updated(current_host_fs_list, current_host_lvg_list):
+                msg = _("HostFs update failed: a LVG update is still "
+                        "pending, please retry again later.")
                 raise wsme.exc.ClientSideError(msg)
 
             current_size = [fs['size'] for
