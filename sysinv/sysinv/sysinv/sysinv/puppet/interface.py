@@ -931,6 +931,11 @@ def get_bond_interface_options_ifupdown(iface, primary_iface):
         elif ae_mode in LACP_AE_MODES:
             options['bond-mode'] = '802.3ad'
             options['bond-lacp-rate'] = 'fast'
+    if iface['uses']:
+        bond_slaves = str()
+        for iface in iface['uses']:
+            bond_slaves += (iface + ' ')
+        options['bond-slaves'] = bond_slaves
     return options
 
 
@@ -1011,6 +1016,7 @@ def get_ethernet_network_config(context, iface, config):
     else:
         command = 'sleep {}'.format('20')
         fill_interface_config_option_operation(options, IFACE_PRE_UP_OP, command)
+
     if is_bridged_interface(context, iface):
         if is_syscfg_network():
             options['BRIDGE'] = get_bridge_interface_name(context, iface)
@@ -1026,10 +1032,16 @@ def get_ethernet_network_config(context, iface, config):
                 options['MASTER'] = get_master_interface(context, iface)
                 options['PROMISC'] = 'yes'
             else:
-                options['bond-master'] = get_master_interface(context, iface)
+                master = get_master_interface(context, iface)
+                options['bond-master'] = master
                 osname = get_interface_os_ifname(context, iface)
                 command = '/usr/sbin/ip link set dev {} promisc on'.format(osname)
-                fill_interface_config_option_operation(options, IFACE_POST_UP_OP, command)
+                fill_interface_config_option_operation(options, IFACE_PRE_UP_OP, command)
+                # the allow-* is a separated stanza in ifupdown, but without
+                # support in puppet-network module, this stanza is needed to
+                # make ifup to run the slave's pre-up commands. It will be
+                # adjusted during parsing in apply_network_config.sh
+                options['allow-{}'.format(master)] = osname
     elif interface_class == constants.INTERFACE_CLASS_PCI_SRIOV:
         if iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
             sriovfs_path = ("/sys/class/net/%s/device/sriov_numvfs" %
@@ -1347,12 +1359,16 @@ def get_interface_network_config(context, iface, network_id=None):
     if is_syscfg_network():
         config['options'].update({'IPV6_AUTOCONF': 'no'})
     else:
+        interface_op = IFACE_POST_UP_OP
+        if is_slave_interface(context, iface):
+            # ifupdown's ifup only runs pre-up for slave interfaces
+            interface_op = IFACE_PRE_UP_OP
         autoconf_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/autoconf'.format(os_ifname)
-        fill_interface_config_option_operation(config['options'], IFACE_POST_UP_OP, autoconf_off)
+        fill_interface_config_option_operation(config['options'], interface_op, autoconf_off)
         accept_ra_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/accept_ra'.format(os_ifname)
-        fill_interface_config_option_operation(config['options'], IFACE_POST_UP_OP, accept_ra_off)
+        fill_interface_config_option_operation(config['options'], interface_op, accept_ra_off)
         accept_redir_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/accept_redirects'.format(os_ifname)
-        fill_interface_config_option_operation(config['options'], IFACE_POST_UP_OP, accept_redir_off)
+        fill_interface_config_option_operation(config['options'], interface_op, accept_redir_off)
 
     return config
 

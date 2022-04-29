@@ -1330,9 +1330,9 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         port = self.context['ports'][iface['id']]
         config = interface.get_interface_network_config(self.context, iface)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(port['name'])
-        options = {'pre-up': 'sleep 20',
+        options = {'allow-bond0': port['name'],
                    'bond-master': 'bond0',
-                   'post-up': '/usr/sbin/ip link set dev {} promisc on; {}'.format(port['name'],
+                   'pre-up': 'sleep 20; /usr/sbin/ip link set dev {} promisc on; {}'.format(port['name'],
                                                                              ipv6_autocnf_off),
                    'mtu': '1500'}
         expected = self._get_network_config_ifupdown(
@@ -1361,6 +1361,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         config = interface.get_interface_network_config(self.context, bond)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(bond['ifname'])
         options = {'bond-miimon': '100',
+                  'bond-slaves': 'eth1 eth2 ',
                   'bond-mode': 'balance-xor',
                   'bond-xmit-hash-policy': 'layer2',
                   'hwaddress': bond['imac'],
@@ -1398,6 +1399,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         options = {'bond-lacp-rate': 'fast',
                    'bond-miimon': '100',
                    'bond-mode': '802.3ad',
+                   'bond-slaves': 'eth1 eth2 ',
                    'bond-xmit-hash-policy': 'layer2',
                    'hwaddress': bond['imac'],
                    'mtu': '1500',
@@ -1433,6 +1435,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(bond['ifname'])
         options = {'bond-miimon': '100',
                    'bond-mode': 'active-backup',
+                   'bond-slaves': 'eth1 eth2 ',
                    'bond-primary': 'eth1',
                    'bond-primary-reselect': 'always',
                    'hwaddress': bond['imac'],
@@ -1471,6 +1474,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(bond['ifname'])
         options = {'bond-miimon': '100',
                    'bond-mode': 'active-backup',
+                   'bond-slaves': 'eth1 eth2 ',
                    'bond-primary': 'eth1',
                    'bond-primary-reselect': 'better',
                    'hwaddress': bond['imac'],
