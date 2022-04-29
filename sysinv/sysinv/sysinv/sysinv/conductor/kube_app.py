@@ -167,7 +167,7 @@ class AppOperator(object):
         self._image = AppImageParser()
         self._lock = threading.Lock()
         self._armada = ArmadaHelper(self._kube)
-        self._fluxcd = FluxCDHelper(self._kube)
+        self._fluxcd = FluxCDHelper(self._dbapi, self._kube)
 
         if not os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG):
             self._clear_stuck_applications()
@@ -628,7 +628,7 @@ class AppOperator(object):
                         not os.path.isfile(static_overrides_path):
                     raise exception.SysinvException(_(
                         "FluxCD app chart static overrides file doesn't exist "
-                        "%s" % chart_name))
+                        "%s" % static_overrides_path))
 
                 with io.open(static_overrides_path, 'r', encoding='utf-8') as f:
                     static_overrides_file = yaml.safe_load(f) or {}
@@ -1653,9 +1653,6 @@ class AppOperator(object):
                 c.metadata_name: {"namespace": c.namespace, "chart_label": c.chart_label}
                 for c in app.charts
             }
-            group = "helm.toolkit.fluxcd.io"
-            version = "v2beta1"
-            plural = "helmreleases"
             charts_count = len(charts)
 
             if app.system_app:
@@ -1682,47 +1679,36 @@ class AppOperator(object):
                     self._update_app_status(app, new_progress=progress_str)
 
                 for release_name, chart_obj in charts.items():
-                    namespace = chart_obj["namespace"]
-                    res = self._kube.get_custom_resource(group,
-                                                         version,
-                                                         namespace,
-                                                         plural,
-                                                         release_name)
-                    if res and "status" in res and "conditions" in res["status"]:
-                        for cond in res["status"]["conditions"]:
-                            if cond["type"] == "Released":
-                                if cond["status"] == "True":
-                                    # We will see this issue https://github.com/fluxcd/helm-controller/issues/81
-                                    # on AIO-SX if there are issues during chart install.
-                                    # Basically, the status of helmrelease ends up with
-                                    # ready but the pods are not actually ready/running. This is due to
-                                    # helm upstream issues https://github.com/helm/helm/issues/3173,
-                                    # https://github.com/helm/helm/issues/5814,
-                                    # https://github.com/helm/helm/issues/8660.
-                                    # To solve this we need to check if the pods of the helm chart
-                                    # are ready/running using the kubernetes python client
-                                    all_pods_ready = True
-                                    if cutils.is_aio_simplex_system(self._dbapi):
-                                        label_selector = "app.kubernetes.io/name={}" \
-                                            .format(chart_obj["chart_label"])
-                                        pods = self._kube.kube_get_pods_by_selector(namespace, label_selector, "")
-                                        if pods:
-                                            for pod in pods:
-                                                if not pod or pod.status.phase != 'Running' or \
-                                                        not self._armada.check_pod_ready_probe(pod):
-                                                    all_pods_ready = False
-                                                    break
-                                    if all_pods_ready:
-                                        charts.pop(release_name)
-                                elif cond["status"] == "False":
-                                    # If the helmrelease failed
-                                    # the app must also be in a failed state
-                                    err_msg = cond["message"] if "message" in cond else ""
-                                    LOG.exception("Application {} failed while doing the {} operation! "
-                                                  "The helmrelease with the problem is {} "
-                                                  "and the detailed error msg is: '{}'."
-                                                  .format(app.name, request, release_name, err_msg))
-                                    return False
+                    # Request the helm release info
+                    helm_rel = self._kube.get_custom_resource(
+                        "helm.toolkit.fluxcd.io", "v2beta1",
+                        chart_obj["namespace"], "helmreleases",
+                        release_name)
+
+                    if not helm_rel:
+                        LOG.info("FluxCD Helm release info for {} is not "
+                                 "available".format(release_name))
+                        continue
+
+                    release_status, msg = self._fluxcd.get_helm_release_status(helm_rel)
+                    if release_status == "False":
+                        # If the helm release failed the app must also be in a
+                        # failed state
+                        err_msg = ":{}".format(msg) if msg else ""
+                        LOG.exception("Application {}: release {}: Failed during {} {}"
+                                      .format(app.name, release_name, request, err_msg))
+                        return False
+                    elif release_status == "True":
+                        # Special validation check needed for AIO-SX only, can
+                        # go away once upstream issues are addressed. See method
+                        # for details.
+                        if self._fluxcd.verify_pods_status_for_release(chart_obj):
+                            charts.pop(release_name)
+                    else:
+                        # Noisy log, so make it debug only, but good for debugging apps dev.
+                        LOG.debug("Application {}: release {}: Helm release "
+                                  "status is unknown. Checking again.".format(
+                                      app.name, release_name))
 
                 # wait a bit to check again if the charts are ready
                 time.sleep(1)
@@ -4438,7 +4424,10 @@ class PluginHelper(object):
 class FluxCDHelper(object):
     """ FluxCD class to encapsulate FluxCD related operations """
 
-    def __init__(self, kube):
+    HELM_RELEASE_STATUS_UNKNOWN = 'Unknown'
+
+    def __init__(self, dbapi, kube):
+        self._dbapi = dbapi
         self._kube = kube
 
     def make_fluxcd_operation(self, operation, manifest_dir=""):
@@ -4484,3 +4473,79 @@ class FluxCDHelper(object):
 
     def _rollback(self, manifest_dir):
         pass
+
+    def check_pod_running_and_ready_probe(self, pod):
+        """Pod is of the form returned by self._kube.kube_get_pods_by_selector.
+        Returns: true if last probe shows the container is in 'Ready' state.
+        """
+        conditions = list([x for x in pod.status.conditions if x.type == 'Ready'])
+        if not conditions:
+            return False
+        return conditions[0].status == 'True'
+
+    def check_pod_completed(self, pod):
+        """Pod is of the form returned by self._kube.kube_get_pods_by_selector.
+        Returns: true if last probe shows the container 'Ready' status is False
+                 and the reason is PodCompleted
+        """
+        conditions = list([x for x in pod.status.conditions if x.type == 'Ready'])
+        if not conditions:
+            return False
+        return (conditions[0].status == 'False' and conditions[0].reason == 'PodCompleted')
+
+    def verify_pods_status_for_release(self, chart_obj):
+        """ chart_obj has the information required to query for pods associated
+                      with the chart release
+            Returns: if the release is ready (True/False)
+        """
+        # On AIO-SX an issue may be seen
+        # (https://github.com/fluxcd/helm-controller/issues/81) during chart
+        # install. Basically, the status of helmrelease ends up with ready but
+        # the pods are not actually ready/running.
+        #
+        # This is due to helm upstream issues:
+        #  - https://github.com/helm/helm/issues/3173,
+        #  - https://github.com/helm/helm/issues/5814,
+        # -  https://github.com/helm/helm/issues/8660.
+        #
+        # To solve this we need to check if the pods of the helm chart are
+        # ready/running using the kubernetes python client
+
+        # Nothing to worry about in a non AIO-SX install
+        if not cutils.is_aio_simplex_system(self._dbapi):
+            return True
+
+        # Get all pods with the appropriate label
+        label_selector = "app.kubernetes.io/name={}".format(chart_obj["chart_label"])
+        pods = self._kube.kube_get_pods_by_selector(chart_obj["namespace"], label_selector, "")
+
+        if not pods:
+            return True
+
+        for pod in pods:
+            completed = self.check_pod_completed(pod)
+            running_and_ready = self.check_pod_running_and_ready_probe(pod)
+
+            LOG.info("Pod {} has been found with label {}: Completed?: {}, "
+                     "Running/Ready?: {}".format(pod.metadata.name,
+                        label_selector, completed, running_and_ready))
+
+            if not completed and not running_and_ready:
+                return False
+
+        return True
+
+    def get_helm_release_status(self, helm_release_dict):
+        """helm_release_dict is of the form returned by _kube.get_custom_resource().
+        Returns: 'status' of the release (Unlnown,True,False) and 'message'
+                  associated with the status
+        """
+        if "status" in helm_release_dict and "conditions" in helm_release_dict["status"]:
+            conditions = list([x
+                               for x in helm_release_dict['status']['conditions']
+                               if x['type'] == 'Released'])
+            if not conditions:
+                return self.HELM_RELEASE_STATUS_UNKNOWN, None
+            return conditions[0]['status'], conditions[0].get('message')
+        else:
+            return self.HELM_RELEASE_STATUS_UNKNOWN, None
