@@ -2090,7 +2090,9 @@ class HostController(rest.RestController):
                 pecan.request.dbapi.ihost_update(
                     ihost_obj['uuid'],
                     {'max_cpu_frequency': max_cpu_frequency})
-                hostupdate.configure_required = True
+                if not hostupdate.configure_required:
+                    pecan.request.rpcapi.update_host_max_cpu_frequency(
+                        pecan.request.context, ihost_obj)
 
         if hostupdate.ihost_val_prenotify:
             # update value in db  prior to notifications
@@ -2142,9 +2144,6 @@ class HostController(rest.RestController):
                     _("Please provision 'hostname' and 'personality'."))
 
             ihost_ret = pecan.request.rpcapi.configure_ihost(
-                pecan.request.context, ihost_obj)
-
-            pecan.request.rpcapi.update_host_max_cpu_frequency(
                 pecan.request.context, ihost_obj)
 
             pecan.request.dbapi.ihost_update(
