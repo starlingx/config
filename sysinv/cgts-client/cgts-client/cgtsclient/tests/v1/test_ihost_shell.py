@@ -67,16 +67,6 @@ class HostTest(test_shell.ShellTest):
     def setUp(self):
         super(HostTest, self).setUp()
 
-        # Mock the client
-        p = mock.patch('cgtsclient.client._get_endpoint')
-        self.mock_cgtsclient_client_get_endpoint = p.start()
-        self.mock_cgtsclient_client_get_endpoint.return_value = \
-            'http://fakelocalhost:6385/v1'
-        self.addCleanup(p.stop)
-        p = mock.patch('cgtsclient.client._get_ksclient')
-        self.mock_cgtsclient_client_get_ksclient = p.start()
-        self.addCleanup(p.stop)
-
         # Mock the KubeHostUpgradeManager
         self.kube_host_upgrade_manager_list_result = [
             KubeHostUpgrade(None, FAKE_KUBE_HOST_UPGRADE, True)]

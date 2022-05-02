@@ -15,10 +15,13 @@
 #    under the License.
 #
 
+import copy
 import hashlib
 import httplib2
+from keystoneauth1 import adapter
 import logging
 import os
+from oslo_serialization import jsonutils
 from oslo_utils import encodeutils
 import requests
 from requests_toolbelt import MultipartEncoder
@@ -26,6 +29,7 @@ import socket
 
 import six
 from six.moves.urllib.parse import urlparse
+
 
 try:
     import ssl
@@ -45,6 +49,9 @@ _logger = logging.getLogger(__name__)
 CHUNKSIZE = 1024 * 64  # 64kB
 SENSITIVE_HEADERS = ('X-Auth-Token',)
 UPLOAD_REQUEST_TIMEOUT = 1800
+USER_AGENT = 'cgtsclient'
+API_VERSION = '/v1'
+DEFAULT_API_VERSION = 'latest'
 
 # httplib2 retries requests on socket.timeout which
 # is not idempotent and can lead to orhan objects.
@@ -103,6 +110,163 @@ class ServiceCatalog(object):
                 raise exceptions.EndpointTypeNotFound(reason=endpoint_type)
 
         return matching_endpoints[0][endpoint_type]
+
+
+def _extract_error_json_text(body_json):
+    error_json = {}
+    if 'error_message' in body_json:
+        raw_msg = body_json['error_message']
+        error_json = jsonutils.loads(raw_msg)
+    elif 'error' in body_json:
+        error_body = body_json['error']
+        error_json = {'faultstring': error_body['title'],
+                      'debuginfo': error_body['message']}
+    else:
+        error_body = body_json['errors'][0]
+        error_json = {'faultstring': error_body['title']}
+        if 'detail' in error_body:
+            error_json['debuginfo'] = error_body['detail']
+        elif 'description' in error_body:
+            error_json['debuginfo'] = error_body['description']
+    return error_json
+
+
+def _extract_error_json(body, resp):
+    """Return error_message from the HTTP response body."""
+    try:
+        content_type = resp.headers.get("Content-Type", "")
+    except AttributeError:
+        content_type = ""
+    if content_type.startswith("application/json"):
+        try:
+            body_json = resp.json()
+            return _extract_error_json_text(body_json)
+        except AttributeError:
+            body_json = jsonutils.loads(body)
+            return _extract_error_json_text(body_json)
+        except ValueError:
+            return {}
+    else:
+        try:
+            body_json = jsonutils.loads(body)
+            return _extract_error_json_text(body_json)
+        except ValueError:
+            return {}
+
+
+class SessionClient(adapter.LegacyJsonAdapter):
+
+    def __init__(self, *args, **kwargs):
+        self.user_agent = USER_AGENT
+        self.api_version = DEFAULT_API_VERSION
+        super(SessionClient, self).__init__(*args, **kwargs)
+
+    def _http_request(self, url, method, **kwargs):
+        if url.startswith(API_VERSION):
+            url = url[len(API_VERSION):]
+
+        kwargs.setdefault('user_agent', self.user_agent)
+        kwargs.setdefault('auth', self.auth)
+        kwargs.setdefault('endpoint_override', self.endpoint_override)
+
+        # Copy the kwargs so we can reuse the original in case of redirects
+        kwargs['headers'] = copy.deepcopy(kwargs.get('headers', {}))
+        kwargs['headers'].setdefault('User-Agent', self.user_agent)
+
+        endpoint_filter = kwargs.setdefault('endpoint_filter', {})
+        endpoint_filter.setdefault('interface', self.interface)
+        endpoint_filter.setdefault('service_type', self.service_type)
+        endpoint_filter.setdefault('region_name', self.region_name)
+
+        resp = self.session.request(url, method,
+                                    raise_exc=False, **kwargs)
+
+        if 400 <= resp.status_code < 600:
+            error_json = _extract_error_json(resp.content, resp)
+            raise exceptions.from_response(
+                resp, error_json.get('faultstring'),
+                error_json.get('debuginfo'), method, url)
+        elif resp.status_code in (301, 302, 305):
+            # Redirected. Reissue the request to the new location.
+            location = resp.headers.get('location')
+            resp = self._http_request(location, method, **kwargs)
+        elif resp.status_code == 300:
+            raise exceptions.from_response(resp, method=method, url=url)
+        return resp
+
+    def json_request(self, method, url, **kwargs):
+        kwargs.setdefault('headers', {})
+        kwargs['headers'].setdefault('Content-Type', 'application/json')
+        kwargs['headers'].setdefault('Accept', 'application/json')
+        if 'body' in kwargs:
+            kwargs['data'] = jsonutils.dumps(kwargs.pop('body'))
+
+        resp = self._http_request(url, method, **kwargs)
+        body = resp.content
+        content_type = resp.headers.get('content-type', None)
+        status = resp.status_code
+        if status == 204 or status == 205 or content_type is None:
+            return resp, list()
+        if 'application/json' in content_type:
+            try:
+                body = resp.json()
+            except ValueError:
+                _logger.error('Could not decode response body as JSON')
+        else:
+            body = None
+
+        return resp, body
+
+    def raw_request(self, method, url, **kwargs):
+        kwargs.setdefault('headers', {})
+        kwargs['headers'].setdefault('Content-Type',
+                                     'application/octet-stream')
+        return self._http_request(url, method, **kwargs)
+
+    def _get_connection_url(self, url):
+        endpoint = self.endpoint_override
+        # if 'v1 in both, remove 'v1' from endpoint
+        if 'v1' in endpoint and 'v1' in url:
+            endpoint = endpoint.replace('/v1', '', 1)
+        # if 'v1 not in both, add 'v1' to endpoint
+        elif 'v1' not in endpoint and 'v1' not in url:
+            endpoint = endpoint.rstrip('/') + '/v1'
+
+        return endpoint.rstrip('/') + '/' + url.lstrip('/')
+
+    def upload_request_with_data(self, method, url, **kwargs):
+        requests_url = self._get_connection_url(url)
+        headers = {"X-Auth-Token": self.session.get_token()}
+        files = {'file': ("for_upload",
+                          kwargs['body'],
+                          )}
+        data = kwargs.get('data')
+        req = requests.post(requests_url, headers=headers, files=files,
+                            data=data)
+        return req.json()
+
+    def upload_request_with_multipart(self, method, url, **kwargs):
+        requests_url = self._get_connection_url(url)
+        fields = kwargs.get('data')
+        files = kwargs['body']
+
+        if fields is None:
+            fields = dict()
+        for k, v in files.items():
+            fields[k] = (v, open(v, 'rb'),)
+
+        enc = MultipartEncoder(fields)
+        headers = {'Content-Type': enc.content_type,
+                   "X-Auth-Token": self.session.get_token()}
+        response = requests.post(requests_url, data=enc, headers=headers)
+
+        if kwargs.get('check_exceptions'):
+            if response.status_code != 200:
+                err_message = _extract_error_json(response.text, response)
+                fault_text = err_message.get('faultstring') or "Unknown Error"
+                raise exceptions.HTTPBadRequest(fault_text)
+
+        return response.json()
 
 
 class HTTPClient(httplib2.Http):
@@ -586,4 +750,33 @@ class ResponseBodyIterator(object):
         if chunk:
             return chunk
         else:
-            return
+            raise StopIteration()
+
+
+def construct_http_client(endpoint=None, username=None, password=None,
+                          endpoint_type=None, auth_url=None, **kwargs):
+
+    session = kwargs.pop('session', None)
+    auth = kwargs.pop('auth', None)
+
+    if session:
+        # SessionClient
+        if 'endpoint_override' not in kwargs and endpoint:
+            kwargs['endpoint_override'] = endpoint
+
+        if 'service_type' not in kwargs:
+            kwargs['service_type'] = 'platform'
+
+        if 'interface' not in kwargs and endpoint_type:
+            kwargs['interface'] = endpoint_type
+
+        if 'region_name' in kwargs:
+            kwargs['additional_headers'] = {
+                'X-Region-Name': kwargs['region_name']}
+
+        return SessionClient(session, auth=auth, **kwargs)
+    else:
+        # httplib2
+        return HTTPClient(endpoint=endpoint, username=username,
+                          password=password, endpoint_type=endpoint_type,
+                          auth_url=auth_url, **kwargs)

@@ -208,7 +208,7 @@ def _sort_for_list(objs, fields, formatters=None, sortby=0, reversesort=False):
     if sortby is None:
         return objs
 
-    rows_to_sort = copy.deepcopy(objs)
+    rows_to_sort = objs
     sort_field = fields[sortby]
 
     # figure out sort key function

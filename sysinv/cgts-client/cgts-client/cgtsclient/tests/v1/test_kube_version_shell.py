@@ -19,11 +19,7 @@ class KubeVersionTest(test_shell.ShellTest):
         super(KubeVersionTest, self).tearDown()
 
     @mock.patch('cgtsclient.v1.kube_version.KubeVersionManager.list')
-    @mock.patch('cgtsclient.client._get_ksclient')
-    @mock.patch('cgtsclient.client._get_endpoint')
-    def test_kube_version_list(self, mock_get_endpoint, mock_get_client,
-                               mock_list):
-        mock_get_endpoint.return_value = 'http://fakelocalhost:6385/v1'
+    def test_kube_version_list(self, mock_list):
         fake_version = {'version': 'v1.42.2',
                         'upgrade_from': ['v1.42.1'],
                         'downgrade_to': [],
@@ -46,11 +42,7 @@ class KubeVersionTest(test_shell.ShellTest):
                          version_results)
 
     @mock.patch('cgtsclient.v1.kube_version.KubeVersionManager.get')
-    @mock.patch('cgtsclient.client._get_ksclient')
-    @mock.patch('cgtsclient.client._get_endpoint')
-    def test_kube_version_show(self, mock_get_endpoint, mock_get_client,
-                               mock_get):
-        mock_get_endpoint.return_value = 'http://fakelocalhost:6385/v1'
+    def test_kube_version_show(self, mock_get):
         fake_version = {'version': 'v1.42.2',
                         'upgrade_from': ['v1.42.1'],
                         'downgrade_to': [],

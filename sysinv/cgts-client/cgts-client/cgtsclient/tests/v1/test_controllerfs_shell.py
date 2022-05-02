@@ -36,16 +36,6 @@ class ControllerFsTest(test_shell.ShellTest):
     def setUp(self):
         super(ControllerFsTest, self).setUp()
 
-        # Mock the client
-        p = mock.patch('cgtsclient.client._get_endpoint')
-        self.mock_cgtsclient_client_get_endpoint = p.start()
-        self.mock_cgtsclient_client_get_endpoint.return_value = \
-            'http://fakelocalhost:6385/v1'
-        self.addCleanup(p.stop)
-        p = mock.patch('cgtsclient.client._get_ksclient')
-        self.mock_cgtsclient_client_get_ksclient = p.start()
-        self.addCleanup(p.stop)
-
         # Mock the ControllerFsManager
         self.controller_fs_manager_list_result = [
             ControllerFs(None, FAKE_CONTROLLER_FS, True)]
