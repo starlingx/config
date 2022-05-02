@@ -252,6 +252,7 @@ class TestListKubeUpgrade(TestKubeUpgrade):
 class TestPostKubeUpgrade(TestKubeUpgrade,
                           dbbase.ProvisionedControllerHostTestCase):
 
+    @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
     def test_create(self):
         # Test creation of upgrade
         create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.2')
@@ -377,6 +378,7 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         self.assertIn("incompatible with the new Kubernetes version v1.43.2",
                       result.json['error_message'])
 
+    @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
     def test_create_system_unhealthy_from_alarms(self):
         """Test creation of a kube upgrade while there are alarms"""
         # Test creation of upgrade when system health check fails
@@ -395,6 +397,7 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         self.assertIn("System is not in a valid state",
                       result.json['error_message'])
 
+    @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
     def test_force_create_system_unhealthy_from_alarms(self):
         # Test creation of upgrade when system health check fails but
         # overridden with force
@@ -414,6 +417,7 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         self.assertEqual(result.json['state'],
                          kubernetes.KUBE_UPGRADE_STARTED)
 
+    @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
     def test_force_create_system_unhealthy_from_mgmt_affecting_alarms(self):
         """ Test kube upgrade create fails when mgmt affecting alarms found"""
 
@@ -433,6 +437,7 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         self.assertIn("System is not in a valid state",
                       result.json['error_message'])
 
+    @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
     def test_create_system_can_ignore_alarms(self):
         # Test creation of upgrade when system health check fails but
         # overridden with force
@@ -453,6 +458,7 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         self.assertEqual(result.json['state'],
                          kubernetes.KUBE_UPGRADE_STARTED)
 
+    @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
     def test_create_system_unhealthy_from_bad_apps(self):
         """ Test kube upgrade create fails when invalid kube app found"""
 
@@ -477,6 +483,7 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         self.assertIn("Run system health-query-kube-upgrade for more details.",
                       result.json['error_message'])
 
+    @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
     def test_create_no_patches_required(self):
         # Test creation of upgrade when no applied patches are required
         self.mock_patch_is_applied_result = False

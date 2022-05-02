@@ -8,6 +8,7 @@
 Tests for the health utilities.
 """
 
+import json
 import kubernetes
 import mock
 import uuid
@@ -375,3 +376,21 @@ class TestHealth(dbbase.BaseHostTestCase):
             "output: %s" % output
         assert "applications not in a valid state: test-app-2" in output, \
             "output: %s" % output
+
+    @mock.patch('sysinv.common.health.subprocess.check_output')
+    def test_check_trident_compatibility_success(self, mocked_subprocess):
+        ''' tests _check_trident_compatibility method '''
+        mocked_subprocess.return_value = json.dumps(
+            {'server': {'version': '22.01'}}).encode()
+
+        result = self.health._check_trident_compatibility()
+        assert result is True
+
+    @mock.patch('sysinv.common.health.subprocess.check_output')
+    def test_check_trident_compatibility_fail(self, mocked_subprocess):
+        ''' tests _check_trident_compatibility method '''
+        mocked_subprocess.return_value = json.dumps(
+            {'server': {'version': '21.04'}}).encode()
+
+        result = self.health._check_trident_compatibility()
+        assert result is False
