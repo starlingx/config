@@ -1,2 +1,2 @@
-tools/system.bash_completion usr/share/bash-completion/completions/system
+usr/share/bash-completion/completions/system.bash
 usr

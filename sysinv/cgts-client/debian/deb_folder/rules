@@ -4,6 +4,7 @@
 export PYBUILD_NAME=cgts-client
 # (chuck) - workaround for pbr version detection when running install
 export PBR_VERSION=1.0.0
+ROOT := $(CURDIR)/debian/tmp
 
 %:
 	dh $@ --with python3 --buildsystem=pybuild
@@ -14,5 +15,5 @@ override_dh_install:
 	python3 setup.py bdist_wheel \
 		--universal\
 		-d $(CURDIR)/debian/cgts-client-wheel/usr/share/python-wheels
+	install -p -D -m 644 tools/system.bash_completion ${ROOT}/usr/share/bash-completion/completions/system.bash
 	dh_install
-
