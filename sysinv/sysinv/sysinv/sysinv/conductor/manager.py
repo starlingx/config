@@ -15002,7 +15002,7 @@ class ConductorManager(service.PeriodicService):
             return msg
 
         api_version = "%s/%s" % (kubernetes.CERT_MANAGER_GROUP,
-                                 kubernetes.V1_ALPHA_2)
+                                 kubernetes.CERT_MANAGER_VERSION)
         body = {
             'apiVersion': api_version,
             'kind': 'Issuer',
@@ -15019,7 +15019,7 @@ class ConductorManager(service.PeriodicService):
 
         try:
             kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
-                                                     kubernetes.V1_ALPHA_2,
+                                                     kubernetes.CERT_MANAGER_VERSION,
                                                      kubernetes.NAMESPACE_DEPLOYMENT,
                                                      'issuers',
                                                      constants.KUBE_ROOTCA_ISSUER,
@@ -15196,7 +15196,7 @@ class ConductorManager(service.PeriodicService):
         kube_operator = kubernetes.KubeOperator()
         selfsigned_issuer_name = constants.KUBE_SELFSIGNED_ISSUER
         api_version = "%s/%s" % (kubernetes.CERT_MANAGER_GROUP,
-                                 kubernetes.V1_ALPHA_2)
+                                 kubernetes.CERT_MANAGER_VERSION)
         selfsigned_issuer = {
             'apiVersion': api_version,
             'kind': 'Issuer',
@@ -15211,7 +15211,7 @@ class ConductorManager(service.PeriodicService):
 
         try:
             kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
-                                                     kubernetes.V1_ALPHA_2,
+                                                     kubernetes.CERT_MANAGER_VERSION,
                                                      kubernetes.NAMESPACE_DEPLOYMENT,
                                                      'issuers',
                                                      selfsigned_issuer_name,
@@ -15250,7 +15250,7 @@ class ConductorManager(service.PeriodicService):
 
         try:
             kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
-                                                     kubernetes.V1_ALPHA_2,
+                                                     kubernetes.CERT_MANAGER_VERSION,
                                                      kubernetes.NAMESPACE_DEPLOYMENT,
                                                      'certificates',
                                                      rootca_certificate_name,
@@ -15280,7 +15280,7 @@ class ConductorManager(service.PeriodicService):
 
         try:
             kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
-                                                     kubernetes.V1_ALPHA_2,
+                                                     kubernetes.CERT_MANAGER_VERSION,
                                                      kubernetes.NAMESPACE_DEPLOYMENT,
                                                      'issuers',
                                                      certificate_issuer_name,
@@ -15439,7 +15439,7 @@ class ConductorManager(service.PeriodicService):
 
             try:
                 kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
-                                                    kubernetes.V1_ALPHA_2,
+                                                    kubernetes.CERT_MANAGER_VERSION,
                                                     kubernetes.NAMESPACE_DEPLOYMENT,
                                                     'certificates',
                                                     admin_certificate_name,
@@ -15481,7 +15481,7 @@ class ConductorManager(service.PeriodicService):
 
         try:
             kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
-                                                    kubernetes.V1_ALPHA_2,
+                                                    kubernetes.CERT_MANAGER_VERSION,
                                                     kubernetes.NAMESPACE_DEPLOYMENT,
                                                     'certificates',
                                                     apiserver_certificate_name,
@@ -15516,7 +15516,7 @@ class ConductorManager(service.PeriodicService):
 
         try:
             kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
-                                                    kubernetes.V1_ALPHA_2,
+                                                    kubernetes.CERT_MANAGER_VERSION,
                                                     kubernetes.NAMESPACE_DEPLOYMENT,
                                                     'certificates',
                                                     apiserver_kubelet_client_certificate_name,
@@ -15552,7 +15552,7 @@ class ConductorManager(service.PeriodicService):
 
         try:
             kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
-                                                    kubernetes.V1_ALPHA_2,
+                                                    kubernetes.CERT_MANAGER_VERSION,
                                                     kubernetes.NAMESPACE_DEPLOYMENT,
                                                     'certificates',
                                                     kube_scheduler_certificate_name,
@@ -15587,7 +15587,7 @@ class ConductorManager(service.PeriodicService):
 
         try:
             kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
-                                                    kubernetes.V1_ALPHA_2,
+                                                    kubernetes.CERT_MANAGER_VERSION,
                                                     kubernetes.NAMESPACE_DEPLOYMENT,
                                                     'certificates',
                                                     controller_manager_certificate_name,
@@ -15623,7 +15623,7 @@ class ConductorManager(service.PeriodicService):
 
         try:
             kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
-                                                    kubernetes.V1_ALPHA_2,
+                                                    kubernetes.CERT_MANAGER_VERSION,
                                                     kubernetes.NAMESPACE_DEPLOYMENT,
                                                     'certificates',
                                                     kubelet_certificate_name,
@@ -15674,7 +15674,7 @@ class ConductorManager(service.PeriodicService):
 
         try:
             kube_operator.apply_custom_resource(kubernetes.CERT_MANAGER_GROUP,
-                                                    kubernetes.V1_ALPHA_2,
+                                                    kubernetes.CERT_MANAGER_VERSION,
                                                     kubernetes.NAMESPACE_DEPLOYMENT,
                                                     'certificates',
                                                     kubelet_certificate_name,
@@ -15706,10 +15706,10 @@ class ConductorManager(service.PeriodicService):
         if phase == constants.KUBE_CERT_UPDATE_UPDATECERTS:
             kube_operator = kubernetes.KubeOperator()
             api_version = "%s/%s" % (kubernetes.CERT_MANAGER_GROUP,
-                                    kubernetes.V1_ALPHA_2)
+                                    kubernetes.CERT_MANAGER_VERSION)
             try:
                 issuer = kube_operator.get_custom_resource(kubernetes.CERT_MANAGER_GROUP,
-                                                        kubernetes.V1_ALPHA_2,
+                                                        kubernetes.CERT_MANAGER_VERSION,
                                                         kubernetes.NAMESPACE_DEPLOYMENT,
                                                         'issuers',
                                                         constants.KUBE_ROOTCA_ISSUER)
@@ -15817,7 +15817,7 @@ class ConductorManager(service.PeriodicService):
         kube_operator = kubernetes.KubeOperator()
         namespace = kubernetes.NAMESPACE_DEPLOYMENT
         group = kubernetes.CERT_MANAGER_GROUP
-        version = kubernetes.V1_ALPHA_2
+        version = kubernetes.CERT_MANAGER_VERSION
 
         deleted_resources = []
         for certificate_name in certificate_list:

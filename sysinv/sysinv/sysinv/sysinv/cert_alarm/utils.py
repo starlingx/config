@@ -19,6 +19,7 @@ LOG = log.getLogger(__name__)
 CONF = cfg.CONF
 
 V1_ALPHA_3 = 'v1alpha3'
+CERT_MANAGER_VERSION = 'v1'
 PLURAL_NAME_CERT = 'certificates'
 SPEC = 'spec'
 METADATA = 'metadata'
@@ -222,7 +223,7 @@ def get_annotation_data(secretobj):
         if CERTMGR_CERT_NAME in secretobj.metadata.annotations:
             try:
                 crd_cert_name = secretobj.metadata.annotations[CERTMGR_CERT_NAME]
-                certobj = kube_op.get_custom_resource(sys_kube.CERT_MANAGER_GROUP, V1_ALPHA_3,
+                certobj = kube_op.get_custom_resource(sys_kube.CERT_MANAGER_GROUP, CERT_MANAGER_VERSION,
                                                         ns, PLURAL_NAME_CERT, crd_cert_name)
                 cm_managed = True
                 mode_metadata[SNAPSHOT_KEY_MODE] = MODE_CERT_MGR
@@ -238,7 +239,7 @@ def get_annotation_data(secretobj):
                     # Update the annotation
                     LOG.debug('Patching k8s cert with metadata %s' % annotation_dict)
                     certobj[METADATA][ANNOTATIONS] = annotation_dict
-                    kube_op.apply_custom_resource(sys_kube.CERT_MANAGER_GROUP, V1_ALPHA_3,
+                    kube_op.apply_custom_resource(sys_kube.CERT_MANAGER_GROUP, CERT_MANAGER_VERSION,
                                                     ns, PLURAL_NAME_CERT, crd_cert_name, certobj)
             except Exception as e:
                 LOG.error(e)

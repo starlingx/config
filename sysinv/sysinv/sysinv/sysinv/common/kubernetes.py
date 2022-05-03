@@ -37,6 +37,7 @@ CERT_MANAGER_GROUP = 'cert-manager.io'
 
 # Kubernetes API versions
 V1_ALPHA_2 = 'v1alpha2'
+CERT_MANAGER_VERSION = 'v1'
 
 
 # Kubernetes Files
