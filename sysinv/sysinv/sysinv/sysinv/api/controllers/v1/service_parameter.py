@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2018 Wind River Systems, Inc.
+# Copyright (c) 2015-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -8,9 +8,12 @@
 #
 
 import copy
+import os
 import pecan
 from pecan import rest
 import six
+import subprocess
+import tempfile
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
@@ -29,8 +32,9 @@ from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1.query import Query
 from sysinv import objects
 from sysinv.common import constants
-from sysinv.common import service_parameter
 from sysinv.common import exception
+from sysinv.common import kubernetes
+from sysinv.common import service_parameter
 from sysinv.common import utils as cutils
 from sysinv.openstack.common.rpc import common as rpc_common
 
@@ -731,6 +735,53 @@ class ServiceParameterController(rest.RestController):
                     "(oidc_issuer_url, oidc_client_id, oidc_username_claim) or "
                     "(the previous 3 plus oidc_groups_claim)")
             raise wsme.exc.ClientSideError(msg)
+
+        try:
+            audit_policy_file = pecan.request.dbapi.service_parameter_get_one(
+                service=constants.SERVICE_TYPE_KUBERNETES,
+                section=constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER,
+                name=constants.SERVICE_PARAM_NAME_AUDIT_POLICY_FILE)
+        except exception.NotFound:
+            audit_policy_file = None
+
+        if audit_policy_file:
+            KUBECONFIG = "--kubeconfig=%s" % kubernetes.KUBERNETES_ADMIN_CONF
+            fd, temp_kubeadm_config_view = tempfile.mkstemp(
+                dir='/tmp', suffix='.yaml')
+            with os.fdopen(fd, 'w') as f:
+                # Get .data.ClusterConfiguration in order to look at mountPath list
+                cmd = ['kubectl', 'get', 'cm', '-n', 'kube-system',
+                       'kubeadm-config', '-o=jsonpath={.data.ClusterConfiguration}',
+                       KUBECONFIG]
+                try:
+                    subprocess.check_call(cmd, stdout=f)  # pylint: disable=not-callable
+                except Exception as e:
+                    LOG.exception(e)
+                    raise exception.KubeCmdFailed(rc=e.returncode, command=' '.join(cmd))
+            mount_paths = []
+            with open(temp_kubeadm_config_view, "r") as f:
+                lines = f.readlines()
+                # Add each mountPath entry in the config file to mount_paths array.
+                for line in lines:
+                    if line.strip().startswith('mountPath'):
+                        path = line.strip().split(':')[1]
+                        mount_paths.append(path.strip())
+            os.unlink(temp_kubeadm_config_view)
+            # Verify if the file configured in parameter audit_policy_file is in
+            # mount_path list.
+            #
+            # Task 44831 and 45202 configure audit-policy-file mountPath in kube-apiserver
+            # Task 44831: Allow to end-users to add audit policy file configuration
+            # in apiserver_extra_volumes variable.
+            # Task 45202: Add a default audit-policy-file configuration in extraVolumes section
+            # in kube-apiserver.
+            #
+            # This validation is required since if the file does not exist in the kube-apiserver pod
+            # then after puppet applies the new configuration kube-apiserver will fail to start.
+            if audit_policy_file.value not in mount_paths:
+                msg = _("Unable to apply service parameters. "
+                        "Please specify a valid audit-policy-file: {}".format(mount_paths))
+                raise wsme.exc.ClientSideError(msg)
 
     def _service_parameter_apply_semantic_check(self, service):
         """Semantic checks for the service-parameter-apply command """

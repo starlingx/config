@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2021 Wind River Systems, Inc.
+# Copyright (c) 2017-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -740,11 +740,13 @@ KUBERNETES_APISERVER_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_OIDC_USERNAME_CLAIM,
     constants.SERVICE_PARAM_NAME_OIDC_GROUPS_CLAIM,
     constants.SERVICE_PARAM_NAME_ADMISSION_PLUGINS,
+    constants.SERVICE_PARAM_NAME_AUDIT_POLICY_FILE
 ]
 
 KUBERNETES_APISERVER_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_OIDC_ISSUER_URL: _validate_oidc_issuer_url,
     constants.SERVICE_PARAM_NAME_ADMISSION_PLUGINS: _validate_admission_plugins,
+    constants.SERVICE_PARAM_NAME_AUDIT_POLICY_FILE: _validate_not_empty
 }
 
 KUBERNETES_APISERVER_PARAMETER_RESOURCE = {
@@ -758,6 +760,8 @@ KUBERNETES_APISERVER_PARAMETER_RESOURCE = {
         'platform::kubernetes::params::oidc_groups_claim',
     constants.SERVICE_PARAM_NAME_ADMISSION_PLUGINS:
         'platform::kubernetes::params::admission_plugins',
+    constants.SERVICE_PARAM_NAME_AUDIT_POLICY_FILE:
+        'platform::kubernetes::params::audit_policy_file'
 }
 
 HTTPD_PORT_PARAMETER_OPTIONAL = [
