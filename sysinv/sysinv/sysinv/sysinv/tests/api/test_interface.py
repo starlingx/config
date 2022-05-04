@@ -1611,6 +1611,31 @@ class TestPostMixin(object):
             host=self.worker, sriov_numvfs=1,
             expect_errors=True, max_tx_rate='ratelimit')
 
+    def test_create_vf_interface_with_ratelimit_port_speed_none(self):
+        interface_id = len(self.profile['interfaces']) + 1
+        port_id = len(self.profile['ports'])
+        port = dbutils.create_test_ethernet_port(
+            id=port_id,
+            name='eth' + str(port_id),
+            host_id=self.worker.id,
+            interface_id=interface_id,
+            sriov_totalvfs=4, sriov_numvfs=4,
+            speed=None)
+        self.profile['ports'].append(port)
+
+        interface = self._post_get_test_interface(
+            ifname='sriov',
+            ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+            forihostid=self.worker.id, ihost_uuid=self.worker.uuid,
+            sriov_numvfs=4)
+        response = self._post_and_check(interface)
+        interface['uuid'] = response.json['uuid']
+        self.profile['interfaces'].append(interface)
+
+        self._create_vf('vf0', lower_iface=interface,
+            host=self.worker, sriov_numvfs=1,
+            expect_errors=True, max_tx_rate=1000)
+
     def test_interface_vf_ratelimit_modify_add_ratelimit(self):
         self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
                               host=self.worker)
@@ -1626,6 +1651,40 @@ class TestPostMixin(object):
         self.assertEqual('application/json', patch_result.content_type)
         self.assertEqual(http_client.OK, patch_result.status_code)
         self.assertEqual(2000, patch_result.json['max_tx_rate'])
+
+    def test_interface_vf_ratelimit_modify_add_ratelimit_port_speed_none(self):
+        interface_id = len(self.profile['interfaces']) + 1
+        port_id = len(self.profile['ports'])
+        port = dbutils.create_test_ethernet_port(
+            id=port_id,
+            name='eth' + str(port_id),
+            host_id=self.worker.id,
+            interface_id=interface_id,
+            sriov_totalvfs=4, sriov_numvfs=4,
+            speed=None)
+        self.profile['ports'].append(port)
+
+        interface = self._post_get_test_interface(
+            ifname='sriov',
+            ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+            forihostid=self.worker.id, ihost_uuid=self.worker.uuid,
+            sriov_numvfs=4)
+        response = self._post_and_check(interface)
+        interface['uuid'] = response.json['uuid']
+        self.profile['interfaces'].append(interface)
+
+        vf = self._create_vf('vf0', lower_iface=interface,
+            host=self.worker, sriov_numvfs=1,
+            expect_errors=False)
+
+        patch_result = self.patch_dict_json(
+            '%s' % self._get_path(vf['uuid']),
+            max_tx_rate=1000,
+            expect_errors=True)
+
+        self.assertEqual('application/json', patch_result.content_type)
+        self.assertEqual(http_client.BAD_REQUEST, patch_result.status_code)
+        self.assertTrue(patch_result.json['error_message'])
 
     def test_interface_vf_ratelimit_modify_adjust_ratelimit(self):
         self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
