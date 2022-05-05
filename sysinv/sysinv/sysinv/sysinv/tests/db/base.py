@@ -207,6 +207,17 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self.networks.append(network)
         return network
 
+    def _create_test_route(self, interface, gateway, family=4, network='10.10.10.0', prefix=24):
+        route = dbutils.create_test_route(
+            interface_id=interface.id,
+            gateway=gateway,
+            family=family,
+            network=network,
+            prefix=prefix,
+        )
+
+        return route
+
     def _create_test_datanetwork(self, name, network_type):
         datanetwork = dbutils.create_test_datanetwork(name=name, network_type=network_type)
         self.datanetworks.append(datanetwork)

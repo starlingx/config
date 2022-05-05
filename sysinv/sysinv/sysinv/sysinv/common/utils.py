@@ -1764,6 +1764,21 @@ def is_upgrade_in_progress(dbapi):
         return False, None
 
 
+def check_upgrade_pre_upgrading_controllers(dbapi):
+    is_upgrading, upgrade = is_upgrade_in_progress(dbapi)
+    if is_upgrading:
+        if upgrade.state in [constants.UPGRADE_STARTING,
+                             constants.UPGRADE_STARTED,
+                             constants.UPGRADE_DATA_MIGRATION,
+                             constants.UPGRADE_DATA_MIGRATION_COMPLETE,
+                             constants.UPGRADE_DATA_MIGRATION_FAILED,
+                             constants.UPGRADE_ABORTING,
+                             constants.UPGRADE_ABORT_COMPLETING,
+                             constants.UPGRADE_ABORTING_ROLLBACK]:
+            return True, upgrade
+    return False, upgrade
+
+
 def _check_upgrade(dbapi, host_obj=None):
     """ Check whether partition operation may be allowed.
 

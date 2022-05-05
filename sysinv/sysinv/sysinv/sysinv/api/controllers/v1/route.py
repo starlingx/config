@@ -380,12 +380,21 @@ class RouteController(rest.RestController):
     @wsme_pecan.wsexpose(Route, body=Route)
     def post(self, route):
         """Create a new IP route."""
+        is_upgrading, upgrade = \
+            cutils.check_upgrade_pre_upgrading_controllers(pecan.request.dbapi)
+        if is_upgrading:
+            raise exception.UpgradeInProgress(state=upgrade.state)
         return self._create_route(route)
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, route_uuid):
         """Delete an IP route."""
+        is_upgrading, upgrade = \
+            cutils.check_upgrade_pre_upgrading_controllers(pecan.request.dbapi)
+        if is_upgrading:
+            raise exception.UpgradeInProgress(state=upgrade.state)
+
         try:
             route = objects.route.get_by_uuid(pecan.request.context, route_uuid)
         except exception.RouteNotFound:
