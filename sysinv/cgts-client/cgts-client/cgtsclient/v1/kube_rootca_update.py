@@ -17,7 +17,7 @@ class KubeRootCAUpdateManager(base.Manager):
 
     @staticmethod
     def _path(uuid=None):
-        return 'v1/kube_rootca_update/%s' % uuid if uuid else 'v1/kube_rootca_update/'
+        return '/v1/kube_rootca_update/%s' % uuid if uuid else '/v1/kube_rootca_update/'
 
     def create(self, force):
         """Create a new entry for kubernetes rootca update operation """

@@ -24,18 +24,18 @@ class PtpInterfaceManager(base.Manager):
 
     @staticmethod
     def _path(ptp_interface_id=None):
-        return 'v1/ptp_interfaces/%s' % ptp_interface_id if ptp_interface_id \
-            else 'v1/ptp_interfaces'
+        return '/v1/ptp_interfaces/%s' % ptp_interface_id if ptp_interface_id \
+            else '/v1/ptp_interfaces'
 
     def list(self, q=None):
         return self._list(options.build_url(self._path(), q), "ptp_interfaces")
 
     def list_by_host(self, host_id):
-        path = 'v1/ihosts/%s/ptp_interfaces' % host_id
+        path = '/v1/ihosts/%s/ptp_interfaces' % host_id
         return self._list(path, "ptp_interfaces")
 
     def list_by_interface(self, interface_id):
-        path = 'v1/iinterfaces/%s/ptp_interfaces' % interface_id
+        path = '/v1/iinterfaces/%s/ptp_interfaces' % interface_id
         return self._list(path, "ptp_interfaces")
 
     def get(self, ptp_interface_id):
