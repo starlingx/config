@@ -3,7 +3,7 @@ Upstream-Name: cgts-client
 Source: https://opendev.org/starlingx/config
 
 Files: *
-Copyright: (c) 2013-2021 Wind River Systems, Inc
+Copyright: (c) 2013-2022 Wind River Systems, Inc
            (c) Others (See individual files for more details)
 License: Apache-2
  Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,7 +24,7 @@ License: Apache-2
 # If you want to use GPL v2 or later for the /debian/* files use
 # the following clauses, or change it to suit. Delete these two lines
 Files: debian/*
-Copyright: 2021 Wind River Systems, Inc
+Copyright: 2021-2022 Wind River Systems, Inc
 License: Apache-2
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
