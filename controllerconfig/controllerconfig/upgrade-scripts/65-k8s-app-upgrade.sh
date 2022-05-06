@@ -81,8 +81,13 @@ if [ "$ACTION" == "activate" ]; then
         log "$NAME: Found application ${UPGRADE_APP_NAME}, version ${UPGRADE_APP_VERSION} at $fqpn_app"
 
         # Confirm application is upgradable
-        if [[ "${UPGRADE_APP_NAME}" =~ ^(cert-manager|nginx-ingress-controller|oidc-auth-apps|platform-integ-apps|snmp)$ ]]; then
+        # TODO: move nginx back to the supported platform applications list when
+        #       fluxcd application upgrade is supported
+        if [[ "${UPGRADE_APP_NAME}" =~ ^(oidc-auth-apps|platform-integ-apps|snmp)$ ]]; then
             log "$NAME: ${UPGRADE_APP_NAME} is a supported platform application."
+        elif [[ "${UPGRADE_APP_NAME}" =~ ^(cert-manager|nginx-ingress-controller)$ ]]; then
+            log "$NAME: ${UPGRADE_APP_NAME} is handled by another script."
+            continue
         else
             log "$NAME: ${UPGRADE_APP_NAME} is not a supported platform application. skipping..."
             continue
