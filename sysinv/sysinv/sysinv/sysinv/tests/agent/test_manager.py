@@ -20,13 +20,19 @@ from sysinv.tests import base
 
 class FakeConductorAPI(object):
 
-    def __init__(self):
+    def __init__(self, isystem=None):
         self.create_host_filesystems = mock.MagicMock()
         self.update_host_max_cpu_frequency = mock.MagicMock()
         self.is_virtual_system_config_result = False
+        self.isystem = isystem
 
     def is_virtual_system_config(self, ctxt):
         return self.is_virtual_system_config_result
+
+    def get_isystem(self, ctxt):
+        if not self.isystem:
+            return {}
+        return self.isystem
 
 
 class TestAgentManager(base.TestCase):
@@ -40,6 +46,14 @@ class TestAgentManager(base.TestCase):
         self.agent_manager._ihost_rootfs_device = "fake_rootfs_dev"
         self.context = context.get_admin_context()
         self.fake_conductor_api = FakeConductorAPI()
+        self.fake_conductor_api_dc_std = FakeConductorAPI(isystem={
+            "distributed_cloud_role": constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER,
+            "system_type": constants.TIS_STD_BUILD,
+        })
+        self.fake_conductor_api_dc_aio = FakeConductorAPI(isystem={
+            "distributed_cloud_role": constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER,
+            "system_type": constants.TIS_AIO_BUILD,
+        })
 
         # Mock get_disk_capacity utility
         self.mock_get_disk_capacity = mock.MagicMock()
@@ -282,6 +296,124 @@ class TestAgentManager(base.TestCase):
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10}]
 
         self.fake_conductor_api.create_host_filesystems.assert_called_with(
+            self.context,
+            self.agent_manager._ihost_uuid,
+            expected_filesystems)
+        self.assertEqual(self.agent_manager._prev_fs, expected_filesystems)
+
+    def test_create_host_filesystem_systemcontroller_aio_controller_large(self):
+        self.agent_manager._ihost_personality = constants.CONTROLLER
+        self.mock_get_disk_capacity.return_value = \
+            (constants.DEFAULT_SMALL_DISK_SIZE + 1) * 1024
+
+        self.agent_manager._create_host_filesystems(self.fake_conductor_api_dc_aio,
+                                                    self.context)
+        # Verify expected filesystems and sizes
+        expected_filesystems = [
+            {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
+            {'logical_volume': 'backup-lv', 'name': 'backup', 'size': 25},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
+            {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10}]
+
+        self.fake_conductor_api_dc_aio.create_host_filesystems.assert_called_with(
+            self.context,
+            self.agent_manager._ihost_uuid,
+            expected_filesystems)
+        self.assertEqual(self.agent_manager._prev_fs, expected_filesystems)
+
+    def test_create_host_filesystem_systemcontroller_aio_controller_small(self):
+        self.agent_manager._ihost_personality = constants.CONTROLLER
+        self.mock_get_disk_capacity.return_value = \
+            constants.MINIMUM_SMALL_DISK_SIZE * 1024
+
+        self.agent_manager._create_host_filesystems(self.fake_conductor_api_dc_aio,
+                                                    self.context)
+        # Verify expected filesystems and sizes
+        expected_filesystems = [
+            {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
+            {'logical_volume': 'backup-lv', 'name': 'backup', 'size': 20},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
+            {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10}]
+
+        self.fake_conductor_api_dc_aio.create_host_filesystems.assert_called_with(
+            self.context,
+            self.agent_manager._ihost_uuid,
+            expected_filesystems)
+        self.assertEqual(self.agent_manager._prev_fs, expected_filesystems)
+
+    def test_create_host_filesystem_systemcontroller_standard_controller_large(self):
+        self.agent_manager._ihost_personality = constants.CONTROLLER
+        self.mock_get_disk_capacity.return_value = \
+            (constants.DEFAULT_SMALL_DISK_SIZE + 1) * 1024
+
+        self.agent_manager._create_host_filesystems(self.fake_conductor_api_dc_std,
+                                                    self.context)
+        # Verify expected filesystems and sizes
+        expected_filesystems = [
+            {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
+            {'logical_volume': 'backup-lv', 'name': 'backup', 'size': 35},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
+            {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10}]
+
+        self.fake_conductor_api_dc_std.create_host_filesystems.assert_called_with(
+            self.context,
+            self.agent_manager._ihost_uuid,
+            expected_filesystems)
+        self.assertEqual(self.agent_manager._prev_fs, expected_filesystems)
+
+    def test_create_host_filesystem_systemcontroller_standard_controller_small(self):
+        self.agent_manager._ihost_personality = constants.CONTROLLER
+        self.mock_get_disk_capacity.return_value = \
+            constants.MINIMUM_SMALL_DISK_SIZE * 1024
+
+        self.agent_manager._create_host_filesystems(self.fake_conductor_api_dc_std,
+                                                    self.context)
+        # Verify expected filesystems and sizes
+        expected_filesystems = [
+            {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
+            {'logical_volume': 'backup-lv', 'name': 'backup', 'size': 20},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
+            {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10}]
+
+        self.fake_conductor_api_dc_std.create_host_filesystems.assert_called_with(
+            self.context,
+            self.agent_manager._ihost_uuid,
+            expected_filesystems)
+        self.assertEqual(self.agent_manager._prev_fs, expected_filesystems)
+
+    def test_create_host_filesystem_systemcontroller_standard_worker_large(self):
+        self.agent_manager._ihost_personality = constants.WORKER
+        self.mock_get_disk_capacity.return_value = \
+            (constants.DEFAULT_SMALL_DISK_SIZE + 1) * 1024
+
+        self.agent_manager._create_host_filesystems(self.fake_conductor_api_dc_std,
+                                                    self.context)
+        # Verify expected filesystems and sizes
+        expected_filesystems = [
+            {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
+            {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10}]
+
+        self.fake_conductor_api_dc_std.create_host_filesystems.assert_called_with(
+            self.context,
+            self.agent_manager._ihost_uuid,
+            expected_filesystems)
+        self.assertEqual(self.agent_manager._prev_fs, expected_filesystems)
+
+    def test_create_host_filesystem_systemcontroller_standard_worker_small(self):
+        self.agent_manager._ihost_personality = constants.WORKER
+        self.mock_get_disk_capacity.return_value = \
+            constants.MINIMUM_SMALL_DISK_SIZE * 1024
+
+        self.agent_manager._create_host_filesystems(self.fake_conductor_api_dc_std,
+                                                    self.context)
+        # Verify expected filesystems and sizes
+        expected_filesystems = [
+            {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
+            {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
+            {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10}]
+
+        self.fake_conductor_api_dc_std.create_host_filesystems.assert_called_with(
             self.context,
             self.agent_manager._ihost_uuid,
             expected_filesystems)

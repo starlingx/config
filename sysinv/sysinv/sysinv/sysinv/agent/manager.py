@@ -1160,14 +1160,24 @@ class AgentManager(service.PeriodicService):
             disk_size = utils.get_disk_capacity_mib(self._ihost_rootfs_device)
             disk_size = int(disk_size // 1024)
 
+            # Get the distributed cloud role to determine filesystems size
+            system = rpcapi.get_isystem(icontext)
+            system_dc_role = system.get("distributed_cloud_role", None)
+            system_type = system.get("system_type", None)
+
             if self._ihost_personality == constants.CONTROLLER:
                 if disk_size > constants.DEFAULT_SMALL_DISK_SIZE:
                     LOG.info("Disk size for %s: %s ... large disk defaults" %
                              (self._ihost_rootfs_device, disk_size))
 
+                    platform_lv_size = constants.DEFAULT_PLATFORM_STOR_SIZE
+                    if (system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and
+                            system_type == constants.TIS_STD_BUILD):
+                        platform_lv_size = constants.DEFAULT_PLATFORM_SYSTEMCONTROLLER_STOR_SIZE
+
                     backup_lv_size = \
                         constants.DEFAULT_DATABASE_STOR_SIZE + \
-                        constants.DEFAULT_PLATFORM_STOR_SIZE + \
+                        platform_lv_size + \
                         constants.BACKUP_OVERHEAD
 
                 elif disk_size >= constants.MINIMUM_SMALL_DISK_SIZE:

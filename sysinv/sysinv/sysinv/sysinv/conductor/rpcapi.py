@@ -179,6 +179,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        ihost_uuid=ihost_uuid,
                                        fs_dict_array=fs_dict_array))
 
+    def get_isystem(self, context):
+        """Return isystem object
+
+        This method returns a isystem object
+
+        :returns: isystem object, including all fields
+        """
+        return self.call(context, self.make_msg('get_isystem',))
+
     def get_ihost_by_macs(self, context, ihost_macs):
         """Finds ihost db entry based upon the mac list
 
