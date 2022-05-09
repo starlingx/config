@@ -32,6 +32,7 @@ from sysinv.puppet import common as puppet_common
 # (the platform.conf file will not have been updated with dynamic values).
 from tsconfig.tsconfig import SW_VERSION
 from tsconfig.tsconfig import PLATFORM_PATH
+from tsconfig.tsconfig import VOLATILE_PXEBOOT_PATH
 from tsconfig.tsconfig import KEYRING_PATH
 from tsconfig.tsconfig import PLATFORM_CONF_FILE
 from tsconfig.tsconfig import CONTROLLER_UPGRADE_FLAG
@@ -282,6 +283,7 @@ def migrate_pxeboot_config(from_release, to_release):
                                    "pxelinux.cfg", "")
     dest_pxelinux = os.path.join(PLATFORM_PATH, "config", to_release,
                                  "pxelinux.cfg")
+
     try:
         subprocess.check_call(
             ["rsync",
@@ -292,6 +294,14 @@ def migrate_pxeboot_config(from_release, to_release):
     except subprocess.CalledProcessError:
         LOG.exception("Failed to migrate %s" % source_pxelinux)
         raise
+
+    to_release_symlink_target = os.path.join(VOLATILE_PXEBOOT_PATH,
+                                             "pxelinux.cfg.files", "grub.cfg")
+
+    dest_symlink_exists = os.path.islink(dest_pxelinux + "/grub.cfg")
+    if dest_symlink_exists:
+        os.unlink(dest_pxelinux + "/grub.cfg")
+    os.symlink(to_release_symlink_target, dest_pxelinux + "/grub.cfg")
 
 
 def migrate_armada_config(from_release, to_release):
