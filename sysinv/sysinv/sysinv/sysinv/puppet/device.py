@@ -68,7 +68,6 @@ class DevicePuppet(base.BasePuppet):
         Builds a config dictionary for FEC devices to be used by the
         platform devices (worker) puppet resource.
         """
-        vf_config = {}
         device_config = {}
         acclr_config = {}
         puppet_dflt = 'platform::devices::fpga::fec::params::device_config'
@@ -121,6 +120,7 @@ class DevicePuppet(base.BasePuppet):
                 # Format the vf addresses as quoted strings in order to prevent
                 # puppet from treating the address as a time/date value
                 vf_addrs = device.get('sriov_vfs_pci_address', [])
+                vf_config = {}
                 if vf_addrs:
                     vf_addrs = [quoted_str(addr.strip())
                                 for addr in vf_addrs.split(",") if addr]
@@ -144,12 +144,12 @@ class DevicePuppet(base.BasePuppet):
                         'device_id': device['pdevice_id']
                     }
                 }
-                device_config = {
+                device_config.update({
                     name: {
                         'pf_config': pf_config,
                         'vf_config': vf_config
                     }
-                }
+                })
 
             acclr_config.update({puppet_dflt: device_config})
 
