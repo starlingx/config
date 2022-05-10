@@ -1060,7 +1060,12 @@ def _check_interface_ratelimit(interface):
 
         ports = pecan.request.dbapi.ethernet_port_get_by_interface(
                                                         lower_iface['uuid'])
-        if len(ports) > 0 and ports[0]['speed'] is not None:
+        if len(ports) > 0:
+            if ports[0]['speed'] is None:
+                msg = _("Port speed for %s could not be determined. "
+                        "Check if the port is cabled correctly." %
+                        ports[0]['name'])
+                raise wsme.exc.ClientSideError(msg)
             # keep 10% of the bandwidth for PF traffic
             total_rate_for_vf = int(ports[0]['speed'] * constants.VF_TOTAL_RATE_RATIO)
             total_rate_used = 0
