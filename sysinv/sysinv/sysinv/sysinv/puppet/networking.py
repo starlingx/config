@@ -32,7 +32,6 @@ class NetworkingPuppet(base.BasePuppet):
         config.update(self._get_mgmt_interface_config())
         config.update(self._get_cluster_interface_config())
         config.update(self._get_ironic_interface_config())
-        config.update(self._get_ptp_interface_config(host))
         config.update(self._get_storage_interface_config())
         config.update(self._get_instance_ptp_config(host))
         if host.personality == constants.CONTROLLER:
@@ -261,28 +260,39 @@ class NetworkingPuppet(base.BasePuppet):
         return ptp_config
 
     def _set_ptp_instance_interfaces(self, host, ptp_instances, ptp_interfaces):
-
-        allowed_interface_fields = ['ifname', 'port_names', 'parameters', 'uuid']
+        allowed_interface_fields = ['ifname',
+                                    'port_names',
+                                    'parameters',
+                                    'uuid']
 
         for instance in ptp_instances:
             for iface in ptp_interfaces:
                 # Find the interfaces that belong to this instance
                 if iface['ptp_instance_id'] == ptp_instances[instance]['id']:
                     iface['parameters'] = {}
-                    # Find the underlying port name for the interface because ptp can't
-                    # use the custom interface name
+                    # Find the underlying port name for the interface because
+                    # ptp can't use the custom interface name (exception: AE)
                     for hostinterface in iface['interface_names']:
                         temp_host = hostinterface.split('/')[0]
                         temp_interface = hostinterface.split('/')[1]
                         if host.hostname == temp_host:
-                            iinterface = self.dbapi.iinterface_get(temp_interface, host.uuid)
-                            interface_devices = interface.get_interface_devices(self.context,
-                                                                                iinterface)
-                            iface['port_names'] = interface_devices
+                            iinterface = self.dbapi.iinterface_get(
+                                temp_interface, host.uuid)
+                            if (iinterface['iftype'] ==
+                                    constants.INTERFACE_TYPE_AE):
+                                if_devices = [temp_interface]
+                            else:
+                                if_devices = interface.get_interface_devices(
+                                    self.context, iinterface)
+                            iface['port_names'] = if_devices
                             iface['ifname'] = temp_interface
-                            # Prune fields and add the interface to the instance
-                            pruned_iface = {r: iface[r] for r in allowed_interface_fields}
-                            ptp_instances[instance]['interfaces'].append(pruned_iface)
+
+                            # Prune fields and add the interface to the
+                            # instance
+                            pruned_iface = \
+                                {r: iface[r] for r in allowed_interface_fields}
+                            ptp_instances[instance]['interfaces'].append(
+                                pruned_iface)
 
         return ptp_instances
 
@@ -393,43 +403,6 @@ class NetworkingPuppet(base.BasePuppet):
                 'platform::ptpinstance::enabled': ptpinstance_enabled,
                 'platform::ptpinstance::nic_clock::nic_clock_config': nic_clock_config,
                 'platform::ptpinstance::nic_clock::nic_clock_enabled': nic_clock_enabled}
-
-    def _get_ptp_interface_config(self, host):
-        config = {}
-        ptp_devices = {
-            constants.INTERFACE_PTP_ROLE_MASTER: [],
-            constants.INTERFACE_PTP_ROLE_SLAVE: []
-        }
-        ptp_interfaces = interface.get_ptp_interfaces(self.context)
-
-        ptp_enabled = False
-        if (ptp_interfaces and host.clock_synchronization == constants.PTP):
-            ptp_enabled = True
-        else:
-            return {'platform::ptp::enabled': ptp_enabled}
-
-        ptp = self.dbapi.ptp_get_one()
-        is_udp = (ptp.transport == constants.PTP_TRANSPORT_UDP)
-        for network_interface in ptp_interfaces:
-            interface_devices = interface.get_interface_devices(self.context, network_interface)
-
-            address_family = None
-            if is_udp:
-                address = interface.get_interface_primary_address(self.context, network_interface)
-                if address:
-                    address_family = netaddr.IPAddress(address['address']).version
-
-            for device in interface_devices:
-                ptp_devices[network_interface['ptp_role']].append({'device': device,
-                                                                   'family': address_family})
-
-        config.update({
-            'platform::ptp::enabled': ptp_enabled,
-            'platform::ptp::master_devices': ptp_devices[constants.INTERFACE_PTP_ROLE_MASTER],
-            'platform::ptp::slave_devices': ptp_devices[constants.INTERFACE_PTP_ROLE_SLAVE]
-        })
-
-        return config
 
     def _get_interface_config(self, networktype):
         config = {}

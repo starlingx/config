@@ -206,7 +206,7 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
 
     def _create_ethernet(self, ifname=None, networktype=None, ifclass=None,
                          datanetworks=None, host=None, expect_errors=False,
-                         lower_iface=None):
+                         lower_iface=None, ptp_role=None):
         interface_id = len(self.profile['interfaces']) + 1
         port = None
         if not ifname:
@@ -225,11 +225,15 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
                 pciaddr='0000:00:00.' + str(port_id + 1),
                 dev_id=0)
             self.profile['ports'].append(port)
+        if not ptp_role:
+            ptp_role = constants.INTERFACE_PTP_ROLE_NONE
 
         if not networktype:
             interface = dbutils.create_test_interface(ifname=ifname,
                                                       forihostid=host.id,
-                                                      ihost_uuid=host.uuid)
+                                                      ihost_uuid=host.uuid,
+                                                      ifclass=ifclass,
+                                                      ptp_role=ptp_role)
         else:
             if lower_iface:
                 uses = [lower_iface['ifname']]
@@ -239,7 +243,9 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
                 ifname=ifname,
                 ifclass=ifclass,
                 uses=uses,
-                forihostid=host.id, ihost_uuid=host.uuid)
+                forihostid=host.id,
+                ihost_uuid=host.uuid,
+                ptp_role=ptp_role)
             response = self._post_and_check(interface, expect_errors)
             if expect_errors is False:
                 interface['uuid'] = response.json['uuid']
@@ -265,7 +271,10 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
         return port, interface
 
     def _create_bond(self, ifname, networktype=None, ifclass=None,
-                     datanetworks=None, host=None, expect_errors=False):
+                     datanetworks=None, host=None, expect_errors=False,
+                     aemode=None, ptp_role=None):
+        if not ptp_role:
+            ptp_role = constants.INTERFACE_PTP_ROLE_NONE
         if not host:
             host = self.controller
         port1, iface1 = self._create_ethernet(host=host)
@@ -281,15 +290,20 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
             iftype=constants.INTERFACE_TYPE_AE,
             ifclass=ifclass,
             uses=[iface1['ifname'], iface2['ifname']],
-            txhashpolicy='layer2',
-            forihostid=host.id, ihost_uuid=host.uuid)
+            forihostid=host.id,
+            ihost_uuid=host.uuid,
+            ptp_role=ptp_role)
 
         lacp_types = [constants.NETWORK_TYPE_MGMT,
                       constants.NETWORK_TYPE_PXEBOOT]
-        if networktype in lacp_types:
-            interface['aemode'] = '802.3ad'
-        else:
-            interface['aemode'] = 'balanced'
+        if not aemode:
+            if networktype in lacp_types:
+                aemode = '802.3ad'
+            else:
+                aemode = 'balanced'
+        if aemode != constants.AE_MODE_ACTIVE_STANDBY:
+            interface['txhashpolicy'] = 'layer2'
+        interface['aemode'] = aemode
 
         response = self._post_and_check(interface, expect_errors)
         if expect_errors is False:
@@ -635,6 +649,11 @@ class InterfacePTP(InterfaceTestCase):
     def test_modify_ptp_interface_invalid(self):
         port0, if0 = self._create_ethernet('if0', ifclass=constants.INTERFACE_CLASS_PLATFORM, host=self.worker)
         port1, if1 = self._create_ethernet('if1', host=self.worker)
+        bond0 = self._create_bond('bond0',
+                                  ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                                  host=self.worker,
+                                  aemode=constants.AE_MODE_ACTIVE_STANDBY,
+                                  ptp_role=constants.INTERFACE_PTP_ROLE_SLAVE)
 
         if0_uuid = if0['uuid']
         if1_uuid = if1['uuid']
@@ -650,6 +669,26 @@ class InterfacePTP(InterfaceTestCase):
         data['ptp_role'] = constants.INTERFACE_PTP_ROLE_MASTER
         self._patch_and_check(data, self._get_path(if1_uuid), expect_errors=True,
                               error_message="Invalid interface class for ptp_role")
+
+        # Invalid change of slave interface
+        ifslave_name = bond0['uses'][0]
+        ifslave = self.dbapi.iinterface_get(ifslave_name, self.worker.uuid)
+        data = {
+            'ifname': 'ptpif',
+            'ptp_role': constants.INTERFACE_PTP_ROLE_SLAVE
+        }
+        self._patch_and_check(data, self._get_path(ifslave['uuid']),
+                              expect_errors=True,
+                              error_message="role cannot be changed")
+
+        # Invalid AE mode
+        data = {
+            'ifname': bond0['ifname'],
+            'aemode': constants.AE_MODE_BALANCED
+        }
+        self._patch_and_check(data, self._get_path(bond0['uuid']),
+                              expect_errors=True,
+                              error_message="PTP isn't supported")
 
     def test_add_ptp_interface_valid(self):
         self._create_ethernet('if0', host=self.worker)
@@ -674,6 +713,7 @@ class InterfacePTP(InterfaceTestCase):
             'ifname': 'aeptp',
             'iftype': constants.INTERFACE_TYPE_AE,
             'ifclass': constants.INTERFACE_CLASS_PLATFORM,
+            'aemode': constants.AE_MODE_ACTIVE_STANDBY,
             'uses': ['if1', 'if2'],
             'ptp_role': constants.INTERFACE_PTP_ROLE_SLAVE
         }
@@ -681,6 +721,11 @@ class InterfacePTP(InterfaceTestCase):
 
     def test_add_ptp_interface_invalid(self):
         self._create_ethernet('if0', host=self.worker)
+        self._create_ethernet('if1', host=self.worker)
+        self._create_ethernet('if2', host=self.worker)
+        self._create_ethernet('if3', host=self.worker,
+                              ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                              ptp_role=constants.INTERFACE_PTP_ROLE_SLAVE)
 
         # Add vlan with invalid ptp_role data
         vlan_data = {
@@ -696,6 +741,34 @@ class InterfacePTP(InterfaceTestCase):
         self._post_and_check(vlan_data, expect_errors=True, error_message=error_message)
         vlan_data['ptp_role'] = ''
         self._post_and_check(vlan_data, expect_errors=True, error_message=error_message)
+
+        # Add ae with bad mode
+        ae_data = {
+            'ihost_uuid': self.worker.uuid,
+            'ifname': 'aeptp',
+            'iftype': constants.INTERFACE_TYPE_AE,
+            'ifclass': constants.INTERFACE_CLASS_PLATFORM,
+            'aemode': constants.AE_MODE_BALANCED,
+            'uses': ['if1', 'if2'],
+            'ptp_role': constants.INTERFACE_PTP_ROLE_SLAVE
+        }
+        error_message = "PTP isn't supported"
+        self._post_and_check(ae_data, expect_errors=True,
+                             error_message=error_message)
+
+        # Add ae with bad slave ptp role
+        ae_data = {
+            'ihost_uuid': self.worker.uuid,
+            'ifname': 'aeptp',
+            'iftype': constants.INTERFACE_TYPE_AE,
+            'ifclass': constants.INTERFACE_CLASS_PLATFORM,
+            'aemode': constants.AE_MODE_ACTIVE_STANDBY,
+            'uses': ['if1', 'if3'],
+            'ptp_role': constants.INTERFACE_PTP_ROLE_SLAVE
+        }
+        error_message = "None of interfaces being used in an 'aggregated ethernet' interface can have a PTP role"
+        self._post_and_check(ae_data, expect_errors=True,
+                             error_message=error_message)
 
 
 class TestList(InterfaceTestCase):

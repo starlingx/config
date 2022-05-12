@@ -1203,7 +1203,8 @@ def _check_interface_data(op, interface, ihost, existing_interface,
                                       constants.INTERFACE_TYPE_VF]
                     if i.iftype == constants.INTERFACE_TYPE_AE:
                         msg = _("Interface '{}' is already used by another"
-                                " AE interface '{}'".format(p, i.ifname))
+                                " 'aggregated ethernet' interface "
+                                "'{}'".format(p, i.ifname))
                         raise wsme.exc.ClientSideError(msg)
                     elif (i.iftype == constants.INTERFACE_TYPE_VLAN and
                               iftype not in supported_type):
@@ -1213,12 +1214,20 @@ def _check_interface_data(op, interface, ihost, existing_interface,
 
     # Ensure that the interfaces being used in the AE interface
     # are originally set to None when creating the AE interface
+    # and have no PTP role
     if iftype == constants.INTERFACE_TYPE_AE:
         for i in interface['uses']:
+            msg = None
             iface_lower = pecan.request.dbapi.iinterface_get(i, ihost_uuid)
-            if iface_lower.ifclass:
-                msg = _("All interfaces being used in an AE interface "
-                        "must have the interface class set to 'none'.")
+            if iface_lower.ptp_role != constants.INTERFACE_PTP_ROLE_NONE:
+                msg = _("None of interfaces being used in an 'aggregated "
+                        "ethernet' interface can have a PTP role "
+                        "(must be 'none').")
+            elif iface_lower.ifclass:
+                msg = _("All interfaces being used in an 'aggregated ethernet' "
+                        "interface must have the interface class set to "
+                        "'none'.")
+            if msg:
                 raise wsme.exc.ClientSideError(msg)
 
     if interface['used_by']:
@@ -1227,13 +1236,22 @@ def _check_interface_data(op, interface, ihost, existing_interface,
             iface = pecan.request.dbapi.iinterface_get(i, ihost_uuid)
             # Ensure that the interfaces being used in the AE interface
             # are not changed after the AE interface has been created
-            if iface.iftype == constants.INTERFACE_TYPE_AE and \
-                    interface['ifclass']:
-                msg = _("Interface '{}' is being used by interface '{}' "
-                        "as an AE interface and therefore the interface "
-                        "class cannot be changed from 'none'.".format(interface['ifname'],
-                                                                      iface.ifname))
-                raise wsme.exc.ClientSideError(msg)
+            if iface.iftype == constants.INTERFACE_TYPE_AE:
+                msg = None
+                if interface['ptp_role'] != constants.INTERFACE_PTP_ROLE_NONE:
+                    msg = _("Interface '{}' is being used by interface '{}' "
+                            "as an 'aggregated ethernet' interface and "
+                            "therefore the PTP role cannot be changed from "
+                            "'none'.".format(
+                                interface['ifname'], iface.ifname))
+                elif interface['ifclass']:
+                    msg = _("Interface '{}' is being used by interface '{}' "
+                            "as an 'aggregated ethernet' interface and "
+                            "therefore the interface class cannot be changed "
+                            "from 'none'.".format(
+                                interface['ifname'], iface.ifname))
+                if msg:
+                    raise wsme.exc.ClientSideError(msg)
             # Ensure that if the interface has any virtual function (VF)
             # interfaces, that the interface class does not change from
             # pci-sriov, and that the number of requested virtual functions is
@@ -1268,11 +1286,17 @@ def _check_interface_data(op, interface, ihost, existing_interface,
     if iftype == constants.INTERFACE_TYPE_AE and aemode not in constants.VALID_AEMODE_LIST:
         msg = _("Invalid aggregated ethernet mode '%s' " % aemode)
         raise wsme.exc.ClientSideError(msg)
-    if aemode in [constants.AE_MODE_BALANCED, constants.AE_MODE_LACP] and not txhashpolicy:
-        msg = _("Device interface with interface type 'aggregated ethernet' "
-                "in 'balanced' or '802.3ad' mode require a valid Tx Hash "
-                "Policy.")
-        raise wsme.exc.ClientSideError(msg)
+    if aemode in [constants.AE_MODE_BALANCED, constants.AE_MODE_LACP]:
+        msg = None
+        if interface['ptp_role'] != constants.INTERFACE_PTP_ROLE_NONE:
+            msg = _("PTP isn't supported by 'aggregated ethernet' interface "
+                    "type in 'balanced' or '802.3ad' mode.")
+        elif not txhashpolicy:
+            msg = _("Device interface with 'aggregated ethernet' interface "
+                    "type in 'balanced' or '802.3ad' mode require a valid "
+                    "Tx Hash Policy.")
+        if msg:
+            raise wsme.exc.ClientSideError(msg)
     elif aemode in [constants.AE_MODE_ACTIVE_STANDBY] and txhashpolicy is not None:
         msg = _("Device interface with interface type 'aggregated ethernet' "
                 "in '%s' mode should not specify a Tx Hash Policy." % aemode)
@@ -1857,7 +1881,7 @@ def _create(interface):
             for ifname in new_interface['uses']:
                 _update_interface_mtu(ifname, ihost, new_interface['imtu'])
         except Exception as e:
-            LOG.exception("Failed to update AE member MTU: "
+            LOG.exception("Failed to update 'aggregated ethernet' member MTU: "
                           "new_interface={} mtu={}".format(
                                 new_interface.as_dict(), new_interface['imtu']))
 
