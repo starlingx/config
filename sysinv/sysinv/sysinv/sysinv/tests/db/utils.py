@@ -165,6 +165,8 @@ def get_test_ihost(**kw):
             'iscsi_initiator_name': kw.get('iscsi_initiator_name', None),
             'inv_state': kw.get('inv_state', 'inventoried'),
             'clock_synchronization': kw.get('clock_synchronization', constants.NTP),
+            'max_cpu_frequency': kw.get('max_cpu_frequency', ''),
+            'max_cpu_default': kw.get('max_cpu_default', '')
              }
     return inv
 
