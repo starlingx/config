@@ -1939,6 +1939,9 @@ PTP_PARAMETER_ARRAY_PATH = '/ptp_parameters/-'
 PTP_PATCH_OPERATION_ADD = 'add'
 PTP_PATCH_OPERATION_DELETE = 'remove'
 
+# Patching host entities
+MGMT_MAC_PATH = '/mgmt_mac'
+
 # Backup & Restore
 FIX_INSTALL_UUID_INTERVAL_SECS = 30
 

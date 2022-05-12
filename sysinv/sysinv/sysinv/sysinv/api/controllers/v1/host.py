@@ -1917,7 +1917,7 @@ class HostController(rest.RestController):
 
         for p in patch:
             if p['path'] == constants.PTP_INSTANCE_ARRAY_PATH:
-                ptp_instance_id = p['value']
+                ptp_instance_id = p.get('value')
                 try:
                     # Check PTP instance exists
                     pecan.request.dbapi.ptp_instance_get(ptp_instance_id)
@@ -1933,15 +1933,13 @@ class HostController(rest.RestController):
                 # Remove from patch to apply the paths related to assigned PTP
                 # instances, since they don't actually patch the host object
                 patch.remove(p)
+            elif p['path'] == constants.MGMT_MAC_PATH:
+                p['value'] = cutils.validate_and_normalize_mac(p.get('value'))
 
         patch_obj = jsonpatch.JsonPatch(patch)
 
         # Add transient fields that are not stored in the database
         ihost_dict['bm_password'] = None
-
-        for p in patch:
-            if p['value'] != 'storage':
-                break
 
         try:
             patched_ihost = jsonpatch.apply_patch(ihost_dict,

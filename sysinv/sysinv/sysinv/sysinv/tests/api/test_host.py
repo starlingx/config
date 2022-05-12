@@ -313,6 +313,25 @@ class TestPostControllerMixin(object):
                           self.post_json, '/ihosts', ndict,
                           headers={'User-Agent': 'sysinv-test'})
 
+    def test_create_host_mgmt_mac_case_insensitive(self):
+        # Test host creation to check mgmt_mac accepted and stored as lowercase
+        host_mgmt_mac = 'A1:B2:C3:D4:E5:F6'
+        ndict = dbutils.post_get_test_ihost(hostname='controller-1',
+                                            personality='controller',
+                                            subfunctions=None,
+                                            mgmt_mac=host_mgmt_mac,
+                                            mgmt_ip=None,
+                                            serialid='serial2',
+                                            bm_ip="128.224.150.195")
+
+        self.post_json('/ihosts', ndict,
+                       headers={'User-Agent': 'sysinv-test'})
+
+        result = self.get_json('/ihosts/%s' % ndict['hostname'])
+
+        host_mgmt_mac_lower = host_mgmt_mac.lower()
+        self.assertEqual(host_mgmt_mac_lower, result['mgmt_mac'])
+
 
 class TestPostWorkerMixin(object):
 
@@ -1907,6 +1926,55 @@ class TestPatch(TestHost):
 
             self.fake_conductor_api.create_barbican_secret.assert_called_with(
                 mock.ANY, ihost.uuid, bm_password)
+
+    def test_update_mgmt_mac_case_insensitive(self):
+        # Create controller-0
+        host_mgmt_mac = 'a1:b2:c3:d4:e5:f6'
+        ndict = dbutils.post_get_test_ihost(hostname='controller-0',
+                                            mgmt_ip=None,
+                                            mgmt_mac=host_mgmt_mac,
+                                            serialid='serial1')
+        self.post_json('/ihosts', ndict,
+                       headers={'User-Agent': 'sysinv-test'})
+
+        host_mgmt_mac_upper = 'A1:B2:C3:D4:E5:F6'
+        # Update location
+        response = self.patch_json('/ihosts/%s' % ndict['hostname'],
+                                   [{'path': '/mgmt_mac',
+                                     'value': host_mgmt_mac_upper,
+                                     'op': 'replace'}],
+                                   headers={'User-Agent': 'sysinv-test'})
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+        # Verify that the host retains the specified mgmt_mac
+        result = self.get_json('/ihosts/%s' % ndict['hostname'])
+        self.assertEqual(host_mgmt_mac, result['mgmt_mac'])
+
+    def test_update_mgmt_mac_change_rejected(self):
+        # Create controller-0
+        host_mgmt_mac = 'aa:bb:cc:dd:ee:ff'
+        ndict = dbutils.post_get_test_ihost(hostname='controller-0',
+                                            mgmt_ip=None,
+                                            mgmt_mac=host_mgmt_mac,
+                                            serialid='serial1')
+        self.post_json('/ihosts', ndict,
+                       headers={'User-Agent': 'sysinv-test'})
+
+        host_mgmt_mac_change = 'ff:bb:cc:dd:ee:aa'
+        # Update location
+        response = self.patch_json('/ihosts/%s' % ndict['hostname'],
+                                   [{'path': '/mgmt_mac',
+                                     'value': host_mgmt_mac_change,
+                                     'op': 'replace'}],
+                                   headers={'User-Agent': 'sysinv-test'},
+                                   expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+
+        # Verify that the host retains the specified mgmt_mac
+        result = self.get_json('/ihosts/%s' % ndict['hostname'])
+        self.assertEqual(host_mgmt_mac, result['mgmt_mac'])
 
     def test_unlock_action_controller(self):
         # Create controller-0
