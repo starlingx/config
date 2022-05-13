@@ -277,6 +277,10 @@ class StoragePuppet(base.BasePuppet):
                 config.update({
                     'platform::filesystem::kubelet::params::lv_size': fs.size
                 })
+            elif fs.name == constants.FILESYSTEM_NAME_LOG:
+                config.update({
+                    'platform::filesystem::log::params::lv_size': fs.size
+                })
         return config
 
     def _get_worker_config(self, host):
