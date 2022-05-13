@@ -420,6 +420,64 @@ def _validate_kernel_audit(name, value):
          constants.SERVICE_PARAM_PLATFORM_AUDITD_ENABLED)))
 
 
+def _byte_transform(param_value, param_name):
+    format1 = re.search(r"^(-*[0-9]+([\.][0-9]+)*)([B|K|M|G|T|P|E])$", str(param_value))
+    format2 = re.search(r"^(0)$", str(param_value))
+
+    if not (format1 or format2):
+        raise wsme.exc.ClientSideError("Parameter '%s' has invalid value format." % param_name)
+
+    if format1:
+        size_greatness = format1.group(3)
+        if format1.group(2):
+            size_value = float(format1.group(1))
+        else:
+            size_value = int(format1.group(1))
+        greatness_list = ['B', 'K', 'M', 'G', 'T', 'P', 'E']
+        if size_greatness in greatness_list:
+            index = greatness_list.index(size_greatness)
+            size_in_bytes = (1024**index) * size_value
+    else:
+        size_in_bytes = int(format2.group(1))
+
+    return size_in_bytes
+
+
+def _validate_minimum_value(name, value, min_value):
+    min_value_in_bytes = _byte_transform(min_value, name)
+    if value < min_value_in_bytes:
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' must be greater than or equal to %s.") % (name, min_value))
+
+
+def _validate_process_size_max(name, value):
+    _validate_not_empty(name, value)
+    size_in_bytes = _byte_transform(value, name)
+    _validate_minimum_value(name, size_in_bytes,
+                            constants.SERVICE_PARAM_PLAT_PROCESS_SIZE_MAX_MINSIZE)
+
+
+def _validate_external_size_max(name, value):
+    _validate_not_empty(name, value)
+    size_in_bytes = _byte_transform(value, name)
+    _validate_minimum_value(name, size_in_bytes,
+                            constants.SERVICE_PARAM_PLAT_EXTERNAL_SIZE_MAX_MINSIZE)
+
+
+def _validate_max_use(name, value):
+    _validate_not_empty(name, value)
+    size_in_bytes = _byte_transform(value, name)
+    _validate_minimum_value(name, size_in_bytes,
+                            constants.SERVICE_PARAM_PLAT_MAX_USE_MINSIZE)
+
+
+def _validate_keep_free(name, value):
+    _validate_not_empty(name, value)
+    size_in_bytes = _byte_transform(value, name)
+    _validate_minimum_value(name, size_in_bytes,
+                            constants.SERVICE_PARAM_PLAT_KEEP_FREE_MINSIZE)
+
+
 def _validate_regex(name, value):
     """Check if specified regex is valid"""
     try:
@@ -566,6 +624,13 @@ PLATFORM_KEYSTONE_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_LOCKOUT_FAILURE_ATTEMPTS,
 ]
 
+PLATFORM_COREDUMP_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_PLATFORM_PROCESS_SIZE_MAX,
+    constants.SERVICE_PARAM_NAME_PLATFORM_EXTERNAL_SIZE_MAX,
+    constants.SERVICE_PARAM_NAME_PLATFORM_MAX_USE,
+    constants.SERVICE_PARAM_NAME_PLATFORM_KEEP_FREE
+]
+
 PLATFORM_KERNEL_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD: _validate_kernel_audit,
 }
@@ -581,6 +646,13 @@ PLATFORM_KEYSTONE_PARAMETER_VALIDATOR = {
         _validate_integer,
     constants.SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_LOCKOUT_FAILURE_ATTEMPTS:
         _validate_integer,
+}
+
+PLATFORM_COREDUMP_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_PLATFORM_PROCESS_SIZE_MAX: _validate_process_size_max,
+    constants.SERVICE_PARAM_NAME_PLATFORM_EXTERNAL_SIZE_MAX: _validate_external_size_max,
+    constants.SERVICE_PARAM_NAME_PLATFORM_MAX_USE: _validate_max_use,
+    constants.SERVICE_PARAM_NAME_PLATFORM_KEEP_FREE: _validate_keep_free,
 }
 
 PLATFORM_KERNEL_PARAMETER_RESOURCE = {
@@ -599,6 +671,17 @@ PLATFORM_KEYSTONE_PARAMETER_RESOURCE = {
         'openstack::keystone::params::lockout_period',
     constants.SERVICE_PARAM_NAME_SECURITY_COMPLIANCE_LOCKOUT_FAILURE_ATTEMPTS:
         'openstack::keystone::params::lockout_retries',
+}
+
+PLATFORM_COREDUMP_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_PLATFORM_PROCESS_SIZE_MAX:
+        'platform::coredump::params::process_size_max',
+    constants.SERVICE_PARAM_NAME_PLATFORM_EXTERNAL_SIZE_MAX:
+        'platform::coredump::params::external_size_max',
+    constants.SERVICE_PARAM_NAME_PLATFORM_MAX_USE:
+        'platform::coredump::params::max_use',
+    constants.SERVICE_PARAM_NAME_PLATFORM_KEEP_FREE:
+        'platform::coredump::params::keep_free',
 }
 
 RADOSGW_CONFIG_PARAMETER_MANDATORY = [
@@ -904,7 +987,12 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: PLATFORM_KERNEL_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: PLATFORM_KERNEL_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: PLATFORM_KERNEL_PARAMETER_RESOURCE,
-        }
+        },
+        constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP: {
+            SERVICE_PARAM_OPTIONAL: PLATFORM_COREDUMP_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: PLATFORM_COREDUMP_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: PLATFORM_COREDUMP_PARAMETER_RESOURCE,
+        },
     },
     constants.SERVICE_TYPE_RADOSGW: {
         constants.SERVICE_PARAM_SECTION_RADOSGW_CONFIG: {

@@ -9730,6 +9730,19 @@ class ConductorManager(service.PeriodicService):
                 # _config_update_hosts() above. Node needs a reboot to clear it.
                 config_uuid = self._config_clear_reboot_required(config_uuid)
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict, force=True)
+            elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP:
+                personalities = [constants.CONTROLLER,
+                                 constants.WORKER,
+                                 constants.STORAGE]
+
+                config_uuid = self._config_update_hosts(context, personalities)
+
+                config_dict = {
+                    'personalities': personalities,
+                    "classes": ['platform::coredump::runtime']
+                }
+
+                self._config_apply_runtime_manifest(context, config_uuid, config_dict, force=True)
 
         # we should not set the reboot flag on operations that are not
         # reboot required. An apply of a service parameter is not reboot
