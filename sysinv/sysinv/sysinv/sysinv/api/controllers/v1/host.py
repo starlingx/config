@@ -2883,7 +2883,7 @@ class HostController(rest.RestController):
                     % (personality, load.software_version))
 
     def _check_max_cpu_frequency(self, host):
-        max_cpu_frequency = host.ihost_patch.get('max_cpu_frequency')
+        max_cpu_frequency = str(host.ihost_patch.get('max_cpu_frequency', ''))
 
         if(constants.WORKER in host.ihost_orig[constants.SUBFUNCTIONS] and
             host.ihost_orig.get('capabilities').get(constants.IHOST_MAX_CPU_CONFIG) ==
