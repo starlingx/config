@@ -214,8 +214,22 @@ class NetworkingPuppet(base.BasePuppet):
             'ts2phc': '-s nmea'
         }
 
+        default_pmc_parameters = {
+            'clockClass': constants.PTP_PMC_CLOCK_CLASS,
+            'clockAccuracy': constants.PTP_PMC_CLOCK_ACCURACY,
+            'offsetScaledLogVariance': constants.PTP_PMC_OFFSET_SCALED_LOG_VARIANCE,
+            'currentUtcOffset': constants.PTP_PMC_CURRENT_UTC_OFFSET,
+            'leap61': constants.PTP_PMC_LEAP61,
+            'leap59': constants.PTP_PMC_LEAP59,
+            'currentUtcOffsetValid': constants.PTP_PMC_CURRENT_UTC_OFFSET_VALID,
+            'ptpTimescale': constants.PTP_PMC_PTP_TIMESCALE,
+            'timeTraceable': constants.PTP_PMC_TIME_TRACEABLE,
+            'frequencyTraceable': constants.PTP_PMC_FREQUENCY_TRACEABLE,
+            'timeSource': constants.PTP_PMC_TIME_SOURCE
+        }
+
         allowed_instance_fields = ['global_parameters', 'interfaces', 'name', 'service',
-                                   'cmdline_opts', 'id']
+                                   'cmdline_opts', 'id', 'pmc_gm_settings']
         ptp_config = {}
 
         for instance in ptp_instances:
@@ -225,6 +239,7 @@ class NetworkingPuppet(base.BasePuppet):
             instance['global_parameters'].update(default_global_parameters[instance['service']])
             instance['cmdline_opts'] = default_cmdline_opts[instance['service']]
             instance['interfaces'] = []
+            instance['pmc_gm_settings'] = {}
 
             # Additional defaults for ptp4l instances
             if instance['service'] == constants.PTP_INSTANCE_TYPE_PTP4L:
@@ -245,6 +260,12 @@ class NetworkingPuppet(base.BasePuppet):
                     instance['global_parameters'][global_param['name']] = global_param['value']
                 if 'cmdline_opts' in instance['global_parameters']:
                     instance['cmdline_opts'] = instance['global_parameters'].pop('cmdline_opts')
+                # Add pmc parameters so that currentUtcOffsetValid can be set by puppet
+                if 'currentUtcOffsetValid' in instance['global_parameters']:
+                    offset_valid = instance['global_parameters'].pop('currentUtcOffsetValid')
+                    if (offset_valid == constants.PTP_PMC_CURRENT_UTC_OFFSET_VALID and
+                    instance['service'] == 'ptp4l'):
+                        instance['pmc_gm_settings'].update(default_pmc_parameters)
 
             if instance['service'] == constants.PTP_INSTANCE_TYPE_PTP4L:
                 if (instance['global_parameters']['time_stamping'] ==
