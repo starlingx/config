@@ -17,7 +17,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 
 
@@ -1161,9 +1161,19 @@ class AgentManager(service.PeriodicService):
             disk_size = int(disk_size // 1024)
 
             # Get the distributed cloud role to determine filesystems size
-            system = rpcapi.get_isystem(icontext)
-            system_dc_role = system.get("distributed_cloud_role", None)
-            system_type = system.get("system_type", None)
+            # Will first try to get it with tsconfig (local platform.conf file)
+            # and if not available will try getting it with a RPC call
+            system_dc_role = tsc.distributed_cloud_role
+            system_type = tsc.system_type
+            if not system_dc_role:
+                try:
+                    system = rpcapi.get_isystem(icontext)
+                    system_dc_role = system.get("distributed_cloud_role", None)
+                    system_type = system.get("system_type", None)
+                except AttributeError:
+                    # safe to ignore during upgrades
+                    LOG.warn("Skip getting system DC role and system type. "
+                             "Upgrade in progress?")
 
             if self._ihost_personality == constants.CONTROLLER:
                 if disk_size > constants.DEFAULT_SMALL_DISK_SIZE:
