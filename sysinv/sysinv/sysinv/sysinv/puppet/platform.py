@@ -638,6 +638,7 @@ class PlatformPuppet(base.BasePuppet):
                     host.max_cpu_frequency,
                 'platform::compute::grub::params::n_cpus': n_cpus,
                 'platform::compute::grub::params::cpu_options': cpu_options,
+                'platform::compute::grub::params::bios_cstate': True
             })
         return config
 
