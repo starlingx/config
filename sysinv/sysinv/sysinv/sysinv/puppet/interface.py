@@ -448,8 +448,13 @@ def is_a_mellanox_device(context, iface):
         # devices.
         return False
     port = get_interface_port(context, iface)
-    if port['driver'] in constants.MELLANOX_DRIVERS:
-        return True
+
+    # port['driver'] may be a string of various comma separated driver names
+    if port['driver']:
+        drivers = (d.strip() for d in port['driver'].split(','))
+        for d in drivers:
+            if d in constants.MELLANOX_DRIVERS:
+                return True
     return False
 
 
