@@ -564,7 +564,27 @@ start()
     if [ ! -e "${ACTIVE_CONTROLLER_NOT_FOUND_FLAG}" ]
     then
         mkdir -p /etc/postgresql/
-        cp -p $CONFIG_DIR/postgresql/*.conf /etc/postgresql/
+
+        OS_ID=$(grep '^ID=' /etc/os-release | cut -f2- -d= | sed -e 's/\"//g')
+        if [ ${OS_ID} == "centos" ];
+        then
+            REAL_CONFIG_DIR=/etc/postgresql
+        elif [ ${OS_ID} == "debian" ];
+        then
+            REAL_CONFIG_DIR=/etc/postgresql/13/main
+
+            for f in ${CONFIG_DIR}/postgresql/*.conf ;
+            do
+                link_basename=$(basename ${f})
+                link=/etc/postgresql/${link_basename}
+                echo "Removing ${link} to allow link to be created"
+                rm ${link}
+                echo "Linking ${link} to ${REAL_CONFIG_DIR}/${link_basename}"
+                ln -s ${REAL_CONFIG_DIR}/${link_basename} ${link}
+            done
+        fi
+        cp -p ${CONFIG_DIR}/postgresql/*.conf ${REAL_CONFIG_DIR}/
+
         if [ $? -ne 0 ]
         then
             fatal_error "Unable to copy .conf files to /etc/postgresql"
