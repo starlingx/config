@@ -714,6 +714,11 @@ class ConductorManager(service.PeriodicService):
          'name': constants.SERVICE_PARAM_HTTP_PORT_HTTPS,
          'value': constants.SERVICE_PARAM_HTTP_PORT_HTTPS_DEFAULT
          },
+        {'service': constants.SERVICE_TYPE_PLATFORM,
+         'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+         'name': constants.SERVICE_PARAM_NAME_PLATFORM_MAX_CPU_PERCENTAGE,
+         'value': constants.SERVICE_PARAM_PLATFORM_MAX_CPU_PERCENTAGE_DEFAULT
+         },
     ]
 
     def _create_default_service_parameter(self):

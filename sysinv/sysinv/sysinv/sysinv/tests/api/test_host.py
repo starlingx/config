@@ -3441,6 +3441,16 @@ class RejectMaintananceActionByAppTestCase(TestHost):
 
 
 class TestHostModifyCPUMaxFrequency(TestHost):
+    def setUp(self):
+        super(TestHostModifyCPUMaxFrequency, self).setUp()
+        self.real_service_parameter_get_one = self.dbapi.service_parameter_get_one
+        self.dbapi.service_parameter_get_one = mock.Mock(
+            return_value=constants.SERVICE_PARAM_PLATFORM_MAX_CPU_PERCENTAGE_DEFAULT)
+
+    def tearDown(self):
+        super(TestHostModifyCPUMaxFrequency, self).tearDown()
+        self.dbapi.service_parameter_get_one = self.real_service_parameter_get_one
+
     def test_host_max_cpu_frequency_not_configurable(self):
         worker = self._create_worker(
             max_cpu_frequency=None,

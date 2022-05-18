@@ -2883,29 +2883,44 @@ class HostController(rest.RestController):
                     % (personality, load.software_version))
 
     def _check_max_cpu_frequency(self, host):
+        # Max CPU frequency requested by the user and the maximum frequency
+        # allowed by the CPU.
         max_cpu_frequency = str(host.ihost_patch.get('max_cpu_frequency', ''))
+        max_cpu_default = host.ihost_orig.get('max_cpu_default', 0)
 
-        if(constants.WORKER in host.ihost_orig[constants.SUBFUNCTIONS] and
+        if (constants.WORKER in host.ihost_orig[constants.SUBFUNCTIONS] and
             host.ihost_orig.get('capabilities').get(constants.IHOST_MAX_CPU_CONFIG) ==
-                constants.CONFIGURABLE and max_cpu_frequency):
+                constants.CONFIGURABLE and max_cpu_default):
+            max_cpu_default = int(max_cpu_default)
 
+            # The service parameter is used to constrain the max_cpu_frequency
+            # into a range defined as a percentage of the max frequency allowed
+            # by the CPU and the max CPU frequency allowed itself.
+            max_cpu_percentage = pecan.request.dbapi.service_parameter_get_one(
+                service=constants.SERVICE_TYPE_PLATFORM,
+                section=constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+                name=constants.SERVICE_PARAM_NAME_PLATFORM_MAX_CPU_PERCENTAGE
+            )
+            max_cpu_floor = (int(max_cpu_percentage) * max_cpu_default) // 100
+
+            #  Restore the max_cpu_frequency to default if user set max_cpu_frequency
+            # to max_cpu_default.
             if max_cpu_frequency == constants.IHOST_MAX_CPU_DEFAULT:
-                max_cpu_default = host.ihost_orig['max_cpu_default']
                 host.ihost_patch['max_cpu_frequency'] = max_cpu_default
                 return
 
             if not max_cpu_frequency.lstrip('-+').isdigit():
                 raise wsme.exc.ClientSideError(
-                    _("Max CPU frequency %s must be an integer")
+                    _("Max CPU frequency %s must be an integer.")
                     % (max_cpu_frequency))
 
-            if not int(max_cpu_frequency) >= 1:
+            if not (max_cpu_floor <= int(max_cpu_frequency) <= max_cpu_default):
                 raise wsme.exc.ClientSideError(
-                    _("Max CPU frequency %s must be greater than 0")
-                    % (max_cpu_frequency))
+                    _("Max CPU Frequency must be between (%d, %d).")
+                    % (max_cpu_floor, max_cpu_default))
         else:
             raise wsme.exc.ClientSideError(
-                _("Host does not support CPU max frequency"))
+                _("Host does not support configuration of Max CPU Frequency."))
 
     def _check_host_load(self, hostname, load):
         host = pecan.request.dbapi.ihost_get_by_hostname(hostname)
