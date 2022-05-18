@@ -1678,7 +1678,7 @@ class AppOperator(object):
                     LOG.info("%s" % progress_str)
                     self._update_app_status(app, new_progress=progress_str)
 
-                for release_name, chart_obj in charts.items():
+                for release_name, chart_obj in list(charts.items()):
                     # Request the helm release info
                     helm_rel = self._kube.get_custom_resource(
                         "helm.toolkit.fluxcd.io", "v2beta1",
