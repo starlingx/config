@@ -634,7 +634,7 @@ class KubeOperator(object):
         custom_resource_api = self._get_kubernetesclient_custom_objects()
 
         try:
-            cert = custom_resource_api.get_namespaced_custom_object(
+            cr_obj = custom_resource_api.get_namespaced_custom_object(
                 group,
                 version,
                 namespace,
@@ -647,14 +647,14 @@ class KubeOperator(object):
                 LOG.error("Fail to access %s:%s. %s" % (namespace, name, e))
                 raise
         else:
-            return cert
+            return cr_obj
 
     def apply_custom_resource(self, group, version, namespace, plural, name, body):
         custom_resource_api = self._get_kubernetesclient_custom_objects()
 
         # if resource already exists we apply just a patch
-        cert = self.get_custom_resource(group, version, namespace, plural, name)
-        if cert:
+        cr_obj = self.get_custom_resource(group, version, namespace, plural, name)
+        if cr_obj:
             custom_resource_api.patch_namespaced_custom_object(group,
                                                                version,
                                                                namespace,
@@ -677,11 +677,12 @@ class KubeOperator(object):
                 plural, name, body)
         except ApiException as ex:
             if ex.reason == "Not Found":
-                LOG.warn("Failed to delete custom object, Namespace %s: %s"
-                         % (namespace, str(ex.body).replace('\n', ' ')))
+                LOG.warn("Failed to delete custom resource object, Namespace "
+                         "%s: %s" % (namespace,
+                                     str(ex.body).replace('\n', ' ')))
                 pass
         except Exception as e:
-            LOG.error("Failed to delete custom object, Namespace %s: %s"
+            LOG.error("Failed to delete custom resource object, Namespace %s: %s"
                       % (namespace, e))
             raise
 

@@ -518,7 +518,7 @@ class AppOperator(object):
                 if not cutils.verify_checksum(app.inst_path):
                     _handle_extract_failure('checksum validation failed.')
 
-                mname, manifest = self._utils._find_manifest(app.inst_path)
+                mname, manifest = self._utils._find_manifest(app.inst_path, app.name)
                 # Save the official manifest file info. They will be persisted
                 # in the next status update
                 app.regenerate_manifest_filename(mname, os.path.basename(manifest))
@@ -566,7 +566,8 @@ class AppOperator(object):
                 images_file = yaml.safe_load(f)
 
         helmrepo_path = os.path.join(manifest, "base", "helmrepository.yaml")
-        root_kustomization_path = os.path.join(manifest, "kustomization.yaml")
+        root_kustomization_path = os.path.join(
+            manifest, constants.APP_ROOT_KUSTOMIZE_FILE)
         for f in (helmrepo_path, root_kustomization_path):
             if not os.path.isfile(f):
                 raise exception.SysinvException(_(
@@ -628,7 +629,7 @@ class AppOperator(object):
                         not os.path.isfile(static_overrides_path):
                     raise exception.SysinvException(_(
                         "FluxCD app chart static overrides file doesn't exist "
-                        "%s" % static_overrides_path))
+                        "%s" % chart_name))
 
                 with io.open(static_overrides_path, 'r', encoding='utf-8') as f:
                     static_overrides_file = yaml.safe_load(f) or {}
@@ -790,7 +791,7 @@ class AppOperator(object):
         LOG.info("Generating application overrides to discover required images.")
         self._helm.generate_helm_application_overrides(
             app.sync_overrides_dir, app.name, mode=None, cnamespace=None,
-            armada_format=True, armada_chart_info=app.charts, combined=True,
+            armada_format=True, chart_info=app.charts, combined=True,
             is_fluxcd_app=app.is_fluxcd_app)
         self._plugins.deactivate_plugins(app)
 
@@ -1225,7 +1226,8 @@ class AppOperator(object):
          """
 
         helmrepo_path = os.path.join(manifest, "base", "helmrepository.yaml")
-        root_kustomization_path = os.path.join(manifest, "kustomization.yaml")
+        root_kustomization_path = os.path.join(
+            manifest, constants.APP_ROOT_KUSTOMIZE_FILE)
         for f in (helmrepo_path, root_kustomization_path):
             if not os.path.isfile(f):
                 raise exception.SysinvException(_(
@@ -1649,9 +1651,12 @@ class AppOperator(object):
                                               constants.APP_METADATA_APPLY_PROGRESS_ADJUST,
                                               constants.APP_METADATA_APPLY_PROGRESS_ADJUST_DEFAULT_VALUE)
 
+            # Build the list of expected chart releases. Re-read the
+            # kustomization.yaml file as charts may have been enabled/disabled
+            # via the plugins (helm or kustomize operator).
             charts = {
                 c.metadata_name: {"namespace": c.namespace, "chart_label": c.chart_label}
-                for c in app.charts
+                for c in self._get_list_of_charts(app)
             }
             charts_count = len(charts)
 
@@ -1681,8 +1686,10 @@ class AppOperator(object):
                 for release_name, chart_obj in list(charts.items()):
                     # Request the helm release info
                     helm_rel = self._kube.get_custom_resource(
-                        "helm.toolkit.fluxcd.io", "v2beta1",
-                        chart_obj["namespace"], "helmreleases",
+                        constants.FLUXCD_CRD_HELM_REL_GROUP,
+                        constants.FLUXCD_CRD_HELM_REL_VERSION,
+                        chart_obj["namespace"],
+                        constants.FLUXCD_CRD_HELM_REL_PLURAL,
                         release_name)
 
                     if not helm_rel:
@@ -2734,7 +2741,7 @@ class AppOperator(object):
             LOG.info("Generating application overrides...")
             self._helm.generate_helm_application_overrides(
                 app.sync_overrides_dir, app.name, mode, cnamespace=None,
-                armada_format=True, armada_chart_info=app.charts, combined=True,
+                armada_format=True, chart_info=app.charts, combined=True,
                 is_fluxcd_app=app.is_fluxcd_app)
 
             overrides_str = None
@@ -3271,42 +3278,44 @@ class AppOperator(object):
             self.sync_armada_mfile_dir = cutils.generate_synced_armada_dir(
                 self._kube_app.get('name'),
                 self._kube_app.get('app_version'))
+            self.sync_fluxcd_manifest_dir = cutils.generate_synced_fluxcd_dir(
+                self._kube_app.get('name'),
+                self._kube_app.get('app_version'))
 
             # Files: DRBD synced between controllers
             self.sync_armada_mfile = cutils.generate_synced_armada_manifest_fqpn(
                 self._kube_app.get('name'),
                 self._kube_app.get('app_version'),
                 self._kube_app.get('manifest_file'))
-            self.sync_imgfile = generate_synced_images_fqpn(
-                self._kube_app.get('name'),
-                self._kube_app.get('app_version'))
-            self.sync_metadata_file = cutils.generate_synced_metadata_fqpn(
+            self.sync_fluxcd_manifest = cutils.generate_synced_fluxcd_manifests_fqpn(
                 self._kube_app.get('name'),
                 self._kube_app.get('app_version'))
 
-            # Files: FQPN formatted for the docker armada_service
+            self.sync_armada_imgfile = generate_synced_images_fqpn(
+                self._kube_app.get('name'),
+                self._kube_app.get('app_version'))
+            self.sync_fluxcd_imgfile = generate_synced_fluxcd_images_fqpn(
+                self._kube_app.get('name'),
+                self._kube_app.get('app_version'))
+            self.sync_imgfile = self.sync_fluxcd_imgfile \
+                                if self.is_fluxcd_app else \
+                                   self.sync_armada_imgfile
+
+            self.sync_armada_metadata_file = cutils.generate_synced_metadata_fqpn(
+                self._kube_app.get('name'),
+                self._kube_app.get('app_version'))
+            self.sync_fluxcd_metadata_file = cutils.generate_synced_fluxcd_metadata_fqpn(
+                self._kube_app.get('name'),
+                self._kube_app.get('app_version'))
+            self.sync_metadata_file = self.sync_fluxcd_metadata_file \
+                                      if self.is_fluxcd_app else \
+                                         self.sync_armada_metadata_file
+
+            # Files: FQPN formatted for the Armada pod
             self.armada_service_mfile = generate_armada_service_manifest_fqpn(
                 self._kube_app.get('name'),
                 self._kube_app.get('app_version'),
                 self._kube_app.get('manifest_file'))
-
-            # FluxCD variables
-            if self.is_fluxcd_app:
-                self.sync_fluxcd_manifest_dir = cutils.generate_synced_fluxcd_dir(
-                    self._kube_app.get('name'),
-                    self._kube_app.get('app_version'))
-                self.sync_fluxcd_manifest = cutils.generate_synced_fluxcd_manifest_fqpn(
-                    self._kube_app.get('name'),
-                    self._kube_app.get('app_version'),
-                    self._kube_app.get('manifest_file'))
-
-                # override the common variables
-                self.sync_metadata_file = cutils.generate_synced_fluxcd_metadata_fqpn(
-                    self._kube_app.get('name'),
-                    self._kube_app.get('app_version'))
-                self.sync_imgfile = generate_synced_fluxcd_images_fqpn(
-                    self._kube_app.get('name'),
-                    self._kube_app.get('app_version'))
 
             self.patch_dependencies = []
             self.charts = []
@@ -3314,8 +3323,8 @@ class AppOperator(object):
 
         @property
         def is_fluxcd_app(self):
-            return self._kube_app.get('manifest_name') \
-                   == constants.APP_FLUXCD_MANIFEST_DIR
+            return self._kube_app.get('manifest_name').endswith(
+                constants.APP_FLUXCD_MANIFEST_DIR)
 
         @property
         def system_app(self):
@@ -3380,10 +3389,9 @@ class AppOperator(object):
             self.inst_mfile = generate_install_manifest_fqpn(
                 self.name, self.version, new_mfile)
             if self.is_fluxcd_app:
-                self.sync_fluxcd_manifest = cutils.generate_synced_fluxcd_manifest_fqpn(
+                self.sync_fluxcd_manifest = cutils.generate_synced_fluxcd_manifests_fqpn(
                     self.name,
-                    self.version,
-                    new_mfile)
+                    self.version)
             else:
                 self.armada_service_mfile = generate_armada_service_manifest_fqpn(
                     self.name, self.version, new_mfile)
@@ -4438,6 +4446,11 @@ class FluxCDHelper(object):
         try:
             if operation == constants.APP_APPLY_OP:
                 rc = self._apply(manifest_dir)
+                if rc:
+                    rc = self._cleanup_disabled_helm_releases(manifest_dir)
+                else:
+                    LOG.error("Applying %s failed. Skipping helm release "
+                              "cleanup...")
             elif operation == constants.APP_DELETE_OP:
                 rc = self._delete(manifest_dir)
             elif operation == constants.APP_ROLLBACK_OP:
@@ -4549,3 +4562,38 @@ class FluxCDHelper(object):
             return conditions[0]['status'], conditions[0].get('message')
         else:
             return self.HELM_RELEASE_STATUS_UNKNOWN, None
+
+    def _cleanup_disabled_helm_releases(self, manifest_dir):
+        helmrelease_cleanup_fqpn = os.path.join(
+            manifest_dir, constants.APP_RELEASE_CLEANUP_FILE)
+
+        # See if we have any helm releases that we must make sure are cleaned up
+        if not os.path.exists(helmrelease_cleanup_fqpn):
+            return True
+
+        with io.open(helmrelease_cleanup_fqpn, 'r', encoding='utf-8') as f:
+            helmrelease_doc = list(yaml.load_all(f,
+                Loader=yaml.RoundTripLoader, preserve_quotes=True))
+
+        for release in helmrelease_doc[0]['releases']:
+            try:
+                if self._kube.get_custom_resource(
+                        constants.FLUXCD_CRD_HELM_REL_GROUP,
+                        constants.FLUXCD_CRD_HELM_REL_VERSION,
+                        release["namespace"],
+                        constants.FLUXCD_CRD_HELM_REL_PLURAL,
+                        release['name']):
+
+                    self._kube.delete_custom_resource(
+                        constants.FLUXCD_CRD_HELM_REL_GROUP,
+                        constants.FLUXCD_CRD_HELM_REL_VERSION,
+                        release["namespace"],
+                        constants.FLUXCD_CRD_HELM_REL_PLURAL,
+                        release['name'])
+            except Exception as e:
+                LOG.error("Attemting to cleanup HelmRelease {}/{} "
+                          "failed".format(release["namespace"],
+                                          release['name']))
+                LOG.exception(e)
+                return False
+        return True

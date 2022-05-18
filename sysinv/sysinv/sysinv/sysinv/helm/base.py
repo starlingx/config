@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -415,6 +415,21 @@ class BaseHelm(object):
         armada/Manifest/v1, armada/ChartGroup/v1, armada/Chart/v1.
 
         :param operator: an instance of the ArmadaManifestOperator
+        """
+        pass
+
+    def execute_kustomize_updates(self, operator):
+        """
+        Update the elements of FluxCD kustomize manifests.
+
+        This allows a helm chart plugin to use the FluxCDKustomizeOperator to
+        make dynamic structural changes to the application manifest based on the
+        current conditions in the platform
+
+        Changes currenty include updates to the top level kustomize manifest to
+        disable helm releases.
+
+        :param operator: an instance of the FluxCDKustomizeOperator
         """
         pass
 

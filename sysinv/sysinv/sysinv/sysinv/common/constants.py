@@ -1640,12 +1640,21 @@ K8S_RBD_PROV_STOR_CLASS_NAME = 'general'
 # Working paths
 APP_INSTALL_ROOT_PATH = '/scratch'
 APP_INSTALL_PATH = APP_INSTALL_ROOT_PATH + '/apps'
-APP_SYNCED_ARMADA_DATA_PATH = os.path.join(tsc.PLATFORM_PATH, 'armada', tsc.SW_VERSION)
 APP_METADATA_FILE = 'metadata.yaml'
 APP_PENDING_REAPPLY_FLAG = os.path.join(
     tsc.HELM_OVERRIDES_PATH, ".app_reapply")
+
+# Armada
+APP_SYNCED_ARMADA_DATA_PATH = os.path.join(tsc.PLATFORM_PATH, 'armada', tsc.SW_VERSION)
+
+# FluxCD
 APP_FLUXCD_MANIFEST_DIR = 'fluxcd-manifests'
 APP_FLUXCD_DATA_PATH = os.path.join(tsc.PLATFORM_PATH, 'fluxcd', tsc.SW_VERSION)
+APP_ROOT_KUSTOMIZE_FILE = 'kustomization.yaml'
+APP_RELEASE_CLEANUP_FILE = 'helmrelease_cleanup.yaml'
+FLUXCD_CRD_HELM_REL_GROUP = 'helm.toolkit.fluxcd.io'
+FLUXCD_CRD_HELM_REL_VERSION = 'v2beta1'
+FLUXCD_CRD_HELM_REL_PLURAL = 'helmreleases'
 
 # State constants
 APP_NOT_PRESENT = 'missing'

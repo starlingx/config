@@ -167,7 +167,7 @@ class KubeAppController(rest.RestController):
                 try:
                     name, version, patches = app_helper._verify_metadata_file(
                         app_path, app_name, app_version)
-                    mname, manifest = app_helper._find_manifest(app_path)
+                    mname, manifest = app_helper._find_manifest(app_path, name)
                     app_helper._extract_helm_charts(app_path)
                     LOG.info("Tar file of application %s verified." % name)
                     return name, version, mname, manifest
@@ -669,31 +669,51 @@ class KubeAppHelper(object):
                     raise exception.IncompatibleKubeVersion(
                         name=app_name, version=app_version, kube_version=kube_version)
 
-    def _find_manifest(self, app_path):
-        mdir = cutils.find_manifest_directory(app_path)
+    def _find_manifest(self, app_path, app_name):
+        """ Find the required application manifest elements
 
-        if mdir:
-            return mdir
+        Check for an Armada manifest or a FluxCD manifest directory
+        """
+        try:
+            # Check for the presence of a FluxCD manifest directory
+            mfile = self._find_fluxcd_manifest(app_path, app_name)
+        except exception.SysinvException as fluxcd_e:
+            try:
+                # Check for the presence of an Armada manifest
+                mfile = self._find_armada_manifest(app_path)
+            except exception.SysinvException as armada_e:
+                raise exception.SysinvException(_(
+                    "Application-upload rejected: {} and {} ".format(
+                        fluxcd_e, armada_e)))
+        return mfile
 
+    def _find_fluxcd_manifest(self, app_path, app_name):
+        mfiles = cutils.find_fluxcd_manifests_directory(app_path, app_name)
+        if mfiles:
+            return mfiles[0]
+
+        raise exception.SysinvException(_(
+            "FluxCD manifest structure is not present"))
+
+    def _find_armada_manifest(self, app_path):
         # It is expected that there is only one manifest file
         # per application and the file exists at top level of
         # the application path.
-        mfiles = cutils.find_manifest_file(app_path)
+        mfiles = cutils.find_armada_manifest_file(app_path)
 
         if mfiles is None:
             raise exception.SysinvException(_(
-                "manifest file is corrupted."))
+                "Armada manifest file is corrupted."))
 
         if mfiles:
             if len(mfiles) == 1:
                 return mfiles[0]
             else:
                 raise exception.SysinvException(_(
-                    "Application-upload rejected: tar file contains more "
-                    "than one manifest file."))
+                    "tar file contains more than one Armada manifest file."))
 
         raise exception.SysinvException(_(
-            "Application-upload rejected: manifest file/directory is missing."))
+            "Armada manifest file/directory is missing"))
 
     def _verify_metadata_file(self, app_path, app_name, app_version,
                               upgrade_from_release=None):
