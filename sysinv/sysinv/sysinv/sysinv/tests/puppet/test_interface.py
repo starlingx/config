@@ -2134,7 +2134,8 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
     def test_is_a_mellanox_device(self):
         for iface in self.interfaces:
-            if iface['iftype'] != constants.INTERFACE_TYPE_ETHERNET:
+            if (iface['iftype'] not in
+                    [constants.INTERFACE_TYPE_ETHERNET, constants.INTERFACE_TYPE_VF]):
                 continue
             expected = bool(iface['ifname'] in self.expected_mlx_interfaces)
             if interface.is_a_mellanox_device(self.context,
@@ -2359,13 +2360,24 @@ class InterfaceComputeVfOverSriov(InterfaceHostTestCase):
         self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH)
 
+        # Mellanox devices should be identified correctly whether they are
+        # the SR-IOV interface or a VF interface on top of another.
+        # Driver can also be a string of different comma separated driver
+        # names, this also tests for that
+        port, iface = self._create_ethernet_test(
+            'mlx5', constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=2,
+            driver=('%s,%s' % (constants.DRIVER_MLX_CX4, constants.DRIVER_MLX_CX4)))
+        self._create_vf_test('vf_mlx5', 1, None, lower_iface=iface)
+
     def setUp(self):
         super(InterfaceComputeVfOverSriov, self).setUp()
         self.expected_bmc_interface = 'pxeboot'
         self.expected_platform_interfaces = ['pxeboot', 'mgmt',
                                              'eth2', 'cluster-host']
         self.expected_data_interfaces = ['eth4', 'data']
-        self.expected_pci_interfaces = ['sriov', 'pthru', 'vf']
+        self.expected_pci_interfaces = ['sriov', 'pthru', 'vf', 'mlx5', 'vf_mlx5']
+        self.expected_mlx_interfaces = ['mlx5', 'vf_mlx5']
 
 
 class InterfaceComputeBond(InterfaceHostTestCase):

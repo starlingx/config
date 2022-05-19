@@ -443,11 +443,16 @@ def is_a_mellanox_device(context, iface):
     """
     Determine if the underlying device is a Mellanox device.
     """
-    if iface['iftype'] != constants.INTERFACE_TYPE_ETHERNET:
+    if (iface['iftype'] not in
+            [constants.INTERFACE_TYPE_ETHERNET, constants.INTERFACE_TYPE_VF]):
         # We only care about configuring specific settings for related ethernet
-        # devices.
+        # devices or VFs on top of these
         return False
-    port = get_interface_port(context, iface)
+
+    if iface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV:
+        port = get_sriov_interface_port(context, iface)
+    else:
+        port = get_interface_port(context, iface)
 
     # port['driver'] may be a string of various comma separated driver names
     if port['driver']:
