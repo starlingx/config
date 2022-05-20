@@ -794,7 +794,7 @@ def apply_sriov_config(db_credentials, hostname):
         LOG.info("Applying sriov/fec manifest")
         personality = sysinv_constants.WORKER
         classes = [
-            'platform::interfaces::sriov::runtime',
+            'platform::network::interfaces::sriov::runtime',
             'platform::devices::fpga::fec::runtime'
         ]
         config = {'classes': classes}
