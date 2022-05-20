@@ -180,6 +180,7 @@ _load()
 # Platform configuration paths and files
 
 VOLATILE_PATH = "/var/run"
+VOLATILE_PXEBOOT_PATH = "/var/pxeboot"
 PLATFORM_PATH = "/opt/platform"
 CONFIG_PATH = PLATFORM_PATH + "/config/" + SW_VERSION + "/"
 PUPPET_PATH = PLATFORM_PATH + "/puppet/" + SW_VERSION + "/"
