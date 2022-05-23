@@ -20,6 +20,7 @@ import io
 import os
 import pkg_resources
 import pwd
+import random
 import re
 import ruamel.yaml as yaml
 import shutil
@@ -72,7 +73,7 @@ ROLLBACK_SEARCH_PATTERN = 'Helm rollback of release'
 INSTALLATION_TIMEOUT = 3600
 MAX_DOWNLOAD_THREAD = 5
 MAX_DOWNLOAD_ATTEMPTS = 3
-DOWNLOAD_WAIT_BEFORE_RETRY = 30
+DOWNLOAD_WAIT_BEFORE_RETRY = 15
 TARFILE_DOWNLOAD_CONNECTION_TIMEOUT = 60
 TARFILE_TRANSFER_CHUNK_SIZE = 1024 * 512
 
@@ -911,9 +912,18 @@ class AppOperator(object):
                 break
             # don't sleep after last download attempt
             if idx:
+                # Exponential backoff, the wait time = 15s *2**retry_times + random
+                # between 0-15s, e.g.:
+                #    1st retry: 15*2**1 + random, max wait time 45s,
+                #    2nd retry: 15*2**2 + random, max wait time 75s,
+                # The current max_wait_time: 15*2**3+15=135s
+                # NOTE(yuxing): the wait time will increase if we add more retries
+                wait_before_retry = \
+                    DOWNLOAD_WAIT_BEFORE_RETRY * 2 ** (MAX_DOWNLOAD_ATTEMPTS - idx + 1) \
+                    + random.uniform(0, DOWNLOAD_WAIT_BEFORE_RETRY)
                 LOG.info("Retry docker images download for application %s "
-                         "after %d seconds", app.name, DOWNLOAD_WAIT_BEFORE_RETRY)
-                time.sleep(DOWNLOAD_WAIT_BEFORE_RETRY)
+                         "after %d seconds", app.name, wait_before_retry)
+                time.sleep(wait_before_retry)
         else:
             raise exception.KubeAppApplyFailure(
                 name=app.name,
