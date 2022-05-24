@@ -23,12 +23,12 @@ log.configure()
 
 # This script is only valid for to/from releases:
 ACCEPTED_FROM = ['21.12']
-ACCEPTED_TO = ['22.06']
+ACCEPTED_TO = ['22.12']
 ACCEPTED_ACTIONS = ['health-check', 'start', 'migrate']
 
 # this path should have been created by stx-oidc-auth-helm package
 # with ownership assigned to postgres:postgres
-BACKUP_PATH = '/opt/oidc-auth-apps'
+BACKUP_PATH = '/var/opt/oidc-auth-apps'
 
 # list of charts in oidc-auth-apps; for sanity check only
 oidc_charts = ['dex', 'oidc-client', 'secret-observer']
@@ -156,7 +156,7 @@ def backup_overrides(overrides, action='debug'):
         if name not in oidc_charts:
             LOG.warning("oidc-auth-apps: mismatch chart name '%s'", name)
         if chart[field]:
-            document = yaml.load(chart[field])
+            document = yaml.safe_load(chart[field])
             if not document:
                 LOG.debug("oidc-auth-apps: %s empty document", name)
                 continue
@@ -345,7 +345,7 @@ def get_chart_override(overrides, chart):
         # applied, or because it failed to apply without overrides
         return None
     # convert the string to python structures
-    return yaml.load(chart_ov['user_overrides'])
+    return yaml.safe_load(chart_ov['user_overrides'])
 
 
 def validate_overrides(overrides):
@@ -364,7 +364,7 @@ def validate_overrides(overrides):
     if not document:
         LOG.error("oidc-auth-apps: no dex user_overrides to validate")
         return False
-    validate = yaml.load(validation_yaml)
+    validate = yaml.safe_load(validation_yaml)
     return validate_document(validate, document)
 
 
@@ -454,13 +454,13 @@ def main():
                   from_release, to_release, action)
         return 0
     elif from_release not in ACCEPTED_FROM:
-        LOG.error("oidc-auth-apps: upgrade script not valid from release %s",
-                  from_release)
-        return 1
+        LOG.warning("oidc-auth-apps: not valid from release %s",
+                    from_release)
+        return 0
     elif to_release not in ACCEPTED_TO:
-        LOG.error("oidc-auth-apps: upgrade script not valid to release %s",
-                  to_release)
-        return 1
+        LOG.warning("oidc-auth-apps: not valid to release %s",
+                    to_release)
+        return 0
 
     try:
         conn = psycopg2.connect("dbname=sysinv user=postgres")

@@ -35,11 +35,16 @@ if [ "$FROM_RELEASE" != "21.12" ]; then
     exit 0
 fi
 
+# only run if to 22.12 release
+if [ "$TO_RELEASE" != "22.12" ]; then
+    exit 0
+fi
+
 PLATFORM_APPLICATION_PATH='/usr/local/share/applications/helm'
 PATH=$PATH:/usr/local/sbin
 
 # conversion script; this script will convert the helm overrides
-# reading from postgres and putting overrides into /opt/oidc-auth-apps
+# reading from postgres and putting overrides into /var/opt/oidc-auth-apps
 CONV_SCRIPT='/etc/upgrade.d/50-validate-oidc-auth-apps.py'
 CONV_PARAMS="$FROM_RELEASE $TO_RELEASE migrate"
 
@@ -68,7 +73,7 @@ ORIGINAL_APP_STATUS=$EXISTING_APP_STATUS
 
 # oidc-auth-apps has user overrides converted and saved for
 # re-apply at this time
-OIDC_OVERRIDES="/opt/oidc-auth-apps/converted"
+OIDC_OVERRIDES="/var/opt/oidc-auth-apps/converted"
 OIDC_CHARTS="dex oidc-client secret-observer"
 function oidc_specific_handling {
     for chart in $OIDC_CHARTS; do
