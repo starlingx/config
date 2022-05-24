@@ -379,7 +379,7 @@ class Interfaces(Base):
         join_depth=1)
 
     host = relationship("ihost", backref="interfaces",
-                        lazy="joined", join_depth=1)
+                        lazy="joined", cascade="all")
 
     addresses = relationship("Addresses",
                              backref=backref("interface", lazy="joined"),
