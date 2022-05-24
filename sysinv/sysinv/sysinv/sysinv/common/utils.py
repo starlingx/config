@@ -2453,9 +2453,9 @@ def find_metadata_file(path, metadata_file, upgrade_from_release=None):
     return app_name, app_version, patches
 
 
-def find_manifest_file(path):
-    """ Find all manifest files in a given directory. """
-    def _is_manifest(yaml_file):
+def find_armada_manifest_file(path):
+    """ Find all Armada manifest files in a given directory. """
+    def _is_armada_manifest(yaml_file):
         with io.open(yaml_file, 'r', encoding='utf-8') as f:
             docs = yaml.load_all(f)
             for doc in docs:
@@ -2473,7 +2473,7 @@ def find_manifest_file(path):
         if file.endswith('.yaml'):
             yaml_file = os.path.join(path, file)
             try:
-                mname, mfile = _is_manifest(yaml_file)
+                mname, mfile = _is_armada_manifest(yaml_file)
                 if mfile:
                     mfiles.append((mname, mfile))
             except Exception as e:
@@ -2484,21 +2484,25 @@ def find_manifest_file(path):
     return mfiles
 
 
-def find_manifest_directory(path):
-    """For FluxCD apps we expect to have 1 manifest directory
-       that has the name of constants.APP_FLUXCD_MANIFEST_DIR
-      and we validate that and its structure"""
-    def _is_manifest_dir(path):
-        """check if the directory has the desired FluxCD app structure"""
-        mandatory_components = ("base", "kustomization.yaml")
+def find_fluxcd_manifests_directory(path, name):
+    """For FluxCD apps we expect to have one top-level manifest directory that
+       contains the name of constants.APP_FLUXCD_MANIFEST_DIR. Validate that it
+       is present and provide some basic validation of its structure.
+    """
+    def _is_fluxcd_app_compliant(path):
+        """Check if the directory has the desired FluxCD app structure"""
+        mandatory_components = ("base", constants.APP_ROOT_KUSTOMIZE_FILE)
         check_mandatory = all(comp in os.listdir(path)
                               for comp in mandatory_components)
         return check_mandatory
 
+    mfiles = []
     manifest_dir_abs = os.path.join(path, constants.APP_FLUXCD_MANIFEST_DIR)
-    if os.path.isdir(manifest_dir_abs) and _is_manifest_dir(manifest_dir_abs):
-        return constants.APP_FLUXCD_MANIFEST_DIR, manifest_dir_abs
-    return None
+    if os.path.isdir(manifest_dir_abs) and \
+       _is_fluxcd_app_compliant(manifest_dir_abs):
+        mfiles.append((("{}-{}".format(name, constants.APP_FLUXCD_MANIFEST_DIR)),
+                      manifest_dir_abs))
+    return mfiles
 
 
 def get_http_port(dbapi):
@@ -2638,32 +2642,38 @@ def is_aio_duplex_system(dbapi):
 
 
 def generate_synced_armada_dir(app_name, app_version):
+    """ Armada application: Top level directory. """
     return os.path.join(constants.APP_SYNCED_ARMADA_DATA_PATH, app_name, app_version)
 
 
 def generate_synced_armada_manifest_fqpn(app_name, app_version, manifest_filename):
+    """ Armada application: Armada manifest file. """
     return os.path.join(
         constants.APP_SYNCED_ARMADA_DATA_PATH, app_name, app_version,
         app_name + '-' + manifest_filename)
 
 
 def generate_synced_metadata_fqpn(app_name, app_version):
+    """ Armada application: Application metadata file. """
     return os.path.join(
         constants.APP_SYNCED_ARMADA_DATA_PATH, app_name, app_version,
         'metadata.yaml')
 
 
 def generate_synced_fluxcd_dir(app_name, app_version):
+    """ FluxCD application: Top level directory. """
     return os.path.join(constants.APP_FLUXCD_DATA_PATH, app_name, app_version)
 
 
-def generate_synced_fluxcd_manifest_fqpn(app_name, app_version, manifest):
+def generate_synced_fluxcd_manifests_fqpn(app_name, app_version):
+    """ FluxCD application: Top level kustomize manifests directory. """
     return os.path.join(
         constants.APP_FLUXCD_DATA_PATH, app_name, app_version,
-        app_name + '-' + manifest)
+        app_name + '-' + constants.APP_FLUXCD_MANIFEST_DIR)
 
 
 def generate_synced_fluxcd_metadata_fqpn(app_name, app_version):
+    """ FluxCD application: Application metadata file. """
     return os.path.join(
         constants.APP_FLUXCD_DATA_PATH, app_name, app_version,
         'metadata.yaml')

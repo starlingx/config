@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2019-2021 Wind River Systems, Inc.
+# Copyright (c) 2019-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -213,7 +213,7 @@ class ArmadaManifestOperator(object):
         was updated into an overrides file. The files are written to the same
         directory as the application manifest.
         """
-        if os.path.exists(self.manifest_path):
+        if self.manifest_path and os.path.exists(self.manifest_path):
 
             # cleanup any existing meta override files
             self._cleanup_meta_files(self.manifest_path)
@@ -242,7 +242,7 @@ class ArmadaManifestOperator(object):
         clear view of the conditional changes that were enforced by the system
         in the plugins
         """
-        if os.path.exists(self.manifest_path):
+        if self.manifest_path and os.path.exists(self.manifest_path):
 
             # cleanup existing deletion manifest
             self._cleanup_deletion_manifest()

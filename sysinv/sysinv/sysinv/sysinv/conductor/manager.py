@@ -6409,7 +6409,7 @@ class ConductorManager(service.PeriodicService):
                     self._kube_app_helper._verify_metadata_file(
                         app_path, app_name, None)
                 manifest_name, manifest_file = \
-                    self._kube_app_helper._find_manifest(app_path)
+                    self._kube_app_helper._find_manifest(app_path, app_name)
                 self._kube_app_helper._extract_helm_charts(app_path)
             except exception.SysinvException as e:
                 LOG.error("Extracting tarfile for %s failed: %s." % (
@@ -13784,7 +13784,7 @@ class ConductorManager(service.PeriodicService):
                 app.charts = self._app._get_list_of_charts(app)
                 self._helm.generate_helm_application_overrides(
                     app.sync_overrides_dir, app.name, app.mode, cnamespace=None,
-                    armada_format=True, armada_chart_info=app.charts, combined=True,
+                    armada_format=True, chart_info=app.charts, combined=True,
                     is_fluxcd_app=app.is_fluxcd_app)
                 (helm_files, armada_files) = self._app._get_overrides_files(app, None)
                 for f in helm_files + armada_files:
