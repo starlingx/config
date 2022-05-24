@@ -10007,6 +10007,10 @@ class ConductorManager(service.PeriodicService):
         # get default name server which is the controller floating IP address
         servers = [cutils.gethostbyname(constants.CONTROLLER_HOSTNAME)]
 
+        # if we are getting only the IPv6 localhost address on the list, ignore it
+        if servers == ['::1']:
+            servers = list()
+
         # add configured dns entries (if any)
         dns = self.dbapi.idns_get_one()
         if dns.nameservers:
