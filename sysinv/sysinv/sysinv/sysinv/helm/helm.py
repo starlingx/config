@@ -651,7 +651,7 @@ class HelmOperator(object):
             # For values passed in from files, write them back out to
             # temporary files.
             tmpfile = tempfile.NamedTemporaryFile(delete=False)
-            tmpfile.write(value_file)
+            tmpfile.write(value_file.encode() if type(value_file) == str else value_file)
             tmpfile.close()
             tmpfiles.append(tmpfile.name)
             args.extend(['--values', tmpfile.name])
