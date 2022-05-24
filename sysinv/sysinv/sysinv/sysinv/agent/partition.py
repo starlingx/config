@@ -93,8 +93,9 @@ class PartitionOperator(object):
                                                   partition_number)
             else:
                 part_device_node = '{}{}'.format(device_node, partition_number)
-            part_device_path = '{}-part{}'.format(device_path,
-                                                  partition_number)
+
+            part_device_path = utils.get_part_device_path(device_path,
+                                                          partition_number)
             start_mib = partition.get('start_mib')
             end_mib = partition.get('end_mib')
 
@@ -132,8 +133,13 @@ class PartitionOperator(object):
                 continue
 
             if device['MAJOR'] in constants.VALID_MAJOR_LIST:
-                device_path = "/dev/disk/by-path/" + device['ID_PATH']
-                device_node = device.device_node
+                if 'ID_PATH' in device:
+                    device_path = "/dev/disk/by-path/" + device['ID_PATH']
+                    device_node = device.device_node
+                elif (constants.DEVICE_NAME_MPATH in device.get("DM_NAME", "")
+                      and 'DM_UUID' in device):
+                    device_path = "/dev/disk/by-id/dm-uuid-" + device['DM_UUID']
+                    device_node = utils.get_mpath_from_dm(device.device_node)
 
                 try:
                     new_partitions = self.get_partition_info(device_path=device_path,

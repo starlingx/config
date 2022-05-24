@@ -338,11 +338,12 @@ class CephPuppet(openstack.OpenstackBasePuppet):
 
             if stor.function == constants.STOR_FUNCTION_OSD:
                 # platform_ceph_osd puppet resource parameters
+                data_path = utils.get_part_device_path(disk.device_path, '1')
                 osd = {
                     'osd_id': stor.osdid,
                     'osd_uuid': stor.uuid,
                     'disk_path': disk.device_path,
-                    'data_path': disk.device_path + '-part1',
+                    'data_path': data_path,
                     'journal_path': stor.journal_path,
                     'tier_name': stor.tier_name,
                 }

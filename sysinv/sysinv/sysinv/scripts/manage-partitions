@@ -169,8 +169,17 @@ def _get_disk_device_path(part_device_path):
     :param   part_device_path: the partition's device path
     :returns the device path of the disk on which the partition resides
     """
-    return re.match('(/dev/disk/by-path/(.+))-part([0-9]+)',
-                    part_device_path).group(1)
+    disk_device_path = ""
+    if 'by-path' in part_device_path:
+        disk_device_path = re.match('(/dev/disk/by-path/(.+))-part([0-9]+)',
+                                    part_device_path).group(1)
+    if constants.DEVICE_NAME_MPATH in part_device_path:
+        match_path = re.match('(/dev/disk/by-id/.+)-part([0-9]+)(-mpath.*)',
+                              part_device_path)
+        if match_path:
+            disk_device_path = match_path.group(1) + match_path.group(3)
+
+    return disk_device_path
 
 
 def _get_partition_number(part_device_path):
@@ -178,7 +187,7 @@ def _get_partition_number(part_device_path):
     :param    part_device_path: the partition's device path
     :returns  the partition's number
     """
-    return re.match('.*?([0-9]+)$', part_device_path).group(1)
+    return utils.get_part_number(part_device_path)
 
 
 def _partition_exists(part_device_path):
@@ -335,7 +344,8 @@ def _create_partition(disk_device_path, part_number, start_mib, size_mib,
 
     # After a partition is created we have to wait for udev to create the
     # corresponding device node. Otherwise if we try to open it will fail.
-    part_device_path = '{}-part{}'.format(disk_device_path, part_number)
+    part_device_path = utils.get_part_device_path(disk_device_path,
+                                                  part_number)
     _wait_for_partition(part_device_path,
                         loop_wait_time=PARTITION_LOOP_WAIT_TIME)
 
@@ -524,8 +534,8 @@ def create_partitions(data, mode, pfile):
                 new_partition = _create_partition(
                     disk_device_path, partition_number, start_mib,
                     size_mib, type_code)
-                part_device_path = '{}-part{}'.format(disk_device_path,
-                                                      partition_number)
+                part_device_path = utils.get_part_device_path(disk_device_path,
+                                                              partition_number)
 
                 output, _, _ = _command(["udevadm", "settle", "-E",
                                          disk_device_path])

@@ -48,6 +48,7 @@ import math
 import os
 import pathlib
 import psutil
+import pyudev
 import pwd
 import random
 import re
@@ -555,6 +556,7 @@ def is_system_usable_block_device(pydev_device):
     Example devices:
      o local block devices: local HDDs, SSDs, RAID arrays
      o remote devices: iscsi mounted, LIO, EMC
+     o mpath partition and member devices
      o non permanent devices: USB stick
     :return bool: True if device can be used else False
     """
@@ -563,6 +565,13 @@ def is_system_usable_block_device(pydev_device):
         return False
     if pydev_device.get("DM_VG_NAME") or pydev_device.get("DM_LV_NAME"):
         # Skip LVM devices
+        return False
+    if (constants.DEVICE_NAME_MPATH in pydev_device.get("DM_NAME", "")
+            and pydev_device.get("ID_PART_ENTRY_NAME")):
+        # Skip mpath partition devices
+        return False
+    if pydev_device.get("ID_FS_TYPE") == constants.DEVICE_FS_TYPE_MPATH:
+        # Skip mpath member devices
         return False
     id_path = pydev_device.get("ID_PATH", "")
     if "iqn." in id_path or "eui." in id_path:
@@ -1633,7 +1642,7 @@ def is_partition_the_last(dbapi, partition):
     """
     idisk_uuid = partition.get('idisk_uuid')
     onidisk_parts = dbapi.partition_get_by_idisk(idisk_uuid)
-    part_number = re.match('.*?([0-9]+)$',
+    part_number = re.match('.*?-part([0-9]+)',
                            partition.get('device_path')).group(1)
 
     if int(part_number) != len(onidisk_parts):
@@ -3517,3 +3526,76 @@ def get_module_name_from_entry_point(entry_point):
     raise exception.SysinvException(_(
             "Module name for entry point {} "
             "could not be determined.".format(entry_point)))
+
+
+def get_mpath_from_dm(dm_device):
+    """Get mpath node from /dev/dm-N"""
+    mpath_device = None
+
+    context = pyudev.Context()
+
+    pydev_device = pyudev.Device.from_device_file(context, dm_device)
+
+    if constants.DEVICE_NAME_MPATH in pydev_device.get("DM_NAME", ""):
+        re_line = re.compile(r'^(\D*)')
+        match = re_line.search(pydev_device.get("DM_NAME"))
+        if match:
+            mpath_device = os.path.join("/dev/mapper", match.group(1))
+
+    return mpath_device
+
+
+def get_part_device_path(disk_device_path, part_number):
+    """Get the partition device path.
+    :param   disk_device_path: the device path of the disk on which the
+             partition resides
+    :param   part_number: the partition number
+    :returns the partition device path
+    """
+    if constants.DEVICE_NAME_MPATH in disk_device_path:
+        path_split = disk_device_path.split(constants.DEVICE_NAME_MPATH)
+        part_device_path = '{}part{}-{}{}'.format(path_split[0],
+                                                  part_number,
+                                                  constants.DEVICE_NAME_MPATH,
+                                                  path_split[1])
+    else:
+        part_device_path = '{}-part{}'.format(disk_device_path, part_number)
+
+    return part_device_path
+
+
+def get_part_number(part_device_path):
+    """Obtain the number of a partition.
+    :param    part_device_path: the partition's device path
+    :returns  the partition's number
+    """
+    part_num = ""
+    if 'by-path' in part_device_path:
+        part_num = re.match('.*?([0-9]+)$', part_device_path).group(1)
+
+    if constants.DEVICE_NAME_MPATH in part_device_path:
+        match_path = re.match('(/dev/disk/by-id/.+)-part([0-9]+)(-mpath.*)',
+                              part_device_path)
+        if match_path:
+            part_num = match_path.group(2)
+
+    return part_num
+
+
+def is_part_of_disk(part_device_path, disk_device_path):
+    """Check if a partition is part of a disk
+    :param    part_device_path: the partition's device path
+    :param    disk_device_path: the disk's device path
+    :returns  the partition's number
+    """
+    is_part_of_disk = False
+
+    if disk_device_path in part_device_path:
+        is_part_of_disk = True
+    elif constants.DEVICE_NAME_MPATH in disk_device_path:
+        path_split = disk_device_path.split(constants.DEVICE_NAME_MPATH)
+        if (path_split[0] in part_device_path and
+                path_split[1] in part_device_path):
+            is_part_of_disk = True
+
+    return is_part_of_disk

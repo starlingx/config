@@ -21,7 +21,6 @@
 
 
 import eventlet
-import re
 
 from oslo_config import cfg
 from oslo_db import exception as db_exc
@@ -2987,11 +2986,9 @@ class Connection(api.Connection):
                 # Update the journal device path.
                 journals = self.journal_get_all(stor.uuid)
                 for journal in journals:
-                    partition_number = re.match('.*?([0-9]+)$',
-                                                journal.device_path).group(1)
-                    device_path = "{}{}{}".format(disk['device_path'],
-                                                  "-part",
-                                                  partition_number)
+                    partition_number = utils.get_part_number(journal.device_path)
+                    device_path = utils.get_part_device_path(disk['device_path'],
+                                                             partition_number)
                     updates = {'device_path': device_path}
                     self.journal_update(journal['uuid'], updates)
 
@@ -3015,8 +3012,9 @@ class Connection(api.Connection):
         for journal in journals:
             # Update DB
             journal_path = journal_disk.device_path
-            updates = {'device_path': journal_path + "-part" +
-                                      str(partition_index)}
+            updates = {'device_path':
+                        utils.get_part_device_path(journal_path,
+                                                   str(partition_index))}
             self.journal_update(journal.id, updates)
             partition_index += 1
             # Update output
@@ -3062,8 +3060,9 @@ class Connection(api.Connection):
         for journal in journals:
             stor = self.istor_get(journal.foristorid)
             disk = self.idisk_get_by_istor(stor.uuid)[0]
+            device_path = utils.get_part_device_path(disk.device_path, "2")
             journal_vals = {'onistor_uuid': stor.uuid,
-                            'device_path': disk.device_path + "-part" + "2",
+                            'device_path': device_path,
                             'size_mib': CONF.journal.journal_default_size}
             self.journal_update(journal.id, journal_vals)
 
@@ -3153,8 +3152,8 @@ class Connection(api.Connection):
                 if value == istor_obj['uuid']:
                     # If the journal becomes collocated, assign second
                     # partition.
-                    journal_vals['device_path'] = new_onidisk.device_path + \
-                                                  "-part" + "2"
+                    journal_vals['device_path'] = utils.get_part_device_path(
+                                                  new_onidisk.device_path, "2")
 
                 del values[key]
 

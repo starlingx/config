@@ -4228,10 +4228,11 @@ class ConductorManager(service.PeriodicService):
             idisk_uuid, sort_key='device_path')
         if partitions:
             device_node = "%s%s" % (idisk.device_node, len(partitions) + 1)
-            device_path = "%s-part%s" % (idisk.device_path, len(partitions) + 1)
+            device_path = cutils.get_part_device_path(idisk.device_path,
+                                                     str(len(partitions) + 1))
         else:
             device_node = idisk.device_node + '1'
-            device_path = idisk.device_path + '-part1'
+            device_path = cutils.get_part_device_path(idisk.device_path, "1")
 
         return device_node, device_path
 
@@ -4507,8 +4508,18 @@ class ConductorManager(service.PeriodicService):
                 continue
 
             # Obtain the disk the partition is on.
-            part_disk = next((d for d in db_disks
-                             if d.device_path in db_part.device_path), None)
+            part_disk = None
+            for d in db_disks:
+                if d.device_path in db_part.device_path:
+                    part_disk = d
+                    break
+                elif constants.DEVICE_NAME_MPATH in d.device_node:
+                    path_split = d.device_path.split(constants.DEVICE_NAME_MPATH)
+                    if (path_split[0] in db_part.device_path and
+                            path_split[1] in db_part.device_path):
+                        is_part_of_disk = True
+                        part_disk = d
+                        break
 
             if not part_disk:
                 # Should not happen as we only store partitions associated
@@ -4580,7 +4591,14 @@ class ConductorManager(service.PeriodicService):
                 LOG.debug("PART conductor - partition not found, adding...")
                 # Complete disk info.
                 for db_disk in db_disks:
+                    is_part_of_disk = False
                     if db_disk.device_path in ipart['device_path']:
+                        is_part_of_disk = True
+                    elif constants.DEVICE_NAME_MPATH in db_disk.device_node:
+                        path_split = db_disk.device_path.split(constants.DEVICE_NAME_MPATH)
+                        if path_split[0] in ipart['device_path'] and path_split[1] in ipart['device_path']:
+                            is_part_of_disk = True
+                    if is_part_of_disk:
                         part_dict.update({'idisk_id': db_disk.id,
                                           'idisk_uuid': db_disk.uuid})
                         LOG.debug("PART conductor - disk - part_dict: %s " %
@@ -12341,7 +12359,7 @@ class ConductorManager(service.PeriodicService):
                 "host %s " % active_controller.hostname))
 
         # The partition for cinder volumes is always the first.
-        cinder_device_partition = '{}{}'.format(cinder_device, '-part1')
+        cinder_device_partition = cutils.get_part_device_path(cinder_device, '1')
         cinder_size = self.get_partition_size(context, cinder_device_partition)
 
         return cinder_size
