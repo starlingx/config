@@ -567,7 +567,7 @@ def is_system_usable_block_device(pydev_device):
         # Skip LVM devices
         return False
     if (constants.DEVICE_NAME_MPATH in pydev_device.get("DM_NAME", "")
-            and pydev_device.get("ID_PART_ENTRY_NAME")):
+            and pydev_device.get("ID_PART_ENTRY_NUMBER")):
         # Skip mpath partition devices
         return False
     if pydev_device.get("ID_FS_TYPE") == constants.DEVICE_FS_TYPE_MPATH:
