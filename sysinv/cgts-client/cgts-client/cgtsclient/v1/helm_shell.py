@@ -134,7 +134,7 @@ def do_helm_override_update(cc, args):
         try:
             for filename in args.files:
                 with open(filename, 'r') as input_file:
-                    overrides = yaml.load(input_file)
+                    overrides = yaml.load(input_file, Loader=yaml.Loader)
                     override_files.append(yaml.dump(overrides))
         except IOError as ex:
             raise exc.CommandError('error opening values file: %s' % ex)
