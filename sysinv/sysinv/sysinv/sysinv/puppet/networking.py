@@ -8,6 +8,7 @@ import netaddr
 
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import utils
 
 from sysinv.puppet import base
 from sysinv.puppet import interface
@@ -242,12 +243,16 @@ class NetworkingPuppet(base.BasePuppet):
 
             # Additional defaults for ptp4l instances
             if instance['service'] == constants.PTP_INSTANCE_TYPE_PTP4L:
+                uds_address_path = '/var/run/' + instance['service'] + '-' + instance['name']
                 instance['global_parameters'].update({
-                    'uds_address': '/var/run/' + instance['service'] + '-' + instance['name'],
-                    'uds_ro_address': '/var/run/' + instance['service'] + '-' + instance['name']
-                    + 'ro',
-                    'message_tag': instance['name']
+                    'message_tag': instance['name'],
+                    'uds_address': uds_address_path
                 })
+                if utils.is_centos():
+                    # Currently only CentOS's linuxptp has support to UDS-RO
+                    instance['global_parameters'].update({
+                        'uds_ro_address': uds_address_path + 'ro'
+                    })
             elif instance['service'] == constants.PTP_INSTANCE_TYPE_PHC2SYS:
                 instance['global_parameters'].update({
                     'message_tag': instance['name']
