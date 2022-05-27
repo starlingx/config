@@ -550,10 +550,10 @@ class Host(base.APIBase):
     install_state_info = wtypes.text
     "Represent install state extra information if there is any"
 
-    max_cpu_frequency = wtypes.text
+    max_cpu_mhz_configured = wtypes.text
     "Represent the CPU max frequency"
 
-    max_cpu_default = wtypes.text
+    max_cpu_mhz_allowed = wtypes.text
     "Represent the default CPU max frequency"
 
     iscsi_initiator_name = wtypes.text
@@ -594,7 +594,7 @@ class Host(base.APIBase):
                           'iscsi_initiator_name',
                           'device_image_update', 'reboot_needed',
                           'inv_state', 'clock_synchronization',
-                          'max_cpu_frequency', 'max_cpu_default']
+                          'max_cpu_mhz_configured', 'max_cpu_mhz_allowed']
 
         fields = minimum_fields if not expand else None
         uhost = Host.from_rpc_object(rpc_ihost, fields)
@@ -2081,15 +2081,15 @@ class HostController(rest.RestController):
                                              'bm_username': None,
                                              'bm_password': None})
 
-            if 'max_cpu_frequency' in delta:
-                self._check_max_cpu_frequency(hostupdate)
-                max_cpu_frequency = hostupdate.ihost_patch.get('max_cpu_frequency')
-                ihost_obj['max_cpu_frequency'] = max_cpu_frequency
+            if 'max_cpu_mhz_configured' in delta:
+                self._check_max_cpu_mhz_configured(hostupdate)
+                max_cpu_mhz_configured = hostupdate.ihost_patch.get('max_cpu_mhz_configured')
+                ihost_obj['max_cpu_mhz_configured'] = max_cpu_mhz_configured
                 pecan.request.dbapi.ihost_update(
                     ihost_obj['uuid'],
-                    {'max_cpu_frequency': max_cpu_frequency})
+                    {'max_cpu_mhz_configured': max_cpu_mhz_configured})
                 if not hostupdate.configure_required:
-                    pecan.request.rpcapi.update_host_max_cpu_frequency(
+                    pecan.request.rpcapi.update_host_max_cpu_mhz_configured(
                         pecan.request.context, ihost_obj)
 
         if hostupdate.ihost_val_prenotify:
@@ -2882,18 +2882,18 @@ class HostController(rest.RestController):
                       "operation can proceed")
                     % (personality, load.software_version))
 
-    def _check_max_cpu_frequency(self, host):
+    def _check_max_cpu_mhz_configured(self, host):
         # Max CPU frequency requested by the user and the maximum frequency
         # allowed by the CPU.
-        max_cpu_frequency = str(host.ihost_patch.get('max_cpu_frequency', ''))
-        max_cpu_default = host.ihost_orig.get('max_cpu_default', 0)
+        max_cpu_mhz_configured = str(host.ihost_patch.get('max_cpu_mhz_configured', ''))
+        max_cpu_mhz_allowed = host.ihost_orig.get('max_cpu_mhz_allowed', 0)
 
         if (constants.WORKER in host.ihost_orig[constants.SUBFUNCTIONS] and
-            host.ihost_orig.get('capabilities').get(constants.IHOST_MAX_CPU_CONFIG) ==
-                constants.CONFIGURABLE and max_cpu_default):
-            max_cpu_default = int(max_cpu_default)
+            host.ihost_orig.get('capabilities').get(constants.IHOST_IS_MAX_CPU_MHZ_CONFIGURABLE) ==
+                constants.CONFIGURABLE and max_cpu_mhz_allowed):
+            max_cpu_mhz_allowed = int(max_cpu_mhz_allowed)
 
-            # The service parameter is used to constrain the max_cpu_frequency
+            # The service parameter is used to constrain the max_cpu_mhz_configured
             # into a range defined as a percentage of the max frequency allowed
             # by the CPU and the max CPU frequency allowed itself.
             max_cpu_percentage = pecan.request.dbapi.service_parameter_get_one(
@@ -2901,23 +2901,23 @@ class HostController(rest.RestController):
                 section=constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
                 name=constants.SERVICE_PARAM_NAME_PLATFORM_MAX_CPU_PERCENTAGE
             ).value
-            max_cpu_floor = (int(max_cpu_percentage) * max_cpu_default) // 100
+            max_cpu_floor = (int(max_cpu_percentage) * max_cpu_mhz_allowed) // 100
 
-            #  Restore the max_cpu_frequency to default if user set max_cpu_frequency
-            # to max_cpu_default.
-            if max_cpu_frequency == constants.IHOST_MAX_CPU_DEFAULT:
-                host.ihost_patch['max_cpu_frequency'] = max_cpu_default
+            #  Restore the max_cpu_mhz_configured to default if user set max_cpu_mhz_configured
+            # to max_cpu_mhz_allowed.
+            if max_cpu_mhz_configured == constants.IHOST_MAX_CPU_MHZ_ALLOWED:
+                host.ihost_patch['max_cpu_mhz_configured'] = max_cpu_mhz_allowed
                 return
 
-            if not max_cpu_frequency.lstrip('-+').isdigit():
+            if not max_cpu_mhz_configured.lstrip('-+').isdigit():
                 raise wsme.exc.ClientSideError(
                     _("Max CPU frequency %s must be an integer.")
-                    % (max_cpu_frequency))
+                    % (max_cpu_mhz_configured))
 
-            if not (max_cpu_floor <= int(max_cpu_frequency) <= max_cpu_default):
+            if not (max_cpu_floor <= int(max_cpu_mhz_configured) <= max_cpu_mhz_allowed):
                 raise wsme.exc.ClientSideError(
                     _("Max CPU Frequency must be between (%d, %d).")
-                    % (max_cpu_floor, max_cpu_default))
+                    % (max_cpu_floor, max_cpu_mhz_allowed))
         else:
             raise wsme.exc.ClientSideError(
                 _("Host does not support configuration of Max CPU Frequency."))

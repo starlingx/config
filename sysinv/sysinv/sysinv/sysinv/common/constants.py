@@ -199,8 +199,8 @@ PATCH_DEFAULT_TIMEOUT_IN_SECS = 6
 
 # ihost field attributes
 IHOST_STOR_FUNCTION = 'stor_function'
-IHOST_MAX_CPU_CONFIG = 'max_cpu_config'
-IHOST_MAX_CPU_DEFAULT = 'max_cpu_default'
+IHOST_IS_MAX_CPU_MHZ_CONFIGURABLE = 'is_max_cpu_configurable'
+IHOST_MAX_CPU_MHZ_ALLOWED = 'max_cpu_mhz_allowed'
 
 # ihost config_status field values
 CONFIG_STATUS_OUT_OF_DATE = "Config out-of-date"

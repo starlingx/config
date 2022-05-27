@@ -288,7 +288,7 @@ class AgentManager(service.PeriodicService):
         else:
             LOG.debug("ttys_dcd is not configured")
 
-    def _max_cpu_frequency_configurable(self):
+    def _is_max_cpu_mhz_configurable(self):
         fail_result = "System does not support"
 
         output = utils.execute('/usr/bin/cpupower', 'info', run_as_root=True)
@@ -299,7 +299,7 @@ class AgentManager(service.PeriodicService):
                 return constants.CONFIGURABLE
         return constants.NOT_CONFIGURABLE
 
-    def _max_cpu_frequency_default(self):
+    def _get_max_cpu_mhz_allowed(self):
         output = utils.execute(
             "lscpu | grep 'CPU max MHz' | awk '{ print $4 }' | cut -d ',' -f 1",
             shell=True)
@@ -573,10 +573,10 @@ class AgentManager(service.PeriodicService):
         """
         if os.path.exists(FIRST_BOOT_FLAG):
             max_cpu_freq_dict = {
-                constants.IHOST_MAX_CPU_CONFIG:
-                self._max_cpu_frequency_configurable(),
-                constants.IHOST_MAX_CPU_DEFAULT:
-                self._max_cpu_frequency_default()}
+                constants.IHOST_IS_MAX_CPU_MHZ_CONFIGURABLE:
+                self._is_max_cpu_mhz_configurable(),
+                constants.IHOST_MAX_CPU_MHZ_ALLOWED:
+                self._get_max_cpu_mhz_allowed()}
             msg_dict.update({constants.HOST_ACTION_STATE:
                              constants.HAS_REINSTALLED,
                              'max_cpu_dict': max_cpu_freq_dict})
