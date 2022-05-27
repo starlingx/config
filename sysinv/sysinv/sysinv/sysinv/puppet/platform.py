@@ -65,6 +65,7 @@ class PlatformPuppet(base.BasePuppet):
         config.update(self._get_host_cpu_config(host))
         config.update(self._get_host_memory_config(host))
         config.update(self._get_kvm_timer_advance_config(host))
+        config.update(self._get_nvidia_vgpu_drivers_config(host))
         config.update(self._get_host_lldp_config(host))
         return config
 
@@ -761,6 +762,23 @@ class PlatformPuppet(base.BasePuppet):
                 kvm_timer_advance_enabled,
             'platform::compute::kvm_timer_advance::vcpu_pin_set':
                 vcpu_pin_set,
+        }
+
+    # Config flag to control, based on the openstack_compute node label,
+    # the conditional loading of the non-open-source NVIDIA vGPU
+    # drivers for commercial scenarios where they are built into
+    # the StarlingX ISO.
+    def _get_nvidia_vgpu_drivers_config(self, host):
+        openstack_compute_enabled = False
+
+        if constants.WORKER in utils.get_personalities(host):
+            host_labels = self.dbapi.label_get_by_host(host.id)
+            if utils.has_openstack_compute(host_labels):
+                openstack_compute_enabled = True
+
+        return {
+            'platform::compute::nvidia_vgpu_drivers::openstack_enabled':
+                openstack_compute_enabled
         }
 
     def _get_nfs_config(self, host):
