@@ -511,7 +511,7 @@ class KubeOperator(object):
 
         c = self._get_kubernetesclient_core()
         try:
-            return c.delete_namespaced_secret(name, namespace, body)
+            return c.delete_namespaced_secret(name, namespace, body=body)
         except ApiException as e:
             if e.status == httplib.NOT_FOUND:
                 LOG.warn("Secret %s under Namespace %s "
@@ -532,7 +532,7 @@ class KubeOperator(object):
 
         c = self._get_kubernetesclient_core()
         try:
-            c.delete_namespace(namespace, body)
+            c.delete_namespace(namespace, body=body)
         except ApiException as e:
             if e.status == httplib.NOT_FOUND:
                 LOG.warn("Namespace %s not found." % namespace)
@@ -607,7 +607,7 @@ class KubeOperator(object):
 
         c = self._get_kubernetesclient_core()
         try:
-            c.delete_namespaced_config_map(name, namespace, body)
+            c.delete_namespaced_config_map(name, namespace, body=body)
         except ApiException as e:
             if e.status == httplib.NOT_FOUND:
                 LOG.warn("ConfigMap %s under Namespace %s "
@@ -674,7 +674,7 @@ class KubeOperator(object):
 
         try:
             c.delete_namespaced_custom_object(group, version, namespace,
-                plural, name, body)
+                plural, name, body=body)
         except ApiException as ex:
             if ex.reason == "Not Found":
                 LOG.warn("Failed to delete custom resource object, Namespace "
@@ -875,7 +875,7 @@ class KubeOperator(object):
 
         c = self._get_kubernetesclient_core()
         try:
-            api_response = c.delete_namespaced_pod(name, namespace, body)
+            api_response = c.delete_namespaced_pod(name, namespace, body=body)
             LOG.debug("%s" % api_response)
             return True
         except ApiException as e:
@@ -959,7 +959,7 @@ class KubeOperator(object):
             body.update(kwargs)
 
         try:
-            c.delete_validating_webhook_configuration(name, body)
+            c.delete_validating_webhook_configuration(name, body=body)
         except ApiException as e:
             if e.status == httplib.NOT_FOUND:
                 LOG.warn("ValidatingWebhookConfiguration %s "
@@ -996,7 +996,7 @@ class KubeOperator(object):
             body.update(kwargs)
 
         try:
-            c.delete_mutating_webhook_configuration(name, body)
+            c.delete_mutating_webhook_configuration(name, body=body)
         except ApiException as e:
             if e.status == httplib.NOT_FOUND:
                 LOG.warn("MutatingWebhookConfiguration %s "
