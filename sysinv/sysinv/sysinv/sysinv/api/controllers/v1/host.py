@@ -2900,7 +2900,7 @@ class HostController(rest.RestController):
                 service=constants.SERVICE_TYPE_PLATFORM,
                 section=constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
                 name=constants.SERVICE_PARAM_NAME_PLATFORM_MAX_CPU_PERCENTAGE
-            )
+            ).value
             max_cpu_floor = (int(max_cpu_percentage) * max_cpu_default) // 100
 
             #  Restore the max_cpu_frequency to default if user set max_cpu_frequency
