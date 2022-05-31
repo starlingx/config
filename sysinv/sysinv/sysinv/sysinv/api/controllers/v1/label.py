@@ -322,6 +322,7 @@ def _check_host_locked(host, host_labels):
         labels_requiring_lock = \
             [common.LABEL_CONTROLLER,
              common.LABEL_COMPUTE_LABEL,
+             common.LABEL_DISABLE_NOHZ_FULL,
              common.LABEL_OPENVSWITCH,
              common.LABEL_REMOTE_STORAGE,
              common.LABEL_SRIOVDP,

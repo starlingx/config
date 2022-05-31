@@ -2559,6 +2559,20 @@ def has_sriovdp_enabled(labels):
     return False
 
 
+def has_disable_nohz_full_enabled(labels):
+    """Returns true if the disable-nohz-full=enabled label is set """
+    if not labels:
+        return False
+
+    for label in labels:
+        if (label.label_key == helm_common.LABEL_DISABLE_NOHZ_FULL and
+                label.label_value):
+            return helm_common.LABEL_VALUE_ENABLED == label.label_value.lower()
+
+    # We haven't found the nohz_full node key. Return False
+    return False
+
+
 def has_vswitch_enabled(host_labels, dbapi):
     """Returns true if the vswitch label is set """
     if not host_labels:
