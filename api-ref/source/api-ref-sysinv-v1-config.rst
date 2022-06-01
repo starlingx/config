@@ -655,6 +655,16 @@ itemNotFound (404)
                "href": "http://10.10.10.3:6385/kube_upgrade/",
                "rel": "bookmark"
          }
+      ],
+      "kube_config_kubelet": [
+         {
+               "href": "http://10.10.10.3:6385/v1/kube_config_kubelet/",
+               "rel": "self"
+         },
+         {
+               "href": "http://10.10.10.3:6385/kube_config_kubelet/",
+               "rel": "bookmark"
+         }
       ]
    }
 
@@ -12515,3 +12525,43 @@ forbidden (403), badMethod (405), overLimit (413)
    }
 
 This operation does not accept a request body.
+
+-------------------------
+Kubernetes config kubelet
+-------------------------
+
+These APIs allow the reconfiguration of kubelet-config parameters and restart of kubelet on each node.
+
+******************************************************************************
+Apply kubelet-config parameters reconfiguration and restart kubelet procedure
+******************************************************************************
+
+.. rest_method:: POST /v1/kube_config_kubelet/apply
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+computeFault (400, 500, ...), serviceUnavailable (503), badRequest (400),
+unauthorized (401), forbidden (403), badMethod (405), overLimit (413)
+
+**Request parameters**
+
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "success", "plain", "xsd:string", "The success message indicating start of the kube-config-kubelet apply"
+   "error", "plain", "xsd:string", "The error message in case something wrong happen on the API execution"
+
+::
+
+   {
+      "success": "kube-config-kubelet applied.",
+      "error": ""
+   }

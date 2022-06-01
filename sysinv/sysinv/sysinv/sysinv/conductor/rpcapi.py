@@ -2088,6 +2088,13 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.cast(context, self.make_msg('kube_upgrade_networking',
                                                 kube_version=kube_version))
 
+    def kube_config_kubelet(self, context):
+        """Sychronously, have the conductor configure kubelet.
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('kube_config_kubelet'))
+
     def store_bitstream_file(self, context, filename):
         """Asynchronously, have the conductor store the device image
         on this host.

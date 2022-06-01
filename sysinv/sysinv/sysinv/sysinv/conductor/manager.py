@@ -1703,6 +1703,30 @@ class ConductorManager(service.PeriodicService):
 
         return False
 
+    def kube_config_kubelet(self, context):
+        """Update kubernetes nodes kubelet configuration ConfigMap.
+
+        This method updates kubelet parameters in configmaps/kubelet-config.
+        This leverages puppet report status so we can wait for completion
+        of the runtime manifest and trigger subsequent per-node configuration.
+
+        :param context: request context
+        """
+        active_controller = utils.HostHelper.get_active_controller(self.dbapi)
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities,
+            [active_controller.uuid])
+        config_dict = {
+            "personalities": personalities,
+            "host_uuids": [active_controller.uuid],
+            "classes": [
+                'platform::kubernetes::master::update_kubelet_params::runtime'],
+            puppet_common.REPORT_STATUS_CFG:
+                puppet_common.REPORT_KUBE_UPDATE_KUBELET_PARAMS
+        }
+        self._config_apply_runtime_manifest(
+            context, config_uuid=config_uuid, config_dict=config_dict)
+
     def update_keystone_password(self, context):
         """This method calls a puppet class
            'openstack::keystone::password::runtime'
@@ -8488,6 +8512,26 @@ class ConductorManager(service.PeriodicService):
                 self.report_sysparam_http_update_success, [],
                 self.report_sysparam_http_update_failure, [error]
             )
+        # Kubernetes kubelet parameters update and per node configuration
+        elif reported_cfg == puppet_common.REPORT_KUBE_UPDATE_KUBELET_PARAMS:
+            # The agent is reporting the runtime update_kubelet_params has been applied.
+            host_uuid = iconfig['host_uuid']
+            if status == puppet_common.REPORT_SUCCESS:
+                # Update action was successful.
+                # Invoke per-node kubelet upgrade runtime configuration.
+                success = True
+                self.handle_kube_update_params_success(context, host_uuid)
+            elif status == puppet_common.REPORT_FAILURE:
+                # Update action has failed
+                args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
+                LOG.error("config runtime failure, "
+                          "reported_cfg: %(cfg)s status: %(status)s "
+                          "iconfig: %(iconfig)s" % args)
+            else:
+                args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
+                LOG.error("No match for sysinv-agent manifest application reported! "
+                          "reported_cfg: %(cfg)s status: %(status)s "
+                          "iconfig: %(iconfig)s" % args)
         else:
             LOG.error("Reported configuration '%(cfg)s' is not handled by"
                       " report_config_status! iconfig: %(iconfig)s" %
@@ -9265,6 +9309,37 @@ class ConductorManager(service.PeriodicService):
         self.dbapi.software_upgrade_update(
             upgrade.uuid,
             {'state': constants.UPGRADE_ACTIVATION_FAILED})
+
+    def handle_kube_update_params_success(self, context, host_uuid):
+        """
+           Callback for Sysinv Agent on kube update params success.
+
+           This is invoked after kubelet-config ConfigMap is updated,
+           and does per-node kubernetes configuration.
+
+           This will download the current kubelet-config ConfigMap,
+           regenerate the configuration file /var/lib/kubelet/config.yaml,
+           and restart kubelet per node.
+
+        :param context: request context
+        :param host_uuid: host unique id
+        """
+        LOG.info("Kube update params phase succeeded on host: %s"
+                % (host_uuid))
+
+        personalities = [constants.CONTROLLER, constants.WORKER]
+        hosts = self.dbapi.ihost_get_list()
+        host_uuids = [x.uuid for x in hosts if x.personality in personalities]
+        config_uuid = self._config_update_hosts(context, personalities,
+                                                host_uuids=host_uuids)
+        config_dict = {
+            "personalities": personalities,
+            "host_uuids": host_uuids,
+            "classes": [
+                'platform::kubernetes::update_kubelet_config::runtime']
+        }
+        self._config_apply_runtime_manifest(
+            context, config_uuid=config_uuid, config_dict=config_dict)
 
     def report_kube_rootca_update_success(self, host_uuid, reported_cfg):
         """
@@ -11165,7 +11240,7 @@ class ConductorManager(service.PeriodicService):
                                              config_dict=config_dict)
 
         if filter_classes and config_dict['classes'] in filter_classes:
-            LOG.info("config runtime filter_clasess add %s %s" %
+            LOG.info("config runtime filter_classes add %s %s" %
                      (filter_classes, config_dict))
             self._add_runtime_class_apply_in_progress(filter_classes,
                                                       host_uuids=config_dict.get('host_uuids', None))

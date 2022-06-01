@@ -55,6 +55,7 @@ from cgtsclient.v1 import isystem
 from cgtsclient.v1 import iuser
 from cgtsclient.v1 import kube_cluster
 from cgtsclient.v1 import kube_cmd_version
+from cgtsclient.v1 import kube_config_kubelet
 from cgtsclient.v1 import kube_host_upgrade
 from cgtsclient.v1 import kube_rootca_update
 from cgtsclient.v1 import kube_upgrade
@@ -181,3 +182,5 @@ class Client(object):
         self.device_label = device_label.DeviceLabelManager(self.http_client)
         self.restore = restore.RestoreManager(self.http_client)
         self.kube_rootca_update = kube_rootca_update.KubeRootCAUpdateManager(self.http_client)
+        self.kube_config_kubelet = \
+            kube_config_kubelet.KubeConfigKubeletManager(self.http_client)
