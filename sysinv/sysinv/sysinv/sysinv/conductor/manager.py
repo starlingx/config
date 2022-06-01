@@ -5384,7 +5384,7 @@ class ConductorManager(service.PeriodicService):
                 max_cpu_dict.get(constants.IHOST_IS_MAX_CPU_MHZ_CONFIGURABLE)})
             ihost.max_cpu_mhz_allowed = max_cpu_dict.get('max_cpu_mhz_allowed')
             val.update({'capabilities': ihost.capabilities,
-                        constants.IHOST_max_cpu_mhz_allowed: ihost.max_cpu_mhz_allowed})
+                        constants.IHOST_MAX_CPU_MHZ_ALLOWED: ihost.max_cpu_mhz_allowed})
 
         if val:
             ihost = self.dbapi.ihost_update(ihost_uuid, val)
