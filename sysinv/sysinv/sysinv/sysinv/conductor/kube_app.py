@@ -814,8 +814,6 @@ class AppOperator(object):
                            default_flow_style=False)
 
     def _save_images_list_by_charts(self, app):
-        from six.moves.urllib.parse import urlparse
-
         # Mine the images from values.yaml files in the charts directory.
         # The list of images for each chart are saved to the images file.
         images_by_charts = {}
@@ -1696,10 +1694,10 @@ class AppOperator(object):
                 for release_name, chart_obj in list(charts.items()):
                     # Request the helm release info
                     helm_rel = self._kube.get_custom_resource(
-                        constants.FLUXCD_CRD_HELM_REL_GROUP,
-                        constants.FLUXCD_CRD_HELM_REL_VERSION,
+                        constants.FLUXCD_CRD_HELM_REPO_GROUP,
+                        constants.FLUXCD_CRD_HELM_REPO_VERSION,
                         chart_obj["namespace"],
-                        constants.FLUXCD_CRD_HELM_REL_PLURAL,
+                        constants.FLUXCD_CRD_HELM_REPO_PLURAL,
                         release_name)
 
                     if not helm_rel:
@@ -2203,7 +2201,6 @@ class AppOperator(object):
             # Copy the manifest and metadata file to the drbd
             if os.path.isdir(app.inst_mfile):
                 shutil.copytree(app.inst_mfile, manifest_sync_path)
-                self._override_fluxcd_app_repo_url(manifest_sync_path)
             else:
                 shutil.copy(app.inst_mfile, manifest_sync_path)
             inst_metadata_file = os.path.join(
@@ -2260,39 +2257,6 @@ class AppOperator(object):
             self._abort_operation(app, constants.APP_UPLOAD_OP)
             raise exception.KubeAppUploadFailure(
                 name=app.name, version=app.version, reason=e)
-
-    def _override_fluxcd_app_repo_url(self, manifest):
-        """
-        Replace the host in the default helm repository url
-        with the network addr floating adress
-
-        :param manifest: the manifest dir path
-        """
-        if not os.path.isdir(manifest):
-            return
-
-        helmrepo_path = os.path.join(manifest, "base", "helmrepository.yaml")
-
-        # get the helm repo base url
-        with io.open(helmrepo_path, 'r', encoding='utf-8') as f:
-            helm_repo_yaml = next(yaml.safe_load_all(f))
-            helm_repo_url = helm_repo_yaml["spec"]["url"]
-
-        # replace the repo url with the network addr floating adress
-        parsed_helm_repo_url = urlparse(helm_repo_url)
-        sc_network = \
-            self._dbapi.network_get_by_type(constants.NETWORK_TYPE_CLUSTER_HOST)
-        sc_network_addr_pool = \
-            self._dbapi.address_pool_get(sc_network.pool_uuid)
-        sc_float_ip = sc_network_addr_pool.floating_address
-        if cutils.is_valid_ipv6(sc_float_ip):
-            sc_float_ip = '[' + sc_float_ip + ']'
-        helm_repo_yaml["spec"]["url"] = "http://{}:{}{}".format(
-            sc_float_ip,
-            cutils.get_http_port(self._dbapi),
-            parsed_helm_repo_url.path)
-        with open(helmrepo_path, "w") as f:
-            yaml.dump(helm_repo_yaml, f, default_flow_style=False)
 
     def set_reapply(self, app_name):
         lock_name = "%s_%s" % (LOCK_NAME_APP_REAPPLY, app_name)
@@ -4588,17 +4552,17 @@ class FluxCDHelper(object):
         for release in helmrelease_doc[0]['releases']:
             try:
                 if self._kube.get_custom_resource(
-                        constants.FLUXCD_CRD_HELM_REL_GROUP,
-                        constants.FLUXCD_CRD_HELM_REL_VERSION,
+                        constants.FLUXCD_CRD_HELM_REPO_GROUP,
+                        constants.FLUXCD_CRD_HELM_REPO_VERSION,
                         release["namespace"],
-                        constants.FLUXCD_CRD_HELM_REL_PLURAL,
+                        constants.FLUXCD_CRD_HELM_REPO_PLURAL,
                         release['name']):
 
                     self._kube.delete_custom_resource(
-                        constants.FLUXCD_CRD_HELM_REL_GROUP,
-                        constants.FLUXCD_CRD_HELM_REL_VERSION,
+                        constants.FLUXCD_CRD_HELM_REPO_GROUP,
+                        constants.FLUXCD_CRD_HELM_REPO_VERSION,
                         release["namespace"],
-                        constants.FLUXCD_CRD_HELM_REL_PLURAL,
+                        constants.FLUXCD_CRD_HELM_REPO_PLURAL,
                         release['name'])
             except Exception as e:
                 LOG.error("Attemting to cleanup HelmRelease {}/{} "

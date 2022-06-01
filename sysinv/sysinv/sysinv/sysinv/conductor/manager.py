@@ -8342,8 +8342,32 @@ class ConductorManager(service.PeriodicService):
                       " a reported configuration! iconfig: %s" % iconfig)
             return
 
-        # Identify the set of manifests executed
+        def _process_config_report(callback_success, callback_success_args,
+                                   callback_failure, callback_failure_args):
+            success = False
+            if status == puppet_common.REPORT_SUCCESS:
+                # Configuration was successful
+                success = True
+                callback_success(*callback_success_args)
+            elif status == puppet_common.REPORT_FAILURE:
+                # Configuration has failed
+                callback_failure(*callback_failure_args)
+            else:
+                err_args = {
+                    'cfg': reported_cfg,
+                    'status': status,
+                    'iconfig': iconfig
+                }
+                LOG.error("No match for sysinv-agent manifest application reported! "
+                          "reported_cfg: %(cfg)s status: %(status)s "
+                          "iconfig: %(iconfig)s" % err_args)
+
+            return success
+
         success = False
+        host_uuid = iconfig.get('host_uuid')
+
+        # Identify the set of manifests executed
         if reported_cfg == puppet_common.REPORT_ROUTE_CONFIG:
             # The agent is reporting the runtime route config has been applied.  Clear the corresponding
             # runtime class in progress flag and check for outstanding deferred runtime config.
@@ -8356,180 +8380,91 @@ class ConductorManager(service.PeriodicService):
                 self._audit_deferred_runtime_config(context)
             else:
                 # Config out of date alarm will be raised
-                host_uuid = iconfig.get('host_uuid')
                 LOG.info("Route config manifest failed for host: %s" % host_uuid)
         elif reported_cfg == puppet_common.REPORT_UPGRADE_ACTIONS:
             if status == puppet_common.REPORT_SUCCESS:
                 success = True
             else:
-                host_uuid = iconfig['host_uuid']
                 LOG.info("Upgrade manifest failed for host: %s" % host_uuid)
                 self.report_upgrade_config_failure()
         elif reported_cfg == puppet_common.REPORT_DISK_PARTITON_CONFIG:
             partition_uuid = iconfig['partition_uuid']
-            host_uuid = iconfig['host_uuid']
             idisk_uuid = iconfig['idisk_uuid']
-            if status == puppet_common.REPORT_SUCCESS:
-                # Configuration was successful
-                success = True
-                self.report_partition_mgmt_success(host_uuid, idisk_uuid,
-                                                   partition_uuid)
-            elif status == puppet_common.REPORT_FAILURE:
-                # Configuration has failed
-                self.report_partition_mgmt_failure(host_uuid, idisk_uuid,
-                                                   partition_uuid, error)
+
+            success = _process_config_report(
+                self.report_partition_mgmt_success, [host_uuid, idisk_uuid,
+                                                     partition_uuid],
+                self.report_partition_mgmt_failure, [host_uuid, idisk_uuid,
+                                                     partition_uuid, error]
+            )
         elif reported_cfg == puppet_common.REPORT_LVM_BACKEND_CONFIG:
-            host_uuid = iconfig['host_uuid']
-            if status == puppet_common.REPORT_SUCCESS:
-                # Configuration was successful
-                success = True
-                self.report_lvm_cinder_config_success(context, host_uuid)
-            elif status == puppet_common.REPORT_FAILURE:
-                # Configuration has failed
-                self.report_lvm_cinder_config_failure(host_uuid, error)
-            else:
-                args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
-                LOG.error("No match for sysinv-agent manifest application reported! "
-                          "reported_cfg: %(cfg)s status: %(status)s "
-                          "iconfig: %(iconfig)s" % args)
+            success = _process_config_report(
+                self.report_lvm_cinder_config_success, [context, host_uuid],
+                self.report_lvm_cinder_config_failure, [host_uuid, error]
+            )
         elif reported_cfg == puppet_common.REPORT_CEPH_BACKEND_CONFIG:
-            host_uuid = iconfig['host_uuid']
-            if status == puppet_common.REPORT_SUCCESS:
-                # Configuration was successful
-                success = True
-                self.report_ceph_config_success(context, host_uuid)
-            elif status == puppet_common.REPORT_FAILURE:
-                # Configuration has failed
-                self.report_ceph_config_failure(host_uuid, error)
-            else:
-                args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
-                LOG.error("No match for sysinv-agent manifest application reported! "
-                          "reported_cfg: %(cfg)s status: %(status)s "
-                          "iconfig: %(iconfig)s" % args)
+            success = _process_config_report(
+                self.report_ceph_config_success, [context, host_uuid],
+                self.report_ceph_config_failure, [host_uuid, error]
+            )
         elif reported_cfg == puppet_common.REPORT_CEPH_EXTERNAL_BACKEND_CONFIG:
-            host_uuid = iconfig['host_uuid']
-            if status == puppet_common.REPORT_SUCCESS:
-                # Configuration was successful
-                success = True
-                self.report_ceph_external_config_success(context, host_uuid)
-            elif status == puppet_common.REPORT_FAILURE:
-                # Configuration has failed
-                self.report_ceph_external_config_failure(host_uuid, error)
-            else:
-                args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
-                LOG.error("No match for sysinv-agent manifest application reported! "
-                          "reported_cfg: %(cfg)s status: %(status)s "
-                          "iconfig: %(iconfig)s" % args)
+            success = _process_config_report(
+                self.report_ceph_external_config_success, [context, host_uuid],
+                self.report_ceph_external_config_failure, [host_uuid, error]
+            )
         elif reported_cfg == puppet_common.REPORT_EXTERNAL_BACKEND_CONFIG:
-            host_uuid = iconfig['host_uuid']
-            if status == puppet_common.REPORT_SUCCESS:
-                # Configuration was successful
-                success = True
-                self.report_external_config_success(host_uuid)
-            elif status == puppet_common.REPORT_FAILURE:
-                # Configuration has failed
-                self.report_external_config_failure(host_uuid, error)
-            else:
-                args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
-                LOG.error("No match for sysinv-agent manifest application reported! "
-                          "reported_cfg: %(cfg)s status: %(status)s "
-                          "iconfig: %(iconfig)s" % args)
+            success = _process_config_report(
+                self.report_external_config_success, [host_uuid],
+                self.report_external_config_failure, [host_uuid, error]
+            )
         elif reported_cfg == puppet_common.REPORT_CEPH_SERVICES_CONFIG:
-            host_uuid = iconfig['host_uuid']
-            if status == puppet_common.REPORT_SUCCESS:
-                # Configuration was successful
-                success = True
-                self.report_ceph_services_config_success(host_uuid)
-            elif status == puppet_common.REPORT_FAILURE:
-                # Configuration has failed
-                self.report_ceph_services_config_failure(host_uuid, error)
-            else:
-                args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
-                LOG.error("No match for sysinv-agent manifest application reported! "
-                          "reported_cfg: %(cfg)s status: %(status)s "
-                          "iconfig: %(iconfig)s" % args)
+            success = _process_config_report(
+                self.report_ceph_services_config_success, [host_uuid],
+                self.report_ceph_services_config_failure, [host_uuid, error]
+            )
         elif reported_cfg == puppet_common.REPORT_CEPH_MONITOR_CONFIG:
-            host_uuid = iconfig['host_uuid']
-            if status == puppet_common.REPORT_SUCCESS:
-                # Configuration was successful
-                success = True
-                self.report_ceph_base_config_success(host_uuid)
-            elif status == puppet_common.REPORT_FAILURE:
-                # Configuration has failed
-                self.report_ceph_base_config_failure(host_uuid, error)
-            else:
-                args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
-                LOG.error("No match for sysinv-agent manifest application reported! "
-                          "reported_cfg: %(cfg)s status: %(status)s "
-                          "iconfig: %(iconfig)s" % args)
+            success = _process_config_report(
+                self.report_ceph_base_config_success, [host_uuid],
+                self.report_ceph_base_config_failure, [host_uuid, error]
+            )
         elif reported_cfg == puppet_common.REPORT_CEPH_OSD_CONFIG:
-            host_uuid = iconfig['host_uuid']
             stor_uuid = iconfig['stor_uuid']
-            if status == puppet_common.REPORT_SUCCESS:
-                # Configuration was successful
-                success = True
-                self.report_ceph_osd_config_success(host_uuid, stor_uuid)
-            elif status == puppet_common.REPORT_FAILURE:
-                # Configuration has failed
-                self.report_ceph_osd_config_failure(host_uuid, stor_uuid, error)
-            else:
-                args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
-                LOG.error("No match for sysinv-agent manifest application reported! "
-                          "reported_cfg: %(cfg)s status: %(status)s "
-                          "iconfig: %(iconfig)s" % args)
+
+            success = _process_config_report(
+                self.report_ceph_osd_config_success, [host_uuid, stor_uuid],
+                self.report_ceph_osd_config_failure, [host_uuid, stor_uuid, error]
+            )
         elif reported_cfg == puppet_common.REPORT_CEPH_RADOSGW_CONFIG:
             if status == puppet_common.REPORT_SUCCESS:
                 # Configuration was successful
                 success = True
         elif reported_cfg == puppet_common.REPORT_CEPH_ROOK_CONFIG:
-            host_uuid = iconfig['host_uuid']
-            if status == puppet_common.REPORT_SUCCESS:
-                # Configuration was successful
-                success = True
-                self.report_ceph_rook_config_success(context, host_uuid)
-            elif status == puppet_common.REPORT_FAILURE:
-                # Configuration has failed
-                self.report_ceph_rook_config_failure(host_uuid, error)
-            else:
-                args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
-                LOG.error("No match for sysinv-agent manifest application reported! "
-                          "reported_cfg: %(cfg)s status: %(status)s "
-                          "iconfig: %(iconfig)s" % args)
+            success = _process_config_report(
+                self.report_ceph_rook_config_success, [context, host_uuid],
+                self.report_ceph_rook_config_failure, [host_uuid, error]
+            )
         # Kubernetes root CA host update
         elif reported_cfg in [puppet_common.REPORT_KUBE_CERT_UPDATE_TRUSTBOTHCAS,
                               puppet_common.REPORT_KUBE_CERT_UPDATE_UPDATECERTS,
                               puppet_common.REPORT_KUBE_CERT_UPDATE_TRUSTNEWCA]:
-            host_uuid = iconfig['host_uuid']
-            if status == puppet_common.REPORT_SUCCESS:
-                # Update action was successful
-                success = True
-                self.report_kube_rootca_update_success(host_uuid, reported_cfg)
-            elif status == puppet_common.REPORT_FAILURE:
-                # Update action has failed
-                self.report_kube_rootca_update_failure(host_uuid, reported_cfg,
-                                                       error)
-            else:
-                args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
-                LOG.error("No match for sysinv-agent manifest application reported! "
-                          "reported_cfg: %(cfg)s status: %(status)s "
-                          "iconfig: %(iconfig)s" % args)
+            success = _process_config_report(
+                self.report_kube_rootca_update_success, [host_uuid, reported_cfg],
+                self.report_kube_rootca_update_failure, [host_uuid, reported_cfg,
+                                                         error]
+            )
         # Kubernetes root CA pods update
         elif reported_cfg in \
                 [puppet_common.REPORT_KUBE_CERT_UPDATE_PODS_TRUSTBOTHCAS,
                  puppet_common.REPORT_KUBE_CERT_UPDATE_PODS_TRUSTNEWCA]:
-            if status == puppet_common.REPORT_SUCCESS:
-                # Update action was successful
-                success = True
-                self.report_kube_rootca_pods_update_success(reported_cfg)
-            elif status == puppet_common.REPORT_FAILURE:
-                # Update action has failed
-                self.report_kube_rootca_pods_update_failure(reported_cfg,
-                                                            error)
-            else:
-                args = {'cfg': reported_cfg, 'status': status, 'iconfig': iconfig}
-                LOG.error("No match for sysinv-agent manifest application reported! "
-                          "reported_cfg: %(cfg)s status: %(status)s "
-                          "iconfig: %(iconfig)s" % args)
+            success = _process_config_report(
+                self.report_kube_rootca_pods_update_success, [reported_cfg],
+                self.report_kube_rootca_pods_update_failure, [reported_cfg, error]
+            )
+        elif reported_cfg == puppet_common.REPORT_HTTP_CONFIG:
+            success = _process_config_report(
+                self.report_sysparam_http_update_success, [],
+                self.report_sysparam_http_update_failure, [error]
+            )
         else:
             LOG.error("Reported configuration '%(cfg)s' is not handled by"
                       " report_config_status! iconfig: %(iconfig)s" %
@@ -9445,6 +9380,87 @@ class ConductorManager(service.PeriodicService):
         # Update cluster 'update state'
         self.dbapi.kube_rootca_update_update(c_update.id, {'state': state})
 
+    def report_sysparam_http_update_success(self):
+        """
+           Callback for system-parameter HTTP change
+        """
+        LOG.info("Change of system parameter HTTP '%s' succeeded, updating "
+                 "helmrepositories.")
+        kube_operator = kubernetes.KubeOperator()
+
+        try:
+            helmrepo_list = kube_operator.list_custom_resources(
+                constants.FLUXCD_CRD_HELM_REPO_GROUP,
+                constants.FLUXCD_CRD_HELM_REPO_VERSION,
+                constants.FLUXCD_CRD_HELM_REPO_PLURAL,
+            )
+        except Exception as err:
+            LOG.error("Failed to get helmrepositories: %s" % err)
+            return
+
+        if not helmrepo_list:
+            LOG.error("Resource helmrepositories not found")
+            return
+
+        for helmrepo in helmrepo_list.get("items"):
+
+            helmrepo["spec"]["url"] = \
+                cutils.replace_helmrepo_url_with_floating_address(
+                    dbapi.get_instance(), helmrepo["spec"]["url"])
+            try:
+                group, version = helmrepo['apiVersion'].split('/')
+                kube_operator.apply_custom_resource(
+                    group,
+                    version,
+                    helmrepo['metadata']['namespace'],
+                    constants.FLUXCD_CRD_HELM_REPO_PLURAL,
+                    helmrepo['metadata']['name'],
+                    helmrepo
+                )
+            except Exception as err:
+                LOG.error("Failed to create helmrepository resource %s: %s"
+                          % (helmrepo['metadata']['name'], err))
+                continue
+
+            LOG.info(
+                "Changed helmrepository %s from namespace %s: url=%s"
+                % (helmrepo['metadata']['name'],
+                   helmrepo['metadata']['namespace'],
+                   helmrepo['spec']['url'])
+            )
+
+            self._check_helmrepository_creation(
+                helmrepo['metadata']['namespace'],
+                helmrepo['metadata']['name']
+            )
+
+    def report_sysparam_http_update_failure(self, error):
+        """
+           Callback for system-parameter HTTP change failure
+        """
+        LOG.info("Change of system parameter HTTP failed, error: %s"
+                 % error)
+
+    def _check_helmrepository_creation(self, namespace, name):
+        """ Checks if the helmrepository was created correctly
+
+        :param namespace: the namespace of the helmrepository
+        :param name: the name of the helmrepository to check
+        """
+        kube_operator = kubernetes.KubeOperator()
+        helmrepo = kube_operator.get_custom_resource(
+            constants.FLUXCD_CRD_HELM_REPO_GROUP,
+            constants.FLUXCD_CRD_HELM_REPO_VERSION,
+            namespace,
+            constants.FLUXCD_CRD_HELM_REPO_PLURAL,
+            name
+        )
+        if helmrepo is None:
+            msg = "HelmRepository %s on namespace %s: creation timeout" \
+                  % (namespace, name)
+            LOG.error(msg)
+            raise exception.SysinvException(_(msg))
+
     def create_controller_filesystems(self, context, rootfs_device):
         """ Create the storage config based on disk size for database, platform,
             extension, rabbit, etcd, docker-distribution, dc-vault(SC)
@@ -9846,7 +9862,9 @@ class ConductorManager(service.PeriodicService):
                     "classes": ['openstack::lighttpd::runtime',
                                 'platform::helm::runtime',
                                 'platform::firewall::runtime',
-                                'platform::patching::runtime']
+                                'platform::patching::runtime'],
+                    puppet_common.REPORT_STATUS_CFG:
+                        puppet_common.REPORT_HTTP_CONFIG
                 }
                 self._config_apply_runtime_manifest(context, config_uuid,
                                                     config_dict)

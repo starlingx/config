@@ -20,6 +20,9 @@ import tempfile
 from copy import deepcopy
 from oslo_log import log as logging
 from sysinv.common import constants
+from sysinv.common import utils as common_utils
+from sysinv.db import api as dbapi
+
 
 LOG = logging.getLogger(__name__)
 
@@ -66,6 +69,8 @@ class FluxCDKustomizeOperator(object):
 
         # Save the location of the application manifests
         self.app_manifest_path = manifests_dir_fqpn
+
+        self._override_fluxcd_app_repo_url(manifests_dir_fqpn)
 
         # Make sure that the kustomization.yaml file exists
         self.kustomization_fqpn = os.path.join(
@@ -166,6 +171,40 @@ class FluxCDKustomizeOperator(object):
                                                 resource_fqpn))
 
         LOG.debug("chart_to_resource_map: {}".format(self.chart_to_resource_map))
+
+    def _override_fluxcd_app_repo_url(self, manifest):
+        """
+        Replace the host in the default helm repository url
+        with the network addr floating adress
+
+        :param manifest: the manifest dir path
+        """
+        if not os.path.isdir(manifest):
+            return
+
+        helmrepo_path = os.path.join(
+            manifest,
+            constants.APP_BASE_HELMREPOSITORY_FILE
+        )
+
+        # Save the original kustomization.yaml for
+        self.original_helmrepo_fqpn = "%s-orig%s" % os.path.splitext(
+            helmrepo_path)
+
+        if not os.path.exists(self.original_helmrepo_fqpn):
+            shutil.copy(helmrepo_path, self.original_helmrepo_fqpn)
+
+        # get the helm repo base url
+        with io.open(self.original_helmrepo_fqpn, 'r', encoding='utf-8') as f:
+            helmrepo_yaml = next(yaml.safe_load_all(f))
+            helmrepo_url = helmrepo_yaml["spec"]["url"]
+
+            helmrepo_yaml["spec"]["url"] = \
+                common_utils.replace_helmrepo_url_with_floating_address(
+                    dbapi.get_instance(), helmrepo_url)
+
+        with open(helmrepo_path, "w") as f:
+            yaml.dump(helmrepo_yaml, f, default_flow_style=False)
 
     def _delete_kustomization_file(self):
         """ Remove any previously written top level kustomization file

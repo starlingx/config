@@ -1661,10 +1661,15 @@ APP_SYNCED_ARMADA_DATA_PATH = os.path.join(tsc.PLATFORM_PATH, 'armada', tsc.SW_V
 APP_FLUXCD_MANIFEST_DIR = 'fluxcd-manifests'
 APP_FLUXCD_DATA_PATH = os.path.join(tsc.PLATFORM_PATH, 'fluxcd', tsc.SW_VERSION)
 APP_ROOT_KUSTOMIZE_FILE = 'kustomization.yaml'
+APP_HELMREPOSITORY_FILE = "helmrepository.yaml"
+APP_BASE_HELMREPOSITORY_FILE = os.path.join("base", APP_HELMREPOSITORY_FILE)
 APP_RELEASE_CLEANUP_FILE = 'helmrelease_cleanup.yaml'
 FLUXCD_CRD_HELM_REL_GROUP = 'helm.toolkit.fluxcd.io'
 FLUXCD_CRD_HELM_REL_VERSION = 'v2beta1'
 FLUXCD_CRD_HELM_REL_PLURAL = 'helmreleases'
+FLUXCD_CRD_HELM_REPO_GROUP = 'source.toolkit.fluxcd.io'
+FLUXCD_CRD_HELM_REPO_VERSION = 'v1beta1'
+FLUXCD_CRD_HELM_REPO_PLURAL = 'helmrepositories'
 
 # State constants
 APP_NOT_PRESENT = 'missing'

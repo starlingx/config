@@ -648,6 +648,110 @@ class TestKubeOperator(base.TestCase):
             }
         )
 
+        self.single_helmrepository_result = {
+            'kind': 'HelmRepositoryList',
+            'apiVersion': 'source.toolkit.fluxcd.io/v1beta1',
+            'items': [
+                {
+
+                    'apiVersion': 'source.toolkit.fluxcd.io/v1beta1',
+                    'kind': 'HelmRepository',
+                    'spec': {
+                        'url': 'http://192.168.206.1:8877/helm_charts/'
+                               'stx-platform',
+                        'interval': '1h0m0s',
+                        'timeout': '1m0s',
+                    },
+                    'status': {},  # Lots of stuff, omitting
+                    'metadata': {
+                        'name': 'stx-platform',
+                        'generation': 3,
+                        'namespace': 'cert-manager',
+                        'managedFields': [],  # Ommiting some stuff here too
+                        'finalizers': [
+                            'finalizers.fluxcd.io'
+                        ],
+                        'resourceVersion': '2176218',
+                        'creationTimestamp': '2022-05-31T16:59:27Z',
+                        'annotations': {},  # Ommiting some stuff here too
+                        'selfLink': '/apis/source.toolkit.fluxcd.io/v1beta1/'
+                                    'namespaces/cert-manager/helmrepositories/'
+                                    'stx-platform',
+                        'uid': '95989df9-b7bd-413a-bd1b-5f746c54e7c6',
+                    }
+                },
+            ]
+        }
+
+        self.multiple_helmrepository_result = {
+            'kind': 'HelmRepositoryList',
+            'apiVersion': 'source.toolkit.fluxcd.io/v1beta1',
+            'items': [
+                {
+
+                    'apiVersion': 'source.toolkit.fluxcd.io/v1beta1',
+                    'kind': 'HelmRepository',
+                    'spec': {
+                        'url': 'http://192.168.206.1:8877/helm_charts/'
+                               'stx-platform',
+                        'interval': '1h0m0s',
+                        'timeout': '1m0s',
+                    },
+                    'status': {},  # Lots of stuff, omitting
+                    'metadata': {
+                        'name': 'stx-platform',
+                        'generation': 3,
+                        'namespace': 'cert-manager',
+                        'managedFields': [],  # Ommiting some stuff here too
+                        'finalizers': [
+                            'finalizers.fluxcd.io'
+                        ],
+                        'resourceVersion': '2176218',
+                        'creationTimestamp': '2022-05-31T16:59:27Z',
+                        'annotations': {},  # Ommiting some stuff here too
+                        'selfLink': '/apis/source.toolkit.fluxcd.io/v1beta1/'
+                                    'namespaces/cert-manager/helmrepositories/'
+                                    'stx-platform',
+                        'uid': '95989df9-b7bd-413a-bd1b-5f746c54e7c6',
+                    }
+                },
+                {
+
+                    'apiVersion': 'source.toolkit.fluxcd.io/v1beta1',
+                    'kind': 'HelmRepository',
+                    'spec': {
+                        'url': 'http://192.168.206.1:8877/helm_charts/'
+                               'stx-platform',
+                        'interval': '1h0m0s',
+                        'timeout': '1m0s',
+                    },
+                    'status': {},  # Lots of stuff, omitting
+                    'metadata': {
+                        'name': 'stx-platform',
+                        'generation': 1,
+                        'namespace': 'kube-system',
+                        'managedFields': [],  # Ommiting some stuff here too
+                        'finalizers': [
+                            'finalizers.fluxcd.io'
+                        ],
+                        'resourceVersion': '2176116',
+                        'creationTimestamp': '2022-05-31T16:49:21Z',
+                        'annotations': {},  # Ommiting some stuff here too
+                        'selfLink': '/apis/source.toolkit.fluxcd.io/v1beta1/'
+                                    'namespaces/kube-system/helmrepositories/'
+                                    'stx-platform',
+                        'uid': '2d5a9df9-b7bd-413a-bd1b-5f746cab4f',
+                    }
+                },
+            ]
+        }
+
+        self.no_helmrepository_result = {
+            'kind': 'HelmRepositoryList',
+            'apiVersion': 'source.toolkit.fluxcd.io/v1beta1',
+            'items': []
+        }
+
     def setUp(self):
         super(TestKubeOperator, self).setUp()
 
@@ -687,6 +791,17 @@ class TestKubeOperator(base.TestCase):
             'kubernetes.client.CoreV1Api.list_node',
             mock_list_node)
         self.mocked_list_node.start()
+
+        self.list_custom_resource_helmrepository = None
+
+        def mock_list_cluster_custom_resource(obj, group, version, plural, label_selector=""):
+            if plural.lower() in ("helmrepository", "helmrepositories"):
+                return self.list_custom_resource_helmrepository
+
+        self.mocked_list_namespaced_custom_object = mock.patch(
+            'kubernetes.client.CustomObjectsApi.list_cluster_custom_object',
+            mock_list_cluster_custom_resource)
+        self.mocked_list_namespaced_custom_object.start()
 
         self.read_namespaced_config_map_result = None
 
@@ -953,6 +1068,48 @@ class TestKubeOperator(base.TestCase):
         result = self.kube_operator.kube_get_service_account_token(
             'test-service-account-1', kube.NAMESPACE_KUBE_SYSTEM)
         self.assertEqual(result, None)
+
+    def test_kube_list_custom_resource_single_helmrepository(self):
+        self.list_custom_resource_helmrepository = self.single_helmrepository_result
+
+        result = self.kube_operator.list_custom_resources(
+            'source.toolkit.fluxcd.io',
+            'v1beta1',
+            'helmrepositories'
+        )
+        self.assertEqual(len(result), 1)
+        self.assertEqual(
+            result[0],
+            self.single_helmrepository_result.get("items")[0]
+        )
+
+    def test_kube_list_custom_resource_multiple_helmrepositores(self):
+        self.list_custom_resource_helmrepository = self.multiple_helmrepository_result
+
+        result = self.kube_operator.list_custom_resources(
+            'source.toolkit.fluxcd.io',
+            'v1beta1',
+            'helmrepositories'
+        )
+        self.assertEqual(len(result), 2)
+        self.assertEqual(
+            result[0],
+            self.multiple_helmrepository_result.get("items")[0]
+        )
+        self.assertEqual(
+            result[1],
+            self.multiple_helmrepository_result.get("items")[1]
+        )
+
+    def test_kube_list_custom_resource_no_helmrepository(self):
+        self.list_custom_resource_helmrepository = self.no_helmrepository_result
+
+        result = self.kube_operator.list_custom_resources(
+            'source.toolkit.fluxcd.io',
+            'v1beta1',
+            'helmrepositories'
+        )
+        self.assertEqual(result, [])
 
 
 class TestKubernetesUtilities(base.TestCase):

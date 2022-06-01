@@ -56,6 +56,7 @@ import rfc3986
 import shutil
 import signal
 import six
+from six.moves.urllib.parse import urlparse
 import socket
 import stat
 import string
@@ -3642,3 +3643,26 @@ def is_part_of_disk(part_device_path, disk_device_path):
             is_part_of_disk = True
 
     return is_part_of_disk
+
+
+def replace_helmrepo_url_with_floating_address(dbapi, helmrepository_url):
+    """Replaces the repo url with the network addr floating address
+
+    :param    helmrepository_url: repo url defined in the app
+    :returns  repo url replaced with the floating address of the controller
+    """
+
+    parsed_helm_repo_url = urlparse(helmrepository_url)
+    sc_network = \
+        dbapi.network_get_by_type(constants.NETWORK_TYPE_CLUSTER_HOST)
+    sc_network_addr_pool = \
+        dbapi.address_pool_get(sc_network.pool_uuid)
+    sc_float_ip = sc_network_addr_pool.floating_address
+    if is_valid_ipv6(sc_float_ip):
+        sc_float_ip = '[' + sc_float_ip + ']'
+
+    return "http://{}:{}{}".format(
+        sc_float_ip,
+        get_http_port(dbapi),
+        parsed_helm_repo_url.path
+    )

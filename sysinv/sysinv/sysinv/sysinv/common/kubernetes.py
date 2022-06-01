@@ -630,6 +630,24 @@ class KubeOperator(object):
                       "Namespace %s: %s" % (label, namespace, e))
             raise
 
+    def list_custom_resources(self, group, version, plural):
+        custom_resource_api = self._get_kubernetesclient_custom_objects()
+
+        try:
+            cr_obj_list = custom_resource_api.list_cluster_custom_object(
+                group,
+                version,
+                plural)
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                return None
+            else:
+                LOG.error("Fail to list custom resources:%s. %s"
+                          % (plural, e))
+                raise
+        else:
+            return cr_obj_list.get("items")
+
     def get_custom_resource(self, group, version, namespace, plural, name):
         custom_resource_api = self._get_kubernetesclient_custom_objects()
 

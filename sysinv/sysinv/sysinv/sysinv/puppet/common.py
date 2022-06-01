@@ -51,6 +51,7 @@ REPORT_KUBE_CERT_UPDATE_PODS_TRUSTBOTHCAS = \
     'pods_' + constants.KUBE_CERT_UPDATE_TRUSTBOTHCAS
 REPORT_KUBE_CERT_UPDATE_PODS_TRUSTNEWCA = \
     'pods_' + constants.KUBE_CERT_UPDATE_TRUSTNEWCA
+REPORT_HTTP_CONFIG = 'http_config'
 
 
 def puppet_apply_manifest(ip_address, personality,
