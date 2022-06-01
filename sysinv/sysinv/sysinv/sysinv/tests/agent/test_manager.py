@@ -22,7 +22,7 @@ class FakeConductorAPI(object):
 
     def __init__(self, isystem=None):
         self.create_host_filesystems = mock.MagicMock()
-        self.update_host_max_cpu_frequency = mock.MagicMock()
+        self.update_host_max_cpu_mhz_configured = mock.MagicMock()
         self.is_virtual_system_config_result = False
         self.isystem = isystem
 

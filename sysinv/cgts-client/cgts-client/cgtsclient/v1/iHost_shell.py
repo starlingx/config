@@ -36,7 +36,7 @@ def _print_ihost_show(ihost, columns=None, output_format=None):
                   'tboot', 'vim_progress_status', 'software_load',
                   'install_state', 'install_state_info', 'inv_state',
                   'clock_synchronization', 'device_image_update',
-                  'reboot_needed', 'max_cpu_frequency', 'max_cpu_default']
+                  'reboot_needed', 'max_cpu_mhz_configured', 'max_cpu_mhz_allowed']
         optional_fields = ['vsc_controllers', 'ttys_dcd']
         if ihost.subfunctions != ihost.personality:
             fields.append('subfunctions')
@@ -692,13 +692,13 @@ def do_host_device_image_update_abort(cc, args):
 @utils.arg('hostnameorid',
            metavar='<hostnameorid>',
            help="Name or ID of host")
-@utils.arg('max_cpu_frequency',
-           metavar='<max_cpu_frequency>',
+@utils.arg('max_cpu_mhz_configured',
+           metavar='<max_cpu_mhz_configured>',
            help="Max CPU frequency MHz")
 def do_host_cpu_max_frequency_modify(cc, args):
     """Modify host cpu max frequency."""
 
-    attributes = ['max_cpu_frequency=%s' % args.max_cpu_frequency]
+    attributes = ['max_cpu_mhz_configured=%s' % args.max_cpu_mhz_configured]
 
     patch = utils.args_array_to_patch("replace", attributes)
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)

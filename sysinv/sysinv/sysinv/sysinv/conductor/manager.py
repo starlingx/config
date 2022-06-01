@@ -5380,11 +5380,11 @@ class ConductorManager(service.PeriodicService):
 
         if max_cpu_dict:
             ihost.capabilities.update({
-                constants.IHOST_MAX_CPU_CONFIG:
-                max_cpu_dict.get(constants.IHOST_MAX_CPU_CONFIG)})
-            ihost.max_cpu_default = max_cpu_dict.get('max_cpu_default')
+                constants.IHOST_IS_MAX_CPU_MHZ_CONFIGURABLE:
+                max_cpu_dict.get(constants.IHOST_IS_MAX_CPU_MHZ_CONFIGURABLE)})
+            ihost.max_cpu_mhz_allowed = max_cpu_dict.get('max_cpu_mhz_allowed')
             val.update({'capabilities': ihost.capabilities,
-                        constants.IHOST_MAX_CPU_DEFAULT: ihost.max_cpu_default})
+                        constants.IHOST_max_cpu_mhz_allowed: ihost.max_cpu_mhz_allowed})
 
         if val:
             ihost = self.dbapi.ihost_update(ihost_uuid, val)
@@ -13294,7 +13294,7 @@ class ConductorManager(service.PeriodicService):
             LOG.error(msg)
             raise exception.SysinvException(_(msg))
 
-    def update_host_max_cpu_frequency(self, context, host):
+    def update_host_max_cpu_mhz_configured(self, context, host):
         personalities = [constants.WORKER]
 
         config_uuid = self._config_update_hosts(context,

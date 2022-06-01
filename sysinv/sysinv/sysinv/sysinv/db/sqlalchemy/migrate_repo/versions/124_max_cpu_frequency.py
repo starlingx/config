@@ -12,8 +12,8 @@ def upgrade(migrate_engine):
     meta = MetaData()
     meta.bind = migrate_engine
     host_table = Table('i_host', meta, autoload=True)
-    host_table.create_column(Column('max_cpu_frequency', String(64)))
-    host_table.create_column(Column('max_cpu_default', String(64)))
+    host_table.create_column(Column('max_cpu_mhz_configured', String(64)))
+    host_table.create_column(Column('max_cpu_mhz_allowed', String(64)))
 
 
 def downgrade(migrate_engine):

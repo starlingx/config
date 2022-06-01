@@ -2300,13 +2300,13 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        issuers_list=issuers_list,
                                        secret_list=secret_list))
 
-    def update_host_max_cpu_frequency(self, context, host):
-        """Synchronously, execute runtime manifests to update host max_cpu_frequency.
+    def update_host_max_cpu_mhz_configured(self, context, host):
+        """Synchronously, execute runtime manifests to update host max_cpu_mhz_configured.
 
         :param context: request context.
-        :param ihost: the host to update the max_cpu_frequency.
+        :param ihost: the host to update the max_cpu_mhz_configured.
 
         """
         return self.call(context,
-                         self.make_msg('update_host_max_cpu_frequency',
+                         self.make_msg('update_host_max_cpu_mhz_configured',
                                        host=host))

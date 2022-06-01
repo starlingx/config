@@ -239,8 +239,8 @@ class ihost(Base):
 
     device_image_update = Column(String(64))
     reboot_needed = Column(Boolean, nullable=False, default=False)
-    max_cpu_frequency = Column(String(64))  # in MHz
-    max_cpu_default = Column(String(64))  # in MHz
+    max_cpu_mhz_configured = Column(String(64))  # in MHz
+    max_cpu_mhz_allowed = Column(String(64))  # in MHz
 
     forisystemid = Column(Integer,
                           ForeignKey('i_system.id', ondelete='CASCADE'))

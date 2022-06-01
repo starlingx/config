@@ -572,8 +572,8 @@ class PlatformPuppet(base.BasePuppet):
                     reserved_vswitch_cores,
                 'platform::compute::params::reserved_platform_cores':
                     reserved_platform_cores,
-                'platform::compute::params::max_cpu_frequency':
-                    host.max_cpu_frequency,
+                'platform::compute::params::max_cpu_mhz_configured':
+                    host.max_cpu_mhz_configured,
                 'platform::compute::grub::params::n_cpus': n_cpus,
                 'platform::compute::grub::params::cpu_options': cpu_options,
                 'platform::compute::grub::params::bios_cstate': True
