@@ -567,7 +567,7 @@ def is_system_usable_block_device(pydev_device):
         # Skip LVM devices
         return False
     if (constants.DEVICE_NAME_MPATH in pydev_device.get("DM_NAME", "")
-            and pydev_device.get("ID_PART_ENTRY_NUMBER")):
+            and "part" in pydev_device.get("DM_UUID", "").split("-")[0]):
         # Skip mpath partition devices
         return False
     if pydev_device.get("ID_FS_TYPE") == constants.DEVICE_FS_TYPE_MPATH:
@@ -579,12 +579,32 @@ def is_system_usable_block_device(pydev_device):
         # As per https://www.ietf.org/rfc/rfc3721.txt, "iqn." or "edu."
         # have to be present when constructing iSCSI names.
         return False
+    if (("-fc-" in id_path or "-lun-" in id_path) and
+            is_valid_multipath(pydev_device.get('DEVNAME'))):
+        return False
     if pydev_device.get("ID_VENDOR") == constants.VENDOR_ID_LIO:
         # LIO devices are iSCSI, should be skipped above!
         LOG.error("Invalid id_path. Device %s (%s) is iSCSI!" %
                     (id_path, pydev_device.get('DEVNAME')))
         return False
     return True
+
+
+def is_valid_multipath(device_node):
+    """ Check if a block device is a valid multipath device."""
+    multipath_cmd = "multipath -c %s" % device_node
+    try:
+        LOG.debug("running multipath command: %s" %
+                  multipath_cmd)
+        multipath_output, _ = execute(multipath_cmd, check_exit_code=[0],
+                                      run_as_root=True, attempts=2,
+                                      shell=True)
+    except exception.ProcessExecutionError as exn:
+        LOG.debug(str(exn))
+        return False
+    else:
+        LOG.debug(multipath_output)
+        return True
 
 
 def get_ip_version(network):
@@ -1610,11 +1630,11 @@ def partitions_are_in_order(disk_partitions, requested_partitions):
     partitions_nr = []
 
     for dp in disk_partitions:
-        part_number = re.match('.*?([0-9]+)$', dp.get('device_path')).group(1)
+        part_number = get_part_number(dp.get('device_path'))
         partitions_nr.append(int(part_number))
 
     for rp in requested_partitions:
-        part_number = re.match('.*?([0-9]+)$', rp.get('device_path')).group(1)
+        part_number = get_part_number(rp.get('device_path'))
         partitions_nr.append(int(part_number))
 
     return sorted(partitions_nr) == range(min(partitions_nr),
@@ -1642,8 +1662,7 @@ def is_partition_the_last(dbapi, partition):
     """
     idisk_uuid = partition.get('idisk_uuid')
     onidisk_parts = dbapi.partition_get_by_idisk(idisk_uuid)
-    part_number = re.match('.*?-part([0-9]+)',
-                           partition.get('device_path')).group(1)
+    part_number = get_part_number(partition.get('device_path'))
 
     if int(part_number) != len(onidisk_parts):
         return False
