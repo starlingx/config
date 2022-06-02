@@ -66,6 +66,7 @@ PASSWORD_FORMAT_CEPH = 'ceph-auth'
 # Node Labels
 LABEL_CONTROLLER = 'openstack-control-plane'
 LABEL_COMPUTE_LABEL = 'openstack-compute-node'
+LABEL_DISABLE_NOHZ_FULL = 'disable-nohz-full'
 LABEL_OPENVSWITCH = 'openvswitch'
 LABEL_REMOTE_STORAGE = 'remote-storage'
 LABEL_SRIOVDP = 'sriovdp'

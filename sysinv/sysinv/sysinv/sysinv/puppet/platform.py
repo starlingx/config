@@ -533,7 +533,14 @@ class PlatformPuppet(base.BasePuppet):
 
             cpu_options = ""
             cpu_ranges = {}
-            if constants.LOWLATENCY in host.subfunctions:
+
+            host_labels = self.dbapi.label_get_by_host(host.uuid)
+            # if worker is lowlatency we need to keep the nohz_full. Also, if
+            # the worker is a standard and we need to keep it without nohz to
+            # preserve the previous behavior we must set the nohz_full_disabled
+            # label.
+            if (constants.LOWLATENCY in host.subfunctions or
+                    not utils.has_disable_nohz_full_enabled(host_labels)):
                 # Linux kernel 4.15 is the first release with the following
                 # commit which appears to tie together nohz_full and isolcpus.
                 #
