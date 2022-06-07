@@ -463,3 +463,26 @@ class BaseHelm(object):
         num_osd = max(len(num_osd), 1)
         max_chunk_size_allowed = num_osd * 100 - 1
         return 2 ** (int(math.log(max_chunk_size_allowed, 2)))
+
+
+@six.add_metaclass(abc.ABCMeta)
+class FluxCDBaseHelm(BaseHelm):
+    """Base class to encapsulate helm operations for FluxCD chart overrides"""
+
+    @property
+    @abc.abstractmethod
+    def CHART(self):
+        """Chart name
+
+        Chart name that the implementation will encapsulate the operations to
+        """
+        pass
+
+    @property
+    @abc.abstractmethod
+    def HELM_RELEASE(self):
+        """HelmRelease name
+
+        HelmRelease name for the chart on the FluxCD structure
+        """
+        pass

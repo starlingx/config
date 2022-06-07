@@ -36,14 +36,16 @@ class FluxCDKustomizeOperator(object):
         self.original_kustomization_fqpn = None  # Original kustomization.yaml
         self.kustomization_fqpn = None           # Updated kustomization.yaml
         self.release_cleanup_fqpn = None         # Helm release cleanup data
+        self.helmrepo_path = None                # Updated helmrepository.yaml
+        self.original_helmrepo_fqpn = None       # Original helmrepository.yaml
 
         self.kustomization_content = []          # Original app manifest content
-        self.chart_to_resource_map = {}          # Dict used to disable charts
+        self.helmrelease_resource_map = {}          # Dict used to disable charts
 
         self.kustomization_resources = []        # Kustomize resource list
         self.kustomization_namespace = None      # Kustomize global namespace
 
-        self.chart_cleanup = []                  # List of disabled charts
+        self.helmrelease_cleanup = []                  # List of disabled charts
 
         if manifest_fqpn:
             self.load(manifest_fqpn)
@@ -51,8 +53,8 @@ class FluxCDKustomizeOperator(object):
     def __str__(self):
         return json.dumps({
             constants.APP_ROOT_KUSTOMIZE_FILE: self.kustomization_content,
-            'chart_to_resource_map': self.chart_to_resource_map,
-            'chart_cleanup': self.chart_cleanup,
+            'helmrelease_resource_map': self.helmrelease_resource_map,
+            'helmrelease_cleanup': self.helmrelease_cleanup,
         }, indent=2)
 
     def load(self, manifests_dir_fqpn):
@@ -85,7 +87,7 @@ class FluxCDKustomizeOperator(object):
             self.kustomization_fqpn)
 
         if not os.path.exists(self.original_kustomization_fqpn):
-            shutil.copy(self.kustomization_fqpn,
+            shutil.copyfile(self.kustomization_fqpn,
                         self.original_kustomization_fqpn)
 
         # Save the helm release cleanup data file name
@@ -94,7 +96,7 @@ class FluxCDKustomizeOperator(object):
 
         # Reset the view of charts to cleanup as platform conditions may have
         # changed
-        self.chart_cleanup = []
+        self.helmrelease_cleanup = []
 
         # Read the original kustomization.yaml content
         with io.open(self.original_kustomization_fqpn, 'r', encoding='utf-8') as f:
@@ -119,7 +121,7 @@ class FluxCDKustomizeOperator(object):
         # For these resources, find the HelmRelease info and build a resource
         # map
         for resource in self.kustomization_resources:
-            # expect a helrelease.yaml flle to be present in a helm resource
+            # expect a helmrelease.yaml file to be present in a helm resource
             # directory
 
             # is the resource a directory?
@@ -130,47 +132,71 @@ class FluxCDKustomizeOperator(object):
                 continue
 
             # is a helm release present?
-            helm_release_fqpn = os.path.join(resource_fqpn, "helmrelease.yaml")
-            if os.path.isfile(helm_release_fqpn):
+            resource_helmrelease_fqpn = os.path.join(resource_fqpn, "helmrelease.yaml")
+            resource_kustomization_fqpn = os.path.join(resource_fqpn, "kustomization.yaml")
+            resource_kustomization_namespace = None
 
-                with io.open(helm_release_fqpn, 'r', encoding='utf-8') as f:
-                    helm_release_doc = list(yaml.load_all(f,
+            if os.path.isfile(resource_helmrelease_fqpn):
+
+                with io.open(resource_helmrelease_fqpn, 'r', encoding='utf-8') as f:
+                    resource_helmrelease_contents = list(yaml.load_all(f,
                         Loader=yaml.RoundTripLoader, preserve_quotes=True))
 
-                if len(helm_release_doc) > 1:
+                if len(resource_helmrelease_contents) > 1:
                     LOG.error("Malformed HelmRelease:  %s contains more than one "
-                              "yaml doc." % helm_release_fqpn)
+                              "yaml doc." % resource_helmrelease_fqpn)
                     continue
 
                 # get the HelmRelease name
                 try:
-                    metadata_name = helm_release_doc[0]['metadata']['name']
+                    resource_helmrelease_metadata_name = resource_helmrelease_contents[0]['metadata']['name']
+                    resource_helmrelease_namespace = resource_helmrelease_contents[0]['metadata'].get("namespace")
                 except Exception:
                     LOG.error("Malformed HelmRelease: Unable to retreive the "
-                              "metadata name from %s" % helm_release_fqpn)
+                              "metadata name from %s" % resource_helmrelease_fqpn)
                     continue
 
-                # get the chart name
-                try:
-                    chart_name = \
-                        helm_release_doc[0]['spec']['chart']['spec']['chart']
-                except Exception:
-                    LOG.error("Malformed HelmRelease: Unable to retreive the "
-                              "chart name from %s" % helm_release_fqpn)
-                    continue
+                if os.path.isfile(resource_kustomization_fqpn):
+
+                    with io.open(resource_kustomization_fqpn, 'r', encoding='utf-8') as fk:
+                        resource_kustomization_contents = list(yaml.load_all(fk,
+                            Loader=yaml.RoundTripLoader, preserve_quotes=True))
+
+                    if len(resource_kustomization_contents) > 1:
+                        LOG.error("Malformed release Kustomize manifest %s contains more than one yaml "
+                                  "doc." % resource_kustomization_fqpn)
+                        continue
+
+                    resource_kustomization_namespace = resource_kustomization_contents[0].get("namespace")
+
+                if resource_kustomization_namespace:
+                    LOG.debug("Using namespace defined on the release's kustomization.yaml")
+                    namespace = resource_kustomization_namespace
+                elif resource_helmrelease_namespace:
+                    LOG.debug("Using namespace defined on the helmrelease.yaml")
+                    namespace = resource_helmrelease_namespace
+                else:
+                    LOG.debug("Using namespace defined on the top level kustomization.yaml")
+                    namespace = self.kustomization_namespace
 
                 # Save pertinent data for disabling chart resources and cleaning
                 # up existing helm releases after being disabled
-                self.chart_to_resource_map.update({
-                    chart_name: {'resource': resource,
-                                 'metadata_name': metadata_name}})
+                if resource_helmrelease_metadata_name not in self.helmrelease_resource_map:
+                    self.helmrelease_resource_map[resource_helmrelease_metadata_name] = {
+                        "name": resource_helmrelease_metadata_name,
+                        "namespace": namespace,
+                        "resource": resource,
+                    }
+                else:
+                    LOG.info("HelmRelease {} on namespace {} already exists. "
+                             "Skipping.".format(resource_helmrelease_metadata_name, namespace))
 
             else:
                 LOG.debug("Expecting to find a HelmRelease file at {}, skipping "
-                          "resource {}.".format(helm_release_fqpn,
+                          "resource {}.".format(resource_helmrelease_fqpn,
                                                 resource_fqpn))
 
-        LOG.debug("chart_to_resource_map: {}".format(self.chart_to_resource_map))
+        LOG.info("helmrelease_resource_map: {}".format(self.helmrelease_resource_map))
 
     def _override_fluxcd_app_repo_url(self, manifest):
         """
@@ -182,17 +208,17 @@ class FluxCDKustomizeOperator(object):
         if not os.path.isdir(manifest):
             return
 
-        helmrepo_path = os.path.join(
+        self.helmrepo_path = os.path.join(
             manifest,
             constants.APP_BASE_HELMREPOSITORY_FILE
         )
 
         # Save the original kustomization.yaml for
         self.original_helmrepo_fqpn = "%s-orig%s" % os.path.splitext(
-            helmrepo_path)
+            self.helmrepo_path)
 
         if not os.path.exists(self.original_helmrepo_fqpn):
-            shutil.copy(helmrepo_path, self.original_helmrepo_fqpn)
+            shutil.copyfile(self.helmrepo_path, self.original_helmrepo_fqpn)
 
         # get the helm repo base url
         with io.open(self.original_helmrepo_fqpn, 'r', encoding='utf-8') as f:
@@ -203,7 +229,7 @@ class FluxCDKustomizeOperator(object):
                 common_utils.replace_helmrepo_url_with_floating_address(
                     dbapi.get_instance(), helmrepo_url)
 
-        with open(helmrepo_path, "w") as f:
+        with open(self.helmrepo_path, "w") as f:
             yaml.dump(helmrepo_yaml, f, default_flow_style=False)
 
     def _delete_kustomization_file(self):
@@ -274,8 +300,8 @@ class FluxCDKustomizeOperator(object):
         # remove existing helm release file
         self._delete_release_cleanup_file()
 
-        if self.chart_cleanup:
-            cleanup_dict = {'releases': self.chart_cleanup}
+        if self.helmrelease_cleanup:
+            cleanup_dict = {'releases': self.helmrelease_cleanup}
             self._write_file(self.app_manifest_path,
                              constants.APP_RELEASE_CLEANUP_FILE,
                              self.release_cleanup_fqpn,
@@ -283,7 +309,7 @@ class FluxCDKustomizeOperator(object):
         else:
             LOG.info("%s is not needed. All charts are enabled." % self.release_cleanup_fqpn)
 
-    def helm_release_resource_delete(self, chart):
+    def helm_release_resource_delete(self, helmrelease_name):
         """ Delete a helm release resource
 
         This method will remove a chart's resource from the top level
@@ -293,23 +319,23 @@ class FluxCDKustomizeOperator(object):
         The chart will also be added to a list of charts that will have their
         existing helm releases cleaned up
 
-        :param chart: chart name to remove from the resource list
+        :param helmrelease_name: HelmRelease name to remove from the resource list
         """
 
-        removed_resource = self.chart_to_resource_map.pop(chart, None)
+        removed_resource = self.helmrelease_resource_map.pop(helmrelease_name, None)
         if removed_resource:
 
             # Remove the resource from the known resource list
             self.kustomization_resources.remove(removed_resource['resource'])
 
             # Save the info needed to clean up any existing chart release
-            self.chart_cleanup.append({
-                'namespace': self.kustomization_namespace,
-                'name': removed_resource['metadata_name']
+            self.helmrelease_cleanup.append({
+                'name': removed_resource['name'],
+                'namespace': removed_resource['namespace'],
             })
         else:
-            LOG.error("%s is an unknown chart resource to %s" % (
-                chart, self.original_kustomization_fqpn))
+            LOG.error("%s is an unknown HelmRelease resource to %s" % (
+                helmrelease_name, self.original_kustomization_fqpn))
 
     @abc.abstractmethod
     def platform_mode_kustomize_updates(self, dbapi, mode):

@@ -1,0 +1,19 @@
+---
+#
+# Copyright (c) 2022 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+namespace: test-rls-kust
+resources:
+  - helmrelease.yaml
+secretGenerator:
+  - name: release2-static-overrides
+    files:
+      - release2-static-overrides.yaml
+  - name: release2-system-overrides
+    files:
+      - release2-system-overrides.yaml
+generatorOptions:
+  disableNameSuffixHash: true

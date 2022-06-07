@@ -1,0 +1,10 @@
+---
+#
+# Copyright (c) 2022 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test
