@@ -5413,13 +5413,23 @@ class ConductorManager(service.PeriodicService):
                     {'capabilities': ihost.capabilities})
 
         if availability == constants.AVAILABILITY_AVAILABLE:
-            if (imsg_dict.get(constants.SYSINV_AGENT_FIRST_REPORT) and
-                    StorageBackendConfig.has_backend_configured(
-                        self.dbapi,
-                        constants.SB_TYPE_CEPH)):
-                # This should be run once after a node boot
-                self._clear_ceph_stor_state(ihost_uuid)
             config_uuid = imsg_dict['config_applied']
+            if imsg_dict.get(constants.SYSINV_AGENT_FIRST_REPORT):
+                if StorageBackendConfig.has_backend_configured(
+                        self.dbapi,
+                        constants.SB_TYPE_CEPH):
+                    # This should be run once after a node boot
+                    self._clear_ceph_stor_state(ihost_uuid)
+
+                # On first_report which occurs on restart, check if the
+                # reboot flag matches the applied config; as it is possible
+                # to apply the puppet manifest on a restart.
+                if (cutils.is_uuid_like(ihost.config_target) and
+                    config_uuid == utils.config_flip_reboot_required(
+                        ihost.config_target)):
+                    LOG.info("config match on %s reboot config %s to %s" %
+                             (ihost.hostname, config_uuid, ihost.config_target))
+                    config_uuid = ihost.config_target
             self._update_host_config_applied(context, ihost, config_uuid)
 
         # Check if apps need to be re-applied when host services are
