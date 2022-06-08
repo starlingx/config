@@ -273,21 +273,6 @@ class AgentManager(service.PeriodicService):
                 LOG.error("Failed to affine platform interface %s interrupts with %s" %
                           (info['name'], cpulist))
 
-    def _update_ttys_dcd_status(self, context, host_id):
-        # Retrieve the serial line carrier detect flag
-        ttys_dcd = None
-        rpcapi = conductor_rpcapi.ConductorAPI(
-                           topic=conductor_rpcapi.MANAGER_TOPIC)
-        try:
-            ttys_dcd = rpcapi.get_host_ttys_dcd(context, host_id)
-        except exception.SysinvException:
-            LOG.exception("Sysinv Agent exception getting host ttys_dcd.")
-            pass
-        if ttys_dcd is not None:
-            self._config_ttys_login(ttys_dcd)
-        else:
-            LOG.debug("ttys_dcd is not configured")
-
     def _is_max_cpu_mhz_configurable(self):
         fail_result = "System does not support"
 
@@ -309,89 +294,6 @@ class AgentManager(service.PeriodicService):
             if default_max:
                 LOG.info("Default CPU max frequency: {}".format(default_max))
                 return int(default_max.split('.')[0])
-
-    @staticmethod
-    def _get_active_device():
-        # the list of currently configured console devices,
-        # like 'tty1 ttyS0' or just 'ttyS0'
-        # The last entry in the file is the active device connected
-        # to /dev/console.
-        active_device = 'ttyS0'
-        try:
-            cmd = 'cat /sys/class/tty/console/active | grep ttyS'
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True,
-                    universal_newlines=True)
-            output = proc.stdout.read().strip()
-            proc.communicate()[0]
-            if proc.returncode != 0:
-                LOG.info("Cannot find the current configured serial device, "
-                         "return default %s" % active_device)
-                return active_device
-            # if more than one devices are found, take the last entry
-            if ' ' in output:
-                devs = output.split(' ')
-                active_device = devs[len(devs) - 1]
-            else:
-                active_device = output
-        except subprocess.CalledProcessError as e:
-            LOG.error("Failed to execute (%s) (%d)", cmd, e.returncode)
-        except OSError as e:
-            LOG.error("Failed to execute (%s) OS error (%d)", cmd, e.errno)
-
-        return active_device
-
-    @staticmethod
-    def _is_local_flag_disabled(device):
-        """
-        :param device:
-        :return: boolean: True if the local flag is disabled 'i.e. -clocal is
-                          set'. This means the serial data carrier detect
-                          signal is significant
-        """
-        try:
-            # uses -o for only-matching and -e for a pattern beginning with a
-            # hyphen (-), the following command returns 0 if the local flag
-            # is disabled
-            cmd = 'stty -a -F /dev/%s | grep -o -e -clocal' % device
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
-            proc.communicate()[0]
-            return proc.returncode == 0
-        except subprocess.CalledProcessError as e:
-            LOG.error("Failed to execute (%s) (%d)", cmd, e.returncode)
-            return False
-        except OSError as e:
-            LOG.error("Failed to execute (%s) OS error (%d)", cmd, e.errno)
-            return False
-
-    def _config_ttys_login(self, ttys_dcd):
-        # agetty is now enabled by systemd
-        # we only need to disable the local flag to enable carrier detection
-        # and enable the local flag when the feature is turned off
-        toggle_flag = None
-        active_device = self._get_active_device()
-        local_flag_disabled = self._is_local_flag_disabled(active_device)
-        if str(ttys_dcd) in ['True', 'true']:
-            LOG.info("ttys_dcd is enabled")
-            # check if the local flag is disabled
-            if not local_flag_disabled:
-                LOG.info("Disable (%s) local line" % active_device)
-                toggle_flag = 'stty -clocal -F /dev/%s' % active_device
-        else:
-            if local_flag_disabled:
-                # enable local flag to ignore the carrier detection
-                LOG.info("Enable local flag for device :%s" % active_device)
-                toggle_flag = 'stty clocal -F /dev/%s' % active_device
-
-        if toggle_flag:
-            try:
-                subprocess.Popen(toggle_flag, stdout=subprocess.PIPE,
-                                 shell=True)
-                # restart serial-getty
-                restart_cmd = ('systemctl restart serial-getty@%s.service'
-                               % active_device)
-                subprocess.check_call(restart_cmd, shell=True)  # pylint: disable=not-callable
-            except subprocess.CalledProcessError as e:
-                LOG.error("subprocess error: (%d)", e.returncode)
 
     def _force_grub_update(self):
         """ Force update the grub on the first AIO controller after the initial
@@ -1407,7 +1309,6 @@ class AgentManager(service.PeriodicService):
                 LOG.info("SysInv Agent Audit force updates: (%s)" %
                          (', '.join(force_updates)))
 
-            self._update_ttys_dcd_status(icontext, self._ihost_uuid)
             imemory = self._inode_operator.inodes_get_imemory()
             rpcapi.imemory_update_by_ihost(icontext,
                                            self._ihost_uuid,
@@ -1862,20 +1763,6 @@ class AgentManager(service.PeriodicService):
             os.remove(tmpfile)
             # Update local puppet cache anyway to be consistent.
             self._update_local_puppet_cache(hieradata_path)
-
-    def configure_ttys_dcd(self, context, uuid, ttys_dcd):
-        """Configure the getty on the serial device.
-
-        :param context: an admin context.
-        :param uuid: the host uuid
-        :param ttys_dcd: the flag to enable/disable dcd
-        """
-
-        LOG.debug("AgentManager.configure_ttys_dcd: %s %s" % (uuid, ttys_dcd))
-        if self._ihost_uuid and self._ihost_uuid == uuid:
-            LOG.debug("AgentManager configure getty on serial console")
-            self._config_ttys_login(ttys_dcd)
-        return
 
     def delete_load(self, context, host_uuid, software_version):
         """Remove the specified load

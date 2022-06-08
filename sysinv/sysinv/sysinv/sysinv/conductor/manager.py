@@ -11495,7 +11495,15 @@ class ConductorManager(service.PeriodicService):
         return True
 
     def configure_ttys_dcd(self, context, uuid, ttys_dcd):
-        """Notify agent to configure the dcd with the supplied data.
+        """
+        (TODO) Deprecate when supported from upgrade releases for tty_dcd
+        have all been migrated to puppet.
+
+        Reason: moving serial console configuration from agent audit
+        to puppet discards the necessity of polling the host tty_dcd
+        attribute in sysinv database through conductor API. (LP-1978009)
+
+        Notify agent to configure the dcd with the supplied data.
 
         :param context: an admin context.
         :param uuid: the host uuid
@@ -11509,6 +11517,13 @@ class ConductorManager(service.PeriodicService):
 
     def get_host_ttys_dcd(self, context, ihost_id):
         """
+        (TODO) Deprecate when supported from upgrade releases for tty_dcd
+        have all been migrated to puppet.
+
+        Reason: moving serial console configuration from agent audit
+        to puppet discards the necessity of polling the host tty_dcd
+        attribute in sysinv database through conductor API. (LP-1978009)
+
         Retrieve the serial line carrier detect state for a given host
         """
         ihost = self.dbapi.ihost_get(ihost_id)
@@ -13561,6 +13576,31 @@ class ConductorManager(service.PeriodicService):
             raise Exception("Unexpected result updating %s\\%s. tls.crt "
                             "and/or tls.key don't match"
                             % (sc_endpoint_cert_secret_ns, sc_endpoint_cert_secret_ns))
+
+    def update_ttys_dcd(self, context, ihost_uuid):
+        """Apply runtime manifest to configure the dcd with the supplied data.
+
+        :param context: an admin context.
+        :param ihost_uuid: the host uuid.
+        """
+        host = self.dbapi.ihost_get(ihost_uuid)
+        LOG.debug("ConductorManager.update_ttys_dcd: running manifest "
+                  "dcd update %s %s" % (host.ttys_dcd, host['uuid']))
+        personalities = [constants.WORKER,
+                         constants.CONTROLLER,
+                         constants.STORAGE]
+
+        config_uuid = self._config_update_hosts(context,
+                                                personalities,
+                                                [host['uuid']])
+        config_dict = {
+            "personalities": personalities,
+            "host_uuids": [host['uuid']],
+            "classes": ['platform::tty::runtime']
+        }
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid,
+                                            config_dict)
 
     def get_helm_chart_namespaces(self, context, chart_name):
         """Get supported chart namespaces.

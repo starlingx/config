@@ -67,6 +67,7 @@ class PlatformPuppet(base.BasePuppet):
         config.update(self._get_kvm_timer_advance_config(host))
         config.update(self._get_nvidia_vgpu_drivers_config(host))
         config.update(self._get_host_lldp_config(host))
+        config.update(self._get_ttys_dcd_config(host))
         return config
 
     def get_host_config_upgrade(self, host):
@@ -903,3 +904,11 @@ class PlatformPuppet(base.BasePuppet):
                 config.update({'platform::params::system_controller_mgmt_addr':
                               sc_mgmt_addr})
         return config
+
+    def _get_ttys_dcd_config(self, host):
+        return {
+            "platform::tty::params::enabled":
+                str(host.ttys_dcd) in ['True', 'true'],
+            "platform::tty::params::active_device":
+                host.console.split(',')[0]
+        }
