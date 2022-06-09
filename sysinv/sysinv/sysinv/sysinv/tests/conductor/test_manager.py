@@ -2736,6 +2736,81 @@ class ManagerTestCase(base.DbTestCase):
         self.assertTrue(port_found)
         self.assertEqual(len(self.dbapi.ethernet_port_get_by_host(ihost['uuid'])), port_db_len)
 
+    def test_iport_update_by_ihost_report_update_after_n3000_reset_sx(self):
+        self._iport_update_by_ihost_report_update_after_n3000_reset(True)
+
+    def test_iport_update_by_ihost_report_update_after_n3000_reset_dx(self):
+        self._iport_update_by_ihost_report_update_after_n3000_reset(False)
+
+    def _iport_update_by_ihost_report_update_after_n3000_reset(self, is_simplex):
+        """Test same device exchange on a different PCI address
+
+        In case of a N3000 reset, the PCI address of the onboard devices can be changed.
+        This test case makes sure that the PCI address in the database is updated correctly
+        for the 0d58 devices.
+        """
+        # Create controller-0 node
+        config_uuid = str(uuid.uuid4())
+        ihost = self._create_test_ihost(
+            hostname='controller-0', mgmt_mac='22:44:33:55:11:77', uuid=str(uuid.uuid4()),
+            personality=constants.CONTROLLER, config_status=None, config_applied=config_uuid,
+            config_target=config_uuid, invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED, operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        mock_find_local_mgmt_interface_vlan_id = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager._find_local_mgmt_interface_vlan_id',
+            mock_find_local_mgmt_interface_vlan_id)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_socket_gethostname = mock.MagicMock()
+        p2 = mock.patch('socket.gethostname', mock_socket_gethostname)
+        p2.start().return_value = 'controller-0'
+        self.addCleanup(p2.stop)
+
+        mock_is_aio_simplex_system = mock.MagicMock()
+        p3 = mock.patch('sysinv.common.utils.is_aio_simplex_system', mock_is_aio_simplex_system)
+        p3.start().return_value = is_simplex
+        self.addCleanup(p3.stop)
+
+        inic_dict_array = self._create_test_iports()
+
+        # execute initial report
+        self.service.iport_update_by_ihost(self.context, ihost['uuid'], inic_dict_array)
+
+        # create inodes
+        inuma_dict_array = [{'numa_node': 0, 'capabilities': {}},
+                            {'numa_node': 1, 'capabilities': {}}]
+        self.service.inumas_update_by_ihost(self.context, ihost['uuid'], inuma_dict_array)
+
+        port_db_len = len(self.dbapi.ethernet_port_get_by_host(ihost['uuid']))
+
+        # now send a report changing one 0d58 device to another PCI address
+        inic_dict_array2 = self._create_test_iports()
+        inic_dict_array2[6]['pciaddr'] = '0000:b2:00.1'
+        self.service.iport_update_by_ihost(self.context, ihost['uuid'], inic_dict_array2)
+
+        port_found = False
+        eth_port_db_list = self.dbapi.ethernet_port_get_by_host(ihost['uuid'])
+        for eth_port in eth_port_db_list:
+            if (eth_port.pciaddr == inic_dict_array2[6]['pciaddr']):
+                self.assertEqual(eth_port.mac, inic_dict_array2[6]['mac'])
+                self.assertEqual(eth_port.pvendor, inic_dict_array2[6]['pvendor'])
+                self.assertEqual(eth_port.pdevice, inic_dict_array2[6]['pdevice'])
+
+                # check if node_id points to the correct inode entry (in our case is 2)
+                self.assertEqual(eth_port.node_id, 2)
+
+                iface = self.dbapi.iinterface_get(eth_port.interface_id)
+                self.assertEqual(iface.imac, inic_dict_array2[6]['mac'])
+                self.assertEqual(iface.ifclass, None)
+                port_found = True
+        self.assertTrue(port_found)
+        self.assertEqual(len(self.dbapi.ethernet_port_get_by_host(ihost['uuid'])), port_db_len)
+
     def _create_test_pci_device_report(self, use_acc100=False):
         dev1 = {'sriov_vf_driver': None, 'numa_node': 0, 'name': 'pci_0000_00_11_0',
             'sriov_numvfs': 0, 'driver': None, 'pclass_id': 'ff0000',

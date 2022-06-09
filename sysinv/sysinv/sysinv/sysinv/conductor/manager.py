@@ -92,6 +92,7 @@ from sysinv.common import exception
 from sysinv.common import fm
 from sysinv.common import fernet
 from sysinv.common import health
+from sysinv.common import interface as cinterface
 from sysinv.common import kubernetes
 from sysinv.common import retrying
 from sysinv.common import service
@@ -2387,6 +2388,26 @@ class ConductorManager(service.PeriodicService):
                           (port['name'], port['uuid'], inode['id']))
                 self.dbapi.ethernet_port_update(port['uuid'], attr)
 
+    def _fix_db_pciaddr_for_n3000_i40(self, ihost, inic):
+        """Fix PCI address for N3000 FPGA onboard devices.
+
+        When N3000 is reset, the onboard devices (0d58) can have their PCI address changed.
+        This method will check if the PCI address from the same MAC address has changed
+        and will update the database if needed.
+
+        :param ihost: the host object
+        :param inic: NIC data reported
+        """
+        port = self.dbapi.ethernet_port_get_by_mac(inic['mac'])
+        if cinterface.get_pci_device_id(port) == dconstants.PCI_DEVICE_ID_FPGA_INTEL_I40_PF:
+            if inic['pciaddr'] != port.pciaddr:
+                LOG.warning("PCI address mismatch for %s (%s), updating from %s to %s"
+                    % (port.name, port.mac, port.pciaddr, inic['pciaddr']))
+                updates = {
+                    'pciaddr': inic['pciaddr']
+                }
+                self.dbapi.ethernet_port_update(port.uuid, updates)
+
     def iport_update_by_ihost(self, context,
                               ihost_uuid, inic_dict_array):
         """Create iports for an ihost with the supplied data.
@@ -2500,6 +2521,8 @@ class ConductorManager(service.PeriodicService):
                                   "%s, interface_exists %s" %
                                   (interface['imac'], inic_dict,
                                    interface_exists))
+
+                        self._fix_db_pciaddr_for_n3000_i40(ihost, inic)
                         break
                     elif (interface.uuid in interface_mac_update.keys()
                             and interface_mac_update[interface.uuid] == inic['pciaddr']):
