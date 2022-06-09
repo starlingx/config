@@ -1694,10 +1694,10 @@ class AppOperator(object):
                 for release_name, chart_obj in list(charts.items()):
                     # Request the helm release info
                     helm_rel = self._kube.get_custom_resource(
-                        constants.FLUXCD_CRD_HELM_REPO_GROUP,
-                        constants.FLUXCD_CRD_HELM_REPO_VERSION,
+                        constants.FLUXCD_CRD_HELM_REL_GROUP,
+                        constants.FLUXCD_CRD_HELM_REL_VERSION,
                         chart_obj["namespace"],
-                        constants.FLUXCD_CRD_HELM_REPO_PLURAL,
+                        constants.FLUXCD_CRD_HELM_REL_PLURAL,
                         release_name)
 
                     if not helm_rel:
@@ -4552,17 +4552,17 @@ class FluxCDHelper(object):
         for release in helmrelease_doc[0]['releases']:
             try:
                 if self._kube.get_custom_resource(
-                        constants.FLUXCD_CRD_HELM_REPO_GROUP,
-                        constants.FLUXCD_CRD_HELM_REPO_VERSION,
+                        constants.FLUXCD_CRD_HELM_REL_GROUP,
+                        constants.FLUXCD_CRD_HELM_REL_VERSION,
                         release["namespace"],
-                        constants.FLUXCD_CRD_HELM_REPO_PLURAL,
+                        constants.FLUXCD_CRD_HELM_REL_PLURAL,
                         release['name']):
 
                     self._kube.delete_custom_resource(
-                        constants.FLUXCD_CRD_HELM_REPO_GROUP,
-                        constants.FLUXCD_CRD_HELM_REPO_VERSION,
+                        constants.FLUXCD_CRD_HELM_REL_GROUP,
+                        constants.FLUXCD_CRD_HELM_REL_VERSION,
                         release["namespace"],
-                        constants.FLUXCD_CRD_HELM_REPO_PLURAL,
+                        constants.FLUXCD_CRD_HELM_REL_PLURAL,
                         release['name'])
             except Exception as e:
                 LOG.error("Attemting to cleanup HelmRelease {}/{} "
