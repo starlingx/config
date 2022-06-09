@@ -2421,12 +2421,13 @@ class HostController(rest.RestController):
         """Delete an ihost.
         """
 
-        if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
-            raise wsme.exc.ClientSideError(_(
-                "Deleting a host on a simplex system is not allowed."))
-
         ihost = objects.host.get_by_uuid(pecan.request.context,
                                          ihost_id)
+
+        if (utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and
+                  ihost['hostname'] == constants.CONTROLLER_0_HOSTNAME):
+            raise wsme.exc.ClientSideError(_(
+                "Deleting controller-0 on a simplex system is not allowed."))
 
         if ihost['administrative'] == constants.ADMIN_UNLOCKED:
             if ihost.hostname is None:
