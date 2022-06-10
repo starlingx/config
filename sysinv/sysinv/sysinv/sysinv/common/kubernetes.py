@@ -630,14 +630,20 @@ class KubeOperator(object):
                       "Namespace %s: %s" % (label, namespace, e))
             raise
 
-    def list_custom_resources(self, group, version, plural):
+    def list_custom_resources(self, group, version, plural, pretty=False, label_selector="",
+                              resource_version="", watch=False):
         custom_resource_api = self._get_kubernetesclient_custom_objects()
 
         try:
             cr_obj_list = custom_resource_api.list_cluster_custom_object(
                 group,
                 version,
-                plural)
+                plural,
+                pretty=pretty,
+                label_selector=label_selector,
+                resource_version=resource_version,
+                watch=watch
+            )
         except ApiException as e:
             if e.status == httplib.NOT_FOUND:
                 return None
