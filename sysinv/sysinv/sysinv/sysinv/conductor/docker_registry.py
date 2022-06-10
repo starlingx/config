@@ -10,9 +10,10 @@ import requests
 from oslo_serialization import base64
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import utils as cutils
 
 DOCKER_CERT_PATH = '/etc/ssl/private/registry-cert.crt'
-SYSTEM_CERT_PATH = '/etc/ssl/certs/ca-bundle.crt'
+SYSTEM_CERT_PATH = cutils.get_system_ca_file()
 KEYRING_SERVICE = 'CGCS'
 REGISTRY_USERNAME = 'admin'
 REGISTRY_BASEURL = 'https://%s/v2/' % constants.DOCKER_REGISTRY_SERVER
