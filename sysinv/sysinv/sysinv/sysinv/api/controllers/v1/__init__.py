@@ -47,6 +47,7 @@ from sysinv.api.controllers.v1 import kube_rootca_update
 from sysinv.api.controllers.v1 import kube_upgrade
 from sysinv.api.controllers.v1 import kube_version
 from sysinv.api.controllers.v1 import kube_cmd_version
+from sysinv.api.controllers.v1 import kube_config_kubelet
 from sysinv.api.controllers.v1 import label
 from sysinv.api.controllers.v1 import interface
 from sysinv.api.controllers.v1 import interface_network
@@ -280,6 +281,9 @@ class V1(base.APIBase):
 
     kube_host_upgrades = [link.Link]
     "Links to the kube_host_upgrade resource"
+
+    kube_config_kubelet = [link.Link]
+    "Links to the kube_config_kubelet resource "
 
     device_images = [link.Link]
     "Links to the device images resource"
@@ -870,6 +874,14 @@ class V1(base.APIBase):
                                                      'kube_host_upgrades', '',
                                                      bookmark=True)]
 
+        v1.kube_config_kubelet = [
+            link.Link.make_link('self', pecan.request.host_url,
+                                'kube_config_kubelet', ''),
+            link.Link.make_link('bookmark', pecan.request.host_url,
+                                'kube_config_kubelet', '',
+                                bookmark=True)
+        ]
+
         v1.device_images = [link.Link.make_link('self', pecan.request.host_url,
                                                 'device_images', ''),
                             link.Link.make_link('bookmark',
@@ -974,6 +986,7 @@ class Controller(rest.RestController):
     kube_upgrade = kube_upgrade.KubeUpgradeController()
     kube_rootca_update = kube_rootca_update.KubeRootCAUpdateController()
     kube_host_upgrades = kube_host_upgrade.KubeHostUpgradeController()
+    kube_config_kubelet = kube_config_kubelet.KubeConfigKubeletController()
     device_images = device_image.DeviceImageController()
     device_image_state = device_image_state.DeviceImageStateController()
     device_labels = device_label.DeviceLabelController()
