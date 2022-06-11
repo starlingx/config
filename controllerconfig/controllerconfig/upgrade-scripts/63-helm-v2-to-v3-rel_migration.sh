@@ -90,7 +90,7 @@ function migrate_apps {
     APPS=$(KUBECONFIG=/etc/kubernetes/admin.conf helmv2-cli -- helm list -a | tail -n+2 | awk '{print $1}')
     for app in ${APPS}; do
             case $app in
-                ic-nginx-ingress | cm-cert-manager | cm-cert-manager-psp-rolebinding)
+                cm-cert-manager | cm-cert-manager-psp-rolebinding)
                     log "$NAME: unsuported migration for $app"
                     ;;
                 *)
