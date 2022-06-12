@@ -87,15 +87,54 @@ function get_helmv2_config {
 
 function migrate_apps {
     log "$NAME: Migrating helm releases"
-    APPS=$(KUBECONFIG=/etc/kubernetes/admin.conf helmv2-cli -- helm list -a | tail -n+2 | awk '{print $1}')
-    for app in ${APPS}; do
-            case $app in
+    HELM_REL=$(KUBECONFIG=/etc/kubernetes/admin.conf helmv2-cli -- helm list -a | tail -n+2 | awk '{print $1}')
+    for rel in ${HELM_REL}; do
+            case $rel in
+                # NOT SUPPORTED: auditd-1.0-20.tgz
+                ns-auditd)
+                    log "$NAME: migration of helm release $rel is not currently supported."
+                    ;;
+                # SPECIAL HANDLE: cert-manager-1.0-26.tgz -> 64-upgrade-cert-manager.sh
                 cm-cert-manager | cm-cert-manager-psp-rolebinding)
-                    log "$NAME: unsuported migration for $app"
+                    log "$NAME: helm release $rel is being migrated with a dedicated upgrade script."
+                    ;;
+                # NOT SUPPORTED: metrics-server-1.0-8.tgz
+                ms-metrics-server-psp-rolebinding | ms-metrics-server)
+                    log "$NAME: migration of helm release $rel is not currently supported."
+                    ;;
+                # SUPPORTED: nginx-ingress-controller-1.1-18.tgz -> 65-k8s-app-upgrade.sh
+                ic-nginx-ingress )
+                    log "$NAME: migrating helm release $rel."
+                    /usr/bin/migrate_helm_release.py $rel
+                    ;;
+                # SPECIAL HANDLE: oidc-auth-apps-1.0-61.tgz -> 82-upgrade-oidc.py
+                oidc-dex | oidc-oidc-client | oidc-auth-secret-observer)
+                    log "$NAME: helm release $rel is being migrated with a dedicated upgrade script."
+                    ;;
+                # SUPPORTED: platform-integ-apps-1.0-44.tgz -> 65-k8s-app-upgrade.sh
+                stx-ceph-pools-audit | stx-cephfs-provisioner | stx-rbd-provisioner)
+                    log "$NAME: migrating helm release $rel."
+                    /usr/bin/migrate_helm_release.py $rel
+                    ;;
+                # NOT SUPPORTED: portieris-1.0-33.tgz
+                portieris-portieris-psp-rolebinding | portieris-portieris-certs | portieris-portieris)
+                    log "$NAME: migration of helm release $rel is not currently supported."
+                    ;;
+                # NOT SUPPORTED: ptp-notification-1.0-52.tgz
+                ptp-ptp-notification-psp-rolebinding | ptp-ptp-notification)
+                    log "$NAME: migration of helm release $rel is not currently supported."
+                    ;;
+                # SUPPORTED: snmp-1.0-25.tgz -> 65-k8s-app-upgrade.sh
+                ns-snmp)
+                    log "$NAME: migrating helm release $rel."
+                    /usr/bin/migrate_helm_release.py $rel
+                    ;;
+                # NOT SUPPORTED: vault-1.0-23.tgz
+                sva-vault-psp-rolebinding | sva-vault)
+                    log "$NAME: migration of helm release $rel is not currently supported."
                     ;;
                 *)
-                    log "$NAME: migrating $app helmrelease"
-                    /usr/bin/migrate_helm_release.py $app
+                    log "$NAME: migration of UNKNOWN helm release $rel is not currently supported."
                     ;;
             esac
     done
