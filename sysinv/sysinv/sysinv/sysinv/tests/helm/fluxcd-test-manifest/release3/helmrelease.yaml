@@ -1,0 +1,38 @@
+---
+#
+# Copyright (c) 2022 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+apiVersion: "helm.toolkit.fluxcd.io/v2beta1"
+kind: HelmRelease
+metadata:
+  name: release-3
+  namespace: test-rls
+  labels:
+    chart_group: release3-group
+spec:
+  releaseName: releaseThree
+  chart:
+    spec:
+      chart: chart-b
+      version: 0.0.1
+      sourceRef:
+        kind: HelmRepository
+        name: stx-platform
+  interval: 5m
+  timeout: 30m
+  test:
+    enable: false
+  install:
+    disableHooks: false
+  upgrade:
+    disableHooks: false
+  valuesFrom:
+    - kind: Secret
+      name: release3-static-overrides
+      valuesKey: release3-static-overrides.yaml
+    - kind: Secret
+      name: release3-system-overrides
+      valuesKey: release3-system-overrides.yaml

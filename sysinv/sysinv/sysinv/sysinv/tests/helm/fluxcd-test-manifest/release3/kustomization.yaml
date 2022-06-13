@@ -1,0 +1,18 @@
+---
+#
+# Copyright (c) 2022 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+resources:
+  - helmrelease.yaml
+secretGenerator:
+  - name: release3-static-overrides
+    files:
+      - release3-static-overrides.yaml
+  - name: release3-system-overrides
+    files:
+      - release3-system-overrides.yaml
+generatorOptions:
+  disableNameSuffixHash: true

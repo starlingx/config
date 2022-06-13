@@ -1439,8 +1439,8 @@ class ManagerTestCase(base.DbTestCase):
 
         return ihost
 
-    def test_configure_out_of_date(self):
-        os.path.isfile = mock.Mock(return_value=True)
+    @mock.patch('os.path.isfile', return_value=True)
+    def test_configure_out_of_date(self, _):
         cutils.is_aio_system = mock.Mock(return_value=True)
         ihost = self._create_test_controller_config_out_of_date('controller-0')
         self.service.configure_ihost(self.context, ihost)
@@ -1461,8 +1461,8 @@ class ManagerTestCase(base.DbTestCase):
         self.service.iconfig_update_by_ihost(self.context, ihost['uuid'], imsg_dict)
         self.assertEqual(self.alarm_raised, True)
 
-    def test_configure_out_of_date_upgrade(self):
-        os.path.isfile = mock.Mock(return_value=True)
+    @mock.patch('os.path.isfile', return_value=True)
+    def test_configure_out_of_date_upgrade(self, _):
         cutils.is_aio_system = mock.Mock(return_value=True)
 
         # Check upgrade where the target sw_version does not match

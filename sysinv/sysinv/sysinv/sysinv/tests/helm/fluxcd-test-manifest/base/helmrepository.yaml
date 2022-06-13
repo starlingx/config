@@ -1,0 +1,13 @@
+---
+#
+# Copyright (c) 2022 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+apiVersion: source.toolkit.fluxcd.io/v1beta1
+kind: HelmRepository
+metadata:
+  name: stx-platform
+spec:
+  url: http://192.168.206.1:8080/helm_charts/stx-platform
+  interval: 60m

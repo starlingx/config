@@ -82,12 +82,7 @@ def mock_load_kube_config(path):
     return
 
 
-def mock_os_path_isfile(path):
-    return True
-
-
 @mock.patch('kubernetes.config.load_kube_config', mock_load_kube_config)
-@mock.patch('os.path.isfile', mock_os_path_isfile)
 @mock.patch('sysinv.common.kubernetes.get_kube_versions',
             mock_get_kube_versions)
 class TestKubeOperator(base.TestCase):
