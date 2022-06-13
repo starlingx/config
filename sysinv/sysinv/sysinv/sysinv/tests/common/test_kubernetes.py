@@ -794,15 +794,6 @@ class TestKubeOperator(base.TestCase):
 
         self.list_custom_resource_helmrepository = None
 
-        def mock_list_cluster_custom_resource(obj, group, version, plural, label_selector=""):
-            if plural.lower() in ("helmrepository", "helmrepositories"):
-                return self.list_custom_resource_helmrepository
-
-        self.mocked_list_namespaced_custom_object = mock.patch(
-            'kubernetes.client.CustomObjectsApi.list_cluster_custom_object',
-            mock_list_cluster_custom_resource)
-        self.mocked_list_namespaced_custom_object.start()
-
         self.read_namespaced_config_map_result = None
 
         def mock_read_namespaced_config_map(obj, configmap, namespace):
@@ -1069,7 +1060,14 @@ class TestKubeOperator(base.TestCase):
             'test-service-account-1', kube.NAMESPACE_KUBE_SYSTEM)
         self.assertEqual(result, None)
 
-    def test_kube_list_custom_resource_single_helmrepository(self):
+    def mock_list_cluster_custom_resource(self, group, version, plural, pretty=False, label_selector="",
+                                          resource_version="", watch=False):
+        if plural.lower() in ("helmrepository", "helmrepositories"):
+            return self.list_custom_resource_helmrepository
+
+    @mock.patch('kubernetes.client.CustomObjectsApi.list_cluster_custom_object')
+    def test_kube_list_custom_resource_single_helmrepository(self, mock_list_cluster_custom_object):
+        mock_list_cluster_custom_object.side_effect = self.mock_list_cluster_custom_resource
         self.list_custom_resource_helmrepository = self.single_helmrepository_result
 
         result = self.kube_operator.list_custom_resources(
@@ -1082,8 +1080,19 @@ class TestKubeOperator(base.TestCase):
             result[0],
             self.single_helmrepository_result.get("items")[0]
         )
+        mock_list_cluster_custom_object.assert_called_once_with(
+            'source.toolkit.fluxcd.io',
+            'v1beta1',
+            'helmrepositories',
+            pretty=False,
+            label_selector="",
+            resource_version="",
+            watch=False
+        )
 
-    def test_kube_list_custom_resource_multiple_helmrepositores(self):
+    @mock.patch('kubernetes.client.CustomObjectsApi.list_cluster_custom_object')
+    def test_kube_list_custom_resource_multiple_helmrepositores(self, mock_list_cluster_custom_object):
+        mock_list_cluster_custom_object.side_effect = self.mock_list_cluster_custom_resource
         self.list_custom_resource_helmrepository = self.multiple_helmrepository_result
 
         result = self.kube_operator.list_custom_resources(
@@ -1100,8 +1109,19 @@ class TestKubeOperator(base.TestCase):
             result[1],
             self.multiple_helmrepository_result.get("items")[1]
         )
+        mock_list_cluster_custom_object.assert_called_once_with(
+            'source.toolkit.fluxcd.io',
+            'v1beta1',
+            'helmrepositories',
+            pretty=False,
+            label_selector="",
+            resource_version="",
+            watch=False
+        )
 
-    def test_kube_list_custom_resource_no_helmrepository(self):
+    @mock.patch('kubernetes.client.CustomObjectsApi.list_cluster_custom_object')
+    def test_kube_list_custom_resource_no_helmrepository(self, mock_list_cluster_custom_object):
+        mock_list_cluster_custom_object.side_effect = self.mock_list_cluster_custom_resource
         self.list_custom_resource_helmrepository = self.no_helmrepository_result
 
         result = self.kube_operator.list_custom_resources(
@@ -1110,6 +1130,57 @@ class TestKubeOperator(base.TestCase):
             'helmrepositories'
         )
         self.assertEqual(result, [])
+        mock_list_cluster_custom_object.assert_called_once_with(
+            'source.toolkit.fluxcd.io',
+            'v1beta1',
+            'helmrepositories',
+            pretty=False,
+            label_selector="",
+            resource_version="",
+            watch=False
+        )
+
+    @mock.patch('kubernetes.client.CustomObjectsApi.list_cluster_custom_object')
+    def test_kube_list_custom_resource_label_selector(self, mock_list_cluster_custom_object):
+        mock_list_cluster_custom_object.side_effect = self.mock_list_cluster_custom_resource
+        self.list_custom_resource_helmrepository = self.multiple_helmrepository_result
+
+        self.kube_operator.list_custom_resources(
+            'source.toolkit.fluxcd.io',
+            'v1beta1',
+            'helmrepositories',
+            label_selector=("app.kubernetes.io/name=test")
+        )
+        mock_list_cluster_custom_object.assert_called_once_with(
+            'source.toolkit.fluxcd.io',
+            'v1beta1',
+            'helmrepositories',
+            pretty=False,
+            label_selector=("app.kubernetes.io/name=test"),
+            resource_version="",
+            watch=False
+        )
+
+    @mock.patch('kubernetes.client.CustomObjectsApi.list_cluster_custom_object')
+    def test_kube_list_custom_resource_pretty(self, mock_list_cluster_custom_object):
+        mock_list_cluster_custom_object.side_effect = self.mock_list_cluster_custom_resource
+        self.list_custom_resource_helmrepository = self.multiple_helmrepository_result
+
+        self.kube_operator.list_custom_resources(
+            'source.toolkit.fluxcd.io',
+            'v1beta1',
+            'helmrepositories',
+            pretty=True
+        )
+        mock_list_cluster_custom_object.assert_called_once_with(
+            'source.toolkit.fluxcd.io',
+            'v1beta1',
+            'helmrepositories',
+            pretty=True,
+            label_selector="",
+            resource_version="",
+            watch=False
+        )
 
 
 class TestKubernetesUtilities(base.TestCase):
