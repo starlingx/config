@@ -3666,3 +3666,17 @@ def replace_helmrepo_url_with_floating_address(dbapi, helmrepository_url):
         get_http_port(dbapi),
         parsed_helm_repo_url.path
     )
+
+
+def get_system_ca_file():
+    """Return path to system default CA file."""
+    # Standard CA file locations for Debian/Ubuntu, RedHat/Fedora,
+    # Suse, FreeBSD/OpenBSD
+    ca_path = ['/etc/ssl/certs/ca-certificates.crt',
+               '/etc/pki/tls/certs/ca-bundle.crt',
+               '/etc/ssl/ca-bundle.pem',
+               '/etc/ssl/cert.pem']
+    for ca in ca_path:
+        if os.path.exists(ca):
+            return ca
+    return None
