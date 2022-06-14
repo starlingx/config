@@ -1727,6 +1727,25 @@ class ConductorManager(service.PeriodicService):
         self._config_apply_runtime_manifest(
             context, config_uuid=config_uuid, config_dict=config_dict)
 
+    def _update_kubeadm_feature_gates(self, context):
+        """Applies the runtime manifest to change kubernetes feature gates.
+           Applied on both the controllers
+           returns True if runtime manifests were applied
+        """
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(
+                context, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::kubernetes::master::update_kubeadm_feature_gates'],
+            puppet_common.REPORT_STATUS_CFG:
+                puppet_common.REPORT_UPGRADE_ACTIONS
+        }
+        self._config_apply_runtime_manifest(context,
+                                            config_uuid=config_uuid,
+                                            config_dict=config_dict)
+        return True
+
     def update_keystone_password(self, context):
         """This method calls a puppet class
            'openstack::keystone::password::runtime'
@@ -12005,6 +12024,9 @@ class ConductorManager(service.PeriodicService):
 
             # Make sure to remove v1 from address format after upgrade
             manifests_applied |= self._update_upgraded_ceph_monitors(context)
+
+        if from_version == tsc.SW_VERSION_21_12:
+            manifests_applied |= self._update_kubeadm_feature_gates(context)
 
         if manifests_applied:
             LOG.info("Running upgrade activation manifests")

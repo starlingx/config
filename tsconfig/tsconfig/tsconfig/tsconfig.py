@@ -14,6 +14,7 @@ from six.moves import configparser
 
 SW_VERSION = ""
 SW_VERSION_21_05 = "21.05"
+SW_VERSION_21_12 = "21.12"
 
 nodetype = None
 subfunctions = []
