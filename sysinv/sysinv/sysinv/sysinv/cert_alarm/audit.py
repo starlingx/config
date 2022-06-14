@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2021-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -115,6 +115,8 @@ class CertAlarmAudit(object):
         self.fm_obj.reset_alarms_snapshot()
         self.fm_obj.collect_all_cert_alarms()
 
+        self.audit_for_deleted_certificates()
+
         self.apply_action_active_alarms()
 
         utils.print_cert_snapshot()
@@ -143,10 +145,10 @@ class CertAlarmAudit(object):
                 # mode is k8s secret
                 kube_op = sys_kube.KubeOperator()
                 try:
-                    secobj = kube_op.kube_get_secret(snapshot[utils.SNAPSHOT_KEY_k8s_secret],
-                                                     snapshot[utils.SNAPSHOT_KEY_k8s_ns])
+                    secret_object = kube_op.kube_get_secret(snapshot[utils.SNAPSHOT_KEY_k8s_secret],
+                                                            snapshot[utils.SNAPSHOT_KEY_k8s_ns])
                     (certname_secret, exp_date_secret, anno_data_secret, mode_metadata) = \
-                            utils.collect_certificate_data_from_kube_secret(secobj)
+                            utils.collect_certificate_data_from_kube_secret(secret_object)
                     if exp_date_secret is not None:
                         utils.add_cert_snapshot(certname_secret,
                                                 exp_date_secret,
@@ -263,10 +265,33 @@ class CertAlarmAudit(object):
         for alarm_instance in self.fm_obj.ALARMS_SNAPSHOT:
             entity_id = self.fm_obj.ALARMS_SNAPSHOT[alarm_instance][fm_mgr.ENTITY_ID]
             cert_name = utils.get_cert_name_with_entity_id(entity_id)
-            if cert_name is None:
+
+            k8_secret_deleted = False
+            if cert_name is not None:
+                snapshot = utils.CERT_SNAPSHOT[cert_name]
+                kube_op = sys_kube.KubeOperator()
+                # Some certificates which are saved as tls k8s secrets can be deleted by users or
+                # other services in a running system. The below code block checks for those types
+                # of certificates and saves its 'delete' status to var k8_secret_deleted
+                if snapshot[utils.SNAPSHOT_KEY_MODE] is utils.MODE_SECRET or \
+                        snapshot[utils.SNAPSHOT_KEY_MODE] is utils.MODE_CERT_MGR:
+                    try:
+                        k8_secret = kube_op.kube_get_secret(snapshot[utils.SNAPSHOT_KEY_k8s_secret],
+                                                            snapshot[utils.SNAPSHOT_KEY_k8s_ns])
+                        if not k8_secret:
+                            k8_secret_deleted = True
+                    except Exception as e:
+                        LOG.error("Failed to retrieve k8s_secret %s" % e)
+
+            if cert_name is None or k8_secret_deleted:
                 LOG.info('Found alarm for entity %s, but no related \
                          certificate resource' % entity_id)
                 alarm_id = self.fm_obj.ALARMS_SNAPSHOT[alarm_instance][fm_mgr.ALARM_ID]
+                # Clears the alarm
                 self.fm_obj.set_fault(entity_id,
                                       alarm_id,
                                       fm_constants.FM_ALARM_STATE_CLEAR)
+                # For certificates stored in tls secrets we need to completely delete their
+                # snapshot information otherwise cert-alarm will attempt to re-create the alarm
+                if k8_secret_deleted:
+                    del utils.CERT_SNAPSHOT[cert_name]
