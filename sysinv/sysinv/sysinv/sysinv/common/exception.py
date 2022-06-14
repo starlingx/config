@@ -150,6 +150,10 @@ class CephFailure(SysinvException):
     code = 408
 
 
+class CephApiFailure(CephFailure):
+    message = _("Ceph api failure: %(reason)s")
+
+
 class CephCrushMapNotApplied(CephFailure):
     message = _("Crush map has not been applied. %(reason)s")
 
