@@ -23,7 +23,7 @@ from sysinv.common import constants
 from sysinv.common import device as dconstants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
-from sysinv.fpga_agent import constants as fpga_constants
+from sysinv.common import fpga_constants
 from sysinv import objects
 
 LOG = log.getLogger(__name__)

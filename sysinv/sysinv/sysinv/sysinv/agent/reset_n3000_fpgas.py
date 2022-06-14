@@ -20,10 +20,10 @@ from eventlet.green import subprocess
 from glob import glob
 from oslo_log import log
 
+from sysinv.common import fpga_constants
 from sysinv.common import utils
 from sysinv.common import exception
-from sysinv.fpga_agent.manager import get_n3000_devices
-from sysinv.fpga_agent import constants
+from sysinv.agent import fpga
 
 # Volatile flag file so we only reset the N3000s once after bootup.
 LOG = log.getLogger(__name__)
@@ -42,48 +42,48 @@ EEPROM_UPDATE_SUCCESS = '0x1111'
 
 
 def n3000_img_accessible():
-    cmd = 'ctr -n=k8s.io image list name=="%s"' % constants.OPAE_IMG
+    cmd = 'ctr -n=k8s.io image list name=="%s"' % fpga_constants.OPAE_IMG
     items = subprocess.check_output(shlex.split(cmd),  # pylint: disable=not-callable
                                     stderr=subprocess.STDOUT,
                                     universal_newlines=True)
     for line in items.splitlines():
-        if constants.OPAE_IMG in line:
-            LOG.info('%s image found' % constants.OPAE_IMG)
-            return constants.OPAE_IMG
+        if fpga_constants.OPAE_IMG in line:
+            LOG.info('%s image found' % fpga_constants.OPAE_IMG)
+            return fpga_constants.OPAE_IMG
     LOG.info('%s image not found, check older image' %
-                constants.OPAE_IMG)
+                fpga_constants.OPAE_IMG)
     # During upgrade. check if previous version is available
-    cmd = 'ctr -n=k8s.io image list name=="%s"' % constants.OPAE_IMG_PREV
+    cmd = 'ctr -n=k8s.io image list name=="%s"' % fpga_constants.OPAE_IMG_PREV
     items = subprocess.check_output(shlex.split(cmd),  # pylint: disable=not-callable
                                     stderr=subprocess.STDOUT,
                                     universal_newlines=True)
     for line in items.splitlines():
-        if constants.OPAE_IMG_PREV in line:
-            LOG.info('%s image found' % constants.OPAE_IMG_PREV)
-            return constants.OPAE_IMG_PREV
+        if fpga_constants.OPAE_IMG_PREV in line:
+            LOG.info('%s image found' % fpga_constants.OPAE_IMG_PREV)
+            return fpga_constants.OPAE_IMG_PREV
     LOG.info('%s image not found, try image pull from controller' %
-             constants.OPAE_IMG_PREV)
+             fpga_constants.OPAE_IMG_PREV)
 
     # n3000 image not found in containerd, get it from the controller
     try:
-        subprocess.check_output(["crictl", "pull", constants.OPAE_IMG])  # pylint: disable=not-callable
-        LOG.info("Image %s imported by containerd" % constants.OPAE_IMG)
-        return constants.OPAE_IMG
+        subprocess.check_output(["crictl", "pull", fpga_constants.OPAE_IMG])  # pylint: disable=not-callable
+        LOG.info("Image %s imported by containerd" % fpga_constants.OPAE_IMG)
+        return fpga_constants.OPAE_IMG
     except subprocess.CalledProcessError as exc:
         msg = ("Failed to pull image %s, "
                "return code is %d, command output: %s." %
-               (constants.OPAE_IMG, exc.returncode, exc.output))
+               (fpga_constants.OPAE_IMG, exc.returncode, exc.output))
         LOG.info(msg)
     # During upgrade the current version is not available,
     # try pulling the previous version
     try:
-        subprocess.check_output(["crictl", "pull", constants.OPAE_IMG_PREV])  # pylint: disable=not-callable
-        LOG.info("Image %s imported by containerd" % constants.OPAE_IMG_PREV)
-        return constants.OPAE_IMG_PREV
+        subprocess.check_output(["crictl", "pull", fpga_constants.OPAE_IMG_PREV])  # pylint: disable=not-callable
+        LOG.info("Image %s imported by containerd" % fpga_constants.OPAE_IMG_PREV)
+        return fpga_constants.OPAE_IMG_PREV
     except subprocess.CalledProcessError as exc:
         msg = ("Failed to pull image %s, "
             "return code is %d, command output: %s." %
-            (constants.OPAE_IMG_PREV, exc.returncode, exc.output))
+            (fpga_constants.OPAE_IMG_PREV, exc.returncode, exc.output))
         LOG.info(msg)
     return None
 
@@ -155,12 +155,12 @@ def update_device_n3000_retimer(pci_addr):
 
 
 def reset_n3000_fpgas():
-    if not os.path.exists(constants.N3000_RESET_FLAG):
+    if not os.path.exists(fpga_constants.N3000_RESET_FLAG):
         # Reset all N3000 FPGAs on the system.
         # TODO: make this run in parallel if there are multiple devices.
         LOG.info("Resetting N3000 FPGAs.")
         got_exception = False
-        fpga_addrs = get_n3000_devices()
+        fpga_addrs = fpga.FpgaOperator().get_n3000_devices()
         opae_img = n3000_img_accessible()
         if opae_img is None:
             LOG.info("n3000 opae image is not ready, exit...")
@@ -172,9 +172,9 @@ def reset_n3000_fpgas():
             except Exception:
                 got_exception = True
 
-        if not got_exception and os.path.exists(constants.N3000_RETIMER_FLAG):
+        if not got_exception and os.path.exists(fpga_constants.N3000_RETIMER_FLAG):
             # The retimer included flag is set, execute additional steps
-            fpga_addrs = get_n3000_devices()
+            fpga_addrs = fpga.FpgaOperator().get_n3000_devices()
             for fpga_addr in fpga_addrs:
                 try:
                     LOG.info("Updating retimer")
@@ -186,9 +186,9 @@ def reset_n3000_fpgas():
 
         LOG.info("Done resetting N3000 FPGAs.")
         if not got_exception:
-            utils.touch(constants.N3000_RESET_FLAG)
-            if os.path.exists(constants.N3000_RETIMER_FLAG):
-                os.remove(constants.N3000_RETIMER_FLAG)
+            utils.touch(fpga_constants.N3000_RESET_FLAG)
+            if os.path.exists(fpga_constants.N3000_RETIMER_FLAG):
+                os.remove(fpga_constants.N3000_RETIMER_FLAG)
             return True
         else:
             return False

@@ -16,7 +16,7 @@
 
 from oslo_config import cfg
 from oslo_log import log as logging
-from sysinv.fpga_agent.reset_n3000_fpgas import reset_n3000_fpgas
+from sysinv.agent.reset_n3000_fpgas import reset_n3000_fpgas
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF

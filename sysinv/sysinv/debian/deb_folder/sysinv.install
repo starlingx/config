@@ -21,7 +21,6 @@ usr/bin/sysinv-api
 usr/bin/sysinv-conductor
 usr/bin/sysinv-dbsync
 usr/bin/sysinv-dnsmasq-lease-update
-usr/bin/sysinv-fpga-agent
 usr/bin/sysinv-helm
 usr/bin/sysinv-puppet
 usr/bin/sysinv-reset-n3000-fpgas

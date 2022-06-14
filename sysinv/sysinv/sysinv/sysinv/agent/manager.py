@@ -56,12 +56,13 @@ from sysinv.agent import pv
 from sysinv.agent import lvg
 from sysinv.agent import pci
 from sysinv.agent import node
+from sysinv.agent import fpga
 from sysinv.agent.lldp import plugin as lldp_plugin
+from sysinv.common import fpga_constants
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import service
 from sysinv.common import utils
-from sysinv.fpga_agent import constants as fpga_constants
 from sysinv.objects import base as objects_base
 from sysinv.puppet import common as puppet
 from sysinv.conductor import rpcapi as conductor_rpcapi
@@ -159,9 +160,11 @@ class AgentManager(service.PeriodicService):
         super(AgentManager, self).__init__(host, topic, serializer=serializer)
 
         self._report_to_conductor_iplatform_avail_flag = False
+        self._report_to_conductor_fpga_info = True
         self._ipci_operator = pci.PCIOperator()
         self._inode_operator = node.NodeOperator()
         self._idisk_operator = disk.DiskOperator()
+        self._ifpga_operator = fpga.FpgaOperator()
         self._ipv_operator = pv.PVOperator()
         self._ipartition_operator = partition.PartitionOperator()
         self._ilvg_operator = lvg.LVGOperator()
@@ -1367,6 +1370,50 @@ class AgentManager(service.PeriodicService):
 
             self._create_host_filesystems(rpcapi, icontext)
 
+            # Collect FPGA PCI data for this host.
+            # We know that the PCI address of the N3000 can change the first time
+            # We reset it after boot, so we need to gather the new PCI device
+            # information and send it to sysinv-conductor.
+            # This needs to exactly mirror what sysinv-agent does as far as PCI
+            # updates.  We could potentially modify sysinv-agent to do the PCI
+            # updates when triggered by an RPC cast, but we don't need to rescan
+            # all PCI devices, just the N3000 devices.
+            if os.path.exists(fpga_constants.N3000_RESET_FLAG) and \
+                    self._report_to_conductor_fpga_info:
+                LOG.info("Found n3000 reset flag, continuing.")
+                LOG.info("Updating N3000 PCI info.")
+                pci_device_list = self._ifpga_operator.get_n3000_pci_info()
+                try:
+                    if pci_device_list:
+                        LOG.info("reporting N3000 PCI devices for host %s: %s" %
+                                (self._ihost_uuid, pci_device_list))
+
+                        # Don't ask conductor to cleanup stale entries while worker
+                        # manifest is not complete. For N3000 device, it could get rid
+                        # of a valid entry with a different PCI address but restored
+                        # from previous database backup
+                        cleanup_stale = \
+                            os.path.exists(tsc.VOLATILE_WORKER_CONFIG_COMPLETE)
+                        rpcapi.pci_device_update_by_host(icontext,
+                                                        self._ihost_uuid,
+                                                        pci_device_list,
+                                                        cleanup_stale)
+                except Exception:
+                    LOG.exception("Exception updating n3000 PCI devices, "
+                                "this will likely cause problems.")
+                    pass
+
+                # Collect FPGA data for this host.
+                fpgainfo_list = self._ifpga_operator.get_fpga_info()
+                LOG.info("reporting FPGA inventory for host %s: %s" %
+                        (self._ihost_uuid, fpgainfo_list))
+                try:
+                    rpcapi.fpga_device_update_by_host(icontext, self._ihost_uuid, fpgainfo_list)
+                    self._report_to_conductor_fpga_info = False
+                except exception.SysinvException:
+                    LOG.exception("Exception updating fpga devices.")
+                    pass
+
             # Notify conductor of inventory completion after necessary
             # inventory reports have been sent to conductor.
             # This is as defined by _conditions_for_inventory_complete_met().
@@ -1918,6 +1965,27 @@ class AgentManager(service.PeriodicService):
                 self._tpmconfig_rpc_failure = True
 
         return
+
+    def device_update_image(self, context, host_uuid, pci_addr, filename, transaction_id,
+                            retimer_included):
+        """Write the device image to the device at the specified address.
+
+        Transaction is the transaction ID as specified by sysinv-conductor.
+
+        This must send back either success or failure to sysinv-conductor
+        via an RPC cast.  The transaction ID is sent back to allow sysinv-conductor
+        to locate the transaction in the DB.
+
+        TODO: could get fancier with an image cache and delete based on LRU.
+        """
+        LOG.debug("AgentManager.device_update_image: %s" % pci_addr)
+        if self._ihost_uuid and self._ihost_uuid == host_uuid:
+            self._ifpga_operator.device_update_image(context,
+                                                     host_uuid,
+                                                     pci_addr,
+                                                     filename,
+                                                     transaction_id,
+                                                     retimer_included)
 
     def execute_command(self, context, host_uuid, command):
         """Execute a command on behalf of sysinv-conductor

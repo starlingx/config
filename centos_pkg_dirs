@@ -5,7 +5,6 @@ sysinv/cert-mon
 sysinv/cert-alarm
 sysinv/cgts-client
 sysinv/sysinv-agent
-sysinv/sysinv-fpga-agent
 sysinv/sysinv
 config-gate
 tsconfig

@@ -84,6 +84,7 @@ from sysinv.api.controllers.v1 import kube_app as kube_api
 from sysinv.api.controllers.v1 import mtce_api
 from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1 import vim_api
+from sysinv.common import fpga_constants
 from sysinv.common import constants
 from sysinv.common import ceph as cceph
 from sysinv.common import dc_api
@@ -106,8 +107,6 @@ from sysinv.conductor import openstack
 from sysinv.conductor import docker_registry
 from sysinv.conductor import keystone_listener
 from sysinv.db import api as dbapi
-from sysinv.fpga_agent import rpcapi as fpga_agent_rpcapi
-from sysinv.fpga_agent import constants as fpga_constants
 from sysinv import objects
 from sysinv.objects import base as objects_base
 from sysinv.objects import kube_app as kubeapp_obj
@@ -14825,10 +14824,10 @@ class ConductorManager(service.PeriodicService):
             filename = cutils.format_image_filename(device_image)
             LOG.info("sending rpc req to update image for host %s, pciaddr: %s, filename: %s, id: %s" %
                      (host.hostname, pci_device.pciaddr, filename, device_image_state.id))
-            fpga_rpcapi = fpga_agent_rpcapi.AgentAPI()
+            fpga_rpcapi = agent_rpcapi.AgentAPI()
             fpga_rpcapi.host_device_update_image(
-                context, host.hostname, pci_device.pciaddr, filename, device_image_state.id,
-                device_image.retimer_included)
+                context, host_uuid, host.hostname, pci_device.pciaddr, filename,
+                device_image_state.id, device_image.retimer_included)
             # We've kicked off a device image update, so exit the function.
             return
         LOG.info("no more device images to process")

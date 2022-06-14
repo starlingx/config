@@ -1,2 +1,0 @@
-etc/init.d/sysinv-fpga-agent
-usr/share/starlingx/pmon.d/sysinv-fpga-agent.conf

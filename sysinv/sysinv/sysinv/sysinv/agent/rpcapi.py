@@ -281,3 +281,16 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('update_host_lvm',
                                        host_uuid=host_uuid))
+
+    # handle firmware updates on FPGA devices
+    def host_device_update_image(self, context, host_uuid, hostname, pci_addr,
+                                 filename, transaction_id, retimer_included):
+        LOG.info("sending device_update_image to host %s" % hostname)
+        topic = '%s.%s' % (self.topic, hostname)
+        return self.cast(context,
+                         self.make_msg('device_update_image',
+                                       host_uuid=host_uuid,
+                                       pci_addr=pci_addr, filename=filename,
+                                       transaction_id=transaction_id,
+                                       retimer_included=retimer_included),
+                         topic=topic)
