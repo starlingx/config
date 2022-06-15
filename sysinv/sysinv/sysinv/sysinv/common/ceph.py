@@ -12,6 +12,7 @@
 
 from __future__ import absolute_import
 
+from eventlet import Timeout
 from eventlet.green import subprocess
 import os
 import pecan
@@ -37,6 +38,7 @@ class CephApiOperator(object):
     """Class to encapsulate Ceph operations for System Inventory API
        Methods on object-based storage devices (OSDs).
     """
+    CEPH_STATUS_TIMEOUT = 10
 
     def __init__(self):
         self._ceph_api = ceph.CephWrapper(
@@ -540,7 +542,7 @@ class CephApiOperator(object):
                     shell=True)
                 raise
 
-    def ceph_status_ok(self, timeout=10):
+    def ceph_status_ok(self, timeout=CEPH_STATUS_TIMEOUT):
         """
             returns rc bool. True if ceph ok, False otherwise
             :param timeout: ceph api timeout
@@ -548,12 +550,15 @@ class CephApiOperator(object):
         rc = True
 
         try:
-            response, body = self._ceph_api.status(body='json',
-                                                   timeout=timeout)
-            ceph_status = body['output']['health']['status']
-            if ceph_status != constants.CEPH_HEALTH_OK:
-                LOG.warn("ceph status=%s " % ceph_status)
-                rc = False
+            with Timeout(timeout + 5,
+                         exception=exception.CephApiFailure(
+                             reason="Ceph Status timeout")):
+                response, body = self._ceph_api.status(body='json',
+                                                       timeout=timeout)
+                ceph_status = body['output']['health']['status']
+                if ceph_status != constants.CEPH_HEALTH_OK:
+                    LOG.warn("ceph status=%s " % ceph_status)
+                    rc = False
         except Exception as e:
             rc = False
             LOG.warn("ceph status exception: %s " % e)
