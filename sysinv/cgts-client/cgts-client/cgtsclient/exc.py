@@ -154,7 +154,16 @@ for obj_name in dir(sys.modules[__name__]):
 def from_response(response, message=None, traceback=None,
                   method=None, url=None):
     """Return an instance of an HTTPException based on httplib response."""
-    cls = _code_map.get(response.status_code, HTTPException)
+    cls = None
+    if hasattr(response, 'status_code'):
+        cls = _code_map.get(response.status_code, HTTPException)
+    elif hasattr(response, 'status_int'):
+        cls = _code_map.get(response.status_int, HTTPException)
+    elif hasattr(response, 'status'):
+        cls = _code_map.get(response.status, HTTPException)
+    else:
+        # No status code: return a generic exception
+        return Exception("Unexpected error in response: %s" % message)
     return cls(message)
 
 
