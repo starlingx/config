@@ -219,9 +219,7 @@ def add_pod_security_admission_controller_labels(app_op, app, hook_info):
 
     for ns in namespaces:
 
-        security_level = 'baseline'
-        if ns in common.PRIVILEGED_NS:
-            security_level = 'privileged'
+        security_level = 'privileged'
 
         body = {
             "metadata": {
