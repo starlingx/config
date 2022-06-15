@@ -15618,7 +15618,9 @@ class ConductorManager(service.PeriodicService):
                     'commonName': 'kubernetes-admin',
                     'duration': str(duration) + 'h',
                     'renewBefore': renew_before,
-                    'organization': ['system:masters'],
+                    'subject': {
+                        'organizations': ['system:masters']
+                    },
                     'usages': usages,
                     'issuerRef': issuer_reference
                 }
@@ -15695,7 +15697,6 @@ class ConductorManager(service.PeriodicService):
                 'commonName': 'kube-apiserver-kubelet-client',
                 'duration': str(duration) + 'h',
                 'renewBefore': renew_before,
-                'organization': ['system:masters'],
                 'usages': usages,
                 'issuerRef': issuer_reference
             }
@@ -15802,7 +15803,9 @@ class ConductorManager(service.PeriodicService):
                 'commonName': 'system:node:' + host.hostname,
                 'duration': str(duration) + 'h',
                 'renewBefore': renew_before,
-                'organization': ['system:nodes'],
+                'subject': {
+                    'organizations': ['system:nodes']
+                },
                 'usages': usages,
                 'issuerRef': issuer_reference
             }
@@ -15853,7 +15856,9 @@ class ConductorManager(service.PeriodicService):
                 'commonName': 'system:node:' + host.hostname,
                 'duration': str(duration) + 'h',
                 'renewBefore': renew_before,
-                'organization': ['system:nodes'],
+                'subject': {
+                    'organizations': ['system:nodes']
+                },
                 'usages': usages,
                 'issuerRef': issuer_reference
             }
