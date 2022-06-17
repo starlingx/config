@@ -82,13 +82,15 @@ agent_opts = [
                   default=None,
                   help=('Url of SysInv API service. If not set SysInv can '
                         'get current value from Keystone service catalog.')),
-       cfg.IntOpt('audit_interval',
-                  default=60,
-                  help='Maximum time since the last check-in of a agent'),
               ]
+
+audit_intervals_opts = [
+       cfg.IntOpt('default', default=60),
+                  ]
 
 CONF = cfg.CONF
 CONF.register_opts(agent_opts, 'agent')
+CONF.register_opts(audit_intervals_opts, 'agent_periodic_task_intervals')
 
 MAXSLEEP = 300  # 5 minutes
 
@@ -1213,7 +1215,7 @@ class AgentManager(service.PeriodicService):
             if not force_update:
                 self._prev_partition = None
 
-    @periodic_task.periodic_task(spacing=CONF.agent.audit_interval,
+    @periodic_task.periodic_task(spacing=CONF.agent_periodic_task_intervals.default,
                                  run_immediately=True)
     def _agent_audit(self, context):
         # periodically, perform inventory audit
