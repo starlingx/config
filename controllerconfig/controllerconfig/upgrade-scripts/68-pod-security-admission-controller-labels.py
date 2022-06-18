@@ -53,12 +53,10 @@ def add_pod_security_admission_controller_labels():
         # we add pod security admission controller labels to namespaces that
         # we create
         namespace = line.replace("namespace/", "")
-        if namespace not in common.PRIVILEGED_NS \
-           and namespace not in common.BASELINE_NS:
+        if namespace not in common.PRIVILEGED_NS:
             continue
 
-        security_version = 'v1.23'
-        security_level = 'baseline'
+        security_version = 'latest'
         if namespace in common.PRIVILEGED_NS:
             security_level = 'privileged'
 
