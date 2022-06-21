@@ -1381,6 +1381,14 @@ class TestPostMixin(object):
                                   datanetworks='group0-ext0',
                                   expect_errors=True)
 
+    # Expected message: VLAN id must be specified.
+    def test_create_without_vlan_id(self):
+        self._create_worker_vlan('vlan0', constants.NETWORK_TYPE_DATA,
+                                  ifclass=constants.INTERFACE_CLASS_DATA,
+                                  vlan_id=None,
+                                  datanetworks='group0-ext0',
+                                  expect_errors=True)
+
     # Expected message: Interface eth0 is already used by another VLAN
     # interface vlan0
     def test_create_bond_invalid_overlap_vlan(self):
