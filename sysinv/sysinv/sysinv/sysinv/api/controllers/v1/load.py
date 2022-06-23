@@ -269,19 +269,17 @@ class LoadController(rest.RestController):
                               os.path.basename(file_item.filename))
 
             if source_file is None:
-                LOG.error("Failed to upload load file %s, invalid file object"
-                          % staging_file)
-                return None
+                raise wsme.exc.ClientSideError(_("Failed to upload load file %s,\
+                                                 invalid file object" % staging_file))
 
             if hasattr(source_file, 'fileno'):
                 # Only proceed if there is space available for copying
                 file_size = os.fstat(source_file.fileno()).st_size
                 avail_space = psutil.disk_usage('/scratch').free
                 if (avail_space < file_size):
-                    LOG.error("Failed to upload load file %s, not enough space on /scratch"
+                    raise wsme.exc.ClientSideError(_("Failed to upload load file %s, not enough space on /scratch"
                               " partition: %d bytes available "
-                              % (staging_file, avail_space))
-                    return None
+                              % (staging_file, avail_space)))
 
                 # Large iso file, allocate the required space
                 subprocess.check_call(["/usr/bin/fallocate",  # pylint: disable=not-callable
@@ -291,16 +289,14 @@ class LoadController(rest.RestController):
                 shutil.copyfileobj(source_file, destination_file)
 
         except subprocess.CalledProcessError as e:
-            LOG.error("Failed to upload load file %s, /usr/bin/fallocate error: %s"
-                      % (staging_file, e.output))
             if os.path.isfile(staging_file):
                 os.remove(staging_file)
-            return None
+            raise wsme.exc.ClientSideError(_("Failed to upload load file %s, /usr/bin/fallocate error: %s"
+                      % (staging_file, e.output)))
         except Exception:
             if os.path.isfile(staging_file):
                 os.remove(staging_file)
-            LOG.exception("Failed to upload load file %s" % file_item.filename)
-            return None
+            raise wsme.exc.ClientSideError(_("Failed to upload load file %s" % file_item.filename))
 
         return staging_file
 
@@ -322,8 +318,6 @@ class LoadController(rest.RestController):
 
         LOG.info("Load import request received.")
 
-        system_controller_import_active = False
-
         # Only import loads on controller-0. This is required because the load
         # is only installed locally and we will be booting controller-1 from
         # this load during the upgrade.
@@ -332,6 +326,7 @@ class LoadController(rest.RestController):
                                              " %s is active.")
                                              % constants.CONTROLLER_0_HOSTNAME)
 
+        system_controller_import_active = False
         req_content = dict()
         load_files = dict()
         is_multiform_req = True
@@ -356,29 +351,32 @@ class LoadController(rest.RestController):
 
             self._check_existing_loads(active_import=system_controller_import_active)
 
-        for file in constants.IMPORT_LOAD_FILES:
-            if file not in req_content:
-                raise wsme.exc.ClientSideError(_("Missing required file for %s")
-                                               % file)
-
-            if not is_multiform_req:
-                load_files.update({file: req_content[file]})
-            else:
-                if file not in request.POST:
+        try:
+            for file in constants.IMPORT_LOAD_FILES:
+                if file not in req_content:
                     raise wsme.exc.ClientSideError(_("Missing required file for %s")
-                                                    % file)
+                                                % file)
 
-                file_item = request.POST[file]
-                if not file_item.filename:
-                    raise wsme.exc.ClientSideError(_("No %s file uploaded") % file)
-
-                file_location = self._upload_file(file_item)
-                if file_location:
-                    load_files.update({file: file_location})
+                if not is_multiform_req:
+                    load_files.update({file: req_content[file]})
                 else:
-                    raise wsme.exc.ClientSideError(_("Failed to save file %s to disk."
-                                                        " Please check sysinv logs for"
-                                                        " details." % file_item.filename))
+                    if file not in request.POST:
+                        raise wsme.exc.ClientSideError(_("Missing required file for %s")
+                                                        % file)
+
+                    file_item = request.POST[file]
+                    if not file_item.filename:
+                        raise wsme.exc.ClientSideError(_("No %s file uploaded") % file)
+
+                    file_location = self._upload_file(file_item)
+                    if file_location:
+                        load_files.update({file: file_location})
+        except subprocess.CalledProcessError as ex:
+            raise wsme.exc.ClientSideError(str(ex))
+        except Exception as ex:
+            raise wsme.exc.ClientSideError(_("Failed to save file %s to disk. Error: %s"
+                                             " Please check sysinv logs for"
+                                             " details." % (file_item.filename, str(ex))))
 
         LOG.info("Load files: %s saved to disk." % load_files)
 
