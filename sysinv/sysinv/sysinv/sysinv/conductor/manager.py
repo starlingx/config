@@ -808,7 +808,8 @@ class ConductorManager(service.PeriodicService):
         # Get the first field from the tags
         first_tag = tags.split()[0]
 
-        if 'pxeboot' == first_tag:
+        # Not allow adding a new host to simplex system
+        if 'pxeboot' == first_tag and not cutils.is_aio_simplex_system(self.dbapi):
             mgmt_network = self.dbapi.network_get_by_type(
                 constants.NETWORK_TYPE_MGMT)
             if not mgmt_network.dynamic:

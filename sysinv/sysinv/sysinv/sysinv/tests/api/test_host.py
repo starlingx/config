@@ -1587,6 +1587,53 @@ class TestPostKubeUpgrades(TestHost):
                       result.json['error_message'])
 
 
+class TestSimplexHostDelete(TestHost):
+    system_mode = constants.SYSTEM_MODE_SIMPLEX
+
+    def test_delete_invalid_host_from_sx(self):
+        # Create controllers
+        self._create_controller_0()
+        ndict1 = self._create_controller_1()
+
+        # Delete the invalid controller host
+        self.delete('/ihosts/%s' % ndict1['uuid'],
+                    headers={'User-Agent': 'sysinv-test'})
+
+        # Verify that the host was deleted from the VIM
+        self.mock_vim_api_host_delete.assert_called_once()
+        # Verify that the host was deleted from maintenance
+        self.mock_mtce_api_host_delete.assert_called_once()
+        # Verify that the host was unconfigured
+        self.fake_conductor_api.unconfigure_ihost.assert_called_once()
+        # Verify that the host was deleted from barbican
+        self.fake_conductor_api.delete_barbican_secret.assert_called_once()
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
+        # Verify that the host was dropped from patching
+        self.mock_patch_api_drop_host.assert_called_once()
+
+        response = self.get_json('/ihosts/%s' % ndict1['hostname'],
+                                 expect_errors=True)
+        self.assertEqual(response.status_int, 404)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertTrue(response.json['error_message'])
+
+    def test_disallow_controller_zero_deleted(self):
+        # Create controllers
+        ndict0 = self._create_controller_0()
+        self._create_controller_1()
+
+        # Delete the controller-0 host
+        response = self.delete('/ihosts/%s' % ndict0['uuid'],
+                                headers={'User-Agent': 'sysinv-test'},
+                                expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("Deleting controller-0 on a simplex system is not allowed.",
+                      response.json['error_message'])
+
+
 class TestDelete(TestHost):
 
     def test_delete_host(self):
