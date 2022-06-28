@@ -157,7 +157,7 @@ def get_test_ihost(**kw):
             'install_output': kw.get('install_output', 'text'),
             'console': kw.get('console', 'ttyS0,115200'),
             'tboot': kw.get('tboot', ''),
-            'ttys_dcd': kw.get('ttys_dcd', None),
+            'ttys_dcd': kw.get('ttys_dcd', False),
             'updated_at': None,
             'created_at': None,
             'install_state': kw.get('install_state', None),

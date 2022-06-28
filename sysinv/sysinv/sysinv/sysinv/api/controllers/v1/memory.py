@@ -15,9 +15,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
-
 
 import jsonpatch
 
@@ -92,7 +91,7 @@ class Memory(base.APIBase):
     platform_reserved_mib = int
     "Represent the imemory platform reserved in MiB"
 
-    hugepages_configured = wtypes.text
+    hugepages_configured = types.boolean
     "Represent whether huge pages are configured"
 
     vswitch_hugepages_size_mib = int
@@ -107,7 +106,7 @@ class Memory(base.APIBase):
     vswitch_hugepages_avail = int
     "Represent the imemory vswitch number of hugepages available"
 
-    vm_pending_as_percentage = wtypes.text
+    vm_pending_as_percentage = types.boolean
     "Represents if the hugepages are represented by percentage (True) or by integer (False)."
 
     vm_hugepages_nr_2M_pending = int
@@ -134,7 +133,7 @@ class Memory(base.APIBase):
     vm_hugepages_nr_4K = int
     "Represent the imemory vm number of hugepages (4K pages)"
 
-    vm_hugepages_use_1G = wtypes.text
+    vm_hugepages_use_1G = types.boolean
     "1G hugepage is supported 'True' or not 'False' "
 
     vm_hugepages_avail_1G = int
@@ -427,11 +426,11 @@ class MemoryController(rest.RestController):
                 vswitch_hugepages_size_mib = p['value']
 
             if p['path'] == '/vm_pending_as_percentage':
-                vm_pending_as_percentage = p['value']
+                vm_pending_as_percentage = rpc_port.fields['vm_pending_as_percentage'](p['value'])
 
         if vm_pending_as_percentage is None:
             vm_pending_as_percentage = rpc_port["vm_pending_as_percentage"]
-        elif vm_pending_as_percentage == "True":
+        elif vm_pending_as_percentage is True:
             if vm_hugepages_nr_2M_pending is not None:
                 patch.append({'op': 'replace', 'path': '/vm_hugepages_2M_percentage',
                             'value': vm_hugepages_nr_2M_pending})
@@ -687,7 +686,7 @@ def _check_memory(dbapi, rpc_port, ihost, platform_reserved_mib=None,
 
         # Check if it is within the total amount of memory
         mem_alloc = 0
-        if vm_pending_as_percentage == "True":
+        if vm_pending_as_percentage is True:
             if vm_hugepages_nr_2M_pending is not None:
                 mem_alloc += int(hp_mem_avail * int(vm_hugepages_nr_2M_pending) // 100)
             elif rpc_port['vm_hugepages_2M_percentage'] is not None:
@@ -737,7 +736,7 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
                        platform_reserved_mib=None, vm_pending_as_percentage=None,
                        has_vswitch_enabled=False):
 
-    if rpc_port['vm_hugepages_use_1G'] == 'False':
+    if rpc_port['vm_hugepages_use_1G'] is False:
         vs_hp_size = vswitch_hugepages_size_mib
         if vm_hugepages_nr_1G or vs_hp_size == constants.MIB_1G:
             # cannot provision 1G huge pages if the processor does not support
@@ -838,14 +837,14 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
         new_1G_pages = int(vm_hugepages_nr_1G)
     elif rpc_port['vm_hugepages_nr_1G_pending']:
         new_1G_pages = int(rpc_port['vm_hugepages_nr_1G_pending'])
-    elif vm_pending_as_percentage == "True" and rpc_port['vm_hugepages_1G_percentage']:
+    elif vm_pending_as_percentage is True and rpc_port['vm_hugepages_1G_percentage']:
         new_1G_pages = int(rpc_port['vm_hugepages_1G_percentage'])
     elif rpc_port['vm_hugepages_nr_1G']:
         new_1G_pages = int(rpc_port['vm_hugepages_nr_1G'])
     else:
         new_1G_pages = 0
 
-    if(vm_pending_as_percentage == "True"):
+    if vm_pending_as_percentage is True:
         vm_hp_1G_reqd_mib = int((node_memtotal_mib - base_mem_mib
                              - int(new_vs_pages * vs_hp_size_mib))
                              * new_1G_pages // 100)
@@ -857,7 +856,7 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
         new_2M_pages = int(vm_hugepages_nr_2M)
     elif rpc_port['vm_hugepages_nr_2M_pending']:
         new_2M_pages = int(rpc_port['vm_hugepages_nr_2M_pending'])
-    elif vm_pending_as_percentage == "True" and rpc_port['vm_hugepages_2M_percentage']:
+    elif vm_pending_as_percentage is True and rpc_port['vm_hugepages_2M_percentage']:
         new_2M_pages = int(rpc_port['vm_hugepages_2M_percentage'])
     elif rpc_port['vm_hugepages_nr_2M']:
         new_2M_pages = int(rpc_port['vm_hugepages_nr_2M'])
@@ -867,7 +866,7 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
     hp_mem_avail = node_memtotal_mib - base_mem_mib \
                 - int(new_vs_pages * vs_hp_size_mib)
 
-    if(vm_pending_as_percentage == "True"):
+    if vm_pending_as_percentage is True:
         vm_hp_2M_reqd_mib = int(hp_mem_avail * new_2M_pages // 100)
     else:
         vm_hp_2M_reqd_mib = new_2M_pages * constants.MIB_2M
@@ -900,7 +899,7 @@ def _check_huge_values(rpc_port, patch, vm_hugepages_nr_2M=None,
                 "Host only supports single huge page size."))
 
     # Check if percentage of pages is within valid range
-    if(vm_pending_as_percentage == "True"):
+    if vm_pending_as_percentage is True:
         if(not 0 <= new_2M_pages <= 100):
             raise wsme.exc.ClientSideError(_(
                 "2M hugepage percent allocation must be within 0% - 100%."))

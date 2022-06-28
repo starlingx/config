@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2016 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -32,14 +32,14 @@ class Memory(base.SysinvObject):
             'platform_reserved_mib': utils.int_or_none,
             'node_memtotal_mib': utils.int_or_none,
 
-            'hugepages_configured': utils.str_or_none,
+            'hugepages_configured': utils.bool_or_none,
 
             'vswitch_hugepages_size_mib': utils.int_or_none,
             'vswitch_hugepages_reqd': utils.int_or_none,
             'vswitch_hugepages_nr': utils.int_or_none,
             'vswitch_hugepages_avail': utils.int_or_none,
 
-            'vm_pending_as_percentage': utils.str_or_none,
+            'vm_pending_as_percentage': utils.bool_or_none,
             'vm_hugepages_nr_2M_pending': utils.int_or_none,
             'vm_hugepages_nr_1G_pending': utils.int_or_none,
             'vm_hugepages_nr_2M': utils.int_or_none,
@@ -51,7 +51,7 @@ class Memory(base.SysinvObject):
             'vm_hugepages_nr_4K': utils.int_or_none,
 
 
-            'vm_hugepages_use_1G': utils.str_or_none,
+            'vm_hugepages_use_1G': utils.bool_or_none,
             'vm_hugepages_possible_2M': utils.int_or_none,
             'vm_hugepages_possible_1G': utils.int_or_none,
             'capabilities': utils.dict_or_none,
