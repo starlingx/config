@@ -1860,6 +1860,9 @@ APP_PROGRESS_RECOVER_CHARTS = 'recovering helm charts'
 APP_PROGRESS_UPDATE_FAILED_SKIP_RECOVERY = "Application {} update from " \
     "version {} to version {} failed and recovery skipped " \
     "because skip_recovery was requested."
+APP_PROGRESS_UPDATE_FAILED_ARMADA_TO_FLUXCD = "Application {} update from " \
+    "version {} to version {} failed and recovery skipped " \
+    "because recovering between Armada and FluxCD is not allowed"
 
 # Auto-recovery limits
 APP_AUTO_RECOVERY_MAX_COUNT = 5
