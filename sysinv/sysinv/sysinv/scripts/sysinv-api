@@ -37,7 +37,7 @@
 process="sysinv"
 service="-api"
 binname="${process}${service}"
-readonly max_sysinv_api_request_attempts=15
+readonly max_sysinv_api_request_attempts=60
 readonly sysinv_api_request_sleep=1
 
 #######################################################################
