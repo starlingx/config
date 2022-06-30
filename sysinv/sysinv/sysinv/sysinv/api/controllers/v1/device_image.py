@@ -263,6 +263,12 @@ class DeviceImageController(rest.RestController):
         if msg:
             return dict(error=msg)
 
+        for k, v in data.items():
+            if k == 'bmc':
+                data['bmc'] = bool(strtobool(v))
+            if k == 'retimer_included':
+                data['retimer_included'] = bool(strtobool(v))
+
         device_image = pecan.request.dbapi.deviceimage_create(data)
         device_image_dict = device_image.as_dict()
 
