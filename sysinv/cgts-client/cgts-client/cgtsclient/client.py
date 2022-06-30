@@ -34,6 +34,9 @@ def _make_session(**kwargs):
         * os_project_domain_name: name of a domain the project belongs to
         * os_project_domain_id: ID of a domain the project belongs to
         * timeout: request timeout (in seconds)
+        * ca_file: trusted CA file
+        * cert_file: client certificate file
+        * key_file: client key file
     """
     session = None
     if (kwargs.get('os_username') and
@@ -67,10 +70,19 @@ def _make_session(**kwargs):
 
         # construct the appropriate session
         timeout = kwargs.get('timeout')
+        insecure = kwargs.get('insecure')
+        cacert = kwargs.get('ca_file')
+        cert = kwargs.get('cert_file')
+        key = kwargs.get('key_file')
+
         loader = loading.get_plugin_loader(auth_type)
         auth_plugin = loader.load_from_options(**auth_kwargs)
         session = loading.session.Session().load_from_options(auth=auth_plugin,
-                                                              timeout=timeout)
+                                                              timeout=timeout,
+                                                              insecure=insecure,
+                                                              cacert=cacert,
+                                                              cert=cert,
+                                                              key=key)
     # session could still be None
     return session
 
