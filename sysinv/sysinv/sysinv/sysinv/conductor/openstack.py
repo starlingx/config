@@ -194,15 +194,10 @@ class OpenStackOperator(object):
         return sess
 
     def _get_new_keystone_client(self, service_config):
-        client = keystone_client.Client(
-            username=cfg.CONF[service_config].username,
-            user_domain_name=cfg.CONF[service_config].user_domain_name,
-            project_name=cfg.CONF[service_config].project_name,
-            project_domain_name=cfg.CONF[service_config]
-            .project_domain_name,
-            password=self._get_keystone_password(service_config),
-            auth_url=self._get_auth_url(service_config),
-            region_name=cfg.CONF[service_config].region_name)
+        session = self._get_keystone_session(service_config)
+
+        client = keystone_client.Client(session=session,
+                                        region_name=cfg.CONF[service_config].region_name)
         return client
 
     def _get_cached_keystone_client(self, service_config):
@@ -350,25 +345,38 @@ class OpenStackOperator(object):
     ########################
     # keystone user methods
     ########################
-    def _get_keystone_users(self):
+    def _get_keystone_users(self, service_config):
         """Get a list of all users in keystone otherwise an empty list."""
         user_list = []
 
         try:
-            user_list = self._get_keystone_client(OPENSTACK_CONFIG).users.list()
+            user_list = self._get_keystone_client(service_config).users.list()
         except Exception as e:
             LOG.error("Failed to get keystone user list:\n%s" % str(e))
 
         return user_list
 
-    def get_keystone_admin_user(self):
-        """Return keystone admin otherwise None."""
-        users = self._get_keystone_users()
+    def get_platform_keystone_admin_user(self):
+        """Return platform keystone admin user otherwise None."""
+        users = self._get_keystone_users(PLATFORM_CONFIG)
 
         try:
             return [user for user in users if user.name == 'admin'][0]
         except Exception as e:
-            LOG.error("Failed to get keystone admin user:\n%s" % str(e))
+            LOG.error("Failed to get platform keystone admin user:\n%s"
+                       % str(e))
+
+        return None
+
+    def get_platform_keystone_user(self, username):
+        """Return platform keystone user otherwise None."""
+        users = self._get_keystone_users(PLATFORM_CONFIG)
+
+        try:
+            return [user for user in users if user.name == username][0]
+        except Exception as e:
+            LOG.error("Failed to get platform keystone user: %s\n%s"
+                       % (username, str(e)))
 
         return None
 

@@ -15,12 +15,10 @@ from oslo_log import log
 
 from sysinv.common import constants
 from sysinv.common import utils
+from sysinv.conductor import openstack
 from sysinv.db import api as dbapi
 
 LOG = log.getLogger(__name__)
-
-callback_func = None
-context = None
 
 
 class NotificationEndpoint(object):
@@ -34,19 +32,25 @@ class NotificationEndpoint(object):
     send notifications at `info` priority ONLY. Other priority level APIs
     (warn, error, critical, audit, debug) are not needed here.
     """
+
     filter_rule = oslo_messaging.NotificationFilter(
         event_type='identity.user.updated')
 
+    def __init__(self, callback, context):
+        self.callback_func = callback
+        self.context = context
+        self.dbapi = dbapi.get_instance()
+        self._openstack = openstack.OpenStackOperator(self.dbapi)
+
     def info(self, ctxt, publisher_id, event_type, payload, metadata):
         """Receives notification at info level."""
-        global callback_func
-        global context
+        user = self._openstack.get_platform_keystone_user(self.context.user)
 
         if payload['eventType'] == 'activity' and \
                 payload['action'] == 'updated.user' and \
                 payload['outcome'] == 'success' and \
-                payload['resource_info'] == context.user:
-            callback_func(context)
+                payload['resource_info'] == user.id:
+            self.callback_func(self.context)
 
         return oslo_messaging.NotificationResult.HANDLED
 
@@ -74,13 +78,7 @@ def get_transport_url():
     return transport_url
 
 
-def start_keystone_listener(func, ctxt):
-
-    global callback_func
-    global context
-    callback_func = func
-    context = ctxt
-
+def start_keystone_listener(callback_endpoints):
     conf = cfg.ConfigOpts()
     conf.transport_url = get_transport_url()
 
@@ -91,9 +89,12 @@ def start_keystone_listener(func, ctxt):
     targets = [
         oslo_messaging.Target(exchange='keystone', topic='notifications', fanout=True),
     ]
-    endpoints = [
-        NotificationEndpoint(),
-    ]
+
+    endpoints = []
+    for callback_endpoint in callback_endpoints:
+        endpoint = NotificationEndpoint(callback_endpoint.get('func'),
+                                        callback_endpoint.get('ctx'))
+        endpoints.append(endpoint)
 
     pool = "sysinv-keystone-listener-workers"
     server = oslo_messaging.get_notification_listener(transport, targets,

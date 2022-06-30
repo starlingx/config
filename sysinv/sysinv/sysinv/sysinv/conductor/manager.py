@@ -264,21 +264,18 @@ class ConductorManager(service.PeriodicService):
         greenthread.spawn(self._upgrade_downgrade_kube_components)
 
         # monitor keystone user update event to check whether admin password is
-        # changed or not. If changed, then sync it to kubernetes's secret info.
-
-        admin_user = self._openstack.get_keystone_admin_user()
-
-        if admin_user:
-            admin_context = ctx.RequestContext(user=admin_user.id, tenant='admin', is_admin=True)
-            # The thread for kube_app auditing local registry secrets
-            greenthread.spawn(keystone_listener.start_keystone_listener,
-                              self._app.audit_local_registry_secrets, admin_context)
-
-            # The thread for updating keystone admin password in config files
-            greenthread.spawn(keystone_listener.start_keystone_listener,
-                              self.update_keystone_password,
-                              admin_context)
-
+        # changed or not. If changed, then sync it to kubernetes's secret info,
+        # and restart impacted services.
+        admin_context = ctx.RequestContext(user='admin', tenant='admin',
+                                           is_admin=True)
+        callback_endpoints = \
+            [{'func': self._app.audit_local_registry_secrets,
+              'ctx': admin_context},
+             {'func': self.update_keystone_password,
+              'ctx': admin_context}]
+        # The thread to monitor keystone admin password change
+        greenthread.spawn(keystone_listener.start_keystone_listener,
+                          callback_endpoints)
         # Monitor ceph to become responsive
         if StorageBackendConfig.has_backend_configured(
                         self.dbapi,
