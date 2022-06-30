@@ -1242,13 +1242,19 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        ibm_msg_dict=ibm_msg_dict))
 
     def configure_ttys_dcd(self, context, uuid, ttys_dcd):
-        """Synchronously, have a conductor configure the dcd.
+        """
+        (TODO) Deprecate when supported from upgrade releases for tty_dcd
+        have all been migrated to puppet.
 
+        Reason: moving serial console configuration from agent audit
+        to puppet discards the necessity of polling the host tty_dcd
+        attribute in sysinv database through conductor API. (LP-1978009)
+
+        Synchronously, have a conductor configure the dcd.
         Does the following tasks:
         - sends a message to conductor
         - who sends a message to all inventory agents
         - who has the uuid updates dcd
-
         :param context: request context.
         :param uuid: the host uuid
         :param ttys_dcd: the flag to enable/disable dcd
@@ -1260,9 +1266,16 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        uuid=uuid, ttys_dcd=ttys_dcd))
 
     def get_host_ttys_dcd(self, context, ihost_id):
-        """Synchronously, have a agent collect carrier detect state for this
-           ihost.
+        """
+        (TODO) Deprecate when supported from upgrade releases for tty_dcd
+        have all been migrated to puppet.
 
+        Reason: moving serial console configuration from agent audit
+        to puppet discards the necessity of polling the host tty_dcd
+        attribute in sysinv database through conductor API. (LP-1978009)
+
+        Synchronously, have a agent collect carrier detect state for this
+           ihost.
         :param context: request context.
         :param ihost_id: id of this host
         :returns: ttys_dcd.
@@ -1270,6 +1283,20 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('get_host_ttys_dcd',
                                        ihost_id=ihost_id))
+
+    def update_ttys_dcd(self, context, ihost_uuid):
+        """Synchronously, have a conductor configure the dcd.
+
+        Does the following tasks:
+        - sends a message to conductor
+        - conductor triggers runtime manifest configuring tty
+
+        :param context: request context.
+        :param ihost_uuid: the host uuid.
+        """
+        return self.call(context,
+                         self.make_msg('update_ttys_dcd',
+                                       ihost_uuid=ihost_uuid))
 
     def start_import_load(self, context, path_to_iso, path_to_sig,
                           import_active=False, timeout=180):

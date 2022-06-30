@@ -4642,8 +4642,8 @@ class HostController(rest.RestController):
                      ihost['operational'] == constants.OPERATIONAL_ENABLED)):
                     LOG.info("Notify conductor ttys_dcd change: (%s) (%s)" %
                              (ihost['uuid'], ttys_dcd))
-                    pecan.request.rpcapi.configure_ttys_dcd(
-                        pecan.request.context, ihost['uuid'], ttys_dcd)
+                    pecan.request.rpcapi.update_ttys_dcd(
+                        pecan.request.context, ihost['uuid'])
 
     def mtc_action_apps_semantic_checks(self, action):
         """ Enhance semantic checks from this class.

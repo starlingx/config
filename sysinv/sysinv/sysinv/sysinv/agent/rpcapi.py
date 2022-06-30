@@ -143,24 +143,6 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                   config_dict=config_dict))
         return retval
 
-    def configure_ttys_dcd(self, context, uuid, ttys_dcd):
-        """Asynchronously, have the agent configure the getty on the serial
-           console.
-
-        :param context: request context.
-        :param uuid: the host uuid
-        :param ttys_dcd: the flag to enable/disable dcd
-        :returns: none ... uses asynchronous cast().
-        """
-        # fanout / broadcast message to all inventory agents
-        LOG.debug("AgentApi.configure_ttys_dcd: fanout_cast: sending "
-                  "dcd update to agent: (%s) (%s" % (uuid, ttys_dcd))
-        retval = self.fanout_cast(
-            context, self.make_msg('configure_ttys_dcd',
-                                   uuid=uuid, ttys_dcd=ttys_dcd))
-
-        return retval
-
     def delete_load(self, context, host_uuid, software_version):
         """Asynchronously, have the agent remove the specified load
 
