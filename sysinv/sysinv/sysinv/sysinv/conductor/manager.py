@@ -5657,6 +5657,8 @@ class ConductorManager(service.PeriodicService):
 
         return False
 
+    @periodic_task.periodic_task(
+        spacing=CONF.conductor_periodic_task_intervals.controller_config_active_apply)
     def _controller_config_active_apply(self, context):
         """Check whether target config has been applied to active
            controller to run postprocessing"""
@@ -5768,86 +5770,91 @@ class ConductorManager(service.PeriodicService):
 
         return all_fs_resized
 
-    def _audit_ihost_action(self, ihost):
+    @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.ihost_action)
+    def _audit_ihost_action(self, context):
         """Audit whether the ihost_action needs to be terminated or escalated.
         """
+        hosts = self.dbapi.ihost_get_list()
+        for ihost in hosts:
+            # only audit configured hosts
+            if ihost.personality:
+                if ihost.administrative == constants.ADMIN_UNLOCKED:
+                    ihost_action_str = ihost.ihost_action or ""
 
-        if ihost.administrative == constants.ADMIN_UNLOCKED:
-            ihost_action_str = ihost.ihost_action or ""
+                    if (ihost_action_str.startswith(constants.FORCE_LOCK_ACTION) or
+                            ihost_action_str.startswith(constants.LOCK_ACTION)):
 
-            if (ihost_action_str.startswith(constants.FORCE_LOCK_ACTION) or
-                    ihost_action_str.startswith(constants.LOCK_ACTION)):
+                        task_str = ihost.task or ""
+                        if (('--' in ihost_action_str and
+                              ihost_action_str.startswith(
+                                   constants.FORCE_LOCK_ACTION)) or
+                              ('----------' in ihost_action_str and
+                              ihost_action_str.startswith(constants.LOCK_ACTION))):
 
-                task_str = ihost.task or ""
-                if (('--' in ihost_action_str and
-                      ihost_action_str.startswith(
-                           constants.FORCE_LOCK_ACTION)) or
-                      ('----------' in ihost_action_str and
-                      ihost_action_str.startswith(constants.LOCK_ACTION))):
+                            ihost_mtc = ihost.as_dict()
+                            keepkeys = ['ihost_action', 'vim_progress_status']
+                            ihost_mtc = cutils.removekeys_nonmtce(ihost_mtc,
+                                                                keepkeys)
 
-                    ihost_mtc = ihost.as_dict()
-                    keepkeys = ['ihost_action', 'vim_progress_status']
-                    ihost_mtc = cutils.removekeys_nonmtce(ihost_mtc,
-                                                          keepkeys)
+                            if ihost_action_str.startswith(constants.FORCE_LOCK_ACTION):
+                                timeout_in_secs = 6
+                                ihost_mtc['operation'] = 'modify'
+                                ihost_mtc['action'] = constants.FORCE_LOCK_ACTION
+                                ihost_mtc['task'] = constants.FORCE_LOCKING
+                                LOG.warn("ihost_action override %s" %
+                                        ihost_mtc)
+                                mtce_api.host_modify(
+                                    self._api_token, self._mtc_address, self._mtc_port,
+                                    ihost_mtc, timeout_in_secs)
 
-                    if ihost_action_str.startswith(constants.FORCE_LOCK_ACTION):
-                        timeout_in_secs = 6
-                        ihost_mtc['operation'] = 'modify'
-                        ihost_mtc['action'] = constants.FORCE_LOCK_ACTION
-                        ihost_mtc['task'] = constants.FORCE_LOCKING
-                        LOG.warn("ihost_action override %s" %
-                                 ihost_mtc)
-                        mtce_api.host_modify(
-                            self._api_token, self._mtc_address, self._mtc_port,
-                            ihost_mtc, timeout_in_secs)
+                            # need time for FORCE_LOCK mtce to clear
+                            if ('----' in ihost_action_str):
+                                ihost_action_str = ""
+                            else:
+                                ihost_action_str += "-"
 
-                    # need time for FORCE_LOCK mtce to clear
-                    if ('----' in ihost_action_str):
-                        ihost_action_str = ""
-                    else:
-                        ihost_action_str += "-"
+                            if (task_str.startswith(constants.FORCE_LOCKING) or
+                            task_str.startswith(constants.LOCKING)):
+                                val = {'task': "",
+                                    'ihost_action': ihost_action_str,
+                                    'vim_progress_status': ""}
+                            else:
+                                val = {'ihost_action': ihost_action_str,
+                                    'vim_progress_status': ""}
+                        else:
+                            ihost_action_str += "-"
+                            if (task_str.startswith(constants.FORCE_LOCKING) or
+                            task_str.startswith(constants.LOCKING)):
+                                task_str += "-"
+                                val = {'task': task_str,
+                                    'ihost_action': ihost_action_str}
+                            else:
+                                val = {'ihost_action': ihost_action_str}
 
+                        self.dbapi.ihost_update(ihost.uuid, val)
+                else:  # Administrative locked already
+                    task_str = ihost.task or ""
                     if (task_str.startswith(constants.FORCE_LOCKING) or
-                       task_str.startswith(constants.LOCKING)):
-                        val = {'task': "",
-                               'ihost_action': ihost_action_str,
-                               'vim_progress_status': ""}
+                    task_str.startswith(constants.LOCKING)):
+                        val = {'task': ""}
+                        self.dbapi.ihost_update(ihost.uuid, val)
+
+                vim_progress_status_str = ihost.get('vim_progress_status') or ""
+                if (vim_progress_status_str and
+                   (vim_progress_status_str != constants.VIM_SERVICES_ENABLED) and
+                   (vim_progress_status_str != constants.VIM_SERVICES_DISABLED)):
+                    if ('..' in vim_progress_status_str):
+                        LOG.info("Audit clearing vim_progress_status=%s" %
+                                vim_progress_status_str)
+                        vim_progress_status_str = ""
                     else:
-                        val = {'ihost_action': ihost_action_str,
-                               'vim_progress_status': ""}
-                else:
-                    ihost_action_str += "-"
-                    if (task_str.startswith(constants.FORCE_LOCKING) or
-                       task_str.startswith(constants.LOCKING)):
-                        task_str += "-"
-                        val = {'task': task_str,
-                               'ihost_action': ihost_action_str}
-                    else:
-                        val = {'ihost_action': ihost_action_str}
+                        vim_progress_status_str += ".."
 
-                self.dbapi.ihost_update(ihost.uuid, val)
-        else:  # Administrative locked already
-            task_str = ihost.task or ""
-            if (task_str.startswith(constants.FORCE_LOCKING) or
-               task_str.startswith(constants.LOCKING)):
-                val = {'task': ""}
-                self.dbapi.ihost_update(ihost.uuid, val)
+                    val = {'vim_progress_status': vim_progress_status_str}
+                    self.dbapi.ihost_update(ihost.uuid, val)
 
-        vim_progress_status_str = ihost.get('vim_progress_status') or ""
-        if (vim_progress_status_str and
-           (vim_progress_status_str != constants.VIM_SERVICES_ENABLED) and
-           (vim_progress_status_str != constants.VIM_SERVICES_DISABLED)):
-            if ('..' in vim_progress_status_str):
-                LOG.info("Audit clearing vim_progress_status=%s" %
-                         vim_progress_status_str)
-                vim_progress_status_str = ""
-            else:
-                vim_progress_status_str += ".."
-
-            val = {'vim_progress_status': vim_progress_status_str}
-            self.dbapi.ihost_update(ihost.uuid, val)
-
-    def _audit_upgrade_status(self):
+    @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.upgrade_status)
+    def _audit_upgrade_status(self, context):
         """Audit upgrade related status"""
         try:
             upgrade = self.dbapi.software_upgrade_get_one()
@@ -5928,19 +5935,21 @@ class ConductorManager(service.PeriodicService):
                     LOG.info("Ceph Upgrade: Exception %s" % e)
                 LOG.info("Ceph Upgrade: Enabled monitor msgr2")
 
-    def _audit_install_states(self, hosts):
+    @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.install_states)
+    def _audit_install_states(self, context):
         # A node could shutdown during it's installation and the install_state
         # for example could get stuck at the value "installing". To avoid
         # this situation we audit the sanity of the states by appending the
         # character '+' to the states in the database. After 15 minutes of the
         # states not changing, set the install_state to failed.
 
-        # The audit's interval is 60sec
+        # The duration (in minutes) to wait until the install_state fails
         MAX_COUNT = 15
 
         # Allow longer duration for booting phase
         MAX_COUNT_BOOTING = 40
 
+        hosts = self.dbapi.ihost_get_list()
         for host in hosts:
             LOG.debug("Auditing %s, install_state is %s",
                       host.hostname, host.install_state)
@@ -5961,9 +5970,16 @@ class ConductorManager(service.PeriodicService):
                     if (install_state != constants.INSTALL_STATE_INSTALLED and
                             install_state !=
                             constants.INSTALL_STATE_COMPLETED):
+                        # define the quantity of '+' signs that will be added to install_state_info
+                        # accordingly to the interval set to this audit.
+                        periodic_interval = max(60,
+                            CONF.conductor_periodic_task_intervals.install_states)
+                        factor = periodic_interval // 60 + \
+                            (1 if periodic_interval % 60 > 0 else 0)
                         if (install_state ==
                                 constants.INSTALL_STATE_INSTALLING and
                                 host.install_state_info is not None):
+                            host.install_state_info += factor * "+"
                             if host.install_state_info.count('+') >= MAX_COUNT:
                                 LOG.info(
                                     "Auditing %s, install_state changed from "
@@ -5972,13 +5988,12 @@ class ConductorManager(service.PeriodicService):
                                     constants.INSTALL_STATE_FAILED)
                                 host.install_state = \
                                     constants.INSTALL_STATE_FAILED
-                            else:
-                                host.install_state_info += "+"
                         else:
                             if install_state == constants.INSTALL_STATE_BOOTING:
                                 max_count = MAX_COUNT_BOOTING
                             else:
                                 max_count = MAX_COUNT
+                            host.install_state_info += factor * "+"
                             if host.install_state.count('+') >= max_count:
                                 LOG.info(
                                     "Auditing %s, install_state changed from "
@@ -5987,8 +6002,6 @@ class ConductorManager(service.PeriodicService):
                                     constants.INSTALL_STATE_FAILED)
                                 host.install_state = \
                                     constants.INSTALL_STATE_FAILED
-                            else:
-                                host.install_state += "+"
 
                 # It is possible we get stuck in an installed failed state. For
                 # example if a node gets powered down during an install booting
@@ -6090,6 +6103,11 @@ class ConductorManager(service.PeriodicService):
                     LOG.error("Removed unsupported deferred config_type %s" %
                               config_type)
 
+    @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.deferred_runtime_config)
+    def _audit_deferred_runtime_config_periodic(self, context):
+        # check whether there are deferred runtime manifests to apply
+        self._audit_deferred_runtime_config(context)
+
     @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.kubernetes_local_secrets)
     def _kubernetes_local_secrets_audit(self, context):
         # Audit kubernetes local registry secrets info
@@ -6097,38 +6115,8 @@ class ConductorManager(service.PeriodicService):
         if self._app:
             self._app.audit_local_registry_secrets(context)
 
-    @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.default)
-    def _conductor_audit(self, context):
-        # periodically, perform audit of inventory
-        LOG.debug("Sysinv Conductor running periodic audit task.")
-
-        # check whether there are deferred runtime manifests to apply
-        self._audit_deferred_runtime_config(context)
-
-        # check whether we may have just become active with target config
-        self._controller_config_active_apply(context)
-
-        # Audit upgrade status
-        self._audit_upgrade_status()
-
-        hosts = self.dbapi.ihost_get_list()
-
-        # Audit install states
-        self._audit_install_states(hosts)
-
-        # Audit kubernetes node labels
-        self._audit_kubernetes_labels(hosts)
-
-        # Audit image conversion
-        self._audit_image_conversion(hosts)
-
-        for host in hosts:
-            # only audit configured hosts
-            if not host.personality:
-                continue
-            self._audit_ihost_action(host)
-
-    def _audit_kubernetes_labels(self, hosts):
+    @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.kubernetes_labels)
+    def _audit_kubernetes_labels(self, context):
         if not cutils.is_initial_config_complete():
             LOG.debug("_audit_kubernetes_labels skip")
             return
@@ -6137,6 +6125,7 @@ class ConductorManager(service.PeriodicService):
         sysinv_labels = self.dbapi.label_get_all()
         nodes = self._kube.kube_get_nodes()
 
+        hosts = self.dbapi.ihost_get_list()
         for host in hosts:
             try:
                 for node in nodes:
@@ -6191,14 +6180,15 @@ class ConductorManager(service.PeriodicService):
             elif bk.backend in self._stor_bck_op_timeouts:
                 del self._stor_bck_op_timeouts[bk.backend]
 
-    def _audit_image_conversion(self, hosts):
+    @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.image_conversion)
+    def _audit_image_conversion(self, context):
         """
         Raise alarm if:
            - image-conversion is not added on both controllers;
            - the size of the filesystem is not the same
              on both controllers
         """
-        chosts = [h for h in hosts if h.personality == constants.CONTROLLER]
+        chosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
         if len(chosts) <= 1:
             # No alarm is raised if setup has only one controller
             return
