@@ -2869,6 +2869,7 @@ class AppOperator(object):
         LOG.info("Start updating Application %s from version %s to version %s ..."
                  % (to_app.name, from_app.version, to_app.version))
 
+        armada_to_fluxcd = from_app.is_fluxcd_app != to_app.is_fluxcd_app
         try:
             # Upload new app tarball. The upload will enable the new plugins to
             # generate overrides for images. Disable the plugins for the current
@@ -2966,6 +2967,15 @@ class AppOperator(object):
                          to_app.name, to_app.version, skip_recovery)
                 do_recovery = False
 
+            # Here the app operation failed (do_recovery is True)
+            # but apps belong to differente helm versions.
+            if armada_to_fluxcd and do_recovery:
+                LOG.info("Application %s (%s) uses FluxCD (Helm3) and cannot"
+                         " rollback to Application %s (%s) that uses Armada (Helm2)"
+                         ", recovery skipped.",
+                         to_app.name, to_app.version, from_app.name, from_app.version)
+                do_recovery = False
+
             # If recovery is requested stop the flow of execution here
             if do_recovery:
                 LOG.error("Application %s update from version %s to version "
@@ -3006,11 +3016,15 @@ class AppOperator(object):
 
             # The initial operation for to_app failed
             # This is reached here only when skip_recovery is requested
+            # Or when updating between Helm versions (Armada <-> FluxCD)
             # Need to inform the user
             else:
                 message = \
-                    constants.APP_PROGRESS_UPDATE_FAILED_SKIP_RECOVERY.format(
-                        to_app.name, from_app.version, to_app.version)
+                        constants.APP_PROGRESS_UPDATE_FAILED_SKIP_RECOVERY.format(
+                            to_app.name, from_app.version, to_app.version) \
+                        if skip_recovery else \
+                        constants.APP_PROGRESS_UPDATE_FAILED_ARMADA_TO_FLUXCD.format(
+                                to_app.name, from_app.version, to_app.version)
                 self._update_app_status(
                     to_app, constants.APP_APPLY_FAILURE, message)
                 LOG.info(message)
