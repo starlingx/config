@@ -53,11 +53,16 @@ class WSGIService(service.ServiceBase):
         elif IPAddress(host).version == 6:
             socket_family = socket.AF_INET6
 
+        # If not defined, pool_size will default to 100. In order
+        # to increase the amount of threads handling multiple parallel
+        # requests to the wsgi application this parameter should be
+        # increased.
         self.server = wsgi.Server(CONF, name, self.app,
                                   host=host,
                                   port=port,
                                   socket_family=socket_family,
-                                  use_ssl=use_ssl)
+                                  use_ssl=use_ssl,
+                                  pool_size=250)
 
     def start(self):
         """Start serving this service using loaded configuration.
