@@ -278,7 +278,10 @@ class AuditLogging(hooks.PecanHook):
                     return " POST: {}".format(rest_state.request.params)
                 else:
                     return " POST: " + NO_SPACE_MSG + " for processing"
-            if not hasattr(rest_state.request, 'json'):
+            try:
+                if not hasattr(rest_state.request, 'json'):
+                    return ""
+            except Exception:
                 return ""
             return " POST: {}".format(rest_state.request.json)
 
