@@ -36,10 +36,12 @@ daemon_pidfile="/var/run/${DAEMON_NAME}.pid"
 
 if [ -f ${PLATFORM_CONF} ] ; then
     NODETYPE=`cat ${PLATFORM_CONF} | grep nodetype | cut -f2 -d'='`
+    SYSTEM_MODE=`cat ${PLATFORM_CONF} | grep system_mode | cut -f2 -d'='`
 else
     logger "$0: ${PLATFORM_CONF} is missing"
     exit 1
 fi
+
 
 if [ ! -e "${SYSINVAGENT}" ] ; then
     logger "$0: ${SYSINVAGENT} is missing"
@@ -106,6 +108,10 @@ case "$1" in
             FOUND=0
             while [ $(date +%s) -lt $(( ${START} + ${DELAY_SEC} )) ]
             do
+                if [ ${SYSTEM_MODE} = "simplex" ]
+                then
+                    break
+                fi
                 ping -c 1 controller-platform-nfs > /dev/null 2>&1 || ping6 -c 1 controller-platform-nfs > /dev/null 2>&1
                 if [ $? -eq 0 ]
                 then
