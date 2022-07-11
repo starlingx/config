@@ -34,6 +34,15 @@ IMA_POLICY=/etc/ima.policy
 PUPPET_CACHE=/etc/puppet/cache
 PUPPET_CACHE_TMP=/etc/puppet/cache.tmp
 ACTIVE_CONTROLLER_NOT_FOUND_FLAG="/var/run/.active_controller_not_found"
+CERT_DIR=/etc/pki/ca-trust/source/anchors
+
+OS_ID=$(grep '^ID=' /etc/os-release | cut -f2- -d= | sed -e 's/\"//g')
+if [ "$OS_ID" == "debian" ]
+then
+    UPDATE_CA_CMD="update-ca-certificates --localcertsdir ${CERT_DIR}"
+else
+    UPDATE_CA_CMD="update-ca-trust extract"
+fi
 
 fatal_error()
 {
@@ -404,13 +413,13 @@ start()
 
     if [ -e $CONFIG_DIR/dc-adminep-root-ca.crt ]
     then
-        cp $CONFIG_DIR/dc-adminep-root-ca.crt /etc/pki/ca-trust/source/anchors/
+        cp $CONFIG_DIR/dc-adminep-root-ca.crt $CERT_DIR
         if [ $? -ne 0 ]
         then
             fatal_error "Unable to copy $CONFIG_DIR/dc-adminep-root-ca.crt to certificates dir"
         fi
         # Update system trusted CA cert list with the new CA cert.
-        update-ca-trust extract
+        $UPDATE_CA_CMD
         if [ $? -ne 0 ]
         then
             fatal_error "Unable to update system trusted CA certificate list"
