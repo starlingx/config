@@ -314,6 +314,47 @@ class TestPostDeviceImage(TestDeviceImage, dbbase.ControllerHostTestCase):
         self.assertIn("bmc option is only applicable to"
                       " functional image", str(result))
 
+    def test_create_bmc_and_retimer_strtobool_conversion(self):
+        # Test creation of device image
+        bitstream_file = os.path.join(os.path.dirname(__file__), "data",
+                                'bitstream.bit')
+        data = {
+            'bitstream_type': dconstants.BITSTREAM_TYPE_FUNCTIONAL,
+            'pci_vendor': fpga_constants.N3000_VENDOR,
+            'pci_device': fpga_constants.N3000_DEVICE,
+            'bitstream_id': '12345',
+            'bmc': 'True',
+            'retimer_included': 'True',
+        }
+        upload_file = [('file', bitstream_file)]
+        result = None
+        open_mock = mock.Mock()
+        fd_mock = mock.mock_open()
+        with mock.patch('os.open', open_mock), mock.patch.object(
+                os, 'fdopen', fd_mock):
+            result = self.post_with_files('/device_images',
+                                          data,
+                                          upload_files=upload_file,
+                                          headers=self.API_HEADERS,
+                                          expect_errors=False)
+        self.assertEqual(result.status_code, http_client.OK)
+
+        # Verify that the images were downloaded
+        self.fake_conductor_api.store_bitstream_file.\
+            assert_called_with(mock.ANY, mock.ANY)
+
+        resp = json.loads(result.body)
+        self.assertIn('device_image', resp)
+        resp_dict = resp.get('device_image')
+        # Verify that the device image has the expected attributes
+        self.assertEqual(resp_dict['bitstream_type'],
+                         dconstants.BITSTREAM_TYPE_FUNCTIONAL)
+        self.assertEqual(resp_dict['pci_vendor'], fpga_constants.N3000_VENDOR)
+        self.assertEqual(resp_dict['pci_device'], fpga_constants.N3000_DEVICE)
+        self.assertEqual(resp_dict['bitstream_id'], '12345')
+        self.assertEqual(resp_dict['bmc'], True)
+        self.assertEqual(resp_dict['retimer_included'], True)
+
     def test_create_bitstream_type_invalid(self):
         # Test creation of device image
         bitstream_file = os.path.join(os.path.dirname(__file__), "data",
