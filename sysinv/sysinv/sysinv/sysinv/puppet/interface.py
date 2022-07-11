@@ -1023,9 +1023,6 @@ def get_ethernet_network_config(context, iface, config):
     # complete link auto-negotiation
     if is_syscfg_network():
         options['LINKDELAY'] = '20'
-    else:
-        command = 'sleep {}'.format('20')
-        fill_interface_config_option_operation(options, IFACE_PRE_UP_OP, command)
 
     if is_bridged_interface(context, iface):
         if is_syscfg_network():

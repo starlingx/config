@@ -1207,8 +1207,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         config = interface.get_interface_network_config(
             self.context, self.iface, network.id)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
-        options = {'pre-up': 'sleep 20',
-                   'post-up': '{}'.format(ipv6_autocnf_off),
+        options = {'post-up': '{}'.format(ipv6_autocnf_off),
                    'mtu': '1500',
                    'gateway': '10.10.10.1'}
         expected = self._get_static_network_config_ifupdown(
@@ -1253,8 +1252,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         config = interface.get_interface_network_config(
             self.context, self.iface, network.id)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
-        options = {'pre-up': 'sleep 20',
-                   'post-up': '%s %s %s %s > /dev/null; %s' % (constants.TRAFFIC_CONTROL_SCRIPT,
+        options = {'post-up': '%s %s %s %s > /dev/null; %s' % (constants.TRAFFIC_CONTROL_SCRIPT,
                         self.port['name'], constants.NETWORK_TYPE_MGMT, constants.LINK_SPEED_10G,
                         ipv6_autocnf_off),
                    'mtu': '1500',
@@ -1298,8 +1296,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         config = interface.get_interface_network_config(
             self.context, self.iface, network.id)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
-        options = {'pre-up': 'sleep 20',
-                   'post-up': '{}'.format(ipv6_autocnf_off),
+        options = {'post-up': '{}'.format(ipv6_autocnf_off),
                    'mtu': '1500'}
         expected = self._get_static_network_config_ifupdown(
             ifname=self.port['name'], options=options)
@@ -1332,7 +1329,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(port['name'])
         options = {'allow-bond0': port['name'],
                    'bond-master': 'bond0',
-                   'pre-up': 'sleep 20; /usr/sbin/ip link set dev {} promisc on; {}'.format(port['name'],
+                   'pre-up': '/usr/sbin/ip link set dev {} promisc on; {}'.format(port['name'],
                                                                              ipv6_autocnf_off),
                    'mtu': '1500'}
         expected = self._get_network_config_ifupdown(
@@ -1589,7 +1586,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         options = {'mtu': '1500',
                    'post-up': '/usr/local/bin/tc_setup.sh {} mgmt 10000 > '
                            '/dev/null; {}'.format(self.port['name'], ipv6_autocnf_off),
-                   'pre-up': 'sleep 20'}
+                   }
         expected = self._get_network_config_ifupdown(ifname=self.port['name'], options=options)
         print(expected)
         self.assertEqual(expected, config)
@@ -1630,7 +1627,6 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             self.context, self.iface, network.id)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
         options = {'mtu': '1500',
-                   'pre-up': 'sleep 20',
                    'post-up': '{}'.format(ipv6_autocnf_off)}
         expected = self._get_static_network_config_ifupdown(
             ifname=self.port['name'], options=options)
@@ -1665,9 +1661,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             self.context, self.iface)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
         options = {'mtu': '1500',
-                   'pre-up': 'sleep 20;'
-                        ' echo 0 > /sys/class/net/{}/device/sriov_numvfs;'
-                        ' echo 0 > /sys/class/net/{}/device/sriov_numvfs'.format(self.port['name'],
+                   'pre-up': 'echo 0 > /sys/class/net/{}/device/sriov_numvfs;'
+                             ' echo 0 > /sys/class/net/{}/device/sriov_numvfs'.format(self.port['name'],
                                                                                  self.port['name']),
                    'post-up': '{}'.format(ipv6_autocnf_off)}
         expected = self._get_network_config_ifupdown(
@@ -1703,8 +1698,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             self.context, self.iface)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
         options = {'mtu': '1500',
-                   'pre-up': 'sleep 20;'
-                      ' if [ -f  /sys/class/net/{}/device/sriov_numvfs ];'
+                   'pre-up':
+                      'if [ -f  /sys/class/net/{}/device/sriov_numvfs ];'
                         ' then echo 0 > /sys/class/net/{}/device/sriov_numvfs; fi'.format(
                             self.port['name'], self.port['name']),
                    'post-up': '{}'.format(ipv6_autocnf_off)}
