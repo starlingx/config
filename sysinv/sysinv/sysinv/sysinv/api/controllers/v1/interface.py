@@ -724,15 +724,19 @@ def _set_defaults(interface):
 
 def _check_interface_vlan_id(op, interface, ihost):
     # Check vlan_id
-    if 'vlan_id' in interface.keys() and interface['vlan_id'] is not None:
-        if not str(interface['vlan_id']).isdigit():
-            raise wsme.exc.ClientSideError(_("VLAN id is an integer value."))
+    if 'vlan_id' in interface.keys():
+        if interface['vlan_id'] is not None:
+            if not str(interface['vlan_id']).isdigit():
+                raise wsme.exc.ClientSideError(_("VLAN id is an integer value."))
 
-        interface['vlan_id'] = int(interface['vlan_id'])
-        if interface['vlan_id'] < 1 or interface['vlan_id'] > 4094:
-            raise wsme.exc.ClientSideError(_("VLAN id must be between 1 and 4094."))
+            interface['vlan_id'] = int(interface['vlan_id'])
+            if interface['vlan_id'] < 1 or interface['vlan_id'] > 4094:
+                raise wsme.exc.ClientSideError(_("VLAN id must be between 1 and 4094."))
+            else:
+                interface['vlan_id'] = six.text_type(interface['vlan_id'])
         else:
-            interface['vlan_id'] = six.text_type(interface['vlan_id'])
+            if interface['iftype'] == constants.INTERFACE_TYPE_VLAN:
+                raise wsme.exc.ClientSideError(_("VLAN id must be specified."))
     return interface
 
 
