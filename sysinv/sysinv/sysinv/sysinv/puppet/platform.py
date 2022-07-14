@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2020 Wind River Systems, Inc.
+# Copyright (c) 2017-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -553,6 +553,8 @@ class PlatformPuppet(base.BasePuppet):
                     cpu_ranges.update({"nohz_full": isolcpus_ranges})
                 else:
                     cpu_ranges.update({"nohz_full": rcu_nocbs_ranges})
+            else:
+                cpu_ranges.update({'nohz_full': 'disabled'})
 
             cpu_ranges.update({
                 "isolcpus": isolcpus_ranges,
