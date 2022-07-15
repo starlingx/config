@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -22,7 +22,7 @@ PRIVATE_KEY_PATTERN = \
 
 
 def _print_certificate_show(certificate):
-    fields = ['uuid', 'certtype', 'signature', 'start_date', 'expiry_date']
+    fields = ['uuid', 'certtype', 'signature', 'start_date', 'expiry_date', 'subject']
     if isinstance(certificate, dict):
         data = [(f, certificate.get(f, '')) for f in fields]
         details = ('details', certificate.get('details', ''))
@@ -31,7 +31,6 @@ def _print_certificate_show(certificate):
         details = ('details', getattr(certificate, 'details', ''))
     if details[1]:
         data.append(details)
-
     utils.print_tuple_list(data)
 
 
@@ -49,8 +48,11 @@ def do_certificate_show(cc, args):
 def do_certificate_list(cc, args):
     """List certificates."""
     certificates = cc.certificate.list()
-    fields = ['uuid', 'certtype', 'expiry_date']
+    fields = ['uuid', 'certtype', 'expiry_date', 'subject']
     field_labels = fields
+    for certificate in certificates:
+        if len(certificate.subject) > 20:
+            certificate.subject = certificate.subject[:20] + "..."
     utils.print_list(certificates, fields, field_labels, sortby=0)
 
 

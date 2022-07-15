@@ -24,6 +24,8 @@ class Certificate(base.SysinvObject):
               'signature': utils.str_or_none,
               'start_date': utils.datetime_or_str_or_none,
               'expiry_date': utils.datetime_or_str_or_none,
+              'subject': utils.str_or_none,
+              'hash_subject': utils.str_or_none,
               }
 
     @base.remotable_classmethod

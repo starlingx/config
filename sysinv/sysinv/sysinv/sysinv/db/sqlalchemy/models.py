@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -2018,6 +2018,8 @@ class certificate(Base):
     start_date = Column(DateTime(timezone=False))
     expiry_date = Column(DateTime(timezone=False))
     capabilities = Column(JSONEncodedDict)
+    subject = Column(String(255))
+    hash_subject = Column(String(64))
 
 
 class HelmOverrides(Base):

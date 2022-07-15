@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2022 Wind River Systems, Inc.
 #
 
 import datetime
@@ -104,6 +104,12 @@ class Certificate(base.APIBase):
 
     updated_at = wtypes.datetime.datetime
 
+    subject = wtypes.text
+    "Represents the subject of the certificate"
+
+    hash_subject = wtypes.text
+    "Represents the hash of the certificate's subject"
+
     def __init__(self, **kwargs):
         self.fields = list(objects.certificate.fields.keys())
         for k in self.fields:
@@ -126,7 +132,9 @@ class Certificate(base.APIBase):
                                              'signature',
                                              'details',
                                              'start_date',
-                                             'expiry_date'])
+                                             'expiry_date',
+                                             'subject',
+                                             'hash_subject'])
 
         certificate.links = \
             [link.Link.make_link('self', pecan.request.host_url,
@@ -323,6 +331,9 @@ class CertificateController(rest.RestController):
 
         hash_issuers = []
         cert_validity_error = None
+
+        existing_certificates = pecan.request.dbapi.certificate_get_list()
+
         for index, cert in enumerate(certs):
             msg = self._check_cert_validity(cert)
             if msg is not True:
@@ -384,6 +395,24 @@ class CertificateController(rest.RestController):
                     msg = "Cannot install non-CA type certificate as SSL " \
                           "CA certificate"
                     return dict(success="", error=msg)
+                if cert.subject:
+                    hash_subject = cutils.get_cert_subject_hash(cert)
+                    duplicate_certificates = [certificate.uuid
+                                            for certificate in existing_certificates
+                                            if certificate.hash_subject
+                                            if hash_subject == int(certificate.hash_subject)]
+                    if duplicate_certificates:
+                        msg = "Cannot install certificate with same subject" \
+                            "\nPlease uninstall the following CA certs that have " \
+                            "the same subject first"
+                        for uuid in duplicate_certificates:
+                            msg += "\nUUID : %s" % uuid
+                        LOG.error(msg)
+                        return dict(success="", error=msg)
+                else:
+                    msg = "Cannot install CA certificate without subject"
+                    LOG.error(msg)
+                    return dict(success="", error=msg)
 
             if mode == constants.CERT_MODE_OPENSTACK and index == 0:
                 domain, msg = _check_endpoint_domain_exists()
@@ -408,8 +437,6 @@ class CertificateController(rest.RestController):
             LOG.warn(msg)
             return dict(success="", error=str(e.value), body="", certificates={})
 
-        certificates = pecan.request.dbapi.certificate_get_list()
-
         # Create new or update existing certificates in sysinv with the
         # information returned from conductor manager.
         certificate_dicts = []
@@ -429,12 +456,14 @@ class CertificateController(rest.RestController):
                 'signature': inv_cert.get('signature'),
                 'start_date': inv_cert.get('not_valid_before'),
                 'expiry_date': inv_cert.get('not_valid_after'),
+                'hash_subject': inv_cert.get('hash_subject'),
+                'subject': inv_cert.get('subject'),
             }
             LOG.info("config_certificate values=%s" % values)
 
             # check to see if the installed cert exist in sysinv
             uuid = None
-            for certificate in certificates:
+            for certificate in existing_certificates:
                 if mode == constants.CERT_MODE_SSL_CA:
                     if inv_cert.get('signature') == certificate.signature:
                         uuid = certificate.uuid

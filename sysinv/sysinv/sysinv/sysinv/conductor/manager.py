@@ -12983,6 +12983,8 @@ class ConductorManager(service.PeriodicService):
             # check if the cert is a CA cert
             is_ca = cutils.is_ca_cert(cert)
 
+            hash_subject = cutils.get_cert_subject_hash(cert)
+
             signature = mode + '_' + str(cert.serial_number)
             if len(signature) > 255:
                 LOG.info("Truncating certificate serial no %s" % signature)
@@ -12992,7 +12994,8 @@ class ConductorManager(service.PeriodicService):
             cert_list.append({'cert': cert,
                              'is_ca': is_ca,
                              'public_bytes': public_bytes,
-                             'signature': signature})
+                             'signature': signature,
+                             'hash_subject': hash_subject})
 
         return cert_list, private_bytes
 
@@ -13327,7 +13330,10 @@ class ConductorManager(service.PeriodicService):
             inv_cert = {'signature': cert.get('signature'),
                         'is_ca': cert.get('is_ca'),
                         'not_valid_before': cert.get('cert').not_valid_before,
-                        'not_valid_after': cert.get('cert').not_valid_after}
+                        'not_valid_after': cert.get('cert').not_valid_after,
+                        'hash_subject': cert.get('hash_subject'),
+                        'subject': cert.get('cert').subject.rfc4514_string()
+                        }
             inv_certs.append(inv_cert)
 
         return inv_certs
