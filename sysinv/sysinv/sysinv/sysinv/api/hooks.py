@@ -137,6 +137,7 @@ class ContextHook(hooks.PecanHook):
         user_id = state.request.headers.get('X-User', user_id)
         tenant = state.request.headers.get('X-Tenant-Id')
         tenant = state.request.headers.get('X-Tenant', tenant)
+        project_name = state.request.headers.get('X-Project-Name')
         domain_id = state.request.headers.get('X-User-Domain-Id')
         domain_name = state.request.headers.get('X-User-Domain-Name')
         auth_token = state.request.headers.get('X-Auth-Token', None)
@@ -163,6 +164,8 @@ class ContextHook(hooks.PecanHook):
             domain_name=domain_name,
             is_admin=is_admin,
             is_public_api=is_public_api,
+            project_name=project_name,
+            roles=creds['roles'],
             service_catalog=service_catalog
         )
 
@@ -174,19 +177,18 @@ class RPCHook(hooks.PecanHook):
         state.request.rpcapi = rpcapi.ConductorAPI()
 
 
-class AdminAuthHook(hooks.PecanHook):
-    """Verify that the user has admin rights.
-
-    Checks whether the request context is an admin context and
-    rejects the request otherwise.
-
-    """
+class AccessPolicyHook(hooks.PecanHook):
+    """Verify that the user has the needed credentials to execute the action."""
     def before(self, state):
-        ctx = state.request.context
-        is_admin_api = policy.check('admin_api', {}, ctx.to_dict())
-
-        if not is_admin_api and not ctx.is_public_api:
-            raise exc.HTTPForbidden()
+        controller = state.controller.__self__
+        if hasattr(controller, 'enforce_policy'):
+            controller_method = state.controller.__name__
+            controller.enforce_policy(controller_method, state.request)
+        else:
+            context = state.request.context
+            is_admin_api = policy.check('admin_api', {}, context.to_dict())
+            if not is_admin_api and not context.is_public_api:
+                raise exc.HTTPForbidden()
 
 
 class NoExceptionTracebackHook(hooks.PecanHook):

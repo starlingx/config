@@ -78,15 +78,15 @@ class Rules(dict):
     """
 
     @classmethod
-    def load_json(cls, data, default_rule=None):
+    def load_rules(cls, data, default_rule, default_list):
         """
-        Allow loading of JSON rule data.
+        Load rules from defaults and from JSON data.
         """
-
-        # Suck in the JSON data and parse the rules
-        rules = dict((k, parse_rule(v)) for k, v in
-                     jsonutils.loads(data).items())
-
+        rules = {}
+        for default in default_list:
+            rules[default.name] = parse_rule(default.check_str)
+        for k, v in jsonutils.loads(data).items():
+            rules[k] = parse_rule(v)
         return cls(rules, default_rule)
 
     def __init__(self, rules=None, default_rule=None):
