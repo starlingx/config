@@ -1427,6 +1427,132 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
+    def test_get_controller_bond_network_config(self):
+        bond = self._create_bond_test("bond0")
+        self._update_context()
+        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
+        config = interface.get_bond_network_config(self.context, bond, {'options': {}}, network.id)
+        expected = {'options':
+                       {'BONDING_OPTS': 'mode=balance-xor xmit_hash_policy=layer2 miimon=100',
+                        'MACADDR': bond['imac'],
+                        'up': 'sleep 10'}}
+        print(expected)
+        self.assertEqual(expected, config)
+
+    def test_get_controller_bond_config_duplex(self):
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+        bond = self._create_bond_test(
+            "bond0", ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            networktype=constants.NETWORK_TYPE_MGMT)
+        self._update_context()
+        self._update_interface_address_pool(
+            bond, constants.NETWORK_TYPE_MGMT)
+        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
+        config = interface.get_interface_network_config(self.context, bond, network.id)
+        options = {'IPV6_AUTOCONF': 'no',
+                   'up': 'sleep 10',
+                   'MACADDR': bond['imac'],
+                   'BONDING_OPTS':
+                       'mode=802.3ad lacp_rate=fast xmit_hash_policy=layer2 miimon=100'}
+        expected = self._get_static_network_config(
+            ifname=bond['ifname'], gateway='192.168.204.1', ipaddress='192.168.1.2',
+            mtu=1500, options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
+    def test_get_controller_bond_config_duplex_ifupdown(self):
+        self.mock_puppet_interface_sysconfig.return_value = False
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+        bond = self._create_bond_test(
+            "bond0", ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            networktype=constants.NETWORK_TYPE_MGMT)
+        self._update_context()
+        self._update_interface_address_pool(
+            bond, constants.NETWORK_TYPE_MGMT)
+        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
+        config = interface.get_interface_network_config(self.context, bond, network.id)
+        options = {'bond-lacp-rate': 'fast',
+                   'bond-miimon': '100',
+                   'bond-mode': '802.3ad',
+                   'bond-slaves': 'eth1 eth2 ',
+                   'bond-xmit-hash-policy': 'layer2',
+                   'gateway': '192.168.204.1',
+                   'hwaddress': '02:11:22:33:44:13',
+                   'mtu': '1500',
+                   'post-up': 'echo 0 > /proc/sys/net/ipv6/conf/bond0/autoconf; echo '
+                              '0 > /proc/sys/net/ipv6/conf/bond0/accept_ra; echo 0 > '
+                              '/proc/sys/net/ipv6/conf/bond0/accept_redirects',
+                   'up': 'sleep 10'}
+        expected = self._get_static_network_config_ifupdown(
+            ifname=bond['ifname'], options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
+    def test_get_controller_bond_config_duplex_direct(self):
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX_DIRECT
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+        bond = self._create_bond_test(
+            "bond0", ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            networktype=constants.NETWORK_TYPE_MGMT)
+        self._update_context()
+        self._update_interface_address_pool(
+            bond, constants.NETWORK_TYPE_MGMT)
+        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
+        config = interface.get_interface_network_config(self.context, bond, network.id)
+        options = {'IPV6_AUTOCONF': 'no',
+                   'up': 'sleep 10',
+                   'pre_up': '/sbin/modprobe bonding; grep bond0 '
+                             '/sys/class/net/bonding_masters || echo +bond0 > '
+                             '/sys/class/net/bonding_masters; sysctl -wq '
+                             'net.ipv6.conf.bond0.accept_dad=0',
+                   'MACADDR': bond['imac'],
+                   'BONDING_OPTS':
+                       'mode=802.3ad lacp_rate=fast xmit_hash_policy=layer2 miimon=100'}
+        expected = self._get_static_network_config(
+            ifname=bond['ifname'], gateway='192.168.204.1', ipaddress='192.168.1.2',
+            mtu=1500, options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
+    def test_get_controller_bond_config_duplex_direct_ifupdown(self):
+        self.mock_puppet_interface_sysconfig.return_value = False
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX_DIRECT
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+        bond = self._create_bond_test(
+            "bond0", ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            networktype=constants.NETWORK_TYPE_MGMT)
+        self._update_context()
+        self._update_interface_address_pool(
+            bond, constants.NETWORK_TYPE_MGMT)
+        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
+        config = interface.get_interface_network_config(self.context, bond, network.id)
+        options = {'bond-lacp-rate': 'fast',
+                   'bond-miimon': '100',
+                   'bond-mode': '802.3ad',
+                   'bond-slaves': 'eth1 eth2 ',
+                   'bond-xmit-hash-policy': 'layer2',
+                   'gateway': '192.168.204.1',
+                   'hwaddress': '02:11:22:33:44:13',
+                   'mtu': '1500',
+                   'post-up': 'echo 0 > /proc/sys/net/ipv6/conf/bond0/autoconf; echo '
+                              '0 > /proc/sys/net/ipv6/conf/bond0/accept_ra; echo 0 > '
+                              '/proc/sys/net/ipv6/conf/bond0/accept_redirects',
+                   'pre-up': '/sbin/modprobe bonding; grep bond0 '
+                             '/sys/class/net/bonding_masters || echo +bond0 > '
+                             '/sys/class/net/bonding_masters; sysctl -wq '
+                             'net.ipv6.conf.bond0.accept_dad=0',
+                   'up': 'sleep 10'}
+        expected = self._get_static_network_config_ifupdown(
+            ifname=bond['ifname'], options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
     def test_get_controller_bond_config_balanced(self):
         bond = self._create_bond_test("bond0")
         self._update_context()
