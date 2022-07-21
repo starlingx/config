@@ -1,4 +1,4 @@
-# Copyright (c) 2018-2020 Wind River Systems, Inc.
+# Copyright (c) 2018-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -152,6 +152,11 @@ class LabelController(rest.RestController):
                                                   sort_key=sort_key,
                                                   sort_dir=sort_dir)
 
+    def _apply_manifest_after_label_operation(self, uuid, keys):
+        if common.LABEL_DISABLE_NOHZ_FULL in keys:
+            pecan.request.rpcapi.update_grub_config(
+                pecan.request.context, uuid)
+
     @wsme_pecan.wsexpose(LabelCollection, types.uuid, types.uuid,
                          int, wtypes.text, wtypes.text)
     def get_all(self, uuid=None, marker=None, limit=None,
@@ -260,6 +265,8 @@ class LabelController(rest.RestController):
                 uuid,
                 host.hostname,
                 constants.VIM_DEFAULT_TIMEOUT_IN_SECS)
+            self._apply_manifest_after_label_operation(
+                uuid, body.keys())
         except Exception as e:
             LOG.warn(_("No response vim_api host:%s e=%s" %
                      (host.hostname, e)))
@@ -307,6 +314,8 @@ class LabelController(rest.RestController):
                 host.uuid,
                 host.hostname,
                 constants.VIM_DEFAULT_TIMEOUT_IN_SECS)
+            self._apply_manifest_after_label_operation(
+                host.uuid, [lbl_obj.label_key])
         except Exception as e:
             LOG.warn(_("No response vim_api host:%s e=%s" %
                      (host.hostname, e)))
