@@ -51,19 +51,6 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
             serializer=objects_base.SysinvObjectSerializer(),
             default_version=self.RPC_API_VERSION)
 
-    def ihost_inventory(self, context, values):
-        """Synchronously, have a agent collect inventory for this ihost.
-
-        Collect ihost inventory and report to conductor.
-
-        :param context: request context.
-        :param values: dictionary with initial values for new ihost object
-        :returns: created ihost object, including all fields.
-        """
-        return self.call(context,
-                         self.make_msg('ihost_inventory',
-                                       values=values))
-
     def configure_isystemname(self, context, systemname):
         """Asynchronously, have the agent configure the isystemname
            into the /etc/motd of the host.
@@ -193,25 +180,6 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                 tpm_context=tpm_context))
 
         return retval
-
-    # TODO(oponcea) Evaluate if we need to delete PV's from sysinv-agent in the
-    # future - may be needed for AIO SX disk cinder-volumes disk replacement.
-    def delete_pv(self, context, host_uuid, ipv_dict):
-        """Synchronously, delete an LVM physical volume
-
-         Also delete logical volume group if this is the last PV in group
-
-        :param context: an admin context
-        :param host_uuid: ihost uuid unique id
-        :param ipv_dict_array: values for physical volume object
-        :returns: pass or fail
-        """
-
-        return self.call(context,
-                         self.make_msg('delete_pv',
-                                       host_uuid=host_uuid,
-                                       ipv_dict=ipv_dict),
-                         timeout=300)
 
     def execute_command(self, context, host_uuid, command):
         """Asynchronously, have the agent execute a command

@@ -1958,20 +1958,6 @@ class AgentManager(service.PeriodicService):
 
         return
 
-    def delete_pv(self, context, host_uuid, ipv_dict):
-        """Delete LVM physical volume
-
-         Also delete Logical volume Group if PV is last in group
-
-        :param context: an admin context
-        :param host_uuid: ihost uuid unique id
-        :param ipv_dict: values for physical volume object
-        :returns: pass or fail
-        """
-        LOG.debug("AgentManager.delete_pv: %s" % ipv_dict)
-        if self._ihost_uuid and self._ihost_uuid == host_uuid:
-            return self._ipv_operator.ipv_delete(ipv_dict)
-
     def execute_command(self, context, host_uuid, command):
         """Execute a command on behalf of sysinv-conductor
 
