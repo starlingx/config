@@ -9,7 +9,6 @@
     check:
       jobs:
         - openstack-tox-linters
-        - sysinv-tox-py27
         - sysinv-tox-py39
         - sysinv-tox-flake8
         - sysinv-tox-pylint
@@ -29,7 +28,6 @@
     gate:
       jobs:
         - openstack-tox-linters
-        - sysinv-tox-py27
         - sysinv-tox-py39
         - sysinv-tox-flake8
         - sysinv-tox-pylint
@@ -49,22 +47,6 @@
     post:
       jobs:
         - stx-config-upload-git-mirror
-
-- job:
-    name: sysinv-tox-py27
-    parent: tox
-    description: |
-      Run py27 test for sysinv
-    nodeset: ubuntu-xenial
-    required-projects:
-      - starlingx/fault
-      - starlingx/utilities
-      - starlingx/update
-    files:
-      - sysinv/sysinv/*
-    vars:
-      tox_envlist: py27
-      tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
 
 - job:
     name: sysinv-tox-py39
@@ -88,7 +70,7 @@
     parent: tox
     description: |
       Run flake8 test for sysinv
-    nodeset: ubuntu-bionic
+    nodeset: debian-bullseye
     files:
       - sysinv/sysinv/*
     vars:
@@ -100,7 +82,7 @@
     parent: tox
     description: |
       Run pylint test for sysinv
-    nodeset: ubuntu-bionic
+    nodeset: debian-bullseye
     required-projects:
       - starlingx/fault
       - starlingx/utilities
@@ -116,7 +98,7 @@
     parent: tox
     description: |
       Run bandit test for sysinv
-    nodeset: ubuntu-bionic
+    nodeset: debian-bullseye
     files:
       - sysinv/sysinv/*
     vars:
