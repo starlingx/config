@@ -61,7 +61,7 @@ def delete_k8s_configmap(parameter, kube_operator):
     ------
     wsme.exc.ClientSideError
     """
-    _volume, _ = service_parameter.parse_volume_string_to_dict(parameter)
+    _volume, _noConfigMap = service_parameter.parse_volume_string_to_dict(parameter)
 
     # only delete configmaps for 'File' type since
     # 'DirectoryorCreate' type has no associated configmaps
@@ -160,7 +160,7 @@ def update_k8s_configmap(parameter, kube_operator):
     ------
     wsme.exc.ClientSideError
     """
-    _volume, _ = service_parameter.parse_volume_string_to_dict(parameter)
+    _volume, _noConfigMap = service_parameter.parse_volume_string_to_dict(parameter)
 
     # only update configmaps for 'File' type since
     # 'DirectoryorCreate' type has no associated configmaps
