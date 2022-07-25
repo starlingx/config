@@ -648,7 +648,7 @@ class PlatformPuppet(base.BasePuppet):
                 total_hugepages_2M = vm_hugepages_nr_2M
                 total_hugepages_1G = vm_hugepages_nr_1G
 
-                if(vm_pending_as_percentage == "True"):
+                if vm_pending_as_percentage is True:
                     vm_hugepages_nr_2M = memory.vm_hugepages_nr_2M_pending if \
                         memory.vm_hugepages_nr_2M_pending is not None else \
                         memory.vm_hugepages_2M_percentage if memory.vm_hugepages_2M_percentage \
@@ -910,7 +910,7 @@ class PlatformPuppet(base.BasePuppet):
     def _get_ttys_dcd_config(self, host):
         return {
             "platform::tty::params::enabled":
-                str(host.ttys_dcd) in ['True', 'true'],
+                host.ttys_dcd is True,
             "platform::tty::params::active_device":
                 host.console.split(',')[0]
         }

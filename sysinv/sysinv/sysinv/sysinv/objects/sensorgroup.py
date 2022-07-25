@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2015 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -50,7 +50,7 @@ class SensorGroup(base.SysinvObject):
         't_critical_lower_group': utils.str_or_none,
         't_critical_upper_group': utils.str_or_none,
 
-        'suppress': utils.str_or_none,
+        'suppress': utils.bool_or_none,
         'capabilities': utils.dict_or_none,
 
         'actions_critical_choices': utils.str_or_none,

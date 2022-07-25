@@ -12,7 +12,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2016 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 
 
@@ -52,11 +52,11 @@ def datetime_or_str_or_none(val):
 
 
 def bool_or_none(val):
-    """Attempt to parse an boolean value, or None."""
+    """Attempt to parse a boolean value, or None."""
     if val is None:
         return False
     elif isinstance(val, six.string_types):
-        return bool(val.lower() in ['y', 'n', 'yes', 'no', 'true', 'false'])
+        return bool(val.lower() in ['y', 'yes', 'true'])
     else:
         return bool(int(val) != 0)
 

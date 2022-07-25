@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2019 Wind River Systems, Inc.
+# Copyright (c) 2017-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -70,7 +70,7 @@ class sensorgroupTestCase(base.FunctionalTest):
                              actions_minor_group='action minor',
                              actions_major_group='action major',
                              actions_critical_group='action critical',
-                             suppress='False',)
+                             suppress=False,)
 
         # Assert values got set properly in sensorgroup
         self.assertEqual(42,  # Expected
@@ -85,7 +85,7 @@ class sensorgroupTestCase(base.FunctionalTest):
         self.assertEqual('action critical',  # Expected
                          self.get_json('/isensorgroups/%s/' %
                                        sensorgroup.json['uuid'])['actions_critical_group'])  # Result
-        self.assertEqual('False',  # Expected
+        self.assertEqual(False,  # Expected
                          self.get_json('/isensorgroups/%s/' %
                                        sensorgroup.json['uuid'])['suppress'])  # Result
 
@@ -102,7 +102,7 @@ class sensorgroupTestCase(base.FunctionalTest):
         self.assertEqual('action critical',  # Expected
                          self.get_json('/isensors/%s/' %
                                        sensor.json['uuid'])['actions_critical'])  # Result
-        self.assertEqual('False',  # Expected
+        self.assertEqual(False,  # Expected
                          self.get_json('/isensors/%s/' %
                                        sensor.json['uuid'])['suppress'])  # Result
 
@@ -160,7 +160,7 @@ class sensorgroupTestCase(base.FunctionalTest):
                              actions_minor_group='action minor',
                              actions_major_group='action major',
                              actions_critical_group='action critical',
-                             suppress='False', )
+                             suppress=False, )
 
         # Assert values got set properly in sensorgroup
         self.assertEqual(42,  # Expected
@@ -175,7 +175,7 @@ class sensorgroupTestCase(base.FunctionalTest):
         self.assertEqual('action critical',  # Expected
                          self.get_json('/isensorgroups/%s/' %
                                        sensorgroup.json['uuid'])['actions_critical_group'])  # Result
-        self.assertEqual('False',  # Expected
+        self.assertEqual(False,  # Expected
                          self.get_json('/isensorgroups/%s/' %
                                        sensorgroup.json['uuid'])['suppress'])  # Result
 
@@ -193,7 +193,7 @@ class sensorgroupTestCase(base.FunctionalTest):
             self.assertEqual('action critical',  # Expected
                              self.get_json('/isensors/%s/' %
                                            sensor[i].json['uuid'])['actions_critical'])  # Result
-            self.assertEqual('False',  # Expected
+            self.assertEqual(False,  # Expected
                              self.get_json('/isensors/%s/' %
                                            sensor[i].json['uuid'])['suppress'])  # Result
 

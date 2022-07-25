@@ -15,10 +15,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2016 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 
-import copy
 import jsonpatch
 import pecan
 from pecan import rest
@@ -136,7 +135,7 @@ class SensorGroup(base.APIBase):
                                                   six.integer_types)}
     "Represent meta data of the isensorgroup"
 
-    suppress = wtypes.text
+    suppress = types.boolean
     "Represent supress isensor if True, otherwise not suppress isensor"
 
     sensors = wtypes.text
@@ -462,8 +461,6 @@ class SensorGroupController(rest.RestController):
             raise wsme.exc.ClientSideError(_("Invalid datatype=%s" %
                                              rsensorgroup.datatype))
 
-        rsensorgroup_orig = copy.deepcopy(rsensorgroup)
-
         host = pecan.request.dbapi.ihost_get(
             rsensorgroup['host_id']).as_dict()
 
@@ -509,20 +506,14 @@ class SensorGroupController(rest.RestController):
                 rsensorgroup[field] = getattr(sensorgroup, field)
 
         delta = rsensorgroup.obj_what_changed()
-
         sensorgroup_suppress_attrs = ['suppress']
-        force_action = False
         if any(x in delta for x in sensorgroup_suppress_attrs):
-            valid_suppress = ['True', 'False', 'true', 'false', 'force_action']
-            if rsensorgroup.suppress.lower() not in valid_suppress:
+            valid_suppress = [True, False]
+            if rsensorgroup.suppress not in valid_suppress:
                 raise wsme.exc.ClientSideError(_("Invalid suppress value, "
                                                "select 'True' or 'False'"))
-            elif rsensorgroup.suppress.lower() == 'force_action':
-                LOG.info("suppress=%s" % rsensorgroup.suppress.lower())
-                rsensorgroup.suppress = rsensorgroup_orig.suppress
-                force_action = True
 
-        self._semantic_modifiable_fields(patch_obj, force_action)
+        self._semantic_modifiable_fields(patch_obj)
 
         if not pecan.request.user_agent.startswith('hwmon'):
             hwmon_sensorgroup = cutils.removekeys_nonhwmon(
@@ -553,10 +544,7 @@ class SensorGroupController(rest.RestController):
                         hwmon_response.get('reason'),
                         hwmon_response.get('action'))
 
-                if force_action:
-                    LOG.error(msg)
-                else:
-                    raise wsme.exc.ClientSideError(msg)
+                raise wsme.exc.ClientSideError(msg)
 
         sensorgroup_prop_attrs = ['audit_interval_group',
                                   'actions_minor_group',

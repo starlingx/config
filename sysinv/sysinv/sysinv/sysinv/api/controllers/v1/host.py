@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -428,7 +428,7 @@ class Host(base.APIBase):
     mtce_info = wtypes.text
     "Represent the mtce info"
 
-    reserved = wtypes.text
+    reserved = types.boolean
 
     config_status = wtypes.text
     "Represent the configuration status of this ihost."
@@ -535,7 +535,7 @@ class Host(base.APIBase):
     vsc_controllers = wtypes.text
     "Represent the VSC controllers used by this ihost."
 
-    ttys_dcd = wtypes.text
+    ttys_dcd = types.boolean
     "Enable or disable serial console carrier detect"
 
     software_load = wtypes.text
@@ -1972,9 +1972,12 @@ class HostController(rest.RestController):
             if key in ihost_dict and key not in patched_ihost:
                 patched_ihost[key] = defaults[key]
 
-            # Update only the fields that have changed
-            if ihost_obj[key] != patched_ihost[key]:
-                ihost_obj[key] = patched_ihost[key]
+            # To compare, first cast the patch value into same datatype
+            # using the corresponding parsing function for the field in
+            # ihost_obj and then update only the fields that have changed
+            parsed_patch_value = ihost_obj.fields[key](patched_ihost[key])
+            if ihost_obj[key] != parsed_patch_value:
+                ihost_obj[key] = parsed_patch_value
 
         delta = ihost_obj.obj_what_changed()
         delta_handle = list(delta)
@@ -3895,12 +3898,12 @@ class HostController(rest.RestController):
         for m in mems:
             memtotal = m.node_memtotal_mib
             allocated = m.platform_reserved_mib
-            if m.hugepages_configured == "True":
+            if m.hugepages_configured is True:
                 if m.vswitch_hugepages_reqd is not None:
                     allocated += m.vswitch_hugepages_reqd * m.vswitch_hugepages_size_mib
                 else:
                     allocated += m.vswitch_hugepages_nr * m.vswitch_hugepages_size_mib
-            if(m.vm_pending_as_percentage == "True"):
+            if m.vm_pending_as_percentage is True:
                 if m.vm_hugepages_nr_2M_pending is not None:
                     allocated += (memtotal - allocated) \
                         * m.vm_hugepages_nr_2M_pending // 100
@@ -4029,20 +4032,20 @@ class HostController(rest.RestController):
         for node in ihost_inodes:
             mems = pecan.request.dbapi.imemory_get_by_inode(node['id'])
             for m in mems:
-                if m.hugepages_configured == "True":
+                if m.hugepages_configured is True:
                     value = {}
                     vs_hugepages_nr = m.vswitch_hugepages_nr
 
                     if m.vm_hugepages_nr_2M_pending is not None:
                         vm_hugepages_nr_2M = m.vm_hugepages_nr_2M_pending
-                    elif m.vm_hugepages_2M_percentage is not None and m.vm_pending_as_percentage == "True":
+                    elif m.vm_hugepages_2M_percentage is not None and m.vm_pending_as_percentage is True:
                         vm_hugepages_nr_2M = m.vm_hugepages_2M_percentage
                     else:
                         vm_hugepages_nr_2M = m.vm_hugepages_nr_2M
 
                     if m.vm_hugepages_nr_1G_pending is not None:
                         vm_hugepages_nr_1G = m.vm_hugepages_nr_1G_pending
-                    elif m.vm_hugepages_1G_percentage is not None and m.vm_pending_as_percentage == "True":
+                    elif m.vm_hugepages_1G_percentage is not None and m.vm_pending_as_percentage is True:
                         vm_hugepages_nr_1G = m.vm_hugepages_1G_percentage
                     else:
                         vm_hugepages_nr_1G = m.vm_hugepages_nr_1G
@@ -4062,7 +4065,7 @@ class HostController(rest.RestController):
 
                     # Current value might not be suitable after upgrading or
                     # patching
-                    if m.vm_pending_as_percentage == "False" and vm_hugepages_nr_2M > int((vm_mem_mib * 0.9) //
+                    if m.vm_pending_as_percentage is False and vm_hugepages_nr_2M > int((vm_mem_mib * 0.9) //
                             constants.MIB_2M):
                         vm_hugepages_nr_2M = int((vm_mem_mib * 0.9) //
                                                  constants.MIB_2M)

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -51,7 +51,7 @@ class Host(base.SysinvObject):
             'subfunction_oper': utils.str_or_none,
             'subfunction_avail': utils.str_or_none,
             # Host is working on a blocking process
-            'reserved': utils.str_or_none,
+            'reserved': utils.bool_or_none,
             # NOTE: instance_uuid must be read-only when server is provisioned
             'uuid': utils.str_or_none,
 
@@ -92,7 +92,7 @@ class Host(base.SysinvObject):
             'console': utils.str_or_none,
             'tboot': utils.str_or_none,
             'vsc_controllers': utils.str_or_none,
-            'ttys_dcd': utils.str_or_none,
+            'ttys_dcd': utils.bool_or_none,
             'software_load': utils.str_or_none,
             'target_load': utils.str_or_none,
             'install_state': utils.str_or_none,

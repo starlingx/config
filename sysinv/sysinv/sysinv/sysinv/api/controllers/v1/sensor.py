@@ -15,10 +15,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2015 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 
-import copy
 import jsonpatch
 import pecan
 from pecan import rest
@@ -96,7 +95,7 @@ class Sensor(base.APIBase):
     actions_critical = wtypes.text
     "Represent the critical configured actions of the isensor. CSV."
 
-    suppress = wtypes.text
+    suppress = types.boolean
     "Represent supress isensor if True, otherwise not suppress isensor"
 
     value = wtypes.text
@@ -434,8 +433,6 @@ class SensorController(rest.RestController):
             raise wsme.exc.ClientSideError(_("Invalid datatype=%s" %
                                              rpc_sensor.datatype))
 
-        rpc_sensor_orig = copy.deepcopy(rpc_sensor)
-
         # replace ihost_uuid and isensorgroup_uuid with corresponding
         utils.validate_patch(patch)
         patch_obj = jsonpatch.JsonPatch(patch)
@@ -478,18 +475,13 @@ class SensorController(rest.RestController):
 
         delta = rpc_sensor.obj_what_changed()
         sensor_suppress_attrs = ['suppress']
-        force_action = False
         if any(x in delta for x in sensor_suppress_attrs):
-            valid_suppress = ['True', 'False', 'true', 'false', 'force_action']
-            if rpc_sensor.suppress.lower() not in valid_suppress:
+            valid_suppress = [True, False]
+            if rpc_sensor.suppress not in valid_suppress:
                 raise wsme.exc.ClientSideError(_("Invalid suppress value, "
                                                  "select 'True' or 'False'"))
-            elif rpc_sensor.suppress.lower() == 'force_action':
-                LOG.info("suppress=%s" % rpc_sensor.suppress.lower())
-                rpc_sensor.suppress = rpc_sensor_orig.suppress
-                force_action = True
 
-        self._semantic_modifiable_fields(patch_obj, force_action)
+        self._semantic_modifiable_fields(patch_obj)
 
         if not pecan.request.user_agent.startswith('hwmon'):
             hwmon_sensor = cutils.removekeys_nonhwmon(
@@ -521,10 +513,7 @@ class SensorController(rest.RestController):
                         hwmon_response.get('reason'),
                         hwmon_response.get('action'))
 
-                if force_action:
-                    LOG.error(msg)
-                else:
-                    raise wsme.exc.ClientSideError(msg)
+                raise wsme.exc.ClientSideError(msg)
 
         rpc_sensor.save()
 
