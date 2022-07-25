@@ -1418,6 +1418,8 @@ def _check_interface_data(op, interface, ihost, existing_interface,
             msg = _("VF interfaces must be created over an interface of class"
                     " %s" % constants.INTERFACE_CLASS_PCI_SRIOV)
             raise wsme.exc.ClientSideError(msg)
+        if interface['sriov_numvfs'] <= 0:
+            raise wsme.exc.ClientSideError(_("Value for number of SR-IOV VFs must be > 0."))
         avail_vfs = lower_iface['sriov_numvfs'] - 1
         for i in lower_iface['used_by']:
             if i != interface['ifname']:
