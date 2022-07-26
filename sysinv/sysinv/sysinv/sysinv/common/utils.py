@@ -1188,6 +1188,21 @@ def get_os_release(release_file=constants.OS_RELEASE_FILE):
     return linux_distro
 
 
+def get_os_target(target_rel, feed_folder=constants.OS_UPGRADE_FEED_FOLDER):
+    """
+    Get the target release OS by reading the upgrade feed to check
+    if os_tree repo is included
+
+    :param target_rel (String): Target release version
+    :param feed_folder (String, optional): Upgrade feed directory.
+           Defaults to constants.OS_UPGRADE_FEED_FOLDER.
+    :return String: constants.OS_DEBIAN or constants.OS_CENTOS
+    """
+
+    os_tree_dir = os.path.join(feed_folder, "rel-" + target_rel, "ostree_repo")
+    return constants.OS_DEBIAN if os.path.exists(os_tree_dir) else constants.OS_CENTOS
+
+
 def get_os_type(release_file=constants.OS_RELEASE_FILE):
     return get_os_release(release_file)[0]
 

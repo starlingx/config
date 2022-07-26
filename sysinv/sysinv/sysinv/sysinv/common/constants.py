@@ -2154,6 +2154,7 @@ OS_RELEASE_FILE = '/etc/os-release'
 OS_CENTOS = 'centos'
 OS_DEBIAN = 'debian'
 SUPPORTED_OS_TYPES = [OS_CENTOS, OS_DEBIAN]
+OS_UPGRADE_FEED_FOLDER = '/var/www/pages/feed/'
 
 # Configuration support placeholders
 CONFIGURABLE = 'configurable'

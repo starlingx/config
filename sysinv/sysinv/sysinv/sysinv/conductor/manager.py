@@ -1150,7 +1150,7 @@ class ConductorManager(service.PeriodicService):
         rootfs_device = host.get('rootfs_device') or "/dev/sda"
         install_opts += ['-r', rootfs_device]
 
-        if cutils.is_debian():
+        if cutils.get_os_target(sw_version) == constants.OS_DEBIAN:
             install_opts += ['-d']
         else:
             install_output = host.get('install_output') or "text"

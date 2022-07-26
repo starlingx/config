@@ -1,5 +1,4 @@
 
-
 # Copyright 2011 Justin Santa Barbara
 # Copyright 2012 Hewlett-Packard Development Company, L.P.
 #
@@ -14,6 +13,12 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+#
+#
+# Copyright (c) 2022 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 
 import errno
 import mock
@@ -105,6 +110,20 @@ class BareMetalUtilsTestCase(base.TestCase):
                           utils.get_os_type,
                           tmpfile)
         os.remove(tmpfile)
+
+    def test_get_os_target_debian(self):
+        with mock.patch.object(os.path, "exists") as exists_mock:
+            exists_mock.return_value = True
+            result = utils.get_os_target('22.12')
+            exists_mock.assert_called_once()
+            self.assertEqual(constants.OS_DEBIAN, result)
+
+    def test_get_os_target_centos(self):
+        with mock.patch.object(os.path, "exists") as exists_mock:
+            exists_mock.return_value = False
+            result = utils.get_os_target('22.12')
+            exists_mock.assert_called_once()
+            self.assertEqual(constants.OS_CENTOS, result)
 
 
 class ExecuteTestCase(base.TestCase):
