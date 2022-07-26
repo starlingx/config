@@ -129,9 +129,6 @@ conductor_opts = [
                   default=None,
                   help=('Url of SysInv API service. If not set SysInv can '
                         'get current value from Keystone service catalog.')),
-       cfg.IntOpt('audit_interval',
-                  default=60,
-                  help='Interval to run conductor audit'),
        cfg.IntOpt('osd_remove_retry_count',
                   default=11,
                   help=('Maximum number of retries in case Ceph OSD remove '
@@ -153,8 +150,25 @@ conductor_opts = [
                   help='Timeout interval in seconds for a small device image'),
                   ]
 
+audit_intervals_opts = [
+       cfg.IntOpt('default', default=60),
+       cfg.IntOpt('agent_update_request', default=60),
+       cfg.IntOpt('kubernetes_local_secrets', default=60),
+       cfg.IntOpt('deferred_runtime_config', default=60),
+       cfg.IntOpt('controller_config_active_apply', default=60),
+       cfg.IntOpt('upgrade_status', default=60),
+       cfg.IntOpt('install_states', default=60),
+       cfg.IntOpt('kubernetes_labels', default=60),
+       cfg.IntOpt('image_conversion', default=60),
+       cfg.IntOpt('ihost_action', default=60),
+       cfg.IntOpt('storage_backend_failure', default=60),
+       cfg.IntOpt('k8s_application', default=60),
+       cfg.IntOpt('device_image_update', default=60),
+                  ]
+
 CONF = cfg.CONF
 CONF.register_opts(conductor_opts, 'conductor')
+CONF.register_opts(audit_intervals_opts, 'conductor_periodic_task_intervals')
 
 # doesn't work otherwise for ceph-manager RPC calls; reply is lost
 #
@@ -5281,7 +5295,7 @@ class ConductorManager(service.PeriodicService):
                                          tsc.install_uuid)
             greenthread.sleep(constants.FIX_INSTALL_UUID_INTERVAL_SECS)
 
-    @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
+    @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.agent_update_request)
     def _agent_update_request(self, context):
         """
         Check DB for inventory objects with an inconsistent state and
@@ -6076,14 +6090,14 @@ class ConductorManager(service.PeriodicService):
                     LOG.error("Removed unsupported deferred config_type %s" %
                               config_type)
 
-    @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
+    @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.kubernetes_local_secrets)
     def _kubernetes_local_secrets_audit(self, context):
         # Audit kubernetes local registry secrets info
         LOG.debug("Sysinv Conductor running periodic audit task for k8s local registry secrets.")
         if self._app:
             self._app.audit_local_registry_secrets(context)
 
-    @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
+    @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.default)
     def _conductor_audit(self, context):
         # periodically, perform audit of inventory
         LOG.debug("Sysinv Conductor running periodic audit task.")
@@ -6156,7 +6170,7 @@ class ConductorManager(service.PeriodicService):
                                            backend.backend,
                                            reason)
 
-    @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
+    @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.storage_backend_failure)
     def _storage_backend_failure_audit(self, context):
         """Check if storage backend is stuck in 'configuring'"""
 
@@ -6738,7 +6752,7 @@ class ConductorManager(service.PeriodicService):
         # No need to detect again until conductor restart
         self._do_detect_swact = False
 
-    @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval,
+    @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.k8s_application,
                                  run_immediately=True)
     def _k8s_application_audit(self, context):
         """Make sure that the required k8s applications are running"""
@@ -14965,7 +14979,7 @@ class ConductorManager(service.PeriodicService):
             host.device_image_update = dconstants.DEVICE_IMAGE_UPDATE_IN_PROGRESS_ABORTED
             host.save(context)
 
-    @periodic_task.periodic_task(spacing=CONF.conductor.audit_interval)
+    @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.device_image_update)
     def _audit_device_image_update(self, context):
         """Check if device image update is stuck in 'in-progress'"""
         dev_img_list = self.dbapi.device_image_state_get_all(
