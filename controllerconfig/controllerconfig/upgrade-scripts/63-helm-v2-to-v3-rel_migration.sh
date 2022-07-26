@@ -90,17 +90,19 @@ function migrate_apps {
     HELM_REL=$(KUBECONFIG=/etc/kubernetes/admin.conf helmv2-cli -- helm list -a | tail -n+2 | awk '{print $1}')
     for rel in ${HELM_REL}; do
             case $rel in
-                # NOT SUPPORTED: auditd-1.0-20.tgz
+                # SUPPORTED: auditd-1.0-20.tgz -> 65-k8s-app-upgrade.sh
                 ns-auditd)
-                    log "$NAME: migration of helm release $rel is not currently supported."
+                    log "$NAME: migrating helm release $rel."
+                    /usr/bin/migrate_helm_release.py $rel
                     ;;
                 # SPECIAL HANDLE: cert-manager-1.0-26.tgz -> 64-upgrade-cert-manager.sh
                 cm-cert-manager | cm-cert-manager-psp-rolebinding)
                     log "$NAME: helm release $rel is being migrated with a dedicated upgrade script."
                     ;;
-                # NOT SUPPORTED: metrics-server-1.0-8.tgz
+                # SUPPORTED: metrics-server-1.0-8.tgz -> 65-k8s-app-upgrade.sh
                 ms-metrics-server-psp-rolebinding | ms-metrics-server)
-                    log "$NAME: migration of helm release $rel is not currently supported."
+                    log "$NAME: migrating helm release $rel."
+                    /usr/bin/migrate_helm_release.py $rel
                     ;;
                 # SUPPORTED: nginx-ingress-controller-1.1-18.tgz -> 65-k8s-app-upgrade.sh
                 ic-nginx-ingress )
@@ -120,9 +122,10 @@ function migrate_apps {
                 portieris-portieris-psp-rolebinding | portieris-portieris-certs | portieris-portieris)
                     log "$NAME: migration of helm release $rel is not currently supported."
                     ;;
-                # NOT SUPPORTED: ptp-notification-1.0-52.tgz
+                # SUPPORTED: ptp-notification-1.0-52.tgz -> 65-k8s-app-upgrade.sh
                 ptp-ptp-notification-psp-rolebinding | ptp-ptp-notification)
-                    log "$NAME: migration of helm release $rel is not currently supported."
+                    log "$NAME: migrating helm release $rel."
+                    /usr/bin/migrate_helm_release.py $rel
                     ;;
                 # SUPPORTED: snmp-1.0-25.tgz -> 65-k8s-app-upgrade.sh
                 ns-snmp)
