@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2020 Wind River Systems, Inc.
+# Copyright (c) 2015-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -11,7 +11,7 @@ from cgtsclient import exc
 CREATION_ATTRIBUTES = ['software_version', 'compatible_version',
                        'required_patches']
 
-IMPORT_ATTRIBUTES = ['path_to_iso', 'path_to_sig', 'active']
+IMPORT_ATTRIBUTES = ['path_to_iso', 'path_to_sig', 'active', 'local']
 
 
 class Load(base.Resource):
@@ -55,10 +55,16 @@ class LoadManager(base.Manager):
             if key in IMPORT_ATTRIBUTES:
                 if key == 'active':
                     active = value
+                elif key == 'local':
+                    local = value
                 else:
                     load_info[key] = value
             else:
                 raise exc.InvalidAttribute(key)
+
+        if local is True:
+            load_info['active'] = active
+            return self._create(path, body=load_info)
 
         json_data = self._upload_multipart(
             path, body=load_info, data={'active': active}, check_exceptions=True)

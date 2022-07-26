@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015-2016 Wind River Systems, Inc.
+# Copyright (c) 2015-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -73,8 +73,18 @@ def do_load_delete(cc, args):
            help=("Perform an active load import operation. "
                  "Applicable only for SystemController to allow import of "
                  "an active load for subcloud install"))
+@utils.arg('--local',
+           action='store_true',
+           default=False,
+           help=("Import the load locally from the active controller. "
+                 "To use this option, first upload the .iso and .sig files to "
+                 "the active controller and then specify the absolute path of "
+                 "both files as 'isopath' and 'sigpath'"))
 def do_load_import(cc, args):
     """Import a load."""
+
+    local = args.local
+
     # If absolute path is not specified, we assume it is the relative path.
     # args.isopath will then be set to the absolute path
     if not os.path.isabs(args.isopath):
@@ -105,7 +115,7 @@ def do_load_import(cc, args):
                 "old or unused load before importing a new one."))
 
     patch = {'path_to_iso': args.isopath, 'path_to_sig': args.sigpath,
-             'active': active}
+             'active': active, 'local': local}
 
     try:
         print("This operation will take a while. Please wait.")
