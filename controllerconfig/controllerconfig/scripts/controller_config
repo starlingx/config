@@ -488,7 +488,7 @@ start()
         cp $CONFIG_DIR/branding/*.tgz /opt/branding 2>/dev/null
 
         # banner customization always returns 0, success:
-        /usr/sbin/install_banner_customization
+        /usr/sbin/apply_banner_customization
 
         cp $CONFIG_DIR/hosts /etc/hosts
         if [ $? -ne 0 ]
