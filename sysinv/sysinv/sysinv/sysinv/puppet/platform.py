@@ -535,6 +535,7 @@ class PlatformPuppet(base.BasePuppet):
 
             cpu_options = ""
             cpu_ranges = {}
+            ignore_recovery = False
 
             host_labels = self.dbapi.label_get_by_host(host.uuid)
             # if worker is lowlatency we need to keep the nohz_full. Also, if
@@ -555,6 +556,7 @@ class PlatformPuppet(base.BasePuppet):
                     cpu_ranges.update({"nohz_full": rcu_nocbs_ranges})
             else:
                 cpu_ranges.update({'nohz_full': 'disabled'})
+                ignore_recovery = True
 
             cpu_ranges.update({
                 "isolcpus": isolcpus_ranges,
@@ -587,6 +589,7 @@ class PlatformPuppet(base.BasePuppet):
                     host.max_cpu_mhz_configured,
                 'platform::compute::grub::params::n_cpus': n_cpus,
                 'platform::compute::grub::params::cpu_options': cpu_options,
+                'platform::compute::grub::params::ignore_recovery': ignore_recovery,
                 'platform::compute::grub::params::bios_cstate': True
             })
         return config
