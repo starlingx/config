@@ -31,7 +31,6 @@ except ImportError:
 from oslo_serialization import jsonutils
 from oslo_utils import uuidutils
 from sysinv.conductor import manager
-from sysinv.conductor import rpcapi
 from sysinv.common import ceph as ceph_utils
 from sysinv.common import constants
 from sysinv.common import utils as cutils
@@ -700,15 +699,10 @@ class StorageTierDependentTCs(base.FunctionalTest):
                   'idisk_uuid': disk_0.uuid}
 
         with nested(mock.patch.object(ceph_utils.CephApiOperator, 'get_monitors_status'),
-                    mock.patch.object(StorageBackendConfig, 'has_backend_configured'),
-                    mock.patch.object(rpcapi.ConductorAPI, 'configure_osd_istor')) as (
-                        mock_mon_status, mock_backend_configured, mock_osd):
+                    mock.patch.object(StorageBackendConfig, 'has_backend_configured')) as (
+                        mock_mon_status, mock_backend_configured):
 
-            def fake_configure_osd_istor(context, istor_obj):
-                istor_obj['osdid'] = 0
-                return istor_obj
             mock_mon_status.return_value = [3, 2, ['controller-0', 'controller-1', 'storage-0']]
-            mock_osd.side_effect = fake_configure_osd_istor
 
             response = self.post_json('/istors', values, expect_errors=True)
         self.assertEqual(http_client.OK, response.status_int)
@@ -765,16 +759,10 @@ class StorageTierDependentTCs(base.FunctionalTest):
                   'idisk_uuid': disk_1.uuid}
 
         with nested(mock.patch.object(ceph_utils.CephApiOperator, 'get_monitors_status'),
-                    mock.patch.object(StorageBackendConfig, 'has_backend_configured'),
-                    mock.patch.object(rpcapi.ConductorAPI, 'configure_osd_istor')) as (
-                        mock_mon_status, mock_backend_configured, mock_osd):
-
-            def fake_configure_osd_istor_1(context, istor_obj):
-                istor_obj['osdid'] = 1
-                return istor_obj
+                    mock.patch.object(StorageBackendConfig, 'has_backend_configured')) as (
+                        mock_mon_status, mock_backend_configured):
 
             mock_mon_status.return_value = [3, 2, ['controller-0', 'controller-1', 'storage-0']]
-            mock_osd.side_effect = fake_configure_osd_istor_1
 
             response = self.post_json('/istors', values, expect_errors=True)
         self.assertEqual(http_client.BAD_REQUEST, response.status_int)
@@ -789,16 +777,10 @@ class StorageTierDependentTCs(base.FunctionalTest):
                   'tier_uuid': saved_tier_uuid}
 
         with nested(mock.patch.object(ceph_utils.CephApiOperator, 'get_monitors_status'),
-                    mock.patch.object(StorageBackendConfig, 'has_backend_configured'),
-                    mock.patch.object(rpcapi.ConductorAPI, 'configure_osd_istor')) as (
-                        mock_mon_status, mock_backend_configured, mock_osd):
-
-            def fake_configure_osd_istor_2(context, istor_obj):
-                istor_obj['osdid'] = 1
-                return istor_obj
+                    mock.patch.object(StorageBackendConfig, 'has_backend_configured')) as (
+                        mock_mon_status, mock_backend_configured):
 
             mock_mon_status.return_value = [3, 2, ['controller-0', 'controller-1', 'storage-0']]
-            mock_osd.side_effect = fake_configure_osd_istor_2
 
             response = self.post_json('/istors', values, expect_errors=True)
         self.assertEqual(http_client.OK, response.status_int)
