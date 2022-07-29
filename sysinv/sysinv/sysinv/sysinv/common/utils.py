@@ -3323,7 +3323,7 @@ def verify_ca_crt(crt):
 
 def verify_intermediate_ca_cert(ca_crt, tls_crt):
     with tempfile.NamedTemporaryFile() as tmpfile:
-        tmpfile.write(ca_crt)
+        tmpfile.write(ca_crt.encode('utf8'))
         tmpfile.flush()
         cmd = ['openssl', 'verify', '-CAfile', tmpfile.name]
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,

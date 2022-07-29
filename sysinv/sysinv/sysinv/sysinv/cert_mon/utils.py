@@ -109,10 +109,10 @@ def verify_adminep_cert_chain():
     txt_tls_crt = base64.decode_as_text(secret_adminep.data['tls.crt'])
 
     with tempfile.NamedTemporaryFile() as ca_tmpfile:
-        ca_tmpfile.write(txt_ca_crt)
+        ca_tmpfile.write(txt_ca_crt.encode('utf8'))
         ca_tmpfile.flush()
         with tempfile.NamedTemporaryFile() as adminep_tmpfile:
-            adminep_tmpfile.write(txt_tls_crt)
+            adminep_tmpfile.write(txt_tls_crt.encode('utf8'))
             adminep_tmpfile.flush()
 
             cmd = ['openssl', 'verify', '-CAfile', constants.DC_ROOT_CA_CERT_PATH,
