@@ -561,6 +561,7 @@ class AppOperator(object):
 
     def _get_image_tags_by_charts_fluxcd(self, app_images_file, manifest, overrides_dir):
         app_imgs = []
+        images_file = None
 
         if os.path.exists(app_images_file):
             with io.open(app_images_file, 'r', encoding='utf-8') as f:
@@ -598,7 +599,7 @@ class AppOperator(object):
 
                 # Get the image tags by chart from the images file
                 helm_chart_imgs = {}
-                if chart_name in images_file:
+                if images_file and chart_name in images_file:
                     helm_chart_imgs = images_file[chart_name]
 
                 # Get the image tags from the chart overrides file
@@ -674,6 +675,7 @@ class AppOperator(object):
 
     def _get_image_tags_by_charts_armada(self, app_images_file, app_manifest_file, overrides_dir):
         app_imgs = []
+        images_file = None
         manifest_update_required = False
 
         if os.path.exists(app_images_file):
@@ -696,7 +698,7 @@ class AppOperator(object):
 
                 # Get the image tags by chart from the images file
                 helm_chart_imgs = {}
-                if chart_name in images_file:
+                if images_file and chart_name in images_file:
                     helm_chart_imgs = images_file[chart_name]
 
                 # Get the image tags from the chart overrides file
@@ -1684,8 +1686,8 @@ class AppOperator(object):
 
                 percent = round((float(num) /  # pylint: disable=W1619, W1633
                                  (charts_count - tadjust)) * 100)
-                progress_str = "Applying app, overall completion: {}%". \
-                    format(percent)
+                progress_str = "Applying app {}, overall completion: {}%". \
+                    format(app.name, percent)
 
                 if app.progress != progress_str:
                     LOG.info("%s" % progress_str)
