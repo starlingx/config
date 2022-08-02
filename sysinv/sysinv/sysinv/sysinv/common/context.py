@@ -24,19 +24,23 @@ class RequestContext(context.RequestContext):
 
     def __init__(self, auth_token=None, domain_id=None, domain_name=None,
                  user=None, tenant=None, is_admin=False, is_public_api=False,
-                 read_only=False, show_deleted=False, request_id=None,
-                 service_catalog=None):
+                 project_name=None, read_only=False, show_deleted=False,
+                 request_id=None, roles=None, service_catalog=None):
         """Stores several additional request parameters:
 
         :param domain_id: The ID of the domain.
         :param domain_name: The name of the domain.
         :param is_public_api: Specifies whether the request should be processed
                               without authentication.
+        :param project_name: The name of the project.
+        :param roles: The list of roles.
         :param service_catalog: Specifies the service_catalog
         """
         self.is_public_api = is_public_api
         self.domain_id = domain_id
         self.domain_name = domain_name
+        self.project_name = project_name
+        self.roles = roles
         self._session = None
 
         super(RequestContext, self).__init__(auth_token=auth_token,
@@ -64,6 +68,8 @@ class RequestContext(context.RequestContext):
         result = {'domain_id': self.domain_id,
                   'domain_name': self.domain_name,
                   'is_public_api': self.is_public_api,
+                  'project_name': self.project_name,
+                  'roles': self.roles,
                   'service_catalog': self.service_catalog}
 
         result.update(super(RequestContext, self).to_dict())

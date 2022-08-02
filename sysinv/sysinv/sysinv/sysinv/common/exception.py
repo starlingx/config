@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # All Rights Reserved.
@@ -129,6 +129,10 @@ class AdminRequired(NotAuthorized):
 
 class PolicyNotAuthorized(NotAuthorized):
     message = _("Policy doesn't allow %(action)s to be performed.")
+
+
+class PolicyNotFound(NotAuthorized):
+    message = _("Policy not found for requested action.")
 
 
 class OperationNotPermitted(NotAuthorized):

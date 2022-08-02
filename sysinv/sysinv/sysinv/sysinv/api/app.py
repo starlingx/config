@@ -68,7 +68,7 @@ def setup_app(pecan_config=None, extra_hooks=None):
         pecan_config = get_pecan_config()
 
     if pecan_config.app.enable_acl:
-        app_hooks.append(hooks.AdminAuthHook())
+        app_hooks.append(hooks.AccessPolicyHook())
 
     pecan.configuration.set_config(dict(pecan_config), overwrite=True)
 

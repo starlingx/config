@@ -21,6 +21,7 @@ import os.path
 
 from oslo_config import cfg
 from sysinv._i18n import _
+from sysinv.api import policies as controller_policies
 from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.openstack.common import policy
@@ -65,7 +66,9 @@ def init():
 
 def _set_rules(data):
     default_rule = CONF.policy_default_rule
-    policy.set_rules(policy.Rules.load_json(data, default_rule))
+    rules = policy.Rules.load_rules(data, default_rule,
+        controller_policies.list_rules())
+    policy.set_rules(rules)
 
 
 def enforce(context, action, target, do_raise=True):

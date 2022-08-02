@@ -27,10 +27,13 @@ from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1.query import Query
+from sysinv.api.policies import base as base_policy
+from sysinv.api.policies import service_parameter as sp_policy
 from sysinv import objects
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
+from sysinv.common import policy
 from sysinv.common import service_parameter
 from sysinv.common import utils as cutils
 from sysinv.openstack.common.rpc import common as rpc_common
@@ -821,3 +824,24 @@ class ServiceParameterController(rest.RestController):
         except Exception as e:
             with excutils.save_and_reraise_exception():
                 LOG.exception(e)
+
+    def enforce_policy(self, method_name, request):
+        """Check policy rules for each action of this controller."""
+        context = request.context
+        if method_name == "apply":
+            policy.enforce(context, sp_policy.POLICY_ROOT % "apply",
+                {'project_name': base_policy.ADMIN_PROJECT_NAME})
+        elif method_name == "delete":
+            policy.enforce(context, sp_policy.POLICY_ROOT % "delete",
+                {'project_name': base_policy.ADMIN_PROJECT_NAME})
+        elif method_name in ["get_all", "get_one"]:
+            policy.enforce(context, sp_policy.POLICY_ROOT % "get",
+                {'project_name': base_policy.ADMIN_PROJECT_NAME})
+        elif method_name == "patch":
+            policy.enforce(context, sp_policy.POLICY_ROOT % "modify",
+                {'project_name': base_policy.ADMIN_PROJECT_NAME})
+        elif method_name == "post":
+            policy.enforce(context, sp_policy.POLICY_ROOT % "add",
+                {'project_name': base_policy.ADMIN_PROJECT_NAME})
+        else:
+            raise exception.PolicyNotFound()
