@@ -563,13 +563,40 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         method = interface.get_interface_address_method(
             self.context, self.iface)
         self.assertEqual(method, 'manual')
+        self.mock_puppet_interface_sysconfig.return_value = False
+        method = interface.get_interface_address_method(
+            self.context, self.iface)
+        self.assertEqual(method, 'manual')
 
     def test_get_interface_address_method_for_data(self):
+        # test for CentOS
         self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
         self.iface['networktype'] = constants.NETWORK_TYPE_DATA
         method = interface.get_interface_address_method(
             self.context, self.iface)
         self.assertEqual(method, 'manual')
+        # test for Debian
+        self.mock_puppet_interface_sysconfig.return_value = False
+        self.iface['ipv4_mode'] = constants.IPV4_DISABLED
+        self.iface['ipv6_mode'] = constants.IPV6_DISABLED
+        method = interface.get_interface_address_method(
+            self.context, self.iface)
+        self.assertEqual(method, 'manual')
+        self.iface['ipv4_mode'] = constants.IPV4_STATIC
+        self.iface['ipv6_mode'] = constants.IPV6_DISABLED
+        method = interface.get_interface_address_method(
+            self.context, self.iface)
+        self.assertEqual(method, 'static')
+        self.iface['ipv4_mode'] = constants.IPV4_DISABLED
+        self.iface['ipv6_mode'] = constants.IPV6_STATIC
+        method = interface.get_interface_address_method(
+            self.context, self.iface)
+        self.assertEqual(method, 'static')
+        self.iface['ipv4_mode'] = constants.IPV4_STATIC
+        self.iface['ipv6_mode'] = constants.IPV6_STATIC
+        method = interface.get_interface_address_method(
+            self.context, self.iface)
+        self.assertEqual(method, 'static')
 
     def test_get_interface_address_method_for_pci_sriov(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
@@ -577,10 +604,18 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         method = interface.get_interface_address_method(
             self.context, self.iface)
         self.assertEqual(method, 'manual')
+        self.mock_puppet_interface_sysconfig.return_value = False
+        method = interface.get_interface_address_method(
+            self.context, self.iface)
+        self.assertEqual(method, 'manual')
 
     def test_get_interface_address_method_for_pci_pthru(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_PASSTHROUGH
         self.iface['networktype'] = constants.NETWORK_TYPE_PCI_PASSTHROUGH
+        method = interface.get_interface_address_method(
+            self.context, self.iface)
+        self.assertEqual(method, 'manual')
+        self.mock_puppet_interface_sysconfig.return_value = False
         method = interface.get_interface_address_method(
             self.context, self.iface)
         self.assertEqual(method, 'manual')
@@ -599,6 +634,10 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
         self.assertEqual(method, 'manual')
+        self.mock_puppet_interface_sysconfig.return_value = False
+        method = interface.get_interface_address_method(
+            self.context, self.iface, network.id)
+        self.assertEqual(method, 'manual')
 
     def test_get_interface_address_method_for_pxeboot_storage(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
@@ -614,6 +653,10 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
         self.assertEqual(method, 'manual')
+        self.mock_puppet_interface_sysconfig.return_value = False
+        method = interface.get_interface_address_method(
+            self.context, self.iface, network.id)
+        self.assertEqual(method, 'manual')
 
     def test_get_interface_address_method_for_pxeboot_controller(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
@@ -624,6 +667,10 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self._update_context()
         network = self.dbapi.network_get_by_type(
             constants.NETWORK_TYPE_PXEBOOT)
+        method = interface.get_interface_address_method(
+            self.context, self.iface, network.id)
+        self.assertEqual(method, 'static')
+        self.mock_puppet_interface_sysconfig.return_value = False
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
         self.assertEqual(method, 'static')
@@ -642,6 +689,10 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
         self.assertEqual(method, 'dhcp')
+        self.mock_puppet_interface_sysconfig.return_value = False
+        method = interface.get_interface_address_method(
+            self.context, self.iface, network.id)
+        self.assertEqual(method, 'dhcp')
 
     def test_get_interface_address_method_for_mgmt_storage(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
@@ -652,6 +703,10 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self._update_context()
         network = self.dbapi.network_get_by_type(
             constants.NETWORK_TYPE_MGMT)
+        method = interface.get_interface_address_method(
+            self.context, self.iface, network.id)
+        self.assertEqual(method, 'dhcp')
+        self.mock_puppet_interface_sysconfig.return_value = False
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
         self.assertEqual(method, 'dhcp')
@@ -670,6 +725,10 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
         self.assertEqual(method, 'static')
+        self.mock_puppet_interface_sysconfig.return_value = False
+        method = interface.get_interface_address_method(
+            self.context, self.iface, network.id)
+        self.assertEqual(method, 'static')
 
     def test_get_interface_address_method_for_cluster_host_worker(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
@@ -680,6 +739,10 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self._update_context()
         network = self.dbapi.network_get_by_type(
             constants.NETWORK_TYPE_CLUSTER_HOST)
+        method = interface.get_interface_address_method(
+            self.context, self.iface, network.id)
+        self.assertEqual(method, 'static')
+        self.mock_puppet_interface_sysconfig.return_value = False
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
         self.assertEqual(method, 'static')
@@ -698,6 +761,10 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
         self.assertEqual(method, 'static')
+        self.mock_puppet_interface_sysconfig.return_value = False
+        method = interface.get_interface_address_method(
+            self.context, self.iface, network.id)
+        self.assertEqual(method, 'static')
 
     def test_get_interface_address_method_for_cluster_host_controller(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
@@ -708,6 +775,10 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self._update_context()
         network = self.dbapi.network_get_by_type(
             constants.NETWORK_TYPE_CLUSTER_HOST)
+        method = interface.get_interface_address_method(
+            self.context, self.iface, network.id)
+        self.assertEqual(method, 'static')
+        self.mock_puppet_interface_sysconfig.return_value = False
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
         self.assertEqual(method, 'static')
@@ -726,6 +797,10 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
         self.assertEqual(method, 'static')
+        self.mock_puppet_interface_sysconfig.return_value = False
+        method = interface.get_interface_address_method(
+            self.context, self.iface, network.id)
+        self.assertEqual(method, 'static')
 
     def test_get_interface_address_method_for_platform_ipv4(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
@@ -734,11 +809,19 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         method = interface.get_interface_address_method(
             self.context, self.iface)
         self.assertEqual(method, 'static')
+        self.mock_puppet_interface_sysconfig.return_value = False
+        method = interface.get_interface_address_method(
+            self.context, self.iface)
+        self.assertEqual(method, 'static')
 
     def test_get_interface_address_method_for_platform_ipv6(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['ipv6_mode'] = constants.IPV6_STATIC
         self.iface['networktype'] = constants.NETWORK_TYPE_NONE
+        method = interface.get_interface_address_method(
+            self.context, self.iface)
+        self.assertEqual(method, 'static')
+        self.mock_puppet_interface_sysconfig.return_value = False
         method = interface.get_interface_address_method(
             self.context, self.iface)
         self.assertEqual(method, 'static')
@@ -753,6 +836,10 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self._update_context()
         network = self.dbapi.network_get_by_type(
             constants.NETWORK_TYPE_OAM)
+        method = interface.get_interface_address_method(
+            self.context, self.iface, network.id)
+        self.assertEqual(method, 'dhcp')
+        self.mock_puppet_interface_sysconfig.return_value = False
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
         self.assertEqual(method, 'dhcp')

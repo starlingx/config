@@ -681,17 +681,23 @@ def get_interface_address_method(context, iface, network_id=None):
     """
     networktype = find_networktype_by_network_id(context, network_id)
 
+    has_static_addr = False
+    if (iface.ipv4_mode == constants.IPV4_STATIC or iface.ipv6_mode == constants.IPV6_STATIC):
+        has_static_addr = True
+
     if iface.ifclass == constants.INTERFACE_CLASS_DATA:
-        if is_vswitch_type_unaccelerated(context):
-            return STATIC_METHOD
+        if is_syscfg_network():
+            if is_vswitch_type_unaccelerated(context):
+                return STATIC_METHOD
+        else:
+            if has_static_addr:
+                return STATIC_METHOD
         # All data interfaces configured in the kernel because they are not
         # natively supported in vswitch or need to be shared with the kernel
         # because of a platform VLAN should be left as manual config
         return MANUAL_METHOD
     elif (iface.ifclass == constants.INTERFACE_CLASS_PLATFORM and
-        networktype is None and
-        (iface.ipv4_mode == constants.IPV4_STATIC or
-            iface.ipv6_mode == constants.IPV6_STATIC)):
+            networktype is None and has_static_addr):
         # Allow platform-class interface with ipv4 mode set to static to
         # have static ip address
         return STATIC_METHOD
