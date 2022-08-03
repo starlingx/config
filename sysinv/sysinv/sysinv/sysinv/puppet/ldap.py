@@ -1,8 +1,9 @@
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+import keyring
 
 from passlib.hash import ldap_salted_sha1 as hash
 
@@ -18,6 +19,9 @@ class LdapPuppet(base.BasePuppet):
     def get_secure_static_config(self):
         password = self._generate_random_password()
         passhash = hash.encrypt(password)
+
+        # Store the ldapadmin password for client (such as sssd)
+        keyring.set_password('ldap', 'ldapadmin', password)
 
         return {
             'platform::ldap::params::admin_pw': password,
