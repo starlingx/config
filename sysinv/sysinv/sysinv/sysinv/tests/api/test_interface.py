@@ -1565,6 +1565,16 @@ class TestPostMixin(object):
             host=self.worker, sriov_numvfs=4, expect_errors=True)
 
     # Expected message:
+    # Value for number of SR-IOV VFs must be > 0.
+    def test_create_vf_interface_numvfs_less_than_zero(self):
+        self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
+                              host=self.worker)
+        port, lower_iface = self._create_sriov(
+            'sriov', host=self.worker, sriov_numvfs=4)
+        self._create_vf('vf1', lower_iface=lower_iface,
+            host=self.worker, sriov_numvfs=-1, expect_errors=True)
+
+    # Expected message:
     # The number of virtual functions _ must be less than or equal to the
     # available VFs _ available on the underlying interface _
     def test_create_invalid_vf_interface_numvfs_multiple_children(self):
