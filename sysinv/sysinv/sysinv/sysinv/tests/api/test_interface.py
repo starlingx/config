@@ -1036,12 +1036,37 @@ class TestPostMixin(object):
                               datanetworks='group0-ext0',
                               expect_errors=True)
 
-    # Expected error: Cannot use special characters in interface name.
-    def test_invalid_character_interface_name(self):
-        self._create_ethernet('bad-name', constants.NETWORK_TYPE_DATA,
+    # Expected error: Cannot use '+' as a special character in interface name.
+    def test_invalid_plus_character_interface_name(self):
+        self._create_ethernet('bad+name', constants.NETWORK_TYPE_DATA,
                               ifclass=constants.INTERFACE_CLASS_DATA,
                               datanetworks='group0-ext0',
                               expect_errors=True)
+
+    # Expected error: Cannot use '=' as a special character in interface name
+    def test_invalid_equals_character_interface_name(self):
+        self._create_ethernet('bad=name', constants.NETWORK_TYPE_DATA,
+                              ifclass=constants.INTERFACE_CLASS_DATA,
+                              datanetworks='group0-ext0',
+                              expect_errors=True)
+
+    def test_valid_dash_character_interface_name(self):
+        self._create_ethernet('good-name', constants.NETWORK_TYPE_DATA,
+                              ifclass=constants.INTERFACE_CLASS_DATA,
+                              datanetworks='group0-ext0',
+                              host=self.worker)
+
+    def test_valid_dot_character_interface_name(self):
+        self._create_ethernet('good.name', constants.NETWORK_TYPE_DATA,
+                              ifclass=constants.INTERFACE_CLASS_DATA,
+                              datanetworks='group0-ext0',
+                              host=self.worker)
+
+    def test_valid_underscore_character_interface_name(self):
+        self._create_ethernet('good_name', constants.NETWORK_TYPE_DATA,
+                              ifclass=constants.INTERFACE_CLASS_DATA,
+                              datanetworks='group0-ext0',
+                              host=self.worker)
 
     # Expected error: Interface ___ has name length greater than 10.
     def test_invalid_interface_name_length(self):
