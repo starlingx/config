@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016-2020 Wind River Systems, Inc.
+# Copyright (c) 2016-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -306,6 +306,11 @@ def migrate_pxeboot_config(from_release, to_release):
 
 def migrate_armada_config(from_release, to_release):
     """ Migrates armada configuration. """
+
+    # Check if the folder exist before migration
+    if not os.path.exists(os.path.join(PLATFORM_PATH, "armada")):
+        LOG.info("Skipping armada migration, the directory doesn't exist")
+        return
 
     LOG.info("Migrating armada config")
     devnull = open(os.devnull, 'w')
