@@ -16,7 +16,7 @@ override_dh_install:
 	install -p -D -m 700 scripts/upgrade_swact_migration.py $(ROOT)/usr/bin/upgrade_swact_migration.py
 	install -p -D -m 755 scripts/image-backup.sh $(ROOT)/usr/bin/image-backup.sh
 	install -d -m 755 $(ROOT)/etc/goenabled.d/
-	install -p -D -m 700 scripts/config_goenabled_check.sh $(ROOT)/etc/goenabled.d/config_goenabled_check.sh
+	install -p -D -m 700 scripts/config_goenabled_check.sh $(ROOT)/etc/goenabled.d/config_goenabled_check.sh.controller
 	install -d -m 755 $(ROOT)/etc/init.d
 	install -p -D -m 755 scripts/controller_config $(ROOT)/etc/init.d/controller_config
 	install -d -m 755 $(ROOT)/etc/upgrade.d
