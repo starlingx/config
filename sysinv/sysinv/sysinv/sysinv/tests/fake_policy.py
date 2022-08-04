@@ -16,10 +16,10 @@
 
 
 policy_data = """
-{
-    "admin_api": "role:admin",
-    "admin_or_owner": "is_admin:True or project_id:%(project_id)s",
-    "is_admin": "role:admin or role:administrator",
-    "default": "rule:admin_or_owner"
-}
+---
+admin_api: "role:admin"
+admin_or_owner: "is_admin:True or project_id:%(project_id)s"
+is_admin: "role:admin or role:administrator"
+default: "rule:admin_or_owner"
+
 """

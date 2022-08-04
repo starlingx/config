@@ -1,4 +1,4 @@
-etc/sysinv/policy.json etc/sysinv
+etc/sysinv/policy.yaml etc/sysinv
 etc/sysinv/crushmap-storage-model.txt etc/sysinv
 etc/sysinv/crushmap-controller-model.txt etc/sysinv
 etc/sysinv/crushmap-aio-sx.txt etc/sysinv

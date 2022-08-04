@@ -47,8 +47,6 @@ class FunctionalTest(base.TestCase):
     def setUp(self):
         super(FunctionalTest, self).setUp()
         cfg.CONF.set_override("auth_version", "v2.0", group=acl.OPT_GROUP_NAME)
-        cfg.CONF.set_override("policy_file",
-                              self.path_get('tests/policy.json'))
         self.app = self._make_app()
         self.dbapi = dbapi.get_instance()
         self.context = sysinv_context.RequestContext(is_admin=True)
