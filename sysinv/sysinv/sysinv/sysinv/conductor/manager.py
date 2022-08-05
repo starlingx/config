@@ -5993,7 +5993,7 @@ class ConductorManager(service.PeriodicService):
                                 max_count = MAX_COUNT_BOOTING
                             else:
                                 max_count = MAX_COUNT
-                            host.install_state_info += factor * "+"
+                            host.install_state += factor * "+"
                             if host.install_state.count('+') >= max_count:
                                 LOG.info(
                                     "Auditing %s, install_state changed from "
