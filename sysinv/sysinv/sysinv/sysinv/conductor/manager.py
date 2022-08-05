@@ -1651,40 +1651,6 @@ class ConductorManager(service.PeriodicService):
                      "Skipping deleting ceph monitor."
                      % str(host.hostname))
 
-    def _update_upgraded_ceph_monitors(self, context):
-        """Run the Ceph monitor update manifests after upgrading
-
-           Note: this can be removed in the release after STX6.0
-
-           returns True if runtime manifests were applied
-        """
-        if StorageBackendConfig.has_backend(
-                self.dbapi, constants.CINDER_BACKEND_CEPH):
-
-            personalities = [constants.CONTROLLER,
-                             constants.WORKER,
-                             constants.STORAGE]
-
-            monitors = self.dbapi.ceph_mon_get_list()
-            host_uuids = []
-            for mon in monitors:
-                host_uuids.append(mon.ihost_uuid)
-            config_uuid = self._config_update_hosts(context, personalities,
-                                                    host_uuids)
-            config_dict = {
-                "personalities": personalities,
-                "host_uuids": host_uuids,
-                "classes": ['platform::ceph::upgrade::runtime'],
-                puppet_common.REPORT_STATUS_CFG:
-                puppet_common.REPORT_UPGRADE_ACTIONS
-            }
-            self._config_apply_runtime_manifest(context,
-                                                config_uuid=config_uuid,
-                                                config_dict=config_dict)
-            return True
-
-        return False
-
     def _split_etcd_security_config(self, context):
         """Update the manifests for separating etcd ca
 
@@ -12038,9 +12004,6 @@ class ConductorManager(service.PeriodicService):
         if from_version == tsc.SW_VERSION_21_05:
             # Apply etcd split ca puppet manifest for standby controller.
             manifests_applied = self._split_etcd_security_config(context)
-
-            # Make sure to remove v1 from address format after upgrade
-            manifests_applied |= self._update_upgraded_ceph_monitors(context)
 
         if from_version == tsc.SW_VERSION_21_12:
             manifests_applied |= self._update_kubeadm_feature_gates(context)
