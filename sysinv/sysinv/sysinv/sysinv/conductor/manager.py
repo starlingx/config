@@ -163,7 +163,7 @@ audit_intervals_opts = [
        cfg.IntOpt('ihost_action', default=60),
        cfg.IntOpt('storage_backend_failure', default=60),
        cfg.IntOpt('k8s_application', default=60),
-       cfg.IntOpt('device_image_update', default=60),
+       cfg.IntOpt('device_image_update', default=300),
                   ]
 
 CONF = cfg.CONF
