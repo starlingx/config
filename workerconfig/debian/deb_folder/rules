@@ -1,6 +1,8 @@
 #!/usr/bin/make -f
 #export DH_VERBOSE = 1
 
+ROOT := $(CURDIR)/debian/tmp
+
 %:
 	dh $@
 
@@ -8,9 +10,10 @@ override_dh_auto_build:
 	: # No build required
 
 override_dh_auto_install:
-	$(MAKE) INITDDIR=`pwd`/debian/tmp/etc/init.d \
-		GOENABLEDDIR=`pwd`/debian/tmp/etc/goenabled.d \
-	    SYSTEMDDIR=`pwd`/debian/tmp/lib/systemd install
+	install -d -m 755 ${ROOT}/etc/init.d
+	install -p -D -m 700 worker_config ${ROOT}/etc/init.d/worker_config
+	install -d -m 755 $(ROOT)/etc/goenabled.d/
+	install -p -D -m 700 config_goenabled_check.sh $(ROOT)/etc/goenabled.d/config_goenabled_check.sh.worker
 
 override_dh_installsystemd:
-	dh_installsystemd -pworkerconfig-standalone
+	dh_installsystemd -pworkerconfig-standalone --name=workerconfig --no-start workerconfig.service
