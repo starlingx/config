@@ -698,6 +698,12 @@ def get_interface_address_method(context, iface, network_id=None):
         return MANUAL_METHOD
     elif (iface.ifclass == constants.INTERFACE_CLASS_PLATFORM and
             networktype is None and has_static_addr):
+
+        # On Debian, interfaces of networktype:None with alias should be
+        # manual method (i.e: lo) and alias will be Static method (i.e: lo:1)
+        if not is_syscfg_network() and len(iface.networktypelist) > 1:
+            return MANUAL_METHOD
+
         # Allow platform-class interface with ipv4 mode set to static to
         # have static ip address
         return STATIC_METHOD
