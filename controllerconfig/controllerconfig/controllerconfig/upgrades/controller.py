@@ -326,6 +326,33 @@ def migrate_armada_config(from_release, to_release):
         raise
 
 
+def migrate_fluxcd_config(from_release, to_release):
+    """ Migrates fluxcd configuration. """
+
+    # Check if the folder exists before migration
+    if not os.path.exists(os.path.join(PLATFORM_PATH, "fluxcd")):
+        LOG.info("Skipping fluxcd migration, the directory doesn't exist")
+        return
+
+    LOG.info("Migrating fluxcd config")
+    devnull = open(os.devnull, 'w')
+
+    # Copy the entire fluxcd.cfg directory to pick up any changes made
+    # after the data was migrated.
+    source_fluxcd = os.path.join(PLATFORM_PATH, "fluxcd", from_release, "")
+    dest_fluxcd = os.path.join(PLATFORM_PATH, "fluxcd", to_release)
+    try:
+        subprocess.check_call(
+            ["rsync",
+             "-a",
+             os.path.join(source_fluxcd),
+             os.path.join(dest_fluxcd)],
+            stdout=devnull)
+    except subprocess.CalledProcessError:
+        LOG.exception("Failed to migrate %s" % source_fluxcd)
+        raise
+
+
 def migrate_helm_config(from_release, to_release):
     """ Migrates helm configuration. """
 
@@ -847,6 +874,10 @@ def upgrade_controller(from_release, to_release):
     print("Migrating armada configuration...")
     migrate_armada_config(from_release, to_release)
 
+    # Migrate fluxcd config
+    print("Migrating fluxcd configuration...")
+    migrate_fluxcd_config(from_release, to_release)
+
     # Migrate helm config
     print("Migrating helm configuration...")
     migrate_helm_config(from_release, to_release)
@@ -1328,6 +1359,10 @@ def upgrade_controller_simplex(backup_file):
     # Migrate armada config
     print("Migrating armada configuration...")
     migrate_armada_config(from_release, to_release)
+
+    # Migrate fluxcd config
+    print("Migrating fluxcd configuration...")
+    migrate_fluxcd_config(from_release, to_release)
 
     # Migrate helm config
     print("Migrating helm configuration...")
