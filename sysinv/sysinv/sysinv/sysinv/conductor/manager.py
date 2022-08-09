@@ -6071,37 +6071,39 @@ class ConductorManager(service.PeriodicService):
 
         LOG.debug("_audit_deferred_runtime_config %s" %
                   self._host_deferred_runtime_config)
-        if not self._ready_to_apply_runtime_config(context):
+
+        if not self._host_deferred_runtime_config or \
+                not self._ready_to_apply_runtime_config(context):
             return
-        if self._host_deferred_runtime_config:
-            # apply the deferred runtime manifests
-            for config in list(self._host_deferred_runtime_config):
-                config_type = config.get('config_type')
-                LOG.info("found _audit_deferred_runtime_config request apply %s" %
-                         config)
-                if config_type == CONFIG_APPLY_RUNTIME_MANIFEST:
-                    # config runtime manifest system allows for filtering on scoped runtime classes
-                    # to allow for more efficient handling while another scoped class apply may
-                    # already be in progress
-                    config_dict = config.get('config_dict') or {}
-                    classes_list = list(config_dict.get('classes') or [])
-                    filter_classes = [x for x in self.PUPPET_RUNTIME_FILTER_CLASSES if x in classes_list]
-                    LOG.info("config runtime found route config filter_classes=%s cd= %s" %
-                             (filter_classes, config_dict))
-                    self._config_apply_runtime_manifest(
-                        context,
-                        config['config_uuid'],
-                        config['config_dict'],
-                        force=config.get('force', False),
-                        filter_classes=filter_classes)
-                elif config_type == CONFIG_UPDATE_FILE:
-                    self._config_update_file(
-                        context,
-                        config['config_uuid'],
-                        config['config_dict'])
-                else:
-                    LOG.error("Removed unsupported deferred config_type %s" %
-                              config_type)
+
+        # apply the deferred runtime manifests
+        for config in list(self._host_deferred_runtime_config):
+            config_type = config.get('config_type')
+            LOG.info("found _audit_deferred_runtime_config request apply %s" %
+                        config)
+            if config_type == CONFIG_APPLY_RUNTIME_MANIFEST:
+                # config runtime manifest system allows for filtering on scoped runtime classes
+                # to allow for more efficient handling while another scoped class apply may
+                # already be in progress
+                config_dict = config.get('config_dict') or {}
+                classes_list = list(config_dict.get('classes') or [])
+                filter_classes = [x for x in self.PUPPET_RUNTIME_FILTER_CLASSES if x in classes_list]
+                LOG.info("config runtime found route config filter_classes=%s cd= %s" %
+                            (filter_classes, config_dict))
+                self._config_apply_runtime_manifest(
+                    context,
+                    config['config_uuid'],
+                    config['config_dict'],
+                    force=config.get('force', False),
+                    filter_classes=filter_classes)
+            elif config_type == CONFIG_UPDATE_FILE:
+                self._config_update_file(
+                    context,
+                    config['config_uuid'],
+                    config['config_dict'])
+            else:
+                LOG.error("Removed unsupported deferred config_type %s" %
+                            config_type)
 
     @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.deferred_runtime_config)
     def _audit_deferred_runtime_config_periodic(self, context):
