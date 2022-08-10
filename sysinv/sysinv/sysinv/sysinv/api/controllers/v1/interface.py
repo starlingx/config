@@ -764,17 +764,32 @@ def _check_interface_name(op, interface, ihost):
                                          "greater than {}.".
                                          format(ifname, iflen)))
 
-    # Check for invalid characters
+    # Check for invalid characters in vlan's ifname
     vlan_id = None
     if iftype == constants.INTERFACE_TYPE_VLAN:
         vlan_id = interface['vlan_id']
-    invalidChars = set(string.punctuation.replace("_", ""))
+    invalidChars_vlan = set(string.punctuation.replace("_", ""))
+
     if vlan_id is not None:
         # Allow VLAN interfaces to have "." in the name
-        invalidChars.remove(".")
-    if any(char in invalidChars for char in ifname):
-        msg = _("Cannot use special characters in interface name.")
+        invalidChars_vlan.remove(".")
+
+    if any(char in invalidChars_vlan for char in ifname) and (vlan_id is not None):
+        msg = _("Cannot use special characters in vlan interface name.")
         raise wsme.exc.ClientSideError(msg)
+
+    # Check for invalid characters in other if names
+    invalidChars = set(string.punctuation)
+
+    # Allow the use of "-", "_", and "." in ifname
+    invalidChars.remove("-")
+    invalidChars.remove("_")
+    invalidChars.remove(".")
+
+    for char in invalidChars:
+        if char in ifname:
+            msg = _("Cannot use '{}' as a special character in interface name.".format(char))
+            raise wsme.exc.ClientSideError(msg)
 
     # ifname must be unique within the host
     if op == "add":
