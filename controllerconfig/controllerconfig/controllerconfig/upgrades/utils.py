@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016-2021 Wind River Systems, Inc.
+# Copyright (c) 2016-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -386,3 +386,14 @@ def get_keystone_project_id(project_name):
                 return project_id['id']
             else:
                 return project_id
+
+
+def get_postgres_bin():
+    """ Get the path to the postgres binaries"""
+
+    try:
+        return subprocess.check_output(
+            ['pg_config', '--bindir']).decode().rstrip('\n')
+    except subprocess.CalledProcessError:
+        LOG.exception("Failed to get postgres bin directory.")
+        raise

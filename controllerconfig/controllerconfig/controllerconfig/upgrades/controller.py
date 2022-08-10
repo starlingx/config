@@ -49,6 +49,7 @@ from oslo_log import log as logging
 
 LOG = logging.getLogger(__name__)
 
+POSTGRES_BIN = utils.get_postgres_bin()
 POSTGRES_MOUNT_PATH = '/mnt/postgresql'
 POSTGRES_DUMP_MOUNT_PATH = '/mnt/db_dump'
 DB_CONNECTION_FORMAT = "connection=postgresql://%s:%s@127.0.0.1/%s\n"
@@ -470,7 +471,9 @@ def create_database():
 
     db_create_commands = [
         # Configure new data directory for postgres
-        'sudo -u postgres initdb -D ' + utils.POSTGRES_DATA_DIR,
+        'sudo -u postgres {} -D {}'.format(
+            os.path.join(POSTGRES_BIN, 'initdb'),
+            utils.POSTGRES_DATA_DIR),
         'chmod -R 700 ' + utils.POSTGRES_DATA_DIR,
         'chown -R postgres ' + utils.POSTGRES_DATA_DIR,
     ]
@@ -900,14 +903,15 @@ def upgrade_controller(from_release, to_release):
 
     # Start the postgres server
     try:
-        subprocess.check_call(['sudo',
-                               '-u',
-                               'postgres',
-                               'pg_ctl',
-                               '-D',
-                               utils.POSTGRES_DATA_DIR,
-                               'start'],
-                              stdout=devnull)
+        subprocess.check_call([
+            'sudo',
+            '-u',
+            'postgres',
+            os.path.join(POSTGRES_BIN, 'pg_ctl'),
+            '-D',
+            utils.POSTGRES_DATA_DIR,
+            'start'],
+            stdout=devnull)
     except subprocess.CalledProcessError:
         LOG.exception("Failed to start postgres service")
         raise
@@ -975,14 +979,15 @@ def upgrade_controller(from_release, to_release):
 
     # Stop postgres server
     try:
-        subprocess.check_call(['sudo',
-                               '-u',
-                               'postgres',
-                               'pg_ctl',
-                               '-D',
-                               utils.POSTGRES_DATA_DIR,
-                               'stop'],
-                              stdout=devnull)
+        subprocess.check_call([
+            'sudo',
+            '-u',
+            'postgres',
+            os.path.join(POSTGRES_BIN, 'pg_ctl'),
+            '-D',
+            utils.POSTGRES_DATA_DIR,
+            'stop'],
+            stdout=devnull)
     except subprocess.CalledProcessError:
         LOG.exception("Failed to stop postgres service")
         raise
