@@ -186,20 +186,27 @@ class RPCHook(hooks.PecanHook):
 class AccessPolicyHook(hooks.PecanHook):
     """Verify that the user has the needed credentials to execute the action."""
     def before(self, state):
-        controller = state.controller.__self__
-        if hasattr(controller, 'enforce_policy'):
-            try:
-                controller_method = state.controller.__name__
-                controller.enforce_policy(controller_method, state.request)
-            except Exception:
-                raise exc.HTTPForbidden()
-        else:
-            context = state.request.context
-            is_admin_api = policy.authorize(
+        context = state.request.context
+        if not context.is_public_api:
+            controller = state.controller.__self__
+            if hasattr(controller, 'enforce_policy'):
+                try:
+                    controller_method = state.controller.__name__
+                    controller.enforce_policy(controller_method, state.request)
+                except Exception:
+                    raise exc.HTTPForbidden()
+            else:
+                method = state.request.method
+                if method == 'GET':
+                    has_api_access = policy.authorize(
+                        base_policy.READER_IN_SYSTEM_PROJECTS, {},
+                        context.to_dict(), do_raise=False)
+                else:
+                    has_api_access = policy.authorize(
                         base_policy.ADMIN_IN_SYSTEM_PROJECTS, {},
                         context.to_dict(), do_raise=False)
-            if not is_admin_api and not context.is_public_api:
-                raise exc.HTTPForbidden()
+                if not has_api_access:
+                    raise exc.HTTPForbidden()
 
 
 class NoExceptionTracebackHook(hooks.PecanHook):
