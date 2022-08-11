@@ -128,18 +128,32 @@ if [ "x${UPGRADE_APP_VERSION}" != "x${EXISTING_APP_VERSION}" ]; then
         touch "$CONFIG_PERMDIR/.cm_upgrade_convert"
     fi
 
-    # remove old cert manager CRDs
-    log "$NAME: Deleting old cert manager CRDs"
-    kubectl --kubeconfig=/etc/kubernetes/admin.conf delete crd \
-        certificaterequests.cert-manager.io \
-        certificates.cert-manager.io \
-        challenges.acme.cert-manager.io \
-        clusterissuers.cert-manager.io \
-        issuers.cert-manager.io \
-        orders.acme.cert-manager.io
+    # remove extra args overrides.
+    # we need to do this because our configuration of cert manager deletes secrets tied to
+    # cert manager certificates when the certificates are deleted.
+    # this means when we delete the certificates as part of data migration, the secrets are deleted.
+    # when the certificates are restored, the underlying secrets will be missing.
+    # this triggers a refresh on all cert manager certificates, which could mess up
+    # trust chains if the certificates are being used for a rootca, like in DC deployments
+    log "$NAME: removing extra args overrides from ${EXISTING_APP_NAME}"
+    system helm-override-update ${EXISTING_APP_NAME} cert-manager cert-manager --set extraArgs=""
 
-    if [ $? != 0 ]; then
-        log "$NAME: Failed to delete old cert manager CRDs. Exiting for manual intervention..."
+    # apply old cert manager
+    log "$NAME: Applying ${EXISTING_APP_NAME}, version ${EXISTING_APP_VERSION}"
+    system application-apply ${EXISTING_APP_NAME}
+
+    # Wait on the apply
+    for tries in $(seq 1 $APPLY_RESULT_ATTEMPTS); do
+        EXISTING_APP_STATUS=$(system application-show $EXISTING_APP_NAME --column status --format value)
+        if [ "${EXISTING_APP_STATUS}" == 'applied' ]; then
+            log "$NAME: ${EXISTING_APP_NAME} has been applied."
+            break
+        fi
+        sleep $APPLY_RESULT_SLEEP
+    done
+
+    if [ $tries == $APPLY_RESULT_ATTEMPTS ]; then
+        log "$NAME: ${EXISTING_APP_NAME}, version ${EXISTING_APP_VERSION}, was not applied in the allocated time. Exiting for manual intervention..."
         exit 1
     fi
 
