@@ -27,7 +27,6 @@ from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1.query import Query
-from sysinv.api.policies import base as base_policy
 from sysinv.api.policies import service_parameter as sp_policy
 from sysinv import objects
 from sysinv.common import constants
@@ -827,21 +826,16 @@ class ServiceParameterController(rest.RestController):
 
     def enforce_policy(self, method_name, request):
         """Check policy rules for each action of this controller."""
-        context = request.context
+        context_dict = request.context.to_dict()
         if method_name == "apply":
-            policy.enforce(context, sp_policy.POLICY_ROOT % "apply",
-                {'project_name': base_policy.ADMIN_PROJECT_NAME})
+            policy.authorize(sp_policy.POLICY_ROOT % "apply", {}, context_dict)
         elif method_name == "delete":
-            policy.enforce(context, sp_policy.POLICY_ROOT % "delete",
-                {'project_name': base_policy.ADMIN_PROJECT_NAME})
+            policy.authorize(sp_policy.POLICY_ROOT % "delete", {}, context_dict)
         elif method_name in ["get_all", "get_one"]:
-            policy.enforce(context, sp_policy.POLICY_ROOT % "get",
-                {'project_name': base_policy.ADMIN_PROJECT_NAME})
+            policy.authorize(sp_policy.POLICY_ROOT % "get", {}, context_dict)
         elif method_name == "patch":
-            policy.enforce(context, sp_policy.POLICY_ROOT % "modify",
-                {'project_name': base_policy.ADMIN_PROJECT_NAME})
+            policy.authorize(sp_policy.POLICY_ROOT % "modify", {}, context_dict)
         elif method_name == "post":
-            policy.enforce(context, sp_policy.POLICY_ROOT % "add",
-                {'project_name': base_policy.ADMIN_PROJECT_NAME})
+            policy.authorize(sp_policy.POLICY_ROOT % "add", {}, context_dict)
         else:
             raise exception.PolicyNotFound()

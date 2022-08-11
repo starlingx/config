@@ -18,7 +18,6 @@ import fixtures
 from oslo_config import cfg
 
 from sysinv.common import policy as sysinv_policy
-from sysinv.openstack.common import policy as common_policy
 from sysinv.tests import fake_policy
 
 CONF = cfg.CONF
@@ -30,15 +29,9 @@ class PolicyFixture(fixtures.Fixture):
         super(PolicyFixture, self).setUp()
         self.policy_dir = self.useFixture(fixtures.TempDir())
         self.policy_file_name = os.path.join(self.policy_dir.path,
-                                             'policy.json')
+                                             'policy.yaml')
         with open(self.policy_file_name, 'w') as policy_file:
             policy_file.write(fake_policy.policy_data)
-        CONF.set_override('policy_file', self.policy_file_name)
         sysinv_policy.reset()
-        sysinv_policy.init()
+        sysinv_policy.init(self.policy_file_name)
         self.addCleanup(sysinv_policy.reset)
-
-    def set_rules(self, rules):
-        common_policy.set_rules(common_policy.Rules(
-                dict((k, common_policy.parse_rule(v))
-                     for k, v in rules.items())))

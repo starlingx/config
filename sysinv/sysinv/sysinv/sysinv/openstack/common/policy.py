@@ -16,6 +16,10 @@
 #    under the License.
 
 """
+IMPORTANT: this implementation was deprecated by oslo_policy and it is no longer
+used in this repository. This file was not deleted because it is used by other
+repositories.
+
 Common Policy Engine Implementation
 
 Policies can be expressed in one of two forms: A list of lists, or a

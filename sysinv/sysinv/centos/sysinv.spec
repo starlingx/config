@@ -44,6 +44,7 @@ Requires: python2-oslo-config
 Requires: python2-oslo-concurrency
 Requires: python2-oslo-db
 Requires: python2-oslo-log
+Requires: python2-oslo-policy
 Requires: python2-oslo-rootwrap
 Requires: python2-oslo-serialization
 Requires: python2-oslo-service
@@ -89,7 +90,7 @@ install -d -m 755 %{buildroot}%{local_etc_goenabledd}
 install -p -D -m 755 etc/sysinv/sysinv_goenabled_check.sh %{buildroot}%{local_etc_goenabledd}/sysinv_goenabled_check.sh
 
 install -d -m 755 %{buildroot}%{local_etc_sysinv}
-install -p -D -m 755 etc/sysinv/policy.json %{buildroot}%{local_etc_sysinv}/policy.json
+install -p -D -m 755 etc/sysinv/policy.yaml %{buildroot}%{local_etc_sysinv}/policy.yaml
 
 install -p -D -m 644 etc/sysinv/crushmap-storage-model.txt %{buildroot}%{local_etc_sysinv}/crushmap-storage-model.txt
 install -p -D -m 644 etc/sysinv/crushmap-controller-model.txt %{buildroot}%{local_etc_sysinv}/crushmap-controller-model.txt

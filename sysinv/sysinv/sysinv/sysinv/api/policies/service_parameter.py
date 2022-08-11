@@ -14,36 +14,71 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+from oslo_policy import policy
 from sysinv.api.policies import base
 
 POLICY_ROOT = 'config_api:service_parameter:%s'
 
 
 service_parameter_rules = [
-    base.RuleDefault(
+    policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'add',
-        check_str=base.ADMIN_IN_SPECIFIC_PROJECT,
+        check_str='rule:' + base.ADMIN_IN_SYSTEM_PROJECTS,
         description="Add a Service Parameter.",
+        operations=[
+            {
+                'method': 'POST',
+                'path': '/v1/service_parameter'
+            }
+        ]
     ),
-    base.RuleDefault(
+    policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'apply',
-        check_str=base.ADMIN_IN_SPECIFIC_PROJECT,
+        check_str='rule:' + base.ADMIN_IN_SYSTEM_PROJECTS,
         description="Apply Service Parameters.",
+        operations=[
+            {
+                'method': 'POST',
+                'path': '/v1/service_parameter/apply'
+            }
+        ]
     ),
-    base.RuleDefault(
+    policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'delete',
-        check_str=base.ADMIN_IN_SPECIFIC_PROJECT,
+        check_str='rule:' + base.ADMIN_IN_SYSTEM_PROJECTS,
         description="Delete a Service Parameter.",
+        operations=[
+            {
+                'method': 'DELETE',
+                'path': '/v1/service_parameter/{parameter_id}'
+            }
+        ]
     ),
-    base.RuleDefault(
+    policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'get',
-        check_str=base.READER_IN_SPECIFIC_PROJECT,
+        check_str='rule:' + base.READER_IN_SYSTEM_PROJECTS,
         description="Get Service Parameters.",
+        operations=[
+            {
+                'method': 'GET',
+                'path': '/v1/service_parameter'
+            },
+            {
+                'method': 'GET',
+                'path': '/v1/service_parameter/{parameter_id}'
+            }
+        ]
     ),
-    base.RuleDefault(
+    policy.DocumentedRuleDefault(
         name=POLICY_ROOT % 'modify',
-        check_str=base.ADMIN_IN_SPECIFIC_PROJECT,
+        check_str='rule:' + base.ADMIN_IN_SYSTEM_PROJECTS,
         description="Modify Service Parameter value.",
+        operations=[
+            {
+                'method': 'PATCH',
+                'path': '/v1/service_parameter/{parameter_id}'
+            }
+        ]
     )
 ]
 

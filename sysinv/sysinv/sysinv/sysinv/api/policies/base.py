@@ -14,49 +14,24 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-ADMIN_PROJECT_NAME = 'admin'
-ADMIN_IN_SPECIFIC_PROJECT = 'rule:admin_in_specific_project'
-READER_IN_SPECIFIC_PROJECT = 'rule:reader_in_specific_project'
+from oslo_policy import policy
 
-
-class RuleDefault(object):
-    """Class used to represent a policy rule.
-
-    :param name: The name of the policy.
-    :param check_str: The string that represents the policy.
-    :param description: A brief description of the policy.
-    """
-    def __init__(self, name, check_str, description):
-        self.name = name
-        self.check_str = check_str
-        self.description = description
+ADMIN_IN_SYSTEM_PROJECTS = 'admin_in_system_projects'
+READER_IN_SYSTEM_PROJECTS = 'reader_in_system_projects'
 
 
 base_rules = [
-    RuleDefault(
-        name='admin',
-        check_str='role:admin or role:administrator',
+    policy.RuleDefault(
+        name=ADMIN_IN_SYSTEM_PROJECTS,
+        check_str='role:admin and (project_name:admin or ' +
+                  'project_name:services)',
         description="Base rule.",
     ),
-    RuleDefault(
-        name='admin_api',
-        check_str='is_admin:True',
-        description="Base rule.",
-    ),
-    RuleDefault(
-        name='default',
-        check_str='rule:admin_api',
-        description="Base rule.",
-    ),
-    RuleDefault(
-        name='admin_in_specific_project',
-        check_str='role:admin and project_name:%(project_name)s',
-        description="Base rule.",
-    ),
-    RuleDefault(
-        name='reader_in_specific_project',
-        check_str='role:reader and project_name:%(project_name)s',
-        description="Base rule.",
+    policy.RuleDefault(
+        name=READER_IN_SYSTEM_PROJECTS,
+        check_str='role:reader and (project_name:admin or ' +
+                  'project_name:services)',
+        description="Base rule."
     )
 ]
 

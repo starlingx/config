@@ -59,7 +59,7 @@
 #
 
 # JSON file representing policy (string value)
-#policy_file=policy.json
+#policy_file=policy.yaml
 
 # Rule checked when requested rule is not found (string value)
 #policy_default_rule=default

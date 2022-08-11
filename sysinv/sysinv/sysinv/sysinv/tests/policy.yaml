@@ -1,0 +1,11 @@
+---
+# The commented lines below contains the default values for presented rules.
+
+# admin_in_system_projects: role:admin and (project_name:admin or project_name:services)
+# reader_in_system_projects: role:reader and (project_name:admin or project_name:services)
+
+# config_api:service_parameter:add: rule:admin_in_system_projects
+# config_api:service_parameter:apply: rule:admin_in_system_projects
+# config_api:service_parameter:delete: rule:admin_in_system_projects
+# config_api:service_parameter:get: rule:reader_in_system_projects
+# config_api:service_parameter:modify: rule:admin_in_system_projects

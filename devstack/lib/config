@@ -108,7 +108,7 @@ function cleanup_sysinv {
     pip_uninstall sysinv
 
     sudo rm -f $SYSINV_ETC_GOENABLEDD/sysinv_goenabled_check.sh
-    sudo rm -f $SYSINV_CONF_DIR/policy.json
+    sudo rm -f $SYSINV_CONF_DIR/policy.yaml
     sudo rm -f $SYSINV_ETC_MOTDD/10-system
     sudo rm -f $SYSINV_CONF_DIR/upgrades/delete_load.sh
     sudo rm -f $STX_OCF_ROOT/resource.d/platform/sysinv-api
@@ -247,7 +247,7 @@ function install_sysinv {
     sudo install -d -m 755 $SYSINV_ETC_GOENABLEDD
     sudo install -p -D -m 755 $SYSINV_DIR/etc/sysinv/sysinv_goenabled_check.sh $SYSINV_ETC_GOENABLEDD/sysinv_goenabled_check.sh
     sudo install -d -m 755  $SYSINV_CONF_DIR
-    sudo install -p -D -m 755 $SYSINV_DIR/etc/sysinv/policy.json $SYSINV_CONF_DIR/policy.json
+    sudo install -p -D -m 755 $SYSINV_DIR/etc/sysinv/policy.yaml $SYSINV_CONF_DIR/policy.yaml
     sudo install -d -m 755 $SYSINV_ETC_MOTDD
     sudo install -p -D -m 755 $SYSINV_DIR/etc/sysinv/motd-system $SYSINV_ETC_MOTDD/10-system
     sudo install -d -m 755 $SYSINV_CONF_DIR/upgrades

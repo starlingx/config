@@ -31,11 +31,12 @@ from oslo_utils import uuidutils
 from pecan import hooks
 
 from sysinv._i18n import _
+from sysinv.api.policies import base as base_policy
 from sysinv.common import context
 from sysinv.common import utils
 from sysinv.conductor import rpcapi
 from sysinv.db import api as dbapi
-from sysinv.openstack.common import policy
+from sysinv.common import policy
 from webob import exc
 
 LOG = log.getLogger(__name__)
@@ -141,7 +142,7 @@ class ContextHook(hooks.PecanHook):
         domain_id = state.request.headers.get('X-User-Domain-Id')
         domain_name = state.request.headers.get('X-User-Domain-Name')
         auth_token = state.request.headers.get('X-Auth-Token', None)
-        creds = {'roles': state.request.headers.get('X-Roles', '').split(',')}
+        roles = state.request.headers.get('X-Roles', '').split(',')
         catalog_header = state.request.headers.get('X-Service-Catalog')
         service_catalog = None
         if catalog_header:
@@ -151,7 +152,12 @@ class ContextHook(hooks.PecanHook):
                 raise webob.exc.HTTPInternalServerError(
                     _('Invalid service catalog json.'))
 
-        is_admin = policy.check('admin', state.request.headers, creds)
+        credentials = {
+            'project_name': project_name,
+            'roles': roles
+        }
+        is_admin = policy.authorize(base_policy.ADMIN_IN_SYSTEM_PROJECTS, {},
+            credentials, do_raise=False)
 
         utils.safe_rstrip(state.request.path, '/')
         is_public_api = state.request.environ.get('is_public_api', False)
@@ -165,7 +171,7 @@ class ContextHook(hooks.PecanHook):
             is_admin=is_admin,
             is_public_api=is_public_api,
             project_name=project_name,
-            roles=creds['roles'],
+            roles=roles,
             service_catalog=service_catalog
         )
 
@@ -182,11 +188,16 @@ class AccessPolicyHook(hooks.PecanHook):
     def before(self, state):
         controller = state.controller.__self__
         if hasattr(controller, 'enforce_policy'):
-            controller_method = state.controller.__name__
-            controller.enforce_policy(controller_method, state.request)
+            try:
+                controller_method = state.controller.__name__
+                controller.enforce_policy(controller_method, state.request)
+            except Exception:
+                raise exc.HTTPForbidden()
         else:
             context = state.request.context
-            is_admin_api = policy.check('admin_api', {}, context.to_dict())
+            is_admin_api = policy.authorize(
+                        base_policy.ADMIN_IN_SYSTEM_PROJECTS, {},
+                        context.to_dict(), do_raise=False)
             if not is_admin_api and not context.is_public_api:
                 raise exc.HTTPForbidden()
 
