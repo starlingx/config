@@ -5361,9 +5361,13 @@ class ConductorManager(service.PeriodicService):
                   constants.PARTITION_CREATE_ON_UNLOCK_STATUS,
                   constants.PARTITION_DELETING_STATUS,
                   constants.PARTITION_MODIFYING_STATUS]
+
+        # Over an upgrade, if there's a need to create new partitions to be
+        # included in a volume group over an upgrade, this would be staged
+        # during data migration and later created via puppet on unlock. As
+        # the agent inventory has already been provided, the partition
+        # states will not be updated until the next agent restart.
         for part in partitions:
-            # TODO (rchurch):These mib checks cover an R4->R5 upgrade
-            # scenario.Remove after R5.
             if ((part.status in states) or
                     (not part.get('start_mib') or
                      not part.get('end_mib'))):
