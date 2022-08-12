@@ -140,8 +140,6 @@ def rest_api_request(token, method, api_cmd, api_cmd_headers=None,
             response = json.loads(response)
         request.close()
 
-        LOG.info("Response=%s" % response)
-
     except HTTPError as e:
         if 401 == e.code:
             if token:
