@@ -814,6 +814,20 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             self.context, self.iface)
         self.assertEqual(method, 'static')
 
+        self.iface['networktypelist'] = [constants.NETWORK_TYPE_MGMT,
+                                         constants.NETWORK_TYPE_CLUSTER_HOST]
+        # test for CentOS
+        self.mock_puppet_interface_sysconfig.return_value = True
+        method = interface.get_interface_address_method(
+            self.context, self.iface)
+        self.assertEqual(method, 'static')
+
+        # test for Debian
+        self.mock_puppet_interface_sysconfig.return_value = False
+        method = interface.get_interface_address_method(
+            self.context, self.iface)
+        self.assertEqual(method, 'manual')
+
     def test_get_interface_address_method_for_platform_ipv6(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
         self.iface['ipv6_mode'] = constants.IPV6_STATIC
@@ -825,6 +839,20 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         method = interface.get_interface_address_method(
             self.context, self.iface)
         self.assertEqual(method, 'static')
+
+        self.iface['networktypelist'] = [constants.NETWORK_TYPE_MGMT,
+                                         constants.NETWORK_TYPE_CLUSTER_HOST]
+        # test for CentOS
+        self.mock_puppet_interface_sysconfig.return_value = True
+        method = interface.get_interface_address_method(
+            self.context, self.iface)
+        self.assertEqual(method, 'static')
+
+        # test for Debian
+        self.mock_puppet_interface_sysconfig.return_value = False
+        method = interface.get_interface_address_method(
+            self.context, self.iface)
+        self.assertEqual(method, 'manual')
 
     def test_get_interface_address_method_for_platform_invalid(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
