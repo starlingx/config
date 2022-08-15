@@ -454,7 +454,8 @@ def prepare_postgres_filesystems():
     # Create a temporary filesystem for the migrated database
     stat = os.statvfs(POSTGRES_MOUNT_PATH)
     db_filesystem_size = str(stat.f_frsize * stat.f_blocks) + "B"
-    os.mkdir(utils.POSTGRES_PATH)
+    if not os.path.isdir(utils.POSTGRES_PATH):
+        os.mkdir(utils.POSTGRES_PATH)
     create_temp_filesystem("cgts-vg", "postgres-temp-lv", utils.POSTGRES_PATH,
                            db_filesystem_size)
     subprocess.check_call(['chown', 'postgres:postgres', utils.POSTGRES_PATH],
