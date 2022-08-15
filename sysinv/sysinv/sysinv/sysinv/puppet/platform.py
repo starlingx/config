@@ -542,7 +542,16 @@ class PlatformPuppet(base.BasePuppet):
             # the worker is a standard and we need to keep it without nohz to
             # preserve the previous behavior we must set the nohz_full_disabled
             # label.
-            if (constants.LOWLATENCY in host.subfunctions or
+            if utils.is_virtual():
+                # Disable nohz_full in a virtual environment.
+                # The SM process which runs on the platform cores
+                # will leave its services in 'initial' state after reboot
+                # or unlock because its thread timers are delayed.
+                # Disabling nohz_full for a virtual environment
+                # fixes the issue.
+                cpu_ranges.update({'nohz_full': 'disabled'})
+                ignore_recovery = True
+            elif (constants.LOWLATENCY in host.subfunctions or
                     not utils.has_disable_nohz_full_enabled(host_labels)):
                 # Linux kernel 4.15 is the first release with the following
                 # commit which appears to tie together nohz_full and isolcpus.
