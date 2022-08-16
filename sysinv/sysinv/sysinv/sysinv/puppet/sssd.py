@@ -16,12 +16,16 @@ class SssdPuppet(base.BasePuppet):
     def get_secure_system_config(self):
         config = {}
         domains = {}
+        nss = self._get_nss_parameters()
+        pam = self._get_pam_parameters()
 
-        domains.update({'local': self._get_local_domain()})
+        domains.update({'controller': self._get_local_domain()})
 
         config.update(
             {
                 'platform::sssd::params::domains': domains,
+                'platform::sssd::params::nss_options': nss,
+                'platform::sssd::params::pam_options': pam,
             })
 
         return config
@@ -30,7 +34,7 @@ class SssdPuppet(base.BasePuppet):
         binding_pass = self._get_keyring_password(self.SERVICE_NAME,
                 self.SERVICE_USER)
 
-        # sssd support the debug levels (from sssd.conf manual page):
+        # sssd supports the debug levels (from sssd.conf manual page):
         # 0, 0x0010: Fatal failures. Anything that would prevent SSSD
         #            from starting up or causes it to cease running.
         # 1, 0x0020: Critical failures. An error that doesn't kill
@@ -51,17 +55,51 @@ class SssdPuppet(base.BasePuppet):
         # 10, 0x10000: Even more low-level libldb tracing information.
         #              Almost never really required.
         #
-        # Example: 0x3ff0, debug log includes level 0 to 8 messages.
-
-        domain_settings = {
+        # Debug level: 0x0270, includes fatal failures, critical failures,
+        # serious failures and function data.
+        domain_parameters = {
+            'cache_credentials': 'true',
+            'debug_level': '0x0270',
             'id_provider': 'ldap',
+            'access_provider': 'ldap',
+            'ldap_access_filter': '(& (objectclass=posixAccount))',
+            'ldap_search_base': 'dc=cgcs,dc=local',
+            'ldap_user_home_directory': '/home/$cn',
+            'ldap_user_shell': '/bin/bash',
             'ldap_uri': 'ldaps://controller/',
             'ldap_tls_cacert': '/etc/ssl/certs/ca-certificates.crt',
-            'ldap_search_base': 'dc=cgcs,dc=local',
             'ldap_default_bind_dn': 'CN=ldapadmin,DC=cgcs,DC=local',
             'ldap_default_authtok_type': 'password',
             'ldap_default_authtok': binding_pass,
-            'debug_level': '0x3ff0',
+            'fallback_homedir': '/home/%u',
         }
 
-        return domain_settings
+        return domain_parameters
+
+    def _get_nss_parameters(self):
+        # reconnection_retries = 3 Number of times services should
+        # attempt to reconnect in the event of a Data Provider crash
+        # or restart before they give up
+        # debug_level = 0x0070 Log fatal failures, critical failures,
+        # serious failures
+
+        nss_parameters = {
+            'reconnection_retries': '3',
+            'debug_level': '0x0070',
+        }
+
+        return nss_parameters
+
+    def _get_pam_parameters(self):
+        # reconnection_retries = 3 Number of times services should
+        # attempt to reconnect in the event of a Data Provider crash
+        # or restart before they give up
+        # debug_level = 0x0070 Log fatal failures, critical failures,
+        # serious failures
+
+        pam_parameters = {
+            'reconnection_retries': '3',
+            'debug_level': '0x0070',
+        }
+
+        return pam_parameters
