@@ -884,10 +884,18 @@ def get_interface_sysctl_ifname(context, iface):
         return os_ifname
 
 
-def get_duplex_direct_network_config(context, iface, config, sysctl_ifname):
+def get_duplex_direct_network_config(context, iface, config, sysctl_ifname, network_id):
     """
     Disable dad on the specified interface for duplex-direct config
     """
+    networktype = find_networktype_by_network_id(context, network_id)
+    if (networktype and networktype in [constants.NETWORK_TYPE_MGMT,
+                                        constants.NETWORK_TYPE_CLUSTER_HOST]):
+        command = ("/sbin/modprobe bonding; "
+                   "grep %s /sys/class/net/bonding_masters || "
+                   "echo +%s > /sys/class/net/bonding_masters" % (
+                       iface['ifname'], iface['ifname']))
+        fill_interface_config_option_operation(config['options'], IFACE_PRE_UP_OP, command)
     new_pre_up = "sysctl -wq net.ipv6.conf.%s.accept_dad=0" % sysctl_ifname
     fill_interface_config_option_operation(config['options'], IFACE_PRE_UP_OP, new_pre_up)
     return config
@@ -984,12 +992,6 @@ def get_bond_network_config(context, iface, config, network_id):
 
     if bonding_options:
         fill_interface_config_option_operation(options, IFACE_UP_OP, 'sleep 10')
-        networktype = find_networktype_by_network_id(context, network_id)
-        if (networktype and networktype in [constants.NETWORK_TYPE_MGMT,
-                                            constants.NETWORK_TYPE_CLUSTER_HOST]):
-            command = "/sbin/modprobe bonding; echo +%s > /sys/class/net/bonding_masters" % (
-                iface['ifname'])
-            fill_interface_config_option_operation(options, IFACE_PRE_UP_OP, command)
     config['options'].update(options)
     return config
 
@@ -1325,7 +1327,7 @@ def get_final_network_config(context, iface, config, network_id=None):
         if is_disable_dad_required(context, iface, config, network_id):
             dd_ifname = get_interface_sysctl_ifname(context, iface)
             config = get_duplex_direct_network_config(context, iface, config,
-                                                      dd_ifname)
+                                                      dd_ifname, network_id)
     return config
 
 
@@ -1369,8 +1371,7 @@ def get_interface_network_config(context, iface, network_id=None):
     if iface['iftype'] == constants.INTERFACE_TYPE_VLAN:
         config = get_vlan_network_config(context, iface, config)
     elif iface['iftype'] == constants.INTERFACE_TYPE_AE:
-        config = get_bond_network_config(context, iface, config,
-                                         network_id)
+        config = get_bond_network_config(context, iface, config, network_id)
     else:
         config = get_ethernet_network_config(context, iface, config)
 
