@@ -732,10 +732,22 @@ class ServiceParameterController(rest.RestController):
                  oidc_username_claim and oidc_groups_claim)):
             msg = _("Unable to apply service parameters. Please choose one of "
                     "the valid Kubernetes OIDC parameter setups: (None) or "
-                    "(oidc_issuer_url, oidc_client_id, oidc_username_claim) or "
-                    "(the previous 3 plus oidc_groups_claim)")
+                    "(oidc-issuer-url, oidc-client-id, oidc-username-claim) or "
+                    "(the previous 3 plus oidc-groups-claim)")
             raise wsme.exc.ClientSideError(msg)
 
+        # Verify if the file configured in parameter audit_policy_file is
+        # cluster configuration.
+        #
+        # Configure audit-policy-file mountPath in kube-apiserver
+        # Allow to end-users to add audit policy file configuration
+        # in apiserver_extra_volumes variable.
+        # Add a default audit-policy-file configuration in extraVolumes section
+        # in kube-apiserver.
+        #
+        # This validation is required since if the file does not exist in the
+        # kube-apiserver pod then after puppet applies the new configuration
+        # kube-apiserver will fail to start.
         try:
             audit_policy_file = pecan.request.dbapi.service_parameter_get_one(
                 service=constants.SERVICE_TYPE_KUBERNETES,
@@ -745,17 +757,6 @@ class ServiceParameterController(rest.RestController):
             audit_policy_file = None
 
         if audit_policy_file:
-            # Verify if the file configured in parameter audit_policy_file is
-            # cluster configuration.
-            #
-            # Task 44831 and 45202 configure audit-policy-file mountPath in kube-apiserver
-            # Task 44831: Allow to end-users to add audit policy file configuration
-            # in apiserver_extra_volumes variable.
-            # Task 45202: Add a default audit-policy-file configuration in extraVolumes section
-            # in kube-apiserver.
-            #
-            # This validation is required since if the file does not exist in the kube-apiserver pod
-            # then after puppet applies the new configuration kube-apiserver will fail to start.
             kube_operator = kubernetes.KubeOperator()
             try:
                 config_map = kube_operator.kube_read_config_map(

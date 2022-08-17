@@ -168,6 +168,13 @@ def _validate_oidc_issuer_url(name, value):
             "Parameter '%s' must be a valid address or domain." % name))
 
 
+def _deprecated_oidc_params(name, value):
+    """Check oidc deprecated parameters"""
+    msg = "This parameter '{}' is deprecated you must use a valid parameter like " \
+          "(oidc-issuer-url, oidc-client-id, oidc-username-claim, oidc-groups-claim).".format(name)
+    raise wsme.exc.ClientSideError(_(msg))
+
+
 def _validate_cri_class_format(name, value):
     """
     Validate string into cri runtimeClassName:runtimeBinary format,
@@ -383,19 +390,6 @@ def _validate_domain(name, value):
         raise wsme.exc.ClientSideError(_(
             "Parameter '%s' includes an invalid domain name '%s'." %
             (name, value)))
-
-
-def _validate_admission_plugins(name, value):
-    """Check if specified plugins are supported"""
-    if not value:
-        raise wsme.exc.ClientSideError(_(
-            "Please specify at least 1 plugin"))
-
-    plugins = value.split(',')
-    for plugin in plugins:
-        if plugin not in constants.VALID_ADMISSION_PLUGINS:
-            raise wsme.exc.ClientSideError(_(
-                "Invalid admission plugin: '%s'" % plugin))
 
 
 def _validate_pod_max_pids(name, value):
@@ -813,15 +807,19 @@ KUBERNETES_CERTIFICATES_PARAMETER_DATA_FORMAT = {
 
 KUBERNETES_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_KUBERNETES_POD_MAX_PIDS,
+    constants.SERVICE_PARAM_NAME_KUBERNETES_AUTOMATIC_RECOVERY
 ]
 
 KUBERNETES_CONFIG_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_KUBERNETES_POD_MAX_PIDS: _validate_pod_max_pids,
+    constants.SERVICE_PARAM_NAME_KUBERNETES_AUTOMATIC_RECOVERY: _validate_boolean
 }
 
 KUBERNETES_CONFIG_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_KUBERNETES_POD_MAX_PIDS:
         'platform::kubernetes::params::k8s_pod_max_pids',
+    constants.SERVICE_PARAM_NAME_KUBERNETES_AUTOMATIC_RECOVERY:
+        'platform::kubernetes::config::params::automatic_recovery',
 }
 
 KUBERNETES_APISERVER_PARAMETER_OPTIONAL = [
@@ -829,29 +827,76 @@ KUBERNETES_APISERVER_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_OIDC_CLIENT_ID,
     constants.SERVICE_PARAM_NAME_OIDC_USERNAME_CLAIM,
     constants.SERVICE_PARAM_NAME_OIDC_GROUPS_CLAIM,
-    constants.SERVICE_PARAM_NAME_ADMISSION_PLUGINS,
-    constants.SERVICE_PARAM_NAME_AUDIT_POLICY_FILE
+    constants.SERVICE_PARAM_NAME_AUDIT_POLICY_FILE,
+    constants.SERVICE_PARAM_NAME_WILDCARD,
 ]
 
 KUBERNETES_APISERVER_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_OIDC_ISSUER_URL: _validate_oidc_issuer_url,
-    constants.SERVICE_PARAM_NAME_ADMISSION_PLUGINS: _validate_admission_plugins,
+    constants.SERVICE_PARAM_DEPRECATED_NAME_OIDC_ISSUER_URL: _deprecated_oidc_params,
+    constants.SERVICE_PARAM_DEPRECATED_NAME_OIDC_CLIENT_ID: _deprecated_oidc_params,
+    constants.SERVICE_PARAM_DEPRECATED_NAME_OIDC_USERNAME_CLAIM: _deprecated_oidc_params,
+    constants.SERVICE_PARAM_DEPRECATED_NAME_OIDC_GROUPS_CLAIM: _deprecated_oidc_params,
+    constants.SERVICE_PARAM_NAME_WILDCARD: _validate_not_empty,
     constants.SERVICE_PARAM_NAME_AUDIT_POLICY_FILE: _validate_not_empty
 }
 
 KUBERNETES_APISERVER_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_OIDC_ISSUER_URL:
-        'platform::kubernetes::params::oidc_issuer_url',
+        'platform::kubernetes::kube_apiserver::params::oidc_issuer_url',
     constants.SERVICE_PARAM_NAME_OIDC_CLIENT_ID:
-        'platform::kubernetes::params::oidc_client_id',
+        'platform::kubernetes::kube_apiserver::params::oidc_client_id',
     constants.SERVICE_PARAM_NAME_OIDC_USERNAME_CLAIM:
-        'platform::kubernetes::params::oidc_username_claim',
+        'platform::kubernetes::kube_apiserver::params::oidc_username_claim',
     constants.SERVICE_PARAM_NAME_OIDC_GROUPS_CLAIM:
-        'platform::kubernetes::params::oidc_groups_claim',
-    constants.SERVICE_PARAM_NAME_ADMISSION_PLUGINS:
-        'platform::kubernetes::params::admission_plugins',
+        'platform::kubernetes::kube_apiserver::params::oidc_groups_claim',
+    constants.SERVICE_PARAM_NAME_WILDCARD:
+        'platform::kubernetes::kube_apiserver::params',
     constants.SERVICE_PARAM_NAME_AUDIT_POLICY_FILE:
         'platform::kubernetes::params::audit_policy_file'
+}
+
+KUBERNETES_CONTROLLER_MANAGER_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_OIDC_ISSUER_URL,
+    constants.SERVICE_PARAM_NAME_OIDC_CLIENT_ID,
+    constants.SERVICE_PARAM_NAME_OIDC_USERNAME_CLAIM,
+    constants.SERVICE_PARAM_NAME_OIDC_GROUPS_CLAIM,
+    constants.SERVICE_PARAM_NAME_WILDCARD
+]
+
+KUBERNETES_CONTROLLER_MANAGER_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_WILDCARD: _validate_not_empty
+}
+
+KUBERNETES_CONTROLLER_MANAGER_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_WILDCARD:
+        'platform::kubernetes::kube_controller_manager::params',
+}
+
+KUBERNETES_SCHEDULER_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_WILDCARD
+]
+
+KUBERNETES_SCHEDULER_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_WILDCARD: _validate_not_empty
+}
+
+KUBERNETES_SCHEDULER_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_WILDCARD:
+        'platform::kubernetes::kube_scheduler::params',
+}
+
+KUBERNETES_KUBELET_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_WILDCARD
+]
+
+KUBERNETES_KUBELET_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_WILDCARD: _validate_not_empty
+}
+
+KUBERNETES_KUBELET_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_WILDCARD:
+        'platform::kubernetes::kubelet::params',
 }
 
 HTTPD_PORT_PARAMETER_OPTIONAL = [
@@ -1063,6 +1108,21 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: KUBERNETES_CONFIG_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: KUBERNETES_CONFIG_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: KUBERNETES_CONFIG_PARAMETER_RESOURCE,
+        },
+        constants.SERVICE_PARAM_SECTION_KUBERNETES_CONTROLLER_MANAGER: {
+            SERVICE_PARAM_OPTIONAL: KUBERNETES_CONTROLLER_MANAGER_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: KUBERNETES_CONTROLLER_MANAGER_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: KUBERNETES_CONTROLLER_MANAGER_PARAMETER_RESOURCE
+        },
+        constants.SERVICE_PARAM_SECTION_KUBERNETES_SCHEDULER: {
+            SERVICE_PARAM_OPTIONAL: KUBERNETES_SCHEDULER_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: KUBERNETES_SCHEDULER_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: KUBERNETES_SCHEDULER_PARAMETER_RESOURCE,
+        },
+        constants.SERVICE_PARAM_SECTION_KUBERNETES_KUBELET: {
+            SERVICE_PARAM_OPTIONAL: KUBERNETES_KUBELET_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: KUBERNETES_KUBELET_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: KUBERNETES_KUBELET_PARAMETER_RESOURCE,
         },
     },
     constants.SERVICE_TYPE_PTP: {
