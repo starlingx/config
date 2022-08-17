@@ -83,7 +83,7 @@ if [ "$ACTION" == "activate" ]; then
         # Confirm application is upgradable
         # TODO: move nginx back to the supported platform applications list when
         #       fluxcd application upgrade is supported
-        if [[ "${UPGRADE_APP_NAME}" =~ ^(platform-integ-apps|nginx-ingress-controller|snmp)$ ]]; then
+        if [[ "${UPGRADE_APP_NAME}" =~ ^(platform-integ-apps|nginx-ingress-controller|snmp|metrics-server|auditd|ptp-notification)$ ]]; then
             log "$NAME: ${UPGRADE_APP_NAME} is a supported platform application."
         elif [[ "${UPGRADE_APP_NAME}" =~ ^(cert-manager|oidc-auth-apps)$ ]]; then
             log "$NAME: ${UPGRADE_APP_NAME} is handled by another script."
