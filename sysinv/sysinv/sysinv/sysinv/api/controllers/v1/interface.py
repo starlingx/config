@@ -536,8 +536,8 @@ class InterfaceController(rest.RestController):
                 if rpc_interface['vlan_id']:
                     if int(p['value']) != int(rpc_interface['vlan_id']):
                         vlan_id = p['value']
+                        temp_interface['vlan_id'] = vlan_id
 
-        temp_interface['vlan_id'] = vlan_id
         _check_interface_vlan_id("modify", temp_interface.as_dict(), ihost)
 
         # replace ihost_uuid and iinterface_uuid with corresponding
@@ -723,8 +723,11 @@ def _set_defaults(interface):
 
 
 def _check_interface_vlan_id(op, interface, ihost):
+    vlan_id = None
+
     # Check vlan_id
     if 'vlan_id' in interface.keys():
+        vlan_id = interface['vlan_id']
         if interface['vlan_id'] is not None:
             if not str(interface['vlan_id']).isdigit():
                 raise wsme.exc.ClientSideError(_("VLAN id is an integer value."))
@@ -734,9 +737,11 @@ def _check_interface_vlan_id(op, interface, ihost):
                 raise wsme.exc.ClientSideError(_("VLAN id must be between 1 and 4094."))
             else:
                 interface['vlan_id'] = six.text_type(interface['vlan_id'])
-        else:
-            if interface['iftype'] == constants.INTERFACE_TYPE_VLAN:
-                raise wsme.exc.ClientSideError(_("VLAN id must be specified."))
+
+    if ('iftype' in interface.keys() and
+            interface['iftype'] == constants.INTERFACE_TYPE_VLAN and
+            vlan_id is None):
+        raise wsme.exc.ClientSideError(_("VLAN id must be specified."))
     return interface
 
 
