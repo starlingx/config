@@ -2221,6 +2221,16 @@ class TestAIOPatch(InterfaceTestCase):
                     addr_mock.assert_called()
                     addrmode_mock.assert_called()
 
+    def test_modify_vlan_iface_parameters(self):
+        iface = self._create_vlan('mgmt', constants.NETWORK_TYPE_MGMT,
+                          constants.INTERFACE_CLASS_PLATFORM, 2)
+        data = {
+            'ifname': 'mgmt0',
+        }
+        # A VLAN Interface must allow param changes without error
+        self._patch_and_check(data, self._get_path(iface['uuid']),
+                              expect_errors=False)
+
 
 class FakeConductorAPI(object):
 
