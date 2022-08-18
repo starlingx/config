@@ -19,7 +19,7 @@ LOG = log.getLogger(__name__)
 
 
 def rest_api_request(token, method, api_cmd, api_cmd_headers=None,
-                     api_cmd_payload=None):
+                     api_cmd_payload=None, timeout=30):
     """
     Make a rest-api request
     """
@@ -37,7 +37,7 @@ def rest_api_request(token, method, api_cmd, api_cmd_headers=None,
             request_info.add_header("Content-type", "application/json")
             request_info.data = api_cmd_payload
 
-        request = urlrequest.urlopen(request_info)
+        request = urlrequest.urlopen(request_info, timeout=timeout)
         response = request.read()
 
         if response == "":
@@ -64,7 +64,7 @@ def rest_api_request(token, method, api_cmd, api_cmd_headers=None,
 
 
 def get_token(auth_url, auth_project, auth_user, auth_password,
-              user_domain, project_domain):
+              user_domain, project_domain, timeout=30):
     """
     Ask OpenStack Keystone for a token
     """
@@ -96,7 +96,7 @@ def get_token(auth_url, auth_project, auth_user, auth_password,
 
         request_info.data = payload
 
-        request = urlrequest.urlopen(request_info)
+        request = urlrequest.urlopen(request_info, timeout=timeout)
         # Identity API v3 returns token id in X-Subject-Token
         # response header.
         token_id = request.info().getheader('X-Subject-Token')
