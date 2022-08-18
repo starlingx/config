@@ -744,7 +744,7 @@ class RoleCheck(Check):
 
 @register('http')
 class HttpCheck(Check):
-    def __call__(self, target, creds):
+    def __call__(self, target, creds, timeout=30):
         """
         Check http: rules by calling to a remote server.
 
@@ -756,7 +756,7 @@ class HttpCheck(Check):
         data = {'target': jsonutils.dumps(target),
                 'credentials': jsonutils.dumps(creds)}
         post_data = urlencode(data)
-        f = urlopen(url, post_data)
+        f = urlopen(url, post_data, timeout=timeout)
         return f.read() == "True"
 
 

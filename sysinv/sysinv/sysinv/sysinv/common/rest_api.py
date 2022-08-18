@@ -25,7 +25,7 @@ LOG = log.getLogger(__name__)
 
 
 def _get_token(auth_url, auth_project, username, password, user_domain,
-               project_domain, region_name):
+               project_domain, region_name, timeout=30):
     """
     Ask OpenStack Keystone for a token
     Returns: token object or None on failure
@@ -57,7 +57,7 @@ def _get_token(auth_url, auth_project, username, password, user_domain,
 
         request_info.data = encodeutils.safe_encode(payload)
 
-        request = urlopen(request_info)
+        request = urlopen(request_info, timeout=timeout)
         # Identity API v3 returns token id in X-Subject-Token
         # response header.
         token_id = request.headers.get('X-Subject-Token')
