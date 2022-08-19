@@ -16,6 +16,7 @@ SW_VERSION = ""
 SW_VERSION_21_05 = "21.05"
 SW_VERSION_21_12 = "21.12"
 SW_VERSION_22_06 = "22.06"
+SW_VERSION_22_12 = "22.12"
 
 nodetype = None
 subfunctions = []
