@@ -2407,6 +2407,21 @@ class Connection(object):
         """
 
     @abc.abstractmethod
+    def storage_backend_get_list_by_state(self, backend_state, limit=None,
+                                          marker=None, sort_key=None,
+                                          sort_dir=None):
+        """Return a list of storage backends by backend state.
+
+        :param backend_state: Storage backend state
+        :param limit: Maximum number of storage backends to return.
+        :param marker: the last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted.
+        :param sort_dir: direction in which results should be sorted.
+                         (asc, desc)
+        """
+
+    @abc.abstractmethod
     def storage_backend_get_list_by_type(self, backend_type=None, limit=None,
                                          marker=None, sort_key=None,
                                          sort_dir=None):

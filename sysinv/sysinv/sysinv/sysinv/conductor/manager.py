@@ -6135,11 +6135,13 @@ class ConductorManager(service.PeriodicService):
     def _storage_backend_failure_audit(self, context):
         """Check if storage backend is stuck in 'configuring'"""
 
-        backend_list = self.dbapi.storage_backend_get_list()
+        backend_list = self.dbapi.storage_backend_get_list_by_state(
+            backend_state=constants.SB_STATE_CONFIGURING)
+        backend_cache = {}
         for bk in backend_list:
             # TODO(oponcea): Update when sm supports in-service config reload.
-            if (bk.state == constants.SB_STATE_CONFIGURING and
-                    constants.SB_TASK_APPLY_MANIFESTS in str(bk.task)):
+            if (constants.SB_TASK_APPLY_MANIFESTS in str(bk.task)):
+                backend_cache[bk.backend] = bk.state
                 if bk.backend not in self._stor_bck_op_timeouts:
                     self._stor_bck_op_timeouts[bk.backend] = int(time.time())
                 else:
@@ -6149,8 +6151,11 @@ class ConductorManager(service.PeriodicService):
                                   "timed out at: %(task)s. Raising alarm!" %
                                   {'name': bk.backend, 'task': bk.task})
                         self.set_backend_to_err(bk)
-            elif bk.backend in self._stor_bck_op_timeouts:
-                del self._stor_bck_op_timeouts[bk.backend]
+
+        # Clear cache
+        for backend in self._stor_bck_op_timeouts.copy().keys():
+            if backend not in backend_cache:
+                self._stor_bck_op_timeouts.pop(backend)
 
     @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.image_conversion)
     def _audit_image_conversion(self, context):

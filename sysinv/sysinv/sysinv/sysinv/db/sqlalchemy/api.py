@@ -4512,6 +4512,21 @@ class Connection(api.Connection):
         return result
 
     @db_objects.objectify(objects.storage_backend)
+    def storage_backend_get_list_by_state(self, backend_state, limit=None,
+                                          marker=None, sort_key=None,
+                                          sort_dir=None):
+
+        entity = with_polymorphic(models.StorageBackend, '*')
+        query = model_query(entity).filter_by(state=backend_state)
+        try:
+            result = _paginate_query(models.StorageBackend, limit, marker,
+                                     sort_key, sort_dir, query)
+        except (db_exc.InvalidSortKey, ValueError):
+            result = []
+
+        return result
+
+    @db_objects.objectify(objects.storage_backend)
     def storage_backend_get_list_by_type(self, backend_type=None, limit=None,
                                          marker=None, sort_key=None,
                                          sort_dir=None):
