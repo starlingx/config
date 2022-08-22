@@ -12011,7 +12011,7 @@ class ConductorManager(service.PeriodicService):
             # Apply etcd split ca puppet manifest for standby controller.
             manifests_applied = self._split_etcd_security_config(context)
 
-        if from_version == tsc.SW_VERSION_21_12:
+        if from_version in (tsc.SW_VERSION_21_12, tsc.SW_VERSION_22_06):
             manifests_applied |= self._update_kubeadm_feature_gates(context)
 
         if manifests_applied:
