@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Copyright (C) 2019 Intel Corporation
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2021-2022 Wind River Systems, Inc.
 #
 """
 Sysinv Keystone notification listener.
@@ -36,21 +36,23 @@ class NotificationEndpoint(object):
     filter_rule = oslo_messaging.NotificationFilter(
         event_type='identity.user.updated')
 
-    def __init__(self, callback, context):
+    def __init__(self, callback, context, user):
         self.callback_func = callback
         self.context = context
+        self.username = user
         self.dbapi = dbapi.get_instance()
         self._openstack = openstack.OpenStackOperator(self.dbapi)
 
     def info(self, ctxt, publisher_id, event_type, payload, metadata):
         """Receives notification at info level."""
-        user = self._openstack.get_platform_keystone_user(self.context.user)
+
+        user = self._openstack.get_platform_keystone_user(self.username)
 
         if payload['eventType'] == 'activity' and \
                 payload['action'] == 'updated.user' and \
                 payload['outcome'] == 'success' and \
                 payload['resource_info'] == user.id:
-            self.callback_func(self.context)
+            self.callback_func(self.context, self.username)
 
         return oslo_messaging.NotificationResult.HANDLED
 
@@ -92,8 +94,9 @@ def start_keystone_listener(callback_endpoints):
 
     endpoints = []
     for callback_endpoint in callback_endpoints:
-        endpoint = NotificationEndpoint(callback_endpoint.get('func'),
-                                        callback_endpoint.get('ctx'))
+        endpoint = NotificationEndpoint(callback_endpoint.get('function'),
+                                        callback_endpoint.get('context'),
+                                        callback_endpoint.get('user'))
         endpoints.append(endpoint)
 
     pool = "sysinv-keystone-listener-workers"

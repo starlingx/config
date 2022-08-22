@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -345,7 +345,7 @@ class OpenStackOperator(object):
     ########################
     # keystone user methods
     ########################
-    def _get_keystone_users(self, service_config):
+    def get_keystone_users(self, service_config=PLATFORM_CONFIG):
         """Get a list of all users in keystone otherwise an empty list."""
         user_list = []
 
@@ -356,21 +356,9 @@ class OpenStackOperator(object):
 
         return user_list
 
-    def get_platform_keystone_admin_user(self):
-        """Return platform keystone admin user otherwise None."""
-        users = self._get_keystone_users(PLATFORM_CONFIG)
-
-        try:
-            return [user for user in users if user.name == 'admin'][0]
-        except Exception as e:
-            LOG.error("Failed to get platform keystone admin user:\n%s"
-                       % str(e))
-
-        return None
-
     def get_platform_keystone_user(self, username):
         """Return platform keystone user otherwise None."""
-        users = self._get_keystone_users(PLATFORM_CONFIG)
+        users = self.get_keystone_users()
 
         try:
             return [user for user in users if user.name == username][0]

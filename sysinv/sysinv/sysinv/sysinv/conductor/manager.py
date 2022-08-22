@@ -194,6 +194,21 @@ LOCK_NAME_UPDATE_CONFIG = 'update_config_'
 LOCK_APP_AUTO_MANAGE = 'AppAutoManageLock'
 LOCK_RUNTIME_CONFIG_CHECK = 'runtime_config_check'
 
+# Keystone users whose passwords change are monitored by keystone listener, and
+# the puppet classes to update the service after the passwords change.
+# TODO(yuxing): there are still several keystone users are not covered by this
+# dictionary, e.g. dcorch,dcdbsync, smapi and sysinv etc. Need to consider to
+# create puppet class to reload the related service in case their passwords
+# are changed in keystone and keyring.
+KEYSTONE_USER_PASSWORD_UPDATE = {
+    "admin": "openstack::keystone::password::runtime",
+    "barbican": "openstack::keystone::barbican::password::runtime",
+    "dcmanager": "openstack::keystone::dcmanager::password::runtime",
+    "fm": "openstack::keystone::fm::password::runtime",
+    "mtce": "platform::mtce::runtime",
+    "patching": "openstack::keystone::patching::password::runtime",
+    "vim": "openstack::keystone::nfv::password::runtime"
+}
 
 AppTarBall = namedtuple(
     'AppTarBall',
@@ -280,16 +295,10 @@ class ConductorManager(service.PeriodicService):
         # monitor keystone user update event to check whether admin password is
         # changed or not. If changed, then sync it to kubernetes's secret info,
         # and restart impacted services.
-        admin_context = ctx.RequestContext(user='admin', tenant='admin',
-                                           is_admin=True)
-        callback_endpoints = \
-            [{'func': self._app.audit_local_registry_secrets,
-              'ctx': admin_context},
-             {'func': self.update_keystone_password,
-              'ctx': admin_context}]
-        # The thread to monitor keystone admin password change
+        callback_endpoints = self._get_keystone_callback_endpoints()
         greenthread.spawn(keystone_listener.start_keystone_listener,
                           callback_endpoints)
+
         # Monitor ceph to become responsive
         if StorageBackendConfig.has_backend_configured(
                         self.dbapi,
@@ -351,6 +360,23 @@ class ConductorManager(service.PeriodicService):
             return ahost.uuid
         else:
             return None
+
+    def _get_keystone_callback_endpoints(self):
+        """ Get call back endpoints for keystone listener"""
+
+        callback_endpoints = []
+        context = ctx.RequestContext(user='admin', tenant='admin',
+                                     is_admin=True)
+        for username in KEYSTONE_USER_PASSWORD_UPDATE.keys():
+            if username == 'admin':
+                callback_endpoints.append(
+                    {'function': self._app.audit_local_registry_secrets,
+                     'context': context,
+                     'user': username})
+            callback_endpoints.append({'function': self._update_keystone_password,
+                                       'context': context,
+                                       'user': username})
+        return callback_endpoints
 
     def _initialize_active_controller_reboot_config(self):
         # initialize host_reboot_config for active controller in case
@@ -1724,16 +1750,17 @@ class ConductorManager(service.PeriodicService):
                                             config_dict=config_dict)
         return True
 
-    def update_keystone_password(self, context):
-        """This method calls a puppet class
-           'openstack::keystone::password::runtime'
-           on keystone password change"""
+    def _update_keystone_password(self, context, username):
+        """This method calls a puppet class to update the service config and
 
+           reload the related service on keystone password change"""
+
+        LOG.info("Updating service config for keystone user: %s" % username)
         personalities = [constants.CONTROLLER]
         config_uuid = self._config_update_hosts(context, personalities)
         config_dict = {
             "personalities": personalities,
-            "classes": ["openstack::keystone::password::runtime"]
+            "classes": [KEYSTONE_USER_PASSWORD_UPDATE[username]],
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
@@ -10837,9 +10864,7 @@ class ConductorManager(service.PeriodicService):
             LOG.info("SYS_I Clear system config alarm: %s target config %s" %
                      (ihost_obj.hostname, ihost_obj.config_target))
 
-            self.fm_api.clear_fault(
-                fm_constants.FM_ALARM_ID_SYSCONFIG_OUT_OF_DATE,
-                entity_instance_id)
+            self._clear_config_out_of_date_alarm(entity_instance_id)
 
             self._clear_runtime_class_apply_in_progress(host_uuids=[ihost_obj.uuid])
 
@@ -10847,6 +10872,20 @@ class ConductorManager(service.PeriodicService):
             if (ihost_obj.config_status != constants.CONFIG_STATUS_REINSTALL):
                 ihost_obj.config_status = None
                 ihost_obj.save(context)
+
+    @retry(retry_on_result=lambda x: x is False, wait_fixed=5000,
+           stop_max_attempt_number=5)
+    def _clear_config_out_of_date_alarm(self, entity_instance_id):
+        """Apply a new config may result a temporary failure to clear the
+
+        config-out-of-date alarm, retry it until success
+        """
+        if self.fm_api.clear_fault(
+                fm_constants.FM_ALARM_ID_SYSCONFIG_OUT_OF_DATE,
+                entity_instance_id):
+            return True
+        else:
+            return False
 
     @staticmethod
     def _config_set_reboot_required(config_uuid):

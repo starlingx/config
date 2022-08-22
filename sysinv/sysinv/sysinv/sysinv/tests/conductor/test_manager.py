@@ -1658,6 +1658,10 @@ class ManagerTestCase(base.DbTestCase):
 
     def _clear_alarm(self, fm_id, fm_instance):
         self.alarm_raised = False
+        # Need to return a value to simulate the return value of
+        # fm_api.clear_fault, as we rely on it to see whether the the clear_fault
+        # is succeeded and if a retry is required.
+        return True
 
     def _get_faults_by_id(self, alarm_id):
         return None
