@@ -272,9 +272,19 @@ class LoadController(rest.RestController):
                 raise wsme.exc.ClientSideError(_("Failed to upload load file %s,\
                                                  invalid file object" % staging_file))
 
-            if hasattr(source_file, 'fileno'):
-                # Only proceed if there is space available for copying
+            # This try block is to get only the iso file size as
+            # the signature file object type is different in Debian than CentOS
+            # and it has fileno() attribute but is not a supported operation on Debian
+            #
+            # The check for st_size is required to determine the file size of iso image
+            # It is not applicable to its signature file
+            try:
                 file_size = os.fstat(source_file.fileno()).st_size
+            except Exception:
+                file_size = -1
+
+            if file_size >= 0:
+                # Only proceed if there is space available for copying
                 avail_space = psutil.disk_usage('/scratch').free
                 if (avail_space < file_size):
                     raise wsme.exc.ClientSideError(_("Failed to upload load file %s, not enough space on /scratch"
