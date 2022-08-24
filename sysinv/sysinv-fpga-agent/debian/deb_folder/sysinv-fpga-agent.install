@@ -1,3 +1,4 @@
+debian/systemd/00-sysinv-fpga-agent.preset etc/systemd/system-preset
 etc/init.d/sysinv-fpga-agent
 etc/pmon.d/sysinv-fpga-agent.conf
-debian/systemd/00-sysinv-fpga-agent.preset etc/systemd/system-preset
+usr/share/starlingx/pmon.d/sysinv-fpga-agent.conf
