@@ -4,10 +4,12 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import keyring
+import os
 
 from passlib.hash import ldap_salted_sha1 as hash
 
 from sysinv.common import constants
+from sysinv.common import utils
 
 from sysinv.puppet import base
 
@@ -39,6 +41,20 @@ class LdapPuppet(base.BasePuppet):
             'platform::ldap::params::ldapserver_host': ldapserver_host,
             'platform::ldap::params::bind_anonymous': bind_anonymous,
         }
+
+    def get_secure_system_config(self):
+        config = {}
+        if os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG):
+            ldap_cert, ldap_key = utils.get_certificate_from_secret(
+                constants.OPENLDAP_CERT_SECRET_NAME,
+                constants.CERT_NAMESPACE_PLATFORM_CERTS)
+
+            config.update({
+                'platform::ldap::params::secure_cert': ldap_cert,
+                'platform::ldap::params::secure_key': ldap_key,
+            })
+
+        return config
 
     def get_host_config(self, host):
         ldapserver_remote = False
