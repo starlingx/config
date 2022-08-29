@@ -2,6 +2,7 @@
 #export DH_VERBOSE = 1
 
 ROOT := $(CURDIR)/debian/tmp
+PMONDIR := ${ROOT}/usr/share/starlingx/pmon.d
 
 %:
 	dh $@
@@ -9,6 +10,7 @@ ROOT := $(CURDIR)/debian/tmp
 override_dh_install:
 	install -p -D -m 755 sysinv-fpga-agent ${ROOT}/etc/init.d/sysinv-fpga-agent
 	install -p -D -m 644 sysinv-fpga-agent.conf ${ROOT}/etc/pmon.d/sysinv-fpga-agent.conf
+	install -p -D -m 644 sysinv-fpga-agent.conf ${PMONDIR}/sysinv-fpga-agent.conf
 	dh_install
 
 override_dh_usrlocal:
