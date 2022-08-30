@@ -12,15 +12,11 @@
 """ inventory ipv Utilities and helper functions."""
 
 from eventlet.green import subprocess
-import json
 import sys
 
 from oslo_log import log as logging
 
-from sysinv.common import disk_utils
 from sysinv.common import constants
-from sysinv.common import exception
-from sysinv.common import utils as cutils
 
 LOG = logging.getLogger(__name__)
 
@@ -148,112 +144,3 @@ class PVOperator(object):
         LOG.debug("ipv= %s" % ipv)
 
         return ipv
-
-    def ipv_delete(self, ipv_dict):
-        """Delete LVM physical volume
-
-         Also delete Logical volume Group if PV is last in group
-
-        :param ipv_dict: values for physical volume object
-        :returns: pass or fail
-        """
-        LOG.info("Deleting PV: %s" % (ipv_dict))
-
-        if ipv_dict['lvm_vg_name'] == constants.LVG_CINDER_VOLUMES:
-            # disable LIO targets before cleaning up volumes
-            # as they may keep the volumes busy
-            LOG.info("Clearing LIO configuration")
-            cutils.execute('targetctl', 'clear',
-                           run_as_root=True)
-            # Note: targets are restored from config file by Cinder
-            # on restart. Restarts should done after 'cinder-volumes'
-            # re-configuration
-
-        # Check if LVG exists
-        stdout, __ = cutils.execute('vgs', '--reportformat', 'json',
-                                    run_as_root=True)
-        data = json.loads(stdout)['report']
-        LOG.debug("ipv_delete vgs data: %s" % data)
-        vgs = []
-        for vgs_entry in data:
-            if type(vgs_entry) == dict and 'vg' in vgs_entry.keys():
-                vgs = vgs_entry['vg']
-                break
-        for vg in vgs:
-            if vg['vg_name'] == ipv_dict['lvm_vg_name']:
-                break
-        else:
-            LOG.info("VG %s not found, "
-                     "skipping removal" % ipv_dict['lvm_vg_name'])
-            vg = None
-
-        # Remove all volumes from volume group before deleting any PV from it
-        # (without proper pvmove the data will get corrupted anyway, so better
-        # we remove the data while the group is still clean)
-        if vg:
-            LOG.info("Removing all volumes "
-                     "from LVG %s" % ipv_dict['lvm_vg_name'])
-            # VG exists, should not give any errors
-            # (make sure no FD is open when running this)
-            # TODO(oponcea): Run pvmove if multiple PVs are
-            # associated with the same LVG to avoid data loss
-            cutils.execute('lvremove',
-                           ipv_dict['lvm_vg_name'],
-                           '-f',
-                           run_as_root=True)
-
-        # Check if PV exists
-        stdout, __ = cutils.execute('pvs', '--reportformat', 'json',
-                                    run_as_root=True)
-        data = json.loads(stdout)['report']
-        LOG.debug("ipv_delete pvs data: %s" % data)
-        pvs = []
-        for pvs_entry in data:
-            if type(pvs_entry) == dict and 'pv' in pvs_entry.keys():
-                for pv in pvs:
-                    pvs = vgs_entry['pv']
-                    break
-        for pv in pvs:
-            if (pv['vg_name'] == ipv_dict['lvm_vg_name'] and
-                    pv['pv_name'] == ipv_dict['lvm_pv_name']):
-                break
-        else:
-            pv = None
-
-        # Removing PV. VG goes down with it if last PV is removed from it
-        if pv:
-            parm = {'dev': ipv_dict['lvm_pv_name'],
-                    'vg': ipv_dict['lvm_vg_name']}
-            if (pv['vg_name'] == ipv_dict['lvm_vg_name'] and
-                    pv['pv_name'] == ipv_dict['lvm_pv_name']):
-                LOG.info("Removing PV %(dev)s "
-                         "from LVG %(vg)s" % parm)
-                cutils.execute('pvremove',
-                               ipv_dict['lvm_pv_name'],
-                               '--force',
-                               '--force',
-                               '-y',
-                               run_as_root=True)
-            else:
-                LOG.warn("PV %(dev)s from LVG %(vg)s not found, "
-                         "nothing to remove!" % parm)
-
-        try:
-            disk_utils.disk_wipe(ipv_dict['idisk_device_node'])
-            # Clean up the directory used by the volume group otherwise VG
-            # creation will fail without a reboot
-            vgs, __ = cutils.execute('vgs', '--noheadings',
-                                     '-o', 'vg_name',
-                                     run_as_root=True)
-            vgs = [v.strip() for v in vgs.split("\n")]
-            if ipv_dict['lvm_vg_name'] not in vgs:
-                cutils.execute('rm', '-rf',
-                               '/dev/%s' % ipv_dict['lvm_vg_name'])
-        except exception.ProcessExecutionError as e:
-            LOG.warning("Continuing after wipe command returned exit code: "
-                        "%(exit_code)s stdout: %(stdout)s err: %(stderr)s" %
-                        {'exit_code': e.exit_code,
-                         'stdout': e.stdout,
-                         'stderr': e.stderr})
-
-        LOG.info("Deleting PV: %s completed" % (ipv_dict))
