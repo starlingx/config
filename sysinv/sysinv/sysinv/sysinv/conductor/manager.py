@@ -14254,12 +14254,14 @@ class ConductorManager(service.PeriodicService):
         self._app.perform_app_update(from_rpc_app, to_rpc_app, tarfile,
                                      operation, lifecycle_hook_info_app_update, reuse_user_overrides)
 
-    def perform_app_remove(self, context, rpc_app, lifecycle_hook_info_app_remove):
+    def perform_app_remove(self, context, rpc_app, lifecycle_hook_info_app_remove, force=False):
         """Handling of application removal request (via AppOperator)
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
         :param lifecycle_hook_info_app_remove: LifecycleHookInfo object
+        :param force: If set to True, will set the app state to 'uploaded'
+            instead of 'remove-failed' in case of an error
 
         """
         lifecycle_hook_info_app_remove.operation = constants.APP_REMOVE_OP
@@ -14277,7 +14279,7 @@ class ConductorManager(service.PeriodicService):
             LOG.error("Error performing app_lifecycle_actions %s" % str(e))
 
         app_removed = self._app.perform_app_remove(
-            rpc_app, lifecycle_hook_info_app_remove)
+            rpc_app, lifecycle_hook_info_app_remove, force)
         lifecycle_hook_info_app_remove[LifecycleConstants.EXTRA][LifecycleConstants.APP_REMOVED] = app_removed
 
         # Perform post remove operation actions

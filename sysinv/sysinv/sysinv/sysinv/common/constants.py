@@ -1837,7 +1837,7 @@ APP_EVALUATE_REAPPLY_TRIGGER_TO_METADATA_MAP = {
 }
 
 # Progress constants
-APP_PROGRESS_ABORTED = 'operation aborted, check logs for detail'
+APP_PROGRESS_ABORTED = 'operation aborted, check system inventory logs for details'
 APP_PROGRESS_ABORTED_BY_USER = 'operation aborted by user'
 APP_PROGRESS_APPLY_MANIFEST = 'applying application manifest'
 APP_PROGRESS_COMPLETED = 'completed'
@@ -1863,6 +1863,8 @@ APP_PROGRESS_UPDATE_FAILED_SKIP_RECOVERY = "Application {} update from " \
 APP_PROGRESS_UPDATE_FAILED_ARMADA_TO_FLUXCD = "Application {} update from " \
     "version {} to version {} failed and recovery skipped " \
     "because recovering between Armada and FluxCD is not allowed"
+APP_PROGRESS_REMOVE_FAILED_WARNING = "Application remove failed. Status forced to '{}'. " \
+    "Use native helm commands to clean up application helm releases."
 
 # Auto-recovery limits
 APP_AUTO_RECOVERY_MAX_COUNT = 5

@@ -331,7 +331,8 @@ class AppOperator(object):
 
     def _abort_operation(self, app, operation,
                          progress=constants.APP_PROGRESS_ABORTED,
-                         user_initiated=False, reset_status=False):
+                         user_initiated=False, reset_status=False,
+                         forced_operation=False):
         if user_initiated:
             progress = constants.APP_PROGRESS_ABORTED_BY_USER
 
@@ -377,17 +378,28 @@ class AppOperator(object):
                       "please check system inventory log for cause."),
                     True)
         elif app.status == constants.APP_REMOVE_IN_PROGRESS:
-            new_status = constants.APP_REMOVE_FAILURE
             op = 'application-remove'
-            self._raise_app_alarm(
-                app.name, constants.APP_REMOVE_FAILURE,
-                fm_constants.FM_ALARM_ID_APPLICATION_REMOVE_FAILED,
-                fm_constants.FM_ALARM_SEVERITY_MAJOR,
-                _("Application Remove Failure"),
-                fm_constants.FM_ALARM_TYPE_3,
-                _("Retry removing the application. If the issue persists, "
-                  "please check system inventory log for cause."),
-                True)
+            if not forced_operation:
+                new_status = constants.APP_REMOVE_FAILURE
+                self._raise_app_alarm(
+                    app.name, constants.APP_REMOVE_FAILURE,
+                    fm_constants.FM_ALARM_ID_APPLICATION_REMOVE_FAILED,
+                    fm_constants.FM_ALARM_SEVERITY_MAJOR,
+                    _("Application Remove Failure"),
+                    fm_constants.FM_ALARM_TYPE_3,
+                    _("Retry removing the application. If the issue persists, "
+                        "please check system inventory log for cause. "
+                        "Using --force will set the app status to 'uploaded' "
+                        "in case the error persists."),
+                    True)
+            else:
+                # In case there is an existing alarm for previous remove failure
+                self._clear_app_alarm(app.name)
+
+                new_status = constants.APP_UPLOAD_SUCCESS
+                progress = constants.APP_PROGRESS_REMOVE_FAILED_WARNING.format(new_status)
+                LOG.warning(progress)
+
         else:
             # Should not get here, perhaps a new status was introduced?
             LOG.error("No abort handling code for app status = '%s'!" % app.status)
@@ -3060,7 +3072,7 @@ class AppOperator(object):
         self._clear_app_alarm(to_app.name)
         return True
 
-    def perform_app_remove(self, rpc_app, lifecycle_hook_info_app_remove):
+    def perform_app_remove(self, rpc_app, lifecycle_hook_info_app_remove, force=False):
         """Process application remove request
 
         This method invokes Armada to delete the application manifest.
@@ -3068,6 +3080,8 @@ class AppOperator(object):
 
         :param rpc_app: application object in the RPC request
         :param lifecycle_hook_info_app_remove: LifecycleHookInfo object
+        :param force: If set to True, will set the app state to 'uploaded'
+            instead of 'remove-failed' in case of an error
 
         :return boolean: whether application remove was successful
         """
@@ -3110,7 +3124,7 @@ class AppOperator(object):
                 self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_remove)
 
             except Exception as e:
-                self._abort_operation(app, constants.APP_REMOVE_OP)
+                self._abort_operation(app, constants.APP_REMOVE_OP, forced_operation=force)
                 LOG.exception(e)
                 self._deregister_app_abort(app.name)
                 return False
@@ -3122,10 +3136,11 @@ class AppOperator(object):
             LOG.info("Application (%s) remove completed." % app.name)
         else:
             if AppOperator.is_app_aborted(app.name):
+                # App is always set to APP_REMOVE_FAILURE if abort is initiated by user.
                 self._abort_operation(app, constants.APP_REMOVE_OP,
-                                      user_initiated=True)
+                                      user_initiated=True, forced_operation=False)
             else:
-                self._abort_operation(app, constants.APP_REMOVE_OP)
+                self._abort_operation(app, constants.APP_REMOVE_OP, forced_operation=force)
             rc = False
 
         self._deregister_app_abort(app.name)

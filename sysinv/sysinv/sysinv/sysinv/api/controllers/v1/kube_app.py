@@ -378,7 +378,8 @@ class KubeAppController(rest.RestController):
             lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_MANUAL
 
             pecan.request.rpcapi.perform_app_remove(pecan.request.context,
-                                                    db_app, lifecycle_hook_info=lifecycle_hook_info)
+                                                    db_app, lifecycle_hook_info=lifecycle_hook_info,
+                                                    force=force)
         else:
             if db_app.status not in [constants.APP_APPLY_IN_PROGRESS,
                                      constants.APP_UPDATE_IN_PROGRESS,
