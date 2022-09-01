@@ -1626,6 +1626,15 @@ class Connection(api.Connection):
         return _paginate_query(models.icpu, limit, marker,
                                sort_key, sort_dir, query)
 
+    def icpu_is_hyper_threading_enabled(self, ihost):
+
+        query = model_query(models.icpu.id)
+        query = add_icpu_filter_by_ihost(query, ihost)
+        query = query.filter(models.icpu.thread > 0)
+
+        result = query.first()
+        return result is not None
+
     @db_objects.objectify(objects.cpu)
     def icpu_update(self, cpu_id, values, forihostid=None):
         with _session_for_write() as session:
