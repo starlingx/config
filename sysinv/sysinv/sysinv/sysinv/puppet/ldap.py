@@ -44,7 +44,9 @@ class LdapPuppet(base.BasePuppet):
 
     def get_secure_system_config(self):
         config = {}
-        if os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG):
+        if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG) and
+                self._distributed_cloud_role() !=
+                        constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
             ldap_cert, ldap_key = utils.get_certificate_from_secret(
                 constants.OPENLDAP_CERT_SECRET_NAME,
                 constants.CERT_NAMESPACE_PLATFORM_CERTS)
