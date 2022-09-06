@@ -144,6 +144,12 @@ function migrate_apps {
 }
 
 if [ "$ACTION" == "activate" ]; then
+    # TODO: double check the inclusive condition.
+    if [[ "$TO_RELEASE" == "22.12" && "$FROM_RELEASE" == "22.06" ]]; then
+        log "upgrade to 22.12, skip"
+        exit 0
+    fi
+
     log "$NAME: Starting Helm release migration from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
     install_helm_2to3
     get_helmv2_config

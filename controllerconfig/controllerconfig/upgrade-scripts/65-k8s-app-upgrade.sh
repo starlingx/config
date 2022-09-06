@@ -32,9 +32,6 @@ UPLOAD_RESULT_ATTEMPTS=24  # ~4 min to upload app
 UPDATE_RESULT_SLEEP=30
 UPDATE_RESULT_ATTEMPTS=30  # ~15 min to update app
 
-source /etc/platform/openrc
-source /etc/platform/platform.conf
-
 # This will log to /var/log/platform.log
 function log {
     logger -p local1.info $1
@@ -61,6 +58,16 @@ function verify_apps_are_not_recovering {
 log "$NAME: Starting Kubernetes application updates from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 
 if [ "$ACTION" == "activate" ]; then
+    # TODO: double check the inclusive condition.
+    if [ "$TO_RELEASE" != "22.06" ]; then
+        log "not upgrading to 22.06, skip"
+        exit 0
+    fi
+
+    # move the costly source command in the if branch, so only execute when needed.
+    source /etc/platform/openrc
+    source /etc/platform/platform.conf
+
     for tries in $(seq 1 $RECOVER_RESULT_ATTEMPTS); do
         if verify_apps_are_not_recovering; then
             break

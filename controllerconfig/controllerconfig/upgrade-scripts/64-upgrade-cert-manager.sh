@@ -27,8 +27,19 @@ FROM_RELEASE=$1
 TO_RELEASE=$2
 ACTION=$3
 
+# This will log to /var/log/platform.log
+function log {
+    logger -p local1.info $1
+}
+
 # only run this script during upgrade-activate
 if [ "$ACTION" != "activate" ]; then
+    exit 0
+fi
+
+# TODO: double check the inclusive condition.
+if [[ "$TO_RELEASE" == "22.12" && "$FROM_RELEASE" == "22.06" ]]; then
+    log "upgrade to 22.12, skip"
     exit 0
 fi
 
@@ -47,11 +58,6 @@ REMOVE_RESULT_ATTEMPTS=48 # ~8 min to remove app
 
 source /etc/platform/openrc
 source /etc/platform/platform.conf
-
-# This will log to /var/log/platform.log
-function log {
-    logger -p local1.info $1
-}
 
 EXISTING_APP_NAME='cert-manager'
 EXISTING_APP_INFO=$(system application-show $EXISTING_APP_NAME --column app_version --column status --format yaml)
