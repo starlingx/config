@@ -4610,6 +4610,20 @@ class ConductorManager(service.PeriodicService):
                 if ipart['device_path'] == db_part.device_path:
                     found = True
 
+                    # On CentOS to Debian upgrade partitions may differ
+                    if (ipart['start_mib'] != db_part['start_mib'] or
+                            ipart['end_mib'] != db_part['end_mib'] or
+                            ipart['type_guid'] != db_part['type_guid']):
+                        LOG.info("PART update part start/end/size/type/name")
+                        self.dbapi.partition_update(
+                            db_part.uuid,
+                            {'start_mib': ipart['start_mib'],
+                             'end_mib': ipart['end_mib'],
+                             'size_mib': ipart['size_mib'],
+                             'type_guid': ipart['type_guid'],
+                             'type_name': ipart['type_name']}
+                        )
+
                     if ipart['device_node'] != db_part.device_node:
                         LOG.info("PART update part device node")
                         self.dbapi.partition_update(
@@ -5190,6 +5204,23 @@ class ConductorManager(service.PeriodicService):
                             LOG.info("remove out-of-date rook provisioned pv %s" % ipv.lvm_pv_name)
                             self._prepare_for_ipv_removal(ipv)
                             self.dbapi.ipv_destroy(ipv.id)
+
+                        # If upgrading from CentOS to Debian the partition scheme
+                        # may differ, so we can remove the PV in this case
+                        # TODO (heitormatsui): remove when CentOS to Debian upgrade is deprecated
+                        try:
+                            upgrade_in_progress = self.dbapi.software_upgrade_get_one()
+                            loads = self.dbapi.load_get_list()
+                            target_load = cutils.get_imported_load(loads)
+                            host_upgrade = self.dbapi.host_upgrade_get_by_host(forihostid)
+                            if (host_upgrade.software_load == upgrade_in_progress.to_load and
+                                    target_load.software_version == tsc.SW_VERSION_22_12):
+                                # remove duplicated pv data from CentOS
+                                LOG.info("remove out-of-date CentOS provisioned pv %s" % ipv.lvm_pv_name)
+                                self._prepare_for_ipv_removal(ipv)
+                                self.dbapi.ipv_destroy(ipv.id)
+                        except exception.NotFound:
+                            pass
             else:
                 if (ipv.pv_state == constants.PV_ERR and
                         ipv.lvm_vg_name == ipv_in_agent['lvm_vg_name']):
