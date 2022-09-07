@@ -44,9 +44,15 @@ class LdapPuppet(base.BasePuppet):
 
     def get_secure_system_config(self):
         config = {}
-        if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG) and
-                self._distributed_cloud_role() !=
-                        constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+        bootstrap_completed = \
+            os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG)
+        is_subcloud = \
+            self._distributed_cloud_role() == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD
+        is_upgrading, _ = utils.is_upgrade_in_progress(self.dbapi)
+        # Checking for upgrade is a temporary fix to allow the upgrade to run.
+        # A subsequent code change is needed to create the openldap certificate
+        # during the upgrade and then remove this check.
+        if bootstrap_completed and not is_subcloud and not is_upgrading:
             ldap_cert, ldap_key = utils.get_certificate_from_secret(
                 constants.OPENLDAP_CERT_SECRET_NAME,
                 constants.CERT_NAMESPACE_PLATFORM_CERTS)
