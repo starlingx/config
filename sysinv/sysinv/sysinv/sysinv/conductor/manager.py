@@ -12415,25 +12415,6 @@ class ConductorManager(service.PeriodicService):
 
         return lvdisplay_dict
 
-    def get_cinder_gib_pv_sizes(self, context):
-        pvs_command = 'pvs --options pv_size,vg_name --units g --noheading ' \
-                      '--nosuffix | grep cinder-volumes'
-
-        pvs_dict = {}
-        # Execute the command.
-        try:
-            pvs_process = subprocess.Popen(pvs_command,
-                                           stdout=subprocess.PIPE,
-                                           shell=True, universal_newlines=True)
-        except Exception as e:
-            LOG.error("Could not retrieve pvs information: %s" % e)
-            return pvs_dict
-
-        pvs_output = pvs_process.communicate()[0]
-        pvs_dict = cutils.output_to_dict(pvs_output)
-
-        return pvs_dict
-
     def get_ceph_object_pool_name(self, context):
         """
         Get Rados Gateway object data pool name
@@ -12470,34 +12451,6 @@ class ConductorManager(service.PeriodicService):
 
         return partition_size
 
-    def get_cinder_partition_size(self, context):
-        # Obtain the active controller.
-        active_controller = None
-        hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
-        for h in hosts:
-            if utils.is_host_active_controller(h):
-                active_controller = h
-
-        if not active_controller:
-            raise exception.SysinvException(_("Unable to obtain active "
-                                              "controller."))
-
-        # Obtain the cinder disk.
-        cinder_device = cutils._get_cinder_device(self.dbapi,
-                                                  active_controller.id)
-
-        # Raise exception in case we couldn't get the cinder disk.
-        if not cinder_device:
-            raise exception.SysinvException(_(
-                "Unable to determine the current value of cinder_device for "
-                "host %s " % active_controller.hostname))
-
-        # The partition for cinder volumes is always the first.
-        cinder_device_partition = cutils.get_part_device_path(cinder_device, '1')
-        cinder_size = self.get_partition_size(context, cinder_device_partition)
-
-        return cinder_size
-
     def region_has_ceph_backend(self, context):
         """
         Send a request to the primary region to see if ceph is configured
@@ -12527,65 +12480,6 @@ class ConductorManager(service.PeriodicService):
         except exception.NotFound:
             # No TPM device found
             return None
-
-    def update_tpm_config(self, context, tpm_context, update_file_required=True):
-        """Notify agent to configure TPM with the supplied data.
-
-        :param context: an admin context.
-        :param tpm_context: the tpm object context
-        :param update_file_required: boolean, whether file needs to be updated
-        """
-
-        LOG.debug("ConductorManager.update_tpm_config: sending TPM update %s "
-                  "to agents" % tpm_context)
-        rpcapi = agent_rpcapi.AgentAPI()
-        personalities = [constants.CONTROLLER]
-
-        # the original key from which TPM context will be derived
-        # needs to be present on all agent nodes, as well as
-        # the public cert
-        if update_file_required:
-            for fp in ['cert_path', 'public_path']:
-                file_name = tpm_context[fp]
-                with open(file_name, 'r') as content_file:
-                    file_content = content_file.read()
-
-                config_dict = {
-                    'personalities': personalities,
-                    'file_names': [file_name],
-                    'file_content': file_content,
-                }
-
-                # TODO(jkung): update public key info
-                config_uuid = self._config_update_hosts(context, personalities)
-                rpcapi.iconfig_update_file(context,
-                                           iconfig_uuid=config_uuid,
-                                           iconfig_dict=config_dict)
-
-        rpcapi.apply_tpm_config(context,
-                                tpm_context=tpm_context)
-
-    def update_tpm_config_manifests(self, context, delete_tpm_file=None):
-        """Apply TPM related runtime manifest changes. """
-        LOG.info("update_tpm_config_manifests")
-
-        personalities = [constants.CONTROLLER]
-        config_uuid = self._config_update_hosts(context, personalities)
-
-        if delete_tpm_file:
-            # Delete the TPM file from the controllers
-            rpcapi = agent_rpcapi.AgentAPI()
-            command = ['rm', '-f', delete_tpm_file]
-            hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
-            for host in hosts:
-                rpcapi.execute_command(context, host.uuid, command)
-
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::haproxy::runtime',
-                        'openstack::horizon::runtime']
-        }
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
     def _set_tpm_config_state(self,
                               ihost, response_dict):
@@ -13578,18 +13472,6 @@ class ConductorManager(service.PeriodicService):
         self._config_apply_runtime_manifest(context,
                                             config_uuid,
                                             config_dict)
-
-    def get_helm_chart_namespaces(self, context, chart_name):
-        """Get supported chart namespaces.
-
-        This method retrieves the namespace supported by a given chart.
-
-        :param context: request context.
-        :param chart_name: name of the chart
-        :returns: list of supported namespaces that associated overrides may be
-                  provided.
-        """
-        return self._helm.get_helm_chart_namespaces(chart_name)
 
     def get_helm_chart_overrides(self, context, app_name, chart_name,
                                  cnamespace=None):

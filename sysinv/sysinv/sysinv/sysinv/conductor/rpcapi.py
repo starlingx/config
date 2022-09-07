@@ -641,21 +641,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        ihost_uuid=ihost_uuid,
                                        subfunctions=subfunctions))
 
-    def configure_osd_istor(self, context, istor_obj):
-        """Synchronously, have a conductor configure an OSD istor.
-
-        Does the following tasks:
-        - Allocates an OSD.
-        - Creates or resizes the OSD pools as necessary.
-
-        :param context: request context.
-        :param istor_obj: an istor object.
-        :returns: istor object, with updated osdid
-        """
-        return self.call(context,
-                         self.make_msg('configure_osd_istor',
-                                       istor_obj=istor_obj))
-
     def unconfigure_osd_istor(self, context, istor_obj):
         """Synchronously, have a conductor unconfigure an istor.
 
@@ -671,44 +656,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('unconfigure_osd_istor',
                                        istor_obj=istor_obj))
 
-    def get_ceph_pool_replication(self, context, ceph_backend=None):
-        """Get ceph storage backend pool replication parameters
-
-        :param context: request context.
-        :param ceph_backend: ceph backend object type for a tier
-        :returns: tuple with (replication, min_replication)
-        """
-        return self.call(context,
-                         self.make_msg('get_ceph_pool_replication',
-                                       ceph_backend=ceph_backend))
-
-    def delete_osd_pool(self, context, pool_name):
-        """delete an OSD pool
-
-        :param context: request context.
-        :param pool_name: the name of the OSD pool
-        """
-        return self.call(context,
-                         self.make_msg('delete_osd_pool',
-                                       pool_name=pool_name))
-
-    def list_osd_pools(self, context):
-        """list OSD pools
-
-        :param context: request context.
-        """
-        return self.call(context,
-                         self.make_msg('list_osd_pools'))
-
-    def get_ceph_primary_tier_size(self, context):
-        """Get the size of the primary storage tier in the ceph cluster.
-
-        :param context: request context.
-        :returns: integer size in GB.
-        """
-        return self.call(context,
-                         self.make_msg('get_ceph_primary_tier_size'))
-
     def get_ceph_tier_size(self, context, tier_name):
         """Get the size of a storage tier in the ceph cluster.
 
@@ -720,14 +667,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('get_ceph_tier_size',
                                        tier_name=tier_name))
 
-    def get_ceph_cluster_df_stats(self, context):
-        """Get the usage information for the ceph cluster.
-
-        :param context: request context.
-        """
-        return self.call(context,
-                         self.make_msg('get_ceph_cluster_df_stats'))
-
     def get_ceph_pools_df_stats(self, context):
         """Get the usage information for the ceph pools.
 
@@ -735,22 +674,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context,
                          self.make_msg('get_ceph_pools_df_stats'))
-
-    def get_cinder_lvm_usage(self, context):
-        """Get the usage information for the LVM pools.
-
-        :param context: request context.
-        """
-        return self.call(context,
-                         self.make_msg('get_cinder_lvm_usage'))
-
-    def get_cinder_volume_type_names(self, context):
-        """Get the names of all currently defined cinder volume types.
-
-        :param context: request context.
-        """
-        return self.call(context,
-                         self.make_msg('get_cinder_volume_type_names'))
 
     def kill_ceph_storage_monitor(self, context):
         """Stop the ceph storage monitor.
@@ -786,14 +709,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param context: request context.
         """
         return self.call(context, self.make_msg('update_ntp_config'))
-
-    def update_ptp_config(self, context, do_apply=False):
-        """Synchronously, have the conductor update the PTP configuration.
-
-        :param context: request context.
-        :param do_apply: If the config should be applied via runtime manifests
-        """
-        return self.call(context, self.make_msg('update_ptp_config', do_apply=do_apply))
 
     def update_ptp_instances_config(self, context):
         """Synchronously, have the conductor update PTP instance(s).
@@ -1154,37 +1069,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        interface_id=interface_id,
                                        mgmt_ip=mgmt_ip))
 
-    def vim_host_add(self, context, api_token, ihost_uuid,
-                     hostname, subfunctions, administrative,
-                     operational, availability,
-                     subfunction_oper, subfunction_avail, timeout):
-        """
-        Asynchronously, notify VIM of host add
-        """
-
-        return self.cast(context,
-                         self.make_msg('vim_host_add',
-                                       api_token=api_token,
-                                       ihost_uuid=ihost_uuid,
-                                       hostname=hostname,
-                                       personality=subfunctions,
-                                       administrative=administrative,
-                                       operational=operational,
-                                       availability=availability,
-                                       subfunction_oper=subfunction_oper,
-                                       subfunction_avail=subfunction_avail,
-                                       timeout=timeout))
-
-    def mtc_host_add(self, context, mtc_address, mtc_port, ihost_mtc_dict):
-        """
-        Asynchronously, notify mtce of host add
-        """
-        return self.cast(context,
-                         self.make_msg('mtc_host_add',
-                                       mtc_address=mtc_address,
-                                       mtc_port=mtc_port,
-                                       ihost_mtc_dict=ihost_mtc_dict))
-
     def is_virtual_system_config(self, context):
         """
         Gets the virtual system config from service parameter
@@ -1519,22 +1403,9 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('update_snmp_config'))
 
-    def ceph_manager_config_complete(self, context, applied_config):
-        self.call(context,
-                  self.make_msg('ceph_service_config_complete',
-                                applied_config=applied_config))
-
     def get_controllerfs_lv_sizes(self, context):
         return self.call(context,
                          self.make_msg('get_controllerfs_lv_sizes'))
-
-    def get_cinder_gib_pv_sizes(self, context):
-        return self.call(context,
-                         self.make_msg('get_cinder_gib_pv_sizes'))
-
-    def get_cinder_partition_size(self, context):
-        return self.call(context,
-                         self.make_msg('get_cinder_partition_size'))
 
     def region_has_ceph_backend(self, context):
         """
@@ -1555,26 +1426,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('get_tpmdevice_by_host',
                                        host_id=host_id))
-
-    def update_tpm_config(self, context, tpm_context):
-        """Synchronously, have the conductor update the TPM config.
-
-        :param context: request context.
-        :param tpm_context: TPM object context
-        """
-        return self.call(context,
-                         self.make_msg('update_tpm_config',
-                                       tpm_context=tpm_context))
-
-    def update_tpm_config_manifests(self, context, delete_tpm_file=None):
-        """Synchronously, have the conductor update the TPM config manifests.
-
-        :param context: request context.
-        :param delete_tpm_file: tpm file to delete, optional
-        """
-        return self.call(context,
-                         self.make_msg('update_tpm_config_manifests',
-                                       delete_tpm_file=delete_tpm_file))
 
     def tpm_config_update_by_host(self, context,
                                   host_uuid, response_dict):
@@ -1620,15 +1471,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context,
                          self.make_msg('cinder_prepare_db_for_volume_restore'))
-
-    def get_ceph_object_pool_name(self, context):
-        """
-        Get Rados Gateway object data pool name
-
-        :param context: request context.
-        """
-        return self.call(context,
-                         self.make_msg('get_ceph_object_pool_name'))
 
     def get_software_upgrade_status(self, context):
         """
@@ -1747,20 +1589,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        sc_ca_cert=sc_ca_cert,
                                        sc_ca_key=sc_ca_key))
 
-    def get_helm_chart_namespaces(self, context, chart_name):
-        """Get supported chart namespaces.
-
-        This method retrieves the namespace supported by a given chart.
-
-        :param context: request context.
-        :param chart_name: name of the chart
-        :returns: list of supported namespaces that associated overrides may be
-                  provided.
-        """
-        return self.call(context,
-                         self.make_msg('get_helm_chart_namespaces',
-                                       chart_name=chart_name))
-
     def get_helm_chart_overrides(self, context, app_name, chart_name,
                                  cnamespace=None):
         """Get the overrides for a supported chart.
@@ -1800,20 +1628,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('get_helm_application_namespaces',
                                        app_name=app_name))
-
-    def get_helm_application_overrides(self, context, app_name, cnamespace=None):
-        """Get the overrides for a supported set of charts.
-
-        :param context: request context.
-        :param app_name: name of a supported application (set of charts)
-        :param cnamespace: (optional) namespace
-        :returns: dict of overrides.
-
-        """
-        return self.call(context,
-                         self.make_msg('get_helm_application_overrides',
-                                       app_name=app_name,
-                                       cnamespace=cnamespace))
 
     def merge_overrides(self, context, file_overrides=None, set_overrides=None):
         """Merge the file and set overrides into a single chart overrides.
@@ -1886,18 +1700,8 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('evaluate_apps_reapply',
                                                 trigger=trigger))
 
-    def evaluate_app_reapply(self, context, app_name):
-        """Synchronously, determine whether an application
-        re-apply is needed, and if so, raise the re-apply flag.
-
-        :param context: request context.
-        :param app_name: application name
-        """
-        return self.call(context, self.make_msg('evaluate_app_reapply',
-                                                app_name=app_name))
-
     def mtc_action_apps_semantic_checks(self, context, action):
-        """Synchronously, call apps semantic check for maintenance actions
+        """Synchronously, call apps semantic check for maintenance actions.
 
         :param context: request context.
         :param action: maintenance action
