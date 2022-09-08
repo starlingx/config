@@ -1,2 +1,3 @@
 etc/init.d
 etc/pmond.d
+var/local/share/applications

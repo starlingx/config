@@ -17,7 +17,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2020-2021 Wind River Systems, Inc.
+# Copyright (c) 2020-2022 Wind River Systems, Inc.
 #
 
 
@@ -80,7 +80,9 @@ CONF.register_opts(agent_opts, 'fpga_agent')
 
 # This is the location where we cache the device image file while
 # writing it to the hardware.
-DEVICE_IMAGE_CACHE_DIR = "/usr/local/share/applications/sysinv"
+DEVICE_IMAGE_CACHE_ROOT_DIR = "/var" if utils.is_debian() else "/usr"
+DEVICE_IMAGE_CACHE_DIR = DEVICE_IMAGE_CACHE_ROOT_DIR + \
+                         "/local/share/applications/sysinv"
 
 SYSFS_DEVICE_PATH = "/sys/bus/pci/devices/"
 FME_PATH = "/fpga/intel-fpga-dev.*/intel-fpga-fme.*/"
