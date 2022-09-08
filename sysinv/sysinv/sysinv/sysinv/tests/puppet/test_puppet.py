@@ -5,6 +5,8 @@
 
 import mock
 
+from sysinv.common import constants
+
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.puppet import base
 
@@ -32,9 +34,28 @@ class PuppetOperatorTestSuiteMixin(base.PuppetTestCaseMixin):
         assert self.mock_write_config.called
 
     # self.host is defined in BaseHostTestCase
-    def test_update_host_config(self):
+    def test_centos_update_host_config(self):
+        self.mocked_get_os_type = mock.patch(
+            'sysinv.common.utils.get_os_type',
+            return_value=constants.OS_CENTOS)
+        self.mocked_get_os_type.start()
+
         self.operator.update_host_config(self.host)  # pylint: disable=no-member
         assert self.mock_write_config.called
+
+        self.addCleanup(self.mocked_get_os_type.stop)
+
+    # self.host is defined in BaseHostTestCase
+    def test_debian_update_host_config(self):
+        self.mocked_get_os_type = mock.patch(
+            'sysinv.common.utils.get_os_type',
+            return_value=constants.OS_DEBIAN)
+        self.mocked_get_os_type.start()
+
+        self.operator.update_host_config(self.host)  # pylint: disable=no-member
+        assert self.mock_write_config.called
+
+        self.addCleanup(self.mocked_get_os_type.stop)
 
 
 #  ============= IPv4 environment tests ==============
