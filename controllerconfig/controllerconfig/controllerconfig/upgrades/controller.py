@@ -172,13 +172,17 @@ def create_temp_filesystem(vgname, lvname, mountpoint, size):
     devnull = open(os.devnull, 'w')
 
     try:
+        # lvcreate -n <lvname> --size <size> <vgname> -y -Wy -Zy
         subprocess.check_call(
             ["lvcreate",
              "--size",
              size,
              "-n",
              lvname,
-             vgname],
+             vgname,
+             "-y",
+             "-Wy",
+             "-Zy"],
             close_fds=True,
             stdout=devnull)
     except subprocess.CalledProcessError:
