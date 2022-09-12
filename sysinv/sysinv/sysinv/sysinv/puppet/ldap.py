@@ -101,12 +101,16 @@ class LdapPuppet(base.BasePuppet):
             }
 
         # Rest of the configuration is required only for controller hosts
+        provider_prot = 'ldaps'
+        if utils.is_centos():
+            provider_prot = 'ldap'
+
         if host.hostname == constants.CONTROLLER_0_HOSTNAME:
             server_id = '001'
-            provider_uri = 'ldap://%s' % constants.CONTROLLER_1_HOSTNAME
+            provider_uri = '%s://%s' % (provider_prot, constants.CONTROLLER_1_HOSTNAME)
         elif host.hostname == constants.CONTROLLER_1_HOSTNAME:
             server_id = '002'
-            provider_uri = 'ldap://%s' % constants.CONTROLLER_0_HOSTNAME
+            provider_uri = '%s://%s' % (provider_prot, constants.CONTROLLER_0_HOSTNAME)
         else:
             raise Exception("unknown controller hostname {}".format(
                 host.hostname))
