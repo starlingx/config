@@ -1,10 +1,11 @@
 #
-# Copyright (c) 2017-2021 Wind River Systems, Inc.
+# Copyright (c) 2017-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
 from oslo_log import log as logging
+from sysinv.common import constants
 from sysinv.common import service_parameter
 from sysinv.puppet import base
 
@@ -70,7 +71,12 @@ class ServiceParamPuppet(base.BasePuppet):
 
             resource = schema[service_parameter.SERVICE_PARAM_RESOURCE].get(param.name)
             if resource is None:
-                continue
+                has_wildcard = (constants.SERVICE_PARAM_NAME_WILDCARD in
+                                schema[service_parameter.SERVICE_PARAM_RESOURCE])
+                if not has_wildcard:
+                    continue
+                resource = "{}::{}".format(schema[service_parameter.SERVICE_PARAM_RESOURCE]
+                                           .get(constants.SERVICE_PARAM_NAME_WILDCARD), param.name)
 
             formatter = None
 
