@@ -86,6 +86,8 @@ agent_opts = [
 
 audit_intervals_opts = [
        cfg.IntOpt('default', default=60),
+       cfg.IntOpt('inventory_audit', default=60),
+       cfg.IntOpt('lldp_audit', default=300)
                   ]
 
 CONF = cfg.CONF
@@ -177,8 +179,6 @@ class AgentManager(service.PeriodicService):
         self._prev_fs = None
         self._subfunctions = None
         self._subfunctions_configured = False
-        self._notify_subfunctions_alarm_clear = False
-        self._notify_subfunctions_alarm_raise = False
         self._tpmconfig_rpc_failure = False
         self._tpmconfig_host_first_apply = False
         self._first_grub_update = False
@@ -831,14 +831,6 @@ class AgentManager(service.PeriodicService):
                                          ihost['uuid'],
                                          idisk)
             self._inventory_reported.add(self.DISK)
-        except RemoteError as e:
-            # TODO (oponcea): Valid for R4->R5, remove in R6.
-            # safe to ignore during upgrades
-            if 'has no property' in str(e) and 'available_mib' in str(e):
-                LOG.warn("Skip updating idisk conductor. "
-                         "Upgrade in progress?")
-            else:
-                LOG.exception("Sysinv Agent exception updating idisk conductor.")
         except exception.SysinvException:
             LOG.exception("Sysinv Agent exception updating idisk conductor.")
             pass
@@ -1215,12 +1207,28 @@ class AgentManager(service.PeriodicService):
             if not force_update:
                 self._prev_partition = None
 
-    @periodic_task.periodic_task(spacing=CONF.agent_periodic_task_intervals.default,
+    @periodic_task.periodic_task(spacing=CONF.agent_periodic_task_intervals.inventory_audit,
                                  run_immediately=True)
-    def _agent_audit(self, context):
+    def _inventory_audit(self, context):
         # periodically, perform inventory audit
         self.agent_audit(context, host_uuid=self._ihost_uuid,
                          force_updates=None)
+
+    @periodic_task.periodic_task(spacing=CONF.agent_periodic_task_intervals.lldp_audit)
+    def _lldp_audit(self, context):
+
+        if not self._ihost_uuid:
+            return
+
+        LOG.debug("SysInv Agent LLDP Audit running.")
+
+        icontext = mycontext.get_admin_context()
+        rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+
+        if self._is_config_complete():
+            self.host_lldp_get_and_report(icontext, rpcapi, self._ihost_uuid)
+        else:
+            self._lldp_enable_and_report(icontext, rpcapi, self._ihost_uuid)
 
     @utils.synchronized(LOCK_AGENT_ACTION, external=False)
     def agent_audit(self, context, host_uuid, force_updates, cinder_device=None):
@@ -1230,8 +1238,7 @@ class AgentManager(service.PeriodicService):
             return
 
         icontext = mycontext.get_admin_context()
-        rpcapi = conductor_rpcapi.ConductorAPI(
-                               topic=conductor_rpcapi.MANAGER_TOPIC)
+        rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
 
         if self._ihost_uuid:
             if os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG):
@@ -1267,15 +1274,6 @@ class AgentManager(service.PeriodicService):
                                                      self._ihost_uuid,
                                                      idisk)
                         self._inventory_reported.add(self.DISK)
-                    except RemoteError as e:
-                        # TODO (oponcea): Valid for R4->R5, remove in R6.
-                        # safe to ignore during upgrades
-                        if 'has no property' in str(e) and 'available_mib' in str(e):
-                            LOG.warn("Skip updating idisk conductor. "
-                                     "Upgrade in progress?")
-                        else:
-                            LOG.exception("Sysinv Agent exception updating idisk "
-                                          "conductor.")
                     except exception.SysinvException:
                         LOG.exception("Sysinv Agent exception updating idisk "
                                       "conductor.")
@@ -1289,26 +1287,11 @@ class AgentManager(service.PeriodicService):
                 self._report_to_conductor_iplatform_avail()
                 self._iconfig_read_config_reported = config_uuid
 
-            if (self._ihost_personality == constants.CONTROLLER and
-                     not self._notify_subfunctions_alarm_clear):
-
-                subfunctions_list = self.subfunctions_list_get()
-                if ((constants.CONTROLLER in subfunctions_list) and
-                        (constants.WORKER in subfunctions_list)):
-                    if self.subfunctions_configured(subfunctions_list) and \
-                            not self._wait_for_nova_lvg(icontext, rpcapi, self._ihost_uuid):
-                        self._notify_subfunctions_alarm_clear = True
-                    else:
-                        if not self._notify_subfunctions_alarm_raise:
-                            self._notify_subfunctions_alarm_raise = True
-                else:
-                    self._notify_subfunctions_alarm_clear = True
-
         if self._ihost_uuid:
-            LOG.debug("SysInv Agent Audit running.")
+            LOG.debug("SysInv Agent Inventory Audit running.")
 
             if force_updates:
-                LOG.info("SysInv Agent Audit force updates: (%s)" %
+                LOG.info("SysInv Agent Inventory Audit force updates: (%s)" %
                          (', '.join(force_updates)))
 
             imemory = self._inode_operator.inodes_get_imemory()
@@ -1316,21 +1299,6 @@ class AgentManager(service.PeriodicService):
                                            self._ihost_uuid,
                                            imemory)
             self._inventory_reported.add(self.MEMORY)
-            if self._agent_throttle > 5:
-                # throttle updates
-                self._agent_throttle = 0
-                if self._is_config_complete():
-                    self.host_lldp_get_and_report(icontext, rpcapi, self._ihost_uuid)
-                else:
-                    self._lldp_enable_and_report(icontext, rpcapi, self._ihost_uuid)
-            self._agent_throttle += 1
-
-            if self._ihost_personality == constants.CONTROLLER:
-                # Audit TPM configuration only on Controller
-                # node personalities
-                self._audit_tpm_device(icontext, self._ihost_uuid)
-                # Force disk update
-                self._prev_disk = None
 
             # if this audit is requested by conductor, clear
             # previous states for disk, lvg, pv and fs to force an update
@@ -1356,15 +1324,6 @@ class AgentManager(service.PeriodicService):
                                                  self._ihost_uuid,
                                                  idisk)
                     self._inventory_reported.add(self.DISK)
-                except RemoteError as e:
-                    # TODO (oponcea): Valid for R4->R5, remove in R6.
-                    # safe to ignore during upgrades
-                    if 'has no property' in str(e) and 'available_mib' in str(e):
-                        LOG.warn("Skip updating idisk conductor. "
-                                 "Upgrade in progress?")
-                    else:
-                        LOG.exception("Sysinv Agent exception updating idisk "
-                                      "conductor.")
                 except exception.SysinvException:
                     LOG.exception("Sysinv Agent exception updating idisk"
                                   "conductor.")
