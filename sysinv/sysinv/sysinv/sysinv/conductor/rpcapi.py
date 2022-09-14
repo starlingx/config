@@ -1793,18 +1793,21 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        lifecycle_hook_info_app_update=lifecycle_hook_info,
                                        reuse_user_overrides=reuse_user_overrides))
 
-    def perform_app_remove(self, context, rpc_app, lifecycle_hook_info):
+    def perform_app_remove(self, context, rpc_app, lifecycle_hook_info, force=False):
         """Handle application remove request
 
         :param context: request context.
         :param rpc_app: data object provided in the rpc request
         :param lifecycle_hook_info: LifecycleHookInfo object
+        :param force: If set to True, will set the app state to 'uploaded'
+            instead of 'remove-failed' in case of an error
 
         """
         return self.cast(context,
                          self.make_msg('perform_app_remove',
                                        rpc_app=rpc_app,
-                                       lifecycle_hook_info_app_remove=lifecycle_hook_info))
+                                       lifecycle_hook_info_app_remove=lifecycle_hook_info,
+                                       force=force))
 
     def perform_app_abort(self, context, rpc_app, lifecycle_hook_info):
         """Handle application abort request
