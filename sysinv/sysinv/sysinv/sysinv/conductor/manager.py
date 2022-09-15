@@ -7279,7 +7279,11 @@ class ConductorManager(service.PeriodicService):
         """Update the DNS configuration"""
         personalities = [constants.CONTROLLER]
         config_uuid = self._config_update_hosts(context, personalities)
-        self._update_resolv_file(context, config_uuid, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::dns::resolv::runtime'],
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
     def update_clock_synchronization_config(self, context, host):
         """Update clock_synchronization configuration of a host"""
@@ -10195,39 +10199,6 @@ class ConductorManager(service.PeriodicService):
         # Atomically replace the updated file
         os.close(fd)
         os.rename(tmppath, filepath)
-
-    def _update_resolv_file(self, context, config_uuid, personalities):
-        """Generate and update the resolv.conf files on the system"""
-
-        # get default name server which is the controller floating IP address
-        servers = [cutils.gethostbyname(constants.CONTROLLER_HOSTNAME)]
-
-        # if we are getting only the IPv6 localhost address on the list, ignore it
-        if servers == ['::1']:
-            servers = list()
-
-        # add configured dns entries (if any)
-        dns = self.dbapi.idns_get_one()
-        if dns.nameservers:
-            servers += dns.nameservers.split(',')
-
-        # generate the formatted file content based on configured servers
-        file_content = ''
-        for server in servers:
-            file_content += "nameserver %s\n" % server
-
-        # Write contents to master resolv.conf in the platform config
-        filename = 'resolv.conf'
-        filepath = tsc.CONFIG_PATH
-        self._write_config(filename, filepath, file_content)
-
-        config_dict = {
-            'personalities': personalities,
-            'file_names': ['/etc/resolv.conf'],
-            'file_content': file_content,
-        }
-
-        self._config_update_file(context, config_uuid, config_dict)
 
     def _drbd_connected(self):
         connected = False
