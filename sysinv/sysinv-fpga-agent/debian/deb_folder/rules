@@ -9,7 +9,6 @@ PMONDIR := ${ROOT}/usr/share/starlingx/pmon.d
 
 override_dh_install:
 	install -p -D -m 755 sysinv-fpga-agent ${ROOT}/etc/init.d/sysinv-fpga-agent
-	install -p -D -m 644 sysinv-fpga-agent.conf ${ROOT}/etc/pmon.d/sysinv-fpga-agent.conf
 	install -p -D -m 644 sysinv-fpga-agent.conf ${PMONDIR}/sysinv-fpga-agent.conf
 	dh_install
 

@@ -9,7 +9,6 @@ PMONDIR := ${ROOT}/usr/share/starlingx/pmon.d
 
 override_dh_install:
 	install -p -D -m 755 sysinv-agent ${ROOT}/etc/init.d/sysinv-agent
-	install -p -D -m 644 sysinv-agent.conf ${ROOT}/etc/pmon.d/sysinv-agent.conf
 	install -p -D -m 644 sysinv-agent.conf ${PMONDIR}/sysinv-agent.conf
 	dh_install
 

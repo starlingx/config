@@ -1,3 +1,2 @@
 etc/init.d/sysinv-agent
-etc/pmon.d/sysinv-agent.conf
 usr/share/starlingx/pmon.d/sysinv-agent.conf
