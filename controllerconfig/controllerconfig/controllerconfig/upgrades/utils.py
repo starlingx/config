@@ -59,8 +59,6 @@ def execute_migration_scripts(from_release, to_release, action,
                    controller-1 is performing its upgrade.
     """
 
-    devnull = open(os.devnull, 'w')
-
     LOG.info("Executing migration scripts with from_release: %s, "
              "to_release: %s, action: %s" % (from_release, to_release, action))
 
@@ -85,16 +83,23 @@ def execute_migration_scripts(from_release, to_release, action,
         migration_script = os.path.join(migration_script_dir, f)
         try:
             LOG.info("Executing migration script %s" % migration_script)
-            subprocess.check_call([migration_script,
-                                   from_release,
-                                   to_release,
-                                   action],
-                                  stdout=devnull, stderr=devnull)
+            subprocess.check_output([migration_script,
+                                     from_release,
+                                     to_release,
+                                     action],
+                                    stderr=subprocess.STDOUT,
+                                    universal_newlines=True)
         except subprocess.CalledProcessError as e:
-            LOG.exception("Migration script %s failed with returncode %d" %
-                          (migration_script, e.returncode))
+            # log script output if script executed but failed.
+            LOG.error("Migration script %s failed with returncode %d"
+                      "Script output: \n%s" %
+                      (migration_script, e.returncode, e.output))
             # Abort when a migration script fails
-            raise e
+            raise
+        except Exception:
+            # log exception if scipt not executed.
+            LOG.exception()
+            raise
 
 
 def get_db_connection(hiera_db_records, database):
