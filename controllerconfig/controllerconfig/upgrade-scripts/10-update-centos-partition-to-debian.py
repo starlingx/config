@@ -45,6 +45,7 @@ def main():
             return 1
         arg += 1
 
+    log.configure()
     LOG.info("%s invoked from_release = %s to_release = %s action = %s"
              % (sys.argv[0], from_release, to_release, action))
     res = 0
@@ -83,7 +84,20 @@ IPV_COLUMNS = 'created_at', 'updated_at', 'deleted_at', 'uuid', 'pv_state', \
               'forilvgid', 'disk_or_part_device_path'
 
 
-def get_idisks(forihostid):
+def get_disk_uuid_mapping(conn, forihostid):
+    # return map of idisk uuid indexed by device_node
+    with conn.cursor(cursor_factory=DictCursor) as cur:
+        sql = "SELECT uuid, device_node FROM i_idisk WHERE forihostid = %s;"
+        cur.execute(sql, (forihostid, ))
+        vals = cur.fetchall()
+        mappings = {}
+        for val in vals:
+            pair = {val["device_node"]: val["uuid"]}
+            mappings.update(pair)
+        return mappings
+
+
+def get_idisks(forihostid, uuid_mapping):
     do = Disk.DiskOperator()
     disks = do.idisk_get()
     idisks = []
@@ -100,8 +114,16 @@ def get_idisks(forihostid):
     }
 
     for disk in disks:
-        # regenerate uuid
-        disk_additions["uuid"] = "%s" % uuid.uuid4()
+        # find uuid
+        device_node = disk["device_node"]
+        if device_node in uuid_mapping:
+            disk_additions["uuid"] = uuid_mapping[device_node]
+        else:
+            # this is not good, but it could be a new disk
+            LOG.warn("Found disk %s that is not inventoried" % device_node)
+            new_uuid = "%s" % uuid.uuid4()
+            disk_additions["uuid"] = new_uuid
+            LOG.info("Assign uuid %s to %s" % (new_uuid, device_node))
         disk.update(disk_additions)
 
         idisk = []
@@ -539,7 +561,8 @@ def do_update():
     conn = psycopg2.connect("dbname=sysinv user=postgres")
     try:
         hostid = get_ihostid(conn)
-        idisks = get_idisks(hostid)
+        disk_uuid_mapping = get_disk_uuid_mapping(conn, hostid)
+        idisks = get_idisks(hostid, disk_uuid_mapping)
         disks = update_disks(conn, idisks)
 
         partitions = get_ipartitions(hostid, disks)
