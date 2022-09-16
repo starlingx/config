@@ -4475,19 +4475,34 @@ class FluxCDHelper(object):
         cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
                'apply', '-k', manifest_dir]
         _, stderr = cutils.trycmd(*cmd)
-        return True if not stderr else False
+
+        if stderr:
+            LOG.error("Command: %s; Error: %s" % (' '.join(cmd), stderr))
+            return False
+
+        return True
 
     def _delete(self, manifest_dir):
         cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
-               'delete', '-k', manifest_dir]
+               'delete', '-k', manifest_dir, '--ignore-not-found=true']
         _, stderr = cutils.trycmd(*cmd)
-        return True if not stderr else False
+
+        if stderr:
+            LOG.error("Command: %s; Error: %s" % (' '.join(cmd), stderr))
+            return False
+
+        return True
 
     def _validate(self, manifest_dir):
         cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
                'apply', '-k', manifest_dir, '--dry-run=server']
         _, stderr = cutils.trycmd(*cmd)
-        return True if not stderr else False
+
+        if stderr:
+            LOG.error("Command: %s; Error: %s" % (' '.join(cmd), stderr))
+            return False
+
+        return True
 
     def _rollback(self, manifest_dir):
         pass
