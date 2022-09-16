@@ -51,7 +51,7 @@ def do_certificate_list(cc, args):
     fields = ['uuid', 'certtype', 'expiry_date', 'subject']
     field_labels = fields
     for certificate in certificates:
-        if len(certificate.subject) > 20:
+        if certificate.subject and len(certificate.subject) > 20:
             certificate.subject = certificate.subject[:20] + "..."
     utils.print_list(certificates, fields, field_labels, sortby=0)
 

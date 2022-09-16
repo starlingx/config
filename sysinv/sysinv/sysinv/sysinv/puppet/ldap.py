@@ -42,17 +42,32 @@ class LdapPuppet(base.BasePuppet):
             'platform::ldap::params::bind_anonymous': bind_anonymous,
         }
 
-    def get_secure_system_config(self):
-        config = {}
+    def _is_openldap_certificate_created(self):
+        """ Returns True when it's safe to read the openldap certificate.
+        """
         bootstrap_completed = \
             os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG)
+
+        is_upgrading, upgrade = utils.is_upgrade_in_progress(self.dbapi)
+
+        activating_statuses = [
+            constants.UPGRADE_ACTIVATING,
+            constants.UPGRADE_ACTIVATING_HOSTS,
+            constants.UPGRADE_ACTIVATION_COMPLETE,
+        ]
+        # During upgrade the openldap certificate is created in stage
+        # activate. In fresh installs it's created during bootstrap
+        if is_upgrading:
+            return upgrade.state in activating_statuses
+        else:
+            return bootstrap_completed
+
+    def get_secure_system_config(self):
+        config = {}
         is_subcloud = \
             self._distributed_cloud_role() == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD
-        is_upgrading, _ = utils.is_upgrade_in_progress(self.dbapi)
-        # Checking for upgrade is a temporary fix to allow the upgrade to run.
-        # A subsequent code change is needed to create the openldap certificate
-        # during the upgrade and then remove this check.
-        if bootstrap_completed and not is_subcloud and not is_upgrading:
+
+        if self._is_openldap_certificate_created() and not is_subcloud:
             ldap_cert, ldap_key = utils.get_certificate_from_secret(
                 constants.OPENLDAP_CERT_SECRET_NAME,
                 constants.CERT_NAMESPACE_PLATFORM_CERTS)
