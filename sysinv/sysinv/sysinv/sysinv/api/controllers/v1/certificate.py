@@ -386,7 +386,7 @@ class CertificateController(rest.RestController):
                             return dict(success="", error=msg)
                 except Exception as e:
                     msg = "No certificates have been added, exception " \
-                          "occured on cert %s: %s" % (index, e)
+                          "occurred on cert %s: %s" % (index, e)
                     return dict(success="", error=msg)
 
             # validation checking for ssl_ca
@@ -395,16 +395,19 @@ class CertificateController(rest.RestController):
                     msg = "Cannot install non-CA type certificate as SSL " \
                           "CA certificate"
                     return dict(success="", error=msg)
+
                 if cert.subject:
                     hash_subject = cutils.get_cert_subject_hash(cert)
+                    signature = "ssl_ca_" + str(cert.serial_number)
                     duplicate_certificates = [certificate.uuid
-                                            for certificate in existing_certificates
-                                            if certificate.hash_subject
-                                            if hash_subject == int(certificate.hash_subject)]
+                                              for certificate in existing_certificates
+                                              if certificate.hash_subject
+                                              if hash_subject == int(certificate.hash_subject)
+                                              if certificate.signature != signature]
                     if duplicate_certificates:
                         msg = "Cannot install certificate with same subject" \
-                            "\nPlease uninstall the following CA certs that have " \
-                            "the same subject first"
+                              "\nPlease uninstall the following CA certs that have " \
+                              "the same subject first"
                         for uuid in duplicate_certificates:
                             msg += "\nUUID : %s" % uuid
                         LOG.error(msg)
