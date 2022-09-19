@@ -125,7 +125,7 @@ case "$1" in
             if [ ${FOUND} -eq 0 ]
             then
                 # 'controller-platform-nfs' is not available; continue other setup
-                echo "controller-platform-nfs is not available"
+                logger "$0: Warn: controller-platform-nfs is not available via icmp"
             else
                 # Only required if conf file does not already exist
                 if [ -f ${SYSINV_CONF_DEFAULT_FILE} ]
@@ -151,6 +151,7 @@ case "$1" in
                         fi
                         let CONF_COPY_COUNT=CONF_COPY_COUNT+1
                         logger "$0: Warn: Mount and copy config file failed. Attempt: ${CONF_COPY_COUNT}"
+                        sleep 1
                     done
                 fi
             fi
