@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2016 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 
 """
@@ -25,11 +25,11 @@ Unit Tests for :py:class:`sysinv.conductor.rpcapi.ConductorAPI`.
 import mock
 
 from oslo_config import cfg
+from oslo_context import context
 from oslo_serialization import jsonutils as json
 
 from sysinv.conductor import rpcapi as conductor_rpcapi
 from sysinv.db import api as dbapi
-from sysinv.openstack.common import context
 from sysinv.openstack.common import rpc
 from sysinv.tests.db import base
 from sysinv.tests.db import utils as dbutils

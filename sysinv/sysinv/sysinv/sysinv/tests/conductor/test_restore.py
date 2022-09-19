@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identilfier: Apache-2.0
 #
@@ -8,10 +8,11 @@
 Tests for the restore logic
 """
 
+from oslo_context import context
+
 from sysinv.common import constants
 from sysinv.conductor import manager
 from sysinv.db import api as dbapi
-from sysinv.openstack.common import context
 from sysinv.tests.db import base
 
 

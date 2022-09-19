@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -11,10 +11,10 @@ Tests for the sysinv agent manager.
 import mock
 
 from tsconfig import tsconfig
+from oslo_context import context
 
 from sysinv.agent.manager import AgentManager
 from sysinv.common import constants
-from sysinv.openstack.common import context
 from sysinv.tests import base
 
 

@@ -50,6 +50,7 @@ from six.moves import configparser
 from six import StringIO
 
 from oslo_config import cfg
+from oslo_context import context as mycontext
 from oslo_log import log
 from oslo_service import periodic_task
 from oslo_utils import timeutils
@@ -69,7 +70,6 @@ from sysinv.common import utils
 from sysinv.objects import base as objects_base
 from sysinv.puppet import common as puppet
 from sysinv.conductor import rpcapiproxy as conductor_rpcapi
-from sysinv.openstack.common import context as mycontext
 from sysinv.openstack.common.rpc.common import Timeout
 from sysinv.openstack.common.rpc.common import serialize_remote_exception
 from sysinv.openstack.common.rpc import service as rpc_service

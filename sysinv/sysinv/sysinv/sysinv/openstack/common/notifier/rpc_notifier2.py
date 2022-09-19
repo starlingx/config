@@ -16,9 +16,9 @@
 '''messaging based notification driver, with message envelopes'''
 
 from oslo_config import cfg
+from oslo_context import context as req_context
 from oslo_log import log as logging
 from sysinv._i18n import _
-from sysinv.openstack.common import context as req_context
 from sysinv.openstack.common import rpc
 
 LOG = logging.getLogger(__name__)

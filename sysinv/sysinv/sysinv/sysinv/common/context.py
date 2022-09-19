@@ -14,7 +14,7 @@
 
 from sysinv.common.fm import get_fm_region
 from sysinv.db import api as dbapi
-from sysinv.openstack.common import context
+from oslo_context import context
 
 FAULT_MANAGEMENT = 'faultmanagement'
 REQUIRED_SERVICE_TYPES = (FAULT_MANAGEMENT,)
@@ -26,7 +26,8 @@ class RequestContext(context.RequestContext):
     def __init__(self, auth_token=None, domain_id=None, domain_name=None,
                  user=None, tenant=None, is_admin=False, is_public_api=False,
                  project_name=None, read_only=False, show_deleted=False,
-                 request_id=None, roles=None, service_catalog=None):
+                 request_id=None, roles=None, service_catalog=None,
+                 system_scope=None, **kwargs):
         """Stores several additional request parameters:
 
         :param domain_id: The ID of the domain.
@@ -38,10 +39,6 @@ class RequestContext(context.RequestContext):
         :param service_catalog: Specifies the service_catalog
         """
         self.is_public_api = is_public_api
-        self.domain_id = domain_id
-        self.domain_name = domain_name
-        self.project_name = project_name
-        self.roles = roles
         self._session = None
 
         super(RequestContext, self).__init__(auth_token=auth_token,
@@ -49,7 +46,12 @@ class RequestContext(context.RequestContext):
                                              is_admin=is_admin,
                                              read_only=read_only,
                                              show_deleted=show_deleted,
-                                             request_id=request_id)
+                                             request_id=request_id,
+                                             project_name=project_name,
+                                             roles=roles,
+                                             domain_id=domain_id,
+                                             domain_name=domain_name,
+                                             system_scope=system_scope)
         if service_catalog:
             # Only include required parts of service_catalog
             self.service_catalog = [s for s in service_catalog

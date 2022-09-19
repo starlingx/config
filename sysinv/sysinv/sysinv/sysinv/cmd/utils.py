@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -12,9 +12,9 @@ from sysinv.common import constants
 from sysinv.common import service
 from sysinv.conductor import rpcapiproxy as conductor_rpcapi
 from sysinv.db import api
-from sysinv.openstack.common import context
 
 from oslo_config import cfg
+from oslo_context import context
 from oslo_log import log as logging
 
 

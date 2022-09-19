@@ -17,12 +17,12 @@ import uuid
 import six
 
 from oslo_config import cfg
+from oslo_context import context
 from oslo_log import log as logging
 from oslo_serialization import jsonutils
 from oslo_utils import importutils
 from oslo_utils import timeutils
 from sysinv._i18n import _
-from sysinv.openstack.common import context
 
 LOG = logging.getLogger(__name__)
 

@@ -1,7 +1,7 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 # coding=utf-8
 
-# Copyright (c) 2017-2019 Wind River Systems, Inc.
+# Copyright (c) 2017-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -11,6 +11,7 @@
 import mock
 
 from cephclient import wrapper as ceph
+from oslo_context import context
 from oslo_utils import uuidutils
 
 from sysinv.common import ceph as cceph
@@ -18,7 +19,6 @@ from sysinv.common import constants
 from sysinv.conductor import manager
 from sysinv.conductor import ceph as iceph
 from sysinv.db import api as dbapi
-from sysinv.openstack.common import context
 from sysinv.tests.db import base
 from sysinv.tests.db import utils
 

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -13,9 +13,10 @@ import kubernetes
 import mock
 import uuid
 
+from oslo_context import context
+
 from sysinv.common import constants
 from sysinv.common import health
-from sysinv.openstack.common import context
 
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils

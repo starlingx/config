@@ -21,11 +21,11 @@ import six
 
 gettext.install('sysinv')
 
+from oslo_context import context
 from oslo_utils import timeutils
 from sysinv.common import exception
 from sysinv.objects import base
 from sysinv.objects import utils
-from sysinv.openstack.common import context
 from sysinv.tests import base as test_base
 
 
@@ -335,7 +335,7 @@ class _TestObjectMixin(object):
 
     def test_with_alternate_context(self):
         ctxt1 = context.RequestContext('foo', 'foo')
-        ctxt2 = context.RequestContext('bar', tenant='alternate')
+        ctxt2 = context.RequestContext('bar', project_id='alternate')
         obj = MyObj.get(ctxt1)
         obj.update_test(ctxt2)
         self.assertEqual(obj.bar, 'alternate-context')

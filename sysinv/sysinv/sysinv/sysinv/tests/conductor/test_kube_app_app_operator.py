@@ -8,12 +8,13 @@
 
 import fixtures
 
+from oslo_context import context
+
 from sysinv.common import constants
 from sysinv.conductor import kube_app
 from sysinv.conductor import manager
 from sysinv.db import api as dbapi
 from sysinv.helm import helm
-from sysinv.openstack.common import context
 from sysinv.objects import kube_app as obj_app
 
 from sysinv.tests.db import base
