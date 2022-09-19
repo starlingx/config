@@ -569,7 +569,8 @@ class ServiceParameterController(rest.RestController):
                 pecan.request.rpcapi.update_service_config(
                     pecan.request.context,
                     parameter['service'],
-                    section=parameter['section'])
+                    section=parameter['section'],
+                    name=parameter['name'])
         except rpc_common.RemoteError as e:
             # rollback service parameter update
             try:
