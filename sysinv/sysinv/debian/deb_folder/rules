@@ -22,8 +22,8 @@ override_dh_install:
 		-d $(CURDIR)/debian/sysinv-wheels/usr/share/python-wheel
 	install -p -D -m 755 $(CURDIR)/etc/sysinv/motd-system $(CURDIR)/debian/tmp/etc/update-motd.d/10-system
 	install -p -D -m 755 $(CURDIR)/etc/sysinv/sysinv_goenabled_check.sh $(CURDIR)/debian/tmp/etc/goenabled.d/sysinv_goenabled_check.sh
-	install -v -m 755 -d $(CURDIR)/var/stx_app/plugins
 	install -p -D -m 700 $(CURDIR)/etc/sysinv/delete_load.sh $(CURDIR)/debian/tmp/etc/sysinv/upgrades/delete_load.sh
+	install -p -D -m 644 debian/tmpfiles.conf $(CURDIR)/debian/tmp/usr/lib/tmpfiles.d/sysinv.conf
 	dh_install
 
 override_dh_python3:
