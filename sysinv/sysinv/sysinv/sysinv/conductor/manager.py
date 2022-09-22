@@ -9959,12 +9959,25 @@ class ConductorManager(service.PeriodicService):
 
         if do_apply:
             if service == constants.SERVICE_TYPE_IDENTITY:
-                config_dict = {
-                    "personalities": personalities,
-                    "classes": ['platform::haproxy::runtime',
-                                'openstack::keystone::server::runtime']
-                }
-                self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+                remote_ldap_domains = [constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN1,
+                                       constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN2,
+                                       constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN3]
+
+                personalities = [constants.CONTROLLER]
+                if section in remote_ldap_domains:
+                    config_dict = {
+                        'personalities': personalities,
+                        "classes": ['platform::sssd::domain::runtime']
+                    }
+                    LOG.info("Applying SSSD domain runtime manifest")
+                    self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+                else:
+                    config_dict = {
+                        "personalities": personalities,
+                        "classes": ['platform::haproxy::runtime',
+                            'openstack::keystone::server::runtime']
+                    }
+                    self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
             elif service == constants.SERVICE_TYPE_HORIZON:
                 config_dict = {
