@@ -154,6 +154,7 @@ class SssdPuppet(base.BasePuppet):
     def _get_local_domain(self):
         binding_pass = self._get_keyring_password(self.SERVICE_NAME,
                                                   self.SERVICE_USER)
+        ldap_uri = self._get_local_domain_uri()
 
         # sssd supports the debug levels (from sssd.conf manual page):
         # 0, 0x0010: Fatal failures. Anything that would prevent SSSD
@@ -178,6 +179,8 @@ class SssdPuppet(base.BasePuppet):
         #
         # Debug level: 0x0270, includes fatal failures, critical failures,
         # serious failures and function data.
+
+        # Default is to bind anonymously.
         domain_parameters = {
             'cache_credentials': 'true',
             'debug_level': '0x0270',
@@ -187,13 +190,20 @@ class SssdPuppet(base.BasePuppet):
             'ldap_search_base': 'dc=cgcs,dc=local',
             'ldap_user_home_directory': '/home/$cn',
             'ldap_user_shell': '/bin/bash',
-            'ldap_uri': 'ldaps://controller/',
+            'ldap_uri': ldap_uri,
             'ldap_tls_cacert': '/etc/ssl/certs/ca-certificates.crt',
-            'ldap_default_bind_dn': 'CN=ldapadmin,DC=cgcs,DC=local',
-            'ldap_default_authtok_type': 'password',
-            'ldap_default_authtok': binding_pass,
             'fallback_homedir': '/home/%u',
         }
+
+        # bind to 'CN=ldapadmin,DC=cgcs,DC=local' using password if
+        # this is not a DC Subcloud.
+        if self._distributed_cloud_role() != \
+                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+            domain_parameters.update({
+                'ldap_default_bind_dn': 'CN=ldapadmin,DC=cgcs,DC=local',
+                'ldap_default_authtok_type': 'password',
+                'ldap_default_authtok': binding_pass,
+            })
 
         return domain_parameters
 
@@ -290,3 +300,18 @@ class SssdPuppet(base.BasePuppet):
         }
 
         return pam_parameters
+
+    def _get_local_domain_uri(self):
+        ldapserver_host = constants.CONTROLLER
+        if self._distributed_cloud_role() == \
+                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+            sys_controller_network = self.dbapi.network_get_by_type(
+                constants.NETWORK_TYPE_SYSTEM_CONTROLLER)
+            sys_controller_network_addr_pool = self.dbapi.address_pool_get(
+                sys_controller_network.pool_uuid)
+            ldapserver_addr = sys_controller_network_addr_pool.floating_address
+            ldapserver_host = self._format_url_address(ldapserver_addr)
+
+        ldapserver_uri = 'ldaps://%s' % ldapserver_host
+
+        return ldapserver_uri

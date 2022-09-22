@@ -52,24 +52,37 @@ class LdapPuppet(base.BasePuppet):
 
     def get_secure_system_config(self):
         config = {}
-        is_subcloud = \
-            self._distributed_cloud_role() == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD
 
-        # Retrieve openldap CA certificate, and server certificate/key
-        if self._is_openldap_certificate_created() and not is_subcloud:
-            ldap_ca_cert, _ = utils.get_certificate_from_secret(
-                constants.OPENLDAP_CA_CERT_SECRET_NAME,
-                constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
+        # Retrieve openldap CA certificate, and server certificate/key.
+        # For subcloud, only CA certificate is needed.
+        if self._is_openldap_certificate_created():
+            is_subcloud = \
+                self._distributed_cloud_role() == \
+                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD
 
-            ldap_cert, ldap_key = utils.get_certificate_from_secret(
-                constants.OPENLDAP_CERT_SECRET_NAME,
-                constants.CERT_NAMESPACE_PLATFORM_CERTS)
+            if is_subcloud:
+                ldap_ca_cert = utils.get_ca_certificate_from_opaque_secret(
+                    constants.OPENLDAP_CA_CERT_SECRET_NAME,
+                    constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
 
-            config.update({
-                'platform::ldap::params::secure_cert': ldap_cert,
-                'platform::ldap::params::secure_key': ldap_key,
-                'platform::ldap::params::ca_cert': ldap_ca_cert,
-            })
+                config.update({
+                    'platform::ldap::params::ca_cert': ldap_ca_cert,
+                })
+
+            else:
+                ldap_ca_cert, _ = utils.get_certificate_from_secret(
+                    constants.OPENLDAP_CA_CERT_SECRET_NAME,
+                    constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
+
+                ldap_cert, ldap_key = utils.get_certificate_from_secret(
+                    constants.OPENLDAP_CERT_SECRET_NAME,
+                    constants.CERT_NAMESPACE_PLATFORM_CERTS)
+
+                config.update({
+                    'platform::ldap::params::secure_cert': ldap_cert,
+                    'platform::ldap::params::secure_key': ldap_key,
+                    'platform::ldap::params::ca_cert': ldap_ca_cert,
+                })
 
         return config
 
