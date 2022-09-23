@@ -28,8 +28,8 @@ N3000_DEVICES = [
 
 # TODO: Make this specified in the config file.
 # This is the docker image containing the OPAE tools to access the FPGA device.
-OPAE_IMG_PREV = "registry.local:9001/docker.io/starlingx/n3000-opae:stx.4.0-v1.0.0"
-OPAE_IMG = "registry.local:9001/docker.io/starlingx/n3000-opae:stx.6.0-v1.0.1"
+OPAE_IMG_PREV = "registry.local:9001/docker.io/starlingx/n3000-opae:stx.6.0-v1.0.1"
+OPAE_IMG = "registry.local:9001/docker.io/starlingx/n3000-opae:stx.8.0-v1.0.2"
 
 N3000_RESET_FLAG = os.path.join(tsc.VOLATILE_PATH, ".sysinv_n3000_reset")
 N3000_RESET_TIMEOUT = 600
