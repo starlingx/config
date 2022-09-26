@@ -4100,13 +4100,15 @@ class AppImageParser(object):
               1. images:
                    tags: <dict>
 
-              2. image: <str>
+              2. images: <dict>
 
-              3. image:
+              3. image: <str>
+
+              4. image:
                    repository: <str>
                    tag: <str>
 
-              4. image: <str>
+              5. image: <str>
                  imageTag(tag/imagetag): <str>
 
         :param var_dict: dict
@@ -4114,13 +4116,15 @@ class AppImageParser(object):
         """
         if isinstance(var_dict, dict):
             for k, v in six.iteritems(var_dict):
-                if k == 'images':
+                if k.lower() == 'images':
                     try:
                         yield {k: {'tags': v['tags']}}
                     except (KeyError, TypeError):
+                        if v and isinstance(v, dict):
+                            yield {k: v}
                         pass
 
-                elif k == 'image':
+                elif k.lower() == 'image':
                     try:
                         image = {}
                         keys = v.keys()
@@ -4205,14 +4209,17 @@ class AppImageParser(object):
                 "is not a dict." % download_imgs_dict))
 
         for k, v in six.iteritems(download_imgs_dict):
-            if k == 'images':
+            if k.lower() == 'images':
                 try:
                     imgs = [_f for _f in v['tags'].values() if _f]
                     download_imgs_list.extend(imgs)
                 except (KeyError, TypeError):
+                    if v and isinstance(v, dict):
+                        imgs = [_f for _f in v.values() if _f]
+                        download_imgs_list.extend(imgs)
                     pass
 
-            elif k == 'image':
+            elif k.lower() == 'image':
                 try:
                     img = v['repository'] + ':' + v['tag']
                 except (KeyError, TypeError):

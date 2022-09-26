@@ -25,6 +25,13 @@ IMAGES_RESOURCE = {
             'image_local_sync': None
         }
     },
+    'Images': {
+        'Tsyncd': 'quay.io/silicom/tsyncd:2.1.2.8',
+        'TsyncExtts': 'quay.io/silicom/tsync_extts:1.0.0',
+        'Phc2Sys': 'quay.io/silicom/phc2sys:3.1.1',
+        'GrpcTsyncd': 'quay.io/silicom/grpc-tsyncd:2.1.2.8',
+        'Gpsd': 'quay.io/silicom/gpsd:3.23.1'
+    },
     'controller': {
         'imageTag': '0.23.0',
         'image': 'quay.io/kubernetes-ingress-controller/nginx-ingress-controller'
@@ -69,7 +76,7 @@ class TestKubeAppImageParser(base.TestCase):
         expected['monitoring'] = {'image': {'repository': 'docker.io/trustpilot/beat-exporter'}}
         expected['testFramework'] = {'tag': '0.4.0'}
         images_dict = self.image_parser.find_images_in_dict(values)
-        self.assertEqual(images_dict, expected)
+        self.assertEqual(expected, images_dict)
 
     def test_update_images_with_local_registry(self):
         images_dict = copy.deepcopy(IMAGES_RESOURCE)
@@ -82,6 +89,13 @@ class TestKubeAppImageParser(base.TestCase):
                     'db_drop': 'registry.local:9001/docker.io/openstackhelm/heat:ocata',
                     'image_local_sync': None
                 }
+            },
+            'Images': {
+                'Tsyncd': 'registry.local:9001/quay.io/silicom/tsyncd:2.1.2.8',
+                'TsyncExtts': 'registry.local:9001/quay.io/silicom/tsync_extts:1.0.0',
+                'Phc2Sys': 'registry.local:9001/quay.io/silicom/phc2sys:3.1.1',
+                'GrpcTsyncd': 'registry.local:9001/quay.io/silicom/grpc-tsyncd:2.1.2.8',
+                'Gpsd': 'registry.local:9001/quay.io/silicom/gpsd:3.23.1'
             },
             'controller': {
                 'imageTag': '0.23.0',
@@ -112,7 +126,7 @@ class TestKubeAppImageParser(base.TestCase):
 
         images_dict_with_local_registry = \
            self.image_parser.update_images_with_local_registry(images_dict)
-        self.assertEqual(images_dict_with_local_registry, expected)
+        self.assertEqual(expected, images_dict_with_local_registry)
 
     def test_generate_download_images_with_merge_dict(self):
         armada_chart_imgs = copy.deepcopy(IMAGES_RESOURCE)
@@ -122,6 +136,13 @@ class TestKubeAppImageParser(base.TestCase):
                 'tags': {
                     'cinder_db_sync': 'docker.io/starlingx/stx-cinder:latest'
                 }
+            },
+            'Images': {
+                'Tsyncd': 'quay.io/silicom/tsyncd:latest',
+                'TsyncExtts': 'quay.io/silicom/tsync_extts:1.0.0',
+                'Phc2Sys': 'quay.io/silicom/phc2sys:3.1.1',
+                'GrpcTsyncd': 'quay.io/silicom/grpc-tsyncd:2.1.2.8',
+                'Gpsd': 'quay.io/silicom/gpsd:3.23.1'
             },
             'extraInitContainers': {
                 'limitset': {
@@ -145,6 +166,13 @@ class TestKubeAppImageParser(base.TestCase):
                     'db_drop': 'docker.io/openstackhelm/heat:ocata',
                     'image_local_sync': None
                 }
+            },
+            'Images': {
+                'Tsyncd': 'quay.io/silicom/tsyncd:latest',
+                'TsyncExtts': 'quay.io/silicom/tsync_extts:1.0.0',
+                'Phc2Sys': 'quay.io/silicom/phc2sys:3.1.1',
+                'GrpcTsyncd': 'quay.io/silicom/grpc-tsyncd:2.1.2.8',
+                'Gpsd': 'quay.io/silicom/gpsd:3.23.1'
             },
             'controller': {
                 'imageTag': '0.23.0',
@@ -180,7 +208,7 @@ class TestKubeAppImageParser(base.TestCase):
 
         download_imgs_dict = self.image_parser.merge_dict(
             armada_chart_imgs, override_imgs)
-        self.assertEqual(download_imgs_dict, expected)
+        self.assertEqual(expected, download_imgs_dict)
 
     def test_generate_download_images_list(self):
         download_imgs_dict = copy.deepcopy(IMAGES_RESOURCE)
@@ -191,9 +219,14 @@ class TestKubeAppImageParser(base.TestCase):
             'quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.23.0',
             'docker.io/openstackhelm/heat:ocata',
             'docker.elastic.co/beats/filebeat-oss:7.4.0',
-            'docker.elastic.co/logstash/logstash-oss:7.2.0'
+            'docker.elastic.co/logstash/logstash-oss:7.2.0',
+            'quay.io/silicom/tsyncd:2.1.2.8',
+            'quay.io/silicom/tsync_extts:1.0.0',
+            'quay.io/silicom/phc2sys:3.1.1',
+            'quay.io/silicom/grpc-tsyncd:2.1.2.8',
+            'quay.io/silicom/gpsd:3.23.1'
         ]
 
         download_imgs_list = self.image_parser.generate_download_images_list(
             download_imgs_dict, [])
-        self.assertEqual(set(download_imgs_list), set(expected))
+        self.assertEqual(set(expected), set(download_imgs_list))
