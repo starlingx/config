@@ -28,3 +28,4 @@ usr/bin/sysinv-reset-n3000-fpgas
 usr/bin/sysinv-rootwrap
 usr/bin/sysinv-utils
 usr/bin/sysinv-upgrade
+usr/bin/platform-upgrade
