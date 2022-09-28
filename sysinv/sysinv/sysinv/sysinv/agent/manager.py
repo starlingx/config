@@ -38,6 +38,7 @@ from eventlet.green import subprocess
 import fileinput
 import os
 import retrying
+import six
 import shutil
 import sys
 import tempfile
@@ -66,12 +67,15 @@ from sysinv.common import service
 from sysinv.common import utils
 from sysinv.objects import base as objects_base
 from sysinv.puppet import common as puppet
-from sysinv.conductor import rpcapi as conductor_rpcapi
+from sysinv.conductor import rpcapiproxy as conductor_rpcapi
 from sysinv.openstack.common import context as mycontext
 from sysinv.openstack.common import periodic_task
 from sysinv.openstack.common.rpc.common import Timeout
 from sysinv.openstack.common.rpc.common import serialize_remote_exception
+from sysinv.openstack.common.rpc import service as rpc_service
 from sysinv.openstack.common.rpc.common import RemoteError
+from sysinv.zmq_rpc.zmq_rpc import ZmqRpcServer
+from sysinv.zmq_rpc.zmq_rpc import is_rpc_hybrid_mode_active
 
 import tsconfig.tsconfig as tsc
 
@@ -157,8 +161,28 @@ class AgentManager(service.PeriodicService):
         HOST_FILESYSTEMS}
 
     def __init__(self, host, topic):
+        self.host = host
+        self.topic = topic
         serializer = objects_base.SysinvObjectSerializer()
-        super(AgentManager, self).__init__(host, topic, serializer=serializer)
+        super(AgentManager, self).__init__()
+        self._rpc_service = None
+        self._zmq_rpc_service = None
+
+        # TODO(RPCHybridMode): Usage of RabbitMQ RPC is only required for
+        #  21.12 -> 22.12 upgrades.
+        #  Remove this in new releases, when it's no longer necessary do the
+        #  migration work through RabbitMQ and ZeroMQ
+        # NOTE: If more switches are necessary before RabbitMQ removal,
+        # refactor this into an RPC layer
+        if not CONF.rpc_backend_zeromq or is_rpc_hybrid_mode_active():
+            self._rpc_service = rpc_service.Service(self.host, self.topic,
+                                                    manager=self,
+                                                    serializer=serializer)
+        if CONF.rpc_backend_zeromq:
+            self._zmq_rpc_service = ZmqRpcServer(
+                self,
+                CONF.rpc_zeromq_bind_ip,
+                CONF.rpc_zeromq_agent_bind_port)
 
         self._report_to_conductor_iplatform_avail_flag = False
         self._report_to_conductor_fpga_info = True
@@ -191,7 +215,10 @@ class AgentManager(service.PeriodicService):
 
     def start(self):
         super(AgentManager, self).start()
-
+        if self._rpc_service:
+            self._rpc_service.start()
+        if self._zmq_rpc_service:
+            self._zmq_rpc_service.run()
         # Do not collect inventory and report to conductor at startup in
         # order to eliminate two inventory reports
         # (one from here and one from audit) being sent to the conductor
@@ -202,6 +229,13 @@ class AgentManager(service.PeriodicService):
 
         if tsc.system_mode == constants.SYSTEM_MODE_SIMPLEX:
             utils.touch(SYSINV_READY_FLAG)
+
+    def stop(self):
+        if self._rpc_service:
+            self._rpc_service.stop()
+        if self._zmq_rpc_service:
+            self._zmq_rpc_service.stop()
+        super(AgentManager, self).stop()
 
     def _report_to_conductor(self):
         """ Initial inventory report to conductor required
@@ -1576,7 +1610,8 @@ class AgentManager(service.PeriodicService):
                     basename = os.path.basename(file_name)
                     fd, tmppath = tempfile.mkstemp(dir=dirname, prefix=basename)
                     with os.fdopen(fd, 'wb') as f:
-                        f.write(f_content.encode())
+                        f_content = six.ensure_binary(f_content)
+                        f.write(f_content)
                     if os.path.islink(file_name):
                         os.unlink(file_name)
                     os.rename(tmppath, file_name)
@@ -2129,3 +2164,23 @@ class AgentManager(service.PeriodicService):
             except exception.SysinvException:
                 LOG.exception("Sysinv Agent exception updating ipv"
                               "conductor.")
+
+    # TODO(RPCHybridMode): This is only useful for 21.12 -> 22.12 upgrades.
+    #  Remove this method in new releases, when it's no longer necessary to
+    #  perform upgrade through hybrid mode messaging system
+    def delete_sysinv_hybrid_state(self, context, host_uuid):
+        """Delete the Sysinv flag of Hybrid Mode.
+
+        :param host_uuid: ihost uuid unique id
+        :return: None
+        """
+
+        if self._ihost_uuid and self._ihost_uuid == host_uuid:
+            if os.path.exists(tsc.SYSINV_HYBRID_RPC_FLAG):
+                utils.delete_if_exists(tsc.SYSINV_HYBRID_RPC_FLAG)
+                LOG.info("Sysinv Hybrid Mode deleted.")
+                LOG.info("Sysinv services will be restarted")
+                # pylint: disable=not-callable
+                subprocess.call(['/usr/bin/sysinv-service-restart.sh'])
+            else:
+                LOG.info("Hybrid flag doesn't exist. Ignoring delete.")

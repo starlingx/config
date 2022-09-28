@@ -93,7 +93,16 @@ class SystemInventoryPuppet(openstack.OpenstackBasePuppet):
             'sysinv::api::openstack_keystone_tenant':
                 self._operator.keystone.get_admin_project_name(),
             'sysinv::api::openstack_keyring_service':
-                self.OPENSTACK_KEYRING_SERVICE
+                self.OPENSTACK_KEYRING_SERVICE,
+
+            'sysinv::rpc_zeromq_conductor_bind_ip': self._get_management_address()
+        }
+
+    def get_host_config(self, host):
+        node_ip = self._get_address_by_name(
+            host.hostname, constants.NETWORK_TYPE_MGMT).address
+        return {
+            'sysinv::rpc_zeromq_bind_ip': node_ip
         }
 
     def get_secure_system_config(self):

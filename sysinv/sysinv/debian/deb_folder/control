@@ -75,6 +75,7 @@ Build-Depends-Indep:
  python3-fm-api,
  python3-platform-util,
  python3-cephclient,
+ zerorpc-python,
  cgts-client,
  controllerconfig
 Standards-Version: 4.5.1
@@ -141,6 +142,7 @@ Depends: ${python3:Depends}, ${misc:Depends},
  python3-cgcs-patch,
  platform-util,
  python3-cephclient,
+ zerorpc-python,
  cgts-client
 Description: Starlingx system inventory - daemon
  Starlingx system inventory
