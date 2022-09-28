@@ -31,8 +31,10 @@ from sysinv import version
 
 cfg.CONF.register_opts([
     cfg.IntOpt('periodic_interval',
-               default=60,
-               help='seconds between running periodic tasks'),
+               default=0,
+               help='seconds between running periodic tasks. If set to 0, '
+               'the periodic tasks will execute dynamically and the scheduler '
+               'will execute them at the interval that they are configured.'),
     cfg.StrOpt('host',
                default=socket.getfqdn(),
                help='Name of this node.  This can be an opaque identifier.  '
@@ -50,9 +52,13 @@ class PeriodicService(rpc_service.Service, periodic_task.PeriodicTasks):
     def start(self):
         super(PeriodicService, self).start()
         admin_context = context.RequestContext('admin', 'admin', is_admin=True)
-        self.tg.add_timer(cfg.CONF.periodic_interval,
-                          self.manager.periodic_tasks,
-                          context=admin_context)
+        if cfg.CONF.periodic_interval > 0:
+            self.tg.add_timer(cfg.CONF.periodic_interval,
+                              self.manager.periodic_tasks,
+                              context=admin_context)
+        else:
+            self.tg.add_dynamic_timer(self.manager.periodic_tasks,
+                                      context=admin_context)
 
 
 def prepare_service(argv=None):
