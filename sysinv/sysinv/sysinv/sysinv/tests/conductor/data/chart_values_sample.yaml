@@ -47,6 +47,31 @@ exporter:
       image: docker.elastic.co/logstash/logstash-oss
       imagetag: "7.2.0"
 
+openstack:
+  images:
+    ks_service: docker.io/starlingx/stx-heat:master-centos-stable-latest
+    db_drop: docker.io/starlingx/stx-heat:master-centos-stable-latest
+    image_repo_sync': null
+    bootstrap: docker.io/starlingx/stx-heat:master-centos-stable-latest
+  bootstrap:
+    structured:
+      images:
+        cirros:
+          properties:
+            os_distro: docker.io/cirros
+          name: docker.io/Cirros 0.3.5 64-bit
+          image_type: docker.io/qcow2
+          container_format: docker.io/bare
+          private: true
+          source_url: http://download.cirros-cloud.net/0.3.5/
+          min_disk: 1
+          image_file: cirros-0.3.5-x86_64-disk.img
+          id: null
+  conf:
+    api_audit_map:
+      service_endpoints:
+        image: docker.io/service/storage/image
+
 testFramework:
   tag: 0.4.0
 

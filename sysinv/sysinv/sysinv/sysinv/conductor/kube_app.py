@@ -4116,7 +4116,11 @@ class AppImageParser(object):
         """
         if isinstance(var_dict, dict):
             for k, v in six.iteritems(var_dict):
-                if k.lower() == 'images':
+                dict_key = k
+                if isinstance(dict_key, str):
+                    dict_key = dict_key.lower()
+
+                if dict_key == 'images':
                     try:
                         yield {k: {'tags': v['tags']}}
                     except (KeyError, TypeError):
@@ -4124,7 +4128,7 @@ class AppImageParser(object):
                             yield {k: v}
                         pass
 
-                elif k.lower() == 'image':
+                elif dict_key == 'image':
                     try:
                         image = {}
                         keys = v.keys()
@@ -4138,7 +4142,7 @@ class AppImageParser(object):
                         if isinstance(v, str) or v is None:
                             yield {k: v}
 
-                elif k in self.TAG_LIST:
+                elif dict_key in self.TAG_LIST:
                     if isinstance(v, str) or v is None:
                         yield {k: v}
 
@@ -4209,17 +4213,22 @@ class AppImageParser(object):
                 "is not a dict." % download_imgs_dict))
 
         for k, v in six.iteritems(download_imgs_dict):
-            if k.lower() == 'images':
+            dict_key = k
+            if isinstance(dict_key, str):
+                dict_key = dict_key.lower()
+
+            if dict_key == 'images':
                 try:
                     imgs = [_f for _f in v['tags'].values() if _f]
                     download_imgs_list.extend(imgs)
                 except (KeyError, TypeError):
                     if v and isinstance(v, dict):
-                        imgs = [_f for _f in v.values() if _f]
+                        imgs = [_f for _f in v.values()
+                                if _f and not isinstance(_f, dict)]
                         download_imgs_list.extend(imgs)
                     pass
 
-            elif k.lower() == 'image':
+            elif dict_key == 'image':
                 try:
                     img = v['repository'] + ':' + v['tag']
                 except (KeyError, TypeError):
