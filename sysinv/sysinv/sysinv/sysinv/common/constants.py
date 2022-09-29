@@ -2105,7 +2105,12 @@ ADMIN_EP_CERT_FORMAT = '{tls_key}'
 RESTAPI_CERT_SECRET_NAME = "system-restapi-gui-certificate"
 REGISTRY_CERT_SECRET_NAME = "system-registry-local-certificate"
 OPENLDAP_CERT_SECRET_NAME = "system-openldap-local-certificate"
+
+# The k8s secret that holds openldap CA certificate
+OPENLDAP_CA_CERT_SECRET_NAME = "system-local-ca"
+
 CERT_NAMESPACE_PLATFORM_CERTS = 'deployment'
+CERT_NAMESPACE_PLATFORM_CA_CERTS = 'cert-manager'
 
 CERT_MODE_TO_SECRET_NAME = {
     CERT_MODE_SSL: RESTAPI_CERT_SECRET_NAME,
