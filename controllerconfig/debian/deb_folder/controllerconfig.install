@@ -3,4 +3,3 @@ etc/goenabled.d/*
 usr/lib/python*/dist-packages/*
 etc/init.d/*
 etc/upgrade.d/*
-debian/systemd/00-controllerconfig.preset etc/systemd/system-preset
