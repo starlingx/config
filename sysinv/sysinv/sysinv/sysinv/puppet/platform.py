@@ -118,10 +118,6 @@ class PlatformPuppet(base.BasePuppet):
              constants.CONTROLLER_1_HOSTNAME,
              constants.NETWORK_TYPE_MGMT),
 
-            (constants.CONTROLLER_PLATFORM_NFS,
-             constants.CONTROLLER_PLATFORM_NFS,
-             constants.NETWORK_TYPE_MGMT),
-
             # pxeboot network hosts
             (constants.PXECONTROLLER_HOSTNAME,
              constants.CONTROLLER_HOSTNAME,
@@ -809,7 +805,7 @@ class PlatformPuppet(base.BasePuppet):
                     break
 
         if self._get_address_by_name(
-                constants.CONTROLLER_PLATFORM_NFS,
+                constants.CONTROLLER_HOSTNAME,
                 constants.NETWORK_TYPE_MGMT).family == constants.IPV6_FAMILY:
             nfs_proto = 'udp6'
         else:

@@ -6,7 +6,6 @@
 
 from six.moves import configparser
 import os
-
 from sysinv.common import utils
 from sysinv.common import constants
 
@@ -14,7 +13,6 @@ from tsconfig import tsconfig
 from six.moves.urllib.parse import urlparse
 
 from sysinv.puppet import openstack
-
 
 OPENSTACK_PASSWORD_RULES_FILE = '/etc/keystone/password-rules.conf'
 
@@ -167,7 +165,7 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
             # Although, for IPv4, the "inet" part is not mandatory, we
             # specify if anyway, for consistency purposes.
             if self._get_address_by_name(
-                    constants.CONTROLLER_PLATFORM_NFS,
+                    constants.CONTROLLER_HOSTNAME,
                     constants.NETWORK_TYPE_MGMT).family == constants.IPV6_FAMILY:
                 argument = "url:inet6:[%s]:11211" % host.mgmt_ip
             else:

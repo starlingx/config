@@ -196,7 +196,6 @@ class NetworkController(rest.RestController):
         addresses[constants.CONTROLLER_HOSTNAME] = None
         addresses[constants.CONTROLLER_0_HOSTNAME] = None
         addresses[constants.CONTROLLER_1_HOSTNAME] = None
-        addresses[constants.CONTROLLER_PLATFORM_NFS] = None
 
         if pool.gateway_address is not None:
             if utils.get_distributed_cloud_role() == \
@@ -277,7 +276,7 @@ class NetworkController(rest.RestController):
             if not address:
                 address = address_pool.AddressPoolController.allocate_address(
                     pool, order=address_pool.SEQUENTIAL_ALLOCATION)
-            LOG.debug("address_name=%s address=%s" % (address_name, address))
+            LOG.debug("address_name={} address={}".format(address_name, address))
             values = {
                 'address_pool_id': pool.id,
                 'address': str(address),
