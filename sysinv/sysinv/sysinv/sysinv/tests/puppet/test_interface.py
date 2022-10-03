@@ -1280,6 +1280,11 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         ipv6_autocnf_off = '{}; {}; {}'.format(autoconf_off, accept_ra_off, accept_redir_off)
         return ipv6_autocnf_off
 
+    def _get_postup_mtu(self, os_ifname, mtu):
+        set_mtu = '/usr/sbin/ip link set dev {} mtu {}'.format(os_ifname, mtu)
+        postup_mtu = '{};'.format(set_mtu)
+        return postup_mtu
+
     def test_generate_loopback_config(self):
         config = {
             interface.NETWORK_CONFIG_RESOURCE: {},
@@ -1745,9 +1750,11 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         config = interface.get_interface_network_config(self.context, vlan)
         vlan_ifname = self.port['name'] + ".1"
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(vlan_ifname)
-        options = {'mtu': '1500',
+        mtu = '1500'
+        set_mtu = self._get_postup_mtu(vlan_ifname, mtu)
+        options = {'mtu': mtu,
                    'pre-up': '/sbin/modprobe -q 8021q',
-                   'post-up': '{}'.format(ipv6_autocnf_off),
+                   'post-up': '{} {}'.format(set_mtu, ipv6_autocnf_off),
                    'vlan-raw-device': '{}'.format(self.port['name'])}
         expected = self._get_network_config_ifupdown(
             ifname=vlan_ifname, method='manual', options=options)
@@ -1777,9 +1784,11 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         config = interface.get_interface_network_config(self.context, vlan)
         vlan_ifname = bond['ifname'] + ".1"
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(vlan_ifname)
-        options = {'mtu': '1500',
+        mtu = '1500'
+        set_mtu = self._get_postup_mtu(vlan_ifname, mtu)
+        options = {'mtu': mtu,
                    'pre-up': '/sbin/modprobe -q 8021q',
-                   'post-up': '{}'.format(ipv6_autocnf_off),
+                   'post-up': '{} {}'.format(set_mtu, ipv6_autocnf_off),
                    'vlan-raw-device': '{}'.format(bond['ifname'])}
         expected = self._get_network_config_ifupdown(
             ifname=vlan_ifname, method='manual', options=options)
