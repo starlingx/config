@@ -4,7 +4,11 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+from oslo_log import log as logging
 from sysinv.puppet import base
+from sysinv.common import constants
+
+LOG = logging.getLogger(__name__)
 
 
 class SssdPuppet(base.BasePuppet):
@@ -12,6 +16,7 @@ class SssdPuppet(base.BasePuppet):
 
     SERVICE_NAME = 'ldap'
     SERVICE_USER = 'ldapadmin'
+    identity_service_parameters = []
 
     def get_secure_system_config(self):
         config = {}
@@ -19,7 +24,27 @@ class SssdPuppet(base.BasePuppet):
         nss = self._get_nss_parameters()
         pam = self._get_pam_parameters()
 
+        # update local domain
         domains.update({'controller': self._get_local_domain()})
+
+        # retrieve service parameters for service identity
+        self.identity_service_parameters = self._get_service_parameters(
+            constants.SERVICE_TYPE_IDENTITY)
+
+        if self.identity_service_parameters is not None:
+            LOG.info('UPDATE Remote LDAP Domains')
+            # update remote domains
+            remote_domains = [constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN1,
+                              constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN2,
+                              constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN3]
+            for domain in remote_domains:
+                domain_name = self._get_service_parameter_domain_name(
+                        self.identity_service_parameters,
+                        domain)
+                if domain_name != "undef":
+                    domains.update({domain_name: self._get_ldap_domain(
+                        self.identity_service_parameters,
+                        domain)})
 
         config.update(
             {
@@ -30,9 +55,103 @@ class SssdPuppet(base.BasePuppet):
 
         return config
 
+    def _get_ldap_domain_service_parameter_value(self, service_parameters,
+            domain, parameter_name, default):
+        for param in service_parameters:
+            if param['section'] == domain and param['name'] == parameter_name:
+                return param['value']
+        return default
+
+    def _get_service_parameter_domain_name(self, service_parameters, domain):
+
+        domain_name = self._get_ldap_domain_service_parameter_value(
+            service_parameters,
+            domain,
+            constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN,
+            constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN_DEFAULT,
+        )
+        return domain_name
+
+    def _get_service_parameter_ldap_uri(self, service_parameters, domain):
+
+        ldap_uri = self._get_ldap_domain_service_parameter_value(
+            service_parameters,
+            domain,
+            constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_URI,
+            constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN_DEFAULT,
+        )
+
+        return ldap_uri
+
+    def _get_service_parameter_access_filter(self, service_parameters, domain):
+
+        access_filter = self._get_ldap_domain_service_parameter_value(
+            service_parameters,
+            domain,
+            constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_ACCESS_FILTER,
+            constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN_DEFAULT,
+        )
+
+        return access_filter
+
+    def _get_service_parameter_search_base(self, service_parameters, domain):
+
+        search_base = self._get_ldap_domain_service_parameter_value(
+            service_parameters,
+            domain,
+            constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_SEARCH_BASE,
+            constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN_DEFAULT,
+        )
+
+        return search_base
+
+    def _get_service_parameter_user_search_base(self, service_parameters, domain):
+
+        user_search_base = self._get_ldap_domain_service_parameter_value(
+            service_parameters,
+            domain,
+            constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_USER_SEARCH_BASE,
+            constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN_DEFAULT,
+        )
+
+        return user_search_base
+
+    def _get_service_parameter_group_search_base(self, service_parameters, domain):
+
+        group_search_base = self._get_ldap_domain_service_parameter_value(
+            service_parameters,
+            domain,
+            constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_GROUP_SEARCH_BASE,
+            constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN_DEFAULT,
+        )
+
+        return group_search_base
+
+    def _get_service_parameter_default_bind_dn(self, service_parameters, domain):
+
+        bind_dn = self._get_ldap_domain_service_parameter_value(
+            service_parameters,
+            domain,
+            constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DEFAULT_BIND_DN,
+            constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN_DEFAULT,
+        )
+
+        return bind_dn
+
+    def _get_service_parameter_default_authtok(self, service_parameters, domain):
+
+        authtok = self._get_ldap_domain_service_parameter_value(
+            service_parameters,
+            domain,
+            constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DEFAULT_AUTH_TOK,
+            constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN_DEFAULT,
+        )
+
+        return authtok
+
     def _get_local_domain(self):
         binding_pass = self._get_keyring_password(self.SERVICE_NAME,
-                self.SERVICE_USER)
+                                                  self.SERVICE_USER)
 
         # sssd supports the debug levels (from sssd.conf manual page):
         # 0, 0x0010: Fatal failures. Anything that would prevent SSSD
@@ -71,6 +190,30 @@ class SssdPuppet(base.BasePuppet):
             'ldap_default_bind_dn': 'CN=ldapadmin,DC=cgcs,DC=local',
             'ldap_default_authtok_type': 'password',
             'ldap_default_authtok': binding_pass,
+            'fallback_homedir': '/home/%u',
+        }
+
+        return domain_parameters
+
+    def _get_ldap_domain(self, service_parameters, domain):
+        domain_parameters = {
+            'cache_credentials': 'true',
+            'debug_level': '0x0270',
+            'id_provider': 'ldap',
+            'ldap_uri': self._get_service_parameter_ldap_uri(
+                service_parameters, domain),
+            "ldap_access_filter": self._get_service_parameter_access_filter(
+                service_parameters, domain),
+            "ldap_search_base": self._get_service_parameter_search_base(
+                service_parameters, domain),
+            "ldap_user_search_base": self._get_service_parameter_user_search_base(
+                service_parameters, domain),
+            "ldap_group_search_base": self._get_service_parameter_group_search_base(
+                service_parameters, domain),
+            "ldap_default_bind_dn": self._get_service_parameter_default_bind_dn(
+                service_parameters, domain),
+            "ldap_default_authtok": self._get_service_parameter_default_authtok(
+                service_parameters, domain),
             'fallback_homedir': '/home/%u',
         }
 

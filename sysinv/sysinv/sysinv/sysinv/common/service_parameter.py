@@ -225,6 +225,23 @@ def _validate_cri_class_format(name, value):
                    "\n" + msg_example)))
 
 
+def _validate_ldap_uri(name, value):
+    """Check if the ldap domain uri is valid"""
+
+    parsed_value = urlparse(value)
+    if not parsed_value.netloc or parsed_value.scheme != "ldaps":
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' must be a valid ldap uri." % name))
+
+
+def _validate_ldap_dn(name, value):
+    """Check if ldap dn is valid"""
+
+    if len(re.findall(r"([^\,]|\\.)*", value)):
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' must be a valid dn." % name))
+
+
 def _get_network_pool_from_ip_address(ip, networks):
     for name in networks:
         try:
@@ -515,6 +532,48 @@ PLATFORM_CONFIG_PARAMETER_VALIDATOR = {
 
 PLATFORM_CONFIG_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL: 'platform::params::virtual_system',
+}
+
+IDENTITY_LDAP_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN,
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_URI,
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_ACCESS_FILTER,
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_SEARCH_BASE,
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_USER_SEARCH_BASE,
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_GROUP_SEARCH_BASE,
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DEFAULT_BIND_DN,
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DEFAULT_AUTH_TOK,
+]
+
+IDENTITY_LDAP_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN:
+        _validate_not_empty,
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_URI:
+        _validate_not_empty,
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_ACCESS_FILTER:
+        _validate_not_empty,
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_SEARCH_BASE:
+        _validate_not_empty,
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_USER_SEARCH_BASE:
+        _validate_not_empty,
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_GROUP_SEARCH_BASE:
+        _validate_not_empty,
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DEFAULT_BIND_DN:
+        _validate_not_empty,
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DEFAULT_AUTH_TOK:
+        _validate_not_empty,
+}
+
+IDENTITY_LDAP_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN: 'platform::sssd::params::domain_name',
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_URI: 'platform::sssd::params::ldap_uri',
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_ACCESS_FILTER: 'platform::sssd::params::ldap_access_filter',
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_SEARCH_BASE: 'platform::sssd::params::ldap_search_base',
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_USER_SEARCH_BASE: 'platform::sssd::params::ldap_user_search_base',
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_GROUP_SEARCH_BASE: 'platform::sssd::params::ldap_group_search_base',
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DEFAULT_BIND_DN: 'platform::sssd::params::ldap_default_bind_dn',
+    constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DEFAULT_AUTH_TOK: 'platform::sssd::params::ldap_default_authtok',
+
 }
 
 IDENTITY_CONFIG_PARAMETER_OPTIONAL = [
@@ -1001,6 +1060,21 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: IDENTITY_CONFIG_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: IDENTITY_CONFIG_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: IDENTITY_CONFIG_PARAMETER_RESOURCE,
+        },
+        constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN1: {
+            SERVICE_PARAM_OPTIONAL: IDENTITY_LDAP_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: IDENTITY_LDAP_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: IDENTITY_LDAP_PARAMETER_RESOURCE,
+        },
+        constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN2: {
+            SERVICE_PARAM_OPTIONAL: IDENTITY_LDAP_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: IDENTITY_LDAP_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: IDENTITY_LDAP_PARAMETER_RESOURCE,
+        },
+        constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN3: {
+            SERVICE_PARAM_OPTIONAL: IDENTITY_LDAP_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: IDENTITY_LDAP_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: IDENTITY_LDAP_PARAMETER_RESOURCE,
         },
         constants.SERVICE_PARAM_SECTION_SECURITY_COMPLIANCE: {
             SERVICE_PARAM_OPTIONAL: PLATFORM_KEYSTONE_PARAMETER_OPTIONAL,
