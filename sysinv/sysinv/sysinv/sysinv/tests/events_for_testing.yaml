@@ -390,22 +390,6 @@
     Service_Affecting: false
     Suppression: false
 
-200.012:
-    Type: Alarm
-    Description: <hostname> controller function has in-service failure while worker services remain healthy.
-    Entity_Instance_ID: host=<hostname>
-    Severity: major
-    Proposed_Repair_Action: |-
-        Lock and then Unlock host to recover.
-        Avoid using 'Force Lock' action as that will impact worker services running on this host,
-        If lock action fails then contact next level of support to investigate and recover.
-    Maintenance_Action: "degrade - requires manual action"
-    Inhibit_Alarms: false
-    Alarm_Type: operational-violation
-    Probable_Cause: communication-subsystem-failure
-    Service_Affecting: true
-    Suppression: true
-
 200.013:
     Type: Alarm
     Description: <hostname> worker service of the only available controller is not poperational. Auto-recovery is disabled. Deggrading host instead.
