@@ -147,18 +147,18 @@ class RpcDispatcher(object):
         had_compatible = False
         for proxyobj in self.callbacks:
             # Check for namespace compatibility
-            try:
+            if hasattr(proxyobj, "RPC_API_NAMESPACE"):
                 cb_namespace = proxyobj.RPC_API_NAMESPACE
-            except AttributeError:
+            else:
                 cb_namespace = None
 
             if namespace != cb_namespace:
                 continue
 
             # Check for version compatibility
-            try:
+            if hasattr(proxyobj, "RPC_API_VERSION"):
                 rpc_api_version = proxyobj.RPC_API_VERSION
-            except AttributeError:
+            else:
                 rpc_api_version = '1.0'
 
             is_compatible = rpc_common.version_is_compatible(rpc_api_version,
