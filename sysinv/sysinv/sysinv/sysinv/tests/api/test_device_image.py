@@ -16,7 +16,7 @@ from six.moves import http_client
 
 from sysinv.common import constants
 from sysinv.common import device as dconstants
-from sysinv.fpga_agent import constants as fpga_constants
+from sysinv.common import fpga_constants
 from sysinv.tests.api import base
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils

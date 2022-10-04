@@ -1,4 +1,0 @@
-SRC_DIR="."
-COPY_LIST_TO_TAR="LICENSE sysinv-fpga-agent sysinv-fpga-agent.conf"
-EXCLUDE_LIST_FROM_TAR="centos opensuse"
-TIS_PATCH_VER=PKG_GITREVCOUNT

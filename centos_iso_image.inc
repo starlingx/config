@@ -25,9 +25,6 @@ cgts-client
 # sysinv-agent
 sysinv-agent
 
-# sysinv-fpga-agent
-sysinv-fpga-agent
-
 # sysinv
 sysinv
 

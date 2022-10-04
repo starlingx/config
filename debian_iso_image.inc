@@ -8,5 +8,4 @@ controllerconfig
 #storageconfig
 sysinv
 sysinv-agent
-sysinv-fpga-agent
 workerconfig-standalone

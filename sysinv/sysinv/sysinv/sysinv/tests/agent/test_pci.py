@@ -27,7 +27,7 @@ from sysinv.agent.pci import PCIOperator
 from sysinv.agent.pci import PCI
 from sysinv.agent.manager import AgentManager
 from sysinv.tests import base
-from sysinv.fpga_agent import constants as fpga_constants
+from sysinv.common import fpga_constants
 import tsconfig.tsconfig as tsc
 
 FAKE_LSPCI_OUTPUT = {
