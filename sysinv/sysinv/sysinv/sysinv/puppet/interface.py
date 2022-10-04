@@ -1383,6 +1383,18 @@ def get_interface_network_config(context, iface, network_id=None):
         if is_slave_interface(context, iface):
             # ifupdown's ifup only runs pre-up for slave interfaces
             interface_op = IFACE_PRE_UP_OP
+
+        if iface['iftype'] == constants.INTERFACE_TYPE_VLAN:
+            # When configuring a static IPv6 interface, CentOS' ifup tool uses 'ip link'
+            # command to set both IPv4 and IPv6 MTU.
+            # Debian's ifup tool instead uses sysctl to set only the IPv6 MTU. But this
+            # value gets reset to the underlying device's MTU soon after ifup set sets the
+            # interface state to up. So we need to set the MTU again during post-up.
+            # Using 'ip link' command here instead of sysctl, will set both IPv4 and IPv6
+            # MTU like in CentOS.
+            set_mtu = '/usr/sbin/ip link set dev {} mtu {}'.format(os_ifname, mtu)
+            fill_interface_config_option_operation(config['options'], interface_op, set_mtu)
+
         autoconf_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/autoconf'.format(os_ifname)
         fill_interface_config_option_operation(config['options'], interface_op, autoconf_off)
         accept_ra_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/accept_ra'.format(os_ifname)
