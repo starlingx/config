@@ -5,7 +5,7 @@ cert-mon
 cgts-client
 config-gate
 controllerconfig
-#storageconfig
+storageconfig
 sysinv
 sysinv-agent
 workerconfig-standalone
