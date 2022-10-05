@@ -55,7 +55,9 @@ LOG = log.getLogger(__name__)
 
 # This is the location where we cache the device image file while
 # writing it to the hardware.
-DEVICE_IMAGE_CACHE_DIR = "/usr/local/share/applications/sysinv"
+DEVICE_IMAGE_CACHE_ROOT_DIR = "/var" if six.PY3 else "/usr"
+DEVICE_IMAGE_CACHE_DIR = DEVICE_IMAGE_CACHE_ROOT_DIR + \
+                         "/local/share/applications/sysinv"
 
 SYSFS_DEVICE_PATH = "/sys/bus/pci/devices/"
 FME_PATH = "/fpga/intel-fpga-dev.*/intel-fpga-fme.*/"
