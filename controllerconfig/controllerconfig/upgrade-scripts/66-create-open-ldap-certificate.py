@@ -41,9 +41,7 @@ def create_openldap_certificate():
     """
     playbooks_root = '/usr/share/ansible/stx-ansible/playbooks'
     upgrade_script = 'create-openldap-certificate-for-upgrade.yml'
-    # TODO(aning): remove the extra-vars option
-    cmd = 'ansible-playbook -e install_ca_cert=no {}/{}'.format(
-        playbooks_root, upgrade_script)
+    cmd = 'ansible-playbook {}/{}'.format(playbooks_root, upgrade_script)
     sub = subprocess.Popen(cmd, shell=True,
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = sub.communicate()
