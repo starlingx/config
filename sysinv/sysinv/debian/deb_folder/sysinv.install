@@ -2,7 +2,6 @@ etc/sysinv/policy.yaml etc/sysinv
 etc/sysinv/crushmap-storage-model.txt etc/sysinv
 etc/sysinv/crushmap-controller-model.txt etc/sysinv
 etc/sysinv/crushmap-aio-sx.txt etc/sysinv
-etc/sysinv/delete_load.sh etc/sysinv/upgrades
 scripts/sysinv-api usr/lib/ocf/resource.d/platform
 scripts/sysinv-conductor usr/lib/ocf/resource.d/platform
 scripts/partition_info.sh usr/bin
@@ -13,6 +12,7 @@ scripts/kube-cert-rotation.sh usr/bin
 scripts/ceph_k8s_update_monitors.sh usr/bin
 usr/lib/python*/dist-packages/*
 etc/goenabled.d/sysinv_goenabled_check.sh
+etc/sysinv/upgrades/delete_load.sh
 etc/update-motd.d/10-system
 usr/bin/cert-alarm
 usr/bin/cert-mon
