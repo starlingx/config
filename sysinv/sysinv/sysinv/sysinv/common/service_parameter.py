@@ -172,7 +172,7 @@ def _deprecated_oidc_params(name, value):
     """Check oidc deprecated parameters"""
     msg = "This parameter '{}' is deprecated you must use a valid parameter like " \
           "(oidc-issuer-url, oidc-client-id, oidc-username-claim, oidc-groups-claim).".format(name)
-    raise wsme.exc.ClientSideError(_(msg))
+    LOG.warning(msg)
 
 
 def _validate_cri_class_format(name, value):
