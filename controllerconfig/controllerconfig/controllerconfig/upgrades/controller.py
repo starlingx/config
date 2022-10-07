@@ -9,6 +9,7 @@
 #
 
 import copy
+import fcntl
 import glob
 import json
 import psycopg2
@@ -528,11 +529,23 @@ def import_databases(from_release, to_release, from_path=None, simplex=False):
 
     # Import VIM data
     if not simplex:
+        # in some cases, file fd_lock cannot be acquired on nfs device.
+        # create the database on local device and copy it over to nfs is
+        # a safe solution.
+        VIM_DB_NAME = 'vim_db_v1'
+        temp_db_path = '/tmp/'
+        db_path = os.path.join(PLATFORM_PATH, 'nfv/vim',
+                               SW_VERSION, VIM_DB_NAME)
         import_commands.append(
             ("nfv-vim",
              "nfv-vim-manage db-load-data -d %s -f %s" %
-             (os.path.join(PLATFORM_PATH, 'nfv/vim', SW_VERSION),
-              os.path.join(from_dir, 'vim.data'))))
+             (temp_db_path, os.path.join(from_dir, 'vim.data'))))
+
+        # copy the vim db
+        import_commands.append(
+            ('move database to %s' % db_path,
+             ("mv %s %s" % (os.path.join(temp_db_path, VIM_DB_NAME),
+              db_path))))
 
     # Execute import commands
     for cmd in import_commands:
@@ -547,6 +560,23 @@ def import_databases(from_release, to_release, from_path=None, simplex=False):
                           "processing, return code: %d" %
                           (cmd[1], ex.returncode))
             raise
+
+    if not simplex:
+        # examine if flock works in nfs mount device (DX only), report if not
+        # being able to
+        with open(os.path.join(temp_db_path, VIM_DB_NAME), "w") as f:
+            try:
+                fcntl.flock(f, fcntl.LOCK_SH)
+            except Exception:
+                bug_url = 'https://bugs.launchpad.net/starlingx/+bug/1990544'
+                LOG.exception('Experiencing bug %s' % bug_url)
+            finally:
+                try:
+                    fcntl.flock(f, fcntl.LOCK_UN)
+                except Exception:
+                    # this is not going to be a problem, file is closed
+                    # by with statement. Just log and move on.
+                    LOG.exception('Error when unlock file')
 
 
 def create_databases(from_release, to_release, db_credentials):
