@@ -9963,8 +9963,11 @@ class ConductorManager(service.PeriodicService):
                                        constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN2,
                                        constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN3]
 
-                personalities = [constants.CONTROLLER]
                 if section in remote_ldap_domains:
+                    personalities = [
+                            constants.CONTROLLER,
+                            constants.WORKER,
+                            constants.STORAGE]
                     config_dict = {
                         'personalities': personalities,
                         "classes": ['platform::sssd::domain::runtime']
@@ -9972,6 +9975,7 @@ class ConductorManager(service.PeriodicService):
                     LOG.info("Applying SSSD domain runtime manifest")
                     self._config_apply_runtime_manifest(context, config_uuid, config_dict)
                 else:
+                    personalities = [constants.CONTROLLER]
                     config_dict = {
                         "personalities": personalities,
                         "classes": ['platform::haproxy::runtime',

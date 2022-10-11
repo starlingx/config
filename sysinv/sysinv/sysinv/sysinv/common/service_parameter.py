@@ -228,18 +228,38 @@ def _validate_cri_class_format(name, value):
 def _validate_ldap_uri(name, value):
     """Check if the ldap domain uri is valid"""
 
+    _validate_not_empty(name, value)
     parsed_value = urlparse(value)
     if not parsed_value.netloc or parsed_value.scheme != "ldaps":
         raise wsme.exc.ClientSideError(_(
             "Parameter '%s' must be a valid ldap uri." % name))
+    if not cutils.is_valid_domain_name(parsed_value.netloc):
+            raise wsme.exc.ClientSideError(_(
+                "Parameter '%s' has invalid domain name." % name))
 
 
 def _validate_ldap_dn(name, value):
     """Check if ldap dn is valid"""
 
-    if len(re.findall(r"([^\,]|\\.)*", value)):
+    match = re.fullmatch(
+            r"((CN=([^,]*)),)?((((?:CN|OU)=[^,]+,?)+),)?((DC=[^,]+,?)+)$",
+            value, re.IGNORECASE)
+    if match is None:
         raise wsme.exc.ClientSideError(_(
             "Parameter '%s' must be a valid dn." % name))
+
+
+def _validate_ldap_access_filter(name, value):
+    """Check if ldap dn is valid"""
+
+    _validate_not_empty(name, value)
+    memberof, ldap_dn = value.split("=", 1)
+    match = re.fullmatch(
+            r"((CN=([^,]*)),)?((((?:CN|OU)=[^,]+,?)+),)?((DC=[^,]+,?)+)$",
+            ldap_dn, re.IGNORECASE)
+    if match is None or memberof != "memberOf":
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' must be a valid memberOf=dn expression." % name))
 
 
 def _get_network_pool_from_ip_address(ip, networks):
@@ -547,19 +567,19 @@ IDENTITY_LDAP_PARAMETER_OPTIONAL = [
 
 IDENTITY_LDAP_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN:
-        _validate_not_empty,
+        _validate_domain,
     constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_URI:
-        _validate_not_empty,
+        _validate_ldap_uri,
     constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_ACCESS_FILTER:
-        _validate_not_empty,
+        _validate_ldap_access_filter,
     constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_SEARCH_BASE:
-        _validate_not_empty,
+        _validate_ldap_dn,
     constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_USER_SEARCH_BASE:
-        _validate_not_empty,
+        _validate_ldap_dn,
     constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_GROUP_SEARCH_BASE:
-        _validate_not_empty,
+        _validate_ldap_dn,
     constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DEFAULT_BIND_DN:
-        _validate_not_empty,
+        _validate_ldap_dn,
     constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DEFAULT_AUTH_TOK:
         _validate_not_empty,
 }

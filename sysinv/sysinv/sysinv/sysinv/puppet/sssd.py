@@ -38,13 +38,11 @@ class SssdPuppet(base.BasePuppet):
                               constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN2,
                               constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN3]
             for domain in remote_domains:
-                domain_name = self._get_service_parameter_domain_name(
-                        self.identity_service_parameters,
-                        domain)
+                domain_name = self._get_service_parameter_domain_name(domain)
                 if domain_name != "undef":
-                    domains.update({domain_name: self._get_ldap_domain(
-                        self.identity_service_parameters,
-                        domain)})
+                    ldap_domain_parameters = self._get_ldap_domain(domain)
+                    if ldap_domain_parameters is not None:
+                        domains.update({domain_name: ldap_domain_parameters})
 
         config.update(
             {
@@ -55,27 +53,26 @@ class SssdPuppet(base.BasePuppet):
 
         return config
 
-    def _get_ldap_domain_service_parameter_value(self, service_parameters,
-            domain, parameter_name, default):
-        for param in service_parameters:
+    def _get_ldap_domain_service_parameter_value(self, domain,
+            parameter_name,
+            default):
+        for param in self.identity_service_parameters:
             if param['section'] == domain and param['name'] == parameter_name:
                 return param['value']
         return default
 
-    def _get_service_parameter_domain_name(self, service_parameters, domain):
+    def _get_service_parameter_domain_name(self, domain):
 
         domain_name = self._get_ldap_domain_service_parameter_value(
-            service_parameters,
             domain,
             constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN,
             constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN_DEFAULT,
         )
         return domain_name
 
-    def _get_service_parameter_ldap_uri(self, service_parameters, domain):
+    def _get_service_parameter_ldap_uri(self, domain):
 
         ldap_uri = self._get_ldap_domain_service_parameter_value(
-            service_parameters,
             domain,
             constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_URI,
             constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN_DEFAULT,
@@ -83,10 +80,9 @@ class SssdPuppet(base.BasePuppet):
 
         return ldap_uri
 
-    def _get_service_parameter_access_filter(self, service_parameters, domain):
+    def _get_service_parameter_access_filter(self, domain):
 
         access_filter = self._get_ldap_domain_service_parameter_value(
-            service_parameters,
             domain,
             constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_ACCESS_FILTER,
             constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN_DEFAULT,
@@ -94,10 +90,9 @@ class SssdPuppet(base.BasePuppet):
 
         return access_filter
 
-    def _get_service_parameter_search_base(self, service_parameters, domain):
+    def _get_service_parameter_search_base(self, domain):
 
         search_base = self._get_ldap_domain_service_parameter_value(
-            service_parameters,
             domain,
             constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_SEARCH_BASE,
             constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN_DEFAULT,
@@ -105,10 +100,9 @@ class SssdPuppet(base.BasePuppet):
 
         return search_base
 
-    def _get_service_parameter_user_search_base(self, service_parameters, domain):
+    def _get_service_parameter_user_search_base(self, domain):
 
         user_search_base = self._get_ldap_domain_service_parameter_value(
-            service_parameters,
             domain,
             constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_USER_SEARCH_BASE,
             constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN_DEFAULT,
@@ -116,10 +110,9 @@ class SssdPuppet(base.BasePuppet):
 
         return user_search_base
 
-    def _get_service_parameter_group_search_base(self, service_parameters, domain):
+    def _get_service_parameter_group_search_base(self, domain):
 
         group_search_base = self._get_ldap_domain_service_parameter_value(
-            service_parameters,
             domain,
             constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_GROUP_SEARCH_BASE,
             constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN_DEFAULT,
@@ -127,10 +120,9 @@ class SssdPuppet(base.BasePuppet):
 
         return group_search_base
 
-    def _get_service_parameter_default_bind_dn(self, service_parameters, domain):
+    def _get_service_parameter_default_bind_dn(self, domain):
 
         bind_dn = self._get_ldap_domain_service_parameter_value(
-            service_parameters,
             domain,
             constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DEFAULT_BIND_DN,
             constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN_DEFAULT,
@@ -138,16 +130,26 @@ class SssdPuppet(base.BasePuppet):
 
         return bind_dn
 
-    def _get_service_parameter_default_authtok(self, service_parameters, domain):
+    def _get_service_parameter_default_authtok(self, domain):
 
         authtok = self._get_ldap_domain_service_parameter_value(
-            service_parameters,
             domain,
             constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DEFAULT_AUTH_TOK,
             constants.SERVICE_PARAM_NAME_IDENTITY_LDAP_DOMAIN_DEFAULT,
         )
 
         return authtok
+
+    def _get_mandatory_parameter(self, parameter_name,
+            get_parameter_value, domain):
+        # check if the mandatory service parameter has been added
+        parameter_value = get_parameter_value(domain)
+        if parameter_value != "undef":
+            return parameter_value
+        else:
+            LOG.warn('Parameter %s is mandatory and is not found'
+                    % parameter_name)
+            return None
 
     def _get_local_domain(self):
         binding_pass = self._get_keyring_password(self.SERVICE_NAME,
@@ -195,27 +197,69 @@ class SssdPuppet(base.BasePuppet):
 
         return domain_parameters
 
-    def _get_ldap_domain(self, service_parameters, domain):
+    def _get_ldap_domain(self, domain):
+
         domain_parameters = {
             'cache_credentials': 'true',
             'debug_level': '0x0270',
             'id_provider': 'ldap',
-            'ldap_uri': self._get_service_parameter_ldap_uri(
-                service_parameters, domain),
-            "ldap_access_filter": self._get_service_parameter_access_filter(
-                service_parameters, domain),
-            "ldap_search_base": self._get_service_parameter_search_base(
-                service_parameters, domain),
-            "ldap_user_search_base": self._get_service_parameter_user_search_base(
-                service_parameters, domain),
-            "ldap_group_search_base": self._get_service_parameter_group_search_base(
-                service_parameters, domain),
-            "ldap_default_bind_dn": self._get_service_parameter_default_bind_dn(
-                service_parameters, domain),
-            "ldap_default_authtok": self._get_service_parameter_default_authtok(
-                service_parameters, domain),
+            'access_provider': 'ldap',
+            'enumerate': 'true',
+            'ldap_id_mapping': 'true',
+            'ldap_schema': 'rfc2307bis',
+            'ldap_user_object_class': 'user',
+            'ldap_group_object_class': 'group',
+            'ldap_user_home_directory': '/home/$cn',
+            'ldap_user_principal': 'userPrincipalName',
+            'ldap_user_name': 'sAMAccountName',
+            'ldap_group_name': 'cn',
+            'ldap_user_objectsid': 'objectSid',
+            'ldap_group_objectsid': 'objectSid',
+            'ldap_user_primary_group': 'primaryGroupID',
+            'case_sensitive': 'false',
+            'default_shell': '/bin/bash',
             'fallback_homedir': '/home/%u',
+            'ldap_tls_cacertdir': '/etc/ldap/certs',
         }
+
+        # add mandatory parameters
+        uri = self._get_mandatory_parameter("ldap_uri",
+                self._get_service_parameter_ldap_uri,
+                domain)
+        access_filter = self._get_mandatory_parameter("ldap_access_filter",
+                self._get_service_parameter_access_filter,
+                domain)
+        search_base = self._get_mandatory_parameter("ldap_search_base",
+                self._get_service_parameter_search_base,
+                domain)
+        default_bind_dn = self._get_mandatory_parameter("ldap_default_bind_dn",
+                self._get_service_parameter_default_bind_dn,
+                domain)
+        default_authtok = self._get_mandatory_parameter("ldap_default_authtok",
+                self._get_service_parameter_default_authtok,
+                domain)
+
+        if uri is not None and \
+                access_filter is not None and \
+                search_base is not None and \
+                default_bind_dn is not None and \
+                default_authtok is not None:
+                    domain_parameters['ldap_uri'] = uri
+                    domain_parameters['ldap_access_filter'] = access_filter
+                    domain_parameters['ldap_search_base'] = search_base
+                    domain_parameters['ldap_default_bind_dn'] = default_bind_dn
+                    domain_parameters['ldap_default_authtok'] = default_authtok
+        else:
+            return None
+
+        # add optional parameters
+        user_search_base = self._get_service_parameter_user_search_base(domain)
+        if user_search_base != "undef":
+            domain_parameters['ldap_user_search_base'] = user_search_base
+
+        group_search_base = self._get_service_parameter_group_search_base(domain)
+        if group_search_base != "undef":
+            domain_parameters['ldap_group_search_base'] = group_search_base
 
         return domain_parameters
 
