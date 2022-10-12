@@ -25,14 +25,18 @@ LOG = log.getLogger(__name__)
 
 class SubcloudAuditData(object):
     """Representation of a subcloud under audit.
-    The 'name' field is used for all comparisons.
     """
     def __init__(self, name, audit_count=0):
         self.name = name
         self.audit_count = audit_count
+        self.timestamp = 0
 
     def __eq__(self, other):
         return self.name == other.name
+
+    def __lt__(self, other):
+        """Used in sorting the PriorityQueue"""
+        return self.timestamp < other.timestamp
 
     def __hash__(self):
         return hash(self.name)
@@ -81,6 +85,7 @@ class SubcloudAuditPriorityQueue(PriorityQueue):
 
         # this PriorityQueue is ordered by the next timestamp:
         sc_audit_item.audit_count += 1
+        sc_audit_item.timestamp = timestamp
         self.put(
             (timestamp, sc_audit_item)
         )
