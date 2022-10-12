@@ -3605,6 +3605,19 @@ class HostController(rest.RestController):
         Perform semantic checks related to upgrades prior to unlocking host.
         """
 
+        try:
+            # Check if there's an upgrade in progress
+            upgrade = pecan.request.dbapi.software_upgrade_get_one()
+            if upgrade.state == constants.UPGRADE_UPGRADING_CONTROLLERS:
+                host_upgrade = objects.host_upgrade.get_by_host_id(
+                    pecan.request.context, ihost['id'])
+                if host_upgrade.software_load == upgrade.from_load:
+                    raise wsme.exc.ClientSideError(
+                        _("Upgrade is in progress. At this time %s cannot be unlocked"
+                          % ihost['hostname']))
+        except exception.NotFound:
+            pass
+
         if ihost['hostname'] != constants.CONTROLLER_1_HOSTNAME:
             return
 
