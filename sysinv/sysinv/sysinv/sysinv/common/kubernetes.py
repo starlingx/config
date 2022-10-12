@@ -726,10 +726,10 @@ class KubeOperator(object):
         """Returns the ready status of the control plane pods."""
         c = self._get_kubernetesclient_core()
 
-        # First get a list of master nodes
+        # First get a list of control-plane nodes
         master_nodes = list()
         api_response = c.list_node(
-            label_selector="node-role.kubernetes.io/master")
+            label_selector="node-role.kubernetes.io/control-plane")
         for node in api_response.items:
             master_nodes.append(node.metadata.name)
 
@@ -763,10 +763,10 @@ class KubeOperator(object):
         master node."""
         c = self._get_kubernetesclient_core()
 
-        # First get a list of master nodes
+        # First get a list of control-plane nodes
         master_nodes = list()
         api_response = c.list_node(
-            label_selector="node-role.kubernetes.io/master")
+            label_selector="node-role.kubernetes.io/control-plane")
         for node in api_response.items:
             master_nodes.append(node.metadata.name)
 
