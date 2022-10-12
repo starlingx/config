@@ -48,26 +48,19 @@ class LdapPuppet(base.BasePuppet):
         bootstrap_completed = \
             os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG)
 
-        is_upgrading, upgrade = utils.is_upgrade_in_progress(self.dbapi)
-
-        activating_statuses = [
-            constants.UPGRADE_ACTIVATING,
-            constants.UPGRADE_ACTIVATING_HOSTS,
-            constants.UPGRADE_ACTIVATION_COMPLETE,
-        ]
-        # During upgrade the openldap certificate is created in stage
-        # activate. In fresh installs it's created during bootstrap
-        if is_upgrading:
-            return upgrade.state in activating_statuses
-        else:
-            return bootstrap_completed
+        return bootstrap_completed
 
     def get_secure_system_config(self):
         config = {}
         is_subcloud = \
             self._distributed_cloud_role() == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD
 
+        # Retrieve openldap CA certificate, and server certificate/key
         if self._is_openldap_certificate_created() and not is_subcloud:
+            ldap_ca_cert, _ = utils.get_certificate_from_secret(
+                constants.OPENLDAP_CA_CERT_SECRET_NAME,
+                constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
+
             ldap_cert, ldap_key = utils.get_certificate_from_secret(
                 constants.OPENLDAP_CERT_SECRET_NAME,
                 constants.CERT_NAMESPACE_PLATFORM_CERTS)
@@ -75,6 +68,7 @@ class LdapPuppet(base.BasePuppet):
             config.update({
                 'platform::ldap::params::secure_cert': ldap_cert,
                 'platform::ldap::params::secure_key': ldap_key,
+                'platform::ldap::params::ca_cert': ldap_ca_cert,
             })
 
         return config
