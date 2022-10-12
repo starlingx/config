@@ -1,20 +1,23 @@
 #!/usr/bin/make -f
 #export DH_VERBOSE=1
 
-PKGDIR=$(CURDIR)/debian/tmp
+PKGDIR := $(CURDIR)/debian/tmp
 
 export INITDDIR=$(PKGDIR)/etc/init.d
 export GOENABLEDDIR=$(PKGDIR)/etc/goenabled.d
-export SYSTEMDDIR=$(PKGDIR)/lib/systemd/system
 
 %:
 	dh $@
 
 override_dh_auto_build:
-	: # nothing to be built, just skip
+	: # No build required
 
-override_dh_fixperms:
-	dh_fixperms -Xstorage_config
+override_dh_auto_install:
+	install -d -m 755 ${INITDDIR}
+	install -p -D -m 700 storage_config ${INITDDIR}/storage_config
+	install -d -m 755 ${GOENABLEDDIR}
+	install -p -D -m 700 config_goenabled_check.sh ${GOENABLEDDIR}/config_goenabled_check.sh.storage
 
 override_dh_installsystemd:
-	dh_installsystemd --name storageconfig
+	dh_installsystemd -pstorageconfig --name=storageconfig --no-start storageconfig.service
+

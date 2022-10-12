@@ -1,3 +1,2 @@
 etc/init.d/storage_config
-etc/goenabled.d/config_goenabled_check.sh
-lib/systemd/system/storageconfig.service
+etc/goenabled.d/*

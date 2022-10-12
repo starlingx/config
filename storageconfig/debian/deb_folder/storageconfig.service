@@ -10,8 +10,8 @@ Type=simple
 ExecStart=/etc/init.d/storage_config start
 ExecStop=
 ExecReload=
-StandardOutput=syslog+console
-StandardError=syslog+console
+StandardOutput=journal+console
+StandardError=journal+console
 RemainAfterExit=yes
 
 [Install]
