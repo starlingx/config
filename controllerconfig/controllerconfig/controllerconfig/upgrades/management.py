@@ -269,22 +269,17 @@ def abort_upgrade(from_load, to_load, upgrade):
              (from_load, to_load))
 
     # remove upgrade flags
-    try:
-        os.remove(tsc.CONTROLLER_UPGRADE_FLAG)
-    except OSError:
-        LOG.exception("Failed to remove upgrade flag")
-    try:
-        os.remove(tsc.CONTROLLER_UPGRADE_COMPLETE_FLAG)
-    except OSError:
-        LOG.exception("Failed to remove upgrade complete flag")
-    try:
-        os.remove(tsc.CONTROLLER_UPGRADE_FAIL_FLAG)
-    except OSError:
-        LOG.exception("Failed to remove upgrade fail flag")
-    try:
-        os.remove(tsc.CONTROLLER_UPGRADE_STARTED_FLAG)
-    except OSError:
-        LOG.exception("Failed to remove the upgrade started flag")
+    upgrade_flags = [tsc.CONTROLLER_UPGRADE_FLAG,
+                     tsc.CONTROLLER_UPGRADE_COMPLETE_FLAG,
+                     tsc.CONTROLLER_UPGRADE_FAIL_FLAG,
+                     tsc.CONTROLLER_UPGRADE_STARTED_FLAG,
+                     ]
+    for flag in upgrade_flags:
+        try:
+            if os.path.isfile(flag):
+                os.remove(flag)
+        except OSError:
+            LOG.exception("Failed to remove upgrade flag %s" % flag)
 
     # unexport filesystems
     export_list = [utils.POSTGRES_PATH, utils.RABBIT_PATH]
@@ -326,7 +321,8 @@ def abort_upgrade(from_load, to_load, upgrade):
 
     for directory in upgrade_dirs:
         try:
-            shutil.rmtree(directory)
+            if os.path.isdir(directory):
+                shutil.rmtree(directory)
         except OSError:
             LOG.exception("Failed to remove upgrade directory %s" % directory)
 

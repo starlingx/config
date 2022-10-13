@@ -12181,7 +12181,8 @@ class ConductorManager(service.PeriodicService):
             ]
             for file in upgrade_flag_files:
                 try:
-                    os.remove(file)
+                    if os.path.isfile(file):
+                        os.remove(file)
                 except OSError:
                     LOG.exception("Failed to remove upgrade flag: %s" % file)
 
