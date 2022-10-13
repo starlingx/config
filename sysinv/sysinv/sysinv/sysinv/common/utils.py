@@ -3406,13 +3406,64 @@ def get_root_ca_cert():
 
 
 def run_playbook(playbook_command):
+    """
+    Run a playbook in a subprocess.
+
+    :param playbook_command: Command to execute
+    :return: Exit status of subprocess
+    """
+    if six.PY3:
+        return _run_playbook_py3(playbook_command)
+    return _run_playbook_py2(playbook_command)
+
+
+def _run_playbook_py2(playbook_command):
+    """
+    Run a playbook in a subprocess for Python2.
+
+    :param playbook_command: Command to execute
+    :return: Exit status of subprocess
+    """
     exec_env = os.environ.copy()
     exec_env["ANSIBLE_LOG_PATH"] = "/dev/null"
-    proc = subprocess.Popen(playbook_command, stdout=subprocess.PIPE,
-            env=exec_env, universal_newlines=True)
-    out, _ = proc.communicate()
-    LOG.info("ansible-playbook: %s." % out)
-    return proc.returncode
+    proc = subprocess.Popen(
+        playbook_command,
+        stdout=subprocess.PIPE,
+        env=exec_env,
+        preexec_fn=os.setsid,
+        universal_newlines=True,
+    )
+
+    try:
+        out, _ = proc.communicate()
+        LOG.info("ansible-playbook: %s", out)
+        rc = proc.poll()
+
+    finally:
+        if proc.poll() is None:
+            os.killpg(proc.pid, signal.SIGTERM)
+            rc = -1
+
+    return rc
+
+
+def _run_playbook_py3(playbook_command):
+    """
+    Run a playbook in a subprocess for Python3.
+
+    :param playbook_command: Command to execute
+    :return: Exit status of subprocess
+    """
+    exec_env = os.environ.copy()
+    exec_env["ANSIBLE_LOG_PATH"] = "/dev/null"
+    result = subprocess.run(
+        playbook_command,
+        stdout=subprocess.PIPE,
+        env=exec_env,
+        universal_newlines=True,
+    )
+    LOG.info("ansible-playbook: %s", result.stdout)
+    return result.returncode
 
 
 def generate_random_password(length=16):
