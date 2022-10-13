@@ -534,8 +534,9 @@ def import_databases(from_release, to_release, from_path=None, simplex=False):
         # a safe solution.
         VIM_DB_NAME = 'vim_db_v1'
         temp_db_path = '/tmp/'
-        db_path = os.path.join(PLATFORM_PATH, 'nfv/vim',
-                               SW_VERSION, VIM_DB_NAME)
+        db_dir = os.path.join(PLATFORM_PATH, 'nfv/vim', SW_VERSION)
+        os.mkdir(db_dir)
+        db_path = os.path.join(db_dir, VIM_DB_NAME)
         import_commands.append(
             ("nfv-vim",
              "nfv-vim-manage db-load-data -d %s -f %s" %
