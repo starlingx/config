@@ -1761,6 +1761,57 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
+    def test_get_controller_vlan_config_duplex_direct(self):
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX_DIRECT
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+        vlan = self._create_vlan_test(
+            "vlan100", constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_MGMT, 100, self.iface)
+        self._update_context()
+        self._update_interface_address_pool(
+            vlan, constants.NETWORK_TYPE_MGMT)
+        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
+        config = interface.get_interface_network_config(self.context, vlan, network.id)
+        options = {'IPV6_AUTOCONF': 'no',
+                   'PHYSDEV': self.port['name'],
+                   'VLAN': 'yes',
+                   'pre_up': '/sbin/modprobe -q 8021q; sysctl -wq '
+                             'net.ipv6.conf.vlan100.accept_dad=0'}
+        expected = self._get_static_network_config(ifname=vlan['ifname'],
+            gateway='192.168.204.1', ipaddress='192.168.1.2', mtu=1500,
+            options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
+    def test_get_controller_vlan_config_duplex_direct_ifupdown(self):
+        self.mock_puppet_interface_sysconfig.return_value = False
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX_DIRECT
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+        vlan = self._create_vlan_test(
+            "vlan100", constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_MGMT, 100, self.iface)
+        self._update_context()
+        self._update_interface_address_pool(
+            vlan, constants.NETWORK_TYPE_MGMT)
+        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
+        config = interface.get_interface_network_config(self.context, vlan, network.id)
+        options = {'gateway': '192.168.204.1',
+                   'mtu': '1500',
+                   'post-up': '/usr/sbin/ip link set dev vlan100 mtu 1500; echo 0 > '
+                              '/proc/sys/net/ipv6/conf/vlan100/autoconf; echo 0 '
+                              '> /proc/sys/net/ipv6/conf/vlan100/accept_ra; echo 0 > '
+                              '/proc/sys/net/ipv6/conf/vlan100/accept_redirects',
+                   'pre-up': '/sbin/modprobe -q 8021q; ip link add link eth0 name '
+                             'vlan100 type vlan id 100; sysctl -wq '
+                             'net.ipv6.conf.vlan100.accept_dad=0',
+                   'vlan-raw-device': '{}'.format(self.port['name'])}
+        expected = self._get_static_network_config_ifupdown(
+            ifname=vlan['ifname'], options=options)
+        print(expected)
+        self.assertEqual(expected, config)
+
     def test_get_controller_vlan_config_over_bond(self):
         bond = self._create_bond_test("bond0")
         vlan = self._create_vlan_test("vlan1", None, None, 1, bond)

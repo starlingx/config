@@ -888,15 +888,24 @@ def get_duplex_direct_network_config(context, iface, config, sysctl_ifname, netw
     """
     Disable dad on the specified interface for duplex-direct config
     """
-    networktype = find_networktype_by_network_id(context, network_id)
-    if (networktype and networktype in [constants.NETWORK_TYPE_MGMT,
-                                        constants.NETWORK_TYPE_CLUSTER_HOST]):
-        command = ("/sbin/modprobe bonding; "
-                   "grep %s /sys/class/net/bonding_masters || "
-                   "echo +%s > /sys/class/net/bonding_masters" % (
-                       iface['ifname'], iface['ifname']))
-        fill_interface_config_option_operation(config['options'], IFACE_PRE_UP_OP, command)
-    new_pre_up = "sysctl -wq net.ipv6.conf.%s.accept_dad=0" % sysctl_ifname
+    if iface['iftype'] == constants.INTERFACE_TYPE_AE:
+        networktype = find_networktype_by_network_id(context, network_id)
+        if (networktype and networktype in [constants.NETWORK_TYPE_MGMT,
+                                            constants.NETWORK_TYPE_CLUSTER_HOST]):
+            command = ("/sbin/modprobe bonding; "
+                    "grep %s /sys/class/net/bonding_masters || "
+                    "echo +%s > /sys/class/net/bonding_masters" % (
+                        iface['ifname'], iface['ifname']))
+            fill_interface_config_option_operation(config['options'], IFACE_PRE_UP_OP, command)
+
+    new_pre_up = ""
+    if not is_syscfg_network() and iface['iftype'] == constants.INTERFACE_TYPE_VLAN:
+        lower_os_ifname = get_lower_interface_os_ifname(context, iface)
+        new_pre_up = "ip link add link %s name %s type vlan id %s; " % (
+            lower_os_ifname, sysctl_ifname, iface['vlan_id'])
+
+    new_pre_up += "sysctl -wq net.ipv6.conf.%s.accept_dad=0" % sysctl_ifname
+
     fill_interface_config_option_operation(config['options'], IFACE_PRE_UP_OP, new_pre_up)
     return config
 
