@@ -219,7 +219,7 @@ class SssdPuppet(base.BasePuppet):
             'case_sensitive': 'false',
             'default_shell': '/bin/bash',
             'fallback_homedir': '/home/%u',
-            'ldap_tls_cacertdir': '/etc/ldap/certs',
+            'ldap_tls_cacert': '/etc/ssl/certs/ca-certificates.crt',
         }
 
         # add mandatory parameters
