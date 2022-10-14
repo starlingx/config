@@ -51,6 +51,7 @@ FPGA_INTEL_5GNR_FEC_VF_VALID_DRIVERS = [FPGA_INTEL_5GNR_FEC_DRIVER_IGB_UIO,
                                         constants.SRIOV_DRIVER_TYPE_VFIO,
                                         FPGA_INTEL_5GNR_FEC_DRIVER_NONE]
 FPGA_INTEL_5GNR_FEC_PF_VALID_DRIVERS = [FPGA_INTEL_5GNR_FEC_DRIVER_IGB_UIO,
+                                        constants.SRIOV_DRIVER_VFIO_PCI,
                                         FPGA_INTEL_5GNR_FEC_DRIVER_NONE]
 
 # This dictionary is used when generating resourceName and device_config.
