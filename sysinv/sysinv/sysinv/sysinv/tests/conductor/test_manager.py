@@ -29,7 +29,6 @@ import uuid
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
-import six
 
 from fm_api import constants as fm_constants
 from oslo_serialization import base64
@@ -73,22 +72,9 @@ class FakePopen(object):
     def __init__(self, **kwargs):
         # Pretend all is OK
         self.returncode = 0
-        self.stdin = mock.MagicMock()
 
     def communicate(self):
         return "Fake stdout", "Fake stderr"
-
-    def poll(self):
-        return self.returncode
-
-
-class FakeSubprocessRun(object):
-
-    def __init__(self, **kwargs):
-        self._kwargs = kwargs
-        self.returncode = 0
-        self.stdout = "Fake stdout"
-        self.stderr = "Fake stderr"
 
 
 class ManagerTestCase(base.DbTestCase):
@@ -278,14 +264,6 @@ class ManagerTestCase(base.DbTestCase):
         self.mock_subprocess_popen = p.start()
         self.mock_subprocess_popen.return_value = self.fake_subprocess_popen
         self.addCleanup(p.stop)
-
-        # Mock subprocess run
-        self.fake_subprocess_run = FakeSubprocessRun()
-        if six.PY3:
-            p = mock.patch('eventlet.green.subprocess.run')
-            self.mock_subprocess_run = p.start()
-            self.mock_subprocess_run.return_value = self.fake_subprocess_run
-            self.addCleanup(p.stop)
 
         # Mock the KubeOperator
         self.kube_get_control_plane_versions_result = {
@@ -828,7 +806,6 @@ class ManagerTestCase(base.DbTestCase):
         )
         # Fake an ansible failure
         self.fake_subprocess_popen.returncode = 1
-        self.fake_subprocess_run.returncode = 1
 
         # Download images
         self.service.kube_download_images(self.context, 'v1.42.2')
@@ -1430,7 +1407,6 @@ class ManagerTestCase(base.DbTestCase):
         )
         # Fake an ansible failure
         self.fake_subprocess_popen.returncode = 1
-        self.fake_subprocess_run.returncode = 1
 
         # Upgrade kubernetes networking
         self.service.kube_upgrade_networking(self.context, 'v1.42.2')
