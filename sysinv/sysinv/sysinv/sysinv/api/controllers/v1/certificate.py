@@ -401,6 +401,7 @@ class CertificateController(rest.RestController):
                     signature = "ssl_ca_" + str(cert.serial_number)
                     duplicate_certificates = [certificate.uuid
                                               for certificate in existing_certificates
+                                              if certificate.certtype == constants.CERT_MODE_SSL_CA
                                               if certificate.hash_subject
                                               if hash_subject == int(certificate.hash_subject)
                                               if certificate.signature != signature]
