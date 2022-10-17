@@ -174,6 +174,19 @@ class OpenStackOperator(object):
         sess = session.Session(auth=auth)
         return sess
 
+    def _get_keystone_session_for_sysinv(self, service_config):
+        auth = v3.Password(auth_url=self._get_auth_url(service_config),
+                           username=cfg.CONF[service_config].username,
+                           password=keyring.get_password('sysinv', 'services'),
+                           user_domain_name=cfg.CONF[service_config].
+                           user_domain_name,
+                           project_name=cfg.CONF[service_config].
+                           project_name,
+                           project_domain_name=cfg.CONF[service_config].
+                           project_domain_name)
+        sess = session.Session(auth=auth)
+        return sess
+
     def _get_cached_keystone_session(self, service_config):
         if service_config == OPENSTACK_CONFIG:
             return self.openstack_keystone_session
@@ -218,6 +231,27 @@ class OpenStackOperator(object):
             client = self._get_new_keystone_client(service_config)
             self._set_cached_keystone_client(service_config, client)
         return client
+
+    def _renew_keystone_and_barbican_clients(self, service_config):
+        """Renew the cached keystone and barbican clients.
+
+        This method is called indirectly by keystone_listener right after
+        the openstack sysinv password is changed.
+
+        Changing sysinv service password in keyring is a prerequisite for
+        the renewing, because the new password used for constructing the new
+        keystone session comes from keyring.
+        """
+        session = self._get_keystone_session_for_sysinv(service_config)
+
+        k_client = keystone_client.Client(session=session)
+        self._set_cached_keystone_client(service_config, k_client)
+
+        b_client = barbican_client_v1.Client(
+            session,
+            interface='internalURL',
+            region_name=cfg.CONF[OPENSTACK_CONFIG].barbican_region_name)
+        self._set_cached_barbican_client(service_config, b_client)
 
     #################
     # Cinder
@@ -345,11 +379,14 @@ class OpenStackOperator(object):
     ########################
     # keystone user methods
     ########################
-    def get_keystone_users(self, service_config=PLATFORM_CONFIG):
+    def get_keystone_users(self, username, service_config=PLATFORM_CONFIG):
         """Get a list of all users in keystone otherwise an empty list."""
         user_list = []
 
         try:
+            if username == constants.SYSINV_USERNAME:
+                self._renew_keystone_and_barbican_clients(service_config)
+
             user_list = self._get_keystone_client(service_config).users.list()
         except Exception as e:
             LOG.error("Failed to get keystone user list:\n%s" % str(e))
@@ -358,13 +395,13 @@ class OpenStackOperator(object):
 
     def get_platform_keystone_user(self, username):
         """Return platform keystone user otherwise None."""
-        users = self.get_keystone_users()
-
-        try:
-            return [user for user in users if user.name == username][0]
-        except Exception as e:
-            LOG.error("Failed to get platform keystone user: %s\n%s"
-                       % (username, str(e)))
+        users = self.get_keystone_users(username)
+        if users:
+            try:
+                return [user for user in users if user.name == username][0]
+            except Exception as e:
+                LOG.error("Failed to get platform keystone user: %s\n%s"
+                           % (username, str(e)))
 
         return None
 

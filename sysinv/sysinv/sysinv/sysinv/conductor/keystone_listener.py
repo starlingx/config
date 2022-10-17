@@ -47,12 +47,12 @@ class NotificationEndpoint(object):
         """Receives notification at info level."""
 
         user = self._openstack.get_platform_keystone_user(self.username)
-
-        if payload['eventType'] == 'activity' and \
-                payload['action'] == 'updated.user' and \
-                payload['outcome'] == 'success' and \
-                payload['resource_info'] == user.id:
-            self.callback_func(self.context, self.username)
+        if user:
+            if payload['eventType'] == 'activity' and \
+                    payload['action'] == 'updated.user' and \
+                    payload['outcome'] == 'success' and \
+                    payload['resource_info'] == user.id:
+                self.callback_func(self.context, self.username)
 
         return oslo_messaging.NotificationResult.HANDLED
 

@@ -196,10 +196,11 @@ LOCK_RUNTIME_CONFIG_CHECK = 'runtime_config_check'
 # Keystone users whose passwords change are monitored by keystone listener, and
 # the puppet classes to update the service after the passwords change.
 # TODO(yuxing): there are still several keystone users are not covered by this
-# dictionary, e.g. dcorch,dcdbsync, smapi and sysinv etc. Need to consider to
+# dictionary, e.g. dcorch,dcdbsync, and smapi etc. Need to consider to
 # create puppet class to reload the related service in case their passwords
 # are changed in keystone and keyring.
 KEYSTONE_USER_PASSWORD_UPDATE = {
+    "sysinv": "openstack::keystone::sysinv::password::runtime",
     "admin": "openstack::keystone::password::runtime",
     "barbican": "openstack::keystone::barbican::password::runtime",
     "dcmanager": "openstack::keystone::dcmanager::password::runtime",
@@ -372,9 +373,11 @@ class ConductorManager(service.PeriodicService):
                     {'function': self._app.audit_local_registry_secrets,
                      'context': context,
                      'user': username})
-            callback_endpoints.append({'function': self._update_keystone_password,
-                                       'context': context,
-                                       'user': username})
+            elif (self.dbapi.isystem_get_one().distributed_cloud_role ==
+                  constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+                callback_endpoints.append({'function': self._update_keystone_password,
+                                           'context': context,
+                                           'user': username})
         return callback_endpoints
 
     def _initialize_active_controller_reboot_config(self):
@@ -9844,7 +9847,7 @@ class ConductorManager(service.PeriodicService):
             self.dbapi.controller_fs_create(data)
 
     def update_service_config(self, context, service=None, do_apply=False,
-                              section=None):
+                              section=None, name=None):
         """Update the service parameter configuration"""
 
         LOG.info("Updating parameters configuration for service: %s" % service)
@@ -9867,7 +9870,8 @@ class ConductorManager(service.PeriodicService):
             personalities = None
         elif service == constants.SERVICE_TYPE_DOCKER:
             reboot = True
-            if section == constants.SERVICE_PARAM_SECTION_DOCKER_PROXY:
+            if section == constants.SERVICE_PARAM_SECTION_DOCKER_PROXY or \
+                    name == constants.SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET:
                 reboot = False
         elif service == constants.SERVICE_TYPE_KUBERNETES:
             reboot = True

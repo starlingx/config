@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 
 """
@@ -1249,7 +1249,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        ihost_id=ihost_id, sw_version=version))
 
     def update_service_config(self, context, service=None, section=None,
-                              do_apply=False):
+                              name=None, do_apply=False):
         """Synchronously, have the conductor update the service parameter.
 
         :param context: request context.
@@ -1258,6 +1258,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('update_service_config',
                                                 service=service,
                                                 section=section,
+                                                name=name,
                                                 do_apply=do_apply))
 
     def start_upgrade(self, context, upgrade):
