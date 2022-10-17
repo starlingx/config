@@ -30,10 +30,6 @@ from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 
-from sysinv.openstack.common import rpc
-from sysinv.openstack.common.rpc.common import CommonRpcContext
-
-
 LOG = logging.getLogger(__name__)
 CEPH_POOLS = copy.deepcopy(constants.CEPH_POOLS)
 
@@ -786,27 +782,21 @@ class CephOperator(object):
             pool['quota_gib'] = self.set_quota_gib(pool['pool_name'])
         return CEPH_POOLS
 
+    # TODO(CephPoolsDecouple): remove
+    # This used to be a rpc call to ceph-manager, however after
+    # Ceph Pools Decouple task its return value is always 0.
+    # Returning 0 here, but a cleanup must be performed to remove
+    # this method and the others related to CephPoolsDecouple
     def get_ceph_primary_tier_size(self):
-        return rpc.call(CommonRpcContext(),
-                        constants.CEPH_MANAGER_RPC_TOPIC,
-                        {'method': 'get_primary_tier_size',
-                         'args': {}})
+        return 0
 
+    # TODO(CephPoolsDecouple): remove
+    # This used to be a rpc call to ceph-manager, however after
+    # Ceph Pools Decouple task its return value is always {}.
+    # This method is still called by StorageBackendConfig through
+    # conductor rpcapi
     def get_ceph_tiers_size(self):
-        return rpc.call(CommonRpcContext(),
-                        constants.CEPH_MANAGER_RPC_TOPIC,
-                        {'method': 'get_tiers_size',
-                         'args': {}})
-
-    def ceph_manager_sees_cluster_up(self):
-        """Determine if the ceph manager sees an active cluster.
-
-           :returns True if ceph manager audit of ceph api was successful
-        """
-        return rpc.call(CommonRpcContext(),
-                        constants.CEPH_MANAGER_RPC_TOPIC,
-                        {'method': 'is_cluster_up',
-                         'args': {}})
+        return {}
 
     def reset_storage_backend_task(self):
         backend = StorageBackendConfig.get_configured_backend(

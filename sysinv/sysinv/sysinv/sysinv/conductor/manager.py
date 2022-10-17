@@ -7046,22 +7046,6 @@ class ConductorManager(service.PeriodicService):
 
         return
 
-    def get_ceph_primary_tier_size(self, context):
-        """Get the usage information for the primary ceph tier."""
-
-        if not StorageBackendConfig.has_backend_configured(
-                self.dbapi,
-                constants.CINDER_BACKEND_CEPH):
-            return 0
-
-        if self._ceph is None:
-            return 0
-
-        if not self._ceph.get_ceph_cluster_info_availability():
-            return 0
-
-        return int(self._ceph.get_ceph_primary_tier_size())
-
     def get_ceph_tier_size(self, context, tier_name):
         """Get the usage information for a specific ceph tier."""
 
