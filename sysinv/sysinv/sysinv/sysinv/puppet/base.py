@@ -228,6 +228,12 @@ class BasePuppet(object):
         cpus = self._get_host_cpu_list(host, constants.PLATFORM_FUNCTION)
         return sorted(cpus, key=lambda c: c.cpu)
 
+    def _get_hyperthreading_enabled(self, host):
+        """
+        Check if the Hyper-Threading feature is enabled on host
+        """
+        return self.dbapi.icpu_is_hyper_threading_enabled(host.id)
+
     def _get_service_parameters(self, service=None):
         service_parameters = []
         if self.dbapi is None:

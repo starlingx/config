@@ -339,6 +339,12 @@ class PlatformPuppet(base.BasePuppet):
                 cpu_count,
         })
 
+        hyperthreading_enabled = self._get_hyperthreading_enabled(host)
+        config.update({
+            'platform::params::hyperthreading_enabled':
+                hyperthreading_enabled,
+        })
+
         return config
 
     def _get_host_platform_config_upgrade(self, host, config_uuid):

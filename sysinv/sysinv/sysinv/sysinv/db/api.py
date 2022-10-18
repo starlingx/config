@@ -421,6 +421,14 @@ class Connection(object):
         """
 
     @abc.abstractmethod
+    def icpu_is_hyper_threading_enabled(self, ihost):
+        """Return if Hyper Threading is enabled on host.
+
+        :param ihost: The id or uuid of an ihost.
+        :returns: True if enabled and False if not.
+        """
+
+    @abc.abstractmethod
     def icpu_update(self, cpu_id, values, forihostid=None):
         """Update properties of a cpu.
 
