@@ -481,8 +481,9 @@ class KubernetesPuppet(base.BasePuppet):
         # determine whether to reserve isolated CPUs
         reserve_isolcpus = True
         labels = self.dbapi.label_get_by_host(host.uuid)
-        for label in labels:
-            if label.label_key == constants.KUBE_IGNORE_ISOL_CPU_LABEL:
+        for l in labels:
+            if (constants.KUBE_IGNORE_ISOL_CPU_LABEL ==
+                    str(l.label_key) + '=' + str(l.label_value)):
                 reserve_isolcpus = False
                 break
         if reserve_isolcpus:
