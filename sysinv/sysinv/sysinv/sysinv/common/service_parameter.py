@@ -262,6 +262,19 @@ def _validate_ldap_access_filter(name, value):
             "Parameter '%s' must be a valid memberOf=dn expression." % name))
 
 
+def _validate_intel_nic_driver_version(name, value):
+    """Check if Intel NIC driver version value is valid"""
+
+    valid_values = (constants.SERVICE_PARAM_PLAT_CONFIG_INTEL_CVL_2_54,
+        constants.SERVICE_PARAM_PLAT_CONFIG_INTEL_CVL_4_0_1)
+
+    if value not in valid_values:
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' value must be either '%s' or '%s'" %
+            (name, constants.SERVICE_PARAM_PLAT_CONFIG_INTEL_CVL_2_54,
+            constants.SERVICE_PARAM_PLAT_CONFIG_INTEL_CVL_4_0_1)))
+
+
 def _get_network_pool_from_ip_address(ip, networks):
     for name in networks:
         try:
@@ -537,6 +550,7 @@ def _validate_max_cpu_min_percentage(name, value):
 PLATFORM_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL,
     constants.SERVICE_PARAM_NAME_PLATFORM_MAX_CPU_PERCENTAGE,
+    constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION,
 ]
 
 PLATFORM_CONFIG_PARAMETER_READONLY = [
@@ -547,11 +561,15 @@ PLATFORM_CONFIG_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL:
         _validate_boolean,
     constants.SERVICE_PARAM_NAME_PLATFORM_MAX_CPU_PERCENTAGE:
-        _validate_max_cpu_min_percentage
+        _validate_max_cpu_min_percentage,
+    constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION:
+        _validate_intel_nic_driver_version,
 }
 
 PLATFORM_CONFIG_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL: 'platform::params::virtual_system',
+    constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION:
+        'platform::compute::grub::params::g_intel_nic_driver_version',
 }
 
 IDENTITY_LDAP_PARAMETER_OPTIONAL = [
