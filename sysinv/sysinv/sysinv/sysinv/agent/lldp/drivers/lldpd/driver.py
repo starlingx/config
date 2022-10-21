@@ -192,10 +192,6 @@ class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
         if port.get("power"):
             power_mdi_support = port["power"][0].get("supported")
             power_mdi_enabled = port["power"][0].get("enabled")
-            power_mdi_devicetype = port["power"][0].get("device-type")[0].get(
-                "value")
-            power_mdi_pairs = port["power"][0].get("pairs")[0].get("value")
-            power_mdi_class = port["power"][0].get("class")[0].get("value")
             dot3_power_mdi = "power-mdi-supported="
             if power_mdi_support:
                 dot3_power_mdi += "y,"
@@ -207,6 +203,11 @@ class SysinvLldpdAgentDriver(base.SysinvLldpDriverBase):
             else:
                 dot3_power_mdi += "n,"
             if power_mdi_support and power_mdi_enabled:
+                power_mdi_devicetype = port["power"][0].get("device-type")[0].get(
+                    "value")
+                power_mdi_pairs = port["power"][0].get("pairs")[0].get("value")
+                power_mdi_class = port["power"][0].get("class")[0].get("value")
+
                 dot3_power_mdi += "device-type=" + power_mdi_devicetype
                 dot3_power_mdi += ",pairs=" + power_mdi_pairs
                 dot3_power_mdi += ",class=" + power_mdi_class

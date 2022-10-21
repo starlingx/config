@@ -3,16 +3,37 @@
     {
       "interface": [
         {
-          "name": "enp0s3",
+          "name": "eno1",
           "via": "LLDP",
           "rid": "1",
-          "age": "0 day, 00:09:43",
+          "age": "0 day, 11:09:23",
           "chassis": [
             {
               "id": [
                 {
                   "type": "mac",
-                  "value": "0a:00:27:00:00:0d"
+                  "value": "c0:62:6b:a9:62:80"
+                }
+              ],
+              "name": [
+                {
+                  "value": "yow-cisco-b2u47"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 15.0(2)SE11, RELEASE SOFTWARE (fc3)\nTechnical Support: http://www.cisco.com/techsupport\nCopyright (c) 1986-2017 by Cisco Systems, Inc.\nCompiled Sat 19-Aug-17 09:34 by prod_rel_team"
+                }
+              ],
+              "mgmt-ip": [
+                {
+                  "value": "128.224.148.241"
+                }
+              ],
+              "capability": [
+                {
+                  "type": "Bridge",
+                  "enabled": true
                 }
               ]
             }
@@ -21,13 +42,18 @@
             {
               "id": [
                 {
-                  "type": "mac",
-                  "value": "0a:00:27:00:00:0d"
+                  "type": "ifname",
+                  "value": "Gi0/40"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "GigabitEthernet0/40"
                 }
               ],
               "ttl": [
                 {
-                  "value": "3601"
+                  "value": "120"
                 }
               ],
               "auto-negotiation": [
@@ -36,12 +62,117 @@
                   "enabled": true,
                   "advertised": [
                     {
+                      "type": "10Base-T",
+                      "hd": true,
+                      "fd": true
+                    },
+                    {
+                      "type": "100Base-TX",
+                      "hd": true,
+                      "fd": true
+                    },
+                    {
                       "type": "1000Base-T",
                       "hd": false,
                       "fd": true
                     }
                   ],
                   "current": [
+                    {
+                      "value": "1000BaseTFD - Four-pair Category 5 UTP, full duplex mode"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "vlan": [
+            {
+              "vlan-id": "103",
+              "pvid": true
+            }
+          ]
+        },
+        {
+          "name": "ens801f0",
+          "via": "LLDP",
+          "rid": "2",
+          "age": "0 day, 11:09:19",
+          "chassis": [
+            {
+              "id": [
+                {
+                  "type": "mac",
+                  "value": "54:ab:3a:05:7f:5e"
+                }
+              ],
+              "name": [
+                {
+                  "value": "yow-stx-quanta-7"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "LY2R, Runtime Code 19.12L, Linux 3.8.13-rt9, U-Boot 2010.12 (Feb 10 2015 - 10:01:12) - ONIE 2014.05.03-d"
+                }
+              ],
+              "capability": [
+                {
+                  "type": "Bridge",
+                  "enabled": true
+                },
+                {
+                  "type": "Router",
+                  "enabled": true
+                }
+              ]
+            }
+          ],
+          "port": [
+            {
+              "id": [
+                {
+                  "type": "ifname",
+                  "value": "0/31"
+                }
+              ],
+              "descr": [
+                {
+                  "value": "Slot: 0 Port: 31 10G - Level (56:AB:3A:FD:78:1F)"
+                }
+              ],
+              "ttl": [
+                {
+                  "value": "120"
+                }
+              ],
+              "mfs": [
+                {
+                  "value": "9242"
+                }
+              ],
+              "auto-negotiation": [
+                {
+                  "supported": true,
+                  "enabled": false,
+                  "current": [
+                    {
+                      "value": "10GigBaseSR - R fiber over 850 nm optics"
+                    }
+                  ]
+                }
+              ],
+              "power": [
+                {
+                  "supported": false,
+                  "enabled": false,
+                  "paircontrol": false,
+                  "device-type": [
+                    {
+                      "value": "PD"
+                    }
+                  ],
+                  "class": [
                     {
                       "value": "unknown"
                     }
@@ -50,19 +181,26 @@
               ]
             }
           ],
-          "lldp-med": [
+          "vlan": [
             {
-              "device-type": [
-                {
-                  "value": "Generic Endpoint (Class I)"
-                }
-              ],
-              "capability": [
-                {
-                  "type": "Capabilities",
-                  "available": true
-                }
-              ]
+              "vlan-id": "53",
+              "pvid": false,
+              "value": "IP7-12 Infra"
+            },
+            {
+              "vlan-id": "138",
+              "pvid": true,
+              "value": "wcp99-103 PXE"
+            },
+            {
+              "vlan-id": "139",
+              "pvid": false,
+              "value": "wcp99-103 Mgmt"
+            },
+            {
+              "vlan-id": "140",
+              "pvid": false,
+              "value": "wcp99-103 Infra"
             }
           ]
         }

@@ -247,8 +247,8 @@ class TestDebianLldpInterfaceDetail(LldpInterfaceDetailTestsMixin,
     num_expected_agents = 5
     # num_expected_neighbors and expected_neighbor_ttl
     # are parsed from  lldp_show_neighbor_detail.json
-    num_expected_neighbors = 1
-    expected_neighbor_ttl = "3601"
+    num_expected_neighbors = 2
+    expected_neighbor_ttl = "120"
     # expected_neighbor_interfaces and expected_neighbor_port_ids
     # parsed from  lldp_show_neighbor_summary.json
     # debian has the port value as a 'mac'
