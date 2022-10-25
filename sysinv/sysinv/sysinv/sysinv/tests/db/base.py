@@ -302,16 +302,12 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
             constants.CONTROLLER_1_HOSTNAME
         ]
 
-        platform_hostnames = [
-            constants.CONTROLLER_PLATFORM_NFS,
-        ]
-
         self._create_test_addresses(
             hostnames, self.pxeboot_subnet,
             constants.NETWORK_TYPE_PXEBOOT)
 
         self.mgmt_addresses = self._create_test_addresses(
-            hostnames + platform_hostnames,
+            hostnames,
             self.mgmt_subnet,
             constants.NETWORK_TYPE_MGMT)
 

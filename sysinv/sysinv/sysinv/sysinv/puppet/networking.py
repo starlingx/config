@@ -47,9 +47,6 @@ class NetworkingPuppet(base.BasePuppet):
 
         config = self._get_network_config(networktype)
 
-        platform_nfs_address = self._get_address_by_name(
-            constants.CONTROLLER_PLATFORM_NFS, networktype).address
-
         try:
             gateway_address = self._get_address_by_name(
                 constants.CONTROLLER_GATEWAY, networktype).address
@@ -59,8 +56,6 @@ class NetworkingPuppet(base.BasePuppet):
         config.update({
             'platform::network::%s::params::gateway_address' % networktype:
                 gateway_address,
-            'platform::network::%s::params::platform_nfs_address' % networktype:
-                platform_nfs_address,
         })
 
         return config

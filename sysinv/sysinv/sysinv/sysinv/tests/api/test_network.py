@@ -99,12 +99,8 @@ class NetworkTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
             constants.CONTROLLER_1_HOSTNAME
         ]
 
-        platform_hostnames = [
-            constants.CONTROLLER_PLATFORM_NFS,
-        ]
-
         self._create_test_addresses(
-            hostnames + platform_hostnames,
+            hostnames,
             self.mgmt_subnet,
             constants.NETWORK_TYPE_MGMT)
 
