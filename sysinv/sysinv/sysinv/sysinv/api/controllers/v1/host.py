@@ -5538,6 +5538,13 @@ class HostController(rest.RestController):
                   "'locked' host %s" % (hostupdate.ihost_patch['action'],
                                         hostupdate.ihost_orig['hostname'])))
 
+        # Semantic Check: Avoid Lock when a backup is in progress
+        if os.path.isfile(tsc.BACKUP_IN_PROGRESS_FLAG):
+            raise wsme.exc.ClientSideError(
+                _("Avoiding lock action during 'backup in progress' on host %s. "
+                  "If lock is required, please use \"force lock\" command." %
+                  (hostupdate.ihost_orig['hostname'])))
+
         # personality specific lock checks
         personality = hostupdate.ihost_patch.get('personality')
 

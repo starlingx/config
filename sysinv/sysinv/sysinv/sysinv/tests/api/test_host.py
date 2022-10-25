@@ -2218,6 +2218,46 @@ class TestPatch(TestHost):
         )
         self._test_lock_action_controller()
 
+    @mock.patch('os.path.isfile')
+    def test_lock_action_controller_during_backup_in_progress(self, mock_os_is_file):
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        c1_host = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Mock presence of backup_in_progress flag
+        def side_effect(filename):
+            if filename == '/etc/platform/.backup_in_progress':
+                return True
+            else:
+                return False
+        mock_os_is_file.side_effect = side_effect
+
+        # Verify the response on lock controller attempt
+        response = self._patch_host_action(c1_host['hostname'],
+                                           constants.LOCK_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+
+        # Verify that the action was rejected
+        self.assertRaises(webtest.app.AppError,
+                          self.patch_json,
+                          '/ihosts/%s' % c1_host['hostname'],
+                          [{'path': '/action',
+                            'value': 'lock',
+                            'op': 'replace'}],
+                          headers={'User-Agent': 'sysinv-test'})
+
     def test_force_lock_action_controller(self):
         # Create controller-0
         self._create_controller_0(

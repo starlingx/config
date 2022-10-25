@@ -11944,6 +11944,12 @@ class ConductorManager(service.PeriodicService):
                          "data")
                 software_upgrade = self.dbapi.software_upgrade_get_one()
                 rpcapi = agent_rpcapi.AgentAPI()
+                # In cases where there is no backup in progress alarm but the flag exists,
+                # it must be removed. So upgrade-start is not blocked.
+                if os.path.isfile(tsc.BACKUP_IN_PROGRESS_FLAG):
+                    LOG.info("Backup in Progress flag was found, cleaning it.")
+                    os.remove(tsc.BACKUP_IN_PROGRESS_FLAG)
+                    LOG.info("Backup in Progress flag was cleaned.")
                 rpcapi.create_simplex_backup(context, software_upgrade)
                 return
             else:
