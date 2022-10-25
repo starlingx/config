@@ -10809,7 +10809,9 @@ class ConductorManager(service.PeriodicService):
             LOG.info("SYS_I Clear system config alarm: %s target config %s" %
                      (ihost_obj.hostname, ihost_obj.config_target))
 
-            self._clear_config_out_of_date_alarm(entity_instance_id)
+            self.fm_api.clear_fault(
+                fm_constants.FM_ALARM_ID_SYSCONFIG_OUT_OF_DATE,
+                entity_instance_id)
 
             self._clear_runtime_class_apply_in_progress(host_uuids=[ihost_obj.uuid])
 
@@ -10817,20 +10819,6 @@ class ConductorManager(service.PeriodicService):
             if (ihost_obj.config_status != constants.CONFIG_STATUS_REINSTALL):
                 ihost_obj.config_status = None
                 ihost_obj.save(context)
-
-    @retry(retry_on_result=lambda x: x is False, wait_fixed=5000,
-           stop_max_attempt_number=5)
-    def _clear_config_out_of_date_alarm(self, entity_instance_id):
-        """Apply a new config may result a temporary failure to clear the
-
-        config-out-of-date alarm, retry it until success
-        """
-        if self.fm_api.clear_fault(
-                fm_constants.FM_ALARM_ID_SYSCONFIG_OUT_OF_DATE,
-                entity_instance_id):
-            return True
-        else:
-            return False
 
     @staticmethod
     def _config_set_reboot_required(config_uuid):
