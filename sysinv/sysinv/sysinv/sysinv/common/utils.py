@@ -3350,6 +3350,36 @@ def get_certificate_from_secret(secret_name, secret_ns):
     return tls_crt, tls_key
 
 
+def get_ca_certificate_from_opaque_secret(secret_name, secret_ns):
+    """
+    Get a CA certificate from a k8s opaque secret (tls secret requires
+    both tls.crt and tls.key present, a CA certificate alone can be stored
+    as an opaque secret ca.crt)
+    :param secret_name: the name of the secret
+    :param secret_ns: the namespace of the secret
+    :return: ca_crt: the CA certificate.
+    raise Exception for kubernetes data errors
+    """
+    kube = kubernetes.KubeOperator()
+    secret = kube.kube_get_secret(secret_name, secret_ns)
+
+    if not hasattr(secret, 'data'):
+        raise Exception('Invalid secret %s\\%s' % (secret_ns, secret_name))
+
+    data = secret.data
+    if 'ca.crt' not in data:
+        raise Exception('Invalid CA certificate data from secret %s\\%s' %
+                (secret_ns, secret_name))
+
+    try:
+        ca_crt = base64.decode_as_text(data['ca.crt'])
+    except TypeError:
+        raise Exception('CA certificate secret data is invalid %s\\%s' %
+                (secret_ns, secret_name))
+
+    return ca_crt
+
+
 def verify_ca_crt(crt):
     cmd = ['openssl', 'verify']
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
