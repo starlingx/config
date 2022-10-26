@@ -108,9 +108,10 @@ def upgrade_k8s_apiserver_parameters(db_conn):
     # -------------------------------------------------------------------------
     # Save new params into sysinv
     # -------------------------------------------------------------------------
+    # kubelet_configurations will be addressed in task 44586 / story: 2009766
     for kubeadm_section in [
             'apiserver_extra_args', 'controllermanager_extra_args',
-            'scheduler_extra_args', 'kubelet_configurations']:
+            'scheduler_extra_args']:
 
         # current parameters stored in sysinv db
         sysinv_section = SYSINV_K8S_SECTIONS.get(kubeadm_section.split('_')[0])
