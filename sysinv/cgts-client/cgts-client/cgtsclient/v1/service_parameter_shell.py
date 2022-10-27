@@ -134,15 +134,22 @@ def do_service_parameter_modify(cc, args):
 
 @utils.arg('service',
            metavar='<service>',
-           help="Name of service")
+           help="Name of service [REQUIRED]")
+@utils.arg('section',
+           metavar='<section>',
+           default=None,
+           help="Name of section")
 def do_service_parameter_apply(cc, args):
     """Apply the Service Parameters."""
 
     try:
-        cc.service_parameter.apply(args.service)
+        cc.service_parameter.apply(args.service, args.section)
     except exc.HTTPNotFound:
         raise exc.CommandError('Failed to apply service parameters')
-    print('Applying %s service parameters' % args.service)
+    if args.section is not None:
+        print('Applying %s service parameters for section %s' % (args.service, args.section))
+    else:
+        print('Applying %s service parameters' % args.service)
 
 
 @utils.arg('service',

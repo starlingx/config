@@ -47,7 +47,6 @@ class ServiceParameterManager(base.Manager):
     def update(self, parameter_id, patch):
         return self._update(self._path(parameter_id), patch)
 
-    def apply(self, service):
-        new = {}
-        new['service'] = service
+    def apply(self, service, section=None):
+        new = {'service': service, 'section': section}
         return self.api.json_request('POST', self._path() + "/apply", body=new)

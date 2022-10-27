@@ -811,15 +811,21 @@ class ServiceParameterController(rest.RestController):
             raise wsme.exc.ClientSideError(msg)
         return service
 
+    def _get_section(self, body):
+        section = body.get('section') or ""
+        return section
+
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose('json', body=six.text_type)
     def apply(self, body):
         """ Apply the service parameters."""
         service = self._get_service(body)
+        section = self._get_section(body)
+
         self._service_parameter_apply_semantic_check(service)
         try:
             pecan.request.rpcapi.update_service_config(
-                pecan.request.context, service, do_apply=True)
+                pecan.request.context, service, section=section, do_apply=True)
         except rpc_common.RemoteError as e:
             raise wsme.exc.ClientSideError(str(e.value))
         except Exception as e:
