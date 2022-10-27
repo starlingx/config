@@ -50,6 +50,7 @@ from six import StringIO
 
 from oslo_config import cfg
 from oslo_log import log
+from oslo_utils import timeutils
 from sysinv.agent import disk
 from sysinv.agent import partition
 from sysinv.agent import pv
@@ -95,7 +96,7 @@ CONF = cfg.CONF
 CONF.register_opts(agent_opts, 'agent')
 CONF.register_opts(audit_intervals_opts, 'agent_periodic_task_intervals')
 
-MAXSLEEP = 300  # 5 minutes
+MAXSLEEP = 600  # 10 minutes
 
 SYSINV_READY_FLAG = os.path.join(tsc.VOLATILE_PATH, ".sysinv_ready")
 
@@ -701,14 +702,19 @@ class AgentManager(service.PeriodicService):
         LOG.debug('Sysinv Agent host_macs={} '.format(
             host_macs))
 
-        slept = 0
-        while slept < MAXSLEEP:
+        rpc_timeout = False
+        rpc_success = False
+        wait_time = timeutils.utcnow()
+        while (timeutils.utcnow() - wait_time).total_seconds() < MAXSLEEP:
             # wait for controller to come up first may be a DOR
             try:
                 ihost = rpcapi.get_ihost_by_macs(icontext, host_macs)
             except Timeout:
-                LOG.info("get_ihost_by_macs rpc Timeout.")
-                return  # wait for next audit cycle
+                if not rpc_timeout:
+                    rpc_timeout = True
+                    LOG.info("get_ihost_by_macs rpc Timeout.")
+                time.sleep(5)  # avoid calling timedout RPC in sequence
+                continue
             except Exception:
                 LOG.warn("Conductor RPC get_ihost_by_macs exception "
                          "response")
@@ -720,8 +726,11 @@ class AgentManager(service.PeriodicService):
                         ihost = rpcapi.get_ihost_by_hostname(icontext,
                                            hostname)
                     except Timeout:
-                        LOG.info("get_ihost_by_hostname rpc Timeout.")
-                        return  # wait for next audit cycle
+                        if not rpc_timeout:
+                            rpc_timeout = True
+                            LOG.info("get_ihost_by_hostname rpc Timeout.")
+                        time.sleep(5)  # avoid calling timedout RPC in sequence
+                        continue
                     except Exception as ex:
                         LOG.warn("Conductor RPC get_ihost_by_hostname "
                                  "exception response %s" % ex)
@@ -753,11 +762,17 @@ class AgentManager(service.PeriodicService):
                                              icontext,
                                              self._ihost_uuid,
                                              msg_dict)
+                rpc_success = True
                 LOG.info("Agent found matching ihost: %s" % ihost['uuid'])
                 break
 
             time.sleep(30)
-            slept += 30
+
+        if rpc_timeout:
+            if rpc_success:
+                LOG.info("get_ihost recovered from RPC timeout.")
+            else:
+                LOG.info("get_ihost failed due RPC timeout.")
 
         if not self._report_to_conductor():
             # let the audit take care of it instead
@@ -1251,11 +1266,12 @@ class AgentManager(service.PeriodicService):
             LOG.info("Sysinv Agent audit running inv_get_and_report.")
             self.ihost_inv_get_and_report(icontext)
 
-        try:
-            nova_lvgs = rpcapi.ilvg_get_nova_ilvg_by_ihost(icontext, self._ihost_uuid)
-        except Timeout:
-            LOG.info("ilvg_get_nova_ilvg_by_ihost() Timeout.")
-            nova_lvgs = None
+        if self._ihost_uuid:
+            try:
+                nova_lvgs = rpcapi.ilvg_get_nova_ilvg_by_ihost(icontext, self._ihost_uuid)
+            except Timeout:
+                LOG.info("ilvg_get_nova_ilvg_by_ihost() Timeout.")
+                nova_lvgs = None
 
         if self._ihost_uuid and \
            os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG):
