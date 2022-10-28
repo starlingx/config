@@ -28,3 +28,4 @@ usr/bin/sysinv-rootwrap
 usr/bin/sysinv-utils
 usr/bin/sysinv-upgrade
 usr/bin/platform-upgrade
+usr/lib/tmpfiles.d/sysinv.conf
