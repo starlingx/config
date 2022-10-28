@@ -44,6 +44,11 @@ else
     UPDATE_CA_CMD="update-ca-trust extract"
 fi
 
+if [ ! -e "${CERT_DIR}" ]
+then
+    mkdir -p ${CERT_DIR}
+fi
+
 fatal_error()
 {
     cat <<EOF
