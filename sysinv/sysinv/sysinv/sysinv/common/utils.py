@@ -1659,14 +1659,15 @@ def partitions_are_in_order(disk_partitions, requested_partitions):
 
 # TODO(oponcea): Remove once sm supports in-service configuration reload.
 def is_single_controller(dbapi):
-    # Check the number of provisioned/provisioning hosts. If there is
-    # only one then we have a single controller (AIO-SX, single AIO-DX, or
+    # Check the number of provisioned/upgrading/provisioning hosts. If there
+    # is only one then we have a single controller (AIO-SX, single AIO-DX, or
     # single std controller). If this is the case reset sm after adding
     # cinder so that cinder DRBD/processes are managed.
     hosts = dbapi.ihost_get_list()
     prov_hosts = [h for h in hosts
                   if h.invprovision in [constants.PROVISIONED,
-                                        constants.PROVISIONING]]
+                                        constants.PROVISIONING,
+                                        constants.UPGRADING]]
     if len(prov_hosts) == 1:
         return True
     return False

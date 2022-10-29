@@ -2766,7 +2766,7 @@ class ConductorManager(service.PeriodicService):
                 except exception.AddressNotFoundByName:
                     pass
 
-        if ihost.invprovision not in [constants.PROVISIONED, constants.PROVISIONING]:
+        if ihost.invprovision not in [constants.PROVISIONED, constants.PROVISIONING, constants.UPGRADING]:
             LOG.info("Updating %s host invprovision from %s to %s" %
                      (ihost.hostname, ihost.invprovision, constants.UNPROVISIONED))
             value = {'invprovision': constants.UNPROVISIONED}
@@ -3721,7 +3721,7 @@ class ConductorManager(service.PeriodicService):
             return
 
         if ihost['administrative'] == constants.ADMIN_LOCKED and \
-            ihost['invprovision'] == constants.PROVISIONED and \
+            ihost['invprovision'] in [constants.PROVISIONED, constants.UPGRADING] and \
                 not force_update:
             LOG.debug("Ignore the host memory audit after the host is locked")
             return
@@ -4131,6 +4131,17 @@ class ConductorManager(service.PeriodicService):
             LOG.exception("Invalid ihost_uuid %s" % ihost_uuid)
             return
 
+        try:
+            self.dbapi.software_upgrade_get_one()
+        except exception.NotFound:
+            # No upgrade in progress
+            pass
+        else:
+            if ihost.software_load != tsc.SW_VERSION or ihost.invprovision == constants.UPGRADING:
+                LOG.info("Ignore updating lvg for host: %s. Version "
+                         "%s mismatch." % (ihost.hostname, ihost.software_load))
+                return
+
         forihostid = ihost['id']
 
         ilvgs = self.dbapi.ilvg_get_by_ihost(ihost_uuid)
@@ -4466,7 +4477,7 @@ class ConductorManager(service.PeriodicService):
             try:
                 ihost = self.dbapi.ihost_get(ipv.get('forihostid'))
                 values = {'foripvid': None}
-                if ihost['invprovision'] == constants.PROVISIONED:
+                if ihost['invprovision'] in [constants.PROVISIONED, constants.UPGRADING]:
                     values.update(
                         {'status': constants.PARTITION_READY_STATUS})
                 self.dbapi.partition_update(ipv['disk_or_part_uuid'], values)
@@ -4549,7 +4560,7 @@ class ConductorManager(service.PeriodicService):
             # No upgrade in progress
             pass
         else:
-            if db_host.software_load != tsc.SW_VERSION:
+            if db_host.software_load != tsc.SW_VERSION or db_host.invprovision == constants.UPGRADING:
                 LOG.info("Ignore updating disk partition for host: %s. Version "
                          "%s mismatch." % (db_host.hostname, db_host.software_load))
                 return
@@ -4781,7 +4792,7 @@ class ConductorManager(service.PeriodicService):
             # No upgrade in progress
             pass
         else:
-            if ihost.software_load != tsc.SW_VERSION:
+            if ihost.software_load != tsc.SW_VERSION or ihost.invprovision == constants.UPGRADING:
                 LOG.info("Ignore updating physical volume for host: %s. Version "
                          "%s mismatch." % (ihost.hostname, ihost.software_load))
                 return
@@ -5225,23 +5236,6 @@ class ConductorManager(service.PeriodicService):
                             LOG.info("remove out-of-date rook provisioned pv %s" % ipv.lvm_pv_name)
                             self._prepare_for_ipv_removal(ipv)
                             self.dbapi.ipv_destroy(ipv.id)
-
-                        # If upgrading from CentOS to Debian the partition scheme
-                        # may differ, so we can remove the PV in this case
-                        # TODO (heitormatsui): remove when CentOS to Debian upgrade is deprecated
-                        try:
-                            upgrade_in_progress = self.dbapi.software_upgrade_get_one()
-                            loads = self.dbapi.load_get_list()
-                            target_load = cutils.get_imported_load(loads)
-                            host_upgrade = self.dbapi.host_upgrade_get_by_host(forihostid)
-                            if (host_upgrade.software_load == upgrade_in_progress.to_load and
-                                    target_load.software_version == tsc.SW_VERSION_22_12):
-                                # remove duplicated pv data from CentOS
-                                LOG.info("remove out-of-date CentOS provisioned pv %s" % ipv.lvm_pv_name)
-                                self._prepare_for_ipv_removal(ipv)
-                                self.dbapi.ipv_destroy(ipv.id)
-                        except exception.NotFound:
-                            pass
             else:
                 if (ipv.pv_state == constants.PV_ERR and
                         ipv.lvm_vg_name == ipv_in_agent['lvm_vg_name']):
@@ -5398,7 +5392,7 @@ class ConductorManager(service.PeriodicService):
             for host_id, update_set in update_hosts.items():
 
                 ihost = self.dbapi.ihost_get(host_id)
-                if (ihost.invprovision != constants.PROVISIONED and
+                if (ihost.invprovision not in [constants.PROVISIONED, constants.UPGRADING] and
                         tsc.system_type != constants.TIS_AIO_BUILD):
                     continue
                 if ihost:
@@ -11032,7 +11026,7 @@ class ConductorManager(service.PeriodicService):
                 # node before the "worker_config_complete" has been
                 # executed.
                 elif (force or
-                    host.invprovision == constants.PROVISIONED or
+                    host.invprovision in [constants.PROVISIONED, constants.UPGRADING] or
                     (host.invprovision == constants.PROVISIONING and
                      host.personality == constants.CONTROLLER)):
                     if host.software_load == tsc.SW_VERSION:

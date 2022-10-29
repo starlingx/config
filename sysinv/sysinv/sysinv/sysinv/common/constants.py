@@ -162,6 +162,7 @@ FORCE_LOCKING = "Force Locking"
 OPERATIONAL_ENABLED = 'enabled'
 OPERATIONAL_DISABLED = 'disabled'
 
+UPGRADING = 'upgrading'
 PROVISIONED = 'provisioned'
 PROVISIONING = 'provisioning'
 UNPROVISIONED = 'unprovisioned'

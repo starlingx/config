@@ -2199,7 +2199,7 @@ class HostController(rest.RestController):
                 new_ihost_mtc = ihost_obj.as_dict()
                 new_ihost_mtc = cutils.removekeys_nonmtce(new_ihost_mtc)
 
-                if hostupdate.ihost_orig['invprovision'] == constants.PROVISIONED:
+                if hostupdate.ihost_orig['invprovision'] in [constants.UPGRADING, constants.PROVISIONED]:
                     new_ihost_mtc.update({'operation': 'modify'})
                 else:
                     new_ihost_mtc.update({'operation': 'add'})
@@ -2284,7 +2284,7 @@ class HostController(rest.RestController):
             if hostupdate.configure_required:
                 # rollback to unconfigure host as mtce has failed the request
                 invprovision_state = hostupdate.ihost_orig.get('invprovision') or ""
-                if invprovision_state != constants.PROVISIONED:
+                if invprovision_state not in [constants.UPGRADING, constants.PROVISIONED]:
                     LOG.warn("unconfigure ihost %s provision=%s" %
                              (ihost_obj.uuid, invprovision_state))
                     pecan.request.rpcapi.unconfigure_ihost(
@@ -2511,7 +2511,7 @@ class HostController(rest.RestController):
 
             if (ihost.hostname and ihost.personality and
                ihost.invprovision and
-               ihost.invprovision == constants.PROVISIONED and
+               ihost.invprovision in [constants.UPGRADING, constants.PROVISIONED] and
                (constants.WORKER in ihost.subfunctions)):
                 # wait for VIM signal
                 return
@@ -2538,7 +2538,7 @@ class HostController(rest.RestController):
                     ceph_mons[0].uuid, {'device_path': None}
                 )
 
-        remove_from_cluster = True if ihost.invprovision == constants.PROVISIONED else False
+        remove_from_cluster = True if ihost.invprovision in [constants.UPGRADING, constants.PROVISIONED] else False
 
         # Delete the stor entries associated with this host
         istors = pecan.request.dbapi.istor_get_by_ihost(ihost['uuid'])
@@ -2613,7 +2613,7 @@ class HostController(rest.RestController):
                 personality.find(constants.STORAGE_HOSTNAME) != -1 and
                 ihost.hostname not in [constants.STORAGE_0_HOSTNAME,
                 constants.STORAGE_1_HOSTNAME] and
-                ihost.invprovision in [constants.PROVISIONED,
+                ihost.invprovision in [constants.UPGRADING, constants.PROVISIONED,
                 constants.PROVISIONING]):
             self._ceph.host_crush_remove(ihost.hostname)
 
@@ -2771,6 +2771,8 @@ class HostController(rest.RestController):
             # perform rpc to conductor to do the update with root privilege access
             pecan.request.rpcapi.update_controller_upgrade_flag(pecan.request.context)
 
+        pecan.request.dbapi.ihost_update(uuid,
+                                         {'invprovision': constants.UPGRADING})
         return Host.convert_with_links(rpc_ihost)
 
     @cutils.synchronized(LOCK_NAME)
@@ -2984,7 +2986,7 @@ class HostController(rest.RestController):
         if rpc_ihost.administrative != constants.ADMIN_LOCKED:
             raise wsme.exc.ClientSideError(
                 _("The host must be locked before performing this operation"))
-        elif rpc_ihost.invprovision != "provisioned":
+        elif rpc_ihost.invprovision not in [constants.UPGRADING, constants.PROVISIONED]:
             raise wsme.exc.ClientSideError(_("The host must be provisioned "
                                              "before performing this operation"))
         elif not force and rpc_ihost.availability != "online":
@@ -4928,8 +4930,9 @@ class HostController(rest.RestController):
         if 'operational' in hostupdate.delta and \
                 hostupdate.ihost_patch['operational'] == \
                 constants.OPERATIONAL_ENABLED:
-            if hostupdate.ihost_orig['invprovision'] == constants.PROVISIONING or \
-                    hostupdate.ihost_orig['invprovision'] == constants.UNPROVISIONED:
+            if hostupdate.ihost_orig['invprovision'] in [constants.UPGRADING,
+                                                         constants.PROVISIONING,
+                                                         constants.UNPROVISIONED]:
                 # first time unlocked successfully
                 local_hostname = cutils.get_local_controller_hostname()
                 if (hostupdate.ihost_patch['hostname'] ==
@@ -4953,7 +4956,7 @@ class HostController(rest.RestController):
         )
         host_names = []
         for ihost in ihosts:
-            if ihost.invprovision == constants.PROVISIONED:
+            if ihost.invprovision in [constants.UPGRADING, constants.PROVISIONED]:
                 host_names.append(ihost.hostname)
         LOG.info("Provisioned storage node(s) %s" % host_names)
 
@@ -5170,7 +5173,7 @@ class HostController(rest.RestController):
         ihost = hostupdate.ihost_patch
         delta = hostupdate.delta
 
-        provision_state = [constants.PROVISIONED, constants.PROVISIONING]
+        provision_state = [constants.UPGRADING, constants.PROVISIONED, constants.PROVISIONING]
         if hostupdate.ihost_orig['invprovision'] in provision_state:
             state_rel_path = ['hostname', 'personality', 'subfunctions']
             if any(p in state_rel_path for p in delta):

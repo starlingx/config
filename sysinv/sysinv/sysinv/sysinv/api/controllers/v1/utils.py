@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 
 from eventlet.green import subprocess
@@ -784,7 +784,7 @@ class SBApiHelper(object):
             )
 
         for chost in chosts:
-            if chost.invprovision != constants.PROVISIONED:
+            if chost.invprovision not in [constants.PROVISIONED, constants.UPGRADING]:
                 raise wsme.exc.ClientSideError(
                     "This operation requires %s controllers provisioned." %
                     min_number
