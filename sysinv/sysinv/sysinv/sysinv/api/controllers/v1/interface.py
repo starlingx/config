@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -70,7 +70,8 @@ VALID_NETWORK_TYPES = [constants.NETWORK_TYPE_NONE,
                        constants.NETWORK_TYPE_PCI_PASSTHROUGH,
                        constants.NETWORK_TYPE_PCI_SRIOV,
                        constants.NETWORK_TYPE_IRONIC,
-                       constants.NETWORK_TYPE_STORAGE]
+                       constants.NETWORK_TYPE_STORAGE,
+                       constants.NETWORK_TYPE_ADMIN]
 
 VALID_INTERFACE_CLASS = [constants.INTERFACE_CLASS_PLATFORM,
                          constants.INTERFACE_CLASS_DATA,

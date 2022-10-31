@@ -1,3 +1,5 @@
+# vim: tabstop=4 shiftwidth=4 softtabstop=4
+
 # Copyright (c) 2012 NTT DOCOMO, INC.
 # All Rights Reserved.
 #
@@ -12,6 +14,11 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+#
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 
 """Sysinv DB test base class."""
 
@@ -50,6 +57,7 @@ class BaseIPv4Mixin(object):
     cluster_service_subnet = netaddr.IPNetwork('10.96.0.0/12')
     multicast_subnet = netaddr.IPNetwork('239.1.1.0/28')
     storage_subnet = netaddr.IPNetwork('10.10.20.0/24')
+    admin_subnet = netaddr.IPNetwork('10.10.30.0/24')
     system_controller_subnet = netaddr.IPNetwork('192.168.104.0/24')
     system_controller_oam_subnet = netaddr.IPNetwork('10.10.50.0/24')
 
@@ -69,6 +77,7 @@ class BaseIPv6Mixin(object):
     cluster_service_subnet = netaddr.IPNetwork('fd04::/112')
     multicast_subnet = netaddr.IPNetwork('ff08::1:1:0/124')
     storage_subnet = netaddr.IPNetwork('fd05::/64')
+    admin_subnet = netaddr.IPNetwork('fd09::/64')
     system_controller_subnet = netaddr.IPNetwork('fd07::/64')
     system_controller_oam_subnet = netaddr.IPNetwork('fd06::/64')
 
@@ -265,6 +274,10 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
                                   constants.NETWORK_TYPE_STORAGE,
                                   self.storage_subnet)
 
+        self._create_test_network('admin',
+                                  constants.NETWORK_TYPE_ADMIN,
+                                  self.admin_subnet)
+
         self._create_test_network('system-controller',
                                   constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
                                   self.system_controller_subnet)
@@ -322,6 +335,10 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self._create_test_addresses(
             hostnames, self.storage_subnet,
             constants.NETWORK_TYPE_STORAGE)
+
+        self._create_test_addresses(
+            hostnames, self.admin_subnet,
+            constants.NETWORK_TYPE_ADMIN)
 
         self._create_test_addresses(
             hostnames, self.system_controller_subnet,
@@ -444,8 +461,9 @@ class BaseHostTestCase(BaseSystemTestCase):
         network_types = [constants.NETWORK_TYPE_OAM,
                          constants.NETWORK_TYPE_MGMT,
                          constants.NETWORK_TYPE_CLUSTER_HOST,
-                         constants.NETWORK_TYPE_STORAGE]
-        ifnames = ['oam', 'mgmt', 'cluster', 'storage']
+                         constants.NETWORK_TYPE_STORAGE,
+                         constants.NETWORK_TYPE_ADMIN]
+        ifnames = ['oam', 'mgmt', 'cluster', 'storage', 'admin']
         index = 0
         ifaces = []
         for nt, name in zip(network_types, ifnames):

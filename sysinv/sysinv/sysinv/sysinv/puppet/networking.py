@@ -24,6 +24,7 @@ class NetworkingPuppet(base.BasePuppet):
         config.update(self._get_oam_network_config())
         config.update(self._get_cluster_network_config())
         config.update(self._get_ironic_network_config())
+        config.update(self._get_admin_network_config())
         config.update(self._get_storage_network_config())
         return config
 
@@ -34,6 +35,7 @@ class NetworkingPuppet(base.BasePuppet):
         config.update(self._get_cluster_interface_config())
         config.update(self._get_ironic_interface_config())
         config.update(self._get_storage_interface_config())
+        config.update(self._get_admin_interface_config())
         config.update(self._get_instance_ptp_config(host))
         if host.personality == constants.CONTROLLER:
             config.update(self._get_oam_interface_config())
@@ -90,6 +92,11 @@ class NetworkingPuppet(base.BasePuppet):
 
     def _get_storage_network_config(self):
         networktype = constants.NETWORK_TYPE_STORAGE
+        config = self._get_network_config(networktype)
+        return config
+
+    def _get_admin_network_config(self):
+        networktype = constants.NETWORK_TYPE_ADMIN
         config = self._get_network_config(networktype)
         return config
 
@@ -180,6 +187,9 @@ class NetworkingPuppet(base.BasePuppet):
 
     def _get_storage_interface_config(self):
         return self._get_interface_config(constants.NETWORK_TYPE_STORAGE)
+
+    def _get_admin_interface_config(self):
+        return self._get_interface_config(constants.NETWORK_TYPE_ADMIN)
 
     def _set_ptp_instance_global_parameters(self, ptp_instances, ptp_parameters_instance):
 

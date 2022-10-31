@@ -15,7 +15,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2015 Wind River Systems, Inc.
+# Copyright (c) 2015-2022 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
 #
 
 import collections
@@ -52,7 +54,7 @@ ALLOWED_NETWORK_TYPES = [constants.NETWORK_TYPE_MGMT,
                          constants.NETWORK_TYPE_IRONIC,
                          constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM,
                          constants.NETWORK_TYPE_STORAGE,
-                         ]
+                         constants.NETWORK_TYPE_ADMIN]
 
 
 class Network(base.APIBase):
@@ -173,6 +175,8 @@ class NetworkController(rest.RestController):
     def _create_network_addresses(self, pool, network):
         if network['type'] == constants.NETWORK_TYPE_MGMT:
             addresses = self._create_mgmt_network_address(pool)
+        elif network['type'] == constants.NETWORK_TYPE_ADMIN:
+            addresses = self._create_admin_network_address()
         elif network['type'] == constants.NETWORK_TYPE_PXEBOOT:
             addresses = self._create_pxeboot_network_address()
         elif network['type'] == constants.NETWORK_TYPE_CLUSTER_HOST:
@@ -207,6 +211,13 @@ class NetworkController(rest.RestController):
             else:
                 addresses[constants.CONTROLLER_GATEWAY] =\
                     pool.gateway_address
+        return addresses
+
+    def _create_admin_network_address(self):
+        addresses = collections.OrderedDict()
+        addresses[constants.CONTROLLER_HOSTNAME] = None
+        addresses[constants.CONTROLLER_0_HOSTNAME] = None
+        addresses[constants.CONTROLLER_1_HOSTNAME] = None
         return addresses
 
     def _create_pxeboot_network_address(self):
@@ -395,7 +406,8 @@ class NetworkController(rest.RestController):
                                 constants.NETWORK_TYPE_PXEBOOT,
                                 constants.NETWORK_TYPE_CLUSTER_POD,
                                 constants.NETWORK_TYPE_CLUSTER_SERVICE,
-                                constants.NETWORK_TYPE_STORAGE]:
+                                constants.NETWORK_TYPE_STORAGE,
+                                constants.NETWORK_TYPE_ADMIN]:
             msg = _("Cannot delete type {} network {} after initial "
                     "configuration completion"
                     .format(network['type'], network_uuid))
