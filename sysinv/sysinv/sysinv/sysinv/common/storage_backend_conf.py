@@ -1,7 +1,7 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
 #
-# Copyright (c) 2016-2021 Wind River Systems, Inc.
+# Copyright (c) 2016-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -13,6 +13,8 @@
 
 import ast
 import pecan
+
+from collections import OrderedDict
 
 from oslo_log import log
 from sysinv.common import constants
@@ -221,7 +223,7 @@ class StorageBackendConfig(object):
             hostif = '%s-%s' % (host, network_type)
             hostif2ph[hostif] = ph
         # map placeholder to ceph-mon ip address
-        ph2ipaddr = {}
+        ph2ipaddr = OrderedDict({})
         for addr in dbapi.addresses_get_all():
             if addr.name in hostif2ph:
                 ph = hostif2ph[addr.name]
