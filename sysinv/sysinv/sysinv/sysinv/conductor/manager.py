@@ -373,8 +373,9 @@ class ConductorManager(service.PeriodicService):
                     {'function': self._app.audit_local_registry_secrets,
                      'context': context,
                      'user': username})
-            elif (self.dbapi.isystem_get_one().distributed_cloud_role ==
-                  constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+            if ((username == 'admin') or
+                    (self.dbapi.isystem_get_one().distributed_cloud_role ==
+                     constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)):
                 callback_endpoints.append({'function': self._update_keystone_password,
                                            'context': context,
                                            'user': username})
