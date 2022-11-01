@@ -1129,6 +1129,22 @@ class ConductorManager(service.PeriodicService):
 
         os.system("pkill -HUP dnsmasq")
 
+    def update_apparmor_config(self, context, ihost_uuid):
+        """Update the GRUB CMDLINE to enable/disable apparmor"""
+        host = self.dbapi.ihost_get(ihost_uuid)
+        personalities = [constants.WORKER,
+                         constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context,
+                        personalities,
+                        [host['uuid']])
+        config_dict = {
+            "personalities": personalities,
+            "host_uuids": [host['uuid']],
+            "classes": ['platform::config::apparmor::runtime'],
+        }
+
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
     def _update_pxe_config(self, host, load=None):
         """Set up the PXE config file for this host so it can run
            the installer.

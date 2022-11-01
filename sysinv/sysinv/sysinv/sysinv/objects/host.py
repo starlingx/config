@@ -50,6 +50,8 @@ class Host(base.SysinvObject):
             'subfunctions': utils.str_or_none,
             'subfunction_oper': utils.str_or_none,
             'subfunction_avail': utils.str_or_none,
+            'apparmor': utils.str_or_none,
+
             # Host is working on a blocking process
             'reserved': utils.bool_or_none,
             # NOTE: instance_uuid must be read-only when server is provisioned

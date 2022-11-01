@@ -281,6 +281,7 @@ class PlatformPuppet(base.BasePuppet):
         config = {
             'platform::params::hostname': host.hostname,
             'platform::params::software_version': self.quoted_str(host.software_load),
+            'platform::params::apparmor': host.apparmor,
         }
 
         # optional parameters

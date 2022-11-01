@@ -107,7 +107,7 @@ HOST_XML_ATTRIBUTES = ['hostname', 'personality', 'subfunctions',
                        'bm_ip', 'bm_type', 'bm_username',
                        'bm_password', 'boot_device', 'rootfs_device',
                        'install_output', 'console', 'vsc_controllers',
-                       'power_on', 'location']
+                       'power_on', 'location', 'apparmor']
 
 
 def _get_controller_address(hostname):
@@ -538,6 +538,9 @@ class Host(base.APIBase):
     ttys_dcd = types.boolean
     "Enable or disable serial console carrier detect"
 
+    apparmor = wtypes.text
+    "Enable/Disable apparmor state"
+
     software_load = wtypes.text
     "The current load software version"
 
@@ -594,7 +597,8 @@ class Host(base.APIBase):
                           'iscsi_initiator_name',
                           'device_image_update', 'reboot_needed',
                           'inv_state', 'clock_synchronization',
-                          'max_cpu_mhz_configured', 'max_cpu_mhz_allowed']
+                          'max_cpu_mhz_configured', 'max_cpu_mhz_allowed',
+                          'apparmor']
 
         fields = minimum_fields if not expand else None
         uhost = Host.from_rpc_object(rpc_ihost, fields)
@@ -2062,6 +2066,15 @@ class HostController(rest.RestController):
             if (hostupdate.ihost_orig['administrative'] ==
                constants.ADMIN_UNLOCKED):
                 self.check_updates_while_unlocked(hostupdate, delta)
+                if 'apparmor' in delta:
+                    raise wsme.exc.ClientSideError(
+                        ("This update is not allowed as host:%s is unlocked." %
+                        (hostupdate.displayid)))
+            if 'apparmor' in delta and hostupdate.ihost_patch['apparmor'] \
+               not in [constants.APPARMOR_STATE_ENABLED, constants.APPARMOR_STATE_DISABLED]:
+                raise wsme.exc.ClientSideError(
+                    ("Invalid apparmor state. Allowed values:%s, %s." %
+                    (constants.APPARMOR_STATE_ENABLED, constants.APPARMOR_STATE_DISABLED)))
 
             current_ihosts = None
             hostupdate.bm_type_changed_to_none = \
@@ -2310,6 +2323,11 @@ class HostController(rest.RestController):
         if 'ttys_dcd' in hostupdate.delta:
             self._handle_ttys_dcd_change(hostupdate.ihost_orig,
                                          hostupdate.ihost_patch['ttys_dcd'])
+
+        # check if apparmor is updated and notify the agent via conductor
+        if 'apparmor' in hostupdate.delta:
+            self._handle_apparmor_change(hostupdate.ihost_orig,
+            hostupdate.ihost_patch['apparmor'])
 
         if 'clock_synchronization' in hostupdate.delta:
             # perform rpc to conductor to perform config apply
@@ -4646,6 +4664,26 @@ class HostController(rest.RestController):
                     LOG.info("Notify conductor ttys_dcd change: (%s) (%s)" %
                              (ihost['uuid'], ttys_dcd))
                     pecan.request.rpcapi.update_ttys_dcd(
+                        pecan.request.context, ihost['uuid'])
+
+    @staticmethod
+    def _handle_apparmor_change(ihost, apparmor):
+        """
+        Update GRUB CMDLINE to enable or disable apparmor.
+        :param ihost: unpatched ihost dictionary
+        :param apparmor: attribute supplied in patch
+        """
+        LOG.info("%s _handle_apparmor_change from %s to %s" %
+                 (ihost['hostname'], ihost['apparmor'], apparmor))
+
+        # check if the flag is changed
+        if apparmor is not None:
+            if ihost['apparmor'] is None or ihost['apparmor'] != apparmor:
+                if (ihost['administrative'] == constants.ADMIN_LOCKED and
+                     ihost['availability'] == constants.AVAILABILITY_ONLINE):
+                    LOG.info("Notify conductor apparmor change: (%s) (%s)" %
+                             (ihost['uuid'], apparmor))
+                    pecan.request.rpcapi.update_apparmor(
                         pecan.request.context, ihost['uuid'])
 
     def mtc_action_apps_semantic_checks(self, action):

@@ -2183,3 +2183,7 @@ OS_UPGRADE_FEED_FOLDER = '/var/www/pages/feed/'
 # Configuration support placeholders
 CONFIGURABLE = 'configurable'
 NOT_CONFIGURABLE = 'not-configurable'
+
+# apparmor states
+APPARMOR_STATE_ENABLED = 'enabled'
+APPARMOR_STATE_DISABLED = 'disabled'

@@ -1182,6 +1182,18 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('update_ttys_dcd',
                                        ihost_uuid=ihost_uuid))
 
+    def update_apparmor(self, context, ihost_uuid):
+        """Asynchronously, have a conductor update the apparmor GRUB CMDLINE.
+        Does the following tasks:
+        - Update puppet hiera configuration file and apply run time manifest
+         via an asynchronous rpc call to sysinv-agent
+        :param context: request context.
+        :ihost_uuid: the host uuid
+        """
+        return self.call(context,
+                         self.make_msg('update_apparmor_config',
+                                       ihost_uuid=ihost_uuid))
+
     def start_import_load(self, context, path_to_iso, path_to_sig,
                           import_active=False, timeout=180):
         """Synchronously, mount the ISO and validate the load for import
