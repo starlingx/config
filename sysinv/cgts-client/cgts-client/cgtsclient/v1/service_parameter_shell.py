@@ -135,7 +135,7 @@ def do_service_parameter_modify(cc, args):
 @utils.arg('service',
            metavar='<service>',
            help="Name of service [REQUIRED]")
-@utils.arg('section',
+@utils.arg('--section',
            metavar='<section>',
            default=None,
            help="Name of section")
