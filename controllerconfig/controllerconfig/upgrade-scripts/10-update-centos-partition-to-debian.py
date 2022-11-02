@@ -15,10 +15,12 @@ import sys
 import psycopg2
 from controllerconfig.common import log
 from datetime import datetime
+import operator
 from psycopg2.extras import DictCursor
 import uuid
 
 from sysinv.common import constants
+from sysinv.common import utils as cutils
 from sysinv.agent import disk as Disk
 from sysinv.agent import lvg as Lvg
 from sysinv.agent import partition as Partition
@@ -142,7 +144,7 @@ def get_idisks(forihostid, uuid_mapping):
     return idisks
 
 
-def get_ihostid(conn):
+def get_ihost(conn):
     with conn.cursor(cursor_factory=DictCursor) as cur:
         cur.execute("SELECT system_mode FROM i_system;")
         system = cur.fetchone()
@@ -150,13 +152,13 @@ def get_ihostid(conn):
         if system["system_mode"] == "simplex":
             upgrade_controller = "controller-0"
 
-        cur.execute("SELECT id FROM i_host WHERE hostname = %s;",
+        cur.execute("SELECT id, boot_device FROM i_host WHERE hostname = %s;",
                     (upgrade_controller,))
         instance = cur.fetchone()
-        if instance is not None:
-            return instance["id"]
-        else:
-            raise Exception("Failed to retrieve host id for controller-1")
+        if instance is None:
+            raise Exception("Failed to retrieve host id for %s" %
+                            upgrade_controller)
+        return instance
 
 
 def update_disks(conn, idisks):
@@ -232,9 +234,38 @@ def get_disk_by_device_node(disks, device_path):
     raise Exception("Cannot locate the disk for %s" % device_path)
 
 
+def get_rootdisk_partitions(conn, forihostid):
+    # get partitions on root disk of N release configuration
+    # the corresponding vg name is ammended to the end of each partition.
+    col_fmt = "p." + ", p.".join(IPARTITION_COLUMNS)
+    sql_fmt = "select %s, pv.lvm_vg_name " \
+              "from partition as p left join i_pv pv on pv.id = foripvid " \
+              "where idisk_uuid in" \
+              "    (select d.uuid from i_host join i_idisk d on" \
+              "        d.device_node = boot_device or" \
+              "        d.device_path = boot_device" \
+              "        where d.forihostid = %%s and i_host.id = %%s) " \
+              "order by start_mib;" % col_fmt
+    sql = sql_fmt % (forihostid, forihostid)
+    partitions = []
+    with conn.cursor(cursor_factory=DictCursor) as cur:
+        cur.execute(sql, (forihostid, forihostid))
+        for rec in cur.fetchall():
+            partition = []
+            for idx in range(len(rec)):
+                partition.append(rec[idx])
+            partitions.append(partition)
+
+        return partitions
+
+
 def get_ipartitions(forihostid, disks):
+    # return ipartitions list sorted by physical order (start_mib)
     po = Partition.PartitionOperator()
     partitions = po.ipartition_get(skip_gpt_check=True)
+
+    # sort by start_mib
+    partitions = sorted(partitions, key=operator.itemgetter('start_mib'))
     now = datetime.now()
     ipartitions = []
 
@@ -247,7 +278,7 @@ def get_ipartitions(forihostid, disks):
         "foripvid": None,
         # TODO: check to load capabilities
         "capabilities": None,
-        # TODO: check to load status
+        # These are the partitions that have already created
         "status": 1
     }
 
@@ -266,39 +297,134 @@ def get_ipartitions(forihostid, disks):
         # SQL statements
         ipartition = [partition[col] for col in IPARTITION_COLUMNS]
         ipartitions.append(ipartition)
-
     return ipartitions
 
 
-def update_partition(conn, ipartitions):
-    new_partitions = []
-    forihostid = None
-    idx = IPARTITION_COLUMNS.index("forihostid")
+def build_device_node_path(disk_device_node, disk_device_path, device_idx):
+    """Builds the partition device path and device node based on last
+       partition number and assigned disk.
+    """
+    if constants.DEVICE_NAME_NVME in disk_device_node:
+        device_node = "%sp%s" % (disk_device_node, device_idx)
+    else:
+        device_node = "%s%s" % (disk_device_node, device_idx)
+    device_path = cutils.get_part_device_path(disk_device_path,
+                                              str(device_idx))
+    return device_node, device_path
+
+
+def is_device_path_on_disk(device_path, disk_device_path, disk_device_node):
+    if disk_device_path in device_path:
+        return True
+    elif constants.DEVICE_NAME_MPATH in disk_device_node:
+        path_split = disk_device_node.split(constants.DEVICE_NAME_MPATH)
+        if path_split[0] in device_path and path_split[1] in device_path:
+            return True
+    return False
+
+
+def append_additional_partitions(conn, ipartitions_all, forihostid, rootdisk):
+    # append user created partitions on rootdisk from the N release
+    rootdisk_partitions = get_rootdisk_partitions(conn, forihostid)
+
+    start_mib_idx = IPARTITION_COLUMNS.index("start_mib")
+    end_mib_idx = IPARTITION_COLUMNS.index("end_mib")
+    device_node_idx = IPARTITION_COLUMNS.index("device_node")
+    device_path_idx = IPARTITION_COLUMNS.index("device_path")
+    status_idx = IPARTITION_COLUMNS.index('status')
+    foripvid_idx = IPARTITION_COLUMNS.index('foripvid')
+
+    disk_device_node_idx = IDISK_COLUMNS.index("device_node")
+    disk_device_path_idx = IDISK_COLUMNS.index("device_path")
+
+    rootdisk_device_node = rootdisk[disk_device_node_idx]
+    rootdisk_device_path = rootdisk[disk_device_path_idx]
+
+    ipartitions_rootdisk = []
+    LOG.debug("ipartitions_all %s" % ipartitions_all)
+    for ipartition in ipartitions_all:
+        part_device_path = ipartition[device_path_idx]
+        if is_device_path_on_disk(part_device_path, rootdisk_device_path,
+                                  rootdisk_device_node):
+            ipartitions_rootdisk.append(ipartition)
+    LOG.debug("ipartitions on root disk %s \n%s" %
+              (rootdisk_device_path, ipartitions_rootdisk))
+
+    # get the end mib for the last default partition from release N+1
+    new_end_mib = ipartitions_all[-1][end_mib_idx]
+
+    end_mib_default_cgts_vg = None
+    foripvid = None
+
+    # old and new device_path mapping.
+    # device_path_mapping = {}
+
+    for ipartition in rootdisk_partitions:
+        if end_mib_default_cgts_vg is None:
+            # the cgts-vg 1st pv is the end of default partition. Partitions
+            # created before it will be replaced with new default partitions
+            # in N+1 release. The N+1 default partitions and partitions on
+            # the other disk (non-root disk) are retrieved from
+            # get_ipartitions.
+
+            # in get_rootdisk_partitions, lvm_vg_name column is appended
+            # to the end of all partition column.
+            LOG.info("DEBUG: partition %s is for lvm_vg %s" %
+                     (ipartition[device_node_idx], ipartition[-1]))
+            if ipartition[-1] == "cgts-vg":
+                # this is the end mib for the last default partition
+                # from release N
+                end_mib_default_cgts_vg = ipartition[end_mib_idx]
+                mib_offset = int(new_end_mib) - int(end_mib_default_cgts_vg)
+
+                # the last partition kickstart creates is the first cgts-vg pv.
+                foripvid = ipartition[foripvid_idx]
+                ipartitions_all[-1][foripvid_idx] = foripvid
+        else:
+            device_node, device_path = \
+                build_device_node_path(rootdisk_device_node,
+                                       rootdisk_device_path,
+                                       len(ipartitions_rootdisk) + 1)
+
+            # device_path_mapping[ipartition[device_path_idx] = device_path
+            ipartition[device_node_idx] = device_node
+            ipartition[device_path_idx] = device_path
+            ipartition[start_mib_idx] = \
+                int(ipartition[start_mib_idx]) + mib_offset
+            ipartition[end_mib_idx] = int(ipartition[end_mib_idx]) + mib_offset
+            ipartition[status_idx] = \
+                constants.PARTITION_CREATE_ON_UNLOCK_STATUS
+            # copy partition data into ipartitions_rootdisk array, i.e, remove
+            # ending lvm_vg_name column
+            ipartitions_rootdisk.append(ipartition[0: len(IPARTITION_COLUMNS)])
+            LOG.info("DEBUG: recreating partition %s" % ipartition)
+    LOG.info("DEBUG: new list of partitions %s" % ipartitions_rootdisk)
+    return ipartitions_rootdisk
+
+
+def update_partition(conn, ipartitions, forihostid, rootdisk):
     dp_idx = IPARTITION_COLUMNS.index("device_path")
-    uuid_idx = IPARTITION_COLUMNS.index("uuid")
+    # uuid_idx = IPARTITION_COLUMNS.index("uuid")
+    disk_uuid_idx = IDISK_COLUMNS.index("uuid")
+    partition_disk_uuid_idx = IPARTITION_COLUMNS.index("idisk_uuid")
+    rootdisk_uuid = rootdisk[disk_uuid_idx]
+
     with conn.cursor(cursor_factory=DictCursor) as cur:
+        # 1. delete all partitions on rootdisk
+        sql = "DELETE FROM partition where idisk_uuid = %s;"
+        LOG.info("Delete partition records on root disk: uuid(%s)" %
+                 rootdisk_uuid)
+        cur.execute(sql, (rootdisk_uuid, ))
+        count = cur.rowcount
+        LOG.info("%s partition records are deleted" % count)
+
+        # 2. recreate records for the partitions on created root disk
+        LOG.info("recreate partition record on root disk %s" % rootdisk_uuid)
         for ipartition in ipartitions:
-            device_path = ipartition[dp_idx]
-            if forihostid is None:
-                forihostid = ipartition[idx]
-            elif forihostid != ipartition[idx]:
-                raise Exception("Bug: can only handle partitions for"
-                                " one host at a time")
+            if ipartition[partition_disk_uuid_idx] != rootdisk_uuid:
+                # skip non-rootdisk partitions
+                continue
 
-            setters = ", ".join(["%s=%%s"] * len(IPARTITION_COLUMNS))
-            sql_tmp = "UPDATE partition SET %s where forihostid=%s and " \
-                "device_path=%s" % (setters, "%%s", "%%s")
-            sql = sql_tmp % IPARTITION_COLUMNS
-
-            params = tuple(ipartition) + (forihostid, device_path)
-            cur.execute(sql, params)
-            if cur.rowcount == 0:
-                LOG.debug("new partition %s" % device_path)
-                new_partitions.append(ipartition)
-            else:
-                LOG.debug("update %s" % device_path)
-
-        for ipartition in new_partitions:
             device_path = ipartition[dp_idx]
             col_fmt = ", ".join(["%s"] * len(IPARTITION_COLUMNS))
             values_fmt = ", ".join(["%%s"] * len(IPARTITION_COLUMNS))
@@ -307,25 +433,17 @@ def update_partition(conn, ipartitions):
             sql = sql_fmt % IPARTITION_COLUMNS
             cur.execute(sql, ipartition)
             if cur.rowcount == 1:
-                LOG.info("Add new partition %s, %s" %
-                         (device_path, ipartition[uuid_idx]))
+                LOG.info("Create new partition %s, %s" %
+                         (device_path, ipartition[partition_disk_uuid_idx]))
 
-        device_paths = [d[dp_idx] for d in ipartitions]
-        # delete the disks that no longer exist
-        in_list = ', '.join(['%s'] * len(device_paths))
-        sql = "DELETE FROM partition where forihostid = %s " \
-            "and not device_path in (%s)" % (forihostid, in_list)
-        device_paths = tuple(device_paths)
-        cur.execute(sql, device_paths)
-        count = cur.rowcount
-        if count > 0:
-            LOG.info("%s partitions no longer exist" % count)
+        LOG.info("Done recreate partitions on root disk")
 
-        sql = "SELECT id, uuid, device_node, device_path " \
+        sql = "SELECT id, uuid, device_node, device_path, foripvid " \
             "FROM partition WHERE forihostid = %s"
         cur.execute(sql, (forihostid, ))
         partitions = [{"id": d[0], "uuid": d[1], "device_node": d[2],
-                       "device_path": d[3], "type": "partition"}
+                       "device_path": d[3], "foripvid": d[4],
+                       "type": "partition"}
                       for d in cur.fetchall()]
         return partitions
 
@@ -377,7 +495,7 @@ def get_pvs(forihostid, lvgs, disk_or_part):
                             (pv["lvm_vg_name"], pv["lvm_pv_name"]))
 
         for dop in disk_or_part:
-            if dop["device_node"] == pv["lvm_pv_name"]:
+            if dop["foripvid"] == pv["id"]:
                 pv["disk_or_part_device_node"] = dop["device_node"]
                 pv["disk_or_part_device_path"] = dop["device_path"]
                 pv["pv_type"] = dop["type"]
@@ -397,55 +515,51 @@ def get_pvs(forihostid, lvgs, disk_or_part):
     return ipvs
 
 
-def update_pvs(conn, forihostid, ipvs):
-    new_pvs = []
-    uuid_idx = IPV_COLUMNS.index("uuid")
-    device_path_idx = IPV_COLUMNS.index("disk_or_part_device_path")
-    pv_name_idx = IPV_COLUMNS.index("lvm_pv_name")
+def update_pvs(conn, forihostid):
+    LOG.info("update PVs")
+
     with conn.cursor(cursor_factory=DictCursor) as cur:
-        for ipv in ipvs:
-            device_path = ipv[device_path_idx]
-            pv_name = ipv[pv_name_idx]
-            setters = ", ".join(["%s=%%s"] * len(IPV_COLUMNS))
-            sql_tmp = "UPDATE i_pv SET %s where forihostid=%s and " \
-                      "disk_or_part_device_path=%s" % (setters, "%%s", "%%s")
-            sql = sql_tmp % IPV_COLUMNS
+        # partition records are pointing to i_pv, but the i_pv reference
+        # to partition uuid (disk_or_part_uuid) and device_node
+        # (disk_or_part_device_node) needs to relink.
+        # this is a double link
 
-            params = tuple(ipv) + (forihostid, device_path)
-            cur.execute(sql, params)
-            if cur.rowcount == 0:
-                LOG.debug("new pv %s" % pv_name)
-                new_pvs.append(ipv)
-            else:
-                LOG.debug("update pv %s" % pv_name)
+        # update primary cgts-vg pv, this pv and partition have been
+        # provisioned
+        sql = "UPDATE i_pv " \
+              "SET disk_or_part_uuid = p.uuid, " \
+              "disk_or_part_device_node = p.device_node, " \
+              "disk_or_part_device_path = p.device_path, " \
+              "lvm_pv_name = p.device_node " \
+              "FROM i_pv AS v JOIN partition AS p ON p.foripvid = v.id " \
+              "WHERE v.forihostid = %s AND p.forihostid = %s AND" \
+              "      i_pv.id = v.id AND p.status <> %s"
+        cur.execute(sql, (forihostid, forihostid,
+                          constants.PARTITION_CREATE_ON_UNLOCK_STATUS))
+        LOG.info("Updated %s PVs" % cur.rowcount)
 
-        for ipv in new_pvs:
-            pv_name = ipv[pv_name_idx]
-            col_fmt = ", ".join(["%s"] * len(IPV_COLUMNS))
-            values_fmt = ", ".join(["%%s"] * len(IPV_COLUMNS))
-            sql_fmt = "INSERT INTO i_pv (%s) VALUES(%s)" % \
-                      (col_fmt, values_fmt)
-            sql = sql_fmt % IPV_COLUMNS
-            cur.execute(sql, ipv)
-            if cur.rowcount == 1:
-                LOG.info("Add new pv %s, %s" % (pv_name, ipv[uuid_idx]))
+        # update additional PVs, these pv and partitions have not been
+        # provisioned
+        sql = "UPDATE i_pv " \
+              "SET disk_or_part_uuid = p.uuid, " \
+              "disk_or_part_device_node = p.device_node, " \
+              "disk_or_part_device_path = p.device_path, " \
+              "lvm_pv_name = p.device_node, " \
+              "pv_state = %s " \
+              "FROM i_pv AS v JOIN partition AS p ON p.foripvid = v.id " \
+              "WHERE v.forihostid = %s AND p.forihostid = %s AND" \
+              "      i_pv.id = v.id AND p.status = %s"
+        cur.execute(sql, (constants.PV_ADD, forihostid, forihostid,
+                          constants.PARTITION_CREATE_ON_UNLOCK_STATUS))
+        LOG.info("Update %s PVs" % cur.rowcount)
 
-        pv_names = [p[pv_name_idx] for p in ipvs]
-        # delete the lvgs that no longer exist
-        in_list = ', '.join(['%s'] * len(pv_names))
-        sql = "DELETE FROM i_pv where forihostid = %s and " \
-              "not lvm_pv_name in (%s)" % (forihostid, in_list)
-        pv_names = tuple(pv_names)
-        cur.execute(sql, pv_names)
-        count = cur.rowcount
-        if count > 0:
-            LOG.info("%s pv no longer exist" % count)
-
-        sql = "SELECT id, uuid, lvm_pv_name, pv_type, disk_or_part_uuid " \
+        sql = "SELECT id, uuid, lvm_pv_name, pv_type, pv_state, " \
+              "disk_or_part_uuid " \
               "FROM i_pv WHERE forihostid = %s"
         cur.execute(sql, (forihostid, ))
         pvs = [{"id": d[0], "uuid": d[1], "lvm_pv_name": d[2], "pv_type":
-                d[3], "disk_or_part_uuid": d[4]} for d in cur.fetchall()]
+               d[3], "pv_state": d[4], "disk_or_part_uuid": d[5]}
+               for d in cur.fetchall()]
         return pvs
 
 
@@ -525,10 +639,17 @@ def update_lvgs(conn, forihostid, ilvgs):
                 LOG.info("Add new lvg %s, %s" % (lvg_name, ilvg[uuid_idx]))
 
         lvg_names = [l[lvgname_idx] for l in ilvgs]
-        # delete the lvgs that no longer exist
         in_list = ', '.join(['%s'] * len(lvg_names))
-        sql = "DELETE FROM i_lvg where forihostid = %s and " \
-              "not lvm_vg_name in (%s)" % (forihostid, in_list)
+        # for the LVGs that are not created, (not retrieved from system),
+        # mark them to be recreated during host unlock
+        sql = "UPDATE i_lvg SET vg_state = '%s' " \
+              "FROM (SELECT vg.id FROM i_lvg vg JOIN i_pv pv ON " \
+              "      pv.forilvgid = vg.id " \
+              "      WHERE vg.forihostid = %s AND " \
+              "          vg.lvm_vg_name not IN (%s)) AS filter " \
+              "WHERE i_lvg.id = filter.id;" % \
+              (constants.LVG_ADD, forihostid, in_list)
+
         lvg_names = tuple(lvg_names)
         cur.execute(sql, lvg_names)
         count = cur.rowcount
@@ -542,51 +663,83 @@ def update_lvgs(conn, forihostid, ilvgs):
         return lvgs
 
 
-def update_ipvid(conn, ipvs):
+def get_disk_or_partition(conn, hostid):
+    sql = "SELECT uuid, device_node, device_path, foripvid, 'disk' as type " \
+          "FROM i_idisk WHERE forihostid = %s UNION " \
+          "SELECT uuid, device_node, device_path, foripvid, " \
+          "'partition' as type FROM partition WHERE forihostid = %s;"
     with conn.cursor(cursor_factory=DictCursor) as cur:
-        for ipv in ipvs:
-            if ipv["pv_type"] == "disk":
-                sql = "UPDATE i_idisk SET foripvid = %s where uuid=%s"
-            else:
-                sql = "UPDATE partition SET foripvid = %s where uuid=%s"
+        cur.execute(sql, (hostid, hostid))
+        dops = [{"uuid": d[0], "device_node": d[1], "device_path": d[2],
+                 "foripvid": d[3], "type": d[4]}
+                for d in cur.fetchall()]
+        return dops
 
-            cur.execute(sql, (ipv["id"], ipv["disk_or_part_uuid"]))
-            count = cur.rowcount
-            if count == 0:
-                raise Exception("Cannot update foripvid. %" % ipv)
+
+def get_rootdisk(idisks, boot_device):
+    dn_idx = IDISK_COLUMNS.index("device_node")
+    dp_idx = IDISK_COLUMNS.index("device_path")
+    # The boot_device from i_host can be either device_node or device_path
+    for idisk in idisks:
+        if boot_device in (idisk[dp_idx], idisk[dn_idx]):
+            return idisk
+    raise Exception("Cannot find root disk %s" % boot_device)
 
 
 def do_update():
     res = 0
     conn = psycopg2.connect("dbname=sysinv user=postgres")
+
     try:
-        hostid = get_ihostid(conn)
+        ihost = get_ihost(conn)
+        hostid = ihost["id"]
+        boot_device = ihost["boot_device"]
+
+        LOG.info("Upgrade hostid %s, boot_device %s" % (hostid, boot_device))
         disk_uuid_mapping = get_disk_uuid_mapping(conn, hostid)
         idisks = get_idisks(hostid, disk_uuid_mapping)
+        rootdisk = get_rootdisk(idisks, boot_device)
         disks = update_disks(conn, idisks)
 
-        partitions = get_ipartitions(hostid, disks)
-        partitions = update_partition(conn, partitions)
-
-        disk_or_partition = disks + partitions
+        ipartitions = get_ipartitions(hostid, disks)
+        ipartitions = append_additional_partitions(conn, ipartitions,
+                                                   hostid, rootdisk)
+        ipartitions = update_partition(conn, ipartitions, hostid, rootdisk)
 
         ilvgs = get_lvgs(hostid)
         lvgs = update_lvgs(conn, hostid, ilvgs)
 
-        ipvs = get_pvs(hostid, lvgs, disk_or_partition)
-        pvs = update_pvs(conn, hostid, ipvs)
+        pvs = update_pvs(conn, hostid)
 
-        update_ipvid(conn, pvs)
+        LOG.info("partition migration summary:")
+        LOG.info("=========================================================")
+        LOG.info("new list of lvgs:")
+        for lvg in lvgs:
+            LOG.info("%s" % lvg)
+
+        LOG.info("new list of pvs:")
+        for pv in pvs:
+            LOG.info("%s" % pv)
+
+        LOG.info("new list of partitions:")
+        for ip in ipartitions:
+            LOG.info(ip)
+        LOG.info("=========================================================")
 
     except psycopg2.Error as ex:
+        conn.rollback()
         LOG.exception(ex)
+        LOG.warning("Rollback changes")
         res = 1
     except Exception as ex:
+        conn.rollback()
         LOG.exception(ex)
+        LOG.warning("Rollback changes")
         res = 1
-    finally:
-        LOG.info("Committing all changes into database")
+    else:
+        LOG.info("All good, committing all changes into database")
         conn.commit()
+    finally:
         conn.close()
 
     return res
