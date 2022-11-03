@@ -4423,8 +4423,9 @@ class PluginHelper(object):
                 sys.path, app.sync_plugins_dir))
 
         # Determine distributions installed by this plugin
-        if app.sync_plugins_dir in pkg_resources.working_set.entry_keys:
-            plugin_distributions = pkg_resources.working_set.entry_keys[app.sync_plugins_dir]
+        plugins_realpath = os.path.realpath(app.sync_plugins_dir)
+        if plugins_realpath in pkg_resources.working_set.entry_keys:
+            plugin_distributions = pkg_resources.working_set.entry_keys[plugins_realpath]
             LOG.info("PluginHelper: Disabling distributions: %s" % plugin_distributions)
 
             # Clean up the distribution(s) module names
@@ -4448,8 +4449,25 @@ class PluginHelper(object):
                     LOG.warn("Plugin distribution %s not enabled for version %s"
                              ", but expected to be. Continuing with plugin "
                              "deactivation." % (distribution, app.version))
-            del pkg_resources.working_set.entry_keys[app.sync_plugins_dir]
-            pkg_resources.working_set.entries.remove(app.sync_plugins_dir)
+
+            try:
+                del pkg_resources.working_set.entry_keys[plugins_realpath]
+            except Exception:
+                pass
+            try:
+                pkg_resources.working_set.entries.remove(plugins_realpath)
+            except Exception:
+                pass
+
+            if plugins_realpath != app.sync_plugins_dir:
+                try:
+                    del pkg_resources.working_set.entry_keys[app.sync_plugins_dir]
+                except Exception:
+                    pass
+                try:
+                    pkg_resources.working_set.entries.remove(app.sync_plugins_dir)
+                except Exception:
+                    pass
 
 
 class FluxCDHelper(object):
