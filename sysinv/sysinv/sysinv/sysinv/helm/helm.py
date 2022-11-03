@@ -207,28 +207,47 @@ class HelmOperator(object):
 
         for app_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS]:
             try:
-                app_distribution = utils.get_distribution_from_entry_point(app_ep)
-                (app_project_name, app_project_location) = \
-                    utils.get_project_name_and_location_from_distribution(app_distribution)
+                if utils.is_debian():
+                    if app_ep.name in install_location:
+                        namespace = app_ep.value
+                        purged_list = []
+                        for helm_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]:
+                            helm_distribution = utils.get_distribution_from_entry_point(helm_ep)
+                            (helm_project_name, helm_project_location) = \
+                                utils.get_project_name_and_location_from_distribution(helm_distribution)
 
-                if app_project_location == install_location:
-                    namespace = utils.get_module_name_from_entry_point(app_ep)
+                            if helm_project_location != install_location:
+                                purged_list.append(helm_ep)
 
-                    purged_list = []
-                    for helm_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]:
-                        helm_distribution = utils.get_distribution_from_entry_point(helm_ep)
-                        (helm_project_name, helm_project_location) = \
-                            utils.get_project_name_and_location_from_distribution(helm_distribution)
+                        if purged_list:
+                            extension.ExtensionManager.ENTRY_POINT_CACHE[namespace] = purged_list
+                        else:
+                            del extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]
+                            extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS].remove(app_ep)
+                            LOG.info("Removed stevedore namespace: %s" % namespace)
+                else:
+                    app_distribution = utils.get_distribution_from_entry_point(app_ep)
+                    (app_project_name, app_project_location) = \
+                        utils.get_project_name_and_location_from_distribution(app_distribution)
 
-                        if helm_project_location != install_location:
-                            purged_list.append(helm_ep)
+                    if app_project_location == install_location:
+                        namespace = utils.get_module_name_from_entry_point(app_ep)
 
-                    if purged_list:
-                        extension.ExtensionManager.ENTRY_POINT_CACHE[namespace] = purged_list
-                    else:
-                        del extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]
-                        extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS].remove(app_ep)
-                        LOG.info("Removed stevedore namespace: %s" % namespace)
+                        purged_list = []
+                        for helm_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]:
+                            helm_distribution = utils.get_distribution_from_entry_point(helm_ep)
+                            (helm_project_name, helm_project_location) = \
+                                utils.get_project_name_and_location_from_distribution(helm_distribution)
+
+                            if helm_project_location != install_location:
+                                purged_list.append(helm_ep)
+
+                        if purged_list:
+                            extension.ExtensionManager.ENTRY_POINT_CACHE[namespace] = purged_list
+                        else:
+                            del extension.ExtensionManager.ENTRY_POINT_CACHE[namespace]
+                            extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_APPS].remove(app_ep)
+                            LOG.info("Removed stevedore namespace: %s" % namespace)
             except Exception as e:
                 # Temporary suppress errors on Debian until Stevedore is reworked.
                 # See https://storyboard.openstack.org/#!/story/2009101
