@@ -737,6 +737,11 @@ class ConductorManager(service.PeriodicService):
          'name': constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD,
          'value': constants.SERVICE_PARAM_PLATFORM_AUDITD_DISABLED,
          },
+        {'service': constants.SERVICE_TYPE_PLATFORM,
+         'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+         'name': constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION,
+         'value': constants.SERVICE_PARAM_PLAT_CONFIG_INTEL_CVL_4_0_1,
+         },
         {'service': constants.SERVICE_TYPE_RADOSGW,
          'section': constants.SERVICE_PARAM_SECTION_RADOSGW_CONFIG,
          'name': constants.SERVICE_PARAM_NAME_RADOSGW_SERVICE_ENABLED,
@@ -9883,6 +9888,23 @@ class ConductorManager(service.PeriodicService):
                 reboot = True
                 personalities = [constants.CONTROLLER,
                                  constants.WORKER]
+                config_uuid = self._config_update_hosts(context, personalities, reboot=True)
+
+                config_dict = {
+                    'personalities': personalities,
+                    "classes": ['platform::compute::grub::runtime']
+                }
+
+                # Apply runtime config but keep reboot required flag set in
+                # _config_update_hosts() above. Node needs a reboot to clear it.
+                config_uuid = self._config_clear_reboot_required(config_uuid)
+                self._config_apply_runtime_manifest(context, config_uuid, config_dict, force=True)
+            elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
+                    name == constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION:
+                reboot = True
+                personalities = [constants.CONTROLLER,
+                                 constants.WORKER,
+                                 constants.STORAGE]
                 config_uuid = self._config_update_hosts(context, personalities, reboot=True)
 
                 config_dict = {
