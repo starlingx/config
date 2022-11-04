@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Copyright (c) 2013-2014, 2016, 2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -227,6 +227,7 @@ sysinv_api_request () {
             ocf_log err "Failed to connect to the System Inventory Service (sysinv-api): $rc"
             return $OCF_ERR_GENERIC
         else
+            ocf_log info "System Inventory Service (sysinv-api) is reachable"
             return $OCF_SUCCESS
         fi
     else
@@ -236,6 +237,7 @@ sysinv_api_request () {
         ocf_run curl http://controller:6385/v1 > /dev/null 2>&1
         rc=$?
         if [ $rc -eq 0 ]; then
+            ocf_log info "System Inventory Service (sysinv-api) is reachable via direct request URL"
             return $OCF_SUCCESS
         fi
         ocf_log err "Unable to communicate with the System Inventory Service (sysinv-api)"
@@ -251,6 +253,7 @@ sysinv_api_request_with_attempt() {
         if [ $rc -ne ${OCF_SUCCESS} ]; then
             ocf_log info "Retrying to connect to the System Inventory Service (sysinv-api), attempt #$i"
         else
+            ocf_log info "Succeeded reaching System Inventory Service (sysinv-api) in attempt #$i"
             break
         fi
         sleep $sysinv_api_request_sleep
@@ -295,6 +298,7 @@ sysinv_api_start () {
     # If running then issue a ping test and check sysinv-api availability
     # Retry to connect to it in case of failure
     if [ -f ${OCF_RESKEY_pid} ] ; then
+        ocf_log info "${proc} PID file found, Sysinv API (sysinv-api) may be running already"
         sysinv_api_status
         rc=$?
         if [ $rc -ne ${OCF_SUCCESS} ] ; then
