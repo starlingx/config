@@ -8,6 +8,8 @@ from oslo_log import log as logging
 from sysinv.puppet import base
 from sysinv.common import constants
 
+import netaddr
+
 LOG = logging.getLogger(__name__)
 
 
@@ -151,6 +153,24 @@ class SssdPuppet(base.BasePuppet):
                     % parameter_name)
             return None
 
+    def _get_network_type(self):
+        if self._distributed_cloud_role() == \
+                constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+            return self.dbapi.network_get_by_type(
+                constants.NETWORK_TYPE_SYSTEM_CONTROLLER)
+        else:
+            return self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
+
+    def _is_host_address_ipv6(self):
+        addr_pool = self.dbapi.address_pool_get(self._get_network_type().pool_uuid)
+        floating_addr = addr_pool.floating_address
+        addr = netaddr.IPAddress(floating_addr)
+
+        if addr.version == constants.IPV6_FAMILY:
+            return True
+        else:
+            return False
+
     def _get_local_domain(self):
         binding_pass = self._get_keyring_password(self.SERVICE_NAME,
                                                   self.SERVICE_USER)
@@ -271,6 +291,9 @@ class SssdPuppet(base.BasePuppet):
         group_search_base = self._get_service_parameter_group_search_base(domain)
         if group_search_base != "undef":
             domain_parameters['ldap_group_search_base'] = group_search_base
+
+        if self._is_host_address_ipv6():
+            domain_parameters['lookup_family_order'] = 'ipv6_first'
 
         return domain_parameters
 
