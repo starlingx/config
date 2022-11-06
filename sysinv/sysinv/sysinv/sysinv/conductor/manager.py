@@ -1268,6 +1268,7 @@ class ConductorManager(service.PeriodicService):
                 pass
 
             try:
+                os.remove("/var/pxeboot/pxelinux.cfg/efi-01-" + dashed_mac + ".cfg")
                 os.remove("/var/pxeboot/pxelinux.cfg/efi-01-" + dashed_mac)
             except OSError:
                 pass
@@ -1279,6 +1280,9 @@ class ConductorManager(service.PeriodicService):
                          dashed_mac] + install_opts,
                         stdout=fnull,
                         stderr=fnull)
+                    source = "/var/pxeboot/pxelinux.cfg/efi-01-" + dashed_mac
+                    link_name = "/var/pxeboot/pxelinux.cfg/efi-01-" + dashed_mac + ".cfg"
+                    os.symlink(source, link_name)
                 except subprocess.CalledProcessError:
                     raise exception.SysinvException(_(
                         "Failed to create pxelinux.cfg file"))
@@ -1298,6 +1302,7 @@ class ConductorManager(service.PeriodicService):
                 pass
 
             try:
+                os.remove("/var/pxeboot/pxelinux.cfg/efi-01-" + dashed_mac + ".cfg")
                 os.remove("/var/pxeboot/pxelinux.cfg/efi-01-" + dashed_mac)
             except OSError:
                 pass
