@@ -325,6 +325,9 @@ class KubeAppController(rest.RestController):
                                          constants.APP_APPLY_OP)
                 self._app_lifecycle_actions(db_app,
                                             lifecycle_hook_info)
+            except rpc_common.RemoteError as e:
+                raise wsme.exc.ClientSideError(_(
+                    "Application-apply rejected: " + str(e.value)))
             except Exception as e:
                 raise wsme.exc.ClientSideError(_(
                     "Application-apply rejected: " + cutils.exception_msg(e)))
@@ -396,6 +399,9 @@ class KubeAppController(rest.RestController):
                                          constants.APP_ABORT_OP)
                 self._app_lifecycle_actions(db_app,
                                             lifecycle_hook_info)
+            except rpc_common.RemoteError as e:
+                raise wsme.exc.ClientSideError(_(
+                    "Application-abort rejected: " + str(e.value)))
             except Exception as e:
                 raise wsme.exc.ClientSideError(_(
                     "Application-abort rejected: " + cutils.exception_msg(e)))
@@ -447,6 +453,9 @@ class KubeAppController(rest.RestController):
             lifecycle_hook_info[LifecycleConstants.EXTRA][LifecycleConstants.FROM_APP] = True
             self._app_lifecycle_actions(applied_app,
                                         lifecycle_hook_info)
+        except rpc_common.RemoteError as e:
+            raise wsme.exc.ClientSideError(_(
+                "Application-update rejected: " + str(e.value)))
         except Exception as e:
             raise wsme.exc.ClientSideError(_(
                 "Application-update rejected: " + cutils.exception_msg(e)))
