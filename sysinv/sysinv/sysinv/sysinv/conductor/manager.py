@@ -9929,7 +9929,17 @@ class ConductorManager(service.PeriodicService):
                 }
 
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict, force=True)
+            elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_POSTGRESQL:
+                personalities = [constants.CONTROLLER]
 
+                config_uuid = self._config_update_hosts(context, personalities)
+
+                config_dict = {
+                    'personalities': personalities,
+                    "classes": ['platform::postgresql::runtime']
+                }
+
+                self._config_apply_runtime_manifest(context, config_uuid, config_dict, force=True)
         # we should not set the reboot flag on operations that are not
         # reboot required. An apply of a service parameter is not reboot
         # required. If we set the flag, we could accidentally clear
