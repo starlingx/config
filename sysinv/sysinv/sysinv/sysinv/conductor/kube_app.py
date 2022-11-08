@@ -4395,6 +4395,13 @@ class PluginHelper(object):
         if not app.system_app:
             return
 
+        if self._helm_op:
+            LOG.info("PluginHelper: Purge cache for plugins located"
+                     " in directory %s " % app.sync_plugins_dir)
+            # purge this plugin from the stevedore plugin cache so this version
+            # of the plugin endpoints are not discoverable
+            self._helm_op.purge_cache_by_location(app.sync_plugins_dir)
+
         pth_fqpn = self._get_pth_fqpn(app)
         if os.path.exists(pth_fqpn):
             # Remove the pth file, so on a conductor restart this installed
@@ -4443,11 +4450,6 @@ class PluginHelper(object):
                              "deactivation." % (distribution, app.version))
             del pkg_resources.working_set.entry_keys[app.sync_plugins_dir]
             pkg_resources.working_set.entries.remove(app.sync_plugins_dir)
-
-        if self._helm_op:
-            # purge this plugin from the stevedore plugin cache so this version
-            # of the plugin endoints are not discoverable
-            self._helm_op.purge_cache_by_location(app.sync_plugins_dir)
 
 
 class FluxCDHelper(object):
