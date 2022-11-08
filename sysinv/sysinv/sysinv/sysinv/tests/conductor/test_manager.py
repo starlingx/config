@@ -3742,7 +3742,8 @@ class ManagerTestCase(base.DbTestCase):
         personalities = [constants.CONTROLLER]
         config_dict = {
             "personalities": personalities,
-            "classes": ['platform::ldap::client::runtime'],
+            "classes": ['platform::ldap::client::runtime',
+                        'platform::sssd::domain::runtime']
         }
         mock_config_apply_runtime_manifest.assert_called_with(mock.ANY, '1234', config_dict)
 
