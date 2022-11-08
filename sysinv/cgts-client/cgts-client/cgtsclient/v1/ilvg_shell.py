@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -8,6 +8,7 @@
 # All Rights Reserved.
 #
 
+from cgtsclient.common import constants
 from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import ihost as ihost_utils
@@ -62,6 +63,10 @@ def _find_lvg(cc, ihost, lvguuid):
            help="Name or UUID of lvg [REQUIRED]")
 def do_host_lvg_show(cc, args):
     """Show Local Volume Group attributes."""
+    upgrades = cc.upgrade.list()
+    if upgrades:
+        print(constants.UPGRADE_NOTIFICATION)
+
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
     ilvg = ilvg_utils._find_ilvg(cc, ihost, args.lvgnameoruuid)
     _print_ilvg_show(ilvg)
@@ -81,6 +86,10 @@ def _adjust_state_data(vg_name, state):
            help="Name or ID of host [REQUIRED]")
 def do_host_lvg_list(cc, args):
     """List Local Volume Groups."""
+    upgrades = cc.upgrade.list()
+    if upgrades:
+        print(constants.UPGRADE_NOTIFICATION)
+
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
 
     ilvgs = cc.ilvg.list(ihost.uuid)

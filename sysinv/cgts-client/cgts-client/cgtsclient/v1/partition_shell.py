@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2018 Wind River Systems, Inc.
+# Copyright (c) 2017-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -41,6 +41,11 @@ def _print_partition_show(partition):
            help="Name or UUID of the disk partition")
 def do_host_disk_partition_show(cc, args):
     """Show disk partition attributes."""
+
+    upgrades = cc.upgrade.list()
+    if upgrades:
+        print(constants.UPGRADE_NOTIFICATION)
+
     ihost = ihost_utils._find_ihost(cc, args.hostname_or_id)
     ipartition = part_utils._find_partition(cc, ihost,
                                             args.device_path_or_uuid)
@@ -62,6 +67,10 @@ def do_host_disk_partition_show(cc, args):
            help="uuid of disk")
 def do_host_disk_partition_list(cc, args):
     """List disk partitions."""
+    upgrades = cc.upgrade.list()
+    if upgrades:
+        print(constants.UPGRADE_NOTIFICATION)
+
     ihost = ihost_utils._find_ihost(cc, args.hostname_or_id)
     if args.disk:
         idisk = idisk_utils._find_disk(cc, args.hostname_or_id, args.disk)
