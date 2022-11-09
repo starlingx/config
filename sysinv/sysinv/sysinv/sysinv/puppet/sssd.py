@@ -7,6 +7,7 @@
 from oslo_log import log as logging
 from sysinv.puppet import base
 from sysinv.common import constants
+from sysinv.common import exception
 
 LOG = logging.getLogger(__name__)
 
@@ -260,7 +261,18 @@ class SssdPuppet(base.BasePuppet):
                     domain_parameters['ldap_default_bind_dn'] = default_bind_dn
                     domain_parameters['ldap_default_authtok'] = default_authtok
         else:
-            return None
+            msg = 'Apply for %s failed, mandatory parameters are missing:' % domain
+            if uri is None:
+                msg += ' ldap_uri'
+            if access_filter is None:
+                msg += ' ldap_access_filter'
+            if search_base is None:
+                msg += ' ldap_search_base'
+            if default_bind_dn is None:
+                msg += ' ldap_default_bind_dn'
+            if default_authtok is None:
+                msg += ' ldap_default_authtok'
+            raise exception.SysinvException(msg)
 
         # add optional parameters
         user_search_base = self._get_service_parameter_user_search_base(domain)
