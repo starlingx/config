@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2021 Wind River Systems, Inc.
+# Copyright (c) 2017-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -462,7 +462,7 @@ def _are_partition_operations_simultaneous(ihost, partition, operation):
         forihostid=partition['forihostid'])
 
     if (ihost.invprovision in
-            [constants.PROVISIONED, constants.PROVISIONING]):
+            [constants.UPGRADING, constants.PROVISIONED, constants.PROVISIONING]):
         if not (all(host_partition.get('status') in
                 [constants.PARTITION_READY_STATUS,
                 constants.PARTITION_IN_USE_STATUS,
@@ -532,7 +532,7 @@ def _semantic_checks(operation, partition):
         #############
         # Only allow in-service modify of partitions. If the host isn't
         # provisioned just limit operations to create/delete.
-        if ihost.invprovision != constants.PROVISIONED:
+        if ihost.invprovision not in [constants.PROVISIONED, constants.UPGRADING]:
             raise wsme.exc.ClientSideError(
                 _("Only partition Add/Delete operations are allowed on an "
                   "unprovisioned host."))
@@ -655,7 +655,8 @@ def _create(partition):
         _build_device_node_path(partition)
 
     # Set the status of the new partition
-    if (ihost.invprovision in [constants.PROVISIONED,
+    if (ihost.invprovision in [constants.UPGRADING,
+                               constants.PROVISIONED,
                                constants.PROVISIONING]):
         partition['status'] = constants.PARTITION_CREATE_IN_SVC_STATUS
     else:
@@ -679,7 +680,8 @@ def _create(partition):
         #  - PROVISIONED: standard controller/worker (after config_controller)
         #  - PROVISIONING: AIO (after config_controller) and before worker
         #                  configuration
-        if (ihost.invprovision in [constants.PROVISIONED,
+        if (ihost.invprovision in [constants.UPGRADING,
+                                   constants.PROVISIONED,
                                    constants.PROVISIONING]):
             # Instruct puppet to implement the change
             pecan.request.rpcapi.update_partition_config(pecan.request.context,

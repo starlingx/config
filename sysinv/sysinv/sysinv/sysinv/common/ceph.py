@@ -1,7 +1,7 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
 #
-# Copyright (c) 2016, 2019 Wind River Systems, Inc.
+# Copyright (c) 2016-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -743,8 +743,8 @@ class CephApiOperator(object):
             return
         storage_num = int(hostupdate.ihost_orig['hostname'][8:])
         if (storage_num >= 2 and
-                hostupdate.ihost_orig['invprovision'] !=
-                constants.PROVISIONED):
+                hostupdate.ihost_orig['invprovision'] not in
+                [constants.UPGRADING, constants.PROVISIONED]):
 
             # update crushmap accordingly with the host and it's peer group
             node_bucket = hostupdate.ihost_orig['hostname']

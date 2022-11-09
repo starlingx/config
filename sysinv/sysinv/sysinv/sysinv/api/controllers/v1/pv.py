@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 
 import jsonpatch
@@ -697,10 +697,12 @@ def _check_device(new_pv, ihost):
         # Perform a quick validation check on this partition as it may be added
         # immediately.
         if (ilvg.lvm_vg_name == constants.LVG_CGTS_VG and
-            ((ihost['invprovision'] in [constants.PROVISIONED,
+            ((ihost['invprovision'] in [constants.UPGRADING,
+                                        constants.PROVISIONED,
                                         constants.PROVISIONING]) and
              (new_pv_device.status != constants.PARTITION_READY_STATUS)) or
-            ((ihost['invprovision'] not in [constants.PROVISIONED,
+            ((ihost['invprovision'] not in [constants.UPGRADING,
+                                            constants.PROVISIONED,
                                             constants.PROVISIONING]) and
              (new_pv_device.status not in [
                  constants.PARTITION_CREATE_ON_UNLOCK_STATUS,

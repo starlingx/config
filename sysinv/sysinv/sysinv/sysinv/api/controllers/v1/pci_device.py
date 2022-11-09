@@ -388,7 +388,7 @@ def _check_field(field):
 def _check_device_sriov(device, host):
     sriov_update = False
     if (device['pdevice_id'] in dconstants.SRIOV_ENABLED_FEC_DEVICE_IDS and
-            host.invprovision != constants.PROVISIONED):
+            host.invprovision not in [constants.UPGRADING, constants.PROVISIONED]):
         raise wsme.exc.ClientSideError(_("Cannot configure device %s "
                     "until host %s is unlocked for the first time." %
                     (device['uuid'], host.hostname)))

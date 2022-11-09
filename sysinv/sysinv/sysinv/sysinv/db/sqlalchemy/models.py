@@ -126,6 +126,7 @@ class ihost(Base):
                             'configured',
                             'provisioning',
                             'provisioned',
+                            'upgrading',
                             'reserve1',
                             'reserve2',
                             name='invprovisionStateEnum')
