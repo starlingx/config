@@ -1,8 +1,9 @@
 #
-# Copyright (c) 2018-2021 Wind River Systems, Inc.
+# Copyright (c) 2018-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+from __future__ import division
 from distutils.version import LooseVersion
 from eventlet.green import subprocess
 import json
@@ -20,6 +21,9 @@ from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.api.controllers.v1 import patch_api
 from sysinv.api.controllers.v1 import vim_api
 
+import tsconfig.tsconfig as tsc
+from sysinv.agent import disk
+
 import cgcs_patch.constants as patch_constants
 
 LOG = log.getLogger(__name__)
@@ -34,6 +38,7 @@ class Health(object):
         self._dbapi = dbapi
         self._ceph = ceph.CephApiOperator()
         self._kube_operator = kubernetes.KubeOperator()
+        self._idisk_operator = disk.DiskOperator()
 
     def _check_hosts_provisioned(self, hosts):
         """Checks that each host is provisioned"""
@@ -402,6 +407,31 @@ class Health(object):
 
         return health_ok, output
 
+    def _check_free_space_for_upgrade(self):
+        output = ""
+        success = True
+        for ihost in self._dbapi.ihost_get_list():
+            host = self._dbapi.ihost_get_by_hostname(ihost.hostname)
+            host_subfunctions = host.subfunctions.split(",")
+            if constants.WORKER in host_subfunctions:
+                available_mib = self._idisk_operator.get_disk_available_mib(host.rootfs_device)
+                available_gib = available_mib / 1024
+                if available_gib < constants.UPGRADE_FREE_SPACE_NEEDED_IN_GIB:
+                    output += _("Insufficient free diskspace on rootdisk for %s, %iGiB needed, "
+                                "%.2fGiB available\n") % (ihost.hostname,
+                                                          constants.UPGRADE_FREE_SPACE_NEEDED_IN_GIB,
+                                                          available_gib)
+                    success = False
+            elif constants.STORAGE in host_subfunctions or constants.WORKER not in host_subfunctions:
+                cgtsvg_max_free_gib = utils.get_cgtsvg_available_gib(host, self._dbapi)
+                if cgtsvg_max_free_gib < constants.UPGRADE_FREE_SPACE_NEEDED_IN_GIB:
+                    output += _("Insufficient free diskspace on cgts-vg for %s, %iGiB needed, "
+                                "%.2fGiB available \n") % (ihost.hostname,
+                                                           constants.UPGRADE_FREE_SPACE_NEEDED_IN_GIB,
+                                                           cgtsvg_max_free_gib)
+                    success = False
+        return output, success
+
     def get_system_health_upgrade(self,
                                   context,
                                   force=False,
@@ -501,6 +531,14 @@ class Health(object):
             % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
 
         health_ok = health_ok and success
+        if upgrade_version == tsc.SW_VERSION_22_12:
+            msg, success = self._check_free_space_for_upgrade()
+            output += \
+                _('Free disk requirement: [%s]\n') \
+                % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
+            if not success:
+                output += msg
+            health_ok = health_ok and success
 
         return health_ok, output
 
