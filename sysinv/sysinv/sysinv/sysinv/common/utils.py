@@ -183,6 +183,7 @@ def exception_msg(exception):
     return str(exception)
 
 
+# TODO(lfagunde): Should be able to specify the delay between retries.
 def execute(*cmd, **kwargs):
     """Helper method to execute command with optional retry.
 
@@ -201,6 +202,7 @@ def execute(*cmd, **kwargs):
     :param attempts:           How many times to retry cmd.
     :param run_as_root:        True | False. Defaults to False. If set to True,
                                the command is run with rootwrap.
+    :param env:                Mapping with environment variables.
 
     :raises exception.SysinvException: on receiving unknown arguments
     :raises exception.ProcessExecutionError:
@@ -220,6 +222,7 @@ def execute(*cmd, **kwargs):
     attempts = kwargs.pop('attempts', 1)
     run_as_root = kwargs.pop('run_as_root', False)
     shell = kwargs.pop('shell', False)
+    env = kwargs.pop('env', {})
 
     if len(kwargs):
         raise exception.SysinvException(_('Got unknown keyword args '
@@ -248,6 +251,7 @@ def execute(*cmd, **kwargs):
                                    stdout=_PIPE,
                                    stderr=_PIPE,
                                    close_fds=close_fds,
+                                   env=env,
                                    preexec_fn=preexec_fn,
                                    shell=shell)
             result = None
@@ -3767,3 +3771,37 @@ def is_filesystem_enabled(dbapi, host_id_or_uuid, fs_name):
         if fs.name == fs_name:
             return True
     return False
+
+
+def get_keystone_admin_env(openrc_file="/etc/platform/openrc"):
+    """
+    Extracts the keystone admin user env variables from :openrc_file:
+    Returns the mapping if successful, otherwise returns None
+    """
+
+    env = {"TERM": "linux"}
+
+    with open(openrc_file, 'r') as f:
+        for line in f.readlines():
+            if line.startswith("export"):
+                try:
+                    key, value = line.split()[1].split('=')
+                    env[key] = value
+                except Exception:
+                    if 'OS_PASSWORD' in line:
+                        os_password_line = line
+                    else:
+                        LOG.exception("Failed to get keystone admin env."
+                                      "Line with unexpected formatting:" + line)
+                        return None
+
+    # Getting the OS_PASSWORD requires running a keyring command
+    try:
+        cmd = "bash " + os_password_line.split('`')[1].replace("TERM=linux", "")
+        out, _ = execute(*cmd.split(), env=env)
+        env["OS_PASSWORD"] = out.strip()
+    except Exception:
+        LOG.exception("Failed to get keystone admin env. Couldn't parse OS_PASSWORD")
+        return None
+
+    return env
