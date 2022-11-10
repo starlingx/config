@@ -8,8 +8,6 @@ from oslo_log import log as logging
 from sysinv.puppet import base
 from sysinv.common import constants
 
-import netaddr
-
 LOG = logging.getLogger(__name__)
 
 
@@ -154,19 +152,12 @@ class SssdPuppet(base.BasePuppet):
             return None
 
     def _get_network_type(self):
-        if self._distributed_cloud_role() == \
-                constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-            return self.dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_SYSTEM_CONTROLLER)
-        else:
-            return self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
+        return self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
 
     def _is_host_address_ipv6(self):
         addr_pool = self.dbapi.address_pool_get(self._get_network_type().pool_uuid)
-        floating_addr = addr_pool.floating_address
-        addr = netaddr.IPAddress(floating_addr)
 
-        if addr.version == constants.IPV6_FAMILY:
+        if addr_pool.family == constants.IPV6_FAMILY:
             return True
         else:
             return False
