@@ -226,7 +226,6 @@ class SssdPuppet(base.BasePuppet):
             'debug_level': '0x0270',
             'id_provider': 'ldap',
             'access_provider': 'ldap',
-            'enumerate': 'true',
             'ldap_id_mapping': 'true',
             'ldap_schema': 'rfc2307bis',
             'ldap_user_object_class': 'user',
