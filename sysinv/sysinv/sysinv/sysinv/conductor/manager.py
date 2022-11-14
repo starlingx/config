@@ -13274,9 +13274,9 @@ class ConductorManager(service.PeriodicService):
 
         try:
             with open(os.devnull, "w") as fnull:
-                openssl_cmd = "openssl req -new -x509 -sha256 \
+                openssl_cmd = "(openssl req -new -x509 -sha256 \
                         -keyout {file} -out {file} -days 365 -nodes \
-                        -config <(echo \"{config}\"); sync" \
+                        -config <(echo \"{config}\")) && sync" \
                         .format(file=certificate_file, config=csr_config)
                 subprocess.check_call(openssl_cmd,  # pylint: disable=not-callable
                                       stdout=fnull, stderr=fnull,
