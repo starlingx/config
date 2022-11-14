@@ -197,6 +197,7 @@ class SssdPuppet(base.BasePuppet):
             'cache_credentials': 'true',
             'debug_level': '0x0270',
             'id_provider': 'ldap',
+            'enumerate': 'true',
             'access_provider': 'ldap',
             'ldap_access_filter': '(& (objectclass=posixAccount))',
             'ldap_search_base': 'dc=cgcs,dc=local',
