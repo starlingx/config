@@ -72,37 +72,10 @@ WORKER_PARTITION_LIST = [
     {'start_mib': '2', 'end_mib': '302', 'size_mib': '300',
      'type_guid': 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b',
      'type_name': 'EFI system partition'},
-    {'start_mib': '302', 'end_mib': '802', 'size_mib': '500',
+    {'start_mib': '302', 'end_mib': '2350', 'size_mib': '2048',
      'type_guid': '0fc63daf-8483-4772-8e79-3d69d8477de4',
      'type_name': 'Linux filesystem'},
-    {'start_mib': '802', 'end_mib': '21282', 'size_mib': '20480',
-     'type_guid': '0fc63daf-8483-4772-8e79-3d69d8477de4',
-     'type_name': 'Linux filesystem'},
-    {'start_mib': '21282', 'end_mib': '41762', 'size_mib': '20480',
-     'type_guid': '0fc63daf-8483-4772-8e79-3d69d8477de4',
-     'type_name': 'Linux filesystem'},
-    {'start_mib': '41762', 'end_mib': '112418', 'size_mib': '70656',
-     'type_guid': 'e6d6d379-f507-44c2-a23c-238f2a3df928',
-     'type_name': 'Linux LVM'}]
-
-# storage node partition template
-STORAGE_PARTITION_LIST = [
-    {'start_mib': '1', 'end_mib': '2', 'size_mib': '1',
-     'type_guid': '21686148-6449-6e6f-744e-656564454649',
-     'type_name': 'BIOS boot partition'},
-    {'start_mib': '2', 'end_mib': '302', 'size_mib': '300',
-     'type_guid': 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b',
-     'type_name': 'EFI system partition'},
-    {'start_mib': '302', 'end_mib': '802', 'size_mib': '500',
-     'type_guid': '0fc63daf-8483-4772-8e79-3d69d8477de4',
-     'type_name': 'Linux filesystem'},
-    {'start_mib': '802', 'end_mib': '21282', 'size_mib': '20480',
-     'type_guid': '0fc63daf-8483-4772-8e79-3d69d8477de4',
-     'type_name': 'Linux filesystem'},
-    {'start_mib': '21282', 'end_mib': '41762', 'size_mib': '20480',
-     'type_guid': '0fc63daf-8483-4772-8e79-3d69d8477de4',
-     'type_name': 'Linux filesystem'},
-    {'start_mib': '41762', 'end_mib': '381555', 'size_mib': '339793',
+    {'start_mib': '2350', 'end_mib': '113966', 'size_mib': '111616',
      'type_guid': 'e6d6d379-f507-44c2-a23c-238f2a3df928',
      'type_name': 'Linux LVM'}]
 
@@ -545,7 +518,6 @@ def do_update():
         rootdisk = get_rootdisk(conn, cur_host["id"], cur_host["boot_device"])
         controller_partitions = get_controller_partition_template(rootdisk)
         worker_partitions = get_node_partition_template(WORKER_PARTITION_LIST)
-        stor_partitions = get_node_partition_template(STORAGE_PARTITION_LIST)
 
         # migrate hosts with the partition template
         hosts = get_hosts(conn)
@@ -556,7 +528,9 @@ def do_update():
             elif personality == "controller":
                 partition_template = controller_partitions
             elif personality == "storage":
-                partition_template = stor_partitions
+                # nothing to migrate on storage node, as no user partitions
+                # are allowed on root disk
+                continue
 
             update_host(conn, host, partition_template)
 

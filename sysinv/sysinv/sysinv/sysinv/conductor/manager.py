@@ -4142,9 +4142,16 @@ class ConductorManager(service.PeriodicService):
             # No upgrade in progress
             pass
         else:
-            if ihost.software_load != tsc.SW_VERSION or ihost.invprovision == constants.UPGRADING:
+            if ihost.software_load != tsc.SW_VERSION:
                 LOG.info("Ignore updating lvg for host: %s. Version "
                          "%s mismatch." % (ihost.hostname, ihost.software_load))
+                return
+            elif (ihost.invprovision == constants.UPGRADING and
+                    ihost.personality != constants.STORAGE):
+                # storage nodes allocate all root disk for platform. Let the
+                # inventory report to tell what the disk is used after upgrade
+                LOG.info("Ignore updating lvg for host: %s. Upgrading" %
+                         ihost.hostname)
                 return
 
         forihostid = ihost['id']
@@ -4565,9 +4572,16 @@ class ConductorManager(service.PeriodicService):
             # No upgrade in progress
             pass
         else:
-            if db_host.software_load != tsc.SW_VERSION or db_host.invprovision == constants.UPGRADING:
+            if db_host.software_load != tsc.SW_VERSION:
                 LOG.info("Ignore updating disk partition for host: %s. Version "
                          "%s mismatch." % (db_host.hostname, db_host.software_load))
+                return
+            elif (db_host.invprovision == constants.UPGRADING and
+                    db_host.personality != constants.STORAGE):
+                # storage nodes allocate all root disk for platform. Let the
+                # inventory report to tell what the disk is used after upgrade
+                LOG.info("Ignore updating disk partition for host: %s. Upgrading" %
+                         db_host.hostname)
                 return
 
         # Get the id of the host.
@@ -4797,9 +4811,16 @@ class ConductorManager(service.PeriodicService):
             # No upgrade in progress
             pass
         else:
-            if ihost.software_load != tsc.SW_VERSION or ihost.invprovision == constants.UPGRADING:
+            if ihost.software_load != tsc.SW_VERSION:
                 LOG.info("Ignore updating physical volume for host: %s. Version "
                          "%s mismatch." % (ihost.hostname, ihost.software_load))
+                return
+            elif (ihost.invprovision == constants.UPGRADING and
+                    ihost.personality != constants.STORAGE):
+                # storage nodes allocate all root disk for platform. Let the
+                # inventory report to tell what the disk is used after upgrade
+                LOG.info("Ignore updating physical volume for host: %s. Upgrading" %
+                        ihost.hostname)
                 return
 
         forihostid = ihost['id']
