@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2017 Wind River Systems, Inc.
+# Copyright (c) 2013-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -8,6 +8,7 @@
 # All Rights Reserved.
 #
 
+from cgtsclient.common import constants
 from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import idisk as idisk_utils
@@ -54,6 +55,10 @@ def _find_pv(cc, ihost, pvuuid):
            help="UUID of pv")
 def do_host_pv_show(cc, args):
     """Show Physical Volume attributes."""
+    upgrades = cc.upgrade.list()
+    if upgrades:
+        print(constants.UPGRADE_NOTIFICATION)
+
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
     i = _find_pv(cc, ihost, args.pvuuid)
     _print_ipv_show(i)
@@ -73,6 +78,10 @@ def _adjust_state_data(vg_name, state):
            help="Name or ID of host")
 def do_host_pv_list(cc, args):
     """List Physical Volumes."""
+    upgrades = cc.upgrade.list()
+    if upgrades:
+        print(constants.UPGRADE_NOTIFICATION)
+
     ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
 
     ipvs = cc.ipv.list(ihost.uuid)
