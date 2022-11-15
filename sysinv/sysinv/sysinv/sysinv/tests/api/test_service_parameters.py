@@ -215,7 +215,67 @@ class ApiServiceParameterTestCaseMixin(object):
             'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
             'name': constants.SERVICE_PARAM_NAME_PLATFORM_KEEP_FREE,
             'value': '0'
-        }
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_POSTGRESQL,
+            'name': constants.SERVICE_PARAM_NAME_POSTGRESQL_AUTOVACUUM_WORKERS,
+            'value': '1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_POSTGRESQL,
+            'name': constants.SERVICE_PARAM_NAME_POSTGRESQL_AUTOVACUUM_WORKERS,
+            'value': '2'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_POSTGRESQL,
+            'name': constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_WORKER_PROCESSES,
+            'value': '0'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_POSTGRESQL,
+            'name': constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_WORKER_PROCESSES,
+            'value': '1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_POSTGRESQL,
+            'name': constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS,
+            'value': '0'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_POSTGRESQL,
+            'name': constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS,
+            'value': '1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_POSTGRESQL,
+            'name': constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_MAINTENANCE_WORKERS,
+            'value': '0'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_POSTGRESQL,
+            'name': constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_MAINTENANCE_WORKERS,
+            'value': '1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_POSTGRESQL,
+            'name': constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS_PER_GATHER,
+            'value': '0'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_PLATFORM_POSTGRESQL,
+            'name': constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS_PER_GATHER,
+            'value': '1'
+        },
     ]
 
     service_parameter_wildcard = {

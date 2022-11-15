@@ -58,6 +58,14 @@ def _validate_integer(name, value):
             "Parameter '%s' must be an integer value." % name))
 
 
+def _validate_positive_integer(name, value):
+    _validate_integer(name, value)
+
+    if int(value) <= 0:
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' must be positive integer.") % name)
+
+
 def _validate_zero_or_positive_integer(name, value):
     _validate_integer(name, value)
 
@@ -729,6 +737,14 @@ PLATFORM_COREDUMP_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLATFORM_KEEP_FREE
 ]
 
+PLATFORM_POSTGRESQL_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_POSTGRESQL_AUTOVACUUM_WORKERS,
+    constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_WORKER_PROCESSES,
+    constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS,
+    constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_MAINTENANCE_WORKERS,
+    constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS_PER_GATHER,
+]
+
 PLATFORM_KERNEL_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD: _validate_kernel_audit,
 }
@@ -751,6 +767,19 @@ PLATFORM_COREDUMP_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_PLATFORM_EXTERNAL_SIZE_MAX: _validate_external_size_max,
     constants.SERVICE_PARAM_NAME_PLATFORM_MAX_USE: _validate_max_use,
     constants.SERVICE_PARAM_NAME_PLATFORM_KEEP_FREE: _validate_keep_free,
+}
+
+PLATFORM_POSTGRESQL_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_POSTGRESQL_AUTOVACUUM_WORKERS:
+        _validate_positive_integer,
+    constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_WORKER_PROCESSES:
+        _validate_zero_or_positive_integer,
+    constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS:
+        _validate_zero_or_positive_integer,
+    constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_MAINTENANCE_WORKERS:
+        _validate_zero_or_positive_integer,
+    constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS_PER_GATHER:
+        _validate_zero_or_positive_integer,
 }
 
 PLATFORM_KERNEL_PARAMETER_RESOURCE = {
@@ -780,6 +809,19 @@ PLATFORM_COREDUMP_PARAMETER_RESOURCE = {
         'platform::coredump::params::max_use',
     constants.SERVICE_PARAM_NAME_PLATFORM_KEEP_FREE:
         'platform::coredump::params::keep_free',
+}
+
+PLATFORM_POSTGRESQL_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_POSTGRESQL_AUTOVACUUM_WORKERS:
+        'platform::postgresql::custom::params::autovacuum_max_workers',
+    constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_WORKER_PROCESSES:
+        'platform::postgresql::custom::params::max_worker_processes',
+    constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS:
+        'platform::postgresql::custom::params::max_parallel_workers',
+    constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_MAINTENANCE_WORKERS:
+        'platform::postgresql::custom::params::max_parallel_maintenance_workers',
+    constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS_PER_GATHER:
+        'platform::postgresql::custom::params::max_parallel_workers_per_gather',
 }
 
 RADOSGW_CONFIG_PARAMETER_MANDATORY = [
@@ -1156,6 +1198,11 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: PLATFORM_COREDUMP_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: PLATFORM_COREDUMP_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: PLATFORM_COREDUMP_PARAMETER_RESOURCE,
+        },
+        constants.SERVICE_PARAM_SECTION_PLATFORM_POSTGRESQL: {
+            SERVICE_PARAM_OPTIONAL: PLATFORM_POSTGRESQL_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: PLATFORM_POSTGRESQL_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: PLATFORM_POSTGRESQL_PARAMETER_RESOURCE,
         },
     },
     constants.SERVICE_TYPE_RADOSGW: {
