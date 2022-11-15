@@ -3426,13 +3426,13 @@ class ConductorManager(service.PeriodicService):
                 cutils.host_has_function(ihost, constants.CONTROLLER)):
             return cpu_count
 
-        # Reserve one full core for worker on numa node 0, and one full core
-        # for AIO controller on numa node 0
+        # Reserve one full core for worker or AIO controller on numa node 0.
+        # Limiting to 2 logical cores with HyperThreading enabled or disabled.
         cpus = 0
         if cutils.host_has_function(ihost, constants.WORKER) and node == 0:
-            cpus += 1 if not hyperthreading else 2
+            cpus = 1 if not hyperthreading else 2
             if cutils.host_has_function(ihost, constants.CONTROLLER):
-                cpus += 1 if not hyperthreading else 2
+                cpus = 2
         return cpus
 
     def _get_default_vswitch_cpu_count(self, ihost, node,
