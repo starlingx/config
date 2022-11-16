@@ -117,30 +117,19 @@ class DiskOperator(object):
                       % device_node)
             return 0
 
-        # Get sector size command.
-        sector_size_bytes_cmd = '{} {}'.format('blockdev --getss', device_node)
-
-        # Get total free space in sectors command.
-        avail_space_sectors_cmd = '{} {} {}'.format(
-            'sgdisk -p', device_node, "| grep \"Total free space\"")
-
-        # Get the sector size.
-        sector_size_bytes_process = subprocess.Popen(
-            sector_size_bytes_cmd, stdout=subprocess.PIPE, shell=True,
-            universal_newlines=True)
-        sector_size_bytes = sector_size_bytes_process.stdout.read().rstrip()
+        # Get total free space in bytes command.
+        avail_space_cmd = '{} {} {}'.format(
+            'sfdisk -F', device_node, '| head -1')
 
         # Get the free space.
-        avail_space_sectors_process = subprocess.Popen(
-            avail_space_sectors_cmd, stdout=subprocess.PIPE, shell=True,
+        avail_space_process = subprocess.Popen(
+            avail_space_cmd, stdout=subprocess.PIPE, shell=True,
             universal_newlines=True)
-        avail_space_sectors_output = avail_space_sectors_process.stdout.read()
-        avail_space_sectors = re.findall('\d+',
-                                         avail_space_sectors_output)[0].rstrip()
+        avail_space_output = avail_space_process.stdout.read().rstrip()
+        avail_space_bytes = re.findall('\d+', avail_space_output)[-2]
 
         # Free space in MiB.
-        avail_space_mib = (int(sector_size_bytes) * int(avail_space_sectors) //
-                           (1024 ** 2))
+        avail_space_mib = int(avail_space_bytes) // (1024 ** 2)
 
         # Keep 2 MiB for partition table.
         if avail_space_mib >= 2:

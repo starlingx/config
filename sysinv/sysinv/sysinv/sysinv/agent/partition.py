@@ -35,28 +35,28 @@ class PartitionOperator(object):
         LOG.error("%s @ %s:%s" % (e, traceback.tb_frame.f_code.co_filename,
                                   traceback.tb_lineno))
 
-    def get_sgdisk_info(self, device_path):
+    def get_sfdisk_info(self, device_path):
         """Obtain partition type GUID, type name and UUID.
         :param:   device_path: the disk's device path
         :returns: list of partition info
         """
-        sgdisk_part_info = []
+        sfdisk_part_info = []
         fields = ['part_number', 'device_node', 'type_guid', 'type_name',
                   'uuid', 'start_mib', 'end_mib', 'size_mib']
-        sgdisk_command = '{} {}'.format('/usr/bin/partition_info.sh',
+        sfdisk_command = '{} {}'.format('/usr/bin/partition_info.sh',
                                         device_path)
 
         try:
-            sgdisk_process = subprocess.Popen(sgdisk_command,
+            sfdisk_process = subprocess.Popen(sfdisk_command,
                                               stdout=subprocess.PIPE,
                                               shell=True,
                                               universal_newlines=True)
         except Exception as e:
             self.handle_exception("Could not retrieve partition information: "
                                   "%s" % e)
-        sgdisk_output = sgdisk_process.stdout.read()
+        sfdisk_output = sfdisk_process.stdout.read()
 
-        rows = [row for row in sgdisk_output.split(';') if row.strip()]
+        rows = [row for row in sfdisk_output.split(';') if row.strip()]
 
         for row in rows:
             values = row.split()
@@ -65,9 +65,9 @@ class PartitionOperator(object):
             if 'part_number' in partition.keys():
                 partition['part_number'] = int(partition['part_number'])
 
-            sgdisk_part_info.append(partition)
+            sfdisk_part_info.append(partition)
 
-        return sgdisk_part_info
+        return sfdisk_part_info
 
     @utils.skip_udev_partition_probe
     def get_partition_info(self, device_path, device_node, skip_gpt_check=False):
@@ -82,10 +82,10 @@ class PartitionOperator(object):
 
         ipartitions = []
 
-        sgdisk_partitions = self.get_sgdisk_info(device_path)
-        LOG.debug("PARTED sgdisk_part_info: %s" % str(sgdisk_partitions))
+        sfdisk_partitions = self.get_sfdisk_info(device_path)
+        LOG.debug("PARTED sfdisk_part_info: %s" % str(sfdisk_partitions))
 
-        for partition in sgdisk_partitions:
+        for partition in sfdisk_partitions:
             partition_number = partition.get('part_number')
             size_mib = partition.get('size_mib')
             if 'nvme' in device_node:
@@ -99,8 +99,8 @@ class PartitionOperator(object):
             start_mib = partition.get('start_mib')
             end_mib = partition.get('end_mib')
 
-            part_type_guid = partition.get('type_guid').lower()
             part_type_name = partition.get('type_name').replace('.', ' ')
+            part_type_guid = partition.get('type_guid').lower()
             part_uuid = partition.get('uuid').lower()
 
             part_attrs = {

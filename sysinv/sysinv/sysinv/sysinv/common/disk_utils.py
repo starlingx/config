@@ -57,7 +57,7 @@ def disk_wipe(device):
     """
     LOG.info("Wiping device: %s " % device)
     partOp = partition.PartitionOperator()
-    partitions = partOp.get_sgdisk_info(device)
+    partitions = partOp.get_sfdisk_info(device)
 
     # Call the wiping method for each partition
     for part in partitions:

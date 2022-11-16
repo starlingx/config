@@ -1628,15 +1628,12 @@ def disk_is_gpt(device_node):
     :returns: True if partition table on disk is GPT
               False if partition table on disk is not GPT
     """
-    parted_command = '{} {} {}'.format('parted -s', device_node, 'print')
-    parted_process = subprocess.Popen(
-        parted_command, stdout=subprocess.PIPE, shell=True,
+    sfdisk_command = '{} {}'.format('sfdisk -l', device_node)
+    sfdisk_process = subprocess.Popen(
+        sfdisk_command, stdout=subprocess.PIPE, shell=True,
         universal_newlines=True)
-    parted_output = parted_process.stdout.read()
-    if re.search('Partition Table: gpt', parted_output):
-        return True
-
-    return False
+    sfdisk_output = sfdisk_process.stdout.read()
+    return bool(re.search('Disklabel type: gpt', sfdisk_output))
 
 
 def partitions_are_in_order(disk_partitions, requested_partitions):
