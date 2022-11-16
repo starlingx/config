@@ -31,6 +31,7 @@ import sysinv.openstack.common.rpc.proxy
 LOG = log.getLogger(__name__)
 
 MANAGER_TOPIC = 'sysinv.conductor_manager'
+RPC_TIMEOUT = 300
 
 
 class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
@@ -115,7 +116,8 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('configure_ihost',
                                        host=host,
-                                       do_worker_apply=do_worker_apply))
+                                       do_worker_apply=do_worker_apply),
+                         timeout=RPC_TIMEOUT)
 
     def remove_host_config(self, context, host_uuid):
         """Synchronously, have a conductor remove configuration for a host.
@@ -1271,7 +1273,8 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                                 service=service,
                                                 section=section,
                                                 name=name,
-                                                do_apply=do_apply))
+                                                do_apply=do_apply),
+                                                timeout=RPC_TIMEOUT)
 
     def start_upgrade(self, context, upgrade):
         """Asynchronously, have the conductor start the upgrade

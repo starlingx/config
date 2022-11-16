@@ -24,9 +24,11 @@ from kubernetes.client.rest import ApiException
 from kubernetes.client.models.v1_container_image import V1ContainerImage
 from kubernetes.stream import stream
 from six.moves import http_client as httplib
+from urllib3.exceptions import MaxRetryError
 
 from oslo_log import log as logging
 from sysinv.common import exception
+from sysinv.common.retrying import retry
 
 K8S_MODULE_MAJOR_VERSION = int(K8S_MODULE_VERSION.split('.')[0])
 
@@ -124,6 +126,13 @@ MANIFEST_APPLY_TIMEOUT = 60 * 15
 MANIFEST_APPLY_INTERVAL = 10
 POD_START_TIMEOUT = 60 * 2
 POD_START_INTERVAL = 10
+
+# retry for urllib3 max retry error
+# Function will fail after 200 seconds
+# (API_RETRY_ATTEMPT_NUMBER * API_RETRY_INTERVAL)
+# See retry decorator for parameters in detail
+API_RETRY_ATTEMPT_NUMBER = 20
+API_RETRY_INTERVAL = 10 * 1000  # millisecond
 
 
 def get_kube_versions():
@@ -266,6 +275,13 @@ class KubeOperator(object):
             self._kube_client_admission_registration = client.AdmissionregistrationV1beta1Api()
         return self._kube_client_admission_registration
 
+    def _retry_on_urllibs3_MaxRetryError(ex):  # pylint: disable=no-self-argument
+        if isinstance(ex, MaxRetryError):
+            LOG.warn('Retrying against MaxRetryError: {}'.format(ex))
+            return True
+        else:
+            return False
+
     def kube_get_kubernetes_config(self):
         return self._load_kube_config()
 
@@ -285,13 +301,16 @@ class KubeOperator(object):
             LOG.error("Kubernetes exception in kube_patch_node: %s" % e)
             raise
 
+    @retry(stop_max_attempt_number=API_RETRY_ATTEMPT_NUMBER,
+           wait_fixed=API_RETRY_INTERVAL,
+           retry_on_exception=_retry_on_urllibs3_MaxRetryError)
     def kube_get_nodes(self):
         try:
             api_response = self._get_kubernetesclient_core().list_node()
             LOG.debug("Response: %s" % api_response)
             return api_response.items
         except Exception as e:
-            LOG.error("Kubernetes exception in kube_get_nodes: %s" % e)
+            LOG.warn("Kubernetes exception in kube_get_nodes: %s" % e)
             raise
 
     def kube_namespaced_pods_exist(self, namespace):
@@ -427,6 +446,9 @@ class KubeOperator(object):
             LOG.exception(e)
             raise
 
+    @retry(stop_max_attempt_number=API_RETRY_ATTEMPT_NUMBER,
+           wait_fixed=API_RETRY_INTERVAL,
+           retry_on_exception=_retry_on_urllibs3_MaxRetryError)
     def kube_get_secret(self, name, namespace):
         c = self._get_kubernetesclient_core()
         try:
@@ -439,7 +461,7 @@ class KubeOperator(object):
                           "Namespace %s: %s" % (name, namespace, e.body))
                 raise
         except Exception as e:
-            LOG.error("Kubernetes exception in kube_get_secret: %s" % e)
+            LOG.warn("Kubernetes exception in kube_get_secret: %s" % e)
             raise
 
     def kube_patch_namespace(self, namespace, body):
@@ -758,6 +780,9 @@ class KubeOperator(object):
 
         return ready_status
 
+    @retry(stop_max_attempt_number=API_RETRY_ATTEMPT_NUMBER,
+           wait_fixed=API_RETRY_INTERVAL,
+           retry_on_exception=_retry_on_urllibs3_MaxRetryError)
     def kube_get_control_plane_versions(self):
         """Returns the lowest control plane component version on each
         master node."""
@@ -852,6 +877,9 @@ class KubeOperator(object):
 
         return version_states
 
+    @retry(stop_max_attempt_number=API_RETRY_ATTEMPT_NUMBER,
+           wait_fixed=API_RETRY_INTERVAL,
+           retry_on_exception=_retry_on_urllibs3_MaxRetryError)
     def kube_get_kubernetes_version(self):
         """Returns the kubernetes version from the kubadm config map."""
 
@@ -918,6 +946,9 @@ class KubeOperator(object):
             LOG.error("Kubernetes exception in "
                       "kube_get_pod %s/%s: %s" % (namespace, name, e))
 
+    @retry(stop_max_attempt_number=API_RETRY_ATTEMPT_NUMBER,
+           wait_fixed=API_RETRY_INTERVAL,
+           retry_on_exception=_retry_on_urllibs3_MaxRetryError)
     def kube_get_pods_by_selector(self, namespace, label_selector,
                                   field_selector):
         c = self._get_kubernetesclient_core()
@@ -928,9 +959,9 @@ class KubeOperator(object):
             LOG.debug("Response: %s" % api_response)
             return api_response.items
         except ApiException as e:
-            LOG.error("Kubernetes exception in "
-                      "kube_get_pods_by_selector %s/%s/%s: %s",
-                      namespace, label_selector, field_selector, e)
+            LOG.warn("Kubernetes exception in "
+                     "kube_get_pods_by_selector %s/%s/%s: %s",
+                     namespace, label_selector, field_selector, e)
             raise
 
     # NOTE: This is desired method to exec commands in a container.
