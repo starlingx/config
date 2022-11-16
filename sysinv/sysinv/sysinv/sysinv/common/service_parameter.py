@@ -981,14 +981,6 @@ KUBERNETES_APISERVER_PARAMETER_VALIDATOR = {
 }
 
 KUBERNETES_APISERVER_PARAMETER_RESOURCE = {
-    constants.SERVICE_PARAM_NAME_OIDC_ISSUER_URL:
-        'platform::kubernetes::kube_apiserver::params::oidc_issuer_url',
-    constants.SERVICE_PARAM_NAME_OIDC_CLIENT_ID:
-        'platform::kubernetes::kube_apiserver::params::oidc_client_id',
-    constants.SERVICE_PARAM_NAME_OIDC_USERNAME_CLAIM:
-        'platform::kubernetes::kube_apiserver::params::oidc_username_claim',
-    constants.SERVICE_PARAM_NAME_OIDC_GROUPS_CLAIM:
-        'platform::kubernetes::kube_apiserver::params::oidc_groups_claim',
     constants.SERVICE_PARAM_NAME_WILDCARD:
         'platform::kubernetes::kube_apiserver::params',
     constants.SERVICE_PARAM_NAME_AUDIT_POLICY_FILE:
