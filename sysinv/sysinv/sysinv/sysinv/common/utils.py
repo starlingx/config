@@ -24,6 +24,7 @@
 
 """Utilities and helper functions."""
 
+from __future__ import division
 import ast
 import boto3
 from botocore.config import Config
@@ -1671,6 +1672,23 @@ def is_single_controller(dbapi):
     if len(prov_hosts) == 1:
         return True
     return False
+
+
+def get_cgtsvg_available_gib(host, dbapi):
+    """Calculate free space cgtsvg
+       returns: cgtsvg free space in GiB
+    """
+    cgtsvg_free_mib = 0
+    ilvgs = dbapi.ilvg_get_by_ihost(host.uuid)
+    for ilvg in ilvgs:
+        if (ilvg.lvm_vg_name == constants.LVG_CGTS_VG and
+                ilvg.lvm_vg_size and ilvg.lvm_vg_total_pe):
+            cgtsvg_free_mib = (int(ilvg.lvm_vg_size) * int(
+                ilvg.lvm_vg_free_pe)
+                               / int(ilvg.lvm_vg_total_pe)) / (1024 * 1024)
+            break
+    cgtsvg_free_gib = (cgtsvg_free_mib // 1024)
+    return cgtsvg_free_gib
 
 
 def is_partition_the_last(dbapi, partition):
