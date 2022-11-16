@@ -25,6 +25,14 @@ log "$NAME: Starting updating openldap users from release $FROM_RELEASE to $TO_R
 
 if [[ "${ACTION}" == "activate" ]] && [[ "${TO_RELEASE}" == "22.12" ]]; then
 
+    DISTRIBUTED_CLOUD_ROLE=$(source /etc/platform/platform.conf; \
+    echo $distributed_cloud_role)
+
+    if [[ $DISTRIBUTED_CLOUD_ROLE == "subcloud" ]] ; then
+        log "$NAME: No actions required for this system type"
+        exit 0
+    fi
+
     /usr/sbin/ldapsetprimarygroup admin users
 
     RC=$?
