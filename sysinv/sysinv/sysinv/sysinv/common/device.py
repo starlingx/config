@@ -40,9 +40,13 @@ PCI_DEVICE_ID_FPGA_INTEL_I40_PF = "0d58"
 PCI_DEVICE_ID_ACC100_INTEL_5GNR_FEC_PF = "0d5c"
 PCI_DEVICE_ID_ACC100_INTEL_5GNR_FEC_VF = "0d5d"
 
+PCI_DEVICE_ID_ACC200_INTEL_5GNR_FEC_PF = "57c0"
+PCI_DEVICE_ID_ACC200_INTEL_5GNR_FEC_VF = "57c1"
+
 # SR-IOV enabled FEC devices
 SRIOV_ENABLED_FEC_DEVICE_IDS = [PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF,
-                                PCI_DEVICE_ID_ACC100_INTEL_5GNR_FEC_PF]
+                                PCI_DEVICE_ID_ACC100_INTEL_5GNR_FEC_PF,
+                                PCI_DEVICE_ID_ACC200_INTEL_5GNR_FEC_PF]
 
 FPGA_INTEL_5GNR_FEC_DRIVER_IGB_UIO = "igb_uio"
 FPGA_INTEL_5GNR_FEC_DRIVER_NONE = "none"
@@ -68,6 +72,11 @@ ACCLR_FEC_RESOURCES = {
     {
         'fec_name': "intel_acc100_fec",
         'dvconf': {'platform::devices::acc100::fec::enabled': True}
+    },
+    PCI_DEVICE_ID_ACC200_INTEL_5GNR_FEC_PF:
+    {
+        'fec_name': "intel_acc200_fec",
+        'dvconf': {'platform::devices::acc200::fec::enabled': True}
     },
     PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF:
     {
