@@ -218,8 +218,9 @@ class CertAlarmAudit(object):
                 self.clear_expiring_soon(cert_name, entity_id)
                 self.raise_expired(cert_name, entity_id)
             else:
-                self.raise_expiring_soon(cert_name, entity_id)
                 self.clear_expired(cert_name, entity_id)
+                self.clear_expiring_soon(cert_name, entity_id)
+                self.raise_expiring_soon(cert_name, entity_id)
 
     def raise_expiring_soon(self, cert_name, entity_id):
         if self.alarm_override_check_passed(cert_name):
