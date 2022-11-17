@@ -50,6 +50,7 @@ class LoadManager(base.Manager):
         path = '/v1/loads/import_load'
 
         active = None
+        local = False
         load_info = {}
         for (key, value) in kwargs.items():
             if key in IMPORT_ATTRIBUTES:
