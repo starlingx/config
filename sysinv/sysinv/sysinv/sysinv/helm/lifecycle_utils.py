@@ -219,6 +219,11 @@ def add_pod_security_admission_controller_labels(app_op, app, hook_info):
 
     for ns in namespaces:
 
+        # we only have privileged namespaces right now.
+        # if it's not priviliged, it's not a namespace we manage
+        if ns not in common.PRIVILEGED_NS:
+            continue
+
         security_level = 'privileged'
 
         body = {
