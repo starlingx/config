@@ -191,6 +191,21 @@ def is_k8s_configured():
     return False
 
 
+def create_configmap_obj(namespace, name, filename, **kwargs):
+    data_section_name = kwargs.pop('data_section_name', 'data')
+    metadata = client.V1ObjectMeta(namespace=namespace, name=name, **kwargs)
+    try:
+        with open(filename, 'r') as file:
+            data = file.read()
+            return client.V1ConfigMap(
+                api_version="v1", kind="ConfigMap",
+                metadata=metadata,
+                data={data_section_name: data})
+    except Exception as e:
+        LOG.error("Kubernetes exception in create_configmap_obj: %s" % e)
+        raise
+
+
 # https://github.com/kubernetes-client/python/issues/895
 # If a container image contains no tag or digest, patch/list
 # node requests sent via python Kubernetes client will be
@@ -573,6 +588,17 @@ class KubeOperator(object):
         except Exception as e:
             LOG.error("Failed to create ConfigMap %s under Namespace %s: "
                       "%s" % (body['metadata']['name'], namespace, e))
+            raise
+
+    def kube_create_config_map_from_file(self, namespace, name, filename, **kwargs):
+        body = create_configmap_obj(namespace, name, filename, **kwargs)
+
+        c = self._get_kubernetesclient_core()
+        try:
+            c.create_namespaced_config_map(namespace, body)
+        except Exception as e:
+            LOG.error("Failed to create ConfigMap %s under Namespace %s: "
+                      "%s" % (body.metadata['name'], namespace, e))
             raise
 
     def kube_copy_config_map(self, name, src_namespace, dst_namespace):

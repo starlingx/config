@@ -9,6 +9,7 @@
 # Note: this can be removed in the release after STX8.0
 
 import datetime
+import json
 import sys
 import ruamel.yaml as yaml
 
@@ -19,20 +20,43 @@ from psycopg2.extras import DictCursor
 
 from controllerconfig.common import log
 
-
 LOG = log.get_logger(__name__)
 
 K8S_SERVICE = 'kubernetes'
-K8S_APISERVER_SECTION = 'kube_apiserver'
-K8S_CONTROLLER_MANAGER_SECTION = 'kube_controller_manager'
-K8S_SCHEDULER_SECTION = 'kube_scheduler'
-K8S_KUBELET_SECTION = 'kubelet'
+
+K8S_BOOTSTRAP_PARAMETERS =\
+    "/opt/platform/config/22.12/last_kube_extra_config_bootstrap.yaml"
 
 SYSINV_K8S_SECTIONS = {
-    'apiserver': K8S_APISERVER_SECTION,
-    'controllermanager': K8S_CONTROLLER_MANAGER_SECTION,
-    'scheduler': K8S_SCHEDULER_SECTION,
-    'kubelet': K8S_KUBELET_SECTION}
+    'apiserver_extra_args': 'kube_apiserver',
+    'controllermanager_extra_args': 'kube_controller_manager',
+    'scheduler_extra_args': 'kube_scheduler',
+    'apiserver_extra_volumes': 'kube_apiserver_volumes',
+    'controllermanager_extra_volumes': 'kube_controller_manager_volumes',
+    'scheduler_extra_volumes': 'kube_scheduler_volumes',
+    'kubelet_configurations': 'kubelet'}
+
+default_extra_volumes = {
+    "encryption-config": {
+        'name': "encryption-config",
+        'hostPath': "/etc/kubernetes/encryption-provider.yaml",
+        'mountPath': "/etc/kubernetes/encryption-provider.yaml",
+        'readOnly': True,
+        'pathType': 'File'},
+
+    "default-audit-policy-file": {
+        'name': "default-audit-policy-file",
+        'hostPath': "/etc/kubernetes/default-audit-policy.yaml",
+        'mountPath': "/etc/kubernetes/default-audit-policy.yaml",
+        'readOnly': True,
+        'pathType': 'File'},
+    "audit-log-dir": {
+        'name': "audit-log-dir",
+        'hostPath': "/var/log/kubernetes/audit/",
+        'mountPath': "/var/log/kubernetes/audit/",
+        'readOnly': False,
+        'pathType': 'DirectoryOrCreate'}
+}
 
 
 def get_service_parameters(db_conn, K8S_SERVICE, K8S_SECTION):
@@ -82,23 +106,19 @@ def main():
         try:
             db_conn = psycopg2.connect("dbname=sysinv user=postgres")
             with db_conn:
-                upgrade_k8s_apiserver_parameters(db_conn)
+                migrate_k8s_control_plane_and_kubelet_parameters(db_conn)
                 return 0
         except Exception as ex:
             LOG.exception(ex)
             return 1
 
 
-def upgrade_k8s_apiserver_parameters(db_conn):
-    """This method will take each parameter from dict params and update its
-    name. key is the current value for instance, oidc_issuer_url.
-    And, its value is the new name for instance, oidc-issuer-url.
+def migrate_k8s_control_plane_and_kubelet_parameters(db_conn):
+    """This method will take each k8s cluster config and kubelet parameter
+    stored in backup data and will restore it into sysinv database
     """
-    k8s_bootstrap_parameters =\
-        "/opt/platform/config/22.12/last_kube_extra_config_bootstrap.yaml"
-
     try:
-        with open(k8s_bootstrap_parameters, 'r') as file:
+        with open(K8S_BOOTSTRAP_PARAMETERS, 'r') as file:
             cluster_cfg = yaml.load(file, Loader=yaml.RoundTripLoader)
     except FileNotFoundError as e:
         msg = str('Loading k8s bootstrap parameters from file. {}'.format(e))
@@ -106,34 +126,101 @@ def upgrade_k8s_apiserver_parameters(db_conn):
         return 1
 
     # -------------------------------------------------------------------------
-    # Save new params into sysinv
+    # Restoring params into sysinv db
     # -------------------------------------------------------------------------
-    # kubelet_configurations will be addressed in task 44586 / story: 2009766
     for kubeadm_section in [
             'apiserver_extra_args', 'controllermanager_extra_args',
-            'scheduler_extra_args']:
+            'scheduler_extra_args', 'apiserver_extra_volumes',
+            'controllermanager_extra_volumes', 'scheduler_extra_volumes',
+            'kubelet_configurations']:
 
-        # current parameters stored in sysinv db
-        sysinv_section = SYSINV_K8S_SECTIONS.get(kubeadm_section.split('_')[0])
-        sysinv_params = get_service_parameters(
+        # current parameters stored into sysinv db
+        sysinv_section = SYSINV_K8S_SECTIONS.get(kubeadm_section)
+        sysinv_section_params = get_service_parameters(
             db_conn, K8S_SERVICE, sysinv_section)
-        sysinv_params_names = [param.get('name') for param in sysinv_params]
+        sysinv_section_params_names =\
+            [param.get('name') for param in sysinv_section_params]
 
-        # new parameters to store into sysinv db (loaded from 22.06)
-        for param_name, param_value in cluster_cfg[kubeadm_section].items():
-            if param_name not in sysinv_params_names:
-                try:
-                    # add new parameter to sysinv
-                    add_service_parameter(
-                        db_conn, param_name, param_value,
-                        K8S_SERVICE, sysinv_section)
-                except Exception as e:
-                    LOG.error("[%s] Adding %s=%s to db [Detail: %s]." % (
-                        sysinv_section, param_name, param_value, e))
-            else:
-                LOG.info("Skipping %s pre existent param." % (param_name))
+        # cases: apiserver, controller-manager and scheduler extra-args
+        # params loaded during latest bootstrap take precedence over 22.06
+        if isinstance(cluster_cfg[kubeadm_section], (
+                dict, yaml.comments.CommentedMap)):
+            for param_name, param_value in cluster_cfg[
+                    kubeadm_section].items():
+                if param_name not in sysinv_section_params_names:
+                    try:
+                        if isinstance(param_value, (
+                                dict, yaml.comments.CommentedMap)):
+                            param_value = str(dict(param_value))
+
+                        # add new parameter to sysinv
+                        add_service_parameter(
+                            db_conn, param_name, param_value,
+                            K8S_SERVICE, sysinv_section)
+
+                    except Exception as e:
+                        LOG.error("[%s] Adding %s=%s to db [Detail: %s]." % (
+                            sysinv_section, param_name, param_value, e))
+                else:
+                    LOG.info("Skipping %s pre existent param." % (param_name))
+
+        # cases: apiserver, controller-manager and scheduler extra-volumes
+        elif isinstance(cluster_cfg[kubeadm_section], (
+                list, yaml.comments.CommentedSeq)):
+            for parameter in cluster_cfg[kubeadm_section]:
+                if not isinstance(parameter, yaml.comments.CommentedMap):
+                    continue
+                # each parameter is a dictionary containing the fields needed
+                # to create an extra-volume service-parameter entry and the
+                # associated k8s configmap.
+                param_dict = dict(parameter)
+                param_name = param_dict['name']
+                if 'content' in param_dict:
+                    param_dict.pop('content')
+                param_value = json.dumps(param_dict)
+
+                if param_name not in sysinv_section_params_names:
+                    try:
+                        # add new extra-volume parameter to sysinv
+                        add_service_parameter(
+                            db_conn, param_name, param_value,
+                            K8S_SERVICE, sysinv_section)
+                    except Exception as e:
+                        LOG.error("[%s] Adding %s=%s to db [Detail: %s]." % (
+                            sysinv_section, param_name, param_value, e))
+                        continue
+                else:
+                    LOG.info("Skipping %s pre existent param." % (param_name))
+
+    # -------------------------------------------------------------------------
+    # Restoring params into sysinv db
+    # -------------------------------------------------------------------------
+    # The default extra_volumes in 22.06 or earlier versions are hardcoded
+    # in the kubeadmin configuration file. This function adds the corresponding
+    # service parameter entries in the sysinv database
+    # (service: kubernetes, section: kube_apiserver_volumes).
+
+    # current parameters stored into sysinv db
+    sysinv_section = 'kube_apiserver_volumes'
+    sysinv_section_params = get_service_parameters(
+        db_conn, K8S_SERVICE, sysinv_section)
+    sysinv_section_params_names =\
+        [param.get('name') for param in sysinv_section_params]
+
+    for param_name, volume_dict in default_extra_volumes.items():
+        if param_name not in sysinv_section_params_names:
+            param_value = json.dumps(volume_dict)
+            try:
+                add_service_parameter(
+                    db_conn, param_name, param_value,
+                    K8S_SERVICE, sysinv_section)
+            except Exception as e:
+                LOG.error("[%s] Adding %s=%s to db [Detail: %s]." % (
+                    sysinv_section, param_name, param_value, e))
+                raise
 
     LOG.info("k8s service-parameters upgrade completed")
+    return 0
 
 
 if __name__ == "__main__":
