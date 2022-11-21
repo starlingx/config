@@ -698,6 +698,76 @@ class KubeOperator(object):
                       % (namespace, e))
             raise
 
+    def get_transform_patch_custom_resource(self, group, version, namespace,
+                                            plural, name, transform, raise_error=True):
+        """ Apply a custom resource after it was transformed by a function
+
+        :param group: Used by k8s API to determine resource
+        :param version: Used by k8s API to determine resource
+        :param namespace: Used by k8s API to determine resource
+        :param plural: Used by k8s API to determine resource
+        :param name: Used by k8s API to determine resource
+        :param transform: A function used to transform the resource
+                          For example access the dictionary and change some
+                          fields.
+        :param raise_error: Control the exception handling here.
+                            If True, log an error and raise errors further.
+                            If False, log a warning and return from function.
+
+        :return: True if everything finished successfully.
+                 False otherwise.
+        """
+        kind = group + '/' + version
+        try:
+            custom_resource = self.get_custom_resource(
+                group,
+                version,
+                namespace,
+                plural,
+                name)
+        except Exception as err:
+            if raise_error:
+                LOG.error("Failed to get resource kind {}, name {}: {}"
+                          "".format(kind, name, err))
+                raise
+            else:
+                LOG.warning("Failed to get resource kind {}, name {}: {}"
+                            "".format(kind, name, err))
+                return False
+
+        try:
+            transform(custom_resource)
+        except Exception as err:
+            if raise_error:
+                LOG.error("Failed to transform resource {} using {}: {}"
+                          "".format(custom_resource, transform, err))
+                raise
+            else:
+                LOG.warning("Failed to transform resource {} using {}: {}"
+                            "".format(custom_resource, transform, err))
+                return False
+
+        try:
+            self.apply_custom_resource(
+                group,
+                version,
+                namespace,
+                plural,
+                name,
+                custom_resource
+            )
+        except Exception as err:
+            if raise_error:
+                LOG.error("Failed to patch kind {}, name {}: {}"
+                          "".format(kind, name, err))
+                raise
+            else:
+                LOG.warning("Failed to patch kind {}, name {}: {}"
+                            "".format(kind, name, err))
+                return False
+
+        return True
+
     def kube_get_service_account(self, name, namespace):
         c = self._get_kubernetesclient_core()
         try:

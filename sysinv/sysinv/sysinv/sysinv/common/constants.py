@@ -1713,6 +1713,17 @@ FLUXCD_RECOVERY_HELM_CHART_STATUS_ERRORS = [
     'failed to retrieve source:',
     'chart pull error:'
 ]
+# Actually beginning of errors, should be used with
+# string.startswith(FLUXCD_RECOVERY_HELM_RELEASE_STATUS_ERRORS[number])
+# We want to recover from these errors
+FLUXCD_RECOVERY_HELM_RELEASE_STATUS_ERRORS = [
+    'Helm upgrade failed: another operation (install/upgrade/rollback) is in progress'
+]
+FLUXCD_RECOVERABLE_HELM_RELEASE_STATUS = [
+    'pending-install',
+    'pending-upgrade',
+    'pending-rollback'
+]
 
 # State constants
 APP_NOT_PRESENT = 'missing'
