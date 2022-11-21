@@ -13213,6 +13213,41 @@ class ConductorManager(service.PeriodicService):
                                                 config_uuid,
                                                 config_dict,
                                                 force=True)
+        # Special mode for openldap CA certificate.
+        # This CA certificate will be stored in k8s as an opaque secret
+        elif mode == constants.CERT_MODE_OPENLDAP_CA:
+            kube_operator = kubernetes.KubeOperator()
+            public_bytes = self._get_public_bytes(cert_list)
+            cert_secret = base64.encode_as_text(public_bytes)
+
+            body = {
+                'apiVersion': 'v1',
+                'type': 'Opaque',
+                'kind': 'Secret',
+                'metadata': {
+                    'name': constants.OPENLDAP_CA_CERT_SECRET_NAME,
+                    'namespace': constants.CERT_NAMESPACE_PLATFORM_CA_CERTS
+                },
+                'data': {
+                    'ca.crt': cert_secret,
+                }
+            }
+
+            try:
+                secret = kube_operator.kube_get_secret(
+                        constants.OPENLDAP_CA_CERT_SECRET_NAME,
+                        constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
+                if secret is not None:
+                    kube_operator.kube_delete_secret(
+                            constants.OPENLDAP_CA_CERT_SECRET_NAME,
+                            constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
+                kube_operator.kube_create_secret(
+                        constants.CERT_NAMESPACE_PLATFORM_CA_CERTS, body)
+            except Exception as e:
+                msg = "Failed to store openldap CA in k8s secret: %s" % str(e)
+                LOG.error(msg)
+                return msg
+
         elif mode == constants.CERT_MODE_DOCKER_REGISTRY:
             LOG.info("Docker registry certificate install")
             # docker registry requires a PKCS1 key for the token server

@@ -83,8 +83,8 @@ def do_certificate_install(cc, args):
     data = {'passphrase': args.passphrase,
             'mode': args.mode}
 
-    if data['mode'] == 'openldap':
-        raise exc.CommandError('Warning: Invalid mode: openldap')
+    if data['mode'] in ['openldap', 'openldap_ca']:
+        raise exc.CommandError('Warning: Invalid mode: %s' % data['mode'])
 
     has_private_key = False
     try:

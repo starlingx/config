@@ -625,6 +625,59 @@ class ApiCertificatePostTestSuite(ApiCertificateTestCaseMixin,
         resp = json.loads(response.body)
         self.assertIn('certificates', resp)
 
+    # Test install an openldap_ca certificate
+    def test_install_openldap_ca_certificate(self):
+        mode = 'openldap_ca'
+        certfile = os.path.join(os.path.dirname(__file__), "data",
+                                'ca-cert-one-cert.pem')
+
+        in_certs = self.extract_certs_from_pem_file(certfile)
+        fake_config_certificate_return = []
+        for index, in_cert in enumerate(in_certs):
+            fake_config_certificate_return.append(
+                        {'signature': self.get_cert_signature(mode, in_cert),
+                         'not_valid_before': in_cert.not_valid_before,
+                         'not_valid_after': in_cert.not_valid_after})
+        self.fake_conductor_api.\
+            setup_config_certificate(fake_config_certificate_return)
+
+        data = {'mode': mode}
+        files = [('file', certfile)]
+        response = self.post_with_files('%s/%s' % (self.API_PREFIX, 'certificate_install'),
+                                  data,
+                                  upload_files=files,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=False)
+
+        self.assertEqual(response.status_code, http_client.OK)
+        resp = json.loads(response.body)
+        self.assertIn('certificates', resp)
+        ret_certs = resp.get('certificates')
+
+        self.assertEqual(len(ret_certs), 1)
+        ret_cert = ret_certs[0]
+        in_cert = in_certs[0]
+
+        self.assertIn('certtype', ret_cert)
+        self.assertEqual(ret_cert.get('certtype'), mode)
+        self.assertIn('signature', ret_cert)
+        self.assertIn('start_date', ret_cert)
+        self.assertIn('expiry_date', ret_cert)
+
+        ret_cert_start_date = str(ret_cert.get('start_date'))
+        ret_cert_start_date = ret_cert_start_date.replace('+00:00', '')
+        ret_cert_expiry_date = str(ret_cert.get('expiry_date'))
+        ret_cert_expiry_date = ret_cert_expiry_date.replace('+00:00', '')
+        found_match = False
+        if ret_cert.get('signature') == \
+                self.get_cert_signature(mode, in_cert) and \
+                ret_cert_start_date == \
+                str(in_cert.not_valid_before) and \
+                ret_cert_expiry_date == \
+                str(in_cert.not_valid_after):
+            found_match = True
+        self.assertTrue(found_match)
+
 
 class ApiCertificateDeleteTestSuite(ApiCertificateTestCaseMixin,
                                     base.FunctionalTest):

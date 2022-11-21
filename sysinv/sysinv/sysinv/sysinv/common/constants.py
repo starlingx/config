@@ -1553,12 +1553,14 @@ CERT_MODE_DOCKER_REGISTRY = 'docker_registry'
 CERT_MODE_OPENSTACK = 'openstack'
 CERT_MODE_OPENSTACK_CA = 'openstack_ca'
 CERT_MODE_OPENLDAP = 'openldap'
+CERT_MODE_OPENLDAP_CA = 'openldap_ca'
 CERT_MODES_SUPPORTED = [CERT_MODE_SSL,
                         CERT_MODE_SSL_CA,
                         CERT_MODE_DOCKER_REGISTRY,
                         CERT_MODE_OPENSTACK,
                         CERT_MODE_OPENSTACK_CA,
                         CERT_MODE_OPENLDAP,
+                        CERT_MODE_OPENLDAP_CA,
                         ]
 CERT_MODES_SUPPORTED_CERT_MANAGER = [CERT_MODE_SSL,
                                      CERT_MODE_DOCKER_REGISTRY,
