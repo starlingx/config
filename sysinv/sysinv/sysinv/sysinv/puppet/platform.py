@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2022 Wind River Systems, Inc.
+# Copyright (c) 2017-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -208,6 +208,14 @@ class PlatformPuppet(base.BasePuppet):
             constants.CONTROLLER, constants.NETWORK_TYPE_OAM)
         private_address = self._get_address_by_name(
             constants.CONTROLLER, constants.NETWORK_TYPE_MGMT)
+        try:
+            private_dc_address = self._get_address_by_name(
+                constants.CONTROLLER, constants.NETWORK_TYPE_ADMIN)
+        except exception.AddressNotFoundByName:
+            private_dc_address = self._get_address_by_name(
+                constants.CONTROLLER, constants.NETWORK_TYPE_MGMT)
+            pass
+
         public_address_url = self._format_url_address(public_address.address)
         https_enabled = self._https_enabled()
 
@@ -218,6 +226,8 @@ class PlatformPuppet(base.BasePuppet):
                 public_address_url,
             'platform::haproxy::params::private_ip_address':
                 private_address.address,
+            'platform::haproxy::params::private_dc_ip_address':
+                private_dc_address.address,
             'platform::haproxy::params::enable_https':
                 https_enabled,
         }

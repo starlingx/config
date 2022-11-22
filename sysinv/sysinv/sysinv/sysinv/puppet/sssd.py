@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2022 Wind River Systems, Inc.
+# Copyright (c) 2022-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -152,12 +152,18 @@ class SssdPuppet(base.BasePuppet):
                     % parameter_name)
             return None
 
-    def _get_network_type(self):
-        return self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
+    def _get_network_type(self, network_type):
+        return self.dbapi.network_get_by_type(network_type)
 
     def _is_host_address_ipv6(self):
-        addr_pool = self.dbapi.address_pool_get(self._get_network_type().pool_uuid)
+        try:
+            # Subclouds may be using the optional admin network
+            network = self._get_network_type(constants.NETWORK_TYPE_ADMIN)
+        except exception.NetworkTypeNotFound:
+            network = self._get_network_type(constants.NETWORK_TYPE_MGMT)
+            pass
 
+        addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
         if addr_pool.family == constants.IPV6_FAMILY:
             return True
         else:

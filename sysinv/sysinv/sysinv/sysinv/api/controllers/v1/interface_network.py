@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -194,7 +194,10 @@ class InterfaceNetworkController(rest.RestController):
                 ethernet_port_mac = tmp_interface['imac']
             _update_host_mgmt_mac(host, ethernet_port_mac)
             cutils.perform_distributed_cloud_config(pecan.request.dbapi,
-                                                        interface_id)
+                                                    interface_id)
+        elif network_type == constants.NETWORK_TYPE_ADMIN:
+            cutils.perform_distributed_cloud_config(pecan.request.dbapi,
+                                                    interface_id)
         elif network_type == constants.NETWORK_TYPE_OAM:
             pecan.request.rpcapi.initialize_oam_config(pecan.request.context, host)
 
@@ -328,16 +331,17 @@ class InterfaceNetworkController(rest.RestController):
             raise wsme.exc.ClientSideError(msg)
 
     def _check_network_type_and_interface_type(self, interface, network_type):
-        # Make sure network type 'mgmt', with if type 'ae',
+        # Make sure network type 'mgmt' or 'admin', with if type 'ae',
         # can only be in ae mode 'active_standby' or '802.3ad'
-        if (network_type == constants.NETWORK_TYPE_MGMT):
-            valid_mgmt_aemode = [constants.AE_MODE_LACP,
-                                 constants.AE_MODE_ACTIVE_STANDBY]
+        if (network_type in [constants.NETWORK_TYPE_MGMT,
+                             constants.NETWORK_TYPE_ADMIN]):
+            valid_aemode = [constants.AE_MODE_LACP,
+                            constants.AE_MODE_ACTIVE_STANDBY]
             if (interface.iftype == constants.INTERFACE_TYPE_AE and
-                    interface.aemode not in valid_mgmt_aemode):
+                    interface.aemode not in valid_aemode):
                 msg = _("Device interface with network type {}, and interface "
                         "type 'aggregated ethernet' must be in mode {}").format(
-                        network_type, ', '.join(valid_mgmt_aemode))
+                        network_type, ', '.join(valid_aemode))
                 raise wsme.exc.ClientSideError(msg)
         # Make sure network type 'oam' or 'cluster-host', with if type 'ae',
         # can only be in ae mode 'active_standby' or 'balanced' or '802.3ad'

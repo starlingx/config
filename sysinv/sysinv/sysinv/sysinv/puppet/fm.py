@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2021 Wind River Systems, Inc.
+# Copyright (c) 2018-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -114,7 +114,13 @@ class FmPuppet(openstack.OpenstackBasePuppet):
         return self._format_private_endpoint(self.SERVICE_PORT)
 
     def get_admin_url(self):
-        return self._format_admin_endpoint(self.SERVICE_PORT)
+        if (self._distributed_cloud_role() ==
+                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+            return self._format_admin_endpoint(
+                self.SERVICE_PORT,
+                address=self._get_subcloud_endpoint_address())
+        else:
+            return self._format_admin_endpoint(self.SERVICE_PORT)
 
     def get_region_name(self):
         return self._get_service_region_name(self.SERVICE_NAME)
