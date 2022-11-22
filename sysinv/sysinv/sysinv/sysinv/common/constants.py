@@ -1820,6 +1820,7 @@ HOOK_PARAMETERS_MAP = {
 }
 
 # Application metadata constants
+APP_METADATA_MAINTAIN_ATTRIBUTES = 'maintain_attributes'
 APP_METADATA_MAINTAIN_USER_OVERRIDES = 'maintain_user_overrides'
 APP_METADATA_APPLY_PROGRESS_ADJUST = 'apply_progress_adjust'
 APP_METADATA_APPLY_PROGRESS_ADJUST_DEFAULT_VALUE = 0

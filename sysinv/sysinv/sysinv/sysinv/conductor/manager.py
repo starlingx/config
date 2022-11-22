@@ -14254,7 +14254,8 @@ class ConductorManager(service.PeriodicService):
         return app_applied
 
     def perform_app_update(self, context, from_rpc_app, to_rpc_app, tarfile,
-                           operation, lifecycle_hook_info_app_update, reuse_user_overrides=None):
+                           operation, lifecycle_hook_info_app_update, reuse_user_overrides=None,
+                           reuse_attributes=None):
         """Handling of application update request (via AppOperator)
 
         :param context: request context.
@@ -14266,12 +14267,14 @@ class ConductorManager(service.PeriodicService):
         :param operation: apply or rollback
         :param lifecycle_hook_info_app_update: LifecycleHookInfo object
         :param reuse_user_overrides: (optional) True or False
+        :param reuse_attributes: (optional) True or False
 
         """
         lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
 
         self._app.perform_app_update(from_rpc_app, to_rpc_app, tarfile,
-                                     operation, lifecycle_hook_info_app_update, reuse_user_overrides)
+                                     operation, lifecycle_hook_info_app_update, reuse_user_overrides,
+                                     reuse_attributes)
 
     def perform_app_remove(self, context, rpc_app, lifecycle_hook_info_app_remove, force=False):
         """Handling of application removal request (via AppOperator)
