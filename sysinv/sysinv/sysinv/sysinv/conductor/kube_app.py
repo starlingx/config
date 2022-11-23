@@ -4769,8 +4769,11 @@ class FluxCDHelper(object):
         """helm_chart_dict is of the form returned by _kube.get_custom_resource().
         Returns: message of first status.condition
         """
-        if 'status' in helm_chart_dict and \
+        if not helm_chart_dict:
+            return ''
+        elif 'status' in helm_chart_dict and \
                 'conditions' in helm_chart_dict['status'] and \
+                len(helm_chart_dict['status']['conditions']) > 0 and \
                 'message' in helm_chart_dict['status']['conditions'][0]:
             return helm_chart_dict['status']['conditions'][0]['message']
         else:
