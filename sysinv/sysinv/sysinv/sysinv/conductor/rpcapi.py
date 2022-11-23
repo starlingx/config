@@ -791,6 +791,13 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
             )
         )
 
+    def update_admin_config(self, context, host):
+        """Synchronously, have the conductor update the admin configuration.
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('update_admin_config', host=host))
+
     def update_host_filesystem_config(self, context,
                                       host=None,
                                       filesystem_list=None):
