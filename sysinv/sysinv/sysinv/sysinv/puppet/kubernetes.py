@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2020 Wind River Systems, Inc.
+# Copyright (c) 2018-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -20,6 +20,7 @@ from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils
 from sysinv.common import device as dconstants
+from sysinv.common.retrying import retry
 from sysinv import objects
 from sysinv.puppet import base
 from sysinv.puppet import interface
@@ -40,6 +41,10 @@ KUBECONFIG = "--kubeconfig=%s" % kubernetes.KUBERNETES_ADMIN_CONF
 # kubernetes root CA certificate params
 KUBE_ROOTCA_CERT_NS = 'deployment'
 KUBE_ROOTCA_CERT_SECRET = 'system-kube-rootca-certificate'
+
+# retry for urllib3 max retry error
+API_RETRY_ATTEMPT_NUMBER = 20
+API_RETRY_INTERVAL = 10 * 1000
 
 
 class KubernetesPuppet(base.BasePuppet):
@@ -226,6 +231,13 @@ class KubernetesPuppet(base.BasePuppet):
 
         return config
 
+    def _retry_on_token(ex):  # pylint: disable=no-self-argument
+        LOG.warn('Retrying in _get_kubernetes_join_cmd')
+        return True
+
+    @retry(stop_max_attempt_number=API_RETRY_ATTEMPT_NUMBER,
+           wait_fixed=API_RETRY_INTERVAL,
+           retry_on_exception=_retry_on_token)
     def _get_kubernetes_join_cmd(self, host):
         # The token expires after 24 hours and is needed for a reinstall.
         # The puppet manifest handles the case where the node already exists.
@@ -283,7 +295,7 @@ class KubernetesPuppet(base.BasePuppet):
             join_cmd = join_cmd.strip() + join_cmd_additions
             LOG.info('get_kubernetes_join_cmd join_cmd=%s' % join_cmd)
         except Exception:
-            LOG.exception("Exception generating bootstrap token")
+            LOG.warning("Exception generating bootstrap token")
             raise exception.SysinvException(
                 'Failed to generate bootstrap token')
 
