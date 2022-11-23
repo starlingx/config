@@ -552,6 +552,8 @@ def get_dc_role():
     global dc_role
     if dc_role == DC_ROLE_UNDETECTED:
         token = get_token()
+        if not token:
+            raise Exception('Failed to obtain keystone token')
         service_type = 'platform'
         service_name = 'sysinv'
         sysinv_url = token.get_service_internal_url(service_type,

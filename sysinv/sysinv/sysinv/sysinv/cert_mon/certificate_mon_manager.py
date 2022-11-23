@@ -347,9 +347,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         self.openldapcert_monitor = watcher.OpenldapCert_CertWatcher()
         self.openldapcert_monitor.initialize()
 
-    def start_monitor(self):
-        utils.init_keystone_auth_opts()
-        dc_role = utils.get_dc_role()
+    def start_monitor(self, dc_role):
         while True:
             try:
                 # init platform cert monitors
