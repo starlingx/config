@@ -1,6 +1,6 @@
 # sim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2019-2021 Wind River Systems, Inc.
+# Copyright (c) 2019-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -9,18 +9,21 @@
 
 """Helm utilities and helper functions."""
 
+import base64
 import os
-from eventlet.green import subprocess
-import ruamel.yaml as yaml
-from oslo_log import log as logging
-from sysinv.agent import rpcapi as agent_rpcapi
-from sysinv.common import kubernetes
-from sysinv.common import exception
-from sysinv.openstack.common import context
-import tempfile
-import threading
 import psutil
 import retrying
+import ruamel.yaml as yaml
+import tempfile
+import threading
+import zlib
+
+from eventlet.green import subprocess
+from oslo_log import log as logging
+from sysinv.agent import rpcapi as agent_rpcapi
+from sysinv.common import exception
+from sysinv.common import kubernetes
+from sysinv.openstack.common import context
 
 LOG = logging.getLogger(__name__)
 
@@ -321,3 +324,41 @@ def install_helm_chart_with_dry_run(args=None):
             timer.cancel()
         os.remove(chartfile)
         os.rmdir(tmpdir)
+
+
+def decompress_helm_release_data(release_data):
+    """ Convert release data to format for applying transformations
+
+    :param release_data: Helm release secret data
+                         Format is gzip double base64 encoded
+    :return: string
+    """
+    release_data = base64.b64decode(release_data)
+    release_data = base64.b64decode(release_data)
+    # wbits value needs to specify 16 for gzip header/trailer plus window size.
+    # Window size needs to be at least the one used for compression
+    # this set the largest
+    release_data = zlib.decompress(release_data, wbits=16 + zlib.MAX_WBITS).decode('utf-8')
+
+    return str(release_data)
+
+
+def compress_helm_release_data(release_data):
+    """ Convert release data to format for storing in cluster
+
+    :param release_data: Helm release secret data
+    :return: string
+             Format is gzip double base64 encoded
+    """
+    # wbits value of 25 specifies the minimum window size
+    # and gzip header/trailer.
+    compressed_object = zlib.compressobj(wbits=25)
+
+    release_data = compressed_object.compress(release_data.encode('utf-8'))
+    release_data += compressed_object.flush()
+    release_data = base64.b64encode(release_data)
+    release_data = base64.b64encode(release_data)
+
+    release_data = release_data.decode('utf-8')
+
+    return release_data
