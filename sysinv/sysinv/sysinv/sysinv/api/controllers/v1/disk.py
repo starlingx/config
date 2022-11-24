@@ -33,7 +33,7 @@ from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import partition
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
-from sysinv.agent import rpcapi as agent_rpcapi
+from sysinv.agent import rpcapiproxy as agent_rpcapi
 from sysinv.common import exception
 from sysinv.common import constants
 from sysinv.common import utils as cutils

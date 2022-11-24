@@ -37,7 +37,7 @@ from oslo_config import cfg
 from oslo_log import log
 from sysinv._i18n import _
 from sysinv.common import service as sysinv_service
-from sysinv.conductor import rpcapi as conductor_rpcapi
+from sysinv.conductor import rpcapiproxy as conductor_rpcapi
 from sysinv.openstack.common import context
 
 CONF = cfg.CONF

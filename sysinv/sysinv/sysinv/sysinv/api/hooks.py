@@ -34,7 +34,7 @@ from sysinv._i18n import _
 from sysinv.api.policies import base as base_policy
 from sysinv.common import context
 from sysinv.common import utils
-from sysinv.conductor import rpcapi
+from sysinv.conductor import rpcapiproxy as rpcapi
 from sysinv.db import api as dbapi
 from sysinv.common import policy
 from webob import exc

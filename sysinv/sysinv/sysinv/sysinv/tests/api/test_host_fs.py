@@ -52,7 +52,7 @@ class ApiHostFSTestCaseMixin(base.FunctionalTest,
                                                     30,
                                                     'docker-lv')
         self.fake_conductor_api = FakeConductorAPI()
-        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI')
+        p = mock.patch('sysinv.conductor.rpcapiproxy.ConductorAPI')
         self.mock_conductor_api = p.start()
         self.mock_conductor_api.return_value = self.fake_conductor_api
         self.addCleanup(p.stop)

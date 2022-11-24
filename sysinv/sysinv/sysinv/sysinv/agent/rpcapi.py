@@ -294,3 +294,19 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        transaction_id=transaction_id,
                                        retimer_included=retimer_included),
                          topic=topic)
+
+    # TODO(RPCHybridMode): This is only useful for 21.12 -> 22.12 upgrades.
+    #  Remove this method in new releases, when it's no longer necessary to
+    #  perform upgrade through hybrid mode messaging system
+    def delete_sysinv_hybrid_state(self, context, host_uuid):
+        """Asynchronously, have the agent to delete sysinv hybrid
+        mode flag
+
+        :param context: request context.
+        :param host_uuid: ihost uuid unique id
+        :returns: pass or fail
+        """
+
+        return self.cast(context,
+                         self.make_msg('delete_sysinv_hybrid_state',
+                                       host_uuid=host_uuid))

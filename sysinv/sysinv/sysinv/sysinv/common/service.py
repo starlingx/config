@@ -25,7 +25,7 @@ from oslo_service import service
 from sysinv.openstack.common import context
 from sysinv.openstack.common import periodic_task
 from sysinv.openstack.common import rpc
-from sysinv.openstack.common.rpc import service as rpc_service
+from sysinv.openstack.common import service as base_service
 from sysinv import version
 
 
@@ -47,7 +47,14 @@ cfg.CONF.register_opts([
 CONF = cfg.CONF
 
 
-class PeriodicService(rpc_service.Service, periodic_task.PeriodicTasks):
+class PeriodicService(base_service.Service, periodic_task.PeriodicTasks):
+
+    def __init__(self, manager=None):
+        super(PeriodicService, self).__init__()
+        if manager is None:
+            self.manager = self
+        else:
+            self.manager = manager
 
     def start(self):
         super(PeriodicService, self).start()

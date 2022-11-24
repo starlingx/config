@@ -53,3 +53,4 @@ rfc3986
 importlib-metadata>=3.3.0;python_version=="3.6"
 importlib-resources==5.2.2;python_version=="3.6"
 oslo.policy # Apache-2.0
+zerorpc @ git+https://github.com/0rpc/zerorpc-python.git@99ee6e47c8baf909b97eec94f184a19405f392a2 # MIT

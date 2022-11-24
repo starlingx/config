@@ -59,8 +59,12 @@ class RequestContext(object):
                 'auth_token': self.auth_token,
                 'request_id': self.request_id}
 
+    @classmethod
+    def from_dict(cls, values):
+        return cls(**values)
 
-def get_admin_context(show_deleted="no"):
+
+def get_admin_context(show_deleted=False):
     context = RequestContext(None,
                              tenant=None,
                              is_admin=True,

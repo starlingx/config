@@ -20,7 +20,7 @@ import zlib
 
 from eventlet.green import subprocess
 from oslo_log import log as logging
-from sysinv.agent import rpcapi as agent_rpcapi
+from sysinv.agent import rpcapiproxy as agent_rpcapi
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.openstack.common import context

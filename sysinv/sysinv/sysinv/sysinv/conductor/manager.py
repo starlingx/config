@@ -39,6 +39,7 @@ import re
 import requests
 import ruamel.yaml as yaml
 import shutil
+import six
 import socket
 import tempfile
 import time
@@ -77,7 +78,7 @@ from platform_util.license import license
 from sqlalchemy.orm import exc
 from six.moves import http_client as httplib
 from sysinv._i18n import _
-from sysinv.agent import rpcapi as agent_rpcapi
+from sysinv.agent import rpcapiproxy as agent_rpcapi
 from sysinv.api.controllers.v1 import address_pool
 from sysinv.api.controllers.v1 import cpu_utils
 from sysinv.api.controllers.v1 import kube_app as kube_api
@@ -112,11 +113,14 @@ from sysinv.objects import base as objects_base
 from sysinv.objects import kube_app as kubeapp_obj
 from sysinv.openstack.common import context as ctx
 from sysinv.openstack.common import periodic_task
+from sysinv.openstack.common.rpc import service as rpc_service
 from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
 from sysinv.helm import helm
 from sysinv.helm.lifecycle_constants import LifecycleConstants
 from sysinv.helm.lifecycle_hook import LifecycleHookInfo
+from sysinv.zmq_rpc.zmq_rpc import ZmqRpcServer
+from sysinv.zmq_rpc.zmq_rpc import is_rpc_hybrid_mode_active
 
 
 MANAGER_TOPIC = 'sysinv.conductor_manager'
@@ -222,9 +226,29 @@ class ConductorManager(service.PeriodicService):
     my_host_id = None
 
     def __init__(self, host, topic):
+        self.host = host
+        self.topic = topic
         serializer = objects_base.SysinvObjectSerializer()
-        super(ConductorManager, self).__init__(host, topic,
-                                               serializer=serializer)
+        super(ConductorManager, self).__init__()
+        self._rpc_service = None
+        self._zmq_rpc_service = None
+
+        # TODO(RPCHybridMode): Usage of RabbitMQ RPC is only required for
+        #  21.12 -> 22.12 upgrades.
+        #  Remove this in new releases, when it's no longer necessary do the
+        #  migration work through RabbitMQ and ZeroMQ
+        # NOTE: If more switches are necessary before RabbitMQ removal,
+        # refactor this into an RPC layer
+        if not CONF.rpc_backend_zeromq or is_rpc_hybrid_mode_active():
+            self._rpc_service = rpc_service.Service(self.host, self.topic,
+                                                    manager=self,
+                                                    serializer=serializer)
+        if CONF.rpc_backend_zeromq:
+            self._zmq_rpc_service = ZmqRpcServer(
+                self,
+                CONF.rpc_zeromq_conductor_bind_ip,
+                CONF.rpc_zeromq_conductor_bind_port)
+
         self.dbapi = None
         self.fm_api = None
         self.fm_log = None
@@ -282,6 +306,12 @@ class ConductorManager(service.PeriodicService):
         self._start()
         # accept API calls and run periodic tasks after
         # initializing conductor manager service
+        if self._rpc_service:
+            self._rpc_service.start()
+
+        if self._zmq_rpc_service:
+            self._zmq_rpc_service.run()
+
         super(ConductorManager, self).start()
 
         # greenthreads must be called after super.start for it to work properly
@@ -392,6 +422,13 @@ class ConductorManager(service.PeriodicService):
     def periodic_tasks(self, context, raise_on_error=False):
         """ Periodic tasks are run at pre-specified intervals. """
         return self.run_periodic_tasks(context, raise_on_error=raise_on_error)
+
+    def stop(self):
+        if self._rpc_service:
+            self._rpc_service.stop()
+        if self._zmq_rpc_service:
+            self._zmq_rpc_service.stop()
+        super(ConductorManager, self).stop()
 
     @contextmanager
     def session(self):
@@ -12187,6 +12224,16 @@ class ConductorManager(service.PeriodicService):
         # Delete upgrade record
         self.dbapi.software_upgrade_destroy(upgrade.uuid)
 
+        # TODO(RPCHybridMode): This is only useful for 21.12 -> 22.12 upgrades.
+        #  Remove this in new releases, when it's no longer necessary
+        #  do the migration work through RabbitMQ and ZeroMQ
+        if (tsc.system_mode is not constants.SYSTEM_MODE_SIMPLEX):
+            rpcapi = agent_rpcapi.AgentAPI()
+            controller_1 = self.dbapi.ihost_get_by_hostname(
+                constants.CONTROLLER_1_HOSTNAME)
+            LOG.info("Deleting Sysinv Hybrid state")
+            rpcapi.delete_sysinv_hybrid_state(context, controller_1['uuid'])
+
         # Clear upgrades alarm
         entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,
                                         constants.CONTROLLER_HOSTNAME)
@@ -12778,6 +12825,9 @@ class ConductorManager(service.PeriodicService):
             LOG.info("Overwriting file %s in %s " %
                      (ceph_conf_filename, tsc.PLATFORM_CEPH_CONF_PATH))
 
+        # contents might be bytes, make sure it is str
+        contents = six.ensure_str(contents)
+
         try:
             with open(opt_ceph_conf_file, 'w+') as f:
                 f.write(contents)
@@ -12794,6 +12844,10 @@ class ConductorManager(service.PeriodicService):
         """
 
         LOG.info("Install license file.")
+
+        # contents might be bytes, make sure it is str
+        contents = six.ensure_str(contents)
+
         license_file = os.path.join(tsc.PLATFORM_CONF_PATH,
                                     constants.LICENSE_FILE)
         temp_license_file = license_file + '.temp'
@@ -13017,6 +13071,9 @@ class ConductorManager(service.PeriodicService):
         mode = config_dict.get('mode', None)
 
         LOG.info("config_certificate mode=%s" % mode)
+
+        # pem_contents might be bytes, make sure it is str
+        pem_contents = six.ensure_str(pem_contents)
 
         cert_list, private_key = \
             self._extract_keys_from_pem(mode, pem_contents,

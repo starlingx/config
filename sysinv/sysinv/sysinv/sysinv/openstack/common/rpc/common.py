@@ -138,6 +138,28 @@ class Timeout(RPCException):
             method=method or _('<unknown>'))
 
 
+class LostRemote(RPCException):
+    """Signifies that a heartbeat has failed for zerorpc rpc backend.
+
+        This exception is raised if a heartbeat is not received while
+        waiting for a response from the remote side.
+    """
+    message = _('%(lost_remote_msg)s - '
+                'topic: "%(topic)s", RPC method: "%(method)s" ')
+
+    def __init__(self, lost_remote_msg=None, topic=None, method=None):
+        self.lost_remote_msg = _('Lost remote after waiting for heartbeat')
+        self.topic = topic
+        self.method = method
+        if lost_remote_msg:
+            self.lost_remote_msg = lost_remote_msg
+        super(LostRemote, self).__init__(
+            None,
+            lost_remote_msg=self.lost_remote_msg,
+            topic=topic or _('<unknown>'),
+            method=method or _('<unknown>'))
+
+
 class DuplicateMessageError(RPCException):
     message = _("Found duplicate message(%(msg_id)s). Skipping it.")
 

@@ -10,7 +10,7 @@ import yaml
 
 from sysinv.common import constants
 from sysinv.common import service
-from sysinv.conductor import rpcapi as conductor_rpcapi
+from sysinv.conductor import rpcapiproxy as conductor_rpcapi
 from sysinv.db import api
 from sysinv.openstack.common import context
 

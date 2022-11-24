@@ -75,3 +75,7 @@ class RequestContext(context.RequestContext):
         result.update(super(RequestContext, self).to_dict())
 
         return result
+
+    @classmethod
+    def from_dict(cls, values):
+        return cls(**values)

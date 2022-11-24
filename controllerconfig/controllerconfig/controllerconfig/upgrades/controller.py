@@ -40,6 +40,7 @@ from tsconfig.tsconfig import CONTROLLER_UPGRADE_FLAG
 from tsconfig.tsconfig import CONTROLLER_UPGRADE_COMPLETE_FLAG
 from tsconfig.tsconfig import CONTROLLER_UPGRADE_FAIL_FLAG
 from tsconfig.tsconfig import CONTROLLER_UPGRADE_STARTED_FLAG
+from tsconfig.tsconfig import SYSINV_HYBRID_RPC_FLAG
 
 from controllerconfig.common import constants
 from controllerconfig import utils as cutils
@@ -892,6 +893,11 @@ def upgrade_controller(from_release, to_release):
     except subprocess.CalledProcessError:
         LOG.error("Failed to stop %s service" % "sysinv-agent")
         raise
+
+    # Creating Sysinv Hybrid Mode flag
+    # TODO(RPCHybridMode): This is only required for 21.12 -> 22.12 upgrades.
+    #  Remove in future release.
+    open(SYSINV_HYBRID_RPC_FLAG, "w").close()
 
     # Mount required filesystems from mate controller
     LOG.info("Mounting filesystems")

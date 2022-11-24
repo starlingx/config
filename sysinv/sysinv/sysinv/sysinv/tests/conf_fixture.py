@@ -38,6 +38,7 @@ class ConfFixture(config_fixture.Config):
         self.conf.set_default('host', 'fake-mini')
         self.conf.set_default('rpc_backend',
                               'sysinv.openstack.common.rpc.impl_fake')
+        self.conf.set_default('rpc_backend_zeromq', False)
         self.conf.set_default('rpc_cast_timeout', 5)
         self.conf.set_default('rpc_response_timeout', 5)
         self.conf.set_default('connection', "sqlite://", group='database')
