@@ -200,14 +200,13 @@ LOCK_RUNTIME_CONFIG_CHECK = 'runtime_config_check'
 # Keystone users whose passwords change are monitored by keystone listener, and
 # the puppet classes to update the service after the passwords change.
 # TODO(yuxing): there are still several keystone users are not covered by this
-# dictionary, e.g. dcorch,dcdbsync, and smapi etc. Need to consider to
-# create puppet class to reload the related service in case their passwords
+# dictionary, e.g. dcmanager, dcorch,dcdbsync, and smapi etc. Need to consider
+# to create puppet class to reload the related service in case their passwords
 # are changed in keystone and keyring.
 KEYSTONE_USER_PASSWORD_UPDATE = {
     "sysinv": "openstack::keystone::sysinv::password::runtime",
     "admin": "openstack::keystone::password::runtime",
     "barbican": "openstack::keystone::barbican::password::runtime",
-    "dcmanager": "openstack::keystone::dcmanager::password::runtime",
     "fm": "openstack::keystone::fm::password::runtime",
     "mtce": "platform::mtce::runtime",
     "patching": "openstack::keystone::patching::password::runtime",
