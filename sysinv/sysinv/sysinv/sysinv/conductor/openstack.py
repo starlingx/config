@@ -379,31 +379,17 @@ class OpenStackOperator(object):
     ########################
     # keystone user methods
     ########################
-    def get_keystone_users(self, username, service_config=PLATFORM_CONFIG):
+    def get_keystone_users(self, service_config=PLATFORM_CONFIG):
         """Get a list of all users in keystone otherwise an empty list."""
+
         user_list = []
-
         try:
-            if username == constants.SYSINV_USERNAME:
-                self._renew_keystone_and_barbican_clients(service_config)
-
+            self._renew_keystone_and_barbican_clients(service_config)
             user_list = self._get_keystone_client(service_config).users.list()
         except Exception as e:
             LOG.error("Failed to get keystone user list:\n%s" % str(e))
 
         return user_list
-
-    def get_platform_keystone_user(self, username):
-        """Return platform keystone user otherwise None."""
-        users = self.get_keystone_users(username)
-        if users:
-            try:
-                return [user for user in users if user.name == username][0]
-            except Exception as e:
-                LOG.error("Failed to get platform keystone user: %s\n%s"
-                           % (username, str(e)))
-
-        return None
 
     #########################
     # Primary Region Sysinv
