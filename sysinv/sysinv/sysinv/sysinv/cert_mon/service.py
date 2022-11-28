@@ -15,6 +15,8 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+import time
+
 from oslo_config import cfg
 from oslo_log import log as logging
 import oslo_messaging
@@ -27,6 +29,9 @@ from sysinv.common import constants
 
 RPC_API_VERSION = '1.0'
 TOPIC_DCMANAGER_NOTFICATION = 'DCMANAGER-NOTIFICATION'
+
+DC_ROLE_TIMEOUT_SECONDS = 180
+DC_ROLE_DELAY_SECONDS = 5
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
@@ -41,45 +46,59 @@ class CertificateMonitorService(service.Service):
         self.topic = TOPIC_DCMANAGER_NOTFICATION
         self._rpc_server = None
         self.target = None
+        self.dc_role = None
         self.manager = CertificateMonManager()
 
     def start(self):
         super(CertificateMonitorService, self).start()
-        self.manager.start_monitor()
-        dc_role = utils.get_dc_role()
-        if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-            self.manager.start_audit()
+        self._get_dc_role()
+        self.manager.start_monitor(self.dc_role)
+        self.manager.start_audit()
+        if self.dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
             self.target = oslo_messaging.Target(
                 version=self.rpc_api_version,
                 server=CONF.host,
                 topic=self.topic)
-
             self._rpc_server = rpc_messaging.get_rpc_server(self.target, self)
             self._rpc_server.start()
-        elif dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-            self.manager.start_audit()
 
     def stop(self):
-        dc_role = utils.get_dc_role()
-        if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-            self._stop_rpc_server()
-            self.manager.stop_audit()
-        elif dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-            self.manager.stop_audit()
-
+        self._stop_rpc_server()
+        self.manager.stop_audit()
         self.manager.stop_monitor()
         super(CertificateMonitorService, self).stop()
         rpc_messaging.cleanup()
 
+    def _get_dc_role(self):
+        if self.dc_role:
+            return self.dc_role
+        utils.init_keystone_auth_opts()
+        delay = DC_ROLE_DELAY_SECONDS
+        max_dc_role_attempts = DC_ROLE_TIMEOUT_SECONDS // delay
+        dc_role_attempts = 1
+        while dc_role_attempts < max_dc_role_attempts:
+            try:
+                self.dc_role = utils.get_dc_role()
+                if self.dc_role:
+                    return self.dc_role
+            except Exception as e:
+                LOG.info("Unable to get DC role: %s [attempt: %s]",
+                         str(e), dc_role_attempts)
+            time.sleep(delay)
+            dc_role_attempts += 1
+        raise Exception('Failed to obtain DC role from keystone')
+
     def _stop_rpc_server(self):
         # Stop RPC server
-        try:
-            self._rpc_server.stop()
-            self._rpc_server.wait()
-            LOG.info('Engine service stopped successfully')
-        except Exception as ex:
-            LOG.error('Failed to stop engine service: %s' % ex)
-            LOG.exception(ex)
+        # only for DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER
+        if self._rpc_server:
+            try:
+                self._rpc_server.stop()
+                self._rpc_server.wait()
+                LOG.info('Engine service stopped successfully')
+            except Exception as ex:
+                LOG.error('Failed to stop engine service: %s' % ex)
+                LOG.exception(ex)
 
     def subcloud_online(self, context, subcloud_name=None):
         """
