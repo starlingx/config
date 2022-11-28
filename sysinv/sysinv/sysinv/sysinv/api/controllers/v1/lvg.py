@@ -608,6 +608,15 @@ def _create(lvg):
     # Semantic checks
     lvg = _check("add", lvg)
 
+    # Make sure there is only a single source for /var/lib/nova/instances
+    if lvg['lvm_vg_name'] == constants.LVG_NOVA_LOCAL:
+        if cutils.is_filesystem_enabled(pecan.request.dbapi, lvg['ihost_uuid'],
+                                        constants.FILESYSTEM_NAME_INSTANCES):
+            raise wsme.exc.ClientSideError(
+                _("%s volume group can not be added while filesystem %s exists. Remove "
+                  "the filesytem and try again." % (lvg['lvm_vg_name'],
+                                                    constants.FILESYSTEM_NAME_INSTANCES)))
+
     # See if this volume group already exists
     ilvgs = pecan.request.dbapi.ilvg_get_all(forihostid=forihostid)
     lvg_in_db = False

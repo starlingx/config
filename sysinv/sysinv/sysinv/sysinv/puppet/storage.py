@@ -179,7 +179,6 @@ class StoragePuppet(base.BasePuppet):
         cgts_devices = []
         nova_final_devices = []
         nova_transition_devices = []
-        cinder_devices = []
         ceph_mon_devices = []
         rook_osd_devices = []
 
@@ -201,15 +200,12 @@ class StoragePuppet(base.BasePuppet):
                     nova_transition_devices.append(pv.disk_or_part_device_path)
                 else:
                     nova_final_devices.append(pv.disk_or_part_device_path)
-            elif pv.lvm_vg_name == constants.LVG_CINDER_VOLUMES:
-                if constants.CINDER_DRBD_DEVICE not in cinder_devices:
-                    cinder_devices.append(constants.CINDER_DRBD_DEVICE)
             elif pv.lvm_vg_name.startswith("ceph"):
                 rook_osd_devices.append(pv.disk_or_part_device_path)
 
         # The final_filter contain only the final global_filter devices, while the transition_filter
         # contains the transient list of removing devices as well
-        final_devices = cgts_devices + cinder_devices + nova_final_devices + ceph_mon_devices
+        final_devices = cgts_devices + nova_final_devices + ceph_mon_devices
         final_devices += rook_osd_devices
         final_filter = self._operator.storage.format_lvm_filter(final_devices)
 
@@ -224,7 +220,6 @@ class StoragePuppet(base.BasePuppet):
             'platform::lvm::params::transition_filter': transition_filter,
 
             'platform::lvm::vg::cgts_vg::physical_volumes': cgts_devices,
-            'platform::lvm::vg::cinder_volumes::physical_volumes': cinder_devices,
             'platform::lvm::vg::nova_local::physical_volumes': nova_final_devices,
         }
 
@@ -255,10 +250,29 @@ class StoragePuppet(base.BasePuppet):
         })
         return config
 
+    def _is_instances_filesystem_enabled(self, host):
+        filesystems = self.dbapi.host_fs_get_by_ihost(host.id)
+        config = {}
+
+        for fs in filesystems:
+            if fs.name == constants.FILESYSTEM_NAME_INSTANCES:
+                config.update({
+                    'platform::filesystem::instances::params::instances_enabled': True,
+                    'platform::filesystem::instances::params::lv_size': fs.size,
+                })
+                return config
+
+        config.update({
+            'platform::filesystem::instances::params::instances_enabled': False,
+        })
+        return config
+
     def _get_host_fs_config(self, host):
         config = {}
         conversion_config = self._is_image_conversion_filesystem_enabled(host)
         config.update(conversion_config)
+        instances_config = self._is_instances_filesystem_enabled(host)
+        config.update(instances_config)
 
         filesystems = self.dbapi.host_fs_get_by_ihost(host.id)
         for fs in filesystems:

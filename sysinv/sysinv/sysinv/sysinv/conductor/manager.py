@@ -8049,6 +8049,8 @@ class ConductorManager(service.PeriodicService):
                     'platform::filesystem::kubelet::runtime',
                 constants.FILESYSTEM_NAME_IMAGE_CONVERSION:
                     'platform::filesystem::conversion::runtime',
+                constants.FILESYSTEM_NAME_INSTANCES:
+                    'platform::filesystem::instances::runtime',
                 constants.FILESYSTEM_NAME_LOG:
                     'platform::filesystem::log::runtime',
             }

@@ -3781,3 +3781,12 @@ def get_system_ca_file():
         if os.path.exists(ca):
             return ca
     return None
+
+
+def is_filesystem_enabled(dbapi, host_id_or_uuid, fs_name):
+    """Check if a host filesystem is present """
+    filesystems = dbapi.host_fs_get_by_ihost(host_id_or_uuid)
+    for fs in filesystems:
+        if fs.name == fs_name:
+            return True
+    return False
