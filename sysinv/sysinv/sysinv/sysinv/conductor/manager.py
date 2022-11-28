@@ -2343,8 +2343,26 @@ class ConductorManager(service.PeriodicService):
                         self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_NETWORK_PORT,
                                                 entity_instance_id)
 
+    def _get_port_id_subfield(self, input_text):
+        str_found = ""
+        try:
+            regexPattern = '\[' + '(.+?)' + '\]'
+            str_found = re.search(regexPattern, input_text).group(1)
+        except AttributeError:
+            str_found = None
+        return str_found
+
+    def _get_port_desc_subfield(self, input_text):
+        str_found = ""
+        try:
+            regexPattern = '(.+?)' + '\['
+            str_found = re.search(regexPattern, input_text).group(1)
+        except AttributeError:
+            str_found = None
+        return str_found
+
     def _get_replaced_ports_on_pciaddr(self, ihost, inic_pciaddr_dict, replaced_ports,
-                                       unreported_ports, cannot_replace):
+                                       unreported_ports, cannot_replace, updated_description):
         """ Get port list of replaced port device on the same on a PCI address,
             if vendor is different or vendor is the same and device-id differs.
             It is necessary that the associated interface to be of class "none"
@@ -2354,6 +2372,8 @@ class ConductorManager(service.PeriodicService):
         :param replaced_ports: output list containing replaced ports on the DB
         :param unreported_ports: output list containing unreported ports on the DB
         :param cannot_replace: output set containing ports with configured interfaces on the DB
+        :param updated_description: output set containing ports that changed the description of
+                                vendor and/or device, but not the numerical ID.
         """
         eth_ports = self.dbapi.ethernet_port_get_by_host(ihost['uuid'])
         alarm_port_list = list()
@@ -2367,9 +2387,15 @@ class ConductorManager(service.PeriodicService):
                 continue
 
             if port.pciaddr in inic_pciaddr_dict.keys():
-                if (inic_pciaddr_dict[port.pciaddr]['pvendor'] != port.pvendor
-                        or (inic_pciaddr_dict[port.pciaddr]['pvendor'] == port.pvendor
-                        and inic_pciaddr_dict[port.pciaddr]['pdevice'] != port.pdevice)):
+                inic_vendor_id = self._get_port_id_subfield(
+                                                        inic_pciaddr_dict[port.pciaddr]['pvendor'])
+                inic_device_id = self._get_port_id_subfield(
+                                                        inic_pciaddr_dict[port.pciaddr]['pdevice'])
+                db_vendor_id = self._get_port_id_subfield(port.pvendor)
+                db_device_id = self._get_port_id_subfield(port.pdevice)
+                # check if is a new device
+                if (inic_vendor_id != db_vendor_id
+                        or (inic_vendor_id == db_vendor_id and inic_device_id != db_device_id)):
                     if (iface.ifclass is None and not iface.used_by):
                         LOG.info('Detected port %s addr:%s replaced from "%s/%s" to "%s/%s"'
                                 % (port.name, port.pciaddr, port.pvendor, port.pdevice,
@@ -2384,6 +2410,19 @@ class ConductorManager(service.PeriodicService):
                         cannot_replace.add(port.pciaddr)
                         alarm_port_list.append((port, "OS reports vendor or device-id without match"
                                                 " on DB for port {}".format(port.name)))
+                # if the OS changed only the description, mark to update the fields pvendor and
+                # pdevice
+                if (inic_vendor_id == db_vendor_id and inic_device_id == db_device_id):
+                    inic_vendor_desc = self._get_port_desc_subfield(
+                                                        inic_pciaddr_dict[port.pciaddr]['pvendor'])
+                    db_vendor_desc = self._get_port_desc_subfield(port.pvendor)
+                    inic_device_desc = self._get_port_desc_subfield(
+                                                        inic_pciaddr_dict[port.pciaddr]['pdevice'])
+                    db_device_desc = self._get_port_desc_subfield(port.pdevice)
+                    if (inic_vendor_desc != db_vendor_desc or inic_device_desc != db_device_desc):
+                        port.pvendor = inic_pciaddr_dict[port.pciaddr]['pvendor']
+                        port.pdevice = inic_pciaddr_dict[port.pciaddr]['pdevice']
+                        updated_description.append(port)
             else:
                 if (iface.ifclass is None and not iface.used_by):
                     LOG.info('Detected port %s addr:%s unreported and class=none on DB "%s/%s"'
@@ -2423,9 +2462,10 @@ class ConductorManager(service.PeriodicService):
         """
         replaced_ports = list()
         unreported_ports = list()
+        updated_description = list()
         # Get list of replaced device ports on each PCI address reported
         self._get_replaced_ports_on_pciaddr(ihost, inic_pciaddr_dict, replaced_ports,
-                                            unreported_ports, cannot_replace)
+                                            unreported_ports, cannot_replace, updated_description)
         # remove old port and interface, processing inic_dict_array will create the new ones
         to_destroy = replaced_ports + unreported_ports
         for port in to_destroy:
@@ -2444,6 +2484,14 @@ class ConductorManager(service.PeriodicService):
             except Exception as ex:
                 LOG.exception("Failed to delete %s port id %s, exception %s" %
                                 (op_type, port.id, type(ex)))
+        # if there is vendor and/or device description update only, save on the database
+        for port in updated_description:
+            updates = {'pvendor': port.pvendor,
+                       'pdevice': port.pdevice}
+            LOG.info("Update description for {} with vendor={} and device={}".format(port.name,
+                                                                        port.pvendor, port.pdevice))
+            self.dbapi.ethernet_port_update(port['id'], updates)
+
         return (len(to_destroy) > 0)
 
     def _set_ethernet_port_node_id(self, ihost, port):
