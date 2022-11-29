@@ -13,6 +13,7 @@ import keyring
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import six
 import subprocess
 import tempfile
 import yaml
@@ -83,12 +84,23 @@ def execute_migration_scripts(from_release, to_release, action,
         migration_script = os.path.join(migration_script_dir, f)
         try:
             LOG.info("Executing migration script %s" % migration_script)
-            subprocess.check_output([migration_script,
-                                     from_release,
-                                     to_release,
-                                     action],
-                                    stderr=subprocess.STDOUT,
-                                    universal_newlines=True)
+            # TODO(heitormatsui): remove py2 code when
+            # CentOS and zuul py2.7 are deprecated
+            if six.PY2:
+                subprocess.check_output([migration_script,
+                                         from_release,
+                                         to_release,
+                                         action],
+                                        stderr=subprocess.STDOUT,
+                                        universal_newlines=True)
+            else:
+                subprocess.run([migration_script,
+                                from_release,
+                                to_release,
+                                action],
+                               stdout=subprocess.DEVNULL,
+                               stderr=subprocess.STDOUT,
+                               universal_newlines=True)
         except subprocess.CalledProcessError as e:
             # log script output if script executed but failed.
             LOG.error("Migration script %s failed with returncode %d"
@@ -96,9 +108,9 @@ def execute_migration_scripts(from_release, to_release, action,
                       (migration_script, e.returncode, e.output))
             # Abort when a migration script fails
             raise
-        except Exception:
-            # log exception if scipt not executed.
-            LOG.exception()
+        except Exception as e:
+            # log exception if script not executed.
+            LOG.exception(e)
             raise
 
 
