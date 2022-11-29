@@ -146,7 +146,8 @@ def get_app_install_root_path_ownership():
 
 Chart = namedtuple('Chart', 'metadata_name name namespace location release labels sequenced')
 FluxCDChart = namedtuple('FluxCDChart', 'metadata_name name namespace location '
-                                        'release chart_os_path chart_label')
+                                        'release chart_os_path chart_label '
+                                        'helm_repo_name')
 
 
 class AppOperator(object):
@@ -1266,6 +1267,7 @@ class AppOperator(object):
         with io.open(helmrepo_path, 'r', encoding='utf-8') as f:
             helm_repo_yaml = next(yaml.safe_load_all(f))
             helm_repo_url = helm_repo_yaml["spec"]["url"]
+            helm_repo_name = helm_repo_yaml["metadata"]["name"]
 
         charts = []
         for chart_group in charts_groups:
@@ -1299,7 +1301,8 @@ class AppOperator(object):
                         location=location,
                         release=release,
                         chart_os_path=chart_path,
-                        chart_label=chart_name
+                        chart_label=chart_name,
+                        helm_repo_name=helm_repo_name
                     )
                     charts.append(chart_obj)
         return charts
@@ -1677,7 +1680,9 @@ class AppOperator(object):
             """
             resource['spec']['suspend'] = True
 
-        def _recover_from_failed_helm_chart_on_app_apply(metadata_name, namespace):
+        def _recover_from_failed_helm_chart_on_app_apply(metadata_name,
+                                                         namespace,
+                                                         helm_repo_name):
             """ Recovery logic for FluxCD on apply
 
             HelmChart reconciliation needs to be triggered.
@@ -1685,6 +1690,7 @@ class AppOperator(object):
 
             :param metadata_name: metadata name from helmrelease.yaml
             :param namespace: namespace from kustomization.yaml
+            :param helm_repo_name: metadata name from helmrepository.yaml
 
             :return: tuple(attempt, error).
                      attempt is True if recovery is triggered
@@ -1721,25 +1727,44 @@ class AppOperator(object):
             if not attempt:
                 return attempt, False
 
-            # Flip to spec.suspended to True from HelmChart
+            # Force HelmRepository reconciliation now, saves up to reconciliation
+            # timeout for the specific resource. Same trigger as with HelmChart.
             try:
-                helm_chart_resource['spec']['suspend'] = True
-                group, version = helm_chart_resource['apiVersion'].split('/')
-                self._kube.apply_custom_resource(
-                    group,
-                    version,
-                    helm_chart_resource['metadata']['namespace'],
-                    constants.FLUXCD_CRD_HELM_CHART_PLURAL,
-                    helm_chart_resource['metadata']['name'],
-                    helm_chart_resource
+                # Flip to spec.suspended to True from HelmRepository
+                self._kube.get_transform_patch_custom_resource(
+                    constants.FLUXCD_CRD_HELM_REPO_GROUP,
+                    constants.FLUXCD_CRD_HELM_REPO_VERSION,
+                    namespace,
+                    constants.FLUXCD_CRD_HELM_REPO_PLURAL,
+                    helm_repo_name,
+                    _patch_flux_suspend_true
                 )
-            except Exception as err:
-                LOG.warning("Failed to patch HelmChart resource {}: {}"
-                            "".format(helm_chart_resource['metadata']['name'], err))
+
+                # Flip to spec.suspended to False from HelmRepository
+                self._kube.get_transform_patch_custom_resource(
+                    constants.FLUXCD_CRD_HELM_REPO_GROUP,
+                    constants.FLUXCD_CRD_HELM_REPO_VERSION,
+                    namespace,
+                    constants.FLUXCD_CRD_HELM_REPO_PLURAL,
+                    helm_repo_name,
+                    _patch_flux_suspend_false
+                )
+            except Exception:
                 return attempt, True
 
-            # Flip to spec.suspended to False from HelmChart
+            # Force HelmChart reconciliation now
             try:
+                # Flip to spec.suspended to True from HelmChart
+                self._kube.get_transform_patch_custom_resource(
+                    constants.FLUXCD_CRD_HELM_CHART_GROUP,
+                    constants.FLUXCD_CRD_HELM_CHART_VERSION,
+                    namespace,
+                    constants.FLUXCD_CRD_HELM_CHART_PLURAL,
+                    helm_chart_name,
+                    _patch_flux_suspend_true
+                )
+
+                # Flip to spec.suspended to False from HelmChart
                 self._kube.get_transform_patch_custom_resource(
                     constants.FLUXCD_CRD_HELM_CHART_GROUP,
                     constants.FLUXCD_CRD_HELM_CHART_VERSION,
@@ -1884,7 +1909,11 @@ class AppOperator(object):
             # kustomization.yaml file as charts may have been enabled/disabled
             # via the plugins (helm or kustomize operator).
             charts = {
-                c.metadata_name: {"namespace": c.namespace, "chart_label": c.chart_label}
+                c.metadata_name: {
+                    "namespace": c.namespace,
+                    "chart_label": c.chart_label,
+                    "helm_repo_name": c.helm_repo_name
+                }
                 for c in self._get_list_of_charts(app)
             }
             charts_count = len(charts)
@@ -1916,7 +1945,8 @@ class AppOperator(object):
                     # Attempt to recover HelmCharts in some Failed states
                     _recover_from_failed_helm_chart_on_app_apply(
                         metadata_name=release_name,
-                        namespace=chart_obj['namespace'])
+                        namespace=chart_obj['namespace'],
+                        helm_repo_name=chart_obj['helm_repo_name'])
 
                     # Request the helm release info
                     helm_rel = self._kube.get_custom_resource(
