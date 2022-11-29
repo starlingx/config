@@ -12274,7 +12274,7 @@ class ConductorManager(service.PeriodicService):
         # TODO(RPCHybridMode): This is only useful for 21.12 -> 22.12 upgrades.
         #  Remove this in new releases, when it's no longer necessary
         #  do the migration work through RabbitMQ and ZeroMQ
-        if (tsc.system_mode is not constants.SYSTEM_MODE_SIMPLEX):
+        if (tsc.system_mode != constants.SYSTEM_MODE_SIMPLEX):
             rpcapi = agent_rpcapi.AgentAPI()
             controller_1 = self.dbapi.ihost_get_by_hostname(
                 constants.CONTROLLER_1_HOSTNAME)
