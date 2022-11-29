@@ -59,8 +59,8 @@ log "$NAME: Starting Kubernetes application updates from release $FROM_RELEASE t
 
 if [ "$ACTION" == "activate" ]; then
     # TODO: double check the inclusive condition.
-    if [ "$TO_RELEASE" != "22.06" ]; then
-        log "not upgrading to 22.06, skip"
+    if [ "$TO_RELEASE" != "22.12" ]; then
+        log "not upgrading to 22.12, skip"
         exit 0
     fi
 
