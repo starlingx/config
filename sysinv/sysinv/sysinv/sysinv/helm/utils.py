@@ -38,6 +38,15 @@ LOG = logging.getLogger(__name__)
 # When python3 migration is finished, the explicit timer should
 # be removed.
 
+# TODO(lfagunde):
+# Some of the logic in here is outdated and assumes the default helm used is v2,
+# such as the delete_helm_release() function.
+# Also, this module would benefit from refatoring to add more
+# functionality and make the current functions more flexible.
+# Could create a generic "execute_helm_cmd" style function and derive the
+# specific ones (list, delete, etc) from there. If that's done, remember
+# to update function calls done to this module from elsewhere in the code.
+
 def kill_process_and_descendants(proc):
     # function to kill a process and its children processes
     for child in psutil.Process(proc.pid).children(recursive=True):
@@ -169,9 +178,9 @@ def retrieve_helm_releases():
 
 
 def delete_helm_release(release):
-    """Delete helm release
+    """Delete helm v2 release
 
-    This method deletes a helm release without --purge which removes
+    This method deletes a helm v2 release without --purge which removes
     all associated resources from kubernetes but not from the store(ETCD)
 
     In the scenario of updating application, the method is needed to clean
@@ -211,6 +220,50 @@ def delete_helm_release(release):
         LOG.error("Failed to delete release: %s" % e)
         raise exception.HelmTillerFailure(
             reason="Failed to delete release: %s" % e)
+    finally:
+        timer.cancel()
+
+
+def delete_helm_v3_release(release, namespace="default", flags=None):
+    """Delete helm v3 release
+
+    :param release: Helm release name
+    :param namespace: Helm release namespace
+    :param flags: List with any other flags required to add to the command
+    """
+
+    env = os.environ.copy()
+    env['PATH'] = '/usr/local/sbin:' + env['PATH']
+    env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
+
+    helm_cmd = ['helm', 'uninstall', '-n', namespace, release]
+    if flags:
+        helm_cmd += flags
+
+    process = subprocess.Popen(
+        helm_cmd,
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        universal_newlines=True)
+    timer = threading.Timer(20, kill_process_and_descendants, [process])
+
+    try:
+        timer.start()
+        out, err = process.communicate()
+        if err:
+            if "not found" in err:
+                LOG.debug("Release %s not found or deleted already" % release)
+                return out, err
+            raise exception.HelmTillerFailure(
+                reason="Failed to delete release: %s" % err)
+        elif not out:
+            err_msg = "Failed to execute helm v3 command. " \
+                      "Helm response timeout."
+            raise exception.HelmTillerFailure(reason=err_msg)
+        return out, err
+    except Exception as e:
+        LOG.error("Failed to execute helm v3 command: %s" % e)
+        raise exception.HelmTillerFailure(
+            reason="Failed to execute helm v3 command: %s" % e)
     finally:
         timer.cancel()
 
