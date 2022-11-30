@@ -300,6 +300,39 @@ class Health(object):
 
         return True
 
+    def _check_bootdevice(self):
+        def _format_message(hostname, device_type, device):
+            not_found = "%s (%s) for %s does not match any inventoried disk\n"
+            not_assigned = "%s for %s is not assigned\n"
+            if device:
+                return not_found % (device_type, device, hostname)
+            else:
+                return not_assigned % (device_type, hostname)
+
+        success = True
+        message = ""
+
+        ihosts = self._dbapi.ihost_get_list()
+        for ihost in ihosts:
+            idisks = self._dbapi.idisk_get_by_ihost(ihost.uuid)
+            boot_device_matched = False
+            rootfs_device_matched = False
+
+            for idisk in idisks:
+                if ihost.boot_device in [idisk.device_node, idisk.device_path]:
+                    boot_device_matched = True
+                if ihost.rootfs_device in [idisk.device_node, idisk.device_path]:
+                    rootfs_device_matched = True
+                if boot_device_matched and rootfs_device_matched:
+                    break
+            else:
+                success = False
+                if not boot_device_matched:
+                    message += _format_message(ihost.hostname, "boot_device", ihost.boot_device)
+                if not rootfs_device_matched:
+                    message += _format_message(ihost.hostname, "rootfs_device", ihost.rootfs_device)
+        return success, message
+
     def get_system_health(self, context, force=False, alarm_ignore_list=None):
         """Returns the general health of the system
 
@@ -486,6 +519,14 @@ class Health(object):
             % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
 
         health_ok = health_ok and success
+
+        success, message = self._check_bootdevice()
+        if not success:
+            # Make this an invisible check for the bootdevice and rootfs device.
+            # unless it is invalid, it is invisible to the user.
+            output += _('Boot Device and Root file system Device: [%s]\n') \
+                    % Health.FAIL_MSG
+            output += message
 
         if not simplex:
             controller_1 = self._dbapi.ihost_get_by_hostname(
