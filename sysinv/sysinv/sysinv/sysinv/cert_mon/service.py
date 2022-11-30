@@ -46,7 +46,7 @@ class CertificateMonitorService(service.Service):
         self.topic = TOPIC_DCMANAGER_NOTFICATION
         self._rpc_server = None
         self.target = None
-        self.dc_role = None
+        self.dc_role = utils.DC_ROLE_UNDETECTED
         self.manager = CertificateMonManager()
 
     def start(self):
@@ -70,7 +70,7 @@ class CertificateMonitorService(service.Service):
         rpc_messaging.cleanup()
 
     def _get_dc_role(self):
-        if self.dc_role:
+        if self.dc_role != utils.DC_ROLE_UNDETECTED:
             return self.dc_role
         utils.init_keystone_auth_opts()
         delay = DC_ROLE_DELAY_SECONDS
@@ -79,8 +79,7 @@ class CertificateMonitorService(service.Service):
         while dc_role_attempts < max_dc_role_attempts:
             try:
                 self.dc_role = utils.get_dc_role()
-                if self.dc_role:
-                    return self.dc_role
+                return self.dc_role
             except Exception as e:
                 LOG.info("Unable to get DC role: %s [attempt: %s]",
                          str(e), dc_role_attempts)
