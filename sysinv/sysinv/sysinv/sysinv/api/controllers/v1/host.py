@@ -3511,6 +3511,36 @@ class HostController(rest.RestController):
         except TypeError:
             sriov_numvfs = 0
 
+        # Get the custom resource of the SRIOV fec operator app.
+        # If fec operator is managing the device of the host,
+        # it updates the sriov parameters in sysfs.
+        # The expected_numvfs is not used. The checks below are skipped.
+        sriovfec_list = self._kube_operator.list_namespaced_custom_resources(
+            "sriovfec.intel.com",
+            "v2",
+            "sriov-fec-system",
+            "sriovfecclusterconfigs")
+        if sriovfec_list:
+            for sriovfec_crd in sriovfec_list:
+                if sriovfec_crd:
+                    LOG.debug("sriovfec custom resource={}".format(sriovfec_crd))
+                    spec = sriovfec_crd.get('spec', None)
+                    if spec:
+                        nodeselector = spec.get('nodeSelector', None)
+                        hostname = nodeselector.get('kubernetes.io/hostname', None)
+                        if hostname and hostname == host['hostname']:
+                            accelerator_selector = spec.get('acceleratorSelector', None)
+                            pci_address = accelerator_selector.get('pciAddress', None)
+                            if pci_address == dev.pciaddr:
+                                LOG.debug("Found device %s on host %s managed by "
+                                          "FEC operator" %
+                                          (dev.pciaddr, host['hostname']))
+                                return
+                    LOG.debug("Device %s on host %s not managed by FEC operator" %
+                              (dev.pciaddr, host['hostname']))
+                else:
+                    LOG.debug("No sriovfec custom resource found, continue")
+
         if dev.extra_info:
             extra_info = ast.literal_eval(dev.extra_info)
             expected_numvfs = int(extra_info['expected_numvfs'])
