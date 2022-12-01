@@ -69,6 +69,9 @@ mount_and_copy_config_file()
         RETVAL=$?
         if [ $? -ne 0 ] ; then
             logger "$0: Warn: cp /mnt/sysinv/sysinv.conf.default ${SYSINV_CONF_FILE}"
+        else
+            # Reset zeromq bind ip to localhost
+            sed -i '/^rpc_zeromq_bind_ip/s/=.*$/=::/' ${SYSINV_CONF_FILE}
         fi
         timeout 5s umount /mnt/sysinv
         rmdir /mnt/sysinv
@@ -137,6 +140,8 @@ case "$1" in
                     if [ $? -ne 0 ] ; then
                         logger "$0: Warn: cp /mnt/sysinv/sysinv.conf.default ${SYSINV_CONF_FILE} failed. Try mount."
                     else
+                        # Reset zeromq bind ip to localhost
+                        sed -i '/^rpc_zeromq_bind_ip/s/=.*$/=::/' ${SYSINV_CONF_FILE}
                         CONF_COPIED=1
                     fi
                 fi
