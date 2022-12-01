@@ -1267,7 +1267,10 @@ TIS_STD_BUILD = 'Standard'
 TIS_AIO_BUILD = 'All-in-one'
 
 # Free space needed on CentOS for Debian upgrade
-UPGRADE_FREE_SPACE_NEEDED_IN_GIB = 51
+WORKER_UPGRADE_FREE_SPACE_NEEDED_IN_GIB = 23.5
+# Total disk space needed on CentOS for Debian upgrade
+STORAGE_UPGRADE_SPACE_NEEDED_IN_GIB = 118
+CONTROLLER_UPGRADE_SPACE_NEEDED_IN_GIB = 220
 
 # Platform Upgrade states
 UPGRADE_STARTING = 'starting'

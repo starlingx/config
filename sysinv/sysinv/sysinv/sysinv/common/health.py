@@ -22,7 +22,6 @@ from sysinv.api.controllers.v1 import patch_api
 from sysinv.api.controllers.v1 import vim_api
 
 import tsconfig.tsconfig as tsc
-from sysinv.agent import disk
 
 import cgcs_patch.constants as patch_constants
 
@@ -38,7 +37,6 @@ class Health(object):
         self._dbapi = dbapi
         self._ceph = ceph.CephApiOperator()
         self._kube_operator = kubernetes.KubeOperator()
-        self._idisk_operator = disk.DiskOperator()
 
     def _check_hosts_provisioned(self, hosts):
         """Checks that each host is provisioned"""
@@ -440,29 +438,43 @@ class Health(object):
 
         return health_ok, output
 
+    def _check_disk_space_on_host(self, host, hostname, min_space_needed, check_free_space):
+        if check_free_space:
+            available_gib = utils.get_available_gib_in_disk(host, host.rootfs_device, self._dbapi)
+            msg = _("Insufficient unallocated disk space on rootdisk for %s. Current\n"
+                    "partitions have allocated disk space such that only %.2fGiB is "
+                    "available\nbut %.2fGiB unallocated disk space is needed.\n") % (hostname,
+                                                                                     available_gib,
+                                                                                     min_space_needed)
+        else:
+            available_gib = utils.get_size_gib_in_disk(host, host.rootfs_device, self._dbapi)
+            msg = _("Insufficient total disk space on rootdisk for %s, %.2fGiB needed, "
+                    "%.2fGiB available.\n") % (hostname,
+                                               min_space_needed,
+                                               available_gib)
+        if available_gib < min_space_needed:
+            return msg
+
     def _check_free_space_for_upgrade(self):
         output = ""
         success = True
         for ihost in self._dbapi.ihost_get_list():
+            min_space_needed = 0
+            check_free_space = False
             host = self._dbapi.ihost_get_by_hostname(ihost.hostname)
             host_subfunctions = host.subfunctions.split(",")
             if constants.WORKER in host_subfunctions:
-                available_mib = self._idisk_operator.get_disk_available_mib(host.rootfs_device)
-                available_gib = available_mib / 1024
-                if available_gib < constants.UPGRADE_FREE_SPACE_NEEDED_IN_GIB:
-                    output += _("Insufficient free diskspace on rootdisk for %s, %iGiB needed, "
-                                "%.2fGiB available\n") % (ihost.hostname,
-                                                          constants.UPGRADE_FREE_SPACE_NEEDED_IN_GIB,
-                                                          available_gib)
-                    success = False
-            elif constants.STORAGE in host_subfunctions or constants.WORKER not in host_subfunctions:
-                cgtsvg_max_free_gib = utils.get_cgtsvg_available_gib(host, self._dbapi)
-                if cgtsvg_max_free_gib < constants.UPGRADE_FREE_SPACE_NEEDED_IN_GIB:
-                    output += _("Insufficient free diskspace on cgts-vg for %s, %iGiB needed, "
-                                "%.2fGiB available \n") % (ihost.hostname,
-                                                           constants.UPGRADE_FREE_SPACE_NEEDED_IN_GIB,
-                                                           cgtsvg_max_free_gib)
-                    success = False
+                min_space_needed = constants.WORKER_UPGRADE_FREE_SPACE_NEEDED_IN_GIB
+                check_free_space = True
+            elif constants.STORAGE in host_subfunctions:
+                min_space_needed = constants.STORAGE_UPGRADE_SPACE_NEEDED_IN_GIB
+            elif constants.CONTROLLER in host_subfunctions:
+                min_space_needed = constants.CONTROLLER_UPGRADE_SPACE_NEEDED_IN_GIB
+            msg = self._check_disk_space_on_host(
+                host, ihost.hostname, min_space_needed, check_free_space)
+            if msg:
+                output += msg
+                success = False
         return output, success
 
     def get_system_health_upgrade(self,
@@ -572,10 +584,11 @@ class Health(object):
             % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
 
         health_ok = health_ok and success
+        # TODO (luisbonatti): remove when CentOS to Debian upgrade is deprecated
         if upgrade_version == tsc.SW_VERSION_22_12:
             msg, success = self._check_free_space_for_upgrade()
             output += \
-                _('Free disk requirement: [%s]\n') \
+                _('Disk space requirement: [%s]\n') \
                 % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
             if not success:
                 output += msg

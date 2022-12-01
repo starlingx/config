@@ -1674,21 +1674,28 @@ def is_single_controller(dbapi):
     return False
 
 
-def get_cgtsvg_available_gib(host, dbapi):
-    """Calculate free space cgtsvg
-       returns: cgtsvg free space in GiB
+def get_size_gib_in_disk(host, device_path, dbapi):
+    """Get the size for the device path
+       returns: size space in GiB
     """
-    cgtsvg_free_mib = 0
-    ilvgs = dbapi.ilvg_get_by_ihost(host.uuid)
-    for ilvg in ilvgs:
-        if (ilvg.lvm_vg_name == constants.LVG_CGTS_VG and
-                ilvg.lvm_vg_size and ilvg.lvm_vg_total_pe):
-            cgtsvg_free_mib = (int(ilvg.lvm_vg_size) * int(
-                ilvg.lvm_vg_free_pe)
-                               / int(ilvg.lvm_vg_total_pe)) / (1024 * 1024)
-            break
-    cgtsvg_free_gib = (cgtsvg_free_mib // 1024)
-    return cgtsvg_free_gib
+    size_gib = 0
+    disks = dbapi.idisk_get_by_ihost(host.uuid)
+    for disk in disks:
+        if disk.device_path == device_path:
+            size_gib = disk.size_mib / 1024
+    return size_gib
+
+
+def get_available_gib_in_disk(host, device_path, dbapi):
+    """Get the free space for the device path
+       returns: Free space in GiB
+    """
+    available_gib = 0
+    disks = dbapi.idisk_get_by_ihost(host.uuid)
+    for disk in disks:
+        if disk.device_path == device_path:
+            available_gib = disk.available_mib / 1024
+    return available_gib
 
 
 def is_partition_the_last(dbapi, partition):
