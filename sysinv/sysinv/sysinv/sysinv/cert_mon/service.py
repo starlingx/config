@@ -53,18 +53,24 @@ class CertificateMonitorService(service.Service):
         super(CertificateMonitorService, self).start()
         self._get_dc_role()
         self.manager.start_monitor(self.dc_role)
-        self.manager.start_audit()
+        # Note: self.dc_role can be None (if non-DC system):
         if self.dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+            self.manager.start_audit()
             self.target = oslo_messaging.Target(
                 version=self.rpc_api_version,
                 server=CONF.host,
                 topic=self.topic)
             self._rpc_server = rpc_messaging.get_rpc_server(self.target, self)
             self._rpc_server.start()
+        elif self.dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+            self.manager.start_audit()
 
     def stop(self):
-        self._stop_rpc_server()
-        self.manager.stop_audit()
+        if self.dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+            self._stop_rpc_server()
+            self.manager.stop_audit()
+        elif self.dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+            self.manager.stop_audit()
         self.manager.stop_monitor()
         super(CertificateMonitorService, self).stop()
         rpc_messaging.cleanup()
