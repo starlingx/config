@@ -271,6 +271,9 @@ class ConductorManager(service.PeriodicService):
         # this will track the config w/ reboot request to apply
         self._host_reboot_config_uuid = {}
 
+        # track upgrade activation manifests status
+        self._upgrade_manifest_start_time = None
+
         # track deferred runtime config which need to be applied
         self._host_deferred_runtime_config = []
 
@@ -5994,9 +5997,24 @@ class ConductorManager(service.PeriodicService):
                                  if host.config_target and host.config_target != host.config_applied]
             if not out_of_date_hosts:
                 LOG.info("Manifests applied. Upgrade activation complete.")
+                self._upgrade_manifest_start_time = None
                 self.dbapi.software_upgrade_update(
                     upgrade.uuid,
                     {'state': constants.UPGRADE_ACTIVATION_COMPLETE})
+            else:
+                LOG.info("Upgrade manifests running, config out-of-date hosts: %s" %
+                         str([host.hostname for host in out_of_date_hosts]))
+                # if the timeout interval is reached and hosts are
+                # still out-of-date then mark activation as failed
+                if not self._upgrade_manifest_start_time:
+                    self._upgrade_manifest_start_time = datetime.utcnow()
+                if (datetime.utcnow() - self._upgrade_manifest_start_time).total_seconds() >= \
+                        constants.UPGRADE_ACTIVATION_MANIFEST_TIMEOUT_IN_SECS:
+                    self._upgrade_manifest_start_time = None
+                    LOG.error("Upgrade activation failed, upgrade manifests apply timeout.")
+                    self.dbapi.software_upgrade_update(
+                        upgrade.uuid,
+                        {'state': constants.UPGRADE_ACTIVATION_FAILED})
 
         elif upgrade.state == constants.UPGRADE_DATA_MIGRATION:
             # Progress upgrade state if necessary...

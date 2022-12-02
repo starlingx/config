@@ -1288,6 +1288,9 @@ UPGRADE_ABORTING = 'aborting'
 UPGRADE_ABORT_COMPLETING = 'abort-completing'
 UPGRADE_ABORTING_ROLLBACK = 'aborting-reinstall'
 
+# Upgrade Manifests Timeout
+UPGRADE_ACTIVATION_MANIFEST_TIMEOUT_IN_SECS = 600
+
 # List of all Platform Upgrade States
 PLATFORM_UPGRADE_STATES = [
     UPGRADE_STARTING,
