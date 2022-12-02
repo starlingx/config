@@ -19,7 +19,7 @@ def _peer_formatter(values):
     for value in values:
         name = value.get('name')
         hosts = value.get('hosts')
-        hosts = [x.decode('unicode_escape').encode('ascii', 'ignore')
+        hosts = [x.encode('ascii', 'ignore')
                  for x in hosts]
         result.append(str(name) + ":" + str(hosts))
 
