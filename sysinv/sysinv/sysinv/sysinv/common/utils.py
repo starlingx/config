@@ -1681,7 +1681,7 @@ def get_size_gib_in_disk(host, device_path, dbapi):
     size_gib = 0
     disks = dbapi.idisk_get_by_ihost(host.uuid)
     for disk in disks:
-        if disk.device_path == device_path:
+        if disk.device_path == device_path or disk.device_node == device_path:
             size_gib = disk.size_mib / 1024
     return size_gib
 
@@ -1693,7 +1693,7 @@ def get_available_gib_in_disk(host, device_path, dbapi):
     available_gib = 0
     disks = dbapi.idisk_get_by_ihost(host.uuid)
     for disk in disks:
-        if disk.device_path == device_path:
+        if disk.device_path == device_path or disk.device_node == device_path:
             available_gib = disk.available_mib / 1024
     return available_gib
 

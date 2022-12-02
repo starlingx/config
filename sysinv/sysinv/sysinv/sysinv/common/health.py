@@ -440,14 +440,14 @@ class Health(object):
 
     def _check_disk_space_on_host(self, host, hostname, min_space_needed, check_free_space):
         if check_free_space:
-            available_gib = utils.get_available_gib_in_disk(host, host.rootfs_device, self._dbapi)
+            available_gib = utils.get_available_gib_in_disk(host, host.boot_device, self._dbapi)
             msg = _("Insufficient unallocated disk space on rootdisk for %s. Current\n"
                     "partitions have allocated disk space such that only %.2fGiB is "
                     "available\nbut %.2fGiB unallocated disk space is needed.\n") % (hostname,
                                                                                      available_gib,
                                                                                      min_space_needed)
         else:
-            available_gib = utils.get_size_gib_in_disk(host, host.rootfs_device, self._dbapi)
+            available_gib = utils.get_size_gib_in_disk(host, host.boot_device, self._dbapi)
             msg = _("Insufficient total disk space on rootdisk for %s, %.2fGiB needed, "
                     "%.2fGiB available.\n") % (hostname,
                                                min_space_needed,
