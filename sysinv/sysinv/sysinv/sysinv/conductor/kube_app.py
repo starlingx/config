@@ -1711,139 +1711,6 @@ class AppOperator(object):
     @retry(retry_on_exception=lambda x: isinstance(x, exception.ApplicationApplyFailure),
            stop_max_attempt_number=5, wait_fixed=30 * 1000)
     def _make_fluxcd_operation_with_monitor(self, app, request):
-        def _patch_flux_suspend_false(resource):
-            """ Change resource.spec.suspend = False
-            """
-            resource['spec']['suspend'] = False
-
-        def _patch_flux_suspend_true(resource):
-            """ Change resource.spec.suspend = True
-            """
-            resource['spec']['suspend'] = True
-
-        def _recover_from_failed_helm_chart_on_app_apply(metadata_name,
-                                                         namespace,
-                                                         helm_repo_name):
-            """ Recovery logic for FluxCD on apply
-
-            HelmChart reconciliation needs to be triggered.
-            The trigger is to flip spec.suspended from True to False.
-
-            :param metadata_name: metadata name from helmrelease.yaml
-            :param namespace: namespace from kustomization.yaml
-            :param helm_repo_name: metadata name from helmrepository.yaml
-
-            :return: tuple(attempt, error).
-                     attempt is True if recovery is triggered
-                     error is True if an error was encountered
-            """
-            helm_chart_name = "{}-{}".format(namespace, metadata_name)
-            helm_release_name = metadata_name
-            attempt = False
-
-            # Check for condition
-            try:
-                helm_chart_resource = self._kube.get_custom_resource(
-                    constants.FLUXCD_CRD_HELM_CHART_GROUP,
-                    constants.FLUXCD_CRD_HELM_CHART_VERSION,
-                    namespace,
-                    constants.FLUXCD_CRD_HELM_CHART_PLURAL,
-                    helm_chart_name)
-            except Exception as err:
-                LOG.warning("Failed to get HelmChart resource {}: {}"
-                            "".format(helm_chart_name, err))
-                return attempt, True
-
-            helm_chart_resource_status = \
-                self._fluxcd.extract_helm_chart_status(helm_chart_resource)
-
-            for error_string in constants.FLUXCD_RECOVERY_HELM_CHART_STATUS_ERRORS:
-                if helm_chart_resource_status.startswith(error_string):
-                    LOG.info("For helm chart {} found a matching error string "
-                             "we can attempt to recover from: {}"
-                             "".format(helm_chart_name, helm_chart_resource_status))
-                    attempt = True
-                    break
-
-            if not attempt:
-                return attempt, False
-
-            # Force HelmRepository reconciliation now, saves up to reconciliation
-            # timeout for the specific resource. Same trigger as with HelmChart.
-            try:
-                # Flip to spec.suspended to True from HelmRepository
-                self._kube.get_transform_patch_custom_resource(
-                    constants.FLUXCD_CRD_HELM_REPO_GROUP,
-                    constants.FLUXCD_CRD_HELM_REPO_VERSION,
-                    namespace,
-                    constants.FLUXCD_CRD_HELM_REPO_PLURAL,
-                    helm_repo_name,
-                    _patch_flux_suspend_true
-                )
-
-                # Flip to spec.suspended to False from HelmRepository
-                self._kube.get_transform_patch_custom_resource(
-                    constants.FLUXCD_CRD_HELM_REPO_GROUP,
-                    constants.FLUXCD_CRD_HELM_REPO_VERSION,
-                    namespace,
-                    constants.FLUXCD_CRD_HELM_REPO_PLURAL,
-                    helm_repo_name,
-                    _patch_flux_suspend_false
-                )
-            except Exception:
-                return attempt, True
-
-            # Force HelmChart reconciliation now
-            try:
-                # Flip to spec.suspended to True from HelmChart
-                self._kube.get_transform_patch_custom_resource(
-                    constants.FLUXCD_CRD_HELM_CHART_GROUP,
-                    constants.FLUXCD_CRD_HELM_CHART_VERSION,
-                    namespace,
-                    constants.FLUXCD_CRD_HELM_CHART_PLURAL,
-                    helm_chart_name,
-                    _patch_flux_suspend_true
-                )
-
-                # Flip to spec.suspended to False from HelmChart
-                self._kube.get_transform_patch_custom_resource(
-                    constants.FLUXCD_CRD_HELM_CHART_GROUP,
-                    constants.FLUXCD_CRD_HELM_CHART_VERSION,
-                    namespace,
-                    constants.FLUXCD_CRD_HELM_CHART_PLURAL,
-                    helm_chart_name,
-                    _patch_flux_suspend_false
-                )
-            except Exception:
-                return attempt, True
-
-            # Force HelmRelease reconciliation now, saves up to reconciliation
-            # timeout for the specific resource. Same trigger as with HelmChart.
-            try:
-                # Flip to spec.suspended to True from HelmRelease
-                self._kube.get_transform_patch_custom_resource(
-                    constants.FLUXCD_CRD_HELM_REL_GROUP,
-                    constants.FLUXCD_CRD_HELM_REL_VERSION,
-                    namespace,
-                    constants.FLUXCD_CRD_HELM_REL_PLURAL,
-                    helm_release_name,
-                    _patch_flux_suspend_true
-                )
-
-                # Flip to spec.suspended to False from HelmRelease
-                self._kube.get_transform_patch_custom_resource(
-                    constants.FLUXCD_CRD_HELM_REL_GROUP,
-                    constants.FLUXCD_CRD_HELM_REL_VERSION,
-                    namespace,
-                    constants.FLUXCD_CRD_HELM_REL_PLURAL,
-                    helm_release_name,
-                    _patch_flux_suspend_false
-                )
-            except Exception:
-                return attempt, True
-
-            return attempt, False
-
         def _recover_from_helm_operation_in_progress_on_app_apply(metadata_name, namespace,
                                                                   flux_error_message):
             """ Recovery logic for FluxCD on apply
@@ -1915,29 +1782,6 @@ class AppOperator(object):
                                           secret.metadata.namespace, err))
                     return attempt, True
 
-            # Force HelmRelease reconciliation now, saves up to reconciliation
-            # timeout for the specific resource. Flip suspend True, then False.
-            try:
-                self._kube.get_transform_patch_custom_resource(
-                    constants.FLUXCD_CRD_HELM_REL_GROUP,
-                    constants.FLUXCD_CRD_HELM_REL_VERSION,
-                    namespace,
-                    constants.FLUXCD_CRD_HELM_REL_PLURAL,
-                    helm_release_name,
-                    _patch_flux_suspend_true
-                )
-
-                self._kube.get_transform_patch_custom_resource(
-                    constants.FLUXCD_CRD_HELM_REL_GROUP,
-                    constants.FLUXCD_CRD_HELM_REL_VERSION,
-                    namespace,
-                    constants.FLUXCD_CRD_HELM_REL_PLURAL,
-                    helm_release_name,
-                    _patch_flux_suspend_false
-                )
-            except Exception:
-                return attempt, True
-
             return attempt, False
 
         def _check_progress():
@@ -1983,12 +1827,6 @@ class AppOperator(object):
                     self._update_app_status(app, new_progress=progress_str)
 
                 for release_name, chart_obj in list(charts.items()):
-                    # Attempt to recover HelmCharts in some Failed states
-                    _recover_from_failed_helm_chart_on_app_apply(
-                        metadata_name=release_name,
-                        namespace=chart_obj['namespace'],
-                        helm_repo_name=chart_obj['helm_repo_name'])
-
                     # Request the helm release info
                     helm_rel = self._kube.get_custom_resource(
                         constants.FLUXCD_CRD_HELM_REL_GROUP,
@@ -4933,20 +4771,6 @@ class FluxCDHelper(object):
                 return False
 
         return True
-
-    def extract_helm_chart_status(self, helm_chart_dict):
-        """helm_chart_dict is of the form returned by _kube.get_custom_resource().
-        Returns: message of first status.condition
-        """
-        if not helm_chart_dict:
-            return ''
-        elif 'status' in helm_chart_dict and \
-                'conditions' in helm_chart_dict['status'] and \
-                len(helm_chart_dict['status']['conditions']) > 0 and \
-                'message' in helm_chart_dict['status']['conditions'][0]:
-            return helm_chart_dict['status']['conditions'][0]['message']
-        else:
-            return ''
 
     # TODO (lfagunde):
     # Some methods in this class receive helm_chart_dict as a parameter.

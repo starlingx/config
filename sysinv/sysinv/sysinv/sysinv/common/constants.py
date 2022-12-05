@@ -1711,14 +1711,6 @@ FLUXCD_CRD_HELM_CHART_GROUP = 'source.toolkit.fluxcd.io'
 FLUXCD_CRD_HELM_CHART_VERSION = 'v1beta1'
 FLUXCD_CRD_HELM_CHART_PLURAL = 'helmcharts'
 # Actually beginning of errors, should be used with
-# string.startswith(FLUXCD_HELM_CHART_STATUS_ERRORS[number])
-# We want to recover from these errors
-FLUXCD_RECOVERY_HELM_CHART_STATUS_ERRORS = [
-    'no artifact found',
-    'failed to retrieve source:',
-    'chart pull error:'
-]
-# Actually beginning of errors, should be used with
 # string.startswith(FLUXCD_RECOVERY_HELM_RELEASE_STATUS_ERRORS[number])
 # We want to recover from these errors
 FLUXCD_RECOVERY_HELM_RELEASE_STATUS_ERRORS = [
