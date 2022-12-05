@@ -1,7 +1,7 @@
 #!/bin/bash
 # vim: tabstop=4 shiftwidth=4 expandtab
 #
-# Copyright (c) 2020-2022 Wind River Systems, Inc.
+# Copyright (c) 2020-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -135,6 +135,11 @@ function migrate_apps {
                 # NOT SUPPORTED: vault-1.0-23.tgz
                 sva-vault-psp-rolebinding | sva-vault)
                     log "$NAME: migration of helm release $rel is not currently supported."
+                    ;;
+                # For Openstack's helm releases.
+                osh-openstack-*)
+                    log "$NAME: migrating helm release $rel."
+                    /usr/bin/migrate_helm_release_openstack.py $rel
                     ;;
                 *)
                     log "$NAME: migration of UNKNOWN helm release $rel is not currently supported."
