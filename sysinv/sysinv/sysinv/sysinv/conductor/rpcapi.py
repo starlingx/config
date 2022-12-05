@@ -1786,7 +1786,8 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                              lifecycle_hook_info_app_apply=lifecycle_hook_info))
 
     def perform_app_update(self, context, from_rpc_app, to_rpc_app, tarfile,
-                           operation, lifecycle_hook_info, reuse_user_overrides=None):
+                           operation, lifecycle_hook_info, reuse_user_overrides=None,
+                           reuse_attributes=None):
         """Handle application update request
 
         :param context: request context.
@@ -1799,6 +1800,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param lifecycle_hook_info: LifecycleHookInfo object
 
         :param reuse_user_overrides: (optional) True or False
+        :param reuse_attributes: (optional) True or False
         """
         return self.cast(context,
                          self.make_msg('perform_app_update',
@@ -1807,7 +1809,8 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        tarfile=tarfile,
                                        operation=operation,
                                        lifecycle_hook_info_app_update=lifecycle_hook_info,
-                                       reuse_user_overrides=reuse_user_overrides))
+                                       reuse_user_overrides=reuse_user_overrides,
+                                       reuse_attributes=reuse_attributes))
 
     def perform_app_remove(self, context, rpc_app, lifecycle_hook_info, force=False):
         """Handle application remove request

@@ -436,6 +436,19 @@ class KubeAppController(rest.RestController):
                 "Application-update rejected: "
                 "invalid reuse_user_overrides setting."))
 
+        reuse_attributes_flag = body.get('reuse_attributes', None)
+        if reuse_attributes_flag is None:
+            # None means let the application decide
+            reuse_attributes = None
+        elif reuse_attributes_flag in ['true', 'True']:
+            reuse_attributes = True
+        elif reuse_attributes_flag in ['false', 'False']:
+            reuse_attributes = False
+        else:
+            raise wsme.exc.ClientSideError(_(
+                "Application-update rejected: "
+                "invalid reuse_attributes setting."))
+
         try:
             applied_app = objects.kube_app.get_by_name(pecan.request.context, name)
         except exception.KubeAppNotFound:
@@ -525,7 +538,9 @@ class KubeAppController(rest.RestController):
         pecan.request.rpcapi.perform_app_update(pecan.request.context,
                                                 applied_app, target_app,
                                                 tarfile, operation,
-                                                lifecycle_hook_info, reuse_overrides)
+                                                lifecycle_hook_info,
+                                                reuse_overrides,
+                                                reuse_attributes)
 
         return KubeApp.convert_with_links(target_app)
 

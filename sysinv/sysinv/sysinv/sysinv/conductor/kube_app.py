@@ -1660,6 +1660,47 @@ class AppOperator(object):
                          "Chart %s from version %s" % (to_app.name, to_app.version,
                                                        chart.name, from_app.version))
 
+    def _preserve_attributes(self, from_app, to_app):
+        """
+        In the scenario of updating application to a new version, this
+        method is used to copy the attributes from the old version
+        to the new version.
+
+        :param from_app: application object that application updating from
+        :param to_app: application object that application updating to
+        """
+        to_db_app = self._dbapi.kube_app_get(to_app.name)
+        from_db_app = self._dbapi.kube_app_get_inactive_by_name_version(
+            from_app.name, version=from_app.version)
+
+        from_app_db_charts = self._dbapi.helm_override_get_all(from_db_app.id)
+        from_app_charts = {}
+        for chart in from_app_db_charts:
+            from_app_charts.setdefault(chart.name, {}).update(
+                {chart.namespace: chart.system_overrides})
+
+        for chart in to_app.charts:
+            if (chart.name in from_app_charts and
+                    chart.namespace in from_app_charts[chart.name] and
+                    from_app_charts[chart.name][chart.namespace]):
+                system_overrides = {'system_overrides': from_app_charts[chart.name][chart.namespace]}
+                try:
+                    self._dbapi.helm_override_update(
+                        app_id=to_db_app.id, name=chart.name,
+                        namespace=chart.namespace, values=system_overrides)
+                except exception.HelmOverrideNotFound:
+                    # Unexpected
+                    values = {
+                        'name': chart.name,
+                        'namespace': chart.namespace,
+                        'app_id': to_db_app.id
+                    }
+                    values.update(system_overrides)
+                    self._dbapi.helm_override_create(values=values)
+                LOG.info("Application %s (%s) will apply the attributes for"
+                         "Chart %s from version %s" % (to_app.name, to_app.version,
+                                                       chart.name, from_app.version))
+
     def _make_app_request(self, app, request, overrides_str=None):
         if app.is_fluxcd_app:
             return self._make_fluxcd_operation_with_monitor(app, request)
@@ -3086,7 +3127,8 @@ class AppOperator(object):
         return False
 
     def perform_app_update(self, from_rpc_app, to_rpc_app, tarfile,
-                           operation, lifecycle_hook_info_app_update, reuse_user_overrides=None):
+                           operation, lifecycle_hook_info_app_update, reuse_user_overrides=None,
+                           reuse_attributes=None):
         """Process application update request
 
         This method leverages the existing application upload workflow to
@@ -3114,6 +3156,7 @@ class AppOperator(object):
         :param operation: apply or rollback
         :param lifecycle_hook_info_app_update: LifecycleHookInfo object
         :param reuse_user_overrides: (optional) True or False
+        :param reuse_attributes: (optional) True or False
 
         """
 
@@ -3193,6 +3236,17 @@ class AppOperator(object):
                 # Preserve user overrides for the new app
                 if reuse_overrides:
                     self._preserve_user_overrides(from_app, to_app)
+
+                reuse_app_attributes = \
+                    self._get_metadata_value(to_app,
+                                             constants.APP_METADATA_MAINTAIN_ATTRIBUTES,
+                                             False)
+                if reuse_attributes is not None:
+                    reuse_app_attributes = reuse_attributes
+
+                # Preserve attributes for the new app
+                if reuse_app_attributes:
+                    self._preserve_attributes(from_app, to_app)
 
                 # The app_apply will generate new versioned overrides for the
                 # app upgrade and will enable the new plugins for that version.
