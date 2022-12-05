@@ -1967,7 +1967,7 @@ ANSIBLE_BOOTSTRAP_FLAG = os.path.join(tsc.VOLATILE_PATH, ".ansible_bootstrap")
 ANSIBLE_BOOTSTRAP_COMPLETED_FLAG = os.path.join(tsc.CONFIG_PATH,
                                                 ".bootstrap_completed")
 UNLOCK_READY_FLAG = os.path.join(tsc.PLATFORM_CONF_PATH, ".unlock_ready")
-INVENTORY_WAIT_TIMEOUT_IN_SECS = 90
+INVENTORY_WAIT_TIMEOUT_IN_SECS = 120
 DEFAULT_RPCAPI_TIMEOUT_IN_SECS = 60
 
 ANSIBLE_RESTORE_ROOK_FLAG = os.path.join(tsc.VOLATILE_PATH, ".ansible_restore_rook")
