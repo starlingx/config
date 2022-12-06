@@ -3400,7 +3400,34 @@ class AppOperator(object):
         self._update_app_status(
             app, new_progress=constants.APP_PROGRESS_DELETE_MANIFEST)
 
-        if self._make_app_request(app, constants.APP_DELETE_OP):
+        # Delete helm releases which have a helm operation running.
+        # eg.: pending-install, pending-upgrade, etc.
+        flux_helm_releases = [(c.metadata_name, c.namespace) for c in self._get_list_of_charts(app)]
+        for release, namespace in flux_helm_releases:
+            helm_release_dict = self._kube.get_custom_resource(
+                    constants.FLUXCD_CRD_HELM_REL_GROUP,
+                    constants.FLUXCD_CRD_HELM_REL_VERSION,
+                    namespace,
+                    constants.FLUXCD_CRD_HELM_REL_PLURAL,
+                    release)
+            if not helm_release_dict:
+                LOG.warning("FluxCD Helm release info for {} is not available".format(release))
+                continue
+
+            helm_release_status, _ = self._fluxcd.get_helm_release_status(helm_release_dict)
+            if helm_release_status == self._fluxcd.HELM_RELEASE_STATUS_UNKNOWN:
+                LOG.info("Removing helm release which has an operation in progress: {} - {}".format(namespace, release))
+                # Send delete request in FluxCD so it doesn't recreate the helm release
+                self._kube.delete_custom_resource(
+                    constants.FLUXCD_CRD_HELM_REL_GROUP,
+                    constants.FLUXCD_CRD_HELM_REL_VERSION,
+                    namespace,
+                    constants.FLUXCD_CRD_HELM_REL_PLURAL,
+                    release)
+                # Remove resource in Helm
+                helm_utils.delete_helm_v3_release(helm_release_dict['spec']['releaseName'], namespace=namespace)
+
+        if self._make_app_request(app, constants.APP_REMOVE_OP):
             # After armada delete, the data for the releases are purged from
             # tiller/etcd, the releases info for the active app stored in sysinv
             # db should be set back to 0 and the inactive apps require to be
@@ -4794,7 +4821,7 @@ class FluxCDHelper(object):
                 else:
                     LOG.error("Applying %s failed. Skipping helm release "
                               "cleanup...")
-            elif operation == constants.APP_DELETE_OP:
+            elif operation in [constants.APP_DELETE_OP, constants.APP_REMOVE_OP]:
                 rc = self._delete(manifest_dir)
             elif operation == constants.APP_ROLLBACK_OP:
                 pass
@@ -4823,6 +4850,7 @@ class FluxCDHelper(object):
     def _delete(self, manifest_dir):
         cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
                'delete', '-k', manifest_dir, '--ignore-not-found=true']
+
         _, stderr = cutils.trycmd(*cmd)
 
         if stderr:
@@ -4920,6 +4948,10 @@ class FluxCDHelper(object):
         else:
             return ''
 
+    # TODO (lfagunde):
+    # Some methods in this class receive helm_chart_dict as a parameter.
+    # Can move the call to _kube.get_custom_resource() into these functions
+    # or create a helper function inside the class for it.
     def get_helm_release_status(self, helm_release_dict):
         """helm_release_dict is of the form returned by _kube.get_custom_resource().
         Returns: 'status' of the release (Unlnown,True,False) and 'message'
