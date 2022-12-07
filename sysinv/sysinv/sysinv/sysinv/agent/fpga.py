@@ -47,7 +47,7 @@ from sysinv.common import constants as cconstants
 from sysinv.common import device as dconstants
 from sysinv.common import exception
 from sysinv.common import utils
-from sysinv.conductor import rpcapi as conductor_rpcapi
+from sysinv.conductor import rpcapiproxy as conductor_rpcapi
 
 import tsconfig.tsconfig as tsc
 
