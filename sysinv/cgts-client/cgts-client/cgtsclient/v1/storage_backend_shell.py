@@ -17,7 +17,7 @@ from cgtsclient.v1 import storage_backend as storage_backend_utils
 
 def _list_formatter(values):
     if values is not None:
-        result = [x.decode('unicode_escape').encode('ascii', 'ignore')
+        result = [x.encode('ascii', 'ignore')
                   for x in values]
         return (", ".join(result))
     else:
