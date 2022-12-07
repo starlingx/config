@@ -483,8 +483,15 @@ class ServiceParameterController(rest.RestController):
             svc_params.append(new_parm)
 
         try:
+            # Pass name to update_service_config only in case the parameter is the Intel
+            # NIC driver version
+            new_name = None
+            if section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
+                    name == constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION:
+                new_name = name
+
             pecan.request.rpcapi.update_service_config(
-                pecan.request.context, service, section=section)
+                pecan.request.context, service, section=section, name=new_name)
         except rpc_common.RemoteError as e:
             # rollback create service parameters
             for p in svc_params:
@@ -612,10 +619,18 @@ class ServiceParameterController(rest.RestController):
 
         pecan.request.dbapi.service_parameter_destroy_uuid(uuid)
         try:
+            # Pass name to update_service_config only in case the parameter is the Intel
+            # NIC driver version
+            name = None
+            if parameter.section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
+                    parameter.name == constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION:
+                name = parameter.name
+
             pecan.request.rpcapi.update_service_config(
                 pecan.request.context,
                 parameter.service,
-                section=parameter.section)
+                section=parameter.section,
+                name=name)
         except rpc_common.RemoteError as e:
             # rollback destroy service parameter
             try:
