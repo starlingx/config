@@ -41,9 +41,9 @@ wlog() {
     fi
 }
 
-device_path=$1 && shift
+device_path=$(realpath $1) && shift
 sfdisk_part_info=$(sfdisk -l $device_path)
-part_numbers=( `echo "$sfdisk_part_info" | awk '$1 == "Device" {i=1; next}; i {print $1}' | grep -o '[0-9]\+'` )
+part_numbers=( `echo "$sfdisk_part_info" | awk '$1 == "Device" {i=1; next}; i {print $1}' | grep -o '[0-9]\+$'` )
 sector_size=$(blockdev --getss $device_path)
 
 for part_number in "${part_numbers[@]}"; do
