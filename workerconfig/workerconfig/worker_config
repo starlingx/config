@@ -272,6 +272,18 @@ start()
         fi
     fi
 
+    # Copy over k8s-coredump-handler token
+    if [ -e $CONFIG_DIR/k8s-coredump-conf.json ]
+    then
+        cp $CONFIG_DIR/k8s-coredump-conf.json /etc/k8s-coredump-conf.json
+        if [ $? -ne 0 ]
+        then
+            fatal_error "Unable to copy k8s-coredump-handler token config file"
+        else
+            chmod 600 /etc/k8s-coredump-conf.json
+        fi
+    fi
+
     # banner customization always returns 0, success:
     /usr/sbin/install_banner_customization
 
