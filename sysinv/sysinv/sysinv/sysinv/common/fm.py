@@ -10,9 +10,9 @@
 from keystoneauth1.access import service_catalog as k_service_catalog
 from oslo_config import cfg
 from oslo_log import log
+from oslo_utils import importutils
 
 from fm_api import constants as fm_constants
-from fm_api import fm_api
 import fmclient as fm_client
 
 CONF = cfg.CONF
@@ -46,7 +46,7 @@ class FmCustomerLog(object):
     _fm_api = None
 
     def __init__(self):
-        self._fm_api = fm_api.FaultAPIs()
+        self._fm_api = _get_fm_api().FaultAPIs()
 
     def customer_log(self, log_data):
         LOG.info("Generating FM Customer Log %s" % log_data)
@@ -60,15 +60,15 @@ class FmCustomerLog(object):
             fm_event_type = log_data.get('fm_event_type', None)
             fm_probable_cause = fm_constants.ALARM_PROBABLE_CAUSE_UNKNOWN
             fm_uuid = None
-            fault = fm_api.Fault(fm_event_id,
-                                 fm_event_state,
-                                 entity_type,
-                                 entity,
-                                 fm_severity,
-                                 reason_text,
-                                 fm_event_type,
-                                 fm_probable_cause, "",
-                                 False, True)
+            fault = _get_fm_api().Fault(fm_event_id,
+                                        fm_event_state,
+                                        entity_type,
+                                        entity,
+                                        fm_severity,
+                                        reason_text,
+                                        fm_event_type,
+                                        fm_probable_cause, "",
+                                        False, True)
 
             response = self._fm_api.set_fault(fault)
             if response is None:
@@ -103,3 +103,18 @@ def fmclient(context, version=1, endpoint=None):
     return fm_client.Client(version=version,
                             endpoint=endpoint,
                             auth_token=auth_token)
+
+
+def get_fm_region():
+    return CONF.fm.os_region_name
+
+
+_FMAPI = None
+
+
+def _get_fm_api():
+    """Delay import of fm api for unit tests."""
+    global _FMAPI
+    if _FMAPI is None:
+        _FMAPI = importutils.import_module('fm_api.fm_api')
+    return _FMAPI
