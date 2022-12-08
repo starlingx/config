@@ -31,21 +31,22 @@ def main():
         arg += 1
     log.configure()
 
-    if action == 'activate' and from_release == '21.12':
+    if action == 'activate' and from_release >= '21.12':
         LOG.info("%s invoked with from_release = %s to_release = %s "
                  "action = %s"
                  % (sys.argv[0], from_release, to_release, action))
-        enable_fluxcd_controllers()
+        enable_fluxcd_controllers(from_release)
 
 
-def enable_fluxcd_controllers():
+def enable_fluxcd_controllers(from_release):
     """Run fluxcd_controllers ansible playbook to enable fluxcd controllers
 
     """
 
     playbooks_root = '/usr/share/ansible/stx-ansible/playbooks'
     upgrade_script = 'upgrade-fluxcd-controllers.yml'
-    cmd = 'ansible-playbook {}/{}'.format(playbooks_root, upgrade_script)
+    cmd = 'ansible-playbook {}/{} -e "upgrade_activate_from_release={}"'\
+          ''.format(playbooks_root, upgrade_script, from_release)
     sub = subprocess.Popen(cmd, shell=True,
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = sub.communicate()
