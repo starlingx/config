@@ -42,12 +42,12 @@ wlog() {
 }
 
 device_path=$(realpath $1) && shift
-sfdisk_part_info=$(sfdisk -l $device_path)
-part_numbers=( `echo "$sfdisk_part_info" | awk '$1 == "Device" {i=1; next}; i {print $1}' | grep -o '[0-9]\+$'` )
+sfdisk_part_info=$(sfdisk -q -l $device_path)
+device_nodes=( `echo "$sfdisk_part_info" | awk '$1 == "Device" {i=1; next}; i {print $1}'` )
 sector_size=$(blockdev --getss $device_path)
 
-for part_number in "${part_numbers[@]}"; do
-    device="${device_path}${part_number}"
+for device in "${device_nodes[@]}"; do
+    part_number=$(udevadm info $device | grep -oP 'E: PARTN=\K.*')
     # Parse the output and put it in the right return format.
     part_type_guid=$(sfdisk --part-type $device_path $part_number)
     part_type_name=$(echo "$sfdisk_part_info" | grep -w $device | awk '{print substr($0, index($0, $6))}' | tr ' ' '.')
@@ -55,12 +55,11 @@ for part_number in "${part_numbers[@]}"; do
     part_start_mib=$(($(echo "$sfdisk_part_info" | grep -w $device | awk '{print $2}') * $sector_size / (1024*1024)))
     part_end_mib=$((($(echo "$sfdisk_part_info" | grep -w $device | awk '{print $3}') * $sector_size / (1024*1024)) + 1))
     part_size_mib=$((part_end_mib-part_start_mib))
-    part_device_node=$(realpath $device_path)$part_number
     if [ "$part_type_name" == "unknown" ]; then
         part_type_name=$(sfdisk --part-label $device_path $part_number | tr ' ' '.')
     fi
 
-    line+="$part_number $part_device_node $part_type_guid $part_type_name $part_guid $part_start_mib $part_end_mib $part_size_mib;"
+    line+="$part_number $device $part_type_guid $part_type_name $part_guid $part_start_mib $part_end_mib $part_size_mib;"
 done
 
 echo $line
