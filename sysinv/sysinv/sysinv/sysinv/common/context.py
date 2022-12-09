@@ -12,11 +12,12 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+from sysinv.common.fm import get_fm_region
 from sysinv.db import api as dbapi
 from sysinv.openstack.common import context
 
-
-REQUIRED_SERVICE_TYPES = ('faultmanagement',)
+FAULT_MANAGEMENT = 'faultmanagement'
+REQUIRED_SERVICE_TYPES = (FAULT_MANAGEMENT,)
 
 
 class RequestContext(context.RequestContext):
@@ -52,7 +53,17 @@ class RequestContext(context.RequestContext):
         if service_catalog:
             # Only include required parts of service_catalog
             self.service_catalog = [s for s in service_catalog
-                                    if s.get('type') in REQUIRED_SERVICE_TYPES]
+                                    if s.get('type', '')
+                                    in REQUIRED_SERVICE_TYPES]
+            for service in self.service_catalog:
+                if service.get('type') == FAULT_MANAGEMENT:
+                    if 'endpoints' in service:
+                        fm_region = get_fm_region()
+                        fm_endpoints = []
+                        for endpoint in service['endpoints']:
+                            if endpoint.get('region', '') == fm_region:
+                                fm_endpoints.append(endpoint)
+                        service['endpoints'] = fm_endpoints
         else:
             # if list is empty or none
             self.service_catalog = []
