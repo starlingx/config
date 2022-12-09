@@ -24,6 +24,11 @@ from sysinv.agent import partition as Partition
 
 LOG = log.get_logger(__name__)
 
+# set partition end_mib to END_OF_DISK_MIB to indicate
+# that the partition will take all the remaining disk spaces
+END_OF_DISK_MIB = "-1"
+ONE_GIB = 1024 * 1024 * 1024
+
 
 def main():
     action = None
@@ -75,7 +80,7 @@ WORKER_PARTITION_LIST = [
     {'start_mib': '302', 'end_mib': '2350', 'size_mib': '2048',
      'type_guid': '0fc63daf-8483-4772-8e79-3d69d8477de4',
      'type_name': 'Linux filesystem'},
-    {'start_mib': '2350', 'end_mib': '113966', 'size_mib': '111616',
+    {'start_mib': '2350', 'end_mib': END_OF_DISK_MIB, 'size_mib': '0',
      'type_guid': 'e6d6d379-f507-44c2-a23c-238f2a3df928',
      'type_name': 'Linux LVM'}]
 
@@ -185,7 +190,12 @@ def get_controller_partition_template(rootdisk):
             partition["device_path"] = None
             partition["device_node"] = None
             bootdisk_partitions.append(partition)
-    return sorted(bootdisk_partitions, key=operator.itemgetter('start_mib'))
+    sorted_list = sorted(bootdisk_partitions,
+                         key=operator.itemgetter('start_mib'))
+
+    # the last partition takes all the rest of disk spaces
+    sorted_list[-1]["end_mib"] = END_OF_DISK_MIB
+    return sorted_list
 
 
 def get_node_partition_template(part_list):
@@ -231,6 +241,11 @@ def get_ipartitions(forihostid, template, rootdisk):
                                    idx)
         partition["device_node"] = device_node
         partition["device_path"] = device_path
+        if partition["end_mib"] == END_OF_DISK_MIB:
+            # get all the rest of disk spaces
+            end_mib = int(rootdisk["size_mib"]) + 1
+            partition["end_mib"] = str(end_mib)
+            partition["size_mib"] = str(end_mib - int(partition["start_mib"]))
         idx += 1
 
     return partitions
@@ -267,68 +282,26 @@ def append_additional_partitions(conn, new_rootdisk_partitions,
     # to form the entier partition list on root disk
 
     forihostid = host["id"]
-    personality = host["personality"]
     # get partitions on rootdisk from N db
     rootdisk_partitions = get_rootdisk_partitions(conn, forihostid)
 
     rootdisk_device_node = rootdisk["device_node"]
-    rootdisk_device_path = rootdisk["device_path"]
-
     LOG.info("Previous release ipartitions on root disk %s \n%s" %
-             (rootdisk_device_path, rootdisk_partitions))
-
-    # get the end mib for the last default partition from release N+1
-    new_end_mib = new_rootdisk_partitions[-1]["end_mib"]
-
-    end_mib_default_partition = None
-    foripvid = None
+             (rootdisk_device_node, rootdisk_partitions))
 
     # find the last default partition in ordered list. All default
     # partitions will be replaced with new default partitions.
-    last_default_partition_idx = -1
     for idx in range(0, len(rootdisk_partitions)):
         partition = rootdisk_partitions[idx]
         if partition["lvm_vg_name"] == "cgts-vg":
             # found the 1st cgts-vg.
-            # In pre Debian load, it is the last default partition on
-            # controller and storage nodes. It is the 2nd last default
-            # partition on worker nodes.
-            # TODO: bqian: in Debian load (as N release), the first cgts-vg
-            # partition is the last default partition for all node types
-            if personality == "controller":
-                last_default_partition_idx = idx
-            elif personality == "worker":
-                last_default_partition_idx = idx + 1
-            elif personality == "storage":
-                last_default_partition_idx = idx
-
-            foripvid = partition["foripvid"]
-            new_rootdisk_partitions[-1]["foripvid"] = foripvid
+            # cgts-vg in new load will replace the existing cgts-vg partition
+            # on the node as PV of cgts-vg
+            new_rootdisk_partitions[-1]["foripvid"] = partition["foripvid"]
             break
-
-    if last_default_partition_idx < 0:
-        # something we don't understand
-        raise Exception("Cannot determine the partition layout in N release")
-
-    last_default_partition = rootdisk_partitions[last_default_partition_idx]
-    end_mib_default_partition = last_default_partition["end_mib"]
-    mib_offset = int(new_end_mib) - int(end_mib_default_partition)
-
-    next_partition_idx = last_default_partition_idx + 1
-    for idx in range(next_partition_idx, len(rootdisk_partitions)):
-        partition = rootdisk_partitions[idx]
-        device_node, device_path = \
-            build_device_node_path(rootdisk_device_node,
-                                   rootdisk_device_path,
-                                   len(new_rootdisk_partitions) + 1)
-
-        partition["device_node"] = device_node
-        partition["device_path"] = device_path
-        partition["start_mib"] = int(partition["start_mib"]) + mib_offset
-        partition["end_mib"] = int(partition["end_mib"]) + mib_offset
-        partition["status"] = constants.PARTITION_CREATE_ON_UNLOCK_STATUS
-        new_rootdisk_partitions.append(partition)
-        LOG.info("To recreate partition %s" % partition)
+    else:
+        # a cgts-vg is not found on root disk... game over
+        raise Exception("cgts-vg partition is not found on rootdisk")
 
     ipartitions = []
     for partition in new_rootdisk_partitions:
@@ -402,20 +375,17 @@ def update_pvs(conn, forihostid):
                           constants.PARTITION_CREATE_ON_UNLOCK_STATUS))
         LOG.info("Updated %s PVs" % cur.rowcount)
 
-        # update additional PVs, these pv and partitions have not been
-        # provisioned
-        sql = "UPDATE i_pv " \
-              "SET disk_or_part_uuid = p.uuid, " \
-              "disk_or_part_device_node = p.device_node, " \
-              "disk_or_part_device_path = p.device_path, " \
-              "lvm_pv_name = p.device_node, " \
-              "pv_state = %s " \
-              "FROM i_pv AS v JOIN partition AS p ON p.foripvid = v.id " \
-              "WHERE v.forihostid = %s AND p.forihostid = %s AND" \
-              "      i_pv.id = v.id AND p.status = %s"
-        cur.execute(sql, (constants.PV_ADD, forihostid, forihostid,
-                          constants.PARTITION_CREATE_ON_UNLOCK_STATUS))
-        LOG.info("Update %s PVs on partitions" % cur.rowcount)
+        # Delete the PVs that link to user partition on boot disk.
+        # As the user partitions on boot disk are deleted during
+        # update_partition, the orphan partition PVs are to be deleted.
+        sql = "DELETE FROM i_pv " \
+              "WHERE pv_type = 'partition' AND forihostid = %s AND id NOT IN" \
+              " (SELECT foripvid FROM partition WHERE forihostid = %s AND " \
+              "foripvid IS NOT Null)"
+        cur.execute(sql, (forihostid, forihostid))
+        count = cur.rowcount
+        if count > 0:
+            LOG.info("Deleted %s PVs on user partition" % cur.rowcount)
 
         sql = "SELECT id, uuid, lvm_pv_name, pv_type, pv_state, " \
               "disk_or_part_uuid " \
@@ -429,6 +399,21 @@ def update_pvs(conn, forihostid):
 
 def update_lvgs(conn, forihostid):
     with conn.cursor(cursor_factory=DictCursor) as cur:
+        # delete the lvgs that don't have any PVs.
+        # PVs can be deleted in update_pvs when associated partition is
+        # deleted as root disk space is reallocated to cgts-vg.
+        # nova-local can be deleted if all nova-local PVs are partitions
+        # on root disk. In this case all partitions and PVs are deleted
+        # in update_partition and update_pvs.
+        sql = "DELETE FROM i_lvg " \
+              "WHERE forihostid = %s AND id NOT IN " \
+              "(SELECT forilvgid FROM i_pv WHERE forihostid = %s AND " \
+              "forilvgid IS NOT Null);"
+        cur.execute(sql, (forihostid, forihostid))
+        count = cur.rowcount
+        if count > 0:
+            LOG.info("Deleted %s unused lvg" % count)
+
         # mark lvgs to be recreated during host unlock
         sql = "UPDATE i_lvg SET vg_state = %s " \
               "WHERE lvm_vg_name <> 'cgts-vg' AND forihostid = %s;"
@@ -459,7 +444,7 @@ def get_disk_or_partition(conn, hostid):
 
 def get_rootdisk(conn, hostid, boot_device):
     # return device_node and device_path of rootdisk
-    sql = "SELECT id, uuid, device_node, device_path " \
+    sql = "SELECT id, uuid, device_node, device_path, size_mib " \
           "FROM i_idisk " \
           "WHERE (device_node = %s OR device_path = %s) AND forihostid = %s"
     with conn.cursor(cursor_factory=DictCursor) as cur:
@@ -470,9 +455,10 @@ def get_rootdisk(conn, hostid, boot_device):
 
 def get_hosts(conn):
     with conn.cursor(cursor_factory=DictCursor) as cur:
-        cur.execute("SELECT id, hostname, personality, boot_device "
+        cur.execute("SELECT id, hostname, personality, boot_device, "
+                    "subfunctions "
                     "FROM i_host WHERE personality "
-                    "IN ('controller', 'worker', 'storage');")
+                    "IN ('controller', 'worker');")
         nodes = cur.fetchall()
         return nodes
 
@@ -489,9 +475,8 @@ def update_host(conn, host, partition_template):
                                                host, rootdisk)
     ipartitions = update_partition(conn, ipartitions, hostid, rootdisk)
 
-    lvgs = update_lvgs(conn, hostid)
-
     pvs = update_pvs(conn, hostid)
+    lvgs = update_lvgs(conn, hostid)
 
     LOG.info("partition migration summary %s:" % hostname)
     LOG.info("=" * 60)
@@ -509,6 +494,67 @@ def update_host(conn, host, partition_template):
     LOG.info("=" * 60)
 
 
+def get_nova_local_pvs(conn, hostid):
+    sql = "SELECT pv_type, lvm_vg_name, lvm_pv_size, disk_or_part_uuid " \
+          "FROM i_pv WHERE forihostid = %s AND lvm_vg_name='nova-local';"
+    with conn.cursor(cursor_factory=DictCursor) as cur:
+        cur.execute(sql, (hostid,))
+        pvs = cur.fetchall()
+        return pvs
+
+
+def create_instances_lv(conn, host, partition_size):
+    # size_gib is rounded up to nearest Gib
+    sql = "INSERT INTO host_fs" \
+          "(created_at, uuid, name, size, logical_volume, forihostid) " \
+          "VALUES(%s, %s, %s, %s, %s, %s);"
+
+    created_at = datetime.now()
+    fs_uuid = "%s" % uuid.uuid4()
+    name = constants.FILESYSTEM_NAME_INSTANCES
+    # round up
+    size_gib = int((partition_size + ONE_GIB - 1) / ONE_GIB)
+    lv_name = constants.FILESYSTEM_LV_DICT[name]
+    forihostid = host["id"]
+
+    with conn.cursor(cursor_factory=DictCursor) as cur:
+        cur.execute(sql, (created_at, fs_uuid, name, size_gib,
+                          lv_name, forihostid))
+        if cur.rowcount == 1:
+            LOG.info("%s: created cgts-vg:%s %sGib" %
+                     (host["hostname"], lv_name, size_gib))
+
+
+def migrate_nova_local(conn, host):
+    # Migrate nova-local on boot disk
+    # This only needs to do on nodes with worker subfunction
+    # The migration rules:
+    # 1. if nova-local only exists on boot disk as a partition,
+    #    the nova-local partition will be dropped, replaced with
+    #    same size will be allocated to cgts-vg:instances-lv,
+    # 2. if nova-local only exists on separated disk, then no
+    #    migration operation is needed
+    # 3. if nova-local exists on both boot disk partition and
+    #    separated disk, nova-local partition on boot disk will
+    #    be dropped, and with no other compensation. This will
+    #    result total nova-local space reduced.
+    pvs = get_nova_local_pvs(conn, host["id"])
+    partition_size = 0
+    nova_local_disk = False
+    for pv in pvs:
+        if pv["pv_type"] == "partition":
+            partition_size += int(pv["lvm_pv_size"])
+        else:
+            nova_local_disk = True
+
+    if partition_size > 0:
+        if not nova_local_disk:
+            create_instances_lv(conn, host, partition_size)
+        else:
+            msg = "Total nova-local is reduced by %s bytes"
+            LOG.info(msg % partition_size)
+
+
 def do_update():
     res = 0
     conn = psycopg2.connect("dbname=sysinv user=postgres")
@@ -523,15 +569,18 @@ def do_update():
         hosts = get_hosts(conn)
         for host in hosts:
             personality = host["personality"]
-            if personality == "worker":
+
+            if personality == constants.WORKER:
                 partition_template = worker_partitions
-            elif personality == "controller":
+            elif personality == constants.CONTROLLER:
                 partition_template = controller_partitions
-            elif personality == "storage":
+            else:
                 # nothing to migrate on storage node, as no user partitions
                 # are allowed on root disk
                 continue
 
+            if "worker" in host["subfunctions"]:
+                migrate_nova_local(conn, host)
             update_host(conn, host, partition_template)
 
     except psycopg2.Error as ex:

@@ -79,6 +79,8 @@ def execute_migration_scripts(from_release, to_release, action,
                       "file name format")
         raise
 
+    MSG_SCRIPT_FAILURE = "Migration script %s failed with returncode %d" \
+                         "Script output:\n%s"
     # Execute each migration script
     for f in files:
         migration_script = os.path.join(migration_script_dir, f)
@@ -94,17 +96,23 @@ def execute_migration_scripts(from_release, to_release, action,
                                         stderr=subprocess.STDOUT,
                                         universal_newlines=True)
             else:
-                subprocess.run([migration_script,
-                                from_release,
-                                to_release,
-                                action],
-                               stdout=subprocess.DEVNULL,
-                               stderr=subprocess.STDOUT,
-                               universal_newlines=True)
+                ret = subprocess.run([migration_script,
+                                      from_release,
+                                      to_release,
+                                      action],
+                                     stderr=subprocess.STDOUT,
+                                     stdout=subprocess.PIPE,
+                                     text=True)
+                if ret.returncode != 0:
+                    msg = MSG_SCRIPT_FAILURE % (migration_script,
+                                                ret.returncode,
+                                                ret.stdout)
+                    LOG.error(msg)
+                    raise Exception(msg)
+
         except subprocess.CalledProcessError as e:
             # log script output if script executed but failed.
-            LOG.error("Migration script %s failed with returncode %d"
-                      "Script output: \n%s" %
+            LOG.error(MSG_SCRIPT_FAILURE %
                       (migration_script, e.returncode, e.output))
             # Abort when a migration script fails
             raise
