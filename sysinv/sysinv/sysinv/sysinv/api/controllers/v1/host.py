@@ -4590,12 +4590,16 @@ class HostController(rest.RestController):
                 return
 
     @staticmethod
-    def _semantic_check_nova_local_storage(ihost_uuid, personality):
+    def _semantic_check_nova_local_storage(ihost_uuid, personality, required=False):
         """
         Perform semantic checking for nova local storage
         :param ihost_uuid: uuid of host with worker functionality
         :param personality: personality of host with worker functionality
+        :param required: set to True if nova storage is required and not defined
         """
+
+        required_msg = ("A host with worker functionality requires a cgts-vg/instances-lv "
+                        "or a nova-local volume group prior to being enabled. ")
 
         # query volume groups
         nova_local_storage_lvg = None
@@ -4608,14 +4612,7 @@ class HostController(rest.RestController):
         # Prevent unlock if nova-local volume group has: invalid state
         # (e.g., removing), no physical volumes allocated.
         if nova_local_storage_lvg:
-            if nova_local_storage_lvg.vg_state == constants.LVG_DEL:
-                raise wsme.exc.ClientSideError(
-                    _("A host with worker functionality requires a "
-                      "nova-local volume group prior to being enabled. It is "
-                      "currently set to be removed on unlock. Please update "
-                      "the storage settings for the host."))
-
-            else:
+            if nova_local_storage_lvg.vg_state != constants.LVG_DEL:
                 # Make sure that we have physical volumes allocated to the
                 # volume group
                 ihost_ipvs = pecan.request.dbapi.ipv_get_by_ihost(ihost_uuid)
@@ -4628,27 +4625,26 @@ class HostController(rest.RestController):
 
                 if not lvg_has_pvs:
                     raise wsme.exc.ClientSideError(
-                        _("A host with worker functionality requires a "
-                          "nova-local volume group prior to being enabled."
-                          "The nova-local volume group does not contain any "
-                          "physical volumes in the adding or provisioned "
-                          "state."))
+                        _("%sThe nova-local volume group does not "
+                          "contain any physical volumes in the adding or provisioned "
+                          "state.") % (required_msg if required else ""))
 
         else:
-            # This method is only called with hosts that have a worker
-            # subfunction and is locked or if subfunction_config action is
-            # being called. Without a nova-local volume group, prevent
-            # unlocking.
-            if personality == constants.CONTROLLER:
-                host_description = 'controller with worker functionality'
-            else:
-                host_description = 'worker'
+            if required:
+                # This method is only called with hosts that have a worker
+                # subfunction and is locked or if subfunction_config action is
+                # being called. Without a nova-local volume group, prevent
+                # unlocking.
+                if personality == constants.CONTROLLER:
+                    host_description = 'controller with worker functionality'
+                else:
+                    host_description = 'worker'
 
-            msg = _('A %s requires a nova-local volume group prior to being '
-                    'enabled. Please update the storage settings for the '
-                    'host.') % host_description
+                msg = _('A %s requires a cgts-vg/instances-lv or a nova-local volume '
+                        'group prior to being enabled. Please update the storage '
+                        'settings for the host.') % host_description
 
-            raise wsme.exc.ClientSideError('%s' % msg)
+                raise wsme.exc.ClientSideError('%s' % msg)
 
     @staticmethod
     def _semantic_check_restore_complete(ihost):
@@ -4858,9 +4854,25 @@ class HostController(rest.RestController):
             self.update_vim_progress_status(action, hostupdate)
         elif action == constants.SUBFUNCTION_CONFIG_ACTION:
             self._check_subfunction_config(hostupdate)
-            self._semantic_check_nova_local_storage(
-                hostupdate.ihost_patch['uuid'],
-                hostupdate.ihost_patch['personality'])
+
+            # openstack local storage
+            labels = pecan.request.dbapi.label_get_by_host(hostupdate.ihost_orig['uuid'])
+            if cutils.has_openstack_compute(labels):
+                # Required: make sure present
+                if not cutils.is_filesystem_enabled(pecan.request.dbapi,
+                                                    hostupdate.ihost_orig['uuid'],
+                                                    constants.FILESYSTEM_NAME_INSTANCES):
+                    self._semantic_check_nova_local_storage(
+                        hostupdate.ihost_orig['uuid'],
+                        hostupdate.ihost_orig['personality'],
+                        required=True)
+            else:
+                # Optional: Check if partially added
+                self._semantic_check_nova_local_storage(
+                    hostupdate.ihost_orig['uuid'],
+                    hostupdate.ihost_orig['personality'],
+                    required=False)
+
         else:
             raise wsme.exc.ClientSideError(_(
                 "action_check unrecognized action: %s" % action))
@@ -6002,11 +6014,21 @@ class HostController(rest.RestController):
                               "Note that this will select the storage deployment model, "
                               "check documentation for details and restrictions."))
 
-        # Local Storage checks
+        # openstack local storage
         labels = pecan.request.dbapi.label_get_by_host(ihost['uuid'])
         if cutils.has_openstack_compute(labels):
+            # Required: make sure present
+            if not cutils.is_filesystem_enabled(pecan.request.dbapi,
+                                                ihost['uuid'],
+                                                constants.FILESYSTEM_NAME_INSTANCES):
+                self._semantic_check_nova_local_storage(ihost['uuid'],
+                                                        ihost['personality'],
+                                                        required=True)
+        else:
+            # Optional: Check if partially added
             self._semantic_check_nova_local_storage(ihost['uuid'],
-                                                    ihost['personality'])
+                                                    ihost['personality'],
+                                                    required=False)
 
     @staticmethod
     def check_unlock_storage(hostupdate):
