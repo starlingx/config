@@ -12445,20 +12445,29 @@ class ConductorManager(service.PeriodicService):
                                network_type)
         return "%s-cinder-%s" % ADDRESS_FORMAT_ARGS
 
-    def reserve_ip_for_first_storage_node(self, context):
+    def reserve_ip_for_third_monitor_node(self, context, hostname):
         """
-        Reserve ip address for the first storage node for Ceph monitor
-        when installing Ceph as a second backend
+        Reserve an IP address for a host that will run the third
+        Ceph monitor when Ceph is installed as a storage backend.
 
         :param context: request context.
+        :param hostname: hostname to reserve ip.
         """
+        chost = self.dbapi.ihost_get_by_hostname(hostname)
+
+        # check if hostname is storage-0 or any worker
+        if (chost['personality'] == constants.STORAGE and hostname != constants.STORAGE_0_HOSTNAME) \
+                or chost['personality'] == constants.CONTROLLER:
+            raise exception.SysinvException(_(
+                "Ceph monitor can only be added to storage-0 or any worker."))
+
         network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
         address_name = cutils.format_address_name(
-            constants.STORAGE_0_HOSTNAME, constants.NETWORK_TYPE_MGMT)
+            hostname, constants.NETWORK_TYPE_MGMT)
 
         try:
             self.dbapi.address_get_by_name(address_name)
-            LOG.debug("Addres %s already reserved, continuing." % address_name)
+            LOG.debug("Address %s already reserved, continuing." % address_name)
         except exception.AddressNotFoundByName:
             LOG.debug("Reserving address for %s." % address_name)
             self._allocate_pool_address(None, network.pool_uuid,

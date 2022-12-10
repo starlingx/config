@@ -445,6 +445,11 @@ def _create(ceph_mon):
                   "replication is set to: %s'. Please update replication "
                   "before configuring a monitor on a worker node." % supported_replication))
 
+    # only accept a 3rd ceph monitor if this is storage-0 or any other worker
+    if chost['personality'] == constants.STORAGE and chost['hostname'] != constants.STORAGE_0_HOSTNAME:
+        raise wsme.exc.ClientSideError(
+            _("Ceph monitor can only be added to storage-0 or any worker."))
+
     ceph_mon = _set_defaults(ceph_mon)
 
     # Size of ceph-mon logical volume must be the same for all
@@ -458,8 +463,8 @@ def _create(ceph_mon):
     controller_fs_utils._check_ceph_mon_growth(ceph_mon['ceph_mon_gib'])
     utils.check_all_ceph_mon_growth(ceph_mon['ceph_mon_gib'], chost)
 
-    pecan.request.rpcapi.reserve_ip_for_first_storage_node(
-        pecan.request.context)
+    pecan.request.rpcapi.reserve_ip_for_third_monitor_node(
+        pecan.request.context, chost.hostname)
 
     # In case we add the monitor on a worker node, the state
     # and task must be set properly.
