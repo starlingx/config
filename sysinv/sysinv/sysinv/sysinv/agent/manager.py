@@ -808,7 +808,7 @@ class AgentManager(service.PeriodicService):
             else:
                 LOG.info("get_ihost failed due RPC timeout.")
 
-        if not self._report_to_conductor():
+        if not self._report_to_conductor() or ihost is None:
             # let the audit take care of it instead
             LOG.info("Sysinv no matching ihost found... await Audit")
             return
