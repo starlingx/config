@@ -1769,25 +1769,6 @@ class ConductorManager(service.PeriodicService):
         self._config_apply_runtime_manifest(
             context, config_uuid=config_uuid, config_dict=config_dict)
 
-    def _update_kubeadm_feature_gates(self, context):
-        """Applies the runtime manifest to change kubernetes feature gates.
-           Applied on both the controllers
-           returns True if runtime manifests were applied
-        """
-        personalities = [constants.CONTROLLER]
-        config_uuid = self._config_update_hosts(
-                context, personalities)
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::kubernetes::master::update_kubeadm_feature_gates'],
-            puppet_common.REPORT_STATUS_CFG:
-                puppet_common.REPORT_UPGRADE_ACTIONS
-        }
-        self._config_apply_runtime_manifest(context,
-                                            config_uuid=config_uuid,
-                                            config_dict=config_dict)
-        return True
-
     def _update_keystone_password(self, context, username):
         """This method calls a puppet class to update the service config and
 
@@ -12194,8 +12175,6 @@ class ConductorManager(service.PeriodicService):
                     {'state': constants.UPGRADE_ACTIVATION_FAILED})
 
         manifests_applied = False
-        if from_version in (tsc.SW_VERSION_21_12, tsc.SW_VERSION_22_06):
-            manifests_applied |= self._update_kubeadm_feature_gates(context)
 
         if manifests_applied:
             LOG.info("Running upgrade activation manifests")
