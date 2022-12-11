@@ -612,6 +612,13 @@ class ConductorManager(service.PeriodicService):
                 self._set_state_for_abort(upgrade)
         elif hostname == constants.CONTROLLER_1_HOSTNAME:
             self._init_controller_for_upgrade(upgrade)
+            if upgrade.state == constants.UPGRADE_UPGRADING_CONTROLLERS:
+                # request report initial inventory as controller-1 has
+                # not had a chance to report inventory to upgraded system
+                context = ctx.RequestContext('admin', 'admin', is_admin=True)
+                ihost = self.dbapi.ihost_get_by_hostname(hostname)
+                rpcapi = agent_rpcapi.AgentAPI()
+                rpcapi.report_initial_inventory(context, ihost.uuid)
 
         system_mode = self.dbapi.isystem_get_one().system_mode
         if system_mode == constants.SYSTEM_MODE_SIMPLEX:

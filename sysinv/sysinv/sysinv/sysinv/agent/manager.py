@@ -2184,3 +2184,9 @@ class AgentManager(service.PeriodicService):
                 subprocess.call(['/usr/bin/sysinv-service-restart.sh'])
             else:
                 LOG.info("Hybrid flag doesn't exist. Ignoring delete.")
+
+    def report_initial_inventory(self, context, host_uuid):
+        # conductor requests re-report initial inventory
+        if self._ihost_uuid and self._ihost_uuid == host_uuid:
+            self._inventoried_initial = False
+            self._inventory_reported = set()

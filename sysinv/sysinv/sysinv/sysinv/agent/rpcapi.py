@@ -310,3 +310,11 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.cast(context,
                          self.make_msg('delete_sysinv_hybrid_state',
                                        host_uuid=host_uuid))
+
+    def report_initial_inventory(self, context, host_uuid):
+        """ Synchronously, request the agent to re-report initial inventory
+        """
+
+        return self.call(context,
+                         self.make_msg("report_initial_inventory",
+                                       host_uuid=host_uuid))
