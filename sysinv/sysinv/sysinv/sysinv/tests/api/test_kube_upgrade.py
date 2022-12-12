@@ -843,6 +843,65 @@ class TestPatch(TestKubeUpgrade,
         self.assertIn("Invalid state",
                       result.json['error_message'])
 
+    def test_update_failed_state(self):
+        # Test updating the state of an upgrade with a failed state
+
+        # Create the upgrade
+        kube_upgrade = dbutils.create_test_kube_upgrade(
+            from_version='v1.43.1',
+            to_version='v1.43.2',
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES)
+        uuid = kube_upgrade.uuid
+
+        # Update state
+        new_state = kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
+        result = self.patch_json('/kube_upgrade',
+                                 [{'path': '/state',
+                                   'value': new_state,
+                                   'op': 'replace'}],
+                                 headers={'User-Agent': 'sysinv-test'},
+                                 expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(result.status_code, http_client.OK)
+        self.assertEqual(result.json['state'], new_state)
+
+        # see if state was changed in DB
+        kube_cmd_version = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(kube_cmd_version.state, new_state)
+
+        # Verify that the upgrade was updated with the new state
+        result = self.get_json('/kube_upgrade/%s' % uuid)
+        self.assertEqual(result['from_version'], 'v1.43.1')
+        self.assertEqual(result['to_version'], 'v1.43.2')
+        self.assertEqual(result['state'], new_state)
+
+    def test_update_state_failed_invalid_state(self):
+        # Test updating the invalid state of an upgrade with a failed state
+
+        # Create the upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.43.1',
+            to_version='v1.43.2',
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
+
+        # Update state
+        new_state = kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
+        result = self.patch_json('/kube_upgrade',
+                                 [{'path': '/state',
+                                   'value': new_state,
+                                   'op': 'replace'}],
+                                 headers={'User-Agent': 'sysinv-test'},
+                                 expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(result.status_code, http_client.BAD_REQUEST)
+        self.assertIn(("A kubernetes upgrade is in downloaded-images state "
+                       "cannot be set to failed"),
+                      result.json['error_message'])
+
 
 class TestDelete(TestKubeUpgrade):
 
