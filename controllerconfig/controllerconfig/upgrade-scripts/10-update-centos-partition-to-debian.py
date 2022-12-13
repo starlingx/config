@@ -291,8 +291,7 @@ def append_additional_partitions(conn, new_rootdisk_partitions,
 
     # find the last default partition in ordered list. All default
     # partitions will be replaced with new default partitions.
-    for idx in range(0, len(rootdisk_partitions)):
-        partition = rootdisk_partitions[idx]
+    for partition in rootdisk_partitions:
         if partition["lvm_vg_name"] == "cgts-vg":
             # found the 1st cgts-vg.
             # cgts-vg in new load will replace the existing cgts-vg partition
@@ -503,7 +502,7 @@ def get_nova_local_pvs(conn, hostid):
         return pvs
 
 
-def create_instances_lv(conn, host, partition_size):
+def create_instances_lv(conn, host, rootdisk_nova_local_size):
     # size_gib is rounded up to nearest Gib
     sql = "INSERT INTO host_fs" \
           "(created_at, uuid, name, size, logical_volume, forihostid) " \
@@ -513,7 +512,7 @@ def create_instances_lv(conn, host, partition_size):
     fs_uuid = "%s" % uuid.uuid4()
     name = constants.FILESYSTEM_NAME_INSTANCES
     # round up
-    size_gib = int((partition_size + ONE_GIB - 1) / ONE_GIB)
+    size_gib = int((rootdisk_nova_local_size + ONE_GIB - 1) / ONE_GIB)
     lv_name = constants.FILESYSTEM_LV_DICT[name]
     forihostid = host["id"]
 
@@ -525,7 +524,7 @@ def create_instances_lv(conn, host, partition_size):
                      (host["hostname"], lv_name, size_gib))
 
 
-def migrate_nova_local(conn, host):
+def migrate_nova_local(conn, host, rootdisk):
     # Migrate nova-local on boot disk
     # This only needs to do on nodes with worker subfunction
     # The migration rules:
@@ -539,20 +538,28 @@ def migrate_nova_local(conn, host):
     #    be dropped, and with no other compensation. This will
     #    result total nova-local space reduced.
     pvs = get_nova_local_pvs(conn, host["id"])
-    partition_size = 0
-    nova_local_disk = False
-    for pv in pvs:
-        if pv["pv_type"] == "partition":
-            partition_size += int(pv["lvm_pv_size"])
-        else:
-            nova_local_disk = True
+    if len(pvs) > 0:
+        LOG.info("Found nova-local pvs on rootdisk: %s", pvs)
 
-    if partition_size > 0:
-        if not nova_local_disk:
-            create_instances_lv(conn, host, partition_size)
+    rootdisk_partitions = get_rootdisk_partitions(conn, host["id"])
+    rootdisk_part_uuids = [p["uuid"] for p in rootdisk_partitions]
+
+    rootdisk_nova_local_size = 0
+    pv_on_other_disk = False
+    for pv in pvs:
+        pv_type = pv["pv_type"]
+        dop_uuid = pv["disk_or_part_uuid"]
+        if (pv_type == "partition" and dop_uuid in rootdisk_part_uuids):
+            rootdisk_nova_local_size += int(pv["lvm_pv_size"])
+        else:
+            pv_on_other_disk = True
+
+    if rootdisk_nova_local_size > 0:
+        if not pv_on_other_disk:
+            create_instances_lv(conn, host, rootdisk_nova_local_size)
         else:
             msg = "Total nova-local is reduced by %s bytes"
-            LOG.info(msg % partition_size)
+            LOG.info(msg % rootdisk_nova_local_size)
 
 
 def do_update():
@@ -580,7 +587,7 @@ def do_update():
                 continue
 
             if "worker" in host["subfunctions"]:
-                migrate_nova_local(conn, host)
+                migrate_nova_local(conn, host, rootdisk)
             update_host(conn, host, partition_template)
 
     except psycopg2.Error as ex:
