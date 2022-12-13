@@ -4737,8 +4737,10 @@ class ConductorManager(service.PeriodicService):
                     found = True
 
                     # On CentOS to Debian upgrade partitions may differ
-                    if (ipart['start_mib'] != db_part['start_mib'] or
-                            ipart['end_mib'] != db_part['end_mib'] or
+                    # ipart 'start_mib' and 'end_mib' values are strings
+                    # whereas db_part are integers.
+                    if (str(ipart['start_mib']) != str(db_part['start_mib']) or
+                            str(ipart['end_mib']) != str(db_part['end_mib']) or
                             ipart['type_guid'] != db_part['type_guid']):
                         LOG.info("PART update part start/end/size/type/name")
                         self.dbapi.partition_update(
