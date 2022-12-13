@@ -23,6 +23,7 @@ from oslo_log import log as logging
 from sysinv.agent import rpcapiproxy as agent_rpcapi
 from sysinv.common import exception
 from sysinv.common import kubernetes
+from sysinv.common.retrying import retry
 from sysinv.openstack.common import context
 
 LOG = logging.getLogger(__name__)
@@ -69,6 +70,13 @@ def refresh_helm_repo_information():
     rpcapi.refresh_helm_repo_information(context.get_admin_context())
 
 
+def _retry_on_HelmTillerFailure(ex):
+    LOG.info('Caught exception retrieving helm releases. Retrying... Exception: {}'.format(ex))
+    return isinstance(ex, exception.HelmTillerFailure)
+
+
+@retry(stop_max_attempt_number=6, wait_fixed=20 * 1000,
+       retry_on_exception=_retry_on_HelmTillerFailure)
 def retrieve_helm_v3_releases():
     helm_list = subprocess.Popen(
         ['helm', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
@@ -113,6 +121,8 @@ def retrieve_helm_v3_releases():
         timer.cancel()
 
 
+@retry(stop_max_attempt_number=6, wait_fixed=20 * 1000,
+       retry_on_exception=_retry_on_HelmTillerFailure)
 def retrieve_helm_v2_releases():
     env = os.environ.copy()
     env['PATH'] = '/usr/local/sbin:' + env['PATH']
@@ -268,7 +278,7 @@ def delete_helm_v3_release(release, namespace="default", flags=None):
         timer.cancel()
 
 
-def _retry_on_HelmTillerFailure(ex):
+def _retry_on_HelmTillerFailure_reset_tiller(ex):
     LOG.info('Caught HelmTillerFailure exception. Resetting tiller and retrying... '
             'Exception: {}'.format(ex))
     env = os.environ.copy()
@@ -299,7 +309,7 @@ def _retry_on_HelmTillerFailure(ex):
 
 
 @retrying.retry(stop_max_attempt_number=2,
-                retry_on_exception=_retry_on_HelmTillerFailure)
+                retry_on_exception=_retry_on_HelmTillerFailure_reset_tiller)
 def get_openstack_pending_install_charts():
     env = os.environ.copy()
     env['PATH'] = '/usr/local/sbin:' + env['PATH']
