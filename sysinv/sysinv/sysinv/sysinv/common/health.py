@@ -299,13 +299,20 @@ class Health(object):
         return True
 
     def _check_bootdevice(self):
-        def _format_message(hostname, device_type, device):
-            not_found = "%s (%s) for %s does not match any inventoried disk\n"
+        def _format_message(hostname, device_type, device, rootdisk):
+            not_found = "%s (%s) for %s does not match root disk %s\n"
             not_assigned = "%s for %s is not assigned\n"
             if device:
-                return not_found % (device_type, device, hostname)
+                return not_found % (device_type, device, hostname, rootdisk)
             else:
                 return not_assigned % (device_type, hostname)
+
+        def is_rootdisk(idisk):
+            # root disk has capabilities:{'stor_function': 'rootfs'}
+            c = idisk.capabilities
+            if "stor_function" in c and c["stor_function"] == "rootfs":
+                return True
+            return False
 
         success = True
         message = ""
@@ -313,22 +320,21 @@ class Health(object):
         ihosts = self._dbapi.ihost_get_list()
         for ihost in ihosts:
             idisks = self._dbapi.idisk_get_by_ihost(ihost.uuid)
-            boot_device_matched = False
-            rootfs_device_matched = False
-
             for idisk in idisks:
-                if ihost.boot_device in [idisk.device_node, idisk.device_path]:
-                    boot_device_matched = True
-                if ihost.rootfs_device in [idisk.device_node, idisk.device_path]:
-                    rootfs_device_matched = True
-                if boot_device_matched and rootfs_device_matched:
+                if is_rootdisk(idisk):
+                    if ihost.boot_device not in [idisk.device_node, idisk.device_path]:
+                        success = False
+                        message += _format_message(ihost.hostname, "boot_device", ihost.boot_device,
+                                                   idisk.device_node)
+                    if ihost.rootfs_device not in [idisk.device_node, idisk.device_path]:
+                        success = False
+                        message += _format_message(ihost.hostname, "rootfs_device", ihost.rootfs_device,
+                                                   idisk.device_node)
                     break
             else:
                 success = False
-                if not boot_device_matched:
-                    message += _format_message(ihost.hostname, "boot_device", ihost.boot_device)
-                if not rootfs_device_matched:
-                    message += _format_message(ihost.hostname, "rootfs_device", ihost.rootfs_device)
+                message += "Cannot determine the root disk for %s\n" % ihost.hostname
+                continue
         return success, message
 
     def get_system_health(self, context, force=False, alarm_ignore_list=None):
