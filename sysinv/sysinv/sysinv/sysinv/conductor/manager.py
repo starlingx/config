@@ -14711,6 +14711,20 @@ class ConductorManager(service.PeriodicService):
             puppet_class = 'platform::kubernetes::upgrade_first_control_plane'
             new_state = kubernetes.KUBE_UPGRADED_FIRST_MASTER
             fail_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
+
+            # If we're upgrading to 1.24, we need to sanitize feature gates
+            # because one of them is no longer valid.
+            if target_version == 'v1.24.4':
+                if self.sanitize_feature_gates_bootstrap_config_file() == 1:
+                    LOG.error("Problem sanitizing bootstrap config file.")
+                    kube_upgrade_obj.state = fail_state
+                    kube_upgrade_obj.save()
+                    return
+                if self.sanitize_feature_gates_service_parameter() == 1:
+                    LOG.error("Problem sanitizing feature gates service parameter.")
+                    kube_upgrade_obj.state = fail_state
+                    kube_upgrade_obj.save()
+                    return
         elif kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_SECOND_MASTER:
             puppet_class = 'platform::kubernetes::upgrade_control_plane'
             new_state = kubernetes.KUBE_UPGRADED_SECOND_MASTER
@@ -16188,6 +16202,117 @@ class ConductorManager(service.PeriodicService):
 
         LOG.info('Deleted k8s secrets:\n %s' % deleted_resources)
 
+    def sanitize_feature_gates_bootstrap_config_file(self):
+        """
+        Remove the "RemoveSelfLink=false" kube-apiserver feature gate from the
+        last_kube_extra_config_bootstrap.yaml file when doing an upgrade from
+        K8s 1.23 to 1.24.
+
+        The yaml file contains information that is used during backup and restore.
+        We want to remove the "RemoveSelfLink=false" kube-apiserver feature gate
+        if it's present so that if we do a backup and restore after the upgrade
+        to K8s 1.24 we won't try to use this feature gate any more.  Any other feature
+        gates should be left alone, and if there aren't any other feature gates
+        we want to delete the entire "feature-gates" line.
+
+        Once we no longer need to worry about upgrading from 1.23 we can remove
+        this function.
+        """
+
+        FILENAME = tsc.CONFIG_PATH + "last_kube_extra_config_bootstrap.yaml"
+        newyaml = yaml.YAML()
+        newyaml.default_flow_style = False
+
+        try:
+            with open(FILENAME, "r") as stream:
+                info = newyaml.load(stream)
+        except Exception as ex:
+            LOG.error("Problem reading from %s" % FILENAME)
+            LOG.error(str(ex))
+            return 1
+        try:
+            feature_gates = info['apiserver_extra_args']['feature-gates']
+        except KeyError:
+            # No apiserver feature gates, nothing to do
+            LOG.info('No kube-apiserver feature gates in bootstrap, nothing to do.')
+            return 0
+        if "RemoveSelfLink=false" not in feature_gates:
+            # Nothing to do
+            LOG.info('No changes needed in kube-apiserver feature gates in bootstrap.')
+            return 0
+
+        # Remove "RemoveSelfLink=false" from the feature gates.
+        try:
+            feature_gates = sanitize_feature_gates(feature_gates)
+            if not feature_gates:
+                # No feature gates left, so delete the entry
+                LOG.info('Deleting kube-apiserver feature gates in bootstrap.')
+                info['apiserver_extra_args'].pop('feature-gates', None)
+            else:
+                # Update the feature gates with the new value
+                LOG.info('Modifying kube-apiserver feature gates in bootstrap.')
+                info['apiserver_extra_args']['feature-gates'] = feature_gates
+        except Exception as ex:
+            LOG.error("Problem sanitizing feature gates.")
+            LOG.error(str(ex))
+            return 1
+
+        # Write out the new file.
+        try:
+            with open(FILENAME, 'w') as outfile:
+                newyaml.dump(info, outfile)
+        except Exception as ex:
+            LOG.error("Problem writing to %s" % FILENAME)
+            LOG.error(str(ex))
+            return 1
+        LOG.info('Successfully wrote bootstrap with RemoveSelfLink=false feature-gate removed.')
+
+    def sanitize_feature_gates_service_parameter(self):
+        """
+        Remove the "RemoveSelfLink=false" kube-apiserver feature gate from the
+        service parameters. This is needed to ensure that a backup taken after
+        the upgrade to K8s 1.24 will be properly restored without this feature
+        gate.  (K8s 1.24 no longer supports this feature gate.)
+
+        Once we no longer need to worry about upgrading from 1.23 we can remove
+        this function.
+        """
+        try:
+            service_param = self.dbapi.service_parameter_get_one(
+                    constants.SERVICE_TYPE_KUBERNETES,
+                    constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER,
+                    constants.SERVICE_PARAM_NAME_KUBERNETES_FEATURE_GATES)
+        except exception.NotFound:
+            # No apiserver feature gates, nothing to do
+            LOG.info('No feature-gate service param, nothing to do.')
+            return 0
+        except exception.MultipleResults:
+            # Unexpected, should only have one.
+            LOG.error('Unexpected multiple kube-apiserver feature-gate service params.')
+            return 1
+
+        feature_gates = service_param.value
+        if "RemoveSelfLink=false" not in feature_gates:
+            # Nothing to do
+            LOG.info('No changes needed in kube-apiserver feature gates service param.')
+            return 0
+
+        # Remove "RemoveSelfLink=false" from the feature gates.
+        feature_gates = sanitize_feature_gates(feature_gates)
+        try:
+            if not feature_gates:
+                # No feature gates left, so delete the service parameter
+                LOG.info('Deleting kube-apiserver feature gates service param.')
+                self.dbapi.service_parameter_destroy_uuid(service_param.uuid)
+            else:
+                # Update the feature gates with the new value
+                LOG.info('Modifying kube-apiserver feature gates service param.')
+                self.dbapi.service_parameter_update(service_param.uuid, {'value': feature_gates})
+        except exception.NotFound:
+            LOG.error("Unable to update kube-apiserver feature-gate service params.")
+            return 1
+        LOG.info('Successfully updated kube-apiserver feature-gates service param.')
+
 
 def device_image_state_sort_key(dev_img_state):
     if dev_img_state.bitstream_type == dconstants.BITSTREAM_TYPE_ROOT_KEY:
@@ -16196,3 +16321,16 @@ def device_image_state_sort_key(dev_img_state):
         return 1
     else:  # if dev_img_state.bitstream_type == dconstants.BITSTREAM_TYPE_FUNCTIONAL:
         return 2
+
+
+def sanitize_feature_gates(feature_gates):
+    """
+    Remove "RemoveSelfLink=false" from the feature gates.
+    We need to handle the case where it could be at the beginning of the string
+    with other entries after it, or at the end of the string with other entries
+    before it, in the middle of the string, or by itself.
+    """
+    feature_gates = feature_gates.replace('RemoveSelfLink=false,', '')
+    feature_gates = feature_gates.replace(',RemoveSelfLink=false', '')
+    feature_gates = feature_gates.replace('RemoveSelfLink=false', '')
+    return feature_gates
