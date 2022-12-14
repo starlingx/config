@@ -1343,15 +1343,16 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        kube_rootca_update=kube_rootca_update,
                                        alarm_ignore_list=alarm_ignore_list))
 
-    def reserve_ip_for_first_storage_node(self, context):
+    def reserve_ip_for_third_monitor_node(self, context, hostname):
         """
-        Reserve ip address for the first storage node for Ceph monitor
-        when installing Ceph as a second backend
+        Reserve an IP address for a host that will run the third
+        Ceph monitor when Ceph is installed as a storage backend.
 
         :param context: request context.
+        :param hostname: hostname to reserve ip.
         """
         self.call(context,
-                  self.make_msg('reserve_ip_for_first_storage_node'))
+                  self.make_msg('reserve_ip_for_third_monitor_node', hostname=hostname))
 
     def reserve_ip_for_cinder(self, context):
         """
