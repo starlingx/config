@@ -5046,16 +5046,22 @@ class ConductorManager(service.PeriodicService):
                     pv_dict['forilvgid'] = ilvg.id
                     pv_dict['lvm_vg_name'] = ilvg.lvm_vg_name
 
+            # Check to see if a device path for the agent provided
+            # PV device node already exists in the inventory
+            device_path = cutils.get_pv_device_path(self.dbapi, ihost_uuid, i)
+
             # Search the current pv to see if this one exists
             found = False
             for ipv in ipvs:
-                if ipv.lvm_pv_name == i['lvm_pv_name']:
+                if ipv.lvm_pv_name == i['lvm_pv_name'] or ipv.disk_or_part_device_path == device_path:
                     found = True
                     if ipv.lvm_pv_uuid != i['lvm_pv_uuid']:
                         # The physical volume has been replaced.
-                        LOG.info("PV uuid: %s changed UUID from %s to %s",
-                                 ipv.uuid, ipv.lvm_pv_uuid,
-                                 i['lvm_pv_uuid'])
+                        LOG.info("PV uuid: %s changed UUID from %s to %s, "
+                                 "lvm_pv_name=%s->%s, disk_or_part_device_path=%s->%s",
+                                 ipv.uuid, ipv.lvm_pv_uuid, i['lvm_pv_uuid'],
+                                 ipv.lvm_pv_name, i['lvm_pv_name'],
+                                 ipv.disk_or_part_device_path, device_path)
                         # May need to take some action => None for now
 
                     system_mode = self.dbapi.isystem_get_one().system_mode
@@ -5262,6 +5268,8 @@ class ConductorManager(service.PeriodicService):
                 # Create the Physical Volume
                 pv = None
                 try:
+                    LOG.info(
+                        "Creating a not found PV associated with a valid VG: %s" % str(pv_dict))
                     pv = self.dbapi.ipv_create(forihostid, pv_dict)
                 except Exception:
                     LOG.exception("PV Volume Creation failed")

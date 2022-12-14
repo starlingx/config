@@ -1526,6 +1526,34 @@ def _get_cinder_device_info(dbapi, forihostid):
     return cinder_device, cinder_size_gib
 
 
+def _get_pv_type(lvm_pv_name):
+    if "nvme" not in lvm_pv_name:
+        if re.match("^/dev/.*[a-z][0-9]?$", lvm_pv_name):
+            return constants.PV_TYPE_PARTITION
+        return constants.PV_TYPE_DISK
+    else:
+        if re.match("^/dev/nvme.*p[0-9]?$", lvm_pv_name):
+            return constants.PV_TYPE_PARTITION
+        return constants.PV_TYPE_DISK
+
+
+def get_pv_device_path(dbapi, ihost_uuid, pv):
+    idisk = dbapi.idisk_get_by_ihost(ihost_uuid)
+
+    pv_type = _get_pv_type(pv["lvm_pv_name"])
+    for d in idisk:
+        if d.device_node in pv["lvm_pv_name"]:
+            if pv_type == constants.PV_TYPE_DISK:
+                return d.device_path
+            elif pv_type == constants.PV_TYPE_PARTITION:
+                partitions = dbapi.partition_get_by_idisk(d.uuid)
+                for p in partitions:
+                    partition_number = re.match(".*?([0-9]+)$", pv["lvm_pv_name"]).group(1)
+                    if "-part" + partition_number in p.device_path:
+                        return p.device_path
+    return None
+
+
 def acquire_shared_nb_flock(lockfd, max_retry=5, wait_interval=5):
     """
     This method is to acquire a Shared Non-blocking lock for the
