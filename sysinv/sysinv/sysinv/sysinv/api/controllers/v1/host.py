@@ -7288,7 +7288,7 @@ class HostController(rest.RestController):
         # Verify the host is in the correct state
         if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
             if (host_obj.administrative != constants.ADMIN_UNLOCKED or
-                    host_obj.availability != constants.AVAILABILITY_AVAILABLE):
+                    host_obj.availability != constants.AVAILABILITY_AVAILABLE) and not force:
                 raise wsme.exc.ClientSideError(_(
                     "The host must be unlocked and available to upgrade the "
                     "kubelet."))
