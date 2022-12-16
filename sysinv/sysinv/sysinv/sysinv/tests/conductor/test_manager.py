@@ -1024,6 +1024,27 @@ class ManagerTestCase(base.DbTestCase):
             'controller-1': 'v1.42.1',
             'worker-0': 'v1.42.1'}
 
+        mock_sanitize_feature_gates_bootstrap_config_file = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_bootstrap_config_file',
+            mock_sanitize_feature_gates_bootstrap_config_file)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_sanitize_feature_gates_service_parameters = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_service_parameters',
+            mock_sanitize_feature_gates_service_parameters)
+        p2.start().return_value = 0
+        self.addCleanup(p2.stop)
+
+        mock_sanitize_feature_gates_kubelet_configmap = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_kubelet_configmap',
+            mock_sanitize_feature_gates_kubelet_configmap)
+        p2.start().return_value = 0
+        self.addCleanup(p2.stop)
+
         # Speed up the test
         kubernetes.MANIFEST_APPLY_INTERVAL = 1
         kubernetes.POD_START_INTERVAL = 1
@@ -1066,6 +1087,27 @@ class ManagerTestCase(base.DbTestCase):
         # Make the manifest apply fail
         self.fail_config_apply_runtime_manifest = True
 
+        mock_sanitize_feature_gates_bootstrap_config_file = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_bootstrap_config_file',
+            mock_sanitize_feature_gates_bootstrap_config_file)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_sanitize_feature_gates_service_parameters = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_service_parameters',
+            mock_sanitize_feature_gates_service_parameters)
+        p2.start().return_value = 0
+        self.addCleanup(p2.stop)
+
+        mock_sanitize_feature_gates_kubelet_configmap = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_kubelet_configmap',
+            mock_sanitize_feature_gates_kubelet_configmap)
+        p2.start().return_value = 0
+        self.addCleanup(p2.stop)
+
         # Speed up the test
         kubernetes.MANIFEST_APPLY_INTERVAL = 1
         kubernetes.MANIFEST_APPLY_TIMEOUT = 1
@@ -1106,6 +1148,27 @@ class ManagerTestCase(base.DbTestCase):
         )
         # Set the target version for controller-0
         self.dbapi.kube_host_upgrade_update(1, {'target_version': 'v1.42.2'})
+
+        mock_sanitize_feature_gates_bootstrap_config_file = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_bootstrap_config_file',
+            mock_sanitize_feature_gates_bootstrap_config_file)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_sanitize_feature_gates_service_parameters = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_service_parameters',
+            mock_sanitize_feature_gates_service_parameters)
+        p2.start().return_value = 0
+        self.addCleanup(p2.stop)
+
+        mock_sanitize_feature_gates_kubelet_configmap = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_kubelet_configmap',
+            mock_sanitize_feature_gates_kubelet_configmap)
+        p2.start().return_value = 0
+        self.addCleanup(p2.stop)
 
         # Speed up the test
         kubernetes.MANIFEST_APPLY_INTERVAL = 1

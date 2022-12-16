@@ -588,6 +588,15 @@ class KubeOperator(object):
             raise
         return None
 
+    def kube_patch_config_map(self, name, namespace, body):
+        c = self._get_kubernetesclient_core()
+        try:
+            c.patch_namespaced_config_map(name, namespace, body)
+        except Exception as e:
+            LOG.error("Failed to patch ConfigMap %s under Namespace %s: "
+                      "%s" % (body['metadata']['name'], namespace, e))
+            raise
+
     def kube_create_config_map(self, namespace, body):
         c = self._get_kubernetesclient_core()
         try:
