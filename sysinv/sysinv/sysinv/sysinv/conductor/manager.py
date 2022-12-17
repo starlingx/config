@@ -197,6 +197,7 @@ CONFIG_UPDATE_FILE = 'config_update_file'
 LOCK_NAME_UPDATE_CONFIG = 'update_config_'
 LOCK_APP_AUTO_MANAGE = 'AppAutoManageLock'
 LOCK_RUNTIME_CONFIG_CHECK = 'runtime_config_check'
+LOCK_IMAGE_PULL = 'image_pull_'
 
 # Keystone users whose passwords change are monitored by keystone listener, and
 # the puppet classes to update the service after the passwords change.
@@ -7075,6 +7076,7 @@ class ConductorManager(service.PeriodicService):
 
     @retry(retry_on_result=lambda x: x is False,
            wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
+    @cutils.synchronized(LOCK_IMAGE_PULL)
     def _upgrade_downgrade_kube_networking(self):
         try:
             # Get the kubernetes version from the upgrade table
@@ -7111,6 +7113,7 @@ class ConductorManager(service.PeriodicService):
 
     @retry(retry_on_result=lambda x: x is False,
            wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
+    @cutils.synchronized(LOCK_IMAGE_PULL)
     def _upgrade_downgrade_static_images(self):
         try:
             # Get the kubernetes version from the upgrade table
@@ -12163,6 +12166,7 @@ class ConductorManager(service.PeriodicService):
         self.dbapi.software_upgrade_update(
             upgrade.uuid, {'state': constants.UPGRADE_STARTED})
 
+    @cutils.synchronized(LOCK_IMAGE_PULL)
     def activate_upgrade(self, context, upgrade):
         """Activate the upgrade. Generate and apply new manifests.
 
