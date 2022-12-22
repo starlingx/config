@@ -1,5 +1,7 @@
 ---
 - project:
+    vars:
+      ensure_tox_version: '<4'
     templates:
       - publish-stx-docs
       - stx-api-ref-jobs
