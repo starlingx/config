@@ -15,9 +15,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2015 Wind River Systems, Inc.
+# Copyright (c) 2015-2022 Wind River Systems, Inc.
 #
-
+# SPDX-License-Identifier: Apache-2.0
+#
 
 import netaddr
 import pecan
@@ -46,7 +47,8 @@ ALLOWED_NETWORK_TYPES = [constants.NETWORK_TYPE_MGMT,
                          constants.NETWORK_TYPE_CLUSTER_HOST,
                          constants.NETWORK_TYPE_DATA,
                          constants.NETWORK_TYPE_IRONIC,
-                         constants.NETWORK_TYPE_STORAGE]
+                         constants.NETWORK_TYPE_STORAGE,
+                         constants.NETWORK_TYPE_ADMIN]
 
 
 class Address(base.APIBase):

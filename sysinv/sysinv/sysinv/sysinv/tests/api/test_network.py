@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -115,6 +115,10 @@ class NetworkTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
         self._create_test_addresses(
             hostnames, self.storage_subnet,
             constants.NETWORK_TYPE_STORAGE)
+
+        self._create_test_addresses(
+            hostnames, self.admin_subnet,
+            constants.NETWORK_TYPE_ADMIN)
 
         self._create_test_addresses(
             hostnames, self.system_controller_subnet,
@@ -267,6 +271,12 @@ class TestPostMixin(NetworkTestCase):
             constants.NETWORK_TYPE_STORAGE,
             self.storage_subnet)
 
+    def test_create_success_admin(self):
+        self._test_create_network_success(
+            'admin',
+            constants.NETWORK_TYPE_ADMIN,
+            self.admin_subnet)
+
     def test_create_fail_duplicate_pxeboot(self):
         self._test_create_network_fail_duplicate(
             'pxeboot',
@@ -308,6 +318,12 @@ class TestPostMixin(NetworkTestCase):
             'storage',
             constants.NETWORK_TYPE_STORAGE,
             self.storage_subnet)
+
+    def test_create_fail_duplicate_admin(self):
+        self._test_create_network_fail_duplicate(
+            'admin',
+            constants.NETWORK_TYPE_ADMIN,
+            self.admin_subnet)
 
     def test_create_with_invalid_type(self):
         # Test creation with an invalid type
@@ -455,6 +471,13 @@ class TestDelete(NetworkTestCase):
         self._test_delete_after_initial_config_not_allowed(
             constants.NETWORK_TYPE_STORAGE
         )
+
+    def test_delete_admin_subnet(self):
+        self._test_delete_allowed(constants.NETWORK_TYPE_ADMIN)
+
+    def test_delete_admin_subnet_after_initial_config(self):
+        self._test_delete_after_initial_config_not_allowed(
+            constants.NETWORK_TYPE_ADMIN)
 
     def test_delete_data(self):
         self._test_delete_allowed(constants.NETWORK_TYPE_DATA)

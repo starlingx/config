@@ -17,6 +17,8 @@
 #
 # Copyright (c) 2015-2022 Wind River Systems, Inc.
 #
+# SPDX-License-Identifier: Apache-2.0
+#
 
 import netaddr
 import pecan
@@ -46,7 +48,8 @@ ALLOWED_NETWORK_TYPES = [constants.NETWORK_TYPE_DATA,
                          constants.NETWORK_TYPE_MGMT,
                          constants.NETWORK_TYPE_CLUSTER_HOST,
                          constants.NETWORK_TYPE_STORAGE,
-                         constants.NETWORK_TYPE_OAM]
+                         constants.NETWORK_TYPE_OAM,
+                         constants.NETWORK_TYPE_ADMIN]
 
 
 class Route(base.APIBase):

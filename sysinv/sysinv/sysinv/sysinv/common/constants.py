@@ -709,6 +709,7 @@ CONTROLLER_AUDIT_REQUESTS = [DISK_AUDIT_REQUEST,
 # Interface definitions
 NETWORK_TYPE_NONE = 'none'
 NETWORK_TYPE_MGMT = 'mgmt'
+NETWORK_TYPE_ADMIN = 'admin'
 NETWORK_TYPE_OAM = 'oam'
 NETWORK_TYPE_BM = 'bm'
 NETWORK_TYPE_MULTICAST = 'multicast'
@@ -730,7 +731,8 @@ PLATFORM_NETWORK_TYPES = [NETWORK_TYPE_PXEBOOT,
                           NETWORK_TYPE_OAM,
                           NETWORK_TYPE_CLUSTER_HOST,
                           NETWORK_TYPE_IRONIC,
-                          NETWORK_TYPE_STORAGE]
+                          NETWORK_TYPE_STORAGE,
+                          NETWORK_TYPE_ADMIN]
 
 PCI_NETWORK_TYPES = [NETWORK_TYPE_PCI_PASSTHROUGH,
                      NETWORK_TYPE_PCI_SRIOV]
