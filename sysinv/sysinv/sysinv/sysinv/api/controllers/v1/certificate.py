@@ -354,8 +354,8 @@ class CertificateController(rest.RestController):
 
                 # gets certificate in PEM format
                 # removes expired certificates from pem_contents
-                pem_cert = cutils.get_public_bytes(cert)
-                pem_contents = pem_contents.replace(pem_cert, "")
+                pem_cert = cert.public_bytes(encoding=cutils.serialization.Encoding.PEM)
+                pem_contents = pem_contents.replace(pem_cert, b'')
 
                 continue
 
