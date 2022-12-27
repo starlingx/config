@@ -372,7 +372,6 @@ class ConductorManager(service.PeriodicService):
         self._app = kube_app.AppOperator(self.dbapi, self._helm, self.apps_metadata)
         self._docker = kube_app.DockerHelper(self.dbapi)
         self._kube = kubernetes.KubeOperator()
-        self._armada = kube_app.ArmadaHelper(self._kube)
         self._kube_app_helper = kube_api.KubeAppHelper(self.dbapi)
         self._fernet = fernet.FernetOperator()
 
@@ -6993,18 +6992,6 @@ class ConductorManager(service.PeriodicService):
             self._k8s_application_images_audit(context)
             LOG.info("Restore in progress - defer platform managed application "
                      "activity")
-            return
-
-        # Ensure that armada pod is running and ready.
-        pods = self._kube.kube_get_pods_by_selector("armada",
-                                                    "application=armada",
-                                                    "status.phase=Running")
-        for pod in pods:
-            if (pod.metadata.deletion_timestamp is None and
-                 self._armada.check_pod_ready_probe(pod)):
-                break
-        else:
-            LOG.warning("Armada pod is not running and ready. Defer audit.")
             return
 
         # Ensure that FluxCD pods are ready.
@@ -14212,8 +14199,8 @@ class ConductorManager(service.PeriodicService):
             # as well as removing the writing to disk of the new overrides
             old_hash = {}
             app.charts = self._app._get_list_of_charts(app)
-            (helm_files, armada_files) = self._app._get_overrides_files(app, None)
-            for f in helm_files + armada_files:
+            helm_files = self._app._get_overrides_files(app)
+            for f in helm_files:
                 with open(f, 'rb') as file:
                     old_hash[f] = hashlib.md5(file.read()).hexdigest()
 
@@ -14223,10 +14210,9 @@ class ConductorManager(service.PeriodicService):
                 app.charts = self._app._get_list_of_charts(app)
                 self._helm.generate_helm_application_overrides(
                     app.sync_overrides_dir, app.name, app.mode, cnamespace=None,
-                    armada_format=True, chart_info=app.charts, combined=True,
-                    is_fluxcd_app=app.is_fluxcd_app)
-                (helm_files, armada_files) = self._app._get_overrides_files(app, None)
-                for f in helm_files + armada_files:
+                    chart_info=app.charts, combined=True)
+                helm_files = self._app._get_overrides_files(app)
+                for f in helm_files:
                     with open(f, 'rb') as file:
                         new_hash[f] = hashlib.md5(file.read()).hexdigest()
 

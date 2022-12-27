@@ -12,7 +12,6 @@
 import base64
 import os
 import psutil
-import retrying
 import ruamel.yaml as yaml
 import tempfile
 import threading
@@ -121,59 +120,8 @@ def retrieve_helm_v3_releases():
         timer.cancel()
 
 
-@retry(stop_max_attempt_number=6, wait_fixed=20 * 1000,
-       retry_on_exception=_retry_on_HelmTillerFailure)
-def retrieve_helm_v2_releases():
-    env = os.environ.copy()
-    env['PATH'] = '/usr/local/sbin:' + env['PATH']
-    env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
-    helm_list = subprocess.Popen(
-        ['helmv2-cli', '--',
-         'helm',
-         'list', '--output', 'yaml', '--tiller-connection-timeout', '5'],
-        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        universal_newlines=True)
-    timer = threading.Timer(20, kill_process_and_descendants, [helm_list])
-
-    try:
-        timer.start()
-        out, err = helm_list.communicate()
-        if helm_list.returncode != 0:
-            if err:
-                raise exception.HelmTillerFailure(reason=err)
-
-            # killing the subprocesses with +kill() when timer expires returns EBADF
-            # because the pipe is closed, but no error string on stderr.
-            if helm_list.returncode == -9:
-                raise exception.HelmTillerFailure(
-                    reason="helmv2-cli -- helm list operation timed out after "
-                           "20 seconds. Terminated by threading timer.")
-            raise exception.HelmTillerFailure(
-                reason="helmv2-cli -- helm list operation failed without "
-                       "error message, errno=%s" % helm_list.returncode)
-
-        deployed_releases = {}
-        if out:
-            output = yaml.safe_load(out)
-            releases = output.get('Releases', {})
-            for r in releases:
-                r_name = r.get('Name')
-                r_version = r.get('Revision')
-                r_namespace = r.get('Namespace')
-
-                deployed_releases.setdefault(r_name, {}).update(
-                    {r_namespace: r_version})
-
-        return deployed_releases
-    except Exception as e:
-        raise exception.HelmTillerFailure(
-            reason="Failed to retrieve helmv2 releases: %s" % e)
-    finally:
-        timer.cancel()
-
-
 def retrieve_helm_releases():
-    """Retrieve the deployed helm releases from tiller
+    """Retrieve the deployed helm releases
 
     Get the name, namespace and version for the deployed releases
     by querying helm tiller
@@ -182,56 +130,8 @@ def retrieve_helm_releases():
     deployed_releases = {}
 
     deployed_releases.update(retrieve_helm_v3_releases())
-    deployed_releases.update(retrieve_helm_v2_releases())
 
     return deployed_releases
-
-
-def delete_helm_release(release):
-    """Delete helm v2 release
-
-    This method deletes a helm v2 release without --purge which removes
-    all associated resources from kubernetes but not from the store(ETCD)
-
-    In the scenario of updating application, the method is needed to clean
-    up the releases if there were deployed releases in the old application
-    but not in the new application
-
-    :param release: the name of the helm release
-    """
-    # NOTE: This mechanism deletes armada/tiller managed releases.
-    # This could be adapted to also delete helm v3 releases using
-    # 'helm uninstall'.
-    env = os.environ.copy()
-    env['PATH'] = '/usr/local/sbin:' + env['PATH']
-    env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
-    helm_cmd = subprocess.Popen(
-        ['helmv2-cli', '--',
-         'helm', 'delete', release, '--tiller-connection-timeout', '5'],
-        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        universal_newlines=True)
-    timer = threading.Timer(20, kill_process_and_descendants, [helm_cmd])
-
-    try:
-        timer.start()
-        out, err = helm_cmd.communicate()
-        if err and not out:
-            if ("deletion completed" or "not found" or "is already deleted") in err:
-                LOG.debug("Release %s not found or deleted already" % release)
-                return True
-            raise exception.HelmTillerFailure(
-                reason="Failed to delete release: %s" % err)
-        elif not err and not out:
-            err_msg = "Failed to delete release. " \
-                      "Helm tiller response timeout."
-            raise exception.HelmTillerFailure(reason=err_msg)
-        return True
-    except Exception as e:
-        LOG.error("Failed to delete release: %s" % e)
-        raise exception.HelmTillerFailure(
-            reason="Failed to delete release: %s" % e)
-    finally:
-        timer.cancel()
 
 
 def delete_helm_v3_release(release, namespace="default", flags=None):
@@ -274,67 +174,6 @@ def delete_helm_v3_release(release, namespace="default", flags=None):
         LOG.error("Failed to execute helm v3 command: %s" % e)
         raise exception.HelmTillerFailure(
             reason="Failed to execute helm v3 command: %s" % e)
-    finally:
-        timer.cancel()
-
-
-def _retry_on_HelmTillerFailure_reset_tiller(ex):
-    LOG.info('Caught HelmTillerFailure exception. Resetting tiller and retrying... '
-            'Exception: {}'.format(ex))
-    env = os.environ.copy()
-    env['PATH'] = '/usr/local/sbin:' + env['PATH']
-    env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
-    helm_reset = subprocess.Popen(
-        ['helmv2-cli', '--',
-         'helm', 'reset', '--force'],
-        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        universal_newlines=True)
-    timer = threading.Timer(20, kill_process_and_descendants, [helm_reset])
-
-    try:
-        timer.start()
-        out, err = helm_reset.communicate()
-        if helm_reset.returncode == 0:
-            return isinstance(ex, exception.HelmTillerFailure)
-        elif err:
-            raise exception.HelmTillerFailure(reason=err)
-        else:
-            err_msg = "helmv2-cli -- helm reset operation failed."
-            raise exception.HelmTillerFailure(reason=err_msg)
-    except Exception as e:
-        raise exception.HelmTillerFailure(
-            reason="Failed to reset tiller: %s" % e)
-    finally:
-        timer.cancel()
-
-
-@retrying.retry(stop_max_attempt_number=2,
-                retry_on_exception=_retry_on_HelmTillerFailure_reset_tiller)
-def get_openstack_pending_install_charts():
-    env = os.environ.copy()
-    env['PATH'] = '/usr/local/sbin:' + env['PATH']
-    env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
-    helm_list = subprocess.Popen(
-        ['helmv2-cli', '--',
-         'helm', 'list', '--namespace', 'openstack',
-         '--pending', '--tiller-connection-timeout', '5'],
-        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        universal_newlines=True)
-    timer = threading.Timer(20, kill_process_and_descendants, [helm_list])
-
-    try:
-        timer.start()
-        out, err = helm_list.communicate()
-        if helm_list.returncode == 0:
-            return out
-        elif err:
-            raise exception.HelmTillerFailure(reason=err)
-        else:
-            err_msg = "helmv2-cli -- helm list operation timeout."
-            raise exception.HelmTillerFailure(reason=err_msg)
-    except Exception as e:
-        raise exception.HelmTillerFailure(
-            reason="Failed to obtain pending charts list: %s" % e)
     finally:
         timer.cancel()
 

@@ -197,7 +197,7 @@ class TestKubeAppImageParser(base.TestCase):
         self.assertEqual(expected, images_dict_with_local_registry)
 
     def test_generate_download_images_with_merge_dict(self):
-        armada_chart_imgs = copy.deepcopy(IMAGES_RESOURCE)
+        chart_imgs = copy.deepcopy(IMAGES_RESOURCE)
 
         override_imgs = {
             'images': {
@@ -313,7 +313,7 @@ class TestKubeAppImageParser(base.TestCase):
         }
 
         download_imgs_dict = self.image_parser.merge_dict(
-            armada_chart_imgs, override_imgs)
+            chart_imgs, override_imgs)
         self.assertEqual(expected, download_imgs_dict)
 
     def test_generate_download_images_list(self):

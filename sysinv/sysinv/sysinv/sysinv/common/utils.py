@@ -2557,37 +2557,6 @@ def find_metadata_file(path, metadata_file, upgrade_from_release=None):
     return app_name, app_version, patches
 
 
-def find_armada_manifest_file(path):
-    """ Find all Armada manifest files in a given directory. """
-    def _is_armada_manifest(yaml_file):
-        with io.open(yaml_file, 'r', encoding='utf-8') as f:
-            docs = yaml.load_all(f)
-            for doc in docs:
-                try:
-                    if "armada/Manifest" in doc['schema']:
-                        manifest_name = doc['metadata']['name']
-                        return manifest_name, yaml_file
-                except KeyError:
-                    # Could be some other yaml files
-                    pass
-        return None, None
-
-    mfiles = []
-    for file in os.listdir(path):
-        if file.endswith('.yaml'):
-            yaml_file = os.path.join(path, file)
-            try:
-                mname, mfile = _is_armada_manifest(yaml_file)
-                if mfile:
-                    mfiles.append((mname, mfile))
-            except Exception as e:
-                # Included yaml file is corrupted
-                LOG.exception(e)
-                return None
-
-    return mfiles
-
-
 def find_fluxcd_manifests_directory(path, name):
     """For FluxCD apps we expect to have one top-level manifest directory that
        contains the name of constants.APP_FLUXCD_MANIFEST_DIR. Validate that it
@@ -2759,25 +2728,6 @@ def is_aio_duplex_system(dbapi):
              system.system_mode == constants.SYSTEM_MODE_DUPLEX_DIRECT))
 
 
-def generate_synced_armada_dir(app_name, app_version):
-    """ Armada application: Top level directory. """
-    return os.path.join(constants.APP_SYNCED_ARMADA_DATA_PATH, app_name, app_version)
-
-
-def generate_synced_armada_manifest_fqpn(app_name, app_version, manifest_filename):
-    """ Armada application: Armada manifest file. """
-    return os.path.join(
-        constants.APP_SYNCED_ARMADA_DATA_PATH, app_name, app_version,
-        app_name + '-' + manifest_filename)
-
-
-def generate_synced_metadata_fqpn(app_name, app_version):
-    """ Armada application: Application metadata file. """
-    return os.path.join(
-        constants.APP_SYNCED_ARMADA_DATA_PATH, app_name, app_version,
-        'metadata.yaml')
-
-
 def generate_synced_fluxcd_dir(app_name, app_version):
     """ FluxCD application: Top level directory. """
     return os.path.join(constants.APP_FLUXCD_DATA_PATH, app_name, app_version)
@@ -2847,7 +2797,7 @@ def get_app_supported_kube_version(app_name, app_version):
     """Get the application supported k8s version from the synced application metadata file"""
 
     app_metadata_path = os.path.join(
-        constants.APP_SYNCED_ARMADA_DATA_PATH, app_name,
+        constants.APP_FLUXCD_DATA_PATH, app_name,
         app_version, constants.APP_METADATA_FILE)
 
     kube_min_version = None

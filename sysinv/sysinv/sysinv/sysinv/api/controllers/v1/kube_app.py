@@ -202,7 +202,7 @@ class KubeAppController(rest.RestController):
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(KubeApp, body=types.apidict)
     def post(self, body):
-        """Uploading an application to be deployed by Armada"""
+        """Uploading an application to be deployed"""
         tarfile_path = body.get('tarfile')
         tarfile_binary = body.get('binary_data', '')
         name = body.get('name', '')
@@ -491,12 +491,13 @@ class KubeAppController(rest.RestController):
         applied_app.progress = None
         applied_app.save()
 
+        # TODO revise comment below regarding armada
         # If the version has ever applied before(inactive app found),
-        # use armada rollback to apply application later, otherwise,
-        # use armada apply.
-        # On the AIO-SX, always use armada apply even it was applied
+        # use ----- rollback to apply application later, otherwise,
+        # use ----- apply.
+        # On the AIO-SX, always use ----- apply even it was applied
         # before, issue on AIO-SX(replicas is 1) to leverage rollback,
-        # armada/helm rollback --wait does not wait for pods to be
+        # -----/helm rollback --wait does not wait for pods to be
         # ready before it returns.
         # related to helm issue,
         # https://github.com/helm/helm/issues/4210
@@ -697,19 +698,14 @@ class KubeAppHelper(object):
     def _find_manifest(self, app_path, app_name):
         """ Find the required application manifest elements
 
-        Check for an Armada manifest or a FluxCD manifest directory
+        Check for a FluxCD manifest directory
         """
         try:
             # Check for the presence of a FluxCD manifest directory
             mfile = self._find_fluxcd_manifest(app_path, app_name)
         except exception.SysinvException as fluxcd_e:
-            try:
-                # Check for the presence of an Armada manifest
-                mfile = self._find_armada_manifest(app_path)
-            except exception.SysinvException as armada_e:
-                raise exception.SysinvException(_(
-                    "Application-upload rejected: {} and {} ".format(
-                        fluxcd_e, armada_e)))
+            raise exception.SysinvException(_(
+                "Application-upload rejected: {}".format(fluxcd_e)))
         return mfile
 
     def _find_fluxcd_manifest(self, app_path, app_name):
@@ -719,26 +715,6 @@ class KubeAppHelper(object):
 
         raise exception.SysinvException(_(
             "FluxCD manifest structure is not present"))
-
-    def _find_armada_manifest(self, app_path):
-        # It is expected that there is only one manifest file
-        # per application and the file exists at top level of
-        # the application path.
-        mfiles = cutils.find_armada_manifest_file(app_path)
-
-        if mfiles is None:
-            raise exception.SysinvException(_(
-                "Armada manifest file is corrupted."))
-
-        if mfiles:
-            if len(mfiles) == 1:
-                return mfiles[0]
-            else:
-                raise exception.SysinvException(_(
-                    "tar file contains more than one Armada manifest file."))
-
-        raise exception.SysinvException(_(
-            "Armada manifest file/directory is missing"))
 
     def _verify_metadata_file(self, app_path, app_name, app_version,
                               upgrade_from_release=None):

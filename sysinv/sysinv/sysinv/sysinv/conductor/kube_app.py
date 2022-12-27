@@ -35,7 +35,6 @@ import zipfile
 from collections import namedtuple
 from distutils.util import strtobool
 from eventlet import greenpool
-from eventlet import greenthread
 from eventlet import queue
 from eventlet import Timeout
 from fm_api import constants as fm_constants
@@ -62,11 +61,6 @@ LOG = logging.getLogger(__name__)
 
 # Constants
 APPLY_SEARCH_PATTERN = 'Processing Chart,'
-ARMADA_NAMESPACE = 'armada'
-ARMADA_APPLICATION = 'armada'
-ARMADA_CONTAINER_NAME = 'armada-api'
-ARMADA_MANIFEST_APPLY_SUCCESS_MSG = 'Done applying manifest'
-ARMADA_RELEASE_ROLLBACK_FAILURE_MSG = 'Error while rolling back tiller release'
 CONTAINER_ABNORMAL_EXIT_CODE = 137
 DELETE_SEARCH_PATTERN = 'Deleting release|no release to delete'
 ROLLBACK_SEARCH_PATTERN = 'Helm rollback of release'
@@ -77,16 +71,6 @@ DOWNLOAD_WAIT_BEFORE_RETRY = 15
 TARFILE_DOWNLOAD_CONNECTION_TIMEOUT = 60
 TARFILE_TRANSFER_CHUNK_SIZE = 1024 * 512
 
-ARMADA_LOG_MAX = 10
-ARMADA_HOST_LOG_LOCATION = '/var/log/armada'
-ARMADA_CONTAINER_LOG_LOCATION = '/logs'
-ARMADA_CONTAINER_TMP = '/tmp'
-ARMADA_LOCK_GROUP = 'armada.process'
-ARMADA_LOCK_VERSION = 'v1'
-ARMADA_LOCK_NAMESPACE = 'kube-system'
-ARMADA_LOCK_PLURAL = 'locks'
-ARMADA_LOCK_NAME = 'lock'
-
 LOCK_NAME_APP_REAPPLY = 'app_reapply'
 LOCK_NAME_PROCESS_APP_METADATA = 'process_app_metadata'
 
@@ -94,20 +78,9 @@ STX_APP_PLUGIN_PATH = '/var/stx_app/plugins'
 
 
 # Helper functions
-def generate_armada_service_manifest_fqpn(app_name, app_version, manifest_filename):
-    return os.path.join('/manifests', app_name, app_version,
-                        app_name + '-' + manifest_filename)
-
-
 def generate_install_manifest_fqpn(app_name, app_version, manifest_filename):
     return os.path.join(constants.APP_INSTALL_PATH,
                         app_name, app_version, manifest_filename)
-
-
-def generate_synced_images_fqpn(app_name, app_version):
-    return os.path.join(
-        constants.APP_SYNCED_ARMADA_DATA_PATH, app_name, app_version,
-        app_name + '-images.yaml')
 
 
 def generate_synced_helm_overrides_dir(app_name, app_version):
@@ -168,7 +141,6 @@ class AppOperator(object):
         self._utils = kube_app.KubeAppHelper(self._dbapi)
         self._image = AppImageParser()
         self._lock = threading.Lock()
-        self._armada = ArmadaHelper(self._kube)
         self._fluxcd = FluxCDHelper(self._dbapi, self._kube)
 
         # Load apps metadata
@@ -207,12 +179,6 @@ class AppOperator(object):
                 self._abort_operation(app, app.status, reset_status=True)
             else:
                 continue
-
-        # Delete the Armada locks that might have been acquired previously
-        # for a fresh start. This guarantees that a re-apply, re-update or
-        # a re-remove attempt following a status reset will not fail due
-        # to a lock related issue.
-        self._armada.clear_armada_locks()
 
     def _raise_app_alarm(self, app_name, app_action, alarm_id, severity,
                          reason_text, alarm_type, repair_action,
@@ -303,24 +269,17 @@ class AppOperator(object):
                     shutil.rmtree(os.path.dirname(
                         app.sync_overrides_dir))
 
-            if os.path.exists(app.sync_armada_mfile_dir):
-                shutil.rmtree(app.sync_armada_mfile_dir)
-                if app_dir:
-                    shutil.rmtree(os.path.dirname(
-                        app.sync_armada_mfile_dir))
-
             if os.path.exists(app.inst_path):
                 shutil.rmtree(app.inst_path)
                 if app_dir:
                     shutil.rmtree(os.path.dirname(
                         app.inst_path))
 
-            if app.is_fluxcd_app:
-                if os.path.exists(app.sync_fluxcd_manifest_dir):
-                    shutil.rmtree(app.sync_fluxcd_manifest_dir)
-                    if app_dir:
-                        shutil.rmtree(os.path.dirname(
-                            app.sync_fluxcd_manifest_dir))
+            if os.path.exists(app.sync_fluxcd_manifest_dir):
+                shutil.rmtree(app.sync_fluxcd_manifest_dir)
+                if app_dir:
+                    shutil.rmtree(os.path.dirname(
+                        app.sync_fluxcd_manifest_dir))
 
         except OSError as e:
             LOG.error(e)
@@ -499,21 +458,12 @@ class AppOperator(object):
         orig_uid, orig_gid = get_app_install_root_path_ownership()
 
         try:
+            # One time set up of fluxcd manifest path for the system
+            if not os.path.isdir(constants.APP_FLUXCD_DATA_PATH):
+                os.makedirs(constants.APP_FLUXCD_DATA_PATH)
 
-            if app.is_fluxcd_app:
-                # One time set up of fluxcd manifest path for the system
-                if not os.path.isdir(constants.APP_FLUXCD_DATA_PATH):
-                    os.makedirs(constants.APP_FLUXCD_DATA_PATH)
-
-                if not os.path.isdir(app.sync_fluxcd_manifest_dir):
-                    os.makedirs(app.sync_fluxcd_manifest_dir)
-            else:
-                # One time set up of base armada manifest path for the system
-                if not os.path.isdir(constants.APP_SYNCED_ARMADA_DATA_PATH):
-                    os.makedirs(constants.APP_SYNCED_ARMADA_DATA_PATH)
-
-                if not os.path.isdir(app.sync_armada_mfile_dir):
-                    os.makedirs(app.sync_armada_mfile_dir)
+            if not os.path.isdir(app.sync_fluxcd_manifest_dir):
+                os.makedirs(app.sync_fluxcd_manifest_dir)
 
             if not os.path.isdir(app.inst_path):
                 create_app_path(app.inst_path)
@@ -568,13 +518,8 @@ class AppOperator(object):
             (ie..registry.local:9001/docker.io/mariadb:10.2.13)
 
         """
-        if app.is_fluxcd_app:
-            return self._get_image_tags_by_charts_fluxcd(app.sync_imgfile,
+        return self._get_image_tags_by_charts_fluxcd(app.sync_imgfile,
                                                          app.sync_fluxcd_manifest,
-                                                         app.sync_overrides_dir)
-        else:
-            return self._get_image_tags_by_charts_armada(app.sync_imgfile,
-                                                         app.sync_armada_mfile,
                                                          app.sync_overrides_dir)
 
     def _get_image_tags_by_charts_fluxcd(self, app_images_file, manifest, overrides_dir):
@@ -691,100 +636,6 @@ class AppOperator(object):
 
         return list(set(app_imgs))
 
-    def _get_image_tags_by_charts_armada(self, app_images_file, app_manifest_file, overrides_dir):
-        app_imgs = []
-        images_file = None
-        manifest_update_required = False
-
-        if os.path.exists(app_images_file):
-            with io.open(app_images_file, 'r', encoding='utf-8') as f:
-                images_file = yaml.safe_load(f)
-
-        if os.path.exists(app_manifest_file):
-            with io.open(app_manifest_file, 'r', encoding='utf-8') as f:
-                # The RoundTripLoader removes the superfluous quotes by default,
-                # resulting the dumped out charts not readable in Armada.
-                # Set preserve_quotes=True to preserve all the quotes.
-                charts = list(yaml.load_all(
-                    f, Loader=yaml.RoundTripLoader, preserve_quotes=True))
-
-        for chart in charts:
-            if "armada/Chart/" in chart['schema']:
-                chart_data = chart['data']
-                chart_name = chart_data['chart_name']
-                chart_namespace = chart_data['namespace']
-
-                # Get the image tags by chart from the images file
-                helm_chart_imgs = {}
-                if images_file and chart_name in images_file:
-                    helm_chart_imgs = images_file[chart_name]
-
-                # Get the image tags from the chart overrides file
-                overrides = chart_namespace + '-' + chart_name + '.yaml'
-                app_overrides_file = os.path.join(overrides_dir, overrides)
-                overrides_file = {}
-                if os.path.exists(app_overrides_file):
-                    with io.open(app_overrides_file, 'r', encoding='utf-8') as f:
-                        overrides_file = yaml.safe_load(f)
-
-                override_imgs = self._image.find_images_in_dict(
-                    overrides_file.get('data', {}).get('values', {}))
-                override_imgs_copy = copy.deepcopy(override_imgs)
-
-                # Get the image tags from the armada manifest file
-                armada_chart_imgs = self._image.find_images_in_dict(
-                    chart_data.get('values', {}))
-                armada_chart_imgs_copy = copy.deepcopy(armada_chart_imgs)
-                armada_chart_imgs = self._image.merge_dict(helm_chart_imgs, armada_chart_imgs)
-
-                # Update image tags with local registry prefix
-                override_imgs = self._image.update_images_with_local_registry(override_imgs)
-                armada_chart_imgs = self._image.update_images_with_local_registry(armada_chart_imgs)
-
-                # Generate a list of required images by chart
-                download_imgs = copy.deepcopy(armada_chart_imgs)
-                download_imgs = self._image.merge_dict(download_imgs, override_imgs)
-                download_imgs_list = self._image.generate_download_images_list(download_imgs, [])
-                app_imgs.extend(download_imgs_list)
-
-                # Update chart override file if needed
-                if override_imgs != override_imgs_copy:
-                    with open(app_overrides_file, 'w') as f:
-                        try:
-                            overrides_file['data']['values'] = self._image.merge_dict(
-                                overrides_file['data']['values'], override_imgs)
-                            yaml.safe_dump(overrides_file, f, default_flow_style=False)
-                            LOG.info("Overrides file %s updated with new image tags" %
-                                     app_overrides_file)
-                        except (TypeError, KeyError):
-                            LOG.error("Overrides file %s fails to update" %
-                                      app_overrides_file)
-
-                # Update armada chart if needed
-                if armada_chart_imgs != armada_chart_imgs_copy:
-                    # This is to convert a empty orderedDict to dict
-                    if 'values' in chart_data:
-                        if not chart_data['values']:
-                            chart_data['values'] = {}
-
-                    chart_data['values'] = self._image.merge_dict(
-                        chart_data.get('values', {}), armada_chart_imgs)
-                    manifest_update_required = True
-
-        # Update manifest file if needed
-        if manifest_update_required:
-            with open(app_manifest_file, 'w') as f:
-                try:
-                    yaml.dump_all(charts, f, Dumper=yaml.RoundTripDumper,
-                                  explicit_start=True, default_flow_style=False)
-                    LOG.info("Manifest file %s updated with new image tags" %
-                             app_manifest_file)
-                except Exception as e:
-                    LOG.error("Manifest file %s fails to update with "
-                              "new image tags: %s" % (app_manifest_file, e))
-
-        return list(set(app_imgs))
-
     def _register_embedded_images(self, app):
         """
         TODO(tngo): When we're ready to support air-gap scenario and private
@@ -804,7 +655,7 @@ class AppOperator(object):
 
     def _save_images_list(self, app):
         # Extract the list of images from the charts and overrides where
-        # applicable. Save the list to the same location as the armada manifest
+        # applicable. Save the list to the same location as the fluxcd manifest
         # so it can be sync'ed.
         app.charts = self._get_list_of_charts(app)
 
@@ -812,8 +663,7 @@ class AppOperator(object):
         LOG.info("Generating application overrides to discover required images.")
         self._helm.generate_helm_application_overrides(
             app.sync_overrides_dir, app.name, mode=None, cnamespace=None,
-            armada_format=True, chart_info=app.charts, combined=True,
-            is_fluxcd_app=app.is_fluxcd_app)
+            chart_info=app.charts, combined=True)
         self._plugins.deactivate_plugins(app)
 
         self._save_images_list_by_charts(app)
@@ -841,7 +691,7 @@ class AppOperator(object):
             chart_name = os.path.join(app.inst_charts_dir, chart.name)
 
             if not os.path.exists(chart_name):
-                # If the helm chart name is not the same as the armada
+                # If the helm chart name is not the same as the fluxcd
                 # chart name in the manifest, try using the source
                 # to find the chart directory.
                 try:
@@ -1236,10 +1086,7 @@ class AppOperator(object):
             raise
 
     def _get_list_of_charts(self, app):
-        if app.is_fluxcd_app:
-            return self._get_list_of_charts_fluxcd(app.sync_fluxcd_manifest)
-        else:
-            return self._get_list_of_charts_armada(app.sync_armada_mfile)
+        return self._get_list_of_charts_fluxcd(app.sync_fluxcd_manifest)
 
     def _get_list_of_charts_fluxcd(self, manifest):
         """Get the charts information from the manifest directory
@@ -1312,151 +1159,8 @@ class AppOperator(object):
                     charts.append(chart_obj)
         return charts
 
-    def _get_list_of_charts_armada(self, manifest_file):
-        """Get the charts information from the manifest file
-
-        The following chart data for each chart in the manifest file
-        are extracted and stored into a namedtuple Chart object:
-         - metadata_name
-         - chart_name
-         - namespace
-         - location
-         - release
-         - pre-delete job labels
-
-        The method returns a list of namedtuple charts which following
-        the install order in the manifest chart_groups.
-
-        :param manifest_file: the manifest file of the application
-        :return: a list of namedtuple charts
-        """
-        charts = []
-        release_prefix = ""
-        chart_group = {}
-        chart_groups = []
-        armada_charts = {}
-
-        with io.open(manifest_file, 'r', encoding='utf-8') as f:
-            docs = yaml.safe_load_all(f)
-            for doc in docs:
-                # iterative docs in the manifest file to get required
-                # chart information
-                try:
-                    if "armada/Manifest/" in doc['schema']:
-                        release_prefix = doc['data']['release_prefix']
-                        chart_groups = doc['data']['chart_groups']
-
-                    elif "armada/ChartGroup/" in doc['schema']:
-                        chart_group.update(
-                            {doc['metadata']['name']: {
-                                'chart_group': doc['data']['chart_group'],
-                                'sequenced': doc.get('data').get('sequenced', False)}})
-
-                    elif "armada/Chart/" in doc['schema']:
-                        labels = []
-                        delete_resource = \
-                            doc['data'].get('upgrade', {}).get('pre', {}).get('delete', [])
-                        for resource in delete_resource:
-                            if resource.get('type') == 'job':
-                                label = ''
-                                for k, v in resource['labels'].items():
-                                    label = k + '=' + v + ',' + label
-                                labels.append(label[:-1])
-
-                        armada_charts.update(
-                            {doc['metadata']['name']: {
-                                'chart_name': doc['data']['chart_name'],
-                                'namespace': doc['data']['namespace'],
-                                'location': doc['data']['source']['location'],
-                                'release': doc['data']['release'],
-                                'labels': labels}})
-                        LOG.debug("Manifest: Chart: {} Namespace: {} "
-                                  "Location: {} Release: {}".format(
-                                      doc['data']['chart_name'],
-                                      doc['data']['namespace'],
-                                      doc['data']['source']['location'],
-                                      doc['data']['release']))
-                except KeyError:
-                    pass
-
-            # Push Chart to the list that following the order
-            # in the chart_groups(install list)
-            for c_group in chart_groups:
-                for chart in chart_group[c_group]['chart_group']:
-                    charts.append(Chart(
-                        metadata_name=chart,
-                        name=armada_charts[chart]['chart_name'],
-                        namespace=armada_charts[chart]['namespace'],
-                        location=armada_charts[chart]['location'],
-                        release=armada_charts[chart]['release'],
-                        labels=armada_charts[chart]['labels'],
-                        sequenced=chart_group[c_group]['sequenced']))
-                    del armada_charts[chart]
-                del chart_group[c_group]
-
-            # Push Chart to the list that are not referenced
-            # in the chart_groups (install list)
-            if chart_group:
-                for c_group in chart_group:
-                    for chart in chart_group[c_group]['chart_group']:
-                        charts.append(Chart(
-                            metadata_name=chart,
-                            name=armada_charts[chart]['chart_name'],
-                            namespace=armada_charts[chart]['namespace'],
-                            location=armada_charts[chart]['location'],
-                            release=armada_charts[chart]['release'],
-                            labels=armada_charts[chart]['labels'],
-                            sequenced=chart_group[c_group]['sequenced']))
-                        del armada_charts[chart]
-
-            if armada_charts:
-                for chart in armada_charts:
-                    charts.append(Chart(
-                        metadata_name=chart,
-                        name=armada_charts[chart]['chart_name'],
-                        namespace=armada_charts[chart]['namespace'],
-                        location=armada_charts[chart]['location'],
-                        release=armada_charts[chart]['release'],
-                        labels=armada_charts[chart]['labels'],
-                        sequenced=False))
-
-        # Update each Chart in the list if there has release prefix
-        # for each release
-        if release_prefix:
-            for i, chart in enumerate(charts):
-                charts[i] = chart._replace(
-                    release=release_prefix + "-" + chart.release)
-
-        return charts
-
-    def _get_overrides_files(self, app, mode):
-        if app.is_fluxcd_app:
-            return self._get_overrides_files_fluxcd(app.sync_overrides_dir,
-                                                    app.charts), []
-        else:
-            return self._get_overrides_files_armada(app.sync_overrides_dir,
-                                                    app.charts,
-                                                    app.name,
-                                                    mode)
-
-    def _get_overrides_files_fluxcd(self, overrides_dir, charts):
-        return self._get_overrides_from_charts(overrides_dir, charts)
-
-    def _get_overrides_files_armada(self, overrides_dir, charts, app_name, mode):
-        """Returns list of override files or None, used in
-           application-install and application-delete."""
-
-        helm_overrides = \
-            self._get_overrides_from_charts(overrides_dir, charts)
-
-        if not helm_overrides:
-            return None
-
-        # Get the armada manifest overrides files
-        manifest_op = self._helm.get_armada_manifest_operator(app_name)
-        armada_overrides = manifest_op.load_summary(overrides_dir)
-
-        return (helm_overrides, armada_overrides)
+    def _get_overrides_files(self, app):
+        return self._get_overrides_from_charts(app.sync_overrides_dir, app.charts)
 
     def _get_overrides_from_charts(self, overrides_dir, charts):
         missing_helm_overrides = []
@@ -1493,25 +1197,6 @@ class AppOperator(object):
             for helm_file in helm_files:
                 if os.path.basename(helm_file) == override_file:
                     shutil.copy(helm_file, chart_system_overrides_path)
-
-    def _generate_armada_overrides_str(self, app_name, app_version,
-                                       helm_files, armada_files):
-        overrides_str = ""
-        if helm_files:
-            overrides_str += " ".join([
-                ' --values {0}/overrides/{1}/{2}/{3}'.format(
-                    ARMADA_CONTAINER_TMP,
-                    app_name, app_version, os.path.basename(i))
-                for i in helm_files
-            ])
-        if armada_files:
-            overrides_str += " ".join([
-                ' --values {0}/manifests/{1}/{2}/{3}'.format(
-                    ARMADA_CONTAINER_TMP,
-                    app_name, app_version, os.path.basename(i))
-                for i in armada_files
-            ])
-        return overrides_str
 
     def _remove_chart_overrides(self, overrides_dir, app):
         charts = self._get_list_of_charts(app)
@@ -1706,12 +1391,8 @@ class AppOperator(object):
                          "Chart %s from version %s" % (to_app.name, to_app.version,
                                                        chart.name, from_app.version))
 
-    def _make_app_request(self, app, request, overrides_str=None):
-        if app.is_fluxcd_app:
-            return self._make_fluxcd_operation_with_monitor(app, request)
-
-        else:
-            return self._make_armada_request_with_monitor(app, request, overrides_str)
+    def _make_app_request(self, app, request):
+        return self._make_fluxcd_operation_with_monitor(app, request)
 
     @retry(retry_on_exception=lambda x: isinstance(x, exception.ApplicationApplyFailure),
            stop_max_attempt_number=5, wait_fixed=30 * 1000)
@@ -1980,175 +1661,6 @@ class AppOperator(object):
         self.app_lifecycle_actions(None, None, app._kube_app, lifecycle_hook_info)
         return rc
 
-    @retry(retry_on_exception=lambda x: isinstance(x, exception.ApplicationApplyFailure),
-           stop_max_attempt_number=5, wait_fixed=30 * 1000)
-    def _make_armada_request_with_monitor(self, app, request, overrides_str=None):
-        """Initiate armada request with monitoring
-
-        This method delegates the armada request to docker helper and starts
-        a monitoring thread to persist status and progress along the way.
-
-        :param app: application data object
-        :param request: type of request (apply or delete)
-        :param overrides_str: list of overrides in string format to be applied
-        """
-
-        def _get_armada_log_stats(pattern, logfile):
-            """
-            TODO(tngo): In the absence of an Armada API that provides the current
-            status of an apply/delete manifest operation, the progress is derived
-            from specific log entries extracted from the execution logs. This
-            inner method is to be replaced with an official API call when
-            it becomes available.
-            """
-            if pattern == ROLLBACK_SEARCH_PATTERN:
-                print_chart = '{print $10}'
-            else:
-                print_chart = '{print $NF}'
-
-            p1 = subprocess.Popen(['grep', pattern, logfile],
-                                   stdout=subprocess.PIPE)
-            p2 = subprocess.Popen(['awk', print_chart], stdin=p1.stdout,
-                                   stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE,
-                                   universal_newlines=True)
-            p1.stdout.close()
-            result, err = p2.communicate()
-            if result:
-                # Scrape information from command output, example 'validate' log:
-                # 2020-03-26 09:47:58.594 1105 INFO armada.cli [-] Successfully validated:\
-                #  ('/tmp/manifests/oidc-auth-apps/1.0-0/oidc-auth-apps-manifest.yaml',)
-
-                # Strip out ANSI color code that might be in the text stream
-                r = re.compile("\x1b\[[0-9;]*m")
-                result = r.sub('', result).replace(',', '')
-                matches = result.split()
-                num_chart_processed = len(matches)
-                last_chart_processed = matches[num_chart_processed - 1]
-                if '=' in last_chart_processed:
-                    last_chart_processed = last_chart_processed.split('=')[1]
-                return last_chart_processed, num_chart_processed
-
-            return None, None
-
-        def _check_progress(monitor_flag, app, pattern, logfile):
-            """ Progress monitoring task, to be run in a separate thread """
-            LOG.info("Starting progress monitoring thread for app %s" % app.name)
-
-            try:
-                adjust = self._get_metadata_value(app,
-                                constants.APP_METADATA_APPLY_PROGRESS_ADJUST,
-                                constants.APP_METADATA_APPLY_PROGRESS_ADJUST_DEFAULT_VALUE)
-                with Timeout(INSTALLATION_TIMEOUT,
-                             exception.KubeAppProgressMonitorTimeout()):
-
-                    charts_count = len(app.charts)
-                    while True:
-                        try:
-                            monitor_flag.get_nowait()
-                            LOG.debug("Received monitor stop signal for %s" % app.name)
-                            monitor_flag.task_done()
-                            break
-                        except queue.Empty:
-                            last, num = _get_armada_log_stats(pattern, logfile)
-                            if last:
-                                if charts_count == 0:
-                                    percent = 100
-                                else:
-                                    tadjust = 0
-                                    if app.system_app:
-                                        tadjust = adjust
-                                        if tadjust >= charts_count:
-                                            LOG.error("Application metadata key '{}'"
-                                                      "has an invalid value {} (too few charts)".
-                                                      format(constants.APP_METADATA_APPLY_PROGRESS_ADJUST,
-                                                             adjust))
-                                            tadjust = 0
-
-                                    percent = round((float(num) /  # pylint: disable=W1619
-                                                     (charts_count - tadjust)) * 100)
-
-                                progress_str = "processing chart: {}, overall completion: {}%".\
-                                               format(last, percent)
-
-                                if app.progress != progress_str:
-                                    LOG.info("%s" % progress_str)
-                                    self._update_app_status(app, new_progress=progress_str)
-                            greenthread.sleep(1)
-            except Exception as e:
-                # timeout or subprocess error
-                LOG.exception(e)
-            finally:
-                LOG.info("Exiting progress monitoring thread for app %s" % app.name)
-
-        def _cleanup_armada_log(location, app_name, request):
-            """Cleanup the oldest armada log if reach the maximum"""
-            list_of_logs = [os.path.join(location, f) for f in os.listdir(location)
-                            if re.match(r'{}-{}.*.log'.format(app_name, request), f)]
-
-            try:
-                if len(list_of_logs) > ARMADA_LOG_MAX:
-                    oldest_logfile = min(list_of_logs, key=os.path.getctime)
-                    os.remove(oldest_logfile)
-            except OSError:
-                pass
-
-        # Body of the outer method
-
-        # On N(stx.6.0) to N+2(stx.8.0) upgrades we need to keep the original
-        # 'delete' operation that Armada recognizes.
-        # The operation was renamed (intention was for Flux) for Armada by
-        # mistake: https://review.opendev.org/c/starlingx/config/+/866200/
-        if request == constants.APP_REMOVE_OP:
-            request = constants.APP_DELETE_OP
-
-        # This check is for cases where an abort is issued while
-        # this function waits between retries. In such cases, it
-        # should just return False
-        if AppOperator.is_app_aborted(app.name):
-            return False
-
-        # TODO(dvoicule): Maybe pass a hook from outside to this function
-        # need to change perform_app_recover/rollback/update to support this.
-        # All the other hooks store the operation of the app itself (apply,
-        # remove, delete, upload, update) yet this hook stores the armada
-        # operation in the operation field. This is inconsistent behavior and
-        # should be changed the moment a hook from outside is passed here.
-        lifecycle_hook_info = LifecycleHookInfo()
-        lifecycle_hook_info.operation = request
-        lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
-        lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_ARMADA_REQUEST
-        self.app_lifecycle_actions(None, None, app._kube_app, lifecycle_hook_info)
-
-        mqueue = queue.Queue()
-        rc = True
-        logname = time.strftime(app.name + '-' + request + '_%Y-%m-%d-%H-%M-%S.log')
-        logfile = ARMADA_HOST_LOG_LOCATION + '/' + logname
-
-        if request == constants.APP_APPLY_OP:
-            pattern = APPLY_SEARCH_PATTERN
-        elif request == constants.APP_DELETE_OP:
-            pattern = DELETE_SEARCH_PATTERN
-        else:
-            pattern = ROLLBACK_SEARCH_PATTERN
-
-        monitor = greenthread.spawn_after(1, _check_progress, mqueue, app,
-                                          pattern, logfile)
-        rc = self._armada.make_armada_request(request, app.armada_service_mfile,
-                                              overrides_str, app.releases, logfile)
-
-        _cleanup_armada_log(ARMADA_HOST_LOG_LOCATION, app.name, request)
-        mqueue.put('done')
-        monitor.kill()
-
-        # Here a manifest retry can be performed by throwing ApplicationApplyFailure
-        lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
-        lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_ARMADA_REQUEST
-        lifecycle_hook_info[LifecycleConstants.EXTRA][LifecycleConstants.RETURN_CODE] = rc
-        self.app_lifecycle_actions(None, None, app._kube_app, lifecycle_hook_info)
-
-        return rc
-
     def _record_auto_update_failed_versions(self, from_app, to_app):
         """Record the new application version in the old application
            metadata when the new application fails to be updated"""
@@ -2166,12 +1678,12 @@ class AppOperator(object):
         with self._lock:
             from_app.update_app_metadata(new_metadata)
 
-    def _perform_app_recover(self, old_app, new_app, armada_process_required=True):
+    def _perform_app_recover(self, old_app, new_app, fluxcd_process_required=True):
         """Perform application recover
 
         This recover method is triggered when application update failed, it cleans
         up the files/data for the new application and recover helm charts for the
-        old application. If the armada process is required, armada apply is invoked
+        old application. If the fluxcd process is required, fluxcd apply is invoked
         to recover the application releases for the old version.
 
         The app status will be populated to "apply-failed" if recover fails so that
@@ -2179,7 +1691,7 @@ class AppOperator(object):
 
         :param old_app: the application object that application recovering to
         :param new_app: the application object that application recovering from
-        :param armada_process_required: boolean, whether armada operation is needed
+        :param fluxcd_process_required: boolean, whether fluxcd operation is needed
         """
 
         def _activate_old_app_plugins(old_app):
@@ -2215,20 +1727,13 @@ class AppOperator(object):
                 self._upload_helm_charts(old_app)
 
             rc = True
-            if armada_process_required:
-                overrides_str = ''
+            if fluxcd_process_required:
                 old_app.charts = self._get_list_of_charts(old_app)
-                if old_app.system_app:
-                    (helm_files, armada_files) = self._get_overrides_files(
-                        old_app, mode=None)
 
-                    overrides_str = self._generate_armada_overrides_str(
-                        old_app.name, old_app.version, helm_files, armada_files)
-
-                # Ensure that the old app plugins are enabled prior to armada process.
+                # Ensure that the old app plugins are enabled prior to fluxcd process.
                 _activate_old_app_plugins(old_app)
 
-                if self._make_app_request(old_app, constants.APP_APPLY_OP, overrides_str):
+                if self._make_app_request(old_app, constants.APP_APPLY_OP):
                     old_app_charts = [c.release for c in old_app.charts]
                     deployed_releases = helm_utils.retrieve_helm_releases()
                     for new_chart in new_app.charts:
@@ -2236,7 +1741,7 @@ class AppOperator(object):
                                 new_chart.release in deployed_releases):
                             # Cleanup the releases in the new application version
                             # but are not in the old application version
-                            helm_utils.delete_helm_release(new_chart.release)
+                            helm_utils.delete_helm_v3_release(new_chart.release)
                 else:
                     rc = False
 
@@ -2280,9 +1785,9 @@ class AppOperator(object):
     def _perform_app_rollback(self, from_app, to_app):
         """Perform application rollback request
 
-        This method invokes Armada to rollback the application releases to
+        This method invokes fluxcd to rollback the application releases to
         previous installed versions. The jobs for the current installed
-        releases require to be cleaned up before starting armada rollback.
+        releases require to be cleaned up before starting fluxcd rollback.
 
         :param from_app: application object that application updating from
         :param to_app: application object that application updating to
@@ -2341,9 +1846,9 @@ class AppOperator(object):
                          % (to_app.name, to_app.version))
                 return True
         except exception.KubeAppAbort:
-            # If the update operation is aborted before Armada request is made,
+            # If the update operation is aborted before fluxcd request is made,
             # we don't want to return False which would trigger the recovery
-            # routine with an Armada request.
+            # routine with an fluxcd request.
             raise
         except Exception as e:
             # unexpected KubeAppNotFound, KubeAppInactiveNotFound, KeyError
@@ -2404,8 +1909,8 @@ class AppOperator(object):
                 app.downloaded_tarfile = True
 
             # Full extraction of application tarball at /scratch/apps.
-            # Manifest file is placed under /opt/platform/armada
-            # which is managed by drbd-sync and visible to Armada.
+            # Manifest file is placed under /opt/platform/fluxcd
+            # which is managed by drbd-sync and visible to fluxcd.
             self._update_app_status(
                 app, new_progress=constants.APP_PROGRESS_EXTRACT_TARFILE)
 
@@ -2413,16 +1918,10 @@ class AppOperator(object):
                 self._extract_tarfile(app)
                 self._plugins.install_plugins(app)
 
-            if app.is_fluxcd_app:
-                manifest_sync_path = app.sync_fluxcd_manifest
-                manifest_sync_dir_path = app.sync_fluxcd_manifest_dir
-                validate_manifest = manifest_sync_path
-                validate_function = self._fluxcd.make_fluxcd_operation
-            else:
-                manifest_sync_path = app.sync_armada_mfile
-                manifest_sync_dir_path = app.sync_armada_mfile_dir
-                validate_manifest = app.armada_service_mfile
-                validate_function = self._armada.make_armada_request
+            manifest_sync_path = app.sync_fluxcd_manifest
+            manifest_sync_dir_path = app.sync_fluxcd_manifest_dir
+            validate_manifest = manifest_sync_path
+            validate_function = self._fluxcd.make_fluxcd_operation
 
             # Copy the manifest and metadata file to the drbd
             if os.path.isdir(app.inst_mfile):
@@ -2451,8 +1950,7 @@ class AppOperator(object):
                 with self._lock:
                     self._upload_helm_charts(app)
 
-            # System overrides will be generated here. Plugins must be activated
-            # prior to scraping chart/system/armada overrides for images
+            # System overrides will be generated here.
             self._save_images_list(app)
 
             if images:
@@ -2955,7 +2453,7 @@ class AppOperator(object):
         """Process application install request
 
         This method processes node labels per configuration and invokes
-        Armada to apply the application manifest.
+        fluxcd to apply the application manifest.
 
         For OpenStack app (system app), the method generates combined
         overrides (a merge between system and user overrides if available)
@@ -3005,7 +2503,6 @@ class AppOperator(object):
 
         LOG.info("Application %s (%s) apply started." % (app.name, app.version))
 
-        overrides_str = ''
         ready = True
         try:
             app.charts = self._get_list_of_charts(app)
@@ -3035,19 +2532,13 @@ class AppOperator(object):
             LOG.info("Generating application overrides...")
             self._helm.generate_helm_application_overrides(
                 app.sync_overrides_dir, app.name, mode, cnamespace=None,
-                armada_format=True, chart_info=app.charts, combined=True,
-                is_fluxcd_app=app.is_fluxcd_app)
+                chart_info=app.charts, combined=True)
 
-            overrides_str = None
-            (helm_files, armada_files) = self._get_overrides_files(app, mode)
-            if helm_files or armada_files:
+            helm_files = self._get_overrides_files(app)
+            if helm_files:
                 LOG.info("Application overrides generated.")
-                if app.is_fluxcd_app:
-                    # put the helm_overrides in the chart's system-overrides.yaml
-                    self._write_fluxcd_overrides(app.charts, helm_files)
-                else:
-                    overrides_str = self._generate_armada_overrides_str(
-                        app.name, app.version, helm_files, armada_files)
+                # put the helm_overrides in the chart's system-overrides.yaml
+                self._write_fluxcd_overrides(app.charts, helm_files)
 
                 self._update_app_status(
                     app, new_progress=constants.APP_PROGRESS_DOWNLOAD_IMAGES)
@@ -3096,7 +2587,7 @@ class AppOperator(object):
                 if caller == constants.RECOVER_VIA_REMOVAL:
                     return True
 
-                if self._make_app_request(app, constants.APP_APPLY_OP, overrides_str):
+                if self._make_app_request(app, constants.APP_APPLY_OP):
                     self._update_app_releases_version(app.name)
                     self._update_app_status(app,
                                             constants.APP_APPLY_SUCCESS,
@@ -3152,7 +2643,7 @@ class AppOperator(object):
         """Process application update request
 
         This method leverages the existing application upload workflow to
-        validate/upload the new application tarfile, then invokes Armada
+        validate/upload the new application tarfile, then invokes fluxcd
         apply or rollback to update application from an applied version
         to the new version. If any failure happens during updating, the
         recover action will be triggered to recover the application to
@@ -3194,7 +2685,6 @@ class AppOperator(object):
         LOG.info("Start updating Application %s from version %s to version %s ..."
                  % (to_app.name, from_app.version, to_app.version))
 
-        armada_to_fluxcd = from_app.is_fluxcd_app != to_app.is_fluxcd_app
         try:
             # Upload new app tarball. The upload will enable the new plugins to
             # generate overrides for images. Disable the plugins for the current
@@ -3224,13 +2714,13 @@ class AppOperator(object):
                          "".format(to_app.name, constants.APP_UPDATE_OP, str(e)))
                 # lifecycle hooks not used in perform_app_recover
                 return self._perform_app_recover(from_app, to_app,
-                                                 armada_process_required=False)
+                                                 fluxcd_process_required=False)
             except Exception as e:
                 LOG.error("App {} operation {} semantic check error: {}"
                           "".format(to_app.name, constants.APP_UPDATE_OP, str(e)))
                 # lifecycle hooks not used in perform_app_recover
                 return self._perform_app_recover(from_app, to_app,
-                                                 armada_process_required=False)
+                                                 fluxcd_process_required=False)
 
             self.load_application_metadata_from_file(to_rpc_app)
 
@@ -3303,15 +2793,6 @@ class AppOperator(object):
                          to_app.name, to_app.version, skip_recovery)
                 do_recovery = False
 
-            # Here the app operation failed (do_recovery is True)
-            # but apps belong to differente helm versions.
-            if armada_to_fluxcd and do_recovery:
-                LOG.info("Application %s (%s) uses FluxCD (Helm3) and cannot"
-                         " rollback to Application %s (%s) that uses Armada (Helm2)"
-                         ", recovery skipped.",
-                         to_app.name, to_app.version, from_app.name, from_app.version)
-                do_recovery = False
-
             # If recovery is requested stop the flow of execution here
             if do_recovery:
                 LOG.error("Application %s update from version %s to version "
@@ -3333,7 +2814,7 @@ class AppOperator(object):
                         from_chart.release in deployed_releases):
                     # Cleanup the releases in the old application version
                     # but are not in the new application version
-                    helm_utils.delete_helm_release(from_chart.release)
+                    helm_utils.delete_helm_v3_release(from_chart.release)
                     LOG.info("Helm release %s for Application %s (%s) deleted"
                              % (from_chart.release, from_app.name, from_app.version))
 
@@ -3352,17 +2833,11 @@ class AppOperator(object):
 
             # The initial operation for to_app failed
             # This is reached here only when skip_recovery is requested
-            # Or when updating between Helm versions (Armada <-> FluxCD)
             # Need to inform the user
             else:
-                message = \
-                        constants.APP_PROGRESS_UPDATE_FAILED_SKIP_RECOVERY.format(
-                            to_app.name, from_app.version, to_app.version) \
-                        if skip_recovery else \
-                        constants.APP_PROGRESS_UPDATE_FAILED_ARMADA_TO_FLUXCD.format(
-                                to_app.name, from_app.version, to_app.version)
-                self._update_app_status(
-                    to_app, constants.APP_APPLY_FAILURE, message)
+                message = constants.APP_PROGRESS_UPDATE_FAILED_SKIP_RECOVERY.format(
+                    to_app.name, from_app.version, to_app.version)
+                self._update_app_status(to_app, constants.APP_APPLY_FAILURE, message)
                 LOG.info(message)
 
         except (exception.IncompatibleKubeVersion,
@@ -3370,15 +2845,15 @@ class AppOperator(object):
                 exception.KubeAppApplyFailure,
                 exception.KubeAppAbort) as e:
             # Error occurs during app uploading or applying but before
-            # armada apply process...
+            # apply process...
             # ie.images download/k8s resource creation failure
-            # Start recovering without trigger armada process
+            # Start recovering without trigger fluxcd process
             LOG.exception(e)
             # lifecycle hooks not used in perform_app_recover
             return self._perform_app_recover(from_app, to_app,
-                                             armada_process_required=False)
+                                             fluxcd_process_required=False)
         except Exception as e:
-            # Application update successfully(armada apply/rollback)
+            # Application update successfully(fluxcd apply/rollback)
             # Error occurs during cleanup old app
             # ie. delete app files failure, patch controller failure,
             #     helm release delete failure
@@ -3397,7 +2872,7 @@ class AppOperator(object):
     def perform_app_remove(self, rpc_app, lifecycle_hook_info_app_remove, force=False):
         """Process application remove request
 
-        This method invokes Armada to delete the application manifest.
+        This method invokes fluxcd to delete the application manifest.
         For system app, it also cleans up old test pods.
 
         :param rpc_app: application object in the RPC request
@@ -3462,7 +2937,7 @@ class AppOperator(object):
                 helm_utils.delete_helm_v3_release(helm_release_dict['spec']['releaseName'], namespace=namespace)
 
         if self._make_app_request(app, constants.APP_REMOVE_OP):
-            # After armada delete, the data for the releases are purged from
+            # After fluxcd delete, the data for the releases are purged from
             # tiller/etcd, the releases info for the active app stored in sysinv
             # db should be set back to 0 and the inactive apps require to be
             # destroyed too.
@@ -3537,9 +3012,7 @@ class AppOperator(object):
         database and sets the abort flag if the apply/update/remove
         operation is still in progress. The corresponding app processing
         thread will check the flag and abort the operation in the very
-        next opportunity. The method also stops the Armada service and
-        clears locks in case the app processing thread has made a
-        request to Armada.
+        next opportunity.
 
         :param rpc_app: application object in the RPC request
         :param lifecycle_hook_info_app_abort: LifecycleHookInfo object
@@ -3556,16 +3029,7 @@ class AppOperator(object):
             # Turn on the abort flag so the processing thread that is
             # in progress can bail out in the next opportunity.
             self._set_abort_flag(app.name)
-            if not app.is_fluxcd_app:
-                # Stop the Armada request in case it has reached this far and
-                # remove locks.
-                # TODO(jgauld): Need to correct lock mechanism, something is no
-                # longer working for application aborts. The lock lingers around,
-                # and only automatically get cleaned up after a long period.
-                # Subsequent reapply fails since it we cannot get lock.
-                with self._lock:
-                    self._armada.stop_armada_request()
-                    self._armada.clear_armada_locks()
+
         else:
             # Either the previous operation has completed or already failed
             LOG.info("Abort request ignored. The previous operation for app %s "
@@ -3650,56 +3114,26 @@ class AppOperator(object):
             self.sync_plugins_dir = generate_synced_app_plugins_dir(
                 self._kube_app.get('name'),
                 self._kube_app.get('app_version'))
-            self.sync_armada_mfile_dir = cutils.generate_synced_armada_dir(
-                self._kube_app.get('name'),
-                self._kube_app.get('app_version'))
             self.sync_fluxcd_manifest_dir = cutils.generate_synced_fluxcd_dir(
                 self._kube_app.get('name'),
                 self._kube_app.get('app_version'))
 
             # Files: DRBD synced between controllers
-            self.sync_armada_mfile = cutils.generate_synced_armada_manifest_fqpn(
-                self._kube_app.get('name'),
-                self._kube_app.get('app_version'),
-                self._kube_app.get('manifest_file'))
             self.sync_fluxcd_manifest = cutils.generate_synced_fluxcd_manifests_fqpn(
                 self._kube_app.get('name'),
                 self._kube_app.get('app_version'))
 
-            self.sync_armada_imgfile = generate_synced_images_fqpn(
+            self.sync_imgfile = generate_synced_fluxcd_images_fqpn(
                 self._kube_app.get('name'),
                 self._kube_app.get('app_version'))
-            self.sync_fluxcd_imgfile = generate_synced_fluxcd_images_fqpn(
-                self._kube_app.get('name'),
-                self._kube_app.get('app_version'))
-            self.sync_imgfile = self.sync_fluxcd_imgfile \
-                                if self.is_fluxcd_app else \
-                                   self.sync_armada_imgfile
 
-            self.sync_armada_metadata_file = cutils.generate_synced_metadata_fqpn(
+            self.sync_metadata_file = cutils.generate_synced_fluxcd_metadata_fqpn(
                 self._kube_app.get('name'),
                 self._kube_app.get('app_version'))
-            self.sync_fluxcd_metadata_file = cutils.generate_synced_fluxcd_metadata_fqpn(
-                self._kube_app.get('name'),
-                self._kube_app.get('app_version'))
-            self.sync_metadata_file = self.sync_fluxcd_metadata_file \
-                                      if self.is_fluxcd_app else \
-                                         self.sync_armada_metadata_file
-
-            # Files: FQPN formatted for the Armada pod
-            self.armada_service_mfile = generate_armada_service_manifest_fqpn(
-                self._kube_app.get('name'),
-                self._kube_app.get('app_version'),
-                self._kube_app.get('manifest_file'))
 
             self.patch_dependencies = []
             self.charts = []
             self.releases = []
-
-        @property
-        def is_fluxcd_app(self):
-            return self._kube_app.get('manifest_name').endswith(
-                constants.APP_FLUXCD_MANIFEST_DIR)
 
         @property
         def system_app(self):
@@ -3763,34 +3197,18 @@ class AppOperator(object):
             self._kube_app.manifest_file = new_mfile
             self.inst_mfile = generate_install_manifest_fqpn(
                 self.name, self.version, new_mfile)
-            if self.is_fluxcd_app:
-                self.sync_fluxcd_manifest = cutils.generate_synced_fluxcd_manifests_fqpn(
-                    self.name,
-                    self.version)
-            else:
-                self.armada_service_mfile = generate_armada_service_manifest_fqpn(
-                    self.name, self.version, new_mfile)
-                self.sync_armada_mfile = cutils.generate_synced_armada_manifest_fqpn(
-                    self.name, self.version, new_mfile)
+            self.sync_fluxcd_manifest = cutils.generate_synced_fluxcd_manifests_fqpn(
+                self.name, self.version)
 
         def regenerate_application_info(self, new_name, new_version, new_patch_dependencies):
             self._kube_app.name = new_name
             self._kube_app.app_version = new_version
 
-            if self.is_fluxcd_app:
-                new_fluxcd_dir = cutils.generate_synced_fluxcd_dir(
-                    self.name, self.version)
-                shutil.move(self.sync_fluxcd_manifest_dir, new_fluxcd_dir)
-                shutil.rmtree(os.path.dirname(self.sync_fluxcd_manifest_dir))
-                self.sync_fluxcd_manifest_dir = new_fluxcd_dir
-                new_sync_imgfile = generate_synced_fluxcd_images_fqpn(self.name, self.version)
-            else:
-                new_armada_dir = cutils.generate_synced_armada_dir(
-                    self.name, self.version)
-                shutil.move(self.sync_armada_mfile_dir, new_armada_dir)
-                shutil.rmtree(os.path.dirname(self.sync_armada_mfile_dir))
-                self.sync_armada_mfile_dir = new_armada_dir
-                new_sync_imgfile = generate_synced_images_fqpn(self.name, self.version)
+            new_fluxcd_dir = cutils.generate_synced_fluxcd_dir(self.name, self.version)
+            shutil.move(self.sync_fluxcd_manifest_dir, new_fluxcd_dir)
+            shutil.rmtree(os.path.dirname(self.sync_fluxcd_manifest_dir))
+            self.sync_fluxcd_manifest_dir = new_fluxcd_dir
+            new_sync_imgfile = generate_synced_fluxcd_images_fqpn(self.name, self.version)
 
             new_path = os.path.join(
                 constants.APP_INSTALL_PATH, self.name, self.version)
@@ -4016,453 +3434,6 @@ class DockerHelper(object):
         return img_tag, rc
 
 
-class ArmadaHelper(object):
-    """ Armada class to encapsulate Armada related operations """
-
-    def __init__(self, kube):
-        self._kube = kube
-        self._lock = threading.Lock()
-
-        self.overrides_dir = common.HELM_OVERRIDES_PATH
-        self.manifests_dir = constants.APP_SYNCED_ARMADA_DATA_PATH
-        self.logs_dir = ARMADA_HOST_LOG_LOCATION
-
-    # Generate kubectl wrapped bash command that can run in
-    # a specific container of a namespaced pod.
-    def wrap_kubectl_bash(self, name, namespace, exec_command,
-                          container=None):
-        kcmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
-                'exec', '-n', namespace, name]
-        if container is not None:
-            kcmd.extend(['--container', container])
-        kcmd.extend(['--', '/bin/bash', '-c', exec_command])
-        return kcmd
-
-    # Wrapper for kubectl exec to run bash commands in a specific container
-    # of a namespaced pod.
-    # Returns command stdout and stderr, and stderr if kubectl command fails.
-    # This should be replaced with the core kubernetes client API
-    # connect_get_namespaced_pod_exec when that can be made to work properly
-    # with error handling, separate stdout, stderr, timeout, poll and flush
-    # of output streams, and wait for command completion.
-    def kube_exec_container_bash(self, name, namespace, exec_command,
-                                 container=None):
-        kcmd = self.wrap_kubectl_bash(name, namespace, exec_command,
-                                            container=container)
-        stdout, stderr = cutils.trycmd(*kcmd, discard_warnings=True,
-                                       run_as_root=False)
-        return stdout, stderr
-
-    # Wrapper for kubectl cp to a container. One of 'src' and 'dest' must
-    # be a remote file specification.
-    # Returns command stdout and stderr, and stderr if kubectl command fails.
-    # Limitation:  kubectl cp command does not return an error when
-    # the source file does not exist.
-    #   https://github.com/kubernetes/kubernetes/issues/78879
-    def kube_cp_container(self, namespace, src, dest, container=None):
-        kcmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
-                'cp', '-n', namespace, src, dest]
-        if container is not None:
-            kcmd.extend(['--container', container])
-        stdout, stderr = cutils.trycmd(*kcmd, discard_warnings=True,
-                                       run_as_root=False)
-        return stdout, stderr
-
-    def copy_manifests_and_overrides_to_armada(self, armada_pod, mfile):
-        # NOTE: The armada pod may run on either controller.
-        # We do not want to mount host directories since DRBD
-        # /opt/platform is only visible on active controller.
-        # As a workaround, we can copy the required files into
-        # the armada container.
-
-        # Derive manifests and overrides directories for both
-        # source source and destination paths. We use well-known
-        # directories and a filename given the following format.
-        # /manifests/oidc-auth-apps/1.0-0/oidc-auth-apps-manifest-del.yaml
-        manifests_dest = '{}/{}'.format(ARMADA_CONTAINER_TMP, 'manifests')
-        overrides_dest = '{}/{}'.format(ARMADA_CONTAINER_TMP, 'overrides')
-        app_name = mfile.split('/', 3)[2]
-
-        # Create manifests and overrides directories in container
-        cmd = 'mkdir -v -p {}; mkdir -v -p {}'.\
-              format(manifests_dest, overrides_dest)
-        stdout, stderr = self.kube_exec_container_bash(
-            armada_pod, ARMADA_NAMESPACE, cmd, container=ARMADA_CONTAINER_NAME)
-        if stderr:
-            LOG.error("Failed to create manifests and overrides, error: %s",
-                      stderr)
-            return False
-
-        # Copy manifests and overrides directories to container
-        # NOTE: kubectl cp command does not return an error when
-        # the source file does not exist.
-        #   https://github.com/kubernetes/kubernetes/issues/78879
-        src_dest_dirs = \
-            [('{}/{}'.format(self.manifests_dir, app_name),
-              '{}:{}'.format(armada_pod, manifests_dest)),
-             ('{}/{}'.format(self.overrides_dir, app_name),
-              '{}:{}'.format(armada_pod, overrides_dest))]
-        for src_dir, dest_dir in src_dest_dirs:
-            # If there are no overrides it's not a fatal error.
-            if (src_dir.startswith(self.overrides_dir) and
-                    not os.path.exists(src_dir)):
-                LOG.info("%s doesn't exist, skipping it." % src_dir)
-                continue
-            LOG.info("Copy %s to %s ." % (src_dir, dest_dir))
-            stdout, stderr = self.kube_cp_container(
-                ARMADA_NAMESPACE, src_dir, dest_dir,
-                container=ARMADA_CONTAINER_NAME)
-            if stderr:
-                LOG.error("Failed to copy %s to %s, error: %s",
-                          src_dir, dest_dir, stderr)
-                return False
-        return True
-
-    def check_pod_ready_probe(self, pod):
-        """Pod is of the form returned by self._kube.kube_get_pods_by_selector.
-        Returns true if last probe shows the container is in 'Ready' state.
-        """
-        conditions = list([x for x in pod.status.conditions if x.type == 'Ready'])
-        if not conditions:
-            return False
-        return conditions[0].status == 'True'
-
-    def _prefer_select_one_running_ready_pod(self, pods):
-        """Find one running and ready pod.
-        Return found if one, otherwise first pod.
-        """
-        for pod in pods:
-            if pod.status.phase == 'Running' and \
-                    pod.metadata.deletion_timestamp is None and \
-                    self.check_pod_ready_probe(pod):
-                return pod
-        return pods[0]
-
-    def clear_armada_locks(self):
-        lock_name = "{}.{}.{}".format(ARMADA_LOCK_PLURAL,
-                                      ARMADA_LOCK_GROUP,
-                                      ARMADA_LOCK_NAME)
-        try:
-            self._kube.delete_custom_resource(ARMADA_LOCK_GROUP,
-                                              ARMADA_LOCK_VERSION,
-                                              ARMADA_LOCK_NAMESPACE,
-                                              ARMADA_LOCK_PLURAL,
-                                              lock_name)
-        except Exception:
-            # Best effort delete
-            LOG.warning("Failed to clear Armada locks.")
-            pass
-
-    def _start_armada_service(self):
-        """Armada pod is managed by Kubernetes / Helm.
-           This routine checks and waits for armada to be providing service.
-        """
-
-        self.overrides_dir = common.HELM_OVERRIDES_PATH
-        self.manifests_dir = constants.APP_SYNCED_ARMADA_DATA_PATH
-
-        try:
-            # Create the armada log folder if it does not exists
-            if not os.path.exists(ARMADA_HOST_LOG_LOCATION):
-                os.mkdir(ARMADA_HOST_LOG_LOCATION)
-                os.chmod(ARMADA_HOST_LOG_LOCATION, 0o755)
-                os.chown(ARMADA_HOST_LOG_LOCATION, 1000,
-                         grp.getgrnam("sys_protected").gr_gid)
-            if not os.path.exists(common.HELM_OVERRIDES_PATH):
-                os.makedirs(common.HELM_OVERRIDES_PATH, 0o755)
-        except OSError as oe:
-            LOG.error("Unable to create armada log folder : %s" % oe)
-            return False
-
-        # Wait for armada to be ready for cmd execution.
-        # NOTE: make_armada_requests() also has retry mechanism
-        TIMEOUT_DELTA = 5
-        TIMEOUT_SLEEP = 5
-        TIMEOUT_START_VALUE = 30
-
-        timeout = TIMEOUT_START_VALUE
-        while timeout > 0:
-            try:
-                pods = self._kube.kube_get_pods_by_selector(
-                    ARMADA_NAMESPACE,
-                    "application=%s" % ARMADA_APPLICATION, "")
-                if not pods:
-                    raise RuntimeError('armada pod not found')
-                pod = self._prefer_select_one_running_ready_pod(pods)
-
-                if pod and pod.status.phase != 'Running':
-                    # Delete the pod, it should restart if it can
-                    if not self._kube.kube_delete_pod(pod.metadata.name,
-                            ARMADA_NAMESPACE, grace_periods_seconds=0):
-                        LOG.warning("Pod %s/%s deletion unsuccessful...",
-                            ARMADA_NAMESPACE, pod.metadata.name)
-
-                if pod and pod.status.phase == 'Running' and \
-                        self.check_pod_ready_probe(pod):
-                    # Test that we can copy files into armada-api container
-                    src = '/etc/build.info'
-                    dest_dir = '{}:{}'.format(pod.metadata.name, '/tmp')
-                    stdout, stderr = self.kube_cp_container(
-                        ARMADA_NAMESPACE, src, dest_dir,
-                        container=ARMADA_CONTAINER_NAME)
-                    if stderr:
-                        LOG.error("Failed to copy %s to %s, error: %s",
-                                  src, dest_dir, stderr)
-                        raise RuntimeError('armada pod not ready')
-                    break
-
-            except Exception as e:
-                LOG.info("Could not get Armada service : %s " % e)
-
-            time.sleep(TIMEOUT_SLEEP)
-            timeout -= TIMEOUT_DELTA
-
-        if timeout <= 0:
-            LOG.error("Failed to get Armada service after {seconds} seconds.".
-                      format(seconds=TIMEOUT_START_VALUE))
-            return False
-
-        # We don't need to loop through the code that checks the pod's status
-        # again. Once the previous loop exits with pod 'Running' we can test
-        # the connectivity to the tiller postgres backend:
-        timeout = TIMEOUT_START_VALUE
-        while timeout > 0:
-            try:
-                _ = helm_utils.retrieve_helm_v2_releases()
-                break
-            except exception.HelmTillerFailure:
-                LOG.warn("Could not query Helm/Tiller releases")
-                time.sleep(TIMEOUT_SLEEP)
-                timeout -= TIMEOUT_DELTA
-                continue
-            except Exception as ex:
-                LOG.error("Unhandled exception : {error}".format(error=str(ex)))
-                return False
-
-        if timeout <= 0:
-            LOG.error("Failed to query Helm/Tiller for {seconds} seconds.".
-                      format(seconds=TIMEOUT_START_VALUE))
-            return False
-
-        return True
-
-    def stop_armada_request(self):
-        """A simple way to cancel an on-going manifest apply/rollback/delete
-           request. This logic will be revisited in the future.
-        """
-
-        try:
-            pods = self._kube.kube_get_pods_by_selector(
-                ARMADA_NAMESPACE, "application=%s" % ARMADA_APPLICATION, "")
-            if not pods:
-                raise RuntimeError('armada pod not found')
-            for pod in pods:
-                if pod.status.phase == 'Running':
-                    # Delete the pod, it should restart if it can
-                    LOG.info("Stopping Armada service %s.", pod.metadata.name)
-                    if not self._kube.kube_delete_pod(pod.metadata.name,
-                                                      ARMADA_NAMESPACE,
-                                                      grace_periods_seconds=0):
-                        LOG.warning("Pod %s/%s deletion unsuccessful.",
-                            ARMADA_NAMESPACE, pod.metadata.name)
-        except Exception as e:
-            LOG.error("Failed to stop Armada service : %s " % e)
-
-    def make_armada_request(self, request, manifest_file='', overrides_str='',
-                            app_releases=None, logfile=None):
-
-        if logfile is None:
-            # Infer app name from the manifest file
-            # e.g., /tmp/manifests/oidc-auth-apps/1.0-0/oidc-auth-apps-manifest.yaml
-            app_name = manifest_file.split('/', 3)[2]
-            logname = time.strftime(app_name + '-' + request + '_%Y-%m-%d-%H-%M-%S.log')
-            logfile = ARMADA_HOST_LOG_LOCATION + '/' + logname
-
-        if app_releases is None:
-            app_releases = []
-
-        rc = True
-
-        # Configure additional armada options (e.g., such as --tiller-host),
-        # currently none are required.
-        tiller_host = " "
-
-        LOG.debug('make_armada_request: request=%s, '
-                  'manifest_file=%s, overrides_str=%s, '
-                  'app_releases=%r, logfile=%r',
-                  request, manifest_file, overrides_str,
-                  app_releases, logfile)
-        try:
-            # Ensure armada service is ready.
-            with self._lock:
-                ret = self._start_armada_service()
-
-            if ret:
-                # The armada pod name may change, get it each time
-                pods = self._kube.kube_get_pods_by_selector(
-                    ARMADA_NAMESPACE, "application=%s" % ARMADA_APPLICATION,
-                    "status.phase=Running")
-                if not pods:
-                    raise RuntimeError('armada pod not found')
-                armada_pod = self._prefer_select_one_running_ready_pod(pods).metadata.name
-                if not self.copy_manifests_and_overrides_to_armada(armada_pod, manifest_file):
-                    raise RuntimeError('could not access armada pod')
-
-                if request == 'validate':
-                    cmd = ''.join(['armada validate ',
-                                   ARMADA_CONTAINER_TMP,
-                                   manifest_file])
-                    LOG.info("Armada %s command: '%s'", request, cmd)
-                    kcmd = self.wrap_kubectl_bash(
-                        armada_pod, ARMADA_NAMESPACE, cmd,
-                        container=ARMADA_CONTAINER_NAME)
-                    p = subprocess.Popen(kcmd,
-                                         universal_newlines=True,
-                                         stdout=subprocess.PIPE,
-                                         stderr=subprocess.STDOUT)
-                    with p.stdout, open(logfile, 'w') as log:
-                        while p.poll() is None:
-                            line = p.stdout.readline()
-                            if line != b"":
-                                log.write(line)
-                                log.flush()
-                    if p.returncode != 0:
-                        rc = False
-                        LOG.error("Failed to validate application manifest %s "
-                                  "with exit code %s. See %s for details." %
-                                  (manifest_file, p.returncode, logfile))
-                    else:
-                        LOG.info("Manifest file %s was successfully validated." %
-                                 manifest_file)
-
-                elif request == constants.APP_APPLY_OP:
-                    cmd = ''.join(['armada apply --debug ',
-                                   '--enable-chart-cleanup ',
-                                   ARMADA_CONTAINER_TMP,
-                                   manifest_file,
-                                   overrides_str,
-                                   tiller_host])
-                    LOG.info("Armada %s command: '%s'", request, cmd)
-                    kcmd = self.wrap_kubectl_bash(
-                        armada_pod, ARMADA_NAMESPACE, cmd,
-                        container=ARMADA_CONTAINER_NAME)
-                    p = subprocess.Popen(kcmd,
-                                         universal_newlines=True,
-                                         stdout=subprocess.PIPE,
-                                         stderr=subprocess.STDOUT)
-                    with p.stdout, open(logfile, 'w') as log:
-                        while p.poll() is None:
-                            line = p.stdout.readline()
-                            if line != b"":
-                                LOG.debug('%s: %s', request, line)
-                                log.write(line)
-                                log.flush()
-                    if p.returncode != 0:
-                        rc = False
-                        LOG.error("Failed to apply application manifest %s "
-                                  "with exit code %s. See %s for details." %
-                                  (manifest_file, p.returncode, logfile))
-                        if p.returncode == CONTAINER_ABNORMAL_EXIT_CODE:
-                            self.clear_armada_locks()
-                    else:
-                        LOG.info("Application manifest %s was successfully "
-                                 "applied/re-applied." % manifest_file)
-
-                elif request == constants.APP_ROLLBACK_OP:
-                    for app_release in app_releases:
-                        release = app_release.get('release')
-                        version = app_release.get('version')
-                        sequenced = app_release.get('sequenced')
-
-                        if sequenced:
-                            cmd = ''.join(['armada rollback --debug ',
-                                           '--wait --timeout 1800 ',
-                                           '--release ' + release + ' ',
-                                           '--version ' + str(version),
-                                           tiller_host])
-                        else:
-                            cmd = ''.join(['armada rollback --debug ',
-                                           '--release ' + release + ' ',
-                                           '--version ' + str(version),
-                                           tiller_host])
-
-                        LOG.info("Armada %s command: '%s'", request, cmd)
-                        kcmd = self.wrap_kubectl_bash(
-                            armada_pod, ARMADA_NAMESPACE, cmd,
-                            container=ARMADA_CONTAINER_NAME)
-                        p = subprocess.Popen(kcmd,
-                                             universal_newlines=True,
-                                             stdout=subprocess.PIPE,
-                                             stderr=subprocess.STDOUT)
-                        with p.stdout, open(logfile, 'w') as log:
-                            while p.poll() is None:
-                                line = p.stdout.readline()
-                                if line != "":
-                                    log.write(line)
-                                    log.flush()
-                        if p.returncode != 0:
-                            rc = False
-                            LOG.error("Failed to rollback release %s "
-                                      "with exit code %s. See %s for details." %
-                                      (release, p.returncode, logfile))
-                            if p.returncode == CONTAINER_ABNORMAL_EXIT_CODE:
-                                self.clear_armada_locks()
-                            break
-                    if rc:
-                        LOG.info("Application releases %s were successfully "
-                                 "rolled back." % app_releases)
-
-                elif request == constants.APP_DELETE_OP:
-                    # Since armada delete doesn't support --values overrides
-                    # files, use the delete manifest generated from the
-                    # ArmadaManifestOperator during overrides generation. It
-                    # will contain an accurate view of what was applied
-                    manifest_delete_file = "%s-del%s" % os.path.splitext(manifest_file)
-                    cmd = ''.join(['armada delete --debug ',
-                                   '--manifest ',
-                                   ARMADA_CONTAINER_TMP,
-                                   manifest_delete_file,
-                                   tiller_host])
-                    LOG.info("Armada %s command: '%s'", request, cmd)
-                    kcmd = self.wrap_kubectl_bash(
-                        armada_pod, ARMADA_NAMESPACE, cmd,
-                        container=ARMADA_CONTAINER_NAME)
-                    p = subprocess.Popen(kcmd,
-                                         universal_newlines=True,
-                                         stdout=subprocess.PIPE,
-                                         stderr=subprocess.STDOUT)
-                    with p.stdout, open(logfile, 'w') as log:
-                        while p.poll() is None:
-                            line = p.stdout.readline()
-                            if line != "":
-                                log.write(line)
-                                log.flush()
-                    if p.returncode != 0:
-                        rc = False
-                        LOG.error("Failed to delete application manifest %s "
-                                  "with exit code %s. See %s for details." %
-                                  (manifest_file, p.returncode, logfile))
-                        if p.returncode == CONTAINER_ABNORMAL_EXIT_CODE:
-                            self.clear_armada_locks()
-                    else:
-                        LOG.info("Application charts were successfully "
-                                 "deleted with manifest %s." % manifest_delete_file)
-
-                else:
-                    rc = False
-                    LOG.error("Unsupported armada request: %s." % request)
-            else:
-                # Armada sevice failed to start/restart
-                rc = False
-                LOG.error("Armada service failed to start/restart")
-        except Exception as e:
-            rc = False
-            self.clear_armada_locks()
-            LOG.error("Armada request %s for manifest %s failed: %s " %
-                      (request, manifest_file, e))
-        return rc
-
-
 class AppImageParser(object):
     """Utility class to help find images for an application"""
 
@@ -4529,7 +3500,7 @@ class AppImageParser(object):
         """Find image references in a nested dictionary.
 
         This function is used to find images from helm chart,
-        chart overrides file and armada manifest file.
+        chart overrides file and manifest file.
 
         :param var_dict: dict
         :return: a dict of image references

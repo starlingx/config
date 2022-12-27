@@ -403,21 +403,6 @@ class BaseHelm(object):
         """
         return True
 
-    def execute_manifest_updates(self, operator):
-        """
-        Update the elements of the armada manifest.
-
-        This allows a helm chart plugin to use the ArmadaManifestOperator to
-        make dynamic structural changes to the application manifest based on the
-        current conditions in the platform
-
-        Changes include updates to manifest documents for the following schemas:
-        armada/Manifest/v1, armada/ChartGroup/v1, armada/Chart/v1.
-
-        :param operator: an instance of the ArmadaManifestOperator
-        """
-        pass
-
     def execute_kustomize_updates(self, operator):
         """
         Update the elements of FluxCD kustomize manifests.

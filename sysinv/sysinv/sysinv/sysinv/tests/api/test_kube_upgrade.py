@@ -415,7 +415,7 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         dbutils.create_test_app(
             name='stx-openstack',
             app_version='1.0-19',
-            manifest_name='openstack-armada-manifest',
+            manifest_name='manifest',
             manifest_file='stx-openstack.yaml',
             status='applied',
             active=True)

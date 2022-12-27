@@ -10,7 +10,6 @@ from __future__ import absolute_import
 
 import eventlet
 import os
-import re
 import tempfile
 import yaml
 
@@ -18,7 +17,6 @@ from six import iteritems
 from stevedore import extension
 
 from oslo_log import log as logging
-from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.helm import common
@@ -35,12 +33,6 @@ yaml.Dumper.ignore_aliases = lambda *data: True
 # the names of the plugins.
 # The convention here is for the helm plugins to be named ###_PLUGINNAME.
 HELM_PLUGIN_PREFIX_LENGTH = 4
-
-# Number of optional characters appended to Armada manifest operator name,
-# to allow overriding with a newer version of the Armada manifest operator.
-# The convention here is for the Armada operator plugins to allow an
-# optional suffix, as in PLUGINNAME_###.
-ARMADA_PLUGIN_SUFFIX_LENGTH = 4
 
 # Number of optional characters appended to FluxCD kustomize operator name, to
 # allow overriding with a newer version of the FluxCD kustomize operator. The
@@ -83,27 +75,24 @@ class HelmOperator(object):
 
     # Define the stevedore namespaces that will need to be managed for plugins
     STEVEDORE_APPS = 'systemconfig.helm_applications'
-    STEVEDORE_ARMADA = 'systemconfig.armada.manifest_ops'
     STEVEDORE_FLUXCD = 'systemconfig.fluxcd.kustomize_ops'
     STEVEDORE_LIFECYCLE = 'systemconfig.app_lifecycle'
 
     def __init__(self, dbapi=None):
         self.dbapi = dbapi
 
-        # Find all plugins for apps, charts per app, and armada manifest
-        # operators
+        # Find all plugins for apps, charts per app, and fluxcd operators
         self.discover_plugins()
 
     @utils.synchronized(LOCK_NAME)
     def discover_plugins(self):
         """ Scan for all available plugins """
 
-        LOG.debug("HelmOperator: Loading available helm, armada and lifecycle plugins.")
+        LOG.debug("HelmOperator: Loading available helm, fluxcd and lifecycle plugins.")
 
         # Initialize the plugins
         self.helm_system_applications = {}
         self.chart_operators = {}
-        self.armada_manifest_operators = {}
         self.fluxcd_kustomize_operators = {}
         self.app_lifecycle_operators = {}
 
@@ -114,9 +103,6 @@ class HelmOperator(object):
 
         # dict containing sequence of helm charts per app
         self.helm_system_applications = self._load_helm_applications()
-
-        # dict containing Armada manifest operators per app
-        self.armada_manifest_operators = self._load_armada_manifest_operators()
 
         # dict containing FluxCD kustomize operators per app
         self.fluxcd_kustomize_operators = self._load_fluxcd_kustomize_operators()
@@ -152,32 +138,6 @@ class HelmOperator(object):
         else:
             LOG.info("Couldn't find endpoint distribution located at %s for "
                      "%s" % (install_location, lifecycle_distribution))
-
-        for armada_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_ARMADA]:
-            armada_distribution = None
-
-            try:
-                armada_distribution = utils.get_distribution_from_entry_point(armada_ep)
-                (project_name, project_location) = \
-                    utils.get_project_name_and_location_from_distribution(armada_distribution)
-
-                if project_location == install_location:
-                    extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_ARMADA].remove(armada_ep)
-                    break
-            except exception.SysinvException:
-                # Temporary suppress errors on Debian until Stevedore is reworked.
-                # See https://storyboard.openstack.org/#!/story/2009101
-                if utils.is_debian():
-                    LOG.info("Didn't find distribution for {}. Deleting from cache".format(armada_ep))
-                    try:
-                        extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_ARMADA].remove(armada_ep)
-                    except Exception as e:
-                        LOG.info("Tried removing armada_ep {}, error: {}".format(armada_ep, e))
-                else:
-                    raise
-        else:
-            LOG.info("Couldn't find endpoint distribution located at %s for "
-                     "%s" % (install_location, armada_distribution))
 
         for fluxcd_ep in extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_FLUXCD]:
             fluxcd_distribution = None
@@ -252,7 +212,7 @@ class HelmOperator(object):
                 # Temporary suppress errors on Debian until Stevedore is reworked.
                 # See https://storyboard.openstack.org/#!/story/2009101
                 if utils.is_debian():
-                    LOG.info("Tried removing app_ep {}, error: {}".format(armada_ep, e))
+                    LOG.info("Tried removing app_ep {}, error: {}".format(app_ep, e))
                     continue
                 else:
                     raise
@@ -276,12 +236,6 @@ class HelmOperator(object):
 
         else:
             LOG.info("No entry points for %s found." % self.STEVEDORE_APPS)
-
-        try:
-            del extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_ARMADA]
-            LOG.debug("Deleted entry points for %s." % self.STEVEDORE_ARMADA)
-        except KeyError:
-            LOG.info("No entry points for %s found." % self.STEVEDORE_ARMADA)
 
         try:
             del extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_FLUXCD]
@@ -328,44 +282,6 @@ class HelmOperator(object):
 
         return operator
 
-    def _load_armada_manifest_operators(self):
-        """Build a dictionary of armada manifest operators"""
-
-        operators_dict = {}
-        dist_info_dict = {}
-
-        armada_manifest_operators = extension.ExtensionManager(
-            namespace=self.STEVEDORE_ARMADA,
-            invoke_on_load=True, invoke_args=())
-
-        sorted_armada_manifest_operators = sorted(
-            armada_manifest_operators.extensions, key=lambda x: x.name)
-
-        for op in sorted_armada_manifest_operators:
-            if (op.name[-(ARMADA_PLUGIN_SUFFIX_LENGTH - 1):].isdigit() and
-                    op.name[-ARMADA_PLUGIN_SUFFIX_LENGTH:-3] == '_'):
-                op_name = op.name[0:-ARMADA_PLUGIN_SUFFIX_LENGTH]
-            else:
-                op_name = op.name
-            operators_dict[op_name] = op.obj
-
-            distribution = utils.get_distribution_from_entry_point(op.entry_point)
-            (project_name, project_location) = \
-                utils.get_project_name_and_location_from_distribution(distribution)
-
-            # Extract distribution information for logging
-            dist_info_dict[op_name] = {
-                'name': project_name,
-                'location': project_location,
-            }
-
-        # Provide some log feedback on plugins being used
-        for (app_name, info) in iteritems(dist_info_dict):
-            LOG.debug("Plugins for %-20s: loaded from %-20s - %s." % (app_name,
-                info['name'], info['location']))
-
-        return operators_dict
-
     def _load_fluxcd_kustomize_operators(self):
         """Build a dictionary of FluxCD kustomize operators"""
 
@@ -403,16 +319,6 @@ class HelmOperator(object):
                 info['name'], info['location']))
 
         return operators_dict
-
-    def get_armada_manifest_operator(self, app_name):
-        """Return a manifest operator based on app name"""
-
-        plugin_name = utils.find_app_plugin_name(app_name)
-        if plugin_name in self.armada_manifest_operators:
-            manifest_op = self.armada_manifest_operators[plugin_name]
-        else:
-            manifest_op = self.armada_manifest_operators['generic']
-        return manifest_op
 
     def get_fluxcd_kustomize_operator(self, app_name):
         """Return a kustomize operator based on app name"""
@@ -649,93 +555,6 @@ class HelmOperator(object):
                     LOG.info(e)
         return overrides
 
-    def _get_helm_chart_location(self, chart_name, repo_name, chart_tarfile):
-        """Get the chart location.
-
-        This method returns the download location for a given chart.
-
-        :param chart_name: name of the chart
-        :param repo_name: name of the repo that chart uploaded to
-        :param chart_tarfile: name of the chart tarfile
-        :returns: a URL as location
-        """
-        if repo_name is None:
-            repo_name = common.HELM_REPO_FOR_APPS
-        if chart_tarfile is None:
-            # TODO: Clean up the assumption
-            chart_tarfile = chart_name + '-0.1.0'
-        # Set the location based on ip address since
-        # http://controller does not resolve in armada container.
-        sys_controller_network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_CLUSTER_HOST)
-        sys_controller_network_addr_pool = self.dbapi.address_pool_get(sys_controller_network.pool_uuid)
-        sc_float_ip = sys_controller_network_addr_pool.floating_address
-        if utils.is_valid_ipv6(sc_float_ip):
-            sc_float_ip = '[' + sc_float_ip + ']'
-        return 'http://{}:{}/helm_charts/{}/{}.tgz'.format(
-            sc_float_ip,
-            utils.get_http_port(self.dbapi), repo_name, chart_tarfile)
-
-    def _add_armada_override_header(self, chart_name, chart_metadata_name, repo_name,
-                                    chart_tarfile, namespace, overrides):
-        if chart_metadata_name is None:
-            chart_metadata_name = namespace + '-' + chart_name
-
-        new_overrides = {
-            'schema': 'armada/Chart/v1',
-            'metadata': {
-                'schema': 'metadata/Document/v1',
-                'name': chart_metadata_name
-            },
-            'data': {
-                'values': overrides
-            }
-        }
-        location = self._get_helm_chart_location(chart_name, repo_name, chart_tarfile)
-        if location:
-            new_overrides['data'].update({
-                'source': {
-                    'location': location
-                }
-            })
-        return new_overrides
-
-    def _get_chart_info_from_armada_chart(self, chart_name, chart_namespace,
-                                          chart_info_list):
-        """ Extract the metadata name of the armada chart, repo and the name of
-            the chart tarfile from the armada manifest chart.
-
-        :param chart_name: name of the chart from the (application list)
-        :param chart_namespace: namespace of the chart
-        :param chart_info_list: a list of chart objects containing information
-            extracted from the armada manifest
-        :returns: the metadata name of the chart, the supported StarlingX repository,
-                  the name of the chart tarfile or None,None,None if not present
-        """
-
-        # Could be called without any armada_manifest info. Returning 'None'
-        # will enable helm defaults to point to common.HELM_REPO_FOR_APPS
-        metadata_name = None
-        repo = None
-        chart_tarfile = None
-        if chart_info_list is None:
-            return metadata_name, repo, chart_tarfile
-
-        location = None
-        for c in chart_info_list:
-            if (c.name == chart_name and
-                    c.namespace == chart_namespace):
-                location = c.location
-                metadata_name = c.metadata_name
-                break
-
-        if location:
-            match = re.search('/helm_charts/(.*)/(.*).tgz', location)
-            if match:
-                repo = match.group(1)
-                chart_tarfile = match.group(2)
-        LOG.debug("Chart %s can be found in repo: %s" % (chart_name, repo))
-        return metadata_name, repo, chart_tarfile
-
     def merge_overrides(self, file_overrides=None, set_overrides=None):
         """ Merge helm overrides together.
 
@@ -832,186 +651,6 @@ class HelmOperator(object):
     @helm_context
     @utils.synchronized(LOCK_NAME)
     def generate_helm_application_overrides(self, path, app_name,
-                                            mode=None,
-                                            cnamespace=None,
-                                            armada_format=False,
-                                            chart_info=None,
-                                            combined=False,
-                                            is_fluxcd_app=False):
-        """Create the system overrides files for a supported application
-
-        This method will generate system helm chart overrides yaml files for a
-        set of supported charts that comprise an application. If the namespace
-        is provided only the overrides files for that specified namespace will
-        be written.
-
-        :param app_name: name of the bundle of charts required to support an
-            application
-        :param mode: mode to control how to apply application manifest
-        :param cnamespace: (optional) namespace
-        :param armada_format: (optional) whether to emit in armada format
-            instead of helm format (with extra header)
-        :param chart_info: (optional) supporting chart information
-            extracted from the armada manifest which is used to influence
-            overrides
-        :param combined: (optional) whether to apply user overrides on top of
-            system overrides
-        :param is_fluxcd_app: whether the app is fluxcd or not
-        """
-        if is_fluxcd_app:
-            self._generate_helm_application_overrides_fluxcd(
-                path, app_name, mode, cnamespace,
-                chart_info, combined)
-        else:
-            self._generate_helm_application_overrides_armada(
-                path, app_name, mode, cnamespace, armada_format,
-                chart_info, combined)
-
-    @helm_context
-    def _generate_helm_application_overrides_armada(self, path, app_name,
-                                                    mode=None,
-                                                    cnamespace=None,
-                                                    armada_format=False,
-                                                    chart_info=None,
-                                                    combined=False):
-        """Create the system overrides files for a supported application
-
-        This method will generate system helm chart overrides yaml files for a
-        set of supported charts that comprise an application. If the namespace
-        is provided only the overrides files for that specified namespace will
-        be written.
-
-        :param app_name: name of the bundle of charts required to support an
-            application
-        :param mode: mode to control how to apply application manifest
-        :param cnamespace: (optional) namespace
-        :param armada_format: (optional) whether to emit in armada format
-            instead of helm format (with extra header)
-        :param chart_info: (optional) supporting chart information
-            extracted from the armada manifest which is used to influence
-            overrides
-        :param combined: (optional) whether to apply user overrides on top of
-            system overrides
-        """
-
-        app, plugin_name = self._find_kube_app_and_app_plugin_name(app_name)
-
-        # Get a manifest operator to provide a single point of
-        # manipulation for the chart, chart group and manifest schemas
-        manifest_op = self.get_armada_manifest_operator(app.name)
-
-        # Load the manifest into the operator
-        armada_manifest = utils.generate_synced_armada_manifest_fqpn(
-            app.name, app.app_version, app.manifest_file)
-        manifest_op.load(armada_manifest)
-
-        if plugin_name in self.helm_system_applications:
-            app_overrides = self._get_helm_application_overrides(plugin_name,
-                                                                 cnamespace)
-            for (chart_name, overrides) in iteritems(app_overrides):
-                if combined:
-                    # The overrides at this point are the system overrides. For
-                    # charts with multiple namespaces, the overrides would
-                    # contain multiple keys, one for each namespace.
-                    #
-                    # Retrieve the user overrides of each namespace from the
-                    # database and merge this list of user overrides, if they
-                    # exist, with the system overrides. Both system and user
-                    # override contents are then merged based on the namespace,
-                    # prepended with required header and written to
-                    # corresponding files (<namespace>-<chart>.yaml).
-                    file_overrides = []
-                    for chart_namespace in overrides.keys():
-                        try:
-                            db_chart = self.dbapi.helm_override_get(
-                                app.id, chart_name, chart_namespace)
-                            db_user_overrides = db_chart.user_overrides
-                            if db_user_overrides:
-                                file_overrides.append(yaml.dump(
-                                    {chart_namespace: yaml.load(db_user_overrides)}))
-                        except exception.HelmOverrideNotFound:
-                            pass
-
-                    if file_overrides:
-                        # Use dump() instead of safe_dump() as the latter is
-                        # not agreeable with password regex in some overrides
-                        system_overrides = yaml.dump(overrides)
-                        file_overrides.insert(0, system_overrides)
-                        combined_overrides = self.merge_overrides(
-                            file_overrides=file_overrides)
-                        overrides = yaml.load(combined_overrides)
-
-                # If armada formatting is wanted, we need to change the
-                # structure of the yaml file somewhat
-                for key in overrides:
-                    metadata_name, repo_name, chart_tarfile = \
-                        self._get_chart_info_from_armada_chart(chart_name, key,
-                                                               chart_info)
-                    new_overrides = self._add_armada_override_header(
-                        chart_name, metadata_name, repo_name, chart_tarfile,
-                        key, overrides[key])
-                    overrides[key] = new_overrides
-                self._write_chart_overrides(path, chart_name, cnamespace, overrides)
-
-                # Update manifest docs based on the plugin directives. If the
-                # application does not provide a manifest operator, the
-                # GenericArmadaManifestOperator is used and chart specific
-                # operations can be skipped.
-                if manifest_op.APP:
-                    if chart_name in self.chart_operators:
-                        self.chart_operators[chart_name].execute_manifest_updates(
-                            manifest_op)
-
-            # Update the manifest based on platform conditions
-            manifest_op.platform_mode_manifest_updates(self.dbapi, mode)
-
-        else:
-            # Generic applications
-            for chart in chart_info:
-                try:
-                    db_chart = self.dbapi.helm_override_get(
-                        app.id, chart.name, chart.namespace)
-                except exception.HelmOverrideNotFound:
-                    # This routine is to create helm overrides entries
-                    # in database during application-upload so that user
-                    # can list the supported helm chart overrides of the
-                    # application via helm-override-list
-                    try:
-                        values = {
-                            'name': chart.name,
-                            'namespace': chart.namespace,
-                            'app_id': app.id,
-                        }
-                        db_chart = self.dbapi.helm_override_create(values=values)
-                    except Exception as e:
-                        LOG.exception(e)
-                        return
-
-                user_overrides = {chart.namespace: {}}
-                db_user_overrides = db_chart.user_overrides
-                if db_user_overrides:
-                    user_overrides = yaml.load(yaml.dump(
-                        {chart.namespace: yaml.load(db_user_overrides)}))
-
-                metadata_name, repo_name, chart_tarfile =\
-                    self._get_chart_info_from_armada_chart(chart.name, chart.namespace,
-                                                           chart_info)
-                new_overrides = self._add_armada_override_header(
-                    chart.name, metadata_name, repo_name, chart_tarfile,
-                    chart.namespace, user_overrides[chart.namespace])
-                user_overrides[chart.namespace] = new_overrides
-
-                self._write_chart_overrides(path, chart.name,
-                                            cnamespace, user_overrides)
-
-        # Write the manifest doc overrides, a summmary file for easy --value
-        # generation on the apply, and a unified manifest for deletion.
-        manifest_op.save_overrides()
-        manifest_op.save_summary(path=path)
-        manifest_op.save_delete_manifest()
-
-    @helm_context
-    def _generate_helm_application_overrides_fluxcd(self, path, app_name,
                                                     mode=None,
                                                     cnamespace=None,
                                                     chart_info=None,
@@ -1188,7 +827,7 @@ class HelmOperator(object):
                 yaml.dump(overrides, f, default_flow_style=False)
             os.close(fd)
             os.rename(tmppath, filepath)
-            # Change the permission to be readable to non-root users(ie.Armada)
+            # Change the permission to be readable to non-root users
             os.chmod(filepath, 0o644)
         except Exception:
             LOG.exception("failed to write overrides file: %s" % filepath)

@@ -184,7 +184,7 @@ sysinv_conductor_monitor () {
     fi
 
     # A workaround for monitoring the owner of /home/sysadmin/.kube
-    # This should be removed as soon as Helm v3 and Armada containerization work is complete.
+    # This should be removed as soon as Helm v3 containerization work is complete.
     if [ -d /home/sysadmin/.kube -a "$(stat -c %U /home/sysadmin/.kube)" != "sysadmin" ]; then
         chown -R sysadmin:sys_protected /home/sysadmin/.kube
         ocf_log info "Fixing /home/sysadmin/.kube ownership"
@@ -214,11 +214,6 @@ sysinv_conductor_start () {
             return ${OCF_SUCCESS}
         fi
     fi
-
-    # Remove any existing application containers in case they were not shut
-    # down cleanly. sysinv-conductor will start these on demand with first use.
-    ocf_log info "${proc} Cleaning up any stale application containers before start. (sysinv-conductor)"
-    sysinv_remove_application_containers
 
     if [ ${OCF_RESKEY_dbg} = "true" ] ; then
         RUN_OPT_DEBUG="--debug"
@@ -251,48 +246,6 @@ sysinv_conductor_start () {
     return ${rc}
 }
 
-sysinv_remove_application_containers() {
-    local containers='armada_service'
-    local rc
-
-    # The entry point for this is when the conductor has been confirmed to be
-    # stopped. Now cleanup any dependent service containers. This will be done
-    # here until we re-factor the management of (i.e. catch SIGKILL and cleanup)
-    # or the retirement of (i.e. move armada to a pod) these dependencies
-
-    # On a non K8S configuration docker status will be EXIT_NOTIMPLEMENTED
-    systemctl status docker 2>&1 >> /dev/null
-    rc=$?
-    if [ $rc -eq 3 ]; then
-        ocf_log info "${proc} Docker is not running, skipping container actions. (sysinv-conductor)"
-        return
-    fi
-
-    # Shutdown containers with DRBD dependencies that would prevent a swact.
-    for c in $containers; do
-        local id
-
-        # does the container exist
-        id=$(docker container ls -qf name=${c} 2>/dev/null)
-        if [ ! -n "$id" ]; then
-            ocf_log info "${proc} Container $c is not started, skipping stop action. (sysinv-conductor)"
-        else
-            # Graceful shutdown (default is 10 sec, then kill)
-            ocf_log info "${proc} About to stop container $c... (sysinv-conductor)"
-            docker stop $c 2>&1 >> /dev/null
-        fi
-
-        id=$(docker container ls -aqf name=${c} 2>/dev/null)
-        if [ ! -n "$id" ]; then
-            ocf_log info "${proc} Container $c is not present, skipping remove action. (sysinv-conductor)"
-        else
-            # Cleanup the container. Use force just in case.
-            ocf_log info "${proc} About to remove container $c... (sysinv-conductor)"
-            docker rm -f $c 2>&1 >> /dev/null
-        fi
-    done
-}
-
 sysinv_conductor_confirm_stop() {
     local my_bin
     local my_processes
@@ -321,8 +274,6 @@ sysinv_conductor_stop () {
     if [ $rc -eq $OCF_NOT_RUNNING ]; then
         ocf_log info "${proc} Sysinv Conductor (sysinv-conductor) already stopped"
         sysinv_conductor_confirm_stop
-
-        sysinv_remove_application_containers
 
         return ${OCF_SUCCESS}
     fi
@@ -363,8 +314,6 @@ sysinv_conductor_stop () {
         ocf_run kill -s KILL $pid
     fi
     sysinv_conductor_confirm_stop
-
-    sysinv_remove_application_containers
 
     ocf_log info "${proc} Sysinv Conductor (sysinv-conductor) stopped."
 

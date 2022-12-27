@@ -256,8 +256,6 @@ class KubeUpgradeController(rest.RestController):
         apps = pecan.request.dbapi.kube_app_get_all()
         self._check_installed_apps_compatibility(apps, to_version)
 
-        # TODO: check that tiller/armada support new k8s version
-
         # The system must be healthy
         success, output = pecan.request.rpcapi.get_system_health(
             pecan.request.context,

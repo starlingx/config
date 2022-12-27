@@ -22,7 +22,7 @@ class LifecycleHookInfo(base.SysinvObject):
     Attributes:
         mode (string): Manual or Auto
         lifecycle_type (string): Type of the hook (semantic check, operation
-                                rbd, resource, manifest, armada-request).
+                                rbd, resource, manifest, fluxcd-request).
         relative_timing (string): Relative timing to the operation (pre/post).
         operation (string): Operation being performed.
         extra (dict): Can populate data here and it is passed to the outside.

@@ -1747,9 +1747,6 @@ APP_METADATA_FILE = 'metadata.yaml'
 APP_PENDING_REAPPLY_FLAG = os.path.join(
     tsc.HELM_OVERRIDES_PATH, ".app_reapply")
 
-# Armada
-APP_SYNCED_ARMADA_DATA_PATH = os.path.join(tsc.PLATFORM_PATH, 'armada', tsc.SW_VERSION)
-
 # FluxCD
 APP_FLUXCD_MANIFEST_DIR = 'fluxcd-manifests'
 APP_FLUXCD_DATA_PATH = os.path.join(tsc.PLATFORM_PATH, 'fluxcd', tsc.SW_VERSION)
@@ -1822,12 +1819,10 @@ APP_LIFECYCLE_TYPE_SEMANTIC_CHECK = 'check'
 APP_LIFECYCLE_TYPE_OPERATION = 'operation'
 APP_LIFECYCLE_TYPE_RBD = 'rbd'
 APP_LIFECYCLE_TYPE_RESOURCE = 'resource'
-# armada manifest
+# fluxcd manifest
 # outside the function that has the retry decorator
 APP_LIFECYCLE_TYPE_MANIFEST = 'manifest'
 # inside the function that has a retry decorator
-APP_LIFECYCLE_TYPE_ARMADA_REQUEST = 'armada-request'
-# same as armada
 APP_LIFECYCLE_TYPE_FLUXCD_REQUEST = 'fluxcd-request'
 
 APP_LIFECYCLE_MODE_MANUAL = 'manual'
@@ -1975,9 +1970,6 @@ APP_PROGRESS_RECOVER_CHARTS = 'recovering helm charts'
 APP_PROGRESS_UPDATE_FAILED_SKIP_RECOVERY = "Application {} update from " \
     "version {} to version {} failed and recovery skipped " \
     "because skip_recovery was requested."
-APP_PROGRESS_UPDATE_FAILED_ARMADA_TO_FLUXCD = "Application {} update from " \
-    "version {} to version {} failed and recovery skipped " \
-    "because recovering between Armada and FluxCD is not allowed"
 APP_PROGRESS_REMOVE_FAILED_WARNING = "Application remove failed. Status forced to '{}'. " \
     "Use native helm commands to clean up application helm releases."
 
