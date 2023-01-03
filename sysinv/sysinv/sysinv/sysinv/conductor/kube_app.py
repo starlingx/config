@@ -1786,6 +1786,7 @@ class AppOperator(object):
 
         def _check_progress():
             tadjust = 0
+            last_successful_chart = None
             adjust = self._get_metadata_value(app,
                                               constants.APP_METADATA_APPLY_PROGRESS_ADJUST,
                                               constants.APP_METADATA_APPLY_PROGRESS_ADJUST_DEFAULT_VALUE)
@@ -1819,8 +1820,14 @@ class AppOperator(object):
 
                 percent = round((float(num) /  # pylint: disable=W1619, W1633
                                  (charts_count - tadjust)) * 100)
-                progress_str = "Applying app {}, overall completion: {}%". \
-                    format(app.name, percent)
+
+                # Check if we had a successful chart applied previously
+                if last_successful_chart:
+                    progress_str = "Applying app {}. Chart {} applied. Overall completion: {}%". \
+                        format(app.name, last_successful_chart, percent)
+                else:
+                    progress_str = "Applying app {}. Overall completion: {}%". \
+                        format(app.name, percent)
 
                 if app.progress != progress_str:
                     LOG.info("%s" % progress_str)
@@ -1860,6 +1867,7 @@ class AppOperator(object):
                         # for details.
                         if self._fluxcd.verify_pods_status_for_release(chart_obj):
                             charts.pop(release_name)
+                            last_successful_chart = chart_obj["chart_label"]
                     else:
                         # Noisy log, so make it debug only, but good for debugging apps dev.
                         LOG.debug("Application {}: release {}: Helm release "
