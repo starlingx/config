@@ -1273,6 +1273,8 @@ def extract_postgres_data(archive):
     offset = len(ansible_start_path)
     for member in archive.getmembers():
         if member.name.startswith(ansible_start_path):
+            if member.isdir() and not member.name.endswith("/"):
+                member.name = member.name + "/"
             ansible_path = member.name[:member.name.index('/', offset)]
             break
     extract_relative_directory(
