@@ -3951,6 +3951,72 @@ class ManagerTestCase(base.DbTestCase):
         }
         mock_config_apply_runtime_manifest.assert_called_with(mock.ANY, '1234', config_dict)
 
+    def test_update_keystone_password(self):
+        KEYSTONE_USER_PASSWORD_UPDATE = {
+            "sysinv": "openstack::keystone::sysinv::password::runtime",
+            "admin": "openstack::keystone::password::runtime",
+            "barbican": "openstack::keystone::barbican::password::runtime",
+            "fm": "openstack::keystone::fm::password::runtime",
+            "mtce": "platform::mtce::runtime",
+            "patching": "openstack::keystone::patching::password::runtime",
+            "vim": "openstack::keystone::nfv::password::runtime"
+        }
+
+        mock_config_update_hosts = mock.MagicMock()
+        mock_config_apply_runtime_manifest = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager._config_update_hosts',
+                       mock_config_update_hosts)
+        p.start().return_value = '1234'
+        self.addCleanup(p.stop)
+        p2 = mock.patch('sysinv.conductor.manager.ConductorManager._config_apply_runtime_manifest',
+                        mock_config_apply_runtime_manifest)
+        p2.start()
+        self.addCleanup(p2.stop)
+        self.service._update_keystone_password(self.context, "sysinv")
+        personalities = [constants.CONTROLLER]
+        config_dict = {
+            "personalities": personalities,
+            "classes": [KEYSTONE_USER_PASSWORD_UPDATE["sysinv"]]
+        }
+        mock_config_apply_runtime_manifest.assert_called_with(mock.ANY, '1234', config_dict)
+
+    @mock.patch("sysinv.openstack.common.context.RequestContext")
+    def test_get_keystone_callback_endpoints(self, requestCtx):
+        mock_config_update_hosts = mock.MagicMock()
+        mock_config_apply_runtime_manifest = mock.MagicMock()
+        mock_kube_app_AppOperator = mock.MagicMock()
+        p = mock.patch('sysinv.conductor.manager.ConductorManager._config_update_hosts',
+                       mock_config_update_hosts)
+        p.start().return_value = '1234'
+        self.addCleanup(p.stop)
+
+        p2 = mock.patch('sysinv.conductor.manager.ConductorManager._config_apply_runtime_manifest',
+                        mock_config_apply_runtime_manifest)
+        p2.start()
+        self.addCleanup(p2.stop)
+
+        p3 = mock.patch('sysinv.conductor.manager.kube_app.AppOperator',
+                         mock_kube_app_AppOperator)
+        p3.audit_local_registry_secrets = 'audit_local_registry_secrets_function'
+        self.service._app = p3
+
+        requestCtx.return_value = "context"
+
+        endpoints = self.service._get_keystone_callback_endpoints()
+        getContext = requestCtx(user='admin', tenant='admin', is_admin=True)
+
+        config_dict = [{
+            "function": self.service._app.audit_local_registry_secrets,
+            "context": getContext,
+            "user": "admin"
+        }, {
+            "function": self.service._update_keystone_password,
+            "context": getContext,
+            "user": "admin"
+        }]
+
+        self.assertEqual(endpoints, config_dict)
+
 
 class ManagerTestCaseInternal(base.BaseHostTestCase):
 
