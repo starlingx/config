@@ -1284,16 +1284,6 @@ class ConductorManager(service.PeriodicService):
                 secprofile = constants.SYSTEM_SECURITY_PROFILE_STANDARD
             install_opts += ['-s', secprofile]
 
-            # If 'console' is not present in ihost_obj, we use the default.
-            # If, however, it is present and is explicitly set to None or "",
-            # then we don't specify the -c argument at all.
-            if 'console' not in host:
-                console = "ttyS0,115200"
-            else:
-                console = host.get('console')
-            if console is not None and console != "":
-                install_opts += ['-c', console]
-
             # If 'tboot' is present in ihost_obj, retrieve and send the value
             if 'tboot' in host:
                 tboot = host.get('tboot')
@@ -1301,6 +1291,17 @@ class ConductorManager(service.PeriodicService):
                     install_opts += ['-T', tboot]
 
             install_opts += ['-k', system.security_feature]
+
+        # If 'console' is not present in ihost_obj, we use the default.
+        # If, however, it is present and is explicitly set to None or "",
+        # then we don't specify the -c argument at all.
+        if 'console' not in host:
+            console = "ttyS0,115200"
+        else:
+            console = host.get('console')
+
+        if console is not None and console != "":
+            install_opts += ['-c', console]
 
         base_url = "http://pxecontroller:%d" % cutils.get_http_port(self.dbapi)
         install_opts += ['-l', base_url]
