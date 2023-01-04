@@ -8,6 +8,8 @@
 #
 
 import copy
+import json
+import os
 import pecan
 from pecan import rest
 import six
@@ -38,6 +40,136 @@ from sysinv.common import utils as cutils
 from sysinv.openstack.common.rpc import common as rpc_common
 
 LOG = log.getLogger(__name__)
+
+k8s_volumes_sections = [
+    constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER_VOLUMES,
+    constants.SERVICE_PARAM_SECTION_KUBERNETES_CONTROLLER_MANAGER_VOLUMES,
+    constants.SERVICE_PARAM_SECTION_KUBERNETES_SCHEDULER_VOLUMES]
+
+
+def delete_k8s_configmap(parameter, kube_operator):
+    """
+    The function removes the k8s configmap resource associated with an
+    extra-volume service parameter.
+
+    Parameters
+    ----------
+    parameter : dict
+        Dictionary with service-parameter extra-volume data.
+
+    Raises
+    ------
+    wsme.exc.ClientSideError
+    """
+    _volume, _ = service_parameter.parse_volume_string_to_dict(parameter)
+
+    # only delete configmaps for 'File' type since
+    # 'DirectoryorCreate' type has no associated configmaps
+    pathType = _volume['pathType']
+    if pathType != 'File':
+        return
+
+    configmap_name = service_parameter.get_k8s_configmap_name(parameter)
+    namespace = 'kube-system'
+    try:
+        kube_operator.kube_delete_config_map(
+            name=configmap_name, namespace=namespace)
+    except Exception as e:
+        msg = _("Failure deleting configmap: %s." % e)
+        raise wsme.exc.ClientSideError(msg)
+
+
+def create_k8s_configmap(parameter, kube_operator):
+    """
+    The function creates the k8s configmap resource associated with an
+    extra-volume service parameter.
+
+    Parameters
+    ----------
+    parameter : dict
+        Dictionary with service-parameter extra-volume data.
+
+    Raises
+    ------
+    wsme.exc.ClientSideError
+    """
+    _volume, noConfigmap = service_parameter.parse_volume_string_to_dict(parameter)
+
+    # skip k8s configmap creation if 'noConfigmap' flag exists
+    # this case is used only during bootstrap initialization
+    if noConfigmap == 1:
+        # removes noConfigmap flag from the service parameter value, as it is
+        # no longer needed during runtime operation
+        parameter['value'] = json.dumps(_volume)
+        return parameter
+
+    # only create configmaps for 'File' type
+    # 'DirectoryorCreate' type has no associated configmaps
+    pathType = _volume['pathType']
+    if pathType != 'File':
+        return parameter
+
+    filename = _volume['hostPath']
+    configmap_name = service_parameter.get_k8s_configmap_name(parameter)
+    namespace = 'kube-system'
+
+    try:
+        # verifying if file exists
+        if not os.path.isfile(filename):
+            msg = _("File not found.")
+            raise wsme.exc.ClientSideError(msg)
+
+        # verify if configmap exists
+        if kube_operator.kube_get_config_map(configmap_name, namespace):
+            msg = ("Failed to create configmap %s, "
+                   "configmap exists" % (configmap_name))
+            raise wsme.exc.ClientSideError(msg)
+
+        # create configmap
+        kube_operator.kube_create_config_map_from_file(
+            namespace, configmap_name, filename)
+
+        # verify configmap
+        try:
+            configmap = kube_operator.kube_read_config_map(
+                name=configmap_name, namespace=namespace)
+            if configmap is None:
+                msg = _("configmap not found.")
+                raise wsme.exc.ClientSideError(msg)
+            return parameter
+        except Exception as e:
+            msg = _("checking configmap: %s." % e)
+            raise wsme.exc.ClientSideError(msg)
+
+    except Exception as e:
+        msg = _("Configmap add failed: %s. Service parameter add aborted." % e)
+        raise wsme.exc.ClientSideError(msg)
+
+
+def update_k8s_configmap(parameter, kube_operator):
+    """
+    The function updates the k8s configmap resource associated with an
+    extra-volume service parameter.
+
+    Parameters
+    ----------
+    parameter : dict
+        Dictionary with service-parameter extra-volume data.
+
+    Raises
+    ------
+    wsme.exc.ClientSideError
+    """
+    _volume, _ = service_parameter.parse_volume_string_to_dict(parameter)
+
+    # only update configmaps for 'File' type since
+    # 'DirectoryorCreate' type has no associated configmaps
+    pathType = _volume['pathType']
+    if pathType != 'File':
+        return
+
+    delete_k8s_configmap(parameter, kube_operator)
+    create_k8s_configmap(parameter, kube_operator)
 
 
 class ServiceParameterPatchType(types.JsonPatchType):
@@ -137,6 +269,7 @@ class ServiceParameterController(rest.RestController):
 
     def __init__(self, parent=None, **kwargs):
         self._parent = parent
+        self.kube_operator = kubernetes.KubeOperator()
 
     def _get_service_parameter_collection(self, marker=None, limit=None,
                                           sort_key=None, sort_dir=None,
@@ -473,6 +606,14 @@ class ServiceParameterController(rest.RestController):
 
         svc_params = []
         for n in new_records:
+            # If the parameter being created belongs to the kube_apiserver_volumes,
+            # kube_controller_manager_volumes or scheduler_volumes sections and
+            # does not define a directory volume, a K8s configmap is
+            # created from the configuration file pointed by the parameter.
+            if n['section'] in k8s_volumes_sections:
+                n = create_k8s_configmap(n, self.kube_operator)
+
+            # creating new service-parameter in the sysinv database
             try:
                 new_parm = pecan.request.dbapi.service_parameter_create(n)
             except exception.NotFound:
@@ -571,6 +712,13 @@ class ServiceParameterController(rest.RestController):
         updated_parameter = pecan.request.dbapi.service_parameter_update(
             uuid, updates)
 
+        # If the parameter being updated belongs to the kube_apiserver_volumes,
+        # kube_controller_manager_volumes or scheduler_volumes sections and
+        # does not define a directory volume, the K8s configmap is
+        # updated from the configuration file pointed by the parameter.
+        if parameter['section'] in k8s_volumes_sections:
+            update_k8s_configmap(parameter, self.kube_operator)
+
         try:
             if parameter['name'] not in service_parameter.DB_ONLY_SERVICE_PARAMETERS:
                 pecan.request.rpcapi.update_service_config(
@@ -617,7 +765,14 @@ class ServiceParameterController(rest.RestController):
                     parameter.name)
             raise wsme.exc.ClientSideError(msg)
 
+        # delete parameter from sysinv database
         pecan.request.dbapi.service_parameter_destroy_uuid(uuid)
+
+        # if the parameter being deleted has an associated K8s configmap,
+        # delete it using the K8s API.
+        if parameter.section in k8s_volumes_sections:
+            delete_k8s_configmap(parameter.as_dict(), self.kube_operator)
+
         try:
             # Pass name to update_service_config only in case the parameter is the Intel
             # NIC driver version
@@ -751,41 +906,6 @@ class ServiceParameterController(rest.RestController):
                     "(oidc-issuer-url, oidc-client-id, oidc-username-claim) or "
                     "(the previous 3 plus oidc-groups-claim)")
             raise wsme.exc.ClientSideError(msg)
-
-        # Verify if the file configured in parameter audit_policy_file is
-        # cluster configuration.
-        #
-        # Configure audit-policy-file mountPath in kube-apiserver
-        # Allow to end-users to add audit policy file configuration
-        # in apiserver_extra_volumes variable.
-        # Add a default audit-policy-file configuration in extraVolumes section
-        # in kube-apiserver.
-        #
-        # This validation is required since if the file does not exist in the
-        # kube-apiserver pod then after puppet applies the new configuration
-        # kube-apiserver will fail to start.
-        try:
-            audit_policy_file = pecan.request.dbapi.service_parameter_get_one(
-                service=constants.SERVICE_TYPE_KUBERNETES,
-                section=constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER,
-                name=constants.SERVICE_PARAM_NAME_AUDIT_POLICY_FILE)
-        except exception.NotFound:
-            audit_policy_file = None
-
-        if audit_policy_file:
-            kube_operator = kubernetes.KubeOperator()
-            try:
-                config_map = kube_operator.kube_read_config_map(
-                    name='kubeadm-config', namespace='kube-system')
-                cluster_config = config_map._data['ClusterConfiguration']
-            except Exception as e:
-                msg = _("Unable to read kubernetes config_map: '%s'") % e
-                raise wsme.exc.ClientSideError(msg)
-
-            if audit_policy_file.value not in cluster_config:
-                msg = _("Unable to apply service parameters. "
-                        "Please specify a valid audit-policy-file.")
-                raise wsme.exc.ClientSideError(msg)
 
     def _service_parameter_apply_semantic_check(self, service):
         """Semantic checks for the service-parameter-apply command """

@@ -7,6 +7,7 @@
 # coding=utf-8
 #
 
+import json
 import netaddr
 import pecan
 import re
@@ -555,6 +556,194 @@ def _validate_max_cpu_min_percentage(name, value):
     return _validate_range(name, value, 60, 100)
 
 
+def parse_volume_string_to_dict(parameter):
+    """
+    Parse volume string value from parameter to dictionary.
+    The fields and values are validated.
+
+    Parameters
+    ----------
+    parameter : dict
+        Dictionary with service-parameter extra-volume data.
+          * name : str
+            Service-parameter name to be used.
+
+          * value : str or json format
+            Contains the required data to create the k8s volumes.
+            - There are two expected formats:
+              * field:value pairs separated by comma.
+                ex: "fieldName1:value1,fieldName2:value2"
+              * JSON format string
+
+            If the field is successfully parsed, a dictionary is created as
+            result and the expected mandatory and optional parameters are
+            checked:
+            - Mandatory fields:
+              * hostPath : str
+                Host path of the configuration file or directory.
+            - Optional fields:
+              * pathType : str
+                K8s volume type. Valid options are: 'File', 'DirectoryOrCreate'.
+                The default value is 'File'.
+              * readOnly : boolean or str
+                If defined and its value is True or 'true' the volume will be
+                configured as read only. The default value is False.
+              * mountPath : str
+                Pod path of the configuration file or directory.
+                If not defined, hostPath value is used.
+              * noConfigmap : boolean or str
+                If defined and its value is True or 'true', the function
+                return code is set to 1. This return code indicates to create
+                only the parameter entry in the sysinv database and avoid
+                creating the k8s configmap. Otherwise the return code is 0.
+              * content : str
+                Configuration file content. This field is useful only during
+                Bootstrap. It is always removed from the return dictionary.
+    Raises
+    ------
+    wsme.exc.ClientSideError
+
+    Returns
+    -------
+    new_volume : dict
+        Dictionary with validated volume fields and values.
+    return_code:
+        - rc = 0, parsed successful.
+        - rc = 1, parsed successful with noConfigmap flag.
+    """
+    mandatory_fields = {
+        'hostPath': [],
+        'name': []
+    }
+
+    optional_fields = {
+        'pathType': ['File', 'DirectoryOrCreate'],
+        'readOnly': ['true', 'false', True, False],
+        'mountPath': [],
+        'noConfigmap': ['true', True],
+        'content': []
+    }
+
+    if not isinstance(parameter, dict):
+        msg = _("Wrong input type: '%s', expected type 'dict'."
+                % (type(parameter)))
+        raise wsme.exc.ClientSideError(msg)
+
+    if 'value' not in parameter.keys():
+        msg = _("'value' key missing, existing keys: %s."
+                % (list(parameter.keys())))
+        raise wsme.exc.ClientSideError(msg)
+
+    if 'name' not in parameter.keys():
+        msg = _("'name' key missing, existing keys: %s."
+                % (list(parameter.keys())))
+        raise wsme.exc.ClientSideError(msg)
+
+    # parse and load values into volume dict
+    new_volume = {'name': parameter['name']}
+    if not parameter['value'].startswith('{') and not parameter['value'].endswith('}'):
+        for field in parameter['value'].split(','):
+            try:
+                field_name, field_value = field.split(':')
+            except ValueError:
+                msg = _("Wrong value format: '%s', expected format 'name:value'."
+                        % (field))
+                raise wsme.exc.ClientSideError(msg)
+            new_volume[field_name.strip()] = field_value.strip()
+    else:
+        try:
+            _dict_values = json.loads(parameter['value'])
+        except Exception as e:
+            msg = _("Wrong value type, expected str or json format. [Error: %s]" % (e))
+            raise wsme.exc.ClientSideError(msg)
+        new_volume.update(_dict_values)
+
+    # verifying mandatory fields
+    for mandatory_field, valid_options in mandatory_fields.items():
+        if mandatory_field not in new_volume:
+            msg = _("Mandatory field missing, expected fields: %s."
+                    % (list(mandatory_fields.keys())))
+            raise wsme.exc.ClientSideError(msg)
+
+        field_value = new_volume[mandatory_field]
+        if valid_options and field_value not in valid_options:
+            msg = _("Invalid value for %s: %s. Valid options: %s."
+                    % (mandatory_field, field_value, mandatory_fields[mandatory_field]))
+            raise wsme.exc.ClientSideError(msg)
+
+    # verifying optional fields
+    for optional_field, valid_options in optional_fields.items():
+        if optional_field in new_volume:
+            field_value = new_volume[optional_field]
+            if valid_options and field_value not in valid_options:
+                msg = _("Invalid value for %s: '%s'. Valid options: %s."
+                        % (optional_field, field_value, optional_fields[optional_field]))
+                raise wsme.exc.ClientSideError(msg)
+
+    # verifying invalid fields
+    for field_name in new_volume.keys():
+        valid_fields = list(mandatory_fields.keys()) + list(optional_fields.keys())
+        if field_name not in valid_fields:
+            msg = _("Invalid field: '%s'. Valid fields: %s."
+                    % (field_name, valid_fields))
+            raise wsme.exc.ClientSideError(msg)
+
+    # casting values to expected types
+    if 'readOnly' in new_volume.keys():
+        if new_volume['readOnly'] == 'false':
+            new_volume['readOnly'] = False
+        elif new_volume['readOnly'] == 'true':
+            new_volume['readOnly'] = True
+
+    # setting defaults for optional fields
+    if 'mountPath' not in new_volume:
+        new_volume['mountPath'] = new_volume['hostPath']
+
+    if 'readOnly' not in new_volume:
+        new_volume['readOnly'] = True
+
+    if 'pathType' not in new_volume:
+        new_volume['pathType'] = 'File'
+
+    # During system bootstrap, the user sets the content of the k8s
+    # configuration files via the 'content' field. After the configuration
+    # files are created, this field is no longer needed.
+    if new_volume.get('content'):
+        new_volume.pop('content')
+
+    # During bootstrap, user-defined extra-volumes parameters are saved in
+    # the sysinv postgres database during the 'persist-config' role. At this
+    # step, the k8s cluster is not yet initialized. So the 'noConfigmap' field
+    # is used to create only the parameter entry in the sysinv database and
+    # avoid the creation of the k8s configmap.
+    if new_volume.get('noConfigmap'):
+        new_volume.pop('noConfigmap')
+        return new_volume, 1
+
+    return new_volume, 0
+
+
+def get_k8s_configmap_name(parameter):
+    """The function returns a valid name for a k8s configmap resource.
+
+    The resulting name is a combination of the service parameter section
+    name and the parameter name. A conversion must be done on the section
+    name because it is defined with a 'snake_case' style and k8s does not
+    support it.
+
+    Parameters
+    ----------
+    parameter : dict
+        Dictionary with service-parameter extra-volume data.
+
+    Returns
+    -------
+    configmap_name : str
+        Valid name for a k8s configmap resource.
+    """
+    return parameter['section'].replace('_', '-') + '---' + parameter['name']
+
+
 PLATFORM_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL,
     constants.SERVICE_PARAM_NAME_PLATFORM_MAX_CPU_PERCENTAGE,
@@ -966,7 +1155,6 @@ KUBERNETES_APISERVER_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_OIDC_CLIENT_ID,
     constants.SERVICE_PARAM_NAME_OIDC_USERNAME_CLAIM,
     constants.SERVICE_PARAM_NAME_OIDC_GROUPS_CLAIM,
-    constants.SERVICE_PARAM_NAME_AUDIT_POLICY_FILE,
     constants.SERVICE_PARAM_NAME_WILDCARD,
 ]
 
@@ -976,15 +1164,12 @@ KUBERNETES_APISERVER_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_DEPRECATED_NAME_OIDC_CLIENT_ID: _deprecated_oidc_params,
     constants.SERVICE_PARAM_DEPRECATED_NAME_OIDC_USERNAME_CLAIM: _deprecated_oidc_params,
     constants.SERVICE_PARAM_DEPRECATED_NAME_OIDC_GROUPS_CLAIM: _deprecated_oidc_params,
-    constants.SERVICE_PARAM_NAME_WILDCARD: _validate_not_empty,
-    constants.SERVICE_PARAM_NAME_AUDIT_POLICY_FILE: _validate_not_empty
+    constants.SERVICE_PARAM_NAME_WILDCARD: _validate_not_empty
 }
 
 KUBERNETES_APISERVER_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_WILDCARD:
         'platform::kubernetes::kube_apiserver::params',
-    constants.SERVICE_PARAM_NAME_AUDIT_POLICY_FILE:
-        'platform::kubernetes::params::audit_policy_file'
 }
 
 KUBERNETES_CONTROLLER_MANAGER_PARAMETER_OPTIONAL = [
@@ -1028,6 +1213,45 @@ KUBERNETES_KUBELET_PARAMETER_VALIDATOR = {
 KUBERNETES_KUBELET_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_WILDCARD:
         'platform::kubernetes::kubelet::params',
+}
+
+KUBERNETES_APISERVER_VOLUMES_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_WILDCARD
+]
+
+KUBERNETES_APISERVER_VOLUMES_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_WILDCARD: _validate_not_empty
+}
+
+KUBERNETES_APISERVER_VOLUMES_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_WILDCARD:
+        'platform::kubernetes::kube_apiserver_volumes::params',
+}
+
+KUBERNETES_CONTROLLER_MANAGER_VOLUMES_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_WILDCARD
+]
+
+KUBERNETES_CONTROLLER_MANAGER_VOLUMES_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_WILDCARD: _validate_not_empty
+}
+
+KUBERNETES_CONTROLLER_MANAGER_VOLUMES_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_WILDCARD:
+        'platform::kubernetes::kube_controller_manager_volumes::params',
+}
+
+KUBERNETES_SCHEDULER_VOLUMES_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_WILDCARD
+]
+
+KUBERNETES_SCHEDULER_VOLUMES_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_WILDCARD: _validate_not_empty
+}
+
+KUBERNETES_SCHEDULER_VOLUMES_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_WILDCARD:
+        'platform::kubernetes::kube_scheduler_volumes::params',
 }
 
 HTTPD_PORT_PARAMETER_OPTIONAL = [
@@ -1274,6 +1498,21 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: KUBERNETES_KUBELET_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: KUBERNETES_KUBELET_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: KUBERNETES_KUBELET_PARAMETER_RESOURCE,
+        },
+        constants.SERVICE_PARAM_SECTION_KUBERNETES_APISERVER_VOLUMES: {
+            SERVICE_PARAM_OPTIONAL: KUBERNETES_APISERVER_VOLUMES_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: KUBERNETES_APISERVER_VOLUMES_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: KUBERNETES_APISERVER_VOLUMES_PARAMETER_RESOURCE,
+        },
+        constants.SERVICE_PARAM_SECTION_KUBERNETES_CONTROLLER_MANAGER_VOLUMES: {
+            SERVICE_PARAM_OPTIONAL: KUBERNETES_CONTROLLER_MANAGER_VOLUMES_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: KUBERNETES_CONTROLLER_MANAGER_VOLUMES_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: KUBERNETES_CONTROLLER_MANAGER_VOLUMES_PARAMETER_RESOURCE
+        },
+        constants.SERVICE_PARAM_SECTION_KUBERNETES_SCHEDULER_VOLUMES: {
+            SERVICE_PARAM_OPTIONAL: KUBERNETES_SCHEDULER_VOLUMES_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: KUBERNETES_SCHEDULER_VOLUMES_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: KUBERNETES_SCHEDULER_VOLUMES_PARAMETER_RESOURCE,
         },
     },
     constants.SERVICE_TYPE_PTP: {
