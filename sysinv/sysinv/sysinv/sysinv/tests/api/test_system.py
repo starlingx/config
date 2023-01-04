@@ -60,8 +60,8 @@ class TestSystemUpdate(TestSystem):
             "description": "System Description",
             "contact": "John Doe",
             "location": "Earth",
-            "latitude": "00.11223344556677 N",
-            "longitude": "-00.11223344556677 W",
+            "latitude": "0.11223344556677",
+            "longitude": "-0.11223344556677",
             "security_feature": "spectre_meltdown_v1",
             "capabilities": {},
         }
@@ -93,6 +93,24 @@ class TestSystemUpdate(TestSystem):
         self._patch_and_check(self._get_path(self.system.uuid),
                               update, expect_errors=True)
 
+    def test_update_latitude_greater_than_90(self):
+        update = {"latitude": "95.000002"}
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update, expect_errors=True)
+
+    def test_update_latitude_longitude_invalid_chars(self):
+        update = {
+            "latitude": "00.11223344556677 N",
+            "longitude": "-00.11223344556677 W",
+        }
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update, expect_errors=True)
+
+    def test_update_latitude_less_than_minus_90(self):
+        update = {"latitude": "-97.000002"}
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update, expect_errors=True)
+
     def test_update_latitude_invalid_chars(self):
         update = {"latitude": u"99.99999° N"}
         self._patch_and_check(self._get_path(self.system.uuid),
@@ -100,6 +118,16 @@ class TestSystemUpdate(TestSystem):
 
     def test_update_longitude_longer_than_30_chars(self):
         update = {"longitude": "00.0000000111111111122222222223"}
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update, expect_errors=True)
+
+    def test_update_longtitude_greater_than_180(self):
+        update = {"longitude": "195.000002"}
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update, expect_errors=True)
+
+    def test_update_longitude_less_than_minus_180(self):
+        update = {"longtitude": "-197.000002"}
         self._patch_and_check(self._get_path(self.system.uuid),
                               update, expect_errors=True)
 

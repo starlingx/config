@@ -21,6 +21,7 @@
 
 import jsonpatch
 import os
+import re
 import pecan
 from pecan import rest
 import six
@@ -468,11 +469,19 @@ class SystemController(rest.RestController):
                                                      "does not exist." %
                                                      timezone))
 
-            if (p['path'] == '/latitude' or p['path'] == '/longitude'):
-                if p['value'] is not None:
-                    if len(p['value']) > 30:
-                        raise wsme.exc.ClientSideError("Geolocation coordinates can not be "
-                                                       "longer than 30 characters")
+            if(p['path'] == '/latitude'):
+                regex = r'^(\+|-)?(?:90(?:(?:\.0{1,26})?)|(?:[0-9]|[1-8][0-9])(?:(?:\.[0-9]{1,26})?))$'
+                if(p['value'] is not None):
+                    match = re.match(regex, p['value'])
+                    if(match is None):
+                        raise wsme.exc.ClientSideError("Latitude must be between -90 and +90")
+
+            if(p['path'] == '/longitude'):
+                regex = r'^(\+|-)?(?:180(?:(?:\.0{1,26})?)|(?:[0-9]|[1-9][0-9]|1[0-7][0-9])(?:(?:\.[0-9]{1,26})?))$'
+                if(p['value'] is not None):
+                    match = re.match(regex, p['value'])
+                    if(match is None):
+                        raise wsme.exc.ClientSideError("Longitude must be between -180 and +180")
 
             if p['path'] == '/sdn_enabled':
                 sdn_enabled = p['value'].lower()
