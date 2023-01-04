@@ -371,6 +371,7 @@ class ConductorManager(service.PeriodicService):
         self._fernet = fernet.FernetOperator()
 
         # Upgrade start tasks
+        self._clear_stuck_loads()
         self._upgrade_init_actions()
         self._kube_upgrade_init_actions()
 
@@ -650,6 +651,21 @@ class ConductorManager(service.PeriodicService):
                     self.dbapi,
                     constants.CINDER_BACKEND_CEPH,
                     task=constants.SB_TASK_RESTORE)
+
+    def _clear_stuck_loads(self):
+        load_stuck_states = [constants.IMPORTING_LOAD_STATE]
+
+        loads = self.dbapi.load_get_list()
+        stuck_loads = [load for load in loads
+                              if load.state in load_stuck_states]
+        if stuck_loads:
+            # set stuck isos state to error
+            for load in stuck_loads:
+                LOG.error("Unexpected restart during import of load %s for "
+                          "release %s, please delete the load and try again." %
+                          (load.id, load.software_version))
+                self.dbapi.load_update(load.id, {'state': constants.ERROR_LOAD_STATE})
+            cutils.unmount_stuck_isos()
 
     def _set_state_for_abort(self, upgrade):
         """ Update the database to reflect the abort"""

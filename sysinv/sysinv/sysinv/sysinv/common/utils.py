@@ -1250,6 +1250,24 @@ class ISO(object):
             LOG.exception(e)
 
 
+def unmount_stuck_isos():
+    # get all mount info
+    if six.PY2:
+        output = subprocess.check_output(["mount"])  # pylint: disable=not-callable
+    else:
+        output = subprocess.check_output(["mount"]).decode("utf-8")  # pylint: disable=not-callable
+    mountpoint_regex = "on (/tmp/tmp\w+) type iso"
+    mountpoints = [re.search(mountpoint_regex, line).group(1)
+                   for line in output.splitlines()
+                   if re.search(mountpoint_regex, line)]
+    # attempt to unmount tmp_loads
+    for mnt in mountpoints:
+        LOG.info("Unmounting tmp_load on %s..." % mnt)
+        with open(os.devnull, "w") as fnull:
+            subprocess.check_call(["umount", "-l", mnt],  # pylint: disable=not-callable
+                                  stdout=fnull, stderr=fnull)
+
+
 def get_active_load(loads):
     active_state = constants.ACTIVE_LOAD_STATE
     matches = [load for load in loads if load.state == active_state]
