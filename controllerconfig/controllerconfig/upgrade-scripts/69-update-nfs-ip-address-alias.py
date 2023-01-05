@@ -105,8 +105,7 @@ def main():
     LOG.info("%s invoked with from_release = %s to_release = %s action = %s"
              % (sys.argv[0], from_release, to_release, action))
 
-    if action == "migrate" and (from_release == '21.12' or
-                                from_release == '22.06'):
+    if action == "migrate" and from_release in ['21.12', '22.06']:
 
         conn = psycopg2.connect("dbname=sysinv user=postgres")
         try:

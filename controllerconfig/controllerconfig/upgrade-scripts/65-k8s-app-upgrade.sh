@@ -92,8 +92,8 @@ if [ "$ACTION" == "activate" ]; then
         #       fluxcd application upgrade is supported
         if [[ "${UPGRADE_APP_NAME}" =~ ^(platform-integ-apps|nginx-ingress-controller|snmp|metrics-server|auditd|ptp-notification|istio)$ ]]; then
             log "$NAME: ${UPGRADE_APP_NAME} is a supported platform application."
-        elif [[ "${UPGRADE_APP_NAME}" =~ ^(cert-manager|oidc-auth-apps)$ ]] && [ "$FROM_RELEASE" == "22.06" ]; then
-            log "$NAME: ${UPGRADE_APP_NAME} is a supported platform application from 22.06."
+        elif [[ "${UPGRADE_APP_NAME}" =~ ^(cert-manager|oidc-auth-apps)$ && ( "$FROM_RELEASE" == "22.06" || "$FROM_RELEASE" == "21.12" ) ]]; then
+            log "$NAME: ${UPGRADE_APP_NAME} is a supported platform application from $FROM_RELEASE."
         elif [[ "${UPGRADE_APP_NAME}" =~ ^(cert-manager|oidc-auth-apps)$ ]]; then
             log "$NAME: ${UPGRADE_APP_NAME} is handled by another script."
             continue
