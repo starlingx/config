@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 
 from eventlet.green import subprocess
@@ -168,6 +168,10 @@ class Storage(base.APIBase):
                         if (d.device_node is not None and
                                 constants.DEVICE_NAME_NVME in d.device_node):
                             stor.journal_node = "{}p{}".format(d.device_node,
+                                                               part_number)
+                        elif (d.device_node is not None and
+                                constants.DEVICE_NAME_MPATH in d.device_node):
+                            stor.journal_node = "{}-part{}".format(d.device_node,
                                                                part_number)
                         else:
                             stor.journal_node = "{}{}".format(d.device_node,
