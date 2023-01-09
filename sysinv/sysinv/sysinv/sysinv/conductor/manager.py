@@ -199,6 +199,8 @@ LOCK_APP_AUTO_MANAGE = 'AppAutoManageLock'
 LOCK_RUNTIME_CONFIG_CHECK = 'runtime_config_check'
 LOCK_IMAGE_PULL = 'image_pull_'
 
+MAX_UPTIME_TO_CLEAR_REBOOT_REQUIRED = 1200
+
 # Keystone users whose passwords change are monitored by keystone listener, and
 # the puppet classes to update the service after the passwords change.
 # TODO(yuxing): there are still several keystone users are not covered by this
@@ -5631,8 +5633,9 @@ class ConductorManager(service.PeriodicService):
                 # On first_report which occurs on restart, check if the
                 # reboot flag matches the applied config; as it is possible
                 # to apply the puppet manifest on a restart.
-                if (cutils.is_uuid_like(ihost.config_target) and
-                    config_uuid == utils.config_flip_reboot_required(
+                if (uuidutils.is_uuid_like(ihost.config_target) and
+                    ihost.uptime < MAX_UPTIME_TO_CLEAR_REBOOT_REQUIRED and
+                    config_uuid == self._config_clear_reboot_required(
                         ihost.config_target)):
                     LOG.info("config match on %s reboot config %s to %s" %
                              (ihost.hostname, config_uuid, ihost.config_target))
