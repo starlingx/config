@@ -1784,6 +1784,23 @@ class AppOperator(object):
 
             return attempt, False
 
+        def _check_upgrade_retries_exhausted(helm_rel, released_err_msg):
+            """ Check if the number of upgrade retries were exhausted
+                due to another operation in progress
+
+            :param helm_rel: helm release object containing the conditions
+            :param released_err_msg: error message from released condition type
+
+            :return: True if retries are exhausted. False otherwise.
+            """
+
+            if "another operation (install/upgrade/rollback) is in progress" in released_err_msg:
+                latest_status, latest_msg = self._fluxcd.get_helm_release_status(helm_rel, "Ready")
+                if latest_status == "False" and latest_msg == "upgrade retries exhausted":
+                    return True
+
+            return False
+
         def _check_progress():
             tadjust = 0
             last_successful_chart = None
@@ -1852,6 +1869,12 @@ class AppOperator(object):
                         # If the helm release failed the app must also be in a
                         # failed state
                         err_msg = "{}".format(msg) if msg else ""
+
+                        # Handle corner cases in which retries are exhausted due to another operation in progress.
+                        # If retries are exhausted we fail.
+                        if _check_upgrade_retries_exhausted(helm_rel, err_msg):
+                            return False
+
                         attempt, _ = _recover_from_helm_operation_in_progress_on_app_apply(
                             metadata_name=release_name,
                             namespace=chart_obj['namespace'],
@@ -4784,7 +4807,7 @@ class FluxCDHelper(object):
     # Some methods in this class receive helm_chart_dict as a parameter.
     # Can move the call to _kube.get_custom_resource() into these functions
     # or create a helper function inside the class for it.
-    def get_helm_release_status(self, helm_release_dict):
+    def get_helm_release_status(self, helm_release_dict, condition_type="Released"):
         """helm_release_dict is of the form returned by _kube.get_custom_resource().
         Returns: 'status' of the release (Unlnown,True,False) and 'message'
                   associated with the status
@@ -4792,7 +4815,7 @@ class FluxCDHelper(object):
         if "status" in helm_release_dict and "conditions" in helm_release_dict["status"]:
             conditions = list([x
                                for x in helm_release_dict['status']['conditions']
-                               if x['type'] == 'Released'])
+                               if x['type'] == condition_type])
             if not conditions:
                 return self.HELM_RELEASE_STATUS_UNKNOWN, None
             return conditions[0]['status'], conditions[0].get('message')
