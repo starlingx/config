@@ -412,6 +412,7 @@ def _create(ceph_mon):
             _("Host not found uuid: %s ." % ceph_mon['ihost_uuid']))
 
     ceph_mon['forihostid'] = chost['id']
+    ceph_mon['device_path'] = chost['rootfs_device']
 
     # check if ceph monitor is already configured
     if pecan.request.dbapi.ceph_mon_get_by_ihost(ceph_mon['forihostid']):
