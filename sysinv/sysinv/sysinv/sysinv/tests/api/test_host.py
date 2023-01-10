@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -2548,6 +2548,76 @@ class TestPatch(TestHost):
         # Note: Can't do storage host testcases yet because additional code
         # is required to populate the storage (OSDs) for the host.
         self.skipTest("Not yet implemented")
+
+    def _create_sriovdp_test_structure(self, add_label, add_iface):
+        host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        self._create_test_host_platform_interface(host)
+
+        if add_label:
+            sriovdp_key = constants.SRIOVDP_LABEL.split('=')[0]
+            sriovdp_val = constants.SRIOVDP_LABEL.split('=')[1]
+            dbutils.create_test_label(
+                        host_id=host.id,
+                        label_key=sriovdp_key,
+                        label_value=sriovdp_val)
+
+        if add_iface:
+            interface = {
+                'forihostid': host['id'],
+                'ifname': 'sriov0',
+                'iftype': constants.INTERFACE_TYPE_VF,
+                'ifclass': constants.INTERFACE_CLASS_PCI_SRIOV
+            }
+            dbutils.create_test_interface(**interface)
+
+        return host
+
+    def test_unlock_with_sriovdp_label_without_sriov_ifaces(self):
+        host = self._create_sriovdp_test_structure(add_label=True,
+                add_iface=False)
+
+        response = self._patch_host_action(
+            host['hostname'], constants.UNLOCK_ACTION, 'sysinv-test',
+            expect_errors=True)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn("Cannot unlock host %s if the label '%s' is present "
+                      "and no '%s' interfaces are configured." %
+                      (host['hostname'], constants.SRIOVDP_LABEL,
+                      constants.INTERFACE_CLASS_PCI_SRIOV),
+                      response.json['error_message'])
+
+    def test_unlock_with_sriovdp_label_with_sriov_iface(self):
+        host = self._create_sriovdp_test_structure(add_label=True,
+                add_iface=True)
+
+        response = self._patch_host_action(
+            host['hostname'], constants.UNLOCK_ACTION, 'sysinv-test')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_unlock_without_sriovdp_label_without_sriov_ifaces(self):
+        host = self._create_sriovdp_test_structure(add_label=False,
+                add_iface=False)
+
+        response = self._patch_host_action(
+            host['hostname'], constants.UNLOCK_ACTION, 'sysinv-test')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+    def test_unlock_without_sriovdp_label_with_sriov_iface(self):
+        host = self._create_sriovdp_test_structure(add_label=False,
+                add_iface=True)
+
+        response = self._patch_host_action(
+            host['hostname'], constants.UNLOCK_ACTION, 'sysinv-test')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
 
 
 class TestPatchStdDuplexControllerAction(TestHost):
