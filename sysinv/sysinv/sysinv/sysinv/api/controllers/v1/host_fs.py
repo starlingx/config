@@ -251,21 +251,12 @@ class HostFsController(rest.RestController):
                 elif p_obj['path'] == '/size':
                     size = p_obj['value']
 
-            # TODO(rchurch): Remove optional filesystem creation once Zero Touch
-            # provisioning properly supports optional creation API. Currently it
-            # only supports resize operations of existing filesystems. Here we
-            # will skip this semantic check, run through the others, then create
-            # the new optional filesystem
-            create_first = False
             if fs_name not in [fs['name'] for fs in current_host_fs_list]:
-                if fs_name not in constants.FS_CREATION_ALLOWED:
-                    msg = _("HostFs update failed: invalid filesystem "
-                            "'%s' " % fs_display_name)
-                    raise wsme.exc.ClientSideError(msg)
-                else:
-                    create_first = True
+                msg = _("HostFs update failed: invalid filesystem "
+                        "'%s' " % fs_display_name)
+                raise wsme.exc.ClientSideError(msg)
 
-            if not cutils.is_int_like(size):
+            elif not cutils.is_int_like(size):
                 msg = _("HostFs update failed: filesystem '%s' "
                         "size must be an integer " % fs_display_name)
                 raise wsme.exc.ClientSideError(msg)
@@ -280,24 +271,9 @@ class HostFsController(rest.RestController):
                         "pending, please retry again later.")
                 raise wsme.exc.ClientSideError(msg)
 
-            # TODO(rchurch): Remove optional filesystem creation once Zero Touch
-            # provisioning properly supports optional creation API.
-            if create_first:
-                try:
-                    new_fs = {'name': fs_name, 'size': 1, 'ihost_uuid': ihost_uuid,
-                              constants.FS_OP: constants.FS_OP_RESIZE}
-                    _create(new_fs)
-                except exception.SysinvException as e:
-                    LOG.exception(e)
-                    raise wsme.exc.ClientSideError(_("Invalid data: failed to create a"
-                                                     " filesystem"))
-                current_size = 1
-                # Re-populate host-fs-list
-                current_host_fs_list = pecan.request.dbapi.host_fs_get_by_ihost(ihost_uuid)
-            else:
-                current_size = [fs['size'] for
-                                fs in current_host_fs_list
-                                if fs['name'] == fs_name][0]
+            current_size = [fs['size'] for
+                            fs in current_host_fs_list
+                            if fs['name'] == fs_name][0]
 
             if int(size) <= int(current_size):
                 msg = _("HostFs update failed: size for filesystem '%s' "
@@ -373,7 +349,6 @@ class HostFsController(rest.RestController):
                                       host_fs_uuid).as_dict()
         ihost_uuid = host_fs['ihost_uuid']
         host = pecan.request.dbapi.ihost_get(ihost_uuid)
-        host_fs[constants.FS_OP] = constants.FS_OP_DELETE
         staged = _delete(host_fs)
 
         try:
@@ -401,7 +376,6 @@ class HostFsController(rest.RestController):
 
         try:
             host_fs = host_fs.as_dict()
-            host_fs[constants.FS_OP] = constants.FS_OP_CREATE
             (staged, host_fs) = _create(host_fs)
 
             ihost_uuid = host_fs['ihost_uuid']
@@ -416,11 +390,9 @@ class HostFsController(rest.RestController):
             # TODO(rchurch): Need to add a state/status column to the host_fs DB
             # so status information can be passed to the end-user
             if staged:
-                LOG.info("STAGING: %s filesystem on host %s to be created at unlock" % (
-                    host_fs['name'], host.hostname))
+                LOG.info("STAGING: %s filesystem to be created at unlock" % host_fs['name'])
             else:
-                LOG.info("REQUEST: %s filesystem on host %s will be created NOW" % (
-                    host_fs['name'], host.hostname))
+                LOG.info("REQUEST: %s filesystem will be created NOW" % host_fs['name'])
                 pecan.request.rpcapi.update_host_filesystem_config(
                     pecan.request.context,
                     host=host,
@@ -463,12 +435,7 @@ def _check_host_fs(host_fs):
     # this filesystem and instances from the nova-local volume group can't exist
     # at the same time as they share a common mount point. No runtime changes to
     # nova-local are currently allowed.
-    #
-    # The exception is to support zero-touch provisioning after initial unlock
-    # when the filesystem will be created and resized. A conflict with
-    # nova-local if initially provisioned will be caught below.
-    if (host_fs[constants.FS_OP] != constants.FS_OP_RESIZE and
-        constants.WORKER in ihost['subfunctions'] and
+    if (constants.WORKER in ihost['subfunctions'] and
         host_fs['name'] == constants.FILESYSTEM_NAME_INSTANCES and
         (ihost['administrative'] != constants.ADMIN_LOCKED or
          ihost['ihost_action'] == constants.UNLOCK_ACTION)):

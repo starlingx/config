@@ -650,11 +650,6 @@ SUPPORTED_REPLICATED_FILEYSTEM_LIST = [
     FILESYSTEM_NAME_DOCKER_DISTRIBUTION,
 ]
 
-FS_OP = 'operation'
-FS_OP_CREATE = 'create'
-FS_OP_DELETE = 'delete'
-FS_OP_RESIZE = 'resize'
-
 # Storage: Volume Group Types
 LVG_NOVA_LOCAL = 'nova-local'
 LVG_CGTS_VG = 'cgts-vg'
