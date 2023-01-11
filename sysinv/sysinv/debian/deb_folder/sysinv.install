@@ -8,7 +8,6 @@ scripts/partition_info.sh usr/bin
 scripts/validate-platform-backup.sh usr/bin
 scripts/manage-partitions usr/bin
 scripts/query_pci_id usr/bin
-scripts/kube-cert-rotation.sh usr/bin
 scripts/ceph_k8s_update_monitors.sh usr/bin
 usr/lib/python*/dist-packages/*
 etc/goenabled.d/sysinv_goenabled_check.sh
@@ -16,6 +15,7 @@ etc/sysinv/upgrades/delete_load.sh
 etc/update-motd.d/10-system
 usr/bin/cert-alarm
 usr/bin/cert-mon
+usr/bin/kube-cert-rotation.sh
 usr/bin/sysinv-agent
 usr/bin/sysinv-api
 usr/bin/sysinv-conductor

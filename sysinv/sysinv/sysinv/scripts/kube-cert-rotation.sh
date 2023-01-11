@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Copyright (C) 2019 Intel Corporation
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2021-2023 Wind River Systems, Inc.
 #
 
 #
@@ -334,9 +334,12 @@ if [ ${RESTART_SCHEDULER} -eq 1 ]; then
         ERR=2
     fi
 fi
-# Restart sysinv-conductor since it's using credentials from admin.conf
+# Restart sysinv services, both conductor and api, since both are using
+# credentials from admin.conf. Command sm-restart-safe only restarts
+# sysinv-conductor. Command sm-restart will restart sysinv-conductor
+# and its dependencies, meaning all sysinv services.
 if [ ${RESTART_SYSINV} -eq 1 ]; then
-    sm-restart-safe service sysinv-conductor
+    sm-restart service sysinv-conductor
     if [ $? -ne 0 ]; then
         ERR=2
     fi
