@@ -586,16 +586,24 @@ class ConductorManager(service.PeriodicService):
             LOG.warn('No active controller available')
             return
 
-        # Skip if the system mode is not set to duplex or it is not unlocked
-        if (system.system_mode != constants.SYSTEM_MODE_DUPLEX or
-                host.administrative != constants.ADMIN_UNLOCKED):
+        system_mode_options = [
+                    constants.SYSTEM_MODE_DUPLEX,
+                    constants.SYSTEM_MODE_DUPLEX_DIRECT,
+                ]
+        # Skip if the system mode is not set to duplex or duplex-direct
+        # or it is not unlocked
+        if (host.administrative != constants.ADMIN_UNLOCKED or
+                system.system_mode not in system_mode_options):
             return
 
+        system_dict = system.as_dict()
         if system.capabilities.get('simplex_to_duplex_migration'):
-            system_dict = system.as_dict()
             del system_dict['capabilities']['simplex_to_duplex_migration']
             self.dbapi.isystem_update(system.uuid, system_dict)
-
+            greenthread.spawn(self._pvc_monitor_migration)
+        elif system.capabilities.get('simplex_to_duplex-direct_migration'):
+            del system_dict['capabilities']['simplex_to_duplex-direct_migration']
+            self.dbapi.isystem_update(system.uuid, system_dict)
             greenthread.spawn(self._pvc_monitor_migration)
         elif self.fm_api.get_faults_by_id(fm_constants.FM_ALARM_ID_K8S_RESOURCE_PV):
             greenthread.spawn(self._pvc_monitor_migration)
@@ -7774,7 +7782,8 @@ class ConductorManager(service.PeriodicService):
         # Update manifest files if system mode is updated for simplex to
         # duplex migration
         system = self.dbapi.isystem_get_one()
-        if system.capabilities.get('simplex_to_duplex_migration'):
+        if system.capabilities.get('simplex_to_duplex_migration') or \
+           system.capabilities.get('simplex_to_duplex-direct_migration'):
             config_uuid = self._config_update_hosts(context, personalities)
 
             config_dict = {

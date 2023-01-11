@@ -3694,7 +3694,9 @@ class HostController(rest.RestController):
     @staticmethod
     def _semantic_check_duplex_oam_config(ihost):
         system = pecan.request.dbapi.isystem_get_one()
-        if system.capabilities.get('simplex_to_duplex_migration'):
+        system_mode = system.system_mode
+        if system.capabilities.get('simplex_to_duplex_migration') or \
+           system.capabilities.get('simplex_to_duplex-direct_migration'):
             network = pecan.request.dbapi.network_get_by_type(constants.NETWORK_TYPE_OAM)
             address_names = {'oam_c0_ip': '%s-%s' % (constants.CONTROLLER_0_HOSTNAME,
                                                      constants.NETWORK_TYPE_OAM),
@@ -3706,12 +3708,12 @@ class HostController(rest.RestController):
             # check if controller-0-oam and controller-1-oam entries exist
             for key, name in address_names.items():
                 if addresses.get(name) is None:
-                    msg = _("Can not unlock controller on a duplex without "
-                            "configuring %s." % key)
+                    msg = _("Can not unlock controller on a %s without "
+                            "configuring %s." % (system_mode, key))
                     raise wsme.exc.ClientSideError(msg)
                 if addresses[name].address is None:
-                    msg = _("Can not unlock controller on a duplex without "
-                            "configuring a unit IP for %s." % key)
+                    msg = _("Can not unlock controller on a %s without "
+                            "configuring a unit IP for %s." % (system_mode, key))
                     raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
@@ -5841,7 +5843,11 @@ class HostController(rest.RestController):
         self._semantic_check_cinder_volumes(hostupdate.ihost_orig)
         self._semantic_check_filesystem_sizes(hostupdate.ihost_orig)
         self._semantic_check_storage_backend(hostupdate.ihost_orig)
-        if utils.get_system_mode() == constants.SYSTEM_MODE_DUPLEX:
+        system_mode_options = [
+                    constants.SYSTEM_MODE_DUPLEX,
+                    constants.SYSTEM_MODE_DUPLEX_DIRECT,
+                ]
+        if utils.get_system_mode() in system_mode_options:
             self._semantic_check_duplex_oam_config(hostupdate.ihost_orig)
 
     def check_unlock_worker(self, hostupdate, force_unlock=False):

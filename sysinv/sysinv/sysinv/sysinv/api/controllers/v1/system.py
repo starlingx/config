@@ -429,38 +429,26 @@ class SystemController(rest.RestController):
                                                          "cannot be "
                                                          "modified."))
 
-            if (p['path'] == '/system_mode' and p.get('value') !=
-               rpc_isystem.system_mode):
-                if rpc_isystem is not None and \
-                   rpc_isystem.system_mode is not None:
-                    if rpc_isystem.system_type != constants.TIS_AIO_BUILD:
-                        raise wsme.exc.ClientSideError(
-                            "system_mode can only be modified on an "
-                            "AIO system")
-                    system_mode_options = [constants.SYSTEM_MODE_DUPLEX,
-                                           constants.SYSTEM_MODE_DUPLEX_DIRECT]
-                    new_system_mode = p['value']
-                    # Allow modification to system mode during bootstrap. Once the
-                    # initial configuration is complete, this type of request will
-                    # be bound to the conditions below.
-                    if cutils.is_initial_config_complete():
-                        if rpc_isystem.system_mode == \
-                                constants.SYSTEM_MODE_DUPLEX:
-                            msg = _("Cannot modify system mode when it is "
-                                    "set to %s." % rpc_isystem.system_mode)
-                            raise wsme.exc.ClientSideError(msg)
-                        elif new_system_mode != constants.SYSTEM_MODE_SIMPLEX:
-                            self._check_controller_locked()
-                            self._check_interfaces(new_system_mode)
-                    else:
-                        system_mode_options.append(constants.SYSTEM_MODE_SIMPLEX)
+            if p['path'] == '/system_mode' and rpc_isystem.system_mode is not None:
+                new_system_mode = p['value']
 
-                    if new_system_mode not in system_mode_options:
-                        raise wsme.exc.ClientSideError(
-                            "Invalid value for system_mode, it can only"
-                            " be modified to '%s' or '%s'" %
-                            (constants.SYSTEM_MODE_DUPLEX,
-                             constants.SYSTEM_MODE_DUPLEX_DIRECT))
+                if rpc_isystem.system_type != constants.TIS_AIO_BUILD:
+                    msg = "system_mode can only be modified on an AIO system"
+                    raise wsme.exc.ClientSideError(msg)
+
+                # Allow modification to system mode during bootstrap. Once the
+                # initial configuration is complete, this type of request will
+                # be bound to the conditions below.
+                if cutils.is_initial_config_complete():
+                    if rpc_isystem.system_mode != constants.SYSTEM_MODE_SIMPLEX and \
+                            new_system_mode == constants.SYSTEM_MODE_SIMPLEX:
+                        msg = _("Cannot modify system mode from %s "
+                                "to %s." % (rpc_isystem.system_mode, new_system_mode))
+                        raise wsme.exc.ClientSideError(msg)
+                    if rpc_isystem.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+                        self._check_controller_locked()
+                    if new_system_mode != constants.SYSTEM_MODE_SIMPLEX:
+                        self._check_interfaces(new_system_mode)
 
             if p['path'] == '/timezone':
                 timezone = p['value']
@@ -509,13 +497,13 @@ class SystemController(rest.RestController):
         except api_utils.JSONPATCH_EXCEPTIONS as e:
             raise exception.PatchError(patch=patch, reason=e)
 
-        if 'system_mode' in updates:
-            # Update capabilities if system mode is changed from simplex to
-            # duplex after the initial config is complete
-            if (cutils.is_initial_config_complete() and
-                    rpc_isystem.system_mode == constants.SYSTEM_MODE_SIMPLEX and
-                    new_system_mode == constants.SYSTEM_MODE_DUPLEX):
+        if 'system_mode' in updates and cutils.is_initial_config_complete():
+            if rpc_isystem.system_mode == constants.SYSTEM_MODE_SIMPLEX and \
+                    new_system_mode == constants.SYSTEM_MODE_DUPLEX:
                 patched_system['capabilities']['simplex_to_duplex_migration'] = True
+            elif rpc_isystem.system_mode == constants.SYSTEM_MODE_SIMPLEX and \
+                    new_system_mode == constants.SYSTEM_MODE_DUPLEX_DIRECT:
+                patched_system['capabilities']['simplex_to_duplex-direct_migration'] = True
 
         if 'sdn_enabled' in updates:
             if sdn_enabled != rpc_isystem['capabilities']['sdn_enabled']:

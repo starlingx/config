@@ -94,7 +94,8 @@ class CephPuppet(openstack.OpenstackBasePuppet):
             (utils.is_std_system(self.dbapi) and
             ceph_backend.task == constants.SB_TASK_RESTORE)
 
-        is_sx_to_dx_migration = self._get_system_capability('simplex_to_duplex_migration')
+        is_sx_to_dx_migration = self._get_system_capability('simplex_to_duplex_migration') or \
+                                self._get_system_capability('simplex_to_duplex-direct_migration')
 
         config = {
             'ceph::ms_bind_ipv6': ms_bind_ipv6,
