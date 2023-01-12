@@ -456,9 +456,6 @@ class BaseHostTestCase(BaseSystemTestCase):
         self._create_test_addresses(
             [host.hostname], self.mgmt_subnet,
             constants.NETWORK_TYPE_MGMT, start=10)
-        self._create_test_addresses(
-            [host.hostname], self.cluster_host_subnet,
-            constants.NETWORK_TYPE_CLUSTER_HOST, start=10)
 
     def _create_test_host_platform_interface(self, host):
         network_types = [constants.NETWORK_TYPE_OAM,
