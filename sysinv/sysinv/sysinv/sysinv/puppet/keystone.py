@@ -167,14 +167,14 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
             if self._get_address_by_name(
                     constants.CONTROLLER_HOSTNAME,
                     constants.NETWORK_TYPE_MGMT).family == constants.IPV6_FAMILY:
-                argument = "url:inet6:[%s]:11211" % host.mgmt_ip
+                backend_endpoint = "[%s]:11211" % host.mgmt_ip
             else:
-                argument = "url:inet:%s:11211" % host.mgmt_ip
+                backend_endpoint = "%s:11211" % host.mgmt_ip
 
             config.update({
-                'keystone::cache_enabled': True,
-                'keystone::cache_backend': 'dogpile.cache.memcached',
-                'keystone::cache_backend_argument': argument
+                'keystone::cache::enabled': True,
+                'keystone::cache::backend': 'oslo_cache.memcache_pool',
+                'keystone::cache::memcache_servers': backend_endpoint
             })
 
         return config
