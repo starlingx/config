@@ -43,7 +43,7 @@ def add_pod_security_admission_controller_labels():
         cmd = ["kubectl", "--kubeconfig=/etc/kubernetes/admin.conf",
                "get", "namespaces", "-o=name"]
 
-        namespaces_output = subprocess.check_output(cmd)
+        namespaces_output = subprocess.check_output(cmd).decode("utf-8")
 
     except Exception as exc:
         LOG.error('Command failed:\n %s' % (cmd))
