@@ -180,6 +180,11 @@ if [ "$ACTION" == "activate" ]; then
                     if [ "${UPDATING_APP_NAME}" == "${UPGRADE_APP_NAME}" ] && \
                        [ "${UPDATING_APP_VERSION}" == "${UPGRADE_APP_VERSION}" ] && \
                        [ "${UPDATING_APP_STATUS}" == "applied" ]; then
+                        ALARMS=$(fm alarm-list --nowrap --uuid --query "alarm_id=750.005;entity_type_id=k8s_application;entity_instance_id=${UPGRADE_APP_NAME}" | head -n-1 | tail -n+4 | awk '{print $2}')
+                        for alarm in ${ALARMS}; do
+                            log "$NAME: [Warning] A stale 750.005 Application Update In Progress alarm was found for ${UPGRADE_APP_NAME}. Clearing it (UUID: ${alarm})."
+                            fm alarm-delete $alarm
+                        done
                         log "$NAME: ${UPGRADE_APP_NAME} has been updated to version ${UPGRADE_APP_VERSION} from version ${EXISTING_APP_VERSION}"
                         break
                     fi
