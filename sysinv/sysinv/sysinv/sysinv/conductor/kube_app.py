@@ -2048,6 +2048,13 @@ class AppOperator(object):
 
         # Body of the outer method
 
+        # On N(stx.6.0) to N+2(stx.8.0) upgrades we need to keep the original
+        # 'delete' operation that Armada recognizes.
+        # The operation was renamed (intention was for Flux) for Armada by
+        # mistake: https://review.opendev.org/c/starlingx/config/+/866200/
+        if request == constants.APP_REMOVE_OP:
+            request = constants.APP_DELETE_OP
+
         # This check is for cases where an abort is issued while
         # this function waits between retries. In such cases, it
         # should just return False
