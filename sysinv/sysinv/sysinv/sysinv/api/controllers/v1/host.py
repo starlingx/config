@@ -7268,8 +7268,12 @@ class HostController(rest.RestController):
                     LOG.info("Redoing kubelet upgrade for %s" %
                              host_obj.hostname)
                 else:
-                    raise wsme.exc.ClientSideError(_(
-                        "The kubelet on this host was already upgraded."))
+                    # Set the status
+                    kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADED_KUBELET
+                    kube_host_upgrade_obj.save()
+                    LOG.info("Upgraded kubernetes kubelet on host %s" %
+                            host_obj.hostname)
+                    return Host.convert_with_links(host_obj)
             elif current_kubelet_version is None:
                 raise wsme.exc.ClientSideError(_(
                     "Unable to determine the version of the kubelet on this "

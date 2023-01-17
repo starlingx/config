@@ -1293,12 +1293,14 @@ class TestPostKubeUpgrades(TestHost):
             body, headers={'User-Agent': 'sysinv-test'},
             expect_errors=True)
 
-        # Verify the failure
+        # Verify the success response
         self.assertEqual(result.content_type, 'application/json')
-        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertTrue(result.json['error_message'])
-        self.assertIn("kubelet on this host was already upgraded",
-                      result.json['error_message'])
+        self.assertEqual(http_client.OK, result.status_int)
+
+        # Verify that the status was updated
+        result = self.get_json('/kube_host_upgrades/1')
+        self.assertEqual(result['status'],
+                         kubernetes.KUBE_HOST_UPGRADED_KUBELET)
 
     def test_kube_upgrade_kubelet_controller_0_repeated_force(self):
         # Test upgrading kubernetes kubelet on controller-0 when it was already
