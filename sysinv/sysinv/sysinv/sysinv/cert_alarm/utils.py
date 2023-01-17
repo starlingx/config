@@ -154,6 +154,24 @@ def is_certname_already_processed(certname):
     return ret
 
 
+def get_severity_user_override(cert_name):
+    """
+    Get Severity User Override if there is any custom value for severity
+    If yes, it will return True and the value the user requested
+    if not return False and None.
+    """
+    if cert_name in CERT_SNAPSHOT:
+        snapshot = CERT_SNAPSHOT[cert_name]
+        override = snapshot.get(constants.CERT_ALARM_ANNOTATION_ALARM_SEVERITY,
+                                constants.CERT_ALARM_DEFAULT_ANNOTATION_ALARM_SEVERITY)
+        if override != 'unknown':
+            LOG.info('Cert: %s severity value overwritten by user override' %
+                    cert_name)
+            return True, override
+
+    return False, None
+
+
 def collect_certificate_data_for_ssl_cas():
     """
     Collect certificate data for SSL_CA files

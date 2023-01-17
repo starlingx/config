@@ -100,12 +100,9 @@ class FaultApiMgr(object):
             return alarm_severity
 
         # Check for annotation overrides
-        if cert_name in utils.CERT_SNAPSHOT:
-            snapshot = utils.CERT_SNAPSHOT[cert_name]
-            override = snapshot.get(constants.CERT_ALARM_ANNOTATION_ALARM_SEVERITY,
-                                    alarm_severity)
-            if override != "unknown":  # Cannot have "unknown" for fault severity
-                alarm_severity = override
+        has_override, override = utils.get_severity_user_override(cert_name)
+        if has_override:
+            alarm_severity = override
 
         return alarm_severity
 

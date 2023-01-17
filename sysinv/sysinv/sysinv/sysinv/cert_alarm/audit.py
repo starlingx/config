@@ -209,42 +209,44 @@ class CertAlarmAudit(object):
         else:
             threshold = alarm_before_days
 
-        if days_to_expiry > threshold:
+        is_alarm_enabled = self.alarm_override_check_passed(cert_name)
+
+        if is_alarm_enabled:
+            if days_to_expiry > threshold:
+                self.clear_expiring_soon(cert_name, entity_id)
+                self.clear_expired(cert_name, entity_id)
+            else:
+                if days_to_expiry < 0:
+                    # Expired. Clear expiring-soon & raise expired
+                    self.clear_expiring_soon(cert_name, entity_id)
+                    self.raise_expired(cert_name, entity_id)
+                else:
+                    self.clear_expired(cert_name, entity_id)
+                    self.clear_expiring_soon(cert_name, entity_id)
+                    self.raise_expiring_soon(cert_name, entity_id)
+        else:
             self.clear_expiring_soon(cert_name, entity_id)
             self.clear_expired(cert_name, entity_id)
-        else:
-            if days_to_expiry < 0:
-                # Expired. Clear expiring-soon & raise expired
-                self.clear_expiring_soon(cert_name, entity_id)
-                self.raise_expired(cert_name, entity_id)
-            else:
-                self.clear_expired(cert_name, entity_id)
-                self.clear_expiring_soon(cert_name, entity_id)
-                self.raise_expiring_soon(cert_name, entity_id)
 
     def raise_expiring_soon(self, cert_name, entity_id):
-        if self.alarm_override_check_passed(cert_name):
-            self.fm_obj.set_fault(entity_id,
-                                  fm_constants.FM_ALARM_ID_CERT_EXPIRING_SOON,
-                                  fm_constants.FM_ALARM_STATE_SET)
+        self.fm_obj.set_fault(entity_id,
+                              fm_constants.FM_ALARM_ID_CERT_EXPIRING_SOON,
+                              fm_constants.FM_ALARM_STATE_SET)
 
     def clear_expiring_soon(self, cert_name, entity_id):
-        if self.alarm_override_check_passed(cert_name):
-            self.fm_obj.set_fault(entity_id,
-                                  fm_constants.FM_ALARM_ID_CERT_EXPIRING_SOON,
-                                  fm_constants.FM_ALARM_STATE_CLEAR)
+        self.fm_obj.set_fault(entity_id,
+                              fm_constants.FM_ALARM_ID_CERT_EXPIRING_SOON,
+                              fm_constants.FM_ALARM_STATE_CLEAR)
 
     def raise_expired(self, cert_name, entity_id):
-        if self.alarm_override_check_passed(cert_name):
-            self.fm_obj.set_fault(entity_id,
-                                  fm_constants.FM_ALARM_ID_CERT_EXPIRED,
-                                  fm_constants.FM_ALARM_STATE_SET)
+        self.fm_obj.set_fault(entity_id,
+                              fm_constants.FM_ALARM_ID_CERT_EXPIRED,
+                              fm_constants.FM_ALARM_STATE_SET)
 
     def clear_expired(self, cert_name, entity_id):
-        if self.alarm_override_check_passed(cert_name):
-            self.fm_obj.set_fault(entity_id,
-                                  fm_constants.FM_ALARM_ID_CERT_EXPIRED,
-                                  fm_constants.FM_ALARM_STATE_CLEAR)
+        self.fm_obj.set_fault(entity_id,
+                              fm_constants.FM_ALARM_ID_CERT_EXPIRED,
+                              fm_constants.FM_ALARM_STATE_CLEAR)
 
     def alarm_override_check_passed(self, cert_name):
         '''
