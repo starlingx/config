@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -1112,6 +1112,7 @@ SERVICE_PARAM_SECTION_DOCKER_K8S_REGISTRY = 'k8s-registry'
 SERVICE_PARAM_SECTION_DOCKER_QUAY_REGISTRY = 'quay-registry'
 SERVICE_PARAM_SECTION_DOCKER_ELASTIC_REGISTRY = 'elastic-registry'
 SERVICE_PARAM_SECTION_DOCKER_GHCR_REGISTRY = 'ghcr-registry'
+SERVICE_PARAM_SECTION_DOCKER_REGISTRYK8S_REGISTRY = 'registryk8s-registry'
 SERVICE_PARAM_NAME_DOCKER_URL = 'url'
 SERVICE_PARAM_NAME_DOCKER_AUTH_SECRET = 'auth-secret'
 SERVICE_PARAM_NAME_DOCKER_TYPE = 'type'
@@ -1128,6 +1129,7 @@ DEFAULT_DOCKER_QUAY_REGISTRY = 'quay.io'
 DEFAULT_DOCKER_DOCKER_REGISTRY = 'docker.io'
 DEFAULT_DOCKER_ELASTIC_REGISTRY = 'docker.elastic.co'
 DEFAULT_DOCKER_GHCR_REGISTRY = 'ghcr.io'
+DEFAULT_DOCKER_REGISTRYK8S_REGISTRY = 'registry.k8s.io'
 
 DEFAULT_REGISTRIES_INFO = {
     SERVICE_PARAM_SECTION_DOCKER_K8S_REGISTRY: {
@@ -1157,6 +1159,11 @@ DEFAULT_REGISTRIES_INFO = {
     },
     SERVICE_PARAM_SECTION_DOCKER_GHCR_REGISTRY: {
         'registry_default': DEFAULT_DOCKER_GHCR_REGISTRY,
+        'registry_replaced': None,
+        'registry_auth': None
+    },
+    SERVICE_PARAM_SECTION_DOCKER_REGISTRYK8S_REGISTRY: {
+        'registry_default': DEFAULT_DOCKER_REGISTRYK8S_REGISTRY,
         'registry_replaced': None,
         'registry_auth': None
     }
