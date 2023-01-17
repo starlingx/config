@@ -107,6 +107,19 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
                 prefix=24,
                 name='controller-0-pxeboot',
                 address_pool_id=self.address_pool_pxeboot.id)
+        self.address_pool_admin = dbutils.create_test_address_pool(
+            id=5,
+            network='192.168.208.0',
+            name='admin',
+            ranges=[['192.168.208.2', '192.168.208.254']],
+            prefix=24)
+        self.admin_network = dbutils.create_test_network(
+            id=5,
+            name='admin',
+            type=constants.NETWORK_TYPE_ADMIN,
+            link_capacity=10000,
+            vlan_id=8,
+            address_pool_id=self.address_pool_admin.id)
 
     def _post_and_check(self, ndict, expect_errors=False):
         response = self.post_json('%s' % self._get_path(), ndict,
@@ -375,4 +388,19 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
         controller_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=controller_interface.uuid,
             network_uuid=self.mgmt_network.uuid)
+        self._post_and_check(controller_interface_network, expect_errors=True)
+
+    # Expected error: Device interface with network type ___, and interface type
+    #  'aggregated ethernet' must be in mode '802.3ad'
+    def test_aemode_invalid_admin(self):
+        controller_interface = dbutils.create_test_interface(
+            ifname='name',
+            forihostid=self.controller.id,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            iftype=constants.INTERFACE_TYPE_AE,
+            aemode='balanced',
+            txhashpolicy='layer2')
+        controller_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=controller_interface.uuid,
+            network_uuid=self.admin_network.uuid)
         self._post_and_check(controller_interface_network, expect_errors=True)

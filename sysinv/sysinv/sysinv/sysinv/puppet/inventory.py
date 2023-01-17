@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -120,8 +120,15 @@ class SystemInventoryPuppet(openstack.OpenstackBasePuppet):
                                              path=self.SERVICE_PATH)
 
     def get_admin_url(self):
-        return self._format_admin_endpoint(self.SERVICE_PORT,
-                                             path=self.SERVICE_PATH)
+        if (self._distributed_cloud_role() ==
+                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+            return self._format_admin_endpoint(
+                self.SERVICE_PORT,
+                address=self._get_subcloud_endpoint_address(),
+                path=self.SERVICE_PATH)
+        else:
+            return self._format_admin_endpoint(self.SERVICE_PORT,
+                                               path=self.SERVICE_PATH)
 
     def get_region_name(self):
         return self._get_service_region_name(self.SERVICE_NAME)

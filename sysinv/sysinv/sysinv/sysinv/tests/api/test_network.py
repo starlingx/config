@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020-2022 Wind River Systems, Inc.
+# Copyright (c) 2020-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -183,6 +183,22 @@ class TestPostMixin(NetworkTestCase):
         self.assertIn("Network of type %s already exists." % network_type,
                       response.json['error_message'])
 
+    def _test_create_network_fail_subcloud_only(self, name, network_type, subnet):
+        address_pool_id = self._create_test_address_pool(name, subnet)['uuid']
+
+        ndict = self.get_post_object(network_type, address_pool_id)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        # Check HTTP response is failed
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("Network of type %s restricted to distributed cloud "
+                      "role of subcloud." % network_type,
+                      response.json['error_message'])
+
     def test_create_success_system_controller_oam(self):
         self._create_test_host(constants.CONTROLLER)
         m = mock.Mock()
@@ -272,7 +288,19 @@ class TestPostMixin(NetworkTestCase):
             self.storage_subnet)
 
     def test_create_success_admin(self):
+        p = mock.patch('sysinv.api.controllers.v1.utils.get_distributed_cloud_role')
+        self.mock_utils_get_distributed_cloud_role = p.start()
+        self.mock_utils_get_distributed_cloud_role.return_value = \
+            constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD
+        self.addCleanup(p.stop)
+
         self._test_create_network_success(
+            'admin',
+            constants.NETWORK_TYPE_ADMIN,
+            self.admin_subnet)
+
+    def test_create_failure_admin_non_subcloud(self):
+        self._test_create_network_fail_subcloud_only(
             'admin',
             constants.NETWORK_TYPE_ADMIN,
             self.admin_subnet)
@@ -320,6 +348,12 @@ class TestPostMixin(NetworkTestCase):
             self.storage_subnet)
 
     def test_create_fail_duplicate_admin(self):
+        p = mock.patch('sysinv.api.controllers.v1.utils.get_distributed_cloud_role')
+        self.mock_utils_get_distributed_cloud_role = p.start()
+        self.mock_utils_get_distributed_cloud_role.return_value = \
+            constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD
+        self.addCleanup(p.stop)
+
         self._test_create_network_fail_duplicate(
             'admin',
             constants.NETWORK_TYPE_ADMIN,

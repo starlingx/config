@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2018 Wind River Systems, Inc.
+# Copyright (c) 2017-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -196,6 +196,11 @@ class BasePuppet(object):
             constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_OAM)
         return address.address
 
+    def _get_admin_address(self):
+        address = self._get_address_by_name(
+            constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_ADMIN)
+        return address.address
+
     def _get_cluster_host_address(self):
         address = self._get_address_by_name(
             constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_CLUSTER_HOST)
@@ -206,6 +211,14 @@ class BasePuppet(object):
             constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_CLUSTER_POD)
         subnet = address.address + '/' + address.prefix
         return subnet
+
+    def _get_subcloud_endpoint_address(self):
+        try:
+            address = self._format_url_address(self._get_admin_address())
+        except exception.AddressNotFoundByName:
+            address = self._format_url_address(self._get_management_address())
+            pass
+        return address
 
     def _get_host_cpu_list(self, host, function=None, threads=False):
         """

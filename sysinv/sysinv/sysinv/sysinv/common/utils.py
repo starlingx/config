@@ -18,7 +18,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 
 
@@ -1801,10 +1801,18 @@ def perform_distributed_cloud_config(dbapi, mgmt_iface_id):
         # for local & reachable gateway etc, as config_subcloud
         # will have already done these checks before allowing
         # the system controller gateway into the database.
-
-        cc_gtwy_addr_name = '%s-%s' % (
-            constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME,
-            constants.NETWORK_TYPE_MGMT)
+        try:
+            # Prefer admin network
+            dbapi.network_get_by_type(
+                constants.NETWORK_TYPE_ADMIN)
+            cc_gtwy_addr_name = '%s-%s' % (
+                constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME,
+                constants.NETWORK_TYPE_ADMIN)
+        except exception.NetworkTypeNotFound:
+            cc_gtwy_addr_name = '%s-%s' % (
+                constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME,
+                constants.NETWORK_TYPE_MGMT)
+            pass
 
         try:
             cc_gtwy_addr = dbapi.address_get_by_name(

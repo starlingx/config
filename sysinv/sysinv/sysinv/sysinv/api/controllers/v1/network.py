@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2015-2022 Wind River Systems, Inc.
+# Copyright (c) 2015-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -165,6 +165,13 @@ class NetworkController(rest.RestController):
         networks = pecan.request.dbapi.networks_get_by_type(networktype)
         if networks:
             raise exception.NetworkAlreadyExists(type=networktype)
+        if (networktype == constants.NETWORK_TYPE_ADMIN and
+            utils.get_distributed_cloud_role() !=
+                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+            msg = _("Network of type {} restricted to distributed cloud "
+                    "role of {}."
+                    .format(networktype, constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD))
+            raise wsme.exc.ClientSideError(msg)
 
     def _check_network_pool(self, pool):
         # ensure address pool exists and is not already inuse
