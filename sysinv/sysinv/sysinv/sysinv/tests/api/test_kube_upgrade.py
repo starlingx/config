@@ -74,6 +74,7 @@ class FakeConductorAPI(object):
     def __init__(self):
         self.kube_download_images = mock.MagicMock()
         self.kube_upgrade_networking = mock.MagicMock()
+        self.evaluate_apps_reapply = mock.MagicMock()
         self.service = ConductorManager('test-host', 'test-topic')
 
     def get_system_health(self, context, force=False, upgrade=False,
@@ -764,6 +765,9 @@ class TestPatch(TestKubeUpgrade,
         self.assertEqual(result['from_version'], 'v1.43.1')
         self.assertEqual(result['to_version'], 'v1.43.2')
         self.assertEqual(result['state'], new_state)
+
+        # Verify that apps reapply evaluation was triggered
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
 
     def test_update_state_complete_incomplete_host(self):
         # Test updating the state of an upgrade to complete when a host has
