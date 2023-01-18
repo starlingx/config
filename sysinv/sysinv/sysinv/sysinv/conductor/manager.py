@@ -14820,6 +14820,10 @@ class ConductorManager(service.PeriodicService):
                 LOG.error("Problem sanitizing feature gates service parameter.")
                 rc = 1
 
+            if self.sanitize_feature_gates_kubeadm_configmap(target_version) == 1:
+                LOG.error("Problem sanitizing kubeadm configmap feature gates.")
+                rc = 1
+
             # The kubelet configmap is used by the K8s upgrade itself.
             if self.sanitize_feature_gates_kubelet_configmap(target_version) == 1:
                 LOG.error("Problem sanitizing kubelet configmap feature gates.")
@@ -16419,6 +16423,56 @@ class ConductorManager(service.PeriodicService):
             return 1
 
         LOG.info('Successfully updated feature gates in kubelet cm.')
+        return 0
+
+    def sanitize_feature_gates_kubeadm_configmap(self, target_version):
+        """
+        Edit the kubeadm configmap and remove stale feature gates that
+        are no longer applicable for the version of K8s that we are upgrading to.
+        """
+        configmap_name = 'kubeadm-config'
+
+        try:
+            configmap = self._kube.kube_read_config_map(configmap_name, 'kube-system')
+
+            # Parse the configmap to get the feature gates
+            stream = StringIO(configmap.data['ClusterConfiguration'])
+            kubeadm_config = yaml.safe_load(stream)
+            for component in ['apiServer', 'controllerManager', 'scheduler']:
+                k8s_component = kubeadm_config.get(component, {})
+                extra_args = k8s_component.get('extraArgs', {})
+                feature_gates = extra_args.get('feature-gates', None)
+                if not feature_gates:
+                    continue
+
+                try:
+                    feature_gates = sanitize_feature_gates(feature_gates,
+                                'RemoveSelfLink=false')
+                    if not feature_gates:
+                        # No feature gates left, so delete the entry
+                        LOG.info('Deleting %s feature gates in Kubeadm_config.'
+                                    % extra_args)
+                        extra_args.pop('feature-gates')
+                    else:
+                        # Update the feature gates with the new value
+                        LOG.info('Modifying %s feature gates in Kubeadm_config.'
+                                    % extra_args)
+                        extra_args['feature-gates'] = feature_gates
+                except Exception as ex:
+                    LOG.error("Problem sanitizing %s feature Kubeadm_config."
+                                % extra_args)
+                    LOG.error(str(ex))
+                    raise
+            outstream = StringIO()
+            yaml.dump(kubeadm_config, outstream)
+            configmap = {'data': {'ClusterConfiguration': outstream.getvalue()}}
+
+            self._kube.kube_patch_config_map(configmap_name, 'kube-system', configmap)
+        except Exception as e:
+            LOG.exception("Unable to patch kubeadm config_map: %s" % e)
+            return 1
+
+        LOG.info('Successfully updated feature gates in kubeadm cm.')
         return 0
 
     def sanitize_feature_gates_service_parameters(self, target_version):
