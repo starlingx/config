@@ -297,6 +297,16 @@ class KubeOperator(object):
         else:
             return False
 
+    def _retry_on_urllibs3_RetryError(ex):  # pylint: disable=no-self-argument
+        if isinstance(ex, MaxRetryError):
+            LOG.warn('Retrying against MaxRetryError: {}'.format(ex))
+            return True
+        elif isinstance(ex, ValueError):
+            LOG.warn('Retrying against ValueError: {}'.format(ex))
+            return True
+        else:
+            return False
+
     def kube_get_kubernetes_config(self):
         return self._load_kube_config()
 
@@ -875,6 +885,9 @@ class KubeOperator(object):
         secret = self.kube_get_secret(sa.secrets[0].name, namespace)
         return secret.data.get('token')
 
+    @retry(stop_max_attempt_number=API_RETRY_ATTEMPT_NUMBER,
+           wait_fixed=API_RETRY_INTERVAL,
+           retry_on_exception=_retry_on_urllibs3_MaxRetryError)
     def kube_get_control_plane_pod_ready_status(self):
         """Returns the ready status of the control plane pods."""
         c = self._get_kubernetesclient_core()
@@ -913,7 +926,7 @@ class KubeOperator(object):
 
     @retry(stop_max_attempt_number=API_RETRY_ATTEMPT_NUMBER,
            wait_fixed=API_RETRY_INTERVAL,
-           retry_on_exception=_retry_on_urllibs3_MaxRetryError)
+           retry_on_exception=_retry_on_urllibs3_RetryError)
     def kube_get_control_plane_versions(self):
         """Returns the lowest control plane component version on each
         master node."""
@@ -941,10 +954,18 @@ class KubeOperator(object):
                     versions.append(LooseVersion(image.rsplit(':')[-1]))
 
             # Calculate the lowest version
-            node_versions[node_name] = str(min(versions))
+            try:
+                node_versions[node_name] = str(min(versions))
+            except Exception as e:
+                LOG.error("Error trying to get min k8s version in kube_get_control_plane_versions(). "
+                          "%s" % e)
+                raise
 
         return node_versions
 
+    @retry(stop_max_attempt_number=API_RETRY_ATTEMPT_NUMBER,
+           wait_fixed=API_RETRY_INTERVAL,
+           retry_on_exception=_retry_on_urllibs3_MaxRetryError)
     def kube_get_kubelet_versions(self):
         """Returns the kubelet version on each node."""
         c = self._get_kubernetesclient_core()
