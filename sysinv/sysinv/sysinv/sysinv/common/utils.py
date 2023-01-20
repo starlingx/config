@@ -1351,30 +1351,6 @@ def validate_yes_no(name, value):
             "Parameter '%s' must be a y/n value." % name))
 
 
-def get_interface_os_ifname(interface, interfaces, ports):
-    """
-    Returns the operating system name for an interface.  The user is allowed to
-    override the sysinv DB interface name for convenience, but that name is not
-    used at the operating system level for all interface types.  For ethernet
-    and VLAN interfaces the name follows the native interface names while for
-    AE interfaces the user defined name is used.
-    """
-    if interface['iftype'] == constants.INTERFACE_TYPE_VLAN:
-        # VLAN interface names are built-in using the o/s name of the lower
-        # interface object.
-        lower_iface = interfaces[interface['uses'][0]]
-        lower_ifname = get_interface_os_ifname(lower_iface, interfaces, ports)
-        return '{}.{}'.format(lower_ifname, interface['vlan_id'])
-    elif interface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
-        # Ethernet interface names are always based on the port name which is
-        # just the normal o/s name of the original network interface
-        lower_ifname = ports[interface['id']]['name']
-        return lower_ifname
-    else:
-        # All other interfaces default to the user-defined name
-        return interface['ifname']
-
-
 def get_sriov_vf_index(addr, addrs):
     """
     Returns vf index of specified pci addr of the vf

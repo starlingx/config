@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -206,7 +206,7 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
 
     def _create_ethernet(self, ifname=None, networktype=None, ifclass=None,
                          datanetworks=None, host=None, expect_errors=False,
-                         lower_iface=None, ptp_role=None):
+                         lower_iface=None, ptp_role=None, error_message=None):
         interface_id = len(self.profile['interfaces']) + 1
         port = None
         if not ifname:
@@ -246,7 +246,13 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
                 forihostid=host.id,
                 ihost_uuid=host.uuid,
                 ptp_role=ptp_role)
-            response = self._post_and_check(interface, expect_errors)
+
+            if expect_errors and not error_message:
+                raise ValueError("If 'expect_errors' is True, 'error_message' "
+                                 "must be specified.")
+
+            response = self._post_and_check(interface, expect_errors,
+                                            error_message)
             if expect_errors is False:
                 interface['uuid'] = response.json['uuid']
                 iface = self.dbapi.iinterface_get(interface['uuid'])
@@ -272,7 +278,7 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
 
     def _create_bond(self, ifname, networktype=None, ifclass=None,
                      datanetworks=None, host=None, expect_errors=False,
-                     aemode=None, ptp_role=None):
+                     aemode=None, ptp_role=None, error_message=None):
         if not ptp_role:
             ptp_role = constants.INTERFACE_PTP_ROLE_NONE
         if not host:
@@ -305,7 +311,11 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
             interface['txhashpolicy'] = 'layer2'
         interface['aemode'] = aemode
 
-        response = self._post_and_check(interface, expect_errors)
+        if expect_errors and not error_message:
+            raise ValueError("If 'expect_errors' is True, 'error_message' "
+                                "must be specified.")
+
+        response = self._post_and_check(interface, expect_errors, error_message)
         if expect_errors is False:
             interface['uuid'] = response.json['uuid']
             iface = self.dbapi.iinterface_get(interface['uuid'])
@@ -334,7 +344,7 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
 
     def _create_vlan(self, ifname, networktype, ifclass, vlan_id,
                      lower_iface=None, datanetworks=None, host=None,
-                     expect_errors=False):
+                     expect_errors=False, error_message=None):
         if not host:
             host = self.controller
         if not lower_iface:
@@ -350,7 +360,12 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
             vlan_id=vlan_id,
             uses=[lower_iface['ifname']],
             forihostid=host.id, ihost_uuid=host.uuid)
-        response = self._post_and_check(interface, expect_errors)
+
+        if expect_errors and not error_message:
+            raise ValueError("If 'expect_errors' is True, 'error_message' "
+                                "must be specified.")
+
+        response = self._post_and_check(interface, expect_errors, error_message)
         if expect_errors is False:
             interface['uuid'] = response.json['uuid']
             iface = self.dbapi.iinterface_get(interface['uuid'])
@@ -372,10 +387,12 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
 
     def _create_worker_vlan(self, ifname, networktype, ifclass, vlan_id,
                              lower_iface=None, datanetworks=None,
-                             host=None, expect_errors=False):
+                             host=None, expect_errors=False,
+                             error_message=None):
         return self._create_vlan(ifname, networktype, ifclass, vlan_id,
                                  lower_iface,
-                                 datanetworks, self.worker, expect_errors)
+                                 datanetworks, self.worker, expect_errors,
+                                 error_message)
 
     def _create_sriov(self, ifname,
                       sriov_totalvfs=None, sriov_numvfs=None,
@@ -432,7 +449,8 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
     def _create_vf(self, ifname, ifclass=None,
                    lower_iface=None, sriov_numvfs=None,
                    sriov_vf_driver=None, datanetworks=None, host=None,
-                   expect_errors=False, max_tx_rate=None):
+                   expect_errors=False, max_tx_rate=None,
+                   error_message=None):
         if not host:
             host = self.controller
         if not lower_iface:
@@ -454,7 +472,12 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
             sriov_numvfs=sriov_numvfs,
             sriov_vf_driver=sriov_vf_driver,
             max_tx_rate=max_tx_rate)
-        response = self._post_and_check(interface, expect_errors)
+
+        if expect_errors and not error_message:
+            raise ValueError("If 'expect_errors' is True, 'error_message' "
+                                "must be specified.")
+
+        response = self._post_and_check(interface, expect_errors, error_message)
         if expect_errors is False:
             interface['uuid'] = response.json['uuid']
             iface = self.dbapi.iinterface_get(interface['uuid'])
@@ -1003,7 +1026,7 @@ class TestPatchMixin(object):
 class TestPostMixin(object):
     def setUp(self):
         super(TestPostMixin, self).setUp()
-        self._create_host(constants.CONTROLLER)
+        self._create_host(constants.CONTROLLER, admin=constants.ADMIN_LOCKED)
         self._create_host(constants.WORKER, admin=constants.ADMIN_LOCKED)
         self._create_datanetworks()
 
@@ -1012,7 +1035,10 @@ class TestPostMixin(object):
     def test_invalid_iftype_for_pci_network_type(self):
         self._create_bond('pthru', constants.NETWORK_TYPE_PCI_PASSTHROUGH,
                           ifclass=constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
-                          host=self.worker, expect_errors=True)
+                          host=self.worker, expect_errors=True,
+                          error_message='The pci-passthrough, pci-sriov '
+                          'interface class is only valid on Ethernet and '
+                          'VF interfaces')
 
     # Expected error: The ___ network type is only supported on nodes supporting
     # worker functions
@@ -1020,35 +1046,45 @@ class TestPostMixin(object):
         self._create_ethernet('data0', constants.NETWORK_TYPE_DATA,
                               ifclass=constants.INTERFACE_CLASS_DATA,
                               datanetworks='group0-ext0',
-                              expect_errors=True)
+                              expect_errors=True,
+                              error_message='The data interface class is only '
+                              'supported on nodes supporting worker functions')
 
     # Expected error: Interface name cannot be whitespace.
     def test_invalid_whitespace_interface_name(self):
         self._create_ethernet('   ', constants.NETWORK_TYPE_DATA,
                               ifclass=constants.INTERFACE_CLASS_DATA,
                               datanetworks='group0-ext0',
-                              expect_errors=True)
+                              expect_errors=True,
+                              error_message='Interface name cannot be '
+                              'whitespace.')
 
     # Expected error: Interface name must be in lower case.
     def test_invalid_uppercase_interface_name(self):
         self._create_ethernet('miXedCaSe', constants.NETWORK_TYPE_DATA,
                               ifclass=constants.INTERFACE_CLASS_DATA,
                               datanetworks='group0-ext0',
-                              expect_errors=True)
+                              expect_errors=True,
+                              error_message='Interface name must be in lower '
+                              'case.')
 
     # Expected error: Cannot use '+' as a special character in interface name.
     def test_invalid_plus_character_interface_name(self):
         self._create_ethernet('bad+name', constants.NETWORK_TYPE_DATA,
                               ifclass=constants.INTERFACE_CLASS_DATA,
                               datanetworks='group0-ext0',
-                              expect_errors=True)
+                              expect_errors=True,
+                              error_message="Cannot use '+' as a special "
+                              "character in interface name.")
 
     # Expected error: Cannot use '=' as a special character in interface name
     def test_invalid_equals_character_interface_name(self):
         self._create_ethernet('bad=name', constants.NETWORK_TYPE_DATA,
                               ifclass=constants.INTERFACE_CLASS_DATA,
                               datanetworks='group0-ext0',
-                              expect_errors=True)
+                              expect_errors=True,
+                              error_message="Cannot use '=' as a special "
+                              "character in interface name.")
 
     def test_valid_dash_character_interface_name(self):
         self._create_ethernet('good-name', constants.NETWORK_TYPE_DATA,
@@ -1068,10 +1104,13 @@ class TestPostMixin(object):
                               datanetworks='group0-ext0',
                               host=self.worker)
 
-    # Expected error: Interface ___ has name length greater than 10.
+    # Expected error: Interface ___ has name length greater than 15.
     def test_invalid_interface_name_length(self):
-        self._create_ethernet('0123456789a', constants.NETWORK_TYPE_OAM,
-                              expect_errors=True)
+        ifname = '0123456789abcdef'
+        self._create_ethernet(ifname, constants.NETWORK_TYPE_OAM,
+                              expect_errors=True,
+                              error_message="Interface %s has name "
+                              "length greater than 15." % ifname)
 
     # Expected message: Name must be unique
     def test_create_duplicate_interface_name(self):
@@ -1083,7 +1122,9 @@ class TestPostMixin(object):
                               ifclass=constants.INTERFACE_CLASS_DATA,
                               datanetworks='group0-ext0',
                               host=self.worker,
-                              expect_errors=True)
+                              expect_errors=True,
+                              error_message='Interface Name data0 must be '
+                              'unique.')
 
     def test_address_mode_pool_valid(self):
         port, interface = self._create_ethernet(
@@ -1404,7 +1445,9 @@ class TestPostMixin(object):
                                   ifclass=constants.INTERFACE_CLASS_DATA,
                                   vlan_id=4095,
                                   datanetworks='group0-ext0',
-                                  expect_errors=True)
+                                  expect_errors=True,
+                                  error_message='VLAN id must be between '
+                                  '1 and 4094.')
 
     # Expected message: VLAN id must be specified.
     def test_create_without_vlan_id(self):
@@ -1412,7 +1455,8 @@ class TestPostMixin(object):
                                   ifclass=constants.INTERFACE_CLASS_DATA,
                                   vlan_id=None,
                                   datanetworks='group0-ext0',
-                                  expect_errors=True)
+                                  expect_errors=True,
+                                  error_message='VLAN id must be specified.')
 
     # Expected message: Interface eth0 is already used by another VLAN
     # interface vlan0
@@ -1467,7 +1511,9 @@ class TestPostMixin(object):
                                   vlan_id=2,
                                   lower_iface=vlan_iface,
                                   datanetworks='group0-ext1',
-                                  expect_errors=True)
+                                  expect_errors=True,
+                                  error_message='VLAN interfaces cannot be '
+                                  'created over existing VLAN interfaces')
 
     # Expected message: data VLAN cannot be created over a LAG interface with
     # network type pxeboot
@@ -1479,7 +1525,9 @@ class TestPostMixin(object):
             'vlan2',
             constants.NETWORK_TYPE_DATA, constants.INTERFACE_CLASS_DATA, 2,
             lower_iface=bond_iface, datanetworks='group0-ext1',
-            expect_errors=True)
+            expect_errors=True,
+            error_message='Data VLAN interface cannot be created over a '
+            'platform interface')
 
     # Expected message: data VLAN cannot be created over a LAG interface with
     # network type mgmt
@@ -1491,7 +1539,9 @@ class TestPostMixin(object):
             'vlan2', constants.NETWORK_TYPE_DATA,
             constants.INTERFACE_CLASS_DATA, 2,
             lower_iface=bond_iface, datanetworks='group0-ext1',
-            expect_errors=True)
+            expect_errors=True,
+            error_message='Data VLAN interface cannot be created over a '
+            'platform interface')
 
     # Expected message: mgmt VLAN cannot be created over a LAG interface with
     # network type data
@@ -1503,7 +1553,9 @@ class TestPostMixin(object):
             'mgmt', constants.NETWORK_TYPE_MGMT,
             constants.INTERFACE_CLASS_PLATFORM, 2,
             lower_iface=bond_iface, datanetworks='group0-ext1',
-            expect_errors=True)
+            expect_errors=True,
+            error_message='Platform VLAN interface cannot be created over a '
+            'data interface')
 
     # Expected message:
     #   An interface with interface class platform cannot assign datanetworks.
@@ -1521,6 +1573,9 @@ class TestPostMixin(object):
             self.assertEqual(http_client.BAD_REQUEST, response.status_int)
             self.assertEqual('application/json', response.content_type)
             self.assertTrue(response.json['error_message'])
+            self.assertIn("An interface with interface class 'platform' cannot "
+                          "assign datanetworks.",
+                          response.json['error_message'])
 
     # Expected message: Name must be unique
     def test_create_invalid_ae_name(self):
@@ -1529,7 +1584,8 @@ class TestPostMixin(object):
         self._create_bond('enp0s9', constants.NETWORK_TYPE_MGMT,
                           constants.INTERFACE_CLASS_PLATFORM,
                           host=self.worker,
-                          expect_errors=True)
+                          expect_errors=True,
+                          error_message='Interface Name enp0s9 must be unique.')
 
     # Expected message:
     # The data network type is only supported on nodes supporting worker functions
@@ -1539,7 +1595,9 @@ class TestPostMixin(object):
                               ifclass=constants.INTERFACE_CLASS_DATA,
                               datanetworks='group0-data0',
                               host=self.controller,
-                              expect_errors=True)
+                              expect_errors=True,
+                              error_message='The data interface class is only '
+                              'supported on nodes supporting worker functions')
 
     # Expected message:
     # An interface with interface class platform cannot assign datanetworks.
@@ -1559,6 +1617,9 @@ class TestPostMixin(object):
             self.assertEqual(http_client.BAD_REQUEST, response.status_int)
             self.assertEqual('application/json', response.content_type)
             self.assertTrue(response.json['error_message'])
+            self.assertIn("An interface with interface class 'platform' cannot "
+                          "assign datanetworks.",
+                          response.json['error_message'])
 
     # Expected message:
     # VF interfaces must be created over an interface of class pci-sriov
@@ -1568,7 +1629,9 @@ class TestPostMixin(object):
             constants.INTERFACE_CLASS_DATA, 'group0-data0', host=self.worker)
         self._create_vf('vf1', lower_iface=lower_iface, sriov_numvfs=1,
             host=self.worker, sriov_vf_driver='vfio',
-            datanetworks='group0-data0', expect_errors=True)
+            datanetworks='group0-data0', expect_errors=True,
+            error_message='VF interfaces must be created over an interface of '
+            'class pci-sriov')
 
     # Expected message:
     # VF interfaces must have an interface class of pci-sriov
@@ -1576,7 +1639,9 @@ class TestPostMixin(object):
         self._create_vf('vf1', ifclass=constants.INTERFACE_CLASS_DATA,
             sriov_numvfs=1,
             host=self.worker, sriov_vf_driver='vfio',
-            datanetworks='group0-data0', expect_errors=True)
+            datanetworks='group0-data0', expect_errors=True,
+            error_message='VF interfaces must have an interface class of '
+            'pci-sriov')
 
     # Expected message:
     # The number of virtual functions _ must be less than or equal to the
@@ -1587,7 +1652,10 @@ class TestPostMixin(object):
         port, lower_iface = self._create_sriov(
             'sriov', host=self.worker, sriov_numvfs=4)
         self._create_vf('vf1', lower_iface=lower_iface,
-            host=self.worker, sriov_numvfs=4, expect_errors=True)
+            host=self.worker, sriov_numvfs=4, expect_errors=True,
+            error_message='The number of virtual functions (4) must be less '
+            'than or equal to the available VFs (3) available on the '
+            'underlying interface (sriov)')
 
     # Expected message:
     # Value for number of SR-IOV VFs must be > 0.
@@ -1597,7 +1665,8 @@ class TestPostMixin(object):
         port, lower_iface = self._create_sriov(
             'sriov', host=self.worker, sriov_numvfs=4)
         self._create_vf('vf1', lower_iface=lower_iface,
-            host=self.worker, sriov_numvfs=-1, expect_errors=True)
+            host=self.worker, sriov_numvfs=-1, expect_errors=True,
+            error_message='Value for number of SR-IOV VFs must be > 0.')
 
     # Expected message:
     # The number of virtual functions _ must be less than or equal to the
@@ -1610,7 +1679,10 @@ class TestPostMixin(object):
         self._create_vf('vf1', lower_iface=lower_iface,
             host=self.worker, sriov_numvfs=1, expect_errors=False)
         self._create_vf('vf2', lower_iface=lower_iface,
-            host=self.worker, sriov_numvfs=3, expect_errors=True)
+            host=self.worker, sriov_numvfs=3, expect_errors=True,
+            error_message='The number of virtual functions (3) must be less '
+            'than or equal to the available VFs (2) available on the '
+            'underlying interface (sriov)')
 
     # Expected message:
     # Interface _ is being used by VF interface _ and therefore the interface
@@ -1713,7 +1785,9 @@ class TestPostMixin(object):
         # 4Gbps*3 > (10Gbps*0.9)
         self._create_vf('vf0', lower_iface=lower_iface,
             host=self.worker, sriov_numvfs=3,
-            expect_errors=True, max_tx_rate=4000)
+            expect_errors=True, max_tx_rate=4000,
+            error_message='Configured (max_tx_rate*sriov_numvfs) exceeds '
+            'available link speed bandwidth: 9000 Mbps.')
 
         self._create_vf('vf1', lower_iface=lower_iface,
             host=self.worker, sriov_numvfs=1,
@@ -1721,11 +1795,14 @@ class TestPostMixin(object):
         # 1Gbps+9Gbps > (10Gbps*0.9)
         self._create_vf('vf2', lower_iface=lower_iface,
             host=self.worker, sriov_numvfs=1,
-            expect_errors=True, max_tx_rate=9000)
+            expect_errors=True, max_tx_rate=9000,
+            error_message='Configured (max_tx_rate*sriov_numvfs) exceeds '
+            'available link speed bandwidth: 8000 Mbps.')
         # rate is not a numeric value
         self._create_vf('vf3', lower_iface=lower_iface,
             host=self.worker, sriov_numvfs=1,
-            expect_errors=True, max_tx_rate='ratelimit')
+            expect_errors=True, max_tx_rate='ratelimit',
+            error_message='Invalid input for field/attribute interface. Value:')
 
     def test_create_vf_interface_with_ratelimit_port_speed_none(self):
         interface_id = len(self.profile['interfaces']) + 1
@@ -1750,7 +1827,9 @@ class TestPostMixin(object):
 
         self._create_vf('vf0', lower_iface=interface,
             host=self.worker, sriov_numvfs=1,
-            expect_errors=True, max_tx_rate=1000)
+            expect_errors=True, max_tx_rate=1000,
+            error_message='Port speed for eth0 could not be determined. Check '
+            'if the port is cabled correctly.')
 
     def test_interface_vf_ratelimit_modify_add_ratelimit(self):
         self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
@@ -1801,6 +1880,9 @@ class TestPostMixin(object):
         self.assertEqual('application/json', patch_result.content_type)
         self.assertEqual(http_client.BAD_REQUEST, patch_result.status_code)
         self.assertTrue(patch_result.json['error_message'])
+        self.assertIn('Port speed for eth0 could not be determined. Check if '
+                      'the port is cabled correctly.',
+                      patch_result.json['error_message'])
 
     def test_interface_vf_ratelimit_modify_adjust_ratelimit(self):
         self._create_ethernet('mgmt', constants.NETWORK_TYPE_MGMT,
@@ -1854,7 +1936,9 @@ class TestAIOPost(InterfaceTestCase):
             'oam', constants.NETWORK_TYPE_OAM,
             constants.INTERFACE_CLASS_PLATFORM, 2,
             lower_iface=bond_iface, datanetworks='group0-ext1',
-            expect_errors=True)
+            expect_errors=True,
+            error_message='Platform VLAN interface cannot be created over a '
+            'data interface')
 
     # Expected message: Platform VLAN interface cannot be created over a
     # data interface
@@ -1866,7 +1950,9 @@ class TestAIOPost(InterfaceTestCase):
             'cluster', constants.NETWORK_TYPE_CLUSTER_HOST,
             constants.INTERFACE_CLASS_PLATFORM, 2,
             lower_iface=bond_iface, datanetworks='group0-ext1',
-            expect_errors=True)
+            expect_errors=True,
+            error_message='Platform VLAN interface cannot be created over a '
+            'data interface')
 
     # Expected message: Platform VLAN interface cannot be created over a
     # data interface
@@ -1878,7 +1964,9 @@ class TestAIOPost(InterfaceTestCase):
             'mgmt', constants.NETWORK_TYPE_MGMT,
             constants.INTERFACE_CLASS_PLATFORM, 2,
             lower_iface=iface, datanetworks='group0-ext1',
-            expect_errors=True)
+            expect_errors=True,
+            error_message='Platform VLAN interface cannot be created over a '
+            'data interface')
 
     # Expected message:  VLAN id ___ already in use on interface ___
     def test_create_vlan_id_already_in_use(self):
@@ -1889,7 +1977,9 @@ class TestAIOPost(InterfaceTestCase):
         self._create_vlan('vlan2', constants.NETWORK_TYPE_DATA,
                           constants.INTERFACE_CLASS_DATA, vlan_id=1,
                           lower_iface=iface, datanetworks='group0-ext1',
-                          expect_errors=True)
+                          expect_errors=True,
+                          error_message='VLAN id 1 already in use on interface '
+                          'eth1')
 
     # Expected error: VLAN based provider network group0-data0 cannot be
     # assigned to a VLAN interface
@@ -1908,6 +1998,9 @@ class TestAIOPost(InterfaceTestCase):
             self.assertEqual(http_client.BAD_REQUEST, response.status_int)
             self.assertEqual('application/json', response.content_type)
             self.assertTrue(response.json['error_message'])
+            self.assertIn("VLAN based data network 'group0-data0' cannot be "
+                          "assigned to a VLAN interface",
+                          response.json['error_message'])
 
     # Expected error: Data interface data0 is already attached to this
     # Data Network: group0-data0.
@@ -1937,6 +2030,9 @@ class TestAIOPost(InterfaceTestCase):
             self.assertEqual(http_client.BAD_REQUEST, response.status_int)
             self.assertEqual('application/json', response.content_type)
             self.assertTrue(response.json['error_message'])
+            self.assertIn('Data interface data0 is already attached to this '
+                          'Data Network: group0-data0.',
+                          response.json['error_message'])
 
     def test_create_same_data_network_valid(self):
         port2, sriov_if = self._create_ethernet('sriov',

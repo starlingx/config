@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -93,10 +93,8 @@ PCI_INTERFACE_CLASS = [constants.INTERFACE_CLASS_PCI_PASSTHROUGH, constants.INTE
 
 DATA_NETWORK_TYPES = [constants.NETWORK_TYPE_DATA]
 
-# Kernel allows max 15 chars. For Ethernet/AE, leave 5 for VLAN id.
-# For VLAN interfaces, support the full 15 char limit
-MAX_IFNAME_LEN = 10
-MAX_VLAN_ID_LEN = 5
+# Kernel allows max 15 chars.
+MAX_IFNAME_LEN = 15
 
 # Maximum number of characters in data network list
 MAX_DATANETWORK_LEN = 255
@@ -761,14 +759,10 @@ def _check_interface_name(op, interface, ihost):
                                          "lower case."))
 
     # Check that the ifname is the right character length
-    # Account for VLAN interfaces
-    iflen = MAX_IFNAME_LEN
-    if iftype == constants.INTERFACE_TYPE_VLAN:
-        iflen = iflen + MAX_VLAN_ID_LEN
-    if ifname and len(ifname) > iflen:
+    if ifname and len(ifname) > MAX_IFNAME_LEN:
         raise wsme.exc.ClientSideError(_("Interface {} has name length "
                                          "greater than {}.".
-                                         format(ifname, iflen)))
+                                         format(ifname, MAX_IFNAME_LEN)))
 
     # Check for invalid characters in vlan's ifname
     vlan_id = None

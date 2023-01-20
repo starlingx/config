@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2022 Wind River Systems, Inc.
+# Copyright (c) 2017-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -7,6 +7,7 @@
 import collections
 import copy
 import os
+import re
 import six
 
 from netaddr import IPAddress
@@ -583,12 +584,30 @@ def get_lower_interface_os_ifname(context, iface):
     return get_interface_os_ifname(context, lower_iface)
 
 
+def get_vlan_os_ifname(iface):
+    """
+    Generate the interface name used in the linux kernel for the given VLAN
+    interface.
+    """
+    if iface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
+        return "vlan" + str(iface['vlan_id'])
+    # If ifname is in the format vlanNNN or xxx.NNN, replace the dot by '#' to
+    # avoid problems when added to /etc/network/interfaces.
+    ifname = iface['ifname']
+    if re.search("^vlan[0-9]+$", ifname):
+        return "vlan#%s" % ifname[4:]
+    match = re.search("\.[0-9]+$", ifname)
+    if match:
+        return ifname[:match.start()] + '#' + ifname[match.start() + 1:]
+    return ifname
+
+
 def get_interface_os_ifname(context, iface):
     """
     Determine the interface name used in the linux kernel for the given
     interface. Ethernet interfaces uses the original linux device name while
-    AE devices can use the user-defined named. VLAN interface must derive
-    their names based on their lower interface name.
+    AE devices can use the user-defined named. VLAN interfaces use ifname as
+    Linux interface name.
     """
     if '_os_ifname' in iface:  # check cached result
         return iface['_os_ifname']
@@ -597,11 +616,7 @@ def get_interface_os_ifname(context, iface):
         if iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
             os_ifname = get_interface_port_name(context, iface)
         elif iface['iftype'] == constants.INTERFACE_TYPE_VLAN:
-            if iface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
-                os_ifname = "vlan" + str(iface['vlan_id'])
-            else:
-                lower_os_ifname = get_lower_interface_os_ifname(context, iface)
-                os_ifname = lower_os_ifname + "." + str(iface['vlan_id'])
+            os_ifname = get_vlan_os_ifname(iface)
         elif iface['iftype'] == constants.INTERFACE_TYPE_AE:
             os_ifname = iface['ifname']
         iface['_os_ifname'] = os_ifname  # cache the result
@@ -900,7 +915,7 @@ def get_interface_sysctl_ifname(context, iface):
         return os_ifname
 
 
-def get_duplex_direct_network_config(context, iface, config, sysctl_ifname, network_id):
+def get_duplex_direct_network_config(context, iface, config, network_id):
     """
     Disable dad on the specified interface for duplex-direct config
     """
@@ -914,14 +929,11 @@ def get_duplex_direct_network_config(context, iface, config, sysctl_ifname, netw
                         iface['ifname'], iface['ifname']))
             fill_interface_config_option_operation(config['options'], IFACE_PRE_UP_OP, command)
 
-    new_pre_up = ""
     if not is_syscfg_network() and iface['iftype'] == constants.INTERFACE_TYPE_VLAN:
-        lower_os_ifname = get_lower_interface_os_ifname(context, iface)
-        new_pre_up = "ip link add link %s name %s type vlan id %s; " % (
-            lower_os_ifname, sysctl_ifname, iface['vlan_id'])
+        add_vlan_interface_creation_command(context, iface, config['options'])
 
-    new_pre_up += "sysctl -wq net.ipv6.conf.%s.accept_dad=0" % sysctl_ifname
-
+    sysctl_ifname = get_interface_sysctl_ifname(context, iface)
+    new_pre_up = "sysctl -wq net.ipv6.conf.%s.accept_dad=0" % sysctl_ifname
     fill_interface_config_option_operation(config['options'], IFACE_PRE_UP_OP, new_pre_up)
     return config
 
@@ -938,8 +950,21 @@ def get_vlan_network_config(context, iface, config):
         options = {'vlan-raw-device': lower_os_ifname}
     fill_interface_config_option_operation(options, IFACE_PRE_UP_OP,
                                            '/sbin/modprobe -q 8021q')
+    if iface['ifclass'] != constants.INTERFACE_CLASS_PLATFORM:
+        add_vlan_interface_creation_command(context, iface, options)
     config['options'].update(options)
     return config
+
+
+def add_vlan_interface_creation_command(context, iface, options):
+    if hasattr(iface, '_has_create_cmd'):
+        return
+    iface['_has_create_cmd'] = True
+    os_ifname = get_interface_os_ifname(context, iface)
+    lower_os_ifname = get_lower_interface_os_ifname(context, iface)
+    fill_interface_config_option_operation(options, IFACE_PRE_UP_OP,
+        'ip link add link %s name %s type vlan id %d' %
+        (lower_os_ifname, os_ifname, iface['vlan_id']))
 
 
 def get_bond_interface_options_sysconfig(iface, primary_iface):
@@ -1347,9 +1372,8 @@ def get_final_network_config(context, iface, config, network_id=None):
     # add duplex_direct specific network config
     if context['system_mode'] == constants.SYSTEM_MODE_DUPLEX_DIRECT:
         if is_disable_dad_required(context, iface, config, network_id):
-            dd_ifname = get_interface_sysctl_ifname(context, iface)
             config = get_duplex_direct_network_config(context, iface, config,
-                                                      dd_ifname, network_id)
+                                                      network_id)
     return config
 
 
