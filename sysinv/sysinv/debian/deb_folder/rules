@@ -24,6 +24,7 @@ override_dh_install:
 	install -p -D -m 755 $(CURDIR)/etc/sysinv/sysinv_goenabled_check.sh $(CURDIR)/debian/tmp/etc/goenabled.d/sysinv_goenabled_check.sh
 	install -p -D -m 700 $(CURDIR)/etc/sysinv/delete_load.sh $(CURDIR)/debian/tmp/etc/sysinv/upgrades/delete_load.sh
 	install -p -D -m 644 debian/tmpfiles.conf $(CURDIR)/debian/tmp/usr/lib/tmpfiles.d/sysinv.conf
+	install -p -D -m 700 $(CURDIR)/scripts/kube-cert-rotation.sh $(CURDIR)/debian/tmp/usr/bin/kube-cert-rotation.sh
 	dh_install
 
 override_dh_python3:
@@ -35,3 +36,4 @@ override_dh_installsystemd:
 
 override_dh_fixperms:
 	dh_fixperms -Xkube-cert-rotation.sh
+
