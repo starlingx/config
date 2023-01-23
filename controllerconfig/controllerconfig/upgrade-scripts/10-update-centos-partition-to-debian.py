@@ -52,7 +52,7 @@ def main():
     LOG.info("%s invoked from_release = %s to_release = %s action = %s"
              % (sys.argv[0], from_release, to_release, action))
     res = 0
-    if action == "migrate" and (from_release == '22.06'and
+    if action == "migrate" and (from_release in ['22.06', '21.12'] and
                                 to_release == '22.12'):
         try:
             res = do_update()

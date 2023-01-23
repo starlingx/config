@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # This script will upgrade kubernetes service parameters
-# from release 22.06 to 22.12
+# from release 22.06 and 21.12 to 22.12
 #
 # Note: this can be removed in the release after STX8.0
 
@@ -102,7 +102,7 @@ def main():
 
     LOG.info("%s invoked with from_release = %s to_release = %s action = %s"
              % (sys.argv[0], from_release, to_release, action))
-    if action == "migrate" and from_release == '22.06':
+    if action == "migrate" and from_release in ['22.06', '21.12']:
         try:
             db_conn = psycopg2.connect("dbname=sysinv user=postgres")
             with db_conn:
