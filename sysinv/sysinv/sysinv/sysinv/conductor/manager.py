@@ -362,6 +362,7 @@ class ConductorManager(service.PeriodicService):
         # brought up during bootstrap manifest apply and is not restarted
         # until host unlock and we need ceph-mon up in order to configure
         # ceph for the initial unlock.
+        # kube_app operator will load app metadata from database
         self._helm = helm.HelmOperator(self.dbapi)
         self._app = kube_app.AppOperator(self.dbapi, self._helm, self.apps_metadata)
         self._docker = kube_app.DockerHelper(self.dbapi)
@@ -383,10 +384,6 @@ class ConductorManager(service.PeriodicService):
 
         # Save our start time for time limited init actions
         self._start_time = timeutils.utcnow()
-
-        # Load apps metadata
-        for app in self.dbapi.kube_app_get_all():
-            self._app.load_application_metadata_from_database(app)
 
     def _get_active_controller_uuid(self):
         ahost = utils.HostHelper.get_active_controller(self.dbapi)

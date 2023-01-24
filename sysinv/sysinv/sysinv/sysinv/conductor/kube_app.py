@@ -171,6 +171,11 @@ class AppOperator(object):
         self._armada = ArmadaHelper(self._kube)
         self._fluxcd = FluxCDHelper(self._dbapi, self._kube)
 
+        # Load apps metadata
+        # Clearing stuck application behavior depends on the metadata
+        for app in self._dbapi.kube_app_get_all():
+            self.load_application_metadata_from_database(app)
+
         if not os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG):
             self._clear_stuck_applications()
 
