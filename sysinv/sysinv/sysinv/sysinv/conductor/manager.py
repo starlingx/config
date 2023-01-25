@@ -1730,20 +1730,29 @@ class ConductorManager(service.PeriodicService):
             constants.CINDER_BACKEND_CEPH
         ):
             return
-        if not self.dbapi.ceph_mon_get_by_ihost(host.uuid):
+
+        ceph_mon = self.dbapi.ceph_mon_get_by_ihost(host.uuid)
+
+        if not ceph_mon:
             system = self.dbapi.isystem_get_one()
             ceph_mon_gib = constants.SB_CEPH_MON_GIB
             ceph_mons = self.dbapi.ceph_mon_get_list()
+
             if ceph_mons:
                 ceph_mon_gib = ceph_mons[0].ceph_mon_gib
             values = {'forisystemid': system.id,
                       'forihostid': host.id,
+                      'device_path': host.rootfs_device,
                       'ceph_mon_gib': ceph_mon_gib,
                       'state': constants.SB_STATE_CONFIGURED,
                       'task': constants.SB_TASK_NONE}
             LOG.info("creating ceph_mon for host %s with ceph_mon_gib=%s."
                      % (host.hostname, ceph_mon_gib))
             self.dbapi.ceph_mon_create(values)
+        elif ceph_mon[0].device_path != host.rootfs_device:
+            LOG.info("updating ceph_mon for host %s with device_path=%s."
+                     % (host.hostname, host.rootfs_device))
+            self.dbapi.ceph_mon_update(ceph_mon[0].uuid, {'device_path': host.rootfs_device})
 
     def _remove_ceph_mon(self, host):
         if not StorageBackendConfig.has_backend(
