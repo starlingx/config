@@ -325,7 +325,22 @@ class KubeUpgradeController(rest.RestController):
             raise wsme.exc.ClientSideError(_(
                 "A kubernetes upgrade is not in progress"))
 
-        if updates['state'] == kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES:
+        if updates['state'] and updates['state'].split('-')[-1] == 'failed':
+            if kube_upgrade_obj.state in [
+                    kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
+                    kubernetes.KUBE_UPGRADING_FIRST_MASTER,
+                    kubernetes.KUBE_UPGRADING_SECOND_MASTER,
+                    kubernetes.KUBE_UPGRADING_NETWORKING]:
+                kube_upgrade_obj.state = updates['state']
+                kube_upgrade_obj.save()
+                LOG.info("Kubernetes upgrade state is changed to %s" % updates['state'])
+                return KubeUpgrade.convert_with_links(kube_upgrade_obj)
+            else:
+                raise wsme.exc.ClientSideError(_(
+                    "A kubernetes upgrade is in %s state cannot be set to failed"
+                    % kube_upgrade_obj.state))
+
+        elif updates['state'] == kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES:
             # Make sure upgrade is in the correct state to download images
             if kube_upgrade_obj.state not in [
                     kubernetes.KUBE_UPGRADE_STARTED,

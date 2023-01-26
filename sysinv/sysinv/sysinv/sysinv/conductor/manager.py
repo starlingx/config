@@ -49,6 +49,7 @@ import uuid
 import xml.etree.ElementTree as ElementTree
 from contextlib import contextmanager
 from datetime import datetime
+from datetime import timedelta
 from distutils.util import strtobool
 from copy import deepcopy
 
@@ -168,6 +169,7 @@ audit_intervals_opts = [
        cfg.IntOpt('storage_backend_failure', default=400),
        cfg.IntOpt('k8s_application', default=60),
        cfg.IntOpt('device_image_update', default=300),
+       cfg.IntOpt('kube_upgrade_states', default=1800),
                   ]
 
 CONF = cfg.CONF
@@ -16466,6 +16468,35 @@ class ConductorManager(service.PeriodicService):
                 return 1
             LOG.info('Successfully updated %s feature-gates service param.' % section)
             return 0
+
+    @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.kube_upgrade_states)
+    def _audit_kube_upgrade_states(self, context):
+        # A Kubernetes upgrade state can be stuck in upgrading-* state.
+        # To avoid this situation we audit the sanity of the states,
+        # after 2 audit cycles if the states are not changed then set
+        # the kube_state to *-failed.
+
+        kube_upgrade_state_map = dict()
+        kube_upgrade_state_map["downloading-images"] = "downloading-images-failed"
+        kube_upgrade_state_map["upgrading-networking"] = "upgrading-networking-failed"
+        kube_upgrade_state_map["upgrading-first-master"] = "upgrading-first-master-failed"
+        kube_upgrade_state_map["upgrading-second-master"] = "upgrading-second-master-failed"
+
+        try:
+            kube_upgrade = self.dbapi.kube_upgrade_get_one()
+            current_state = getattr(kube_upgrade, 'state', '')
+            if kube_upgrade_state_map.get(current_state):
+                kube_upgrade_time_stamp = getattr(kube_upgrade, 'updated_at')
+                if datetime.utcnow() - kube_upgrade_time_stamp >= timedelta(
+                        seconds=CONF.conductor_periodic_task_intervals.kube_upgrade_states * 2):
+                    self.dbapi.kube_upgrade_update(kube_upgrade.uuid,
+                                        {'state': kube_upgrade_state_map[current_state]})
+                    LOG.info(
+                        "Kube_upgrade state changed from "
+                        "'%s' to '%s'", current_state,
+                        kube_upgrade_state_map[current_state])
+        except exception.NotFound:
+            LOG.debug("A kubernetes upgrade is not in progress")
 
 
 def device_image_state_sort_key(dev_img_state):

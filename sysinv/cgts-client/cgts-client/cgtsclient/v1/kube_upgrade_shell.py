@@ -11,6 +11,8 @@ from cgtsclient import exc
 KUBE_UPGRADE_STATE_DOWNLOADING_IMAGES = 'downloading-images'
 KUBE_UPGRADE_STATE_UPGRADING_NETWORKING = 'upgrading-networking'
 KUBE_UPGRADE_STATE_COMPLETE = 'upgrade-complete'
+KUBE_UPGRADE_STATE_UPGRADING_FIRST_MASTER = 'upgrading-first-master'
+KUBE_UPGRADE_STATE_UPGRADING_SECOND_MASTER = 'upgrading-second-master'
 
 
 def _print_kube_upgrade_show(obj):
@@ -109,3 +111,34 @@ def do_kube_upgrade_delete(cc, args):
         raise exc.CommandError('Kubernetes upgrade not found')
 
     print("Kubernetes upgrade deleted")
+
+
+def do_kube_upgrade_failed(cc, args):
+    """Set kubernetes upgrade status to *-failed"""
+
+    kube_upgrade_state_map = {
+        KUBE_UPGRADE_STATE_DOWNLOADING_IMAGES: "downloading-images-failed",
+        KUBE_UPGRADE_STATE_UPGRADING_NETWORKING: "upgrading-networking-failed",
+        KUBE_UPGRADE_STATE_UPGRADING_FIRST_MASTER: "upgrading-first-master-failed",
+        KUBE_UPGRADE_STATE_UPGRADING_SECOND_MASTER: "upgrading-second-master-failed"
+    }
+
+    kube_upgrades = cc.kube_upgrade.list()
+    if kube_upgrades:
+        current_state = getattr(kube_upgrades[0], 'state', '')
+        if kube_upgrade_state_map.get(current_state):
+            data = dict()
+            data['state'] = kube_upgrade_state_map.get(current_state)
+            patch = []
+            for (k, v) in data.items():
+                patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
+
+            try:
+                kube_upgrade = cc.kube_upgrade.update(patch)
+            except exc.HTTPNotFound:
+                raise exc.CommandError('Kubernetes upgrade not found')
+            _print_kube_upgrade_show(kube_upgrade)
+        else:
+            print('Kubernetes upgrade is in %s state, cannot be set to failed' % current_state)
+    else:
+        print('A kubernetes upgrade is not in progress')
