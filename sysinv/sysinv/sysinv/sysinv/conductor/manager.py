@@ -6993,6 +6993,11 @@ class ConductorManager(service.PeriodicService):
             LOG.warning("Armada pod is not running and ready. Defer audit.")
             return
 
+        # Ensure that FluxCD pods are ready.
+        if not self._app.check_fluxcd_pod_status():
+            LOG.warning("FluxCD pods are not ready. Defer audit.")
+            return
+
         # Defer platform managed application activity while an upgrade is active
         try:
             self.verify_upgrade_not_in_progress()
