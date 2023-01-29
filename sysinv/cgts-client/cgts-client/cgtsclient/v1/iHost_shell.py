@@ -28,15 +28,16 @@ def _print_ihost_show(ihost, columns=None, output_format=None):
     else:
         fields = ['id', 'uuid', 'personality', 'hostname', 'invprovision',
                   'administrative', 'operational', 'availability', 'task',
-                  'action', 'mgmt_mac', 'mgmt_ip', 'serialid',
-                  'capabilities', 'bm_type', 'bm_username', 'bm_ip',
-                  'config_applied', 'config_target', 'config_status',
-                  'location', 'uptime', 'reserved', 'created_at', 'updated_at',
-                  'boot_device', 'rootfs_device', 'install_output', 'console',
+                  'action', 'mgmt_mac', 'mgmt_ip', 'serialid', 'capabilities',
+                  'bm_type', 'bm_username', 'bm_ip', 'config_applied',
+                  'config_target', 'config_status', 'location', 'uptime',
+                  'reserved', 'created_at', 'updated_at', 'boot_device',
+                  'rootfs_device', 'hw_settle', 'install_output', 'console',
                   'tboot', 'vim_progress_status', 'software_load',
                   'install_state', 'install_state_info', 'inv_state',
                   'clock_synchronization', 'device_image_update',
-                  'reboot_needed', 'max_cpu_mhz_configured', 'max_cpu_mhz_allowed', 'apparmor']
+                  'reboot_needed', 'max_cpu_mhz_configured',
+                  'max_cpu_mhz_allowed', 'apparmor']
         optional_fields = ['vsc_controllers', 'ttys_dcd']
         if ihost.subfunctions != ihost.personality:
             fields.append('subfunctions')
@@ -191,6 +192,10 @@ def do_kube_host_upgrade_list(cc, args):
 @utils.arg('-r', '--rootfs_device',
            metavar='<rootfs_device>',
            help='Device for rootfs partition, relative to /dev. Default: sda')
+@utils.arg('-R', '--hw_settle',
+           metavar='<hw_settle>',
+           help='Delay at the start of init to allow hardware to become '
+           'available. Default: 0')
 @utils.arg('-o', '--install_output',
            metavar='<install_output>',
            choices=['text', 'graphical'],
@@ -213,12 +218,11 @@ def do_kube_host_upgrade_list(cc, args):
            help='Clock synchronization, ntp or ptp. Default: ntp')
 def do_host_add(cc, args):
     """Add a new host."""
-    field_list = ['hostname', 'personality', 'subfunctions',
-                  'mgmt_mac', 'mgmt_ip',
-                  'bm_ip', 'bm_type', 'bm_username', 'bm_password',
-                  'boot_device', 'rootfs_device', 'install_output', 'console',
-                  'vsc_controllers', 'location', 'ttys_dcd',
-                  'clock_synchronization']
+    field_list = ['hostname', 'personality', 'subfunctions', 'mgmt_mac',
+                  'mgmt_ip', 'bm_ip', 'bm_type', 'bm_username', 'bm_password',
+                  'boot_device', 'rootfs_device', 'hw_settle',
+                  'install_output', 'console', 'vsc_controllers', 'location',
+                  'ttys_dcd', 'clock_synchronization']
     fields = dict((k, v) for (k, v) in vars(args).items()
                   if k in field_list and not (v is None))
 

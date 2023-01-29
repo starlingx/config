@@ -1274,6 +1274,10 @@ class ConductorManager(service.PeriodicService):
         rootfs_device = host.get('rootfs_device') or "/dev/sda"
         install_opts += ['-r', rootfs_device]
 
+        hw_settle = host.get('hw_settle') or "0"
+        if hw_settle != "0":
+            install_opts += ['-H', hw_settle]
+
         if cutils.get_os_target(sw_version) == constants.OS_DEBIAN:
             install_opts += ['-d']
         else:

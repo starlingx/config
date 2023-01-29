@@ -1743,6 +1743,7 @@ class TestListHosts(TestHost):
         self.assertEqual(ndict['serialid'], result['serialid'])
         self.assertEqual(ndict['boot_device'], result['boot_device'])
         self.assertEqual(ndict['rootfs_device'], result['rootfs_device'])
+        self.assertEqual(ndict['hw_settle'], result['hw_settle'])
         self.assertEqual(ndict['install_output'], result['install_output'])
         self.assertEqual(ndict['console'], result['console'])
         self.assertEqual(ndict['tboot'], result['tboot'])

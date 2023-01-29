@@ -35,6 +35,7 @@ IHOST = {'id': 123,
          'location': {'City': 'Ottawa'},
          'boot_device': 'sda',
          'rootfs_device': 'sda',
+         'hw_settle': '0',
          'install_output': "text",
          'console': 'ttyS0,115200',
          'tboot': ''}

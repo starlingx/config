@@ -154,6 +154,7 @@ def get_test_ihost(**kw):
             'location': kw.get('location', {}),
             'boot_device': kw.get('boot_device', 'sda'),
             'rootfs_device': kw.get('rootfs_device', 'sda'),
+            'hw_settle': kw.get('hw_settle', '0'),
             'install_output': kw.get('install_output', 'text'),
             'console': kw.get('console', 'ttyS0,115200'),
             'tboot': kw.get('tboot', ''),
