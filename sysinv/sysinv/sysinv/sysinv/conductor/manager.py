@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 
 """Conduct all activity related system inventory.
@@ -1415,6 +1415,32 @@ class ConductorManager(service.PeriodicService):
             interface_id, pool_uuid, address_name, dbapi=self.dbapi
         )
 
+    def _allocate_cluster_host_address_for_host(self, host):
+        """Allocates cluster-host address for a given host.
+
+        Does the following tasks:
+        - Check if address exist for host
+        - Allocate address for host from cluster pool
+
+        :param host: host object
+        """
+
+        # controller must have cluster-host address already allocated
+        if (host.personality != constants.CONTROLLER):
+
+            cluster_host_address = self._lookup_static_ip_address(
+                host.hostname, constants.NETWORK_TYPE_CLUSTER_HOST)
+
+            if cluster_host_address is None:
+                address_name = cutils.format_address_name(
+                    host.hostname, constants.NETWORK_TYPE_CLUSTER_HOST)
+                LOG.info("{} address not found. Allocating address for {}.".format(
+                    address_name, host.hostname))
+                host_network = self.dbapi.network_get_by_type(
+                    constants.NETWORK_TYPE_CLUSTER_HOST)
+                self._allocate_pool_address(None, host_network.pool_uuid,
+                                            address_name)
+
     def _allocate_addresses_for_host(self, context, host):
         """Allocates addresses for a given host.
 
@@ -1463,6 +1489,7 @@ class ConductorManager(service.PeriodicService):
                 self.update_ihost(context, host)
 
         self._generate_dnsmasq_hosts_file(existing_host=host)
+        self._allocate_cluster_host_address_for_host(host)
 
     def get_my_host_id(self):
         if not ConductorManager.my_host_id:
@@ -1599,7 +1626,8 @@ class ConductorManager(service.PeriodicService):
     def _remove_address(self, hostname, network_type):
         """Remove address if it exists"""
         address_name = cutils.format_address_name(hostname, network_type)
-        self._remove_lease_for_address(hostname, network_type)
+        if network_type == constants.NETWORK_TYPE_MGMT:
+            self._remove_lease_for_address(hostname, network_type)
         try:
             address_uuid = self.dbapi.address_get_by_name(address_name).uuid
             self.dbapi.address_destroy(address_uuid)
@@ -1623,12 +1651,13 @@ class ConductorManager(service.PeriodicService):
         self._generate_dnsmasq_hosts_file(deleted_host=host)
 
     def _remove_addresses_for_host(self, host):
-        """Removes management addresses for a given host.
+        """Removes management and cluster-host addresses for a given host.
 
         :param host: host object
         """
         hostname = host.hostname
         self._remove_address(hostname, constants.NETWORK_TYPE_MGMT)
+        self._remove_address(hostname, constants.NETWORK_TYPE_CLUSTER_HOST)
         self._remove_leases_by_mac_address(host.mgmt_mac)
         self._generate_dnsmasq_hosts_file(deleted_host=host)
 
@@ -2066,6 +2095,7 @@ class ConductorManager(service.PeriodicService):
                      "Skipping manifest generation" % host.hostname)
 
         self._allocate_addresses_for_host(context, host)
+
         # Set up the PXE config file for this host so it can run the installer
         self._update_pxe_config(host)
         if host['hostname'] == constants.STORAGE_0_HOSTNAME:

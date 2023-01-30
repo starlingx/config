@@ -416,7 +416,7 @@ class KubernetesPuppet(base.BasePuppet):
 
     def _get_host_node_config(self, host):
         node_ip = self._get_address_by_name(
-            host.hostname, constants.NETWORK_TYPE_MGMT).address
+            host.hostname, constants.NETWORK_TYPE_CLUSTER_HOST).address
         return {
             'platform::kubernetes::params::node_ip': node_ip
         }
