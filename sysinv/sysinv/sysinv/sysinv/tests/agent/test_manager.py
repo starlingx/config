@@ -68,6 +68,7 @@ class TestAgentManager(base.TestCase):
         self.docker_fs_size = 30
         self.kubelet_fs_size = 10
         self.log_fs_size = 8
+        self.var_fs_size = 20
 
         def mock_get_current_fs_size(fs_name):
             if fs_name == constants.FILESYSTEM_NAME_SCRATCH:
@@ -80,6 +81,8 @@ class TestAgentManager(base.TestCase):
                 return self.kubelet_fs_size
             elif fs_name == constants.FILESYSTEM_NAME_LOG:
                 return self.log_fs_size
+            elif fs_name == constants.FILESYSTEM_NAME_VAR:
+                return self.var_fs_size
         self.mocked_get_current_fs_size = mock.patch(
             'sysinv.common.utils.get_current_fs_size',
             mock_get_current_fs_size)
@@ -104,7 +107,8 @@ class TestAgentManager(base.TestCase):
             {'logical_volume': 'backup-lv', 'name': 'backup', 'size': 25},
             {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
-            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8}]
+            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
+            {'logical_volume': 'var-lv', 'name': 'var', 'size': 20}]
 
         self.fake_conductor_api.create_host_filesystems.assert_called_with(
             self.context,
@@ -127,7 +131,8 @@ class TestAgentManager(base.TestCase):
             {'logical_volume': 'backup-lv', 'name': 'backup', 'size': 20},
             {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
-            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8}]
+            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
+            {'logical_volume': 'var-lv', 'name': 'var', 'size': 20}]
 
         self.fake_conductor_api.create_host_filesystems.assert_called_with(
             self.context,
@@ -173,7 +178,8 @@ class TestAgentManager(base.TestCase):
             {'logical_volume': 'backup-lv', 'name': 'backup', 'size': 1},
             {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 20},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 2},
-            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8}]
+            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
+            {'logical_volume': 'var-lv', 'name': 'var', 'size': 20}]
 
         self.fake_conductor_api.create_host_filesystems.assert_called_with(
             self.context,
@@ -195,7 +201,8 @@ class TestAgentManager(base.TestCase):
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
             {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
-            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8}]
+            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
+            {'logical_volume': 'var-lv', 'name': 'var', 'size': 20}]
 
         self.fake_conductor_api.create_host_filesystems.assert_called_with(
             self.context,
@@ -217,7 +224,8 @@ class TestAgentManager(base.TestCase):
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
             {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
-            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8}]
+            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
+            {'logical_volume': 'var-lv', 'name': 'var', 'size': 20}]
 
         self.fake_conductor_api.create_host_filesystems.assert_called_with(
             self.context,
@@ -239,7 +247,8 @@ class TestAgentManager(base.TestCase):
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
             {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
-            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8}]
+            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
+            {'logical_volume': 'var-lv', 'name': 'var', 'size': 20}]
 
         self.fake_conductor_api.create_host_filesystems.assert_called_with(
             self.context,
@@ -261,7 +270,8 @@ class TestAgentManager(base.TestCase):
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
             {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
-            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8}]
+            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
+            {'logical_volume': 'var-lv', 'name': 'var', 'size': 20}]
 
         self.fake_conductor_api.create_host_filesystems.assert_called_with(
             self.context,
@@ -283,7 +293,8 @@ class TestAgentManager(base.TestCase):
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
             {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
-            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8}]
+            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
+            {'logical_volume': 'var-lv', 'name': 'var', 'size': 20}]
 
         self.fake_conductor_api.create_host_filesystems.assert_called_with(
             self.context,
@@ -305,7 +316,8 @@ class TestAgentManager(base.TestCase):
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
             {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
-            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8}]
+            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
+            {'logical_volume': 'var-lv', 'name': 'var', 'size': 20}]
 
         self.fake_conductor_api.create_host_filesystems.assert_called_with(
             self.context,
@@ -326,7 +338,8 @@ class TestAgentManager(base.TestCase):
             {'logical_volume': 'backup-lv', 'name': 'backup', 'size': 25},
             {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
-            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8}]
+            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
+            {'logical_volume': 'var-lv', 'name': 'var', 'size': 20}]
 
         self.fake_conductor_api_dc_aio.create_host_filesystems.assert_called_with(
             self.context,
@@ -347,7 +360,8 @@ class TestAgentManager(base.TestCase):
             {'logical_volume': 'backup-lv', 'name': 'backup', 'size': 20},
             {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
-            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8}]
+            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
+            {'logical_volume': 'var-lv', 'name': 'var', 'size': 20}]
 
         self.fake_conductor_api_dc_aio.create_host_filesystems.assert_called_with(
             self.context,
@@ -368,7 +382,8 @@ class TestAgentManager(base.TestCase):
             {'logical_volume': 'backup-lv', 'name': 'backup', 'size': 35},
             {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
-            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8}]
+            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
+            {'logical_volume': 'var-lv', 'name': 'var', 'size': 20}]
 
         self.fake_conductor_api_dc_std.create_host_filesystems.assert_called_with(
             self.context,
@@ -389,7 +404,8 @@ class TestAgentManager(base.TestCase):
             {'logical_volume': 'backup-lv', 'name': 'backup', 'size': 20},
             {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
-            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8}]
+            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
+            {'logical_volume': 'var-lv', 'name': 'var', 'size': 20}]
 
         self.fake_conductor_api_dc_std.create_host_filesystems.assert_called_with(
             self.context,
@@ -409,7 +425,8 @@ class TestAgentManager(base.TestCase):
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
             {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
-            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8}]
+            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
+            {'logical_volume': 'var-lv', 'name': 'var', 'size': 20}]
 
         self.fake_conductor_api_dc_std.create_host_filesystems.assert_called_with(
             self.context,
@@ -429,7 +446,8 @@ class TestAgentManager(base.TestCase):
             {'logical_volume': 'scratch-lv', 'name': 'scratch', 'size': 16},
             {'logical_volume': 'docker-lv', 'name': 'docker', 'size': 30},
             {'logical_volume': 'kubelet-lv', 'name': 'kubelet', 'size': 10},
-            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8}]
+            {'logical_volume': 'log-lv', 'name': 'log', 'size': 8},
+            {'logical_volume': 'var-lv', 'name': 'var', 'size': 20}]
 
         self.fake_conductor_api_dc_std.create_host_filesystems.assert_called_with(
             self.context,
