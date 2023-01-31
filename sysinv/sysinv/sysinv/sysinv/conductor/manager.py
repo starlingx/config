@@ -72,6 +72,7 @@ from oslo_config import cfg
 from oslo_log import log
 from oslo_serialization import base64
 from oslo_serialization import jsonutils
+from oslo_service import periodic_task
 from oslo_utils import encodeutils
 from oslo_utils import excutils
 from oslo_utils import timeutils
@@ -114,7 +115,6 @@ from sysinv import objects
 from sysinv.objects import base as objects_base
 from sysinv.objects import kube_app as kubeapp_obj
 from sysinv.openstack.common import context as ctx
-from sysinv.openstack.common import periodic_task
 from sysinv.openstack.common.rpc import service as rpc_service
 from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet

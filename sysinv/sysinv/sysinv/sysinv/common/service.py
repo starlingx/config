@@ -17,15 +17,15 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import abc
 import socket
 
 from oslo_config import cfg
 from oslo_log import log as logging
-from oslo_service import service
+from oslo_service import periodic_task
+from oslo_service import service as base_service
 from sysinv.openstack.common import context
-from sysinv.openstack.common import periodic_task
 from sysinv.openstack.common import rpc
-from sysinv.openstack.common import service as base_service
 from sysinv import version
 
 
@@ -47,10 +47,16 @@ cfg.CONF.register_opts([
 CONF = cfg.CONF
 
 
-class PeriodicService(base_service.Service, periodic_task.PeriodicTasks):
+class PeriodicServiceMeta(abc.ABCMeta, periodic_task._PeriodicTasksMeta):
+    pass
+
+
+class PeriodicService(base_service.Service, periodic_task.PeriodicTasks,
+                      metaclass=PeriodicServiceMeta):
 
     def __init__(self, manager=None):
         super(PeriodicService, self).__init__()
+        periodic_task.PeriodicTasks.__init__(self, CONF)
         if manager is None:
             self.manager = self
         else:
@@ -88,4 +94,4 @@ def prepare_service(argv=None):
 
 
 def process_launcher():
-    return service.ProcessLauncher(CONF)
+    return base_service.ProcessLauncher(CONF)

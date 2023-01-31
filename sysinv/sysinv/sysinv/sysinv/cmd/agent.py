@@ -25,8 +25,7 @@ The System Inventory Agent Service
 import sys
 
 from oslo_config import cfg
-
-from sysinv.openstack.common import service
+from oslo_service import service
 
 from sysinv.common import service as sysinv_service
 from sysinv.agent import manager
@@ -43,5 +42,5 @@ def main():
 
     # beware: connection is based upon host and MANAGER_TOPIC
     mgr = manager.AgentManager(CONF.host, manager.MANAGER_TOPIC)
-    launcher = service.launch(mgr)
+    launcher = service.launch(CONF, mgr)
     launcher.wait()
