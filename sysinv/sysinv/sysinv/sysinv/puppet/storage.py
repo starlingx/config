@@ -300,6 +300,10 @@ class StoragePuppet(base.BasePuppet):
                 config.update({
                     'platform::filesystem::var::params::lv_size': fs.size
                 })
+            elif fs.name == constants.FILESYSTEM_NAME_ROOT:
+                config.update({
+                    'platform::filesystem::root::params::lv_size': fs.size
+                })
         return config
 
     def _get_worker_config(self, host):
