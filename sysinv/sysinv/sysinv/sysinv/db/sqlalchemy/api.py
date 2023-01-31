@@ -14,7 +14,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 
 """SQLAlchemy storage backend."""
@@ -5515,7 +5515,10 @@ class Connection(api.Connection):
                 session.add(route)
                 session.flush()
             except db_exc.DBDuplicateEntry:
-                raise exception.RouteAlreadyExists(uuid=values['uuid'])
+                raise exception.RouteAlreadyExists(
+                    network=route['network'],
+                    prefix=route['prefix'],
+                    gateway=route['gateway'])
             return self._route_get(values['uuid'])
 
     @db_objects.objectify(objects.route)

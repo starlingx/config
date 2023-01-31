@@ -1821,12 +1821,14 @@ def perform_distributed_cloud_config(dbapi, mgmt_iface_id):
         # the system controller gateway into the database.
         try:
             # Prefer admin network
-            dbapi.network_get_by_type(
+            sc_network = dbapi.network_get_by_type(
                 constants.NETWORK_TYPE_ADMIN)
             cc_gtwy_addr_name = '%s-%s' % (
                 constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME,
                 constants.NETWORK_TYPE_ADMIN)
         except exception.NetworkTypeNotFound:
+            sc_network = dbapi.network_get_by_type(
+                constants.NETWORK_TYPE_MGMT)
             cc_gtwy_addr_name = '%s-%s' % (
                 constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME,
                 constants.NETWORK_TYPE_MGMT)
@@ -1858,6 +1860,14 @@ def perform_distributed_cloud_config(dbapi, mgmt_iface_id):
             'gateway': cc_gtwy_addr.address,
             'metric': 1
         }
+
+        for ifnet in dbapi.interface_network_get_by_interface(mgmt_iface_id):
+            if ifnet.network_id == sc_network.id:
+                break
+        else:
+            LOG.warning("DC Config: Failed to retrieve network for interface "
+                        "id %s", mgmt_iface_id)
+            return
 
         try:
             dbapi.route_create(mgmt_iface_id, route)

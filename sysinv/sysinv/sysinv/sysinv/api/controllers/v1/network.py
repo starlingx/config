@@ -183,7 +183,7 @@ class NetworkController(rest.RestController):
         if network['type'] == constants.NETWORK_TYPE_MGMT:
             addresses = self._create_mgmt_network_address(pool)
         elif network['type'] == constants.NETWORK_TYPE_ADMIN:
-            addresses = self._create_admin_network_address()
+            addresses = self._create_admin_network_address(pool)
         elif network['type'] == constants.NETWORK_TYPE_PXEBOOT:
             addresses = self._create_pxeboot_network_address()
         elif network['type'] == constants.NETWORK_TYPE_CLUSTER_HOST:
@@ -220,11 +220,22 @@ class NetworkController(rest.RestController):
                     pool.gateway_address
         return addresses
 
-    def _create_admin_network_address(self):
+    def _create_admin_network_address(self, pool):
         addresses = collections.OrderedDict()
         addresses[constants.CONTROLLER_HOSTNAME] = None
         addresses[constants.CONTROLLER_0_HOSTNAME] = None
         addresses[constants.CONTROLLER_1_HOSTNAME] = None
+
+        if pool.gateway_address is not None:
+            if utils.get_distributed_cloud_role() == \
+                    constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+                # In subcloud configurations, the admin gateway is used
+                # to communicate with the central cloud.
+                addresses[constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME] =\
+                    pool.gateway_address
+            else:
+                addresses[constants.CONTROLLER_GATEWAY] =\
+                    pool.gateway_address
         return addresses
 
     def _create_pxeboot_network_address(self):
