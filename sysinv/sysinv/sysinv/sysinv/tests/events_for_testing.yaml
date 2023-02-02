@@ -656,19 +656,6 @@
 # ---------------------------------------------------------------------------
 #   VM Compute Services
 # ---------------------------------------------------------------------------
-270.001:
-    Type: Alarm
-    Description: "Host <host_name> worker services failure[, reason = <reason_text>]"
-    Entity_Instance_ID: host=<host_name>.services=worker
-    Severity: critical
-    Proposed_Repair_Action: Wait for host services recovery to complete; if problem persists contact next level of support
-    Maintenance_Action:
-    Inhibit_Alarms:
-    Alarm_Type: processing-error
-    Probable_Cause: unspecified-reason
-    Service_Affecting: true
-    Suppression: true
-
 270.101:
     Type: Log
     Description: "Host <host_name> worker services failure[, reason = <reason_text>]"
