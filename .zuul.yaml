@@ -9,62 +9,38 @@
     check:
       jobs:
         - openstack-tox-linters
-        - sysinv-tox-py27
         - sysinv-tox-py39
         - sysinv-tox-flake8
         - sysinv-tox-pylint
         - sysinv-tox-bandit
-        - controllerconfig-tox-py27
         - controllerconfig-tox-py39
         - controllerconfig-tox-flake8
         - controllerconfig-tox-pylint
         - tsconfig__tox-pylint
-        - tsconfig__tox-py27
         - tsconfig__tox-py39
         - tsconfig__tox-flake8
-        - cgtsclient-tox-py27
         - cgtsclient-tox-py39
         - cgtsclient-tox-pep8
         - cgtsclient-tox-pylint
     gate:
       jobs:
         - openstack-tox-linters
-        - sysinv-tox-py27
         - sysinv-tox-py39
         - sysinv-tox-flake8
         - sysinv-tox-pylint
         - sysinv-tox-bandit
-        - controllerconfig-tox-py27
         - controllerconfig-tox-py39
         - controllerconfig-tox-flake8
         - controllerconfig-tox-pylint
         - tsconfig__tox-pylint
-        - tsconfig__tox-py27
         - tsconfig__tox-py39
         - tsconfig__tox-flake8
-        - cgtsclient-tox-py27
         - cgtsclient-tox-py39
         - cgtsclient-tox-pep8
         - cgtsclient-tox-pylint
     post:
       jobs:
         - stx-config-upload-git-mirror
-
-- job:
-    name: sysinv-tox-py27
-    parent: tox
-    description: |
-      Run py27 test for sysinv
-    nodeset: ubuntu-xenial
-    required-projects:
-      - starlingx/fault
-      - starlingx/utilities
-      - starlingx/update
-    files:
-      - sysinv/sysinv/*
-    vars:
-      tox_envlist: py27
-      tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
 
 - job:
     name: sysinv-tox-py39
@@ -124,19 +100,6 @@
       tox_extra_args: -c sysinv/sysinv/sysinv/tox.ini
 
 - job:
-    name: controllerconfig-tox-py27
-    parent: tox
-    description: Run py27 tests for controllerconfig
-    nodeset: ubuntu-xenial
-    required-projects:
-      - starlingx/fault
-    files:
-      - controllerconfig/*
-    vars:
-      tox_envlist: py27
-      tox_extra_args: -c controllerconfig/controllerconfig/tox.ini
-
-- job:
     name: controllerconfig-tox-py39
     parent: tox-py39
     description: Run py39 tests for controllerconfig
@@ -185,17 +148,6 @@
       tox_extra_args: -c tsconfig/tsconfig/tox.ini
 
 - job:
-    name: tsconfig__tox-py27
-    parent: tox
-    nodeset: ubuntu-xenial
-    description: Run py27 tests for tsconfig
-    files:
-      - tsconfig/*
-    vars:
-      tox_envlist: py27
-      tox_extra_args: -c tsconfig/tsconfig/tox.ini
-
-- job:
     name: tsconfig__tox-py39
     parent: tox-py39
     description: Run py39 tests for tsconfig
@@ -210,24 +162,12 @@
     name: tsconfig__tox-flake8
     parent: tox
     description: Run flake8 tests for tsconfig
-    nodeset: ubuntu-bionic
+    nodeset: debian-bullseye
     files:
       - tsconfig/*
     vars:
       tox_envlist: flake8
       tox_extra_args: -c tsconfig/tsconfig/tox.ini
-
-- job:
-    name: cgtsclient-tox-py27
-    parent: tox
-    description: |
-      Run py27 test for cgts-client
-    nodeset: ubuntu-xenial
-    files:
-      - sysinv/cgts-client/*
-    vars:
-      tox_envlist: py27
-      tox_extra_args: -c sysinv/cgts-client/cgts-client/tox.ini
 
 - job:
     name: cgtsclient-tox-py39
