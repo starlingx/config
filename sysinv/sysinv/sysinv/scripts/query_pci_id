@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -27,10 +27,17 @@ def main():
                         type=lambda x: hex(int(x, 0)),
                         action='store', metavar="HEX",
                         required=True)
+    parser.add_argument("-p", "--pmdinfo", dest="pmdinfo",
+                        help="Path to target dpdk-pmdinfo script",
+                        default="/usr/bin/dpdk-pmdinfo.py",
+                        type=str, action='store')
+    parser.add_argument("-e", "--elfbinary", dest="elf",
+                        help="Path to target ELF file",
+                        default="/usr/sbin/ovs-vswitchd",
+                        type=str, action='store')
     args = parser.parse_args()
 
-    cmd = 'python /usr/share/openvswitch/scripts/dpdk-pmdinfo.py ' \
-          '-r /usr/sbin/ovs-vswitchd'
+    cmd = "python {} -r {}".format(args.pmdinfo, args.elf)
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True,
             universal_newlines=True)
     out, err = p.communicate()

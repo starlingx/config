@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2016 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -18,10 +18,20 @@ import shlex
 import time
 
 from oslo_log import log as logging
+from oslo_config import cfg
 from sysinv._i18n import _
 from sysinv.common import constants
 from sysinv.common import device as dconstants
 from sysinv.common import utils
+
+dpdk_opts = [
+             cfg.StrOpt('dpdk_elf',
+                        default='/usr/sbin/ovs-vswitchd',
+                        help='DPDK ELF file used for compatibility checks'),
+            ]
+
+CONF = cfg.CONF
+CONF.register_opts(dpdk_opts, 'dpdk')
 
 LOG = logging.getLogger(__name__)
 
@@ -626,8 +636,13 @@ class PCIOperator(object):
 
                 try:
                     with open(os.devnull, "w") as fnull:
-                        subprocess.check_call(["query_pci_id", "-v " + str(vendor),  # pylint: disable=not-callable
-                                               "-d " + str(device)],
+                        query_pci_id_cmd = ["query_pci_id",
+                                            "-v " + str(vendor),
+                                            "-d " + str(device)]
+                        if(CONF.dpdk.dpdk_elf is not None):
+                            elf_arg = "--elfbinary " + str(CONF.dpdk.dpdk_elf)
+                            query_pci_id_cmd.append(elf_arg)
+                        subprocess.check_call(query_pci_id_cmd,  # pylint: disable=not-callable
                                               stdout=fnull, stderr=fnull)
                         dpdksupport = True
                         LOG.debug("DPDK does support NIC "
