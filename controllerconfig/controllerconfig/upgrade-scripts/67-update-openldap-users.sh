@@ -1,12 +1,13 @@
 #!/bin/bash
 #
-# Copyright (c) 2022 Wind River Systems, Inc.
+# Copyright (c) 2022-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 #
 # This migration script is used for update openldap users during the
 # activate stage of a platform upgrade. It will:
+# - import data from a previous backup
 # - change admin user's primary group from 'root' to 'users'
 
 # The migration scripts are passed these parameters:
@@ -33,11 +34,17 @@ if [[ "${ACTION}" == "activate" ]] && [[ "${TO_RELEASE}" == "22.12" ]]; then
         exit 0
     fi
 
+    if [[ "${FROM_RELEASE}" == "21.12" ]]; then
+        BACKUP_DIR="/opt/platform/config/$FROM_RELEASE/ldap"
+        /usr/sbin/slapadd -F /etc/ldap/schema -l $BACKUP_DIR/ldap.db
+        log "$NAME: Successfully imported ldap data from $BACKUP_DIR/ldap.db"
+    fi
+
     /usr/sbin/ldapsetprimarygroup admin users
 
     RC=$?
     if [ ${RC} -eq 0 ]; then
-        log "$NAME: Successfully updated openldap users."
+        log "$NAME: Successfully updated openldap users. Script finished successfully."
     else
         log "$NAME: ERROR - failed to update openldap users. (RETURNED: $RC)"
         exit 1
