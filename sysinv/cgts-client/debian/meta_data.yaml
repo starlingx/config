@@ -5,3 +5,5 @@ src_path: cgts-client
 revision:
   dist: $STX_DIST
   PKG_GITREVCOUNT: true
+  SRC_GITREVCOUNT:
+    SRC_BASE_SRCREV: c06abcda5761d9fa4af23671b93b5fa59136d47a

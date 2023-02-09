@@ -4,4 +4,6 @@ debname: storageconfig
 src_path: storageconfig
 revision:
   dist: $STX_DIST
-  PKG_GITREVCOUNT:
+  PKG_GITREVCOUNT: true
+  SRC_GITREVCOUNT:
+    SRC_BASE_SRCREV: 9b6349246864e367bff0941c30c5fa55e6a9dd34

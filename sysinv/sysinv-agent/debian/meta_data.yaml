@@ -9,4 +9,6 @@ src_files:
   - sysinv-agent.service
 revision:
   dist: $STX_DIST
-  PKG_GITREVCOUNT: true
+  GITREVCOUNT:
+    BASE_SRCREV: e9842965cc316b0ea12eb69b3b1cc68d0082c451
+    SRC_DIR: ${MY_REPO}/stx/config/sysinv/sysinv-agent
