@@ -136,7 +136,8 @@ API_RETRY_INTERVAL = 10 * 1000  # millisecond
 
 
 def get_kube_versions():
-    """Provides a list of supported kubernetes versions."""
+    """Provides a list of supported kubernetes versions in
+       increasing order."""
     return [
         {'version': 'v1.21.8',
          'upgrade_from': ['v1.20.9'],
@@ -163,6 +164,12 @@ def get_kube_versions():
          'available_patches': [],
          },
     ]
+
+
+def get_latest_supported_version():
+    """Returns latest supported k8s version for the release """
+    latest_version = get_kube_versions()[-1]['version']
+    return latest_version
 
 
 def is_kube_version_supported(kube_version, min_version=None, max_version=None):

@@ -258,6 +258,19 @@ class Health(object):
         success = not fail_app_list
         return success, fail_app_list
 
+    def _check_kube_version(self):
+        """Checks if kubernetes version is the latest supported version"""
+        success = False
+
+        latest_supported_version = \
+                kubernetes.get_latest_supported_version()
+
+        active_kube_version = self._kube_operator.kube_get_kubernetes_version()
+        if active_kube_version:
+            if active_kube_version == latest_supported_version:
+                success = True
+        return success, active_kube_version, latest_supported_version
+
     def _check_platform_backup_partition(self):
         """Check that the platform-backup partition is the correct size/type"""
 
@@ -508,6 +521,26 @@ class Health(object):
             context,
             force=force,
             alarm_ignore_list=alarm_ignore_list)
+
+        success, active_version, latest_version = self._check_kube_version()
+        output += _('Active kubernetes version is the latest supported '
+                    'version: [%s]\n') \
+                        % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
+        if not success:
+            if active_version:
+                output += _('Upgrade kubernetes to the latest version: [%s]. '
+                            'See "system kube-version-list"\n') \
+                                % (latest_version)
+            else:
+                output += _('Failed to get version info. Upgrade kubernetes to'
+                            ' the latest version (%s) and ensure that the '
+                            'kubernetes  version information is available in '
+                            ' the kubeadm configmap.\n'
+                            'Also see "system kube-version-list"\n') \
+                                % (latest_version)
+
+        health_ok = health_ok and success
+
         loads = self._dbapi.load_get_list()
         try:
             imported_load = utils.get_imported_load(loads)
