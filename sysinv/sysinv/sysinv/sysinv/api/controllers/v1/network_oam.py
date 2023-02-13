@@ -469,7 +469,8 @@ class OAMNetworkController(rest.RestController):
             # Update OAM networking configuration with the new unit IPs of each
             # controller when transitioning to a duplex system
             system = pecan.request.dbapi.isystem_get_one()
-            if system.capabilities.get('simplex_to_duplex_migration'):
+            if system.capabilities.get('simplex_to_duplex_migration') or \
+               system.capabilities.get('simplex_to_duplex-direct_migration'):
                 rpc_extoam.migrate_to_duplex()
 
             pecan.request.rpcapi.update_oam_config(pecan.request.context)

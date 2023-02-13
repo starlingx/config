@@ -126,7 +126,7 @@ class OAMNetwork(base.SysinvObject):
     @base.remotable
     def migrate_to_duplex(self, context):
         """Add controller unit IPs for OAM configuration when transitioning to
-           a duplex system.
+           a duplex or a duplex-direct system from a simplex system.
 
         :param context: Security context
         """
