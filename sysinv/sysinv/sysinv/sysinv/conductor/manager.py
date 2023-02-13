@@ -10755,6 +10755,18 @@ class ConductorManager(service.PeriodicService):
                          {"cmd": ex.cmd, "stdout": ex.stdout,
                           "stderr": ex.stderr, "rc": ex.exit_code})
 
+        # Add fs name to drbd_fs_resized if state is None
+        # and not in drbd_fs_updated nor drbd_fs_resized
+        # as initial configuration case (which needs to be added into
+        # drbd_fs_resized to update state from "None" to "available")
+        controller_fs_list = self.dbapi.controller_fs_get_list()
+        for fs in controller_fs_list:
+            fs_name = constants.FILESYSTEM_DRBD_DICT.get(fs.get('name'))
+            if ((fs.get('state') is None) and
+               (fs_name not in drbd_fs_updated) and
+               (fs_name not in drbd_fs_resized)):
+                drbd_fs_resized.add(fs_name)
+
         return rc, drbd_fs_resized
 
     # Retrying a few times and waiting between each retry should provide
