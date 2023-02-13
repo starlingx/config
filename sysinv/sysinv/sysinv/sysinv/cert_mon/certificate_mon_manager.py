@@ -194,6 +194,8 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         within sc_audit_queue"""
         try:
             self._subcloud_audit(sc_audit_item)
+        except Exception:
+            LOG.exception("An error occurred during the subcloud audit task")
         finally:
             self.sc_audit_queue.task_done()
 
@@ -236,7 +238,6 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
                 LOG.exception("Cannot retrieve ssl certificate for %s via: %s; "
                               "maximum retry limit exceeded [%d], giving up"
                               % (subcloud_name, subcloud_sysinv_url, max_attempts))
-
                 utils.update_subcloud_status(my_dc_token(), subcloud_name,
                                              utils.SYNC_STATUS_OUT_OF_SYNC)
             return
