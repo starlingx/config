@@ -107,7 +107,7 @@ class DiskOperator(object):
             LOG.debug("Format of disk node %s is not GPT." % device_node)
             return 0
 
-        pvs_command = '{} {}'.format('pvs | grep -w ', device_node)
+        pvs_command = '{} "{} "'.format('pvs | grep', device_node)
         pvs_process = subprocess.Popen(pvs_command, stdout=subprocess.PIPE,
                                        shell=True, universal_newlines=True)
         pvs_output = pvs_process.stdout.read()
