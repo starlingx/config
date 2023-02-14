@@ -8787,6 +8787,21 @@ class ConductorManager(service.PeriodicService):
         if success:
             self.check_pending_app_reapply(context)
 
+    def verify_k8s_upgrade_not_in_progress(self):
+        """ Check if there is a kubernetes upgrade in progress.
+
+        Raise an exception if one is found.
+        """
+        try:
+            kube_upgrade = self.dbapi.kube_upgrade_get_one()
+            if kube_upgrade.state == kubernetes.KUBE_UPGRADE_COMPLETE:
+                return
+        except exception.NotFound:
+            pass
+        else:
+            raise exception.SysinvException(_(
+                "Kubernetes upgrade is in progress and not completed."))
+
     def verify_upgrade_not_in_progress(self):
         """ Check if there is an upgrade in progress.
 
@@ -8800,14 +8815,9 @@ class ConductorManager(service.PeriodicService):
             raise exception.SysinvException(_("Platform upgrade in progress."))
 
         try:
-            kube_upgrade = self.dbapi.kube_upgrade_get_one()
-            if kube_upgrade.state == kubernetes.KUBE_UPGRADE_COMPLETE:
-                return
-        except exception.NotFound:
-            pass
-        else:
-            raise exception.SysinvException(_(
-                "Kubernetes upgrade is in progress and not completed."))
+            self.verify_k8s_upgrade_not_in_progress()
+        except Exception as e:
+            raise e
 
     def report_partition_mgmt_success(self, host_uuid, idisk_uuid,
                                       partition_uuid):
@@ -14042,10 +14052,11 @@ class ConductorManager(service.PeriodicService):
         """Synchronously, determine whether an application
         re-apply is needed, and if so, raise the re-apply flag.
 
-        Run 2 checks before doing an app evaluation.
-        First check is a semantic check calling a lifecycle hook which can
+        Run 3 checks before doing an app evaluation.
+        First check is to verify whether Kubernetes upgrades are not in progress.
+        Second check is a semantic check calling a lifecycle hook which can
         implement complex logic.
-        Second check is specified in metadata which allows faster development
+        Third check is specified in metadata which allows faster development
         time, doing simple key:value comparisons. Check that the 'trigger'
         parameter of the function contains a list of key:value pairs at a
         specified location. Default location for searching is root of 'trigger'
@@ -14056,6 +14067,14 @@ class ConductorManager(service.PeriodicService):
         :param trigger: dictionary containing at least the 'type' field
 
         """
+
+        # Defer apps reapply evaluation if Kubernetes upgrades are in progress
+        try:
+            self.verify_k8s_upgrade_not_in_progress()
+        except Exception as e:
+            LOG.info("Deferring apps reapply evaluation. {}".format(str(e)))
+            return
+
         LOG.info("Evaluating apps reapply {} ".format(trigger))
         apps = self.determine_apps_reapply_order(name_only=False, filter_active=True)
 
