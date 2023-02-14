@@ -118,6 +118,7 @@ from sysinv.openstack.common import periodic_task
 from sysinv.openstack.common.rpc import service as rpc_service
 from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
+from sysinv.puppet import interface as pinterface
 from sysinv.helm import helm
 from sysinv.helm.lifecycle_constants import LifecycleConstants
 from sysinv.helm.lifecycle_hook import LifecycleHookInfo
@@ -1551,7 +1552,8 @@ class ConductorManager(service.PeriodicService):
         ports = dict((p['interface_id'], p) for p in port_list)
         for interface in interface_list:
             if network_type in interface.networktypelist:
-                return cutils.get_interface_os_ifname(interface, ifaces, ports)
+                context = {'interfaces': ifaces, 'ports': ports}
+                return pinterface.get_interface_os_ifname(context, interface)
 
     def _find_local_mgmt_interface_vlan_id(self):
         """Lookup the local interface name for a given network type."""
