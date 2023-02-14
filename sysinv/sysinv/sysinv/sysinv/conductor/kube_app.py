@@ -3646,6 +3646,9 @@ class AppOperator(object):
             self.inst_plugins_dir = os.path.join(self.inst_path, 'plugins')
             self.sync_plugins_dir = generate_synced_app_plugins_dir(new_name, new_version)
 
+    def check_fluxcd_pod_status(self):
+        return self._fluxcd.check_fluxcd_pods_status()
+
 
 class DockerHelper(object):
     """ Utility class to encapsulate Docker related operations """
@@ -4691,6 +4694,8 @@ class FluxCDHelper(object):
 
     def make_fluxcd_operation(self, operation, manifest_dir=""):
 
+        self.check_fluxcd_pods_status()
+
         LOG.info("Doing FluxCD operation %s with the following manifest: %s"
                  % (operation, manifest_dir))
         rc = True
@@ -4868,3 +4873,41 @@ class FluxCDHelper(object):
                 LOG.exception(e)
                 return False
         return True
+
+    def _check_fluxcd_pod_status(self, pod_label):
+        """ Check if a FluxCD pod is ready given its app label.
+            Log an error if it is not ready.
+        """
+
+        try:
+            pods = self._kube.kube_get_pods_by_selector(constants.FLUXCD_NAMESPACE, "app={}".format(pod_label), "")
+        except Exception:
+            LOG.error("Could not check if FluxCD pod with with label {} is running on {} namespace"
+                        .format(pod_label, constants.FLUXCD_NAMESPACE))
+            return False
+
+        if not pods:
+            LOG.warning("No FluxCD pods found on {} namespace with label {}"
+                        .format(constants.FLUXCD_NAMESPACE, pod_label))
+            return False
+
+        for pod in pods:
+            if not self.check_pod_running_and_ready_probe(pod):
+                LOG.warning("FluxCD pod {} is not ready. Phase: {}. Message: {}"
+                    .format(pod.metadata.name,
+                            pod.status.phase,
+                            pod.status.message))
+                return False
+
+        return True
+
+    def check_fluxcd_pods_status(self):
+        """ Check if helm-controller and source-controller pods are ready.
+            Return False if they are not.
+        """
+
+        if self._check_fluxcd_pod_status(constants.FLUXCD_HELM_CONTROLLER_LABEL) and \
+                self._check_fluxcd_pod_status(constants.FLUXCD_SOURCE_CONTROLLER_LABEL):
+            return True
+        else:
+            return False

@@ -1761,6 +1761,9 @@ FLUXCD_RECOVERABLE_HELM_RELEASE_STATUS = [
     'pending-upgrade',
     'pending-rollback'
 ]
+FLUXCD_NAMESPACE = "flux-helm"
+FLUXCD_HELM_CONTROLLER_LABEL = "helm-controller"
+FLUXCD_SOURCE_CONTROLLER_LABEL = "source-controller"
 
 # State constants
 APP_NOT_PRESENT = 'missing'
