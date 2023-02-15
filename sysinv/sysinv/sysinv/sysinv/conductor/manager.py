@@ -11049,6 +11049,10 @@ class ConductorManager(service.PeriodicService):
     def _do_update_alarm_status(self, context, ihost_obj, status):
         """Check config and update FM alarm"""
 
+        # Get new reference to avoid stale values.
+        # We can't refresh because that's in-place and
+        # ihost_obj is not ours.
+        ihost_obj = self.dbapi.ihost_get(ihost_obj.uuid)
         entity_instance_id = self._get_fm_entity_instance_id(ihost_obj)
 
         save_required = False
