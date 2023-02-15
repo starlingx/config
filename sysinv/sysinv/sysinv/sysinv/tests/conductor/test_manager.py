@@ -534,6 +534,7 @@ class ManagerTestCase(base.DbTestCase):
                       'serialid': '1234567890abc',
                       'boot_device': 'sda',
                       'rootfs_device': 'sda',
+                      'hw_settle': '0',
                       'install_output': 'text',
                       'console': 'ttyS0,115200',
                       'tboot': ''
@@ -559,6 +560,7 @@ class ManagerTestCase(base.DbTestCase):
         ihost['serialid'] = '1234567890abc'
         ihost['boot_device'] = 'sda'
         ihost['rootfs_device'] = 'sda'
+        ihost['hw_settle'] = '0'
         ihost['install_output'] = 'text'
         ihost['console'] = 'ttyS0,115200'
 
@@ -575,6 +577,7 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(res['serialid'], '1234567890abc')
         self.assertEqual(res['boot_device'], 'sda')
         self.assertEqual(res['rootfs_device'], 'sda')
+        self.assertEqual(res['hw_settle'], '0')
         self.assertEqual(res['install_output'], 'text')
         self.assertEqual(res['console'], 'ttyS0,115200')
 
@@ -618,6 +621,7 @@ class ManagerTestCase(base.DbTestCase):
         ihost['serialid'] = '1234567890abc'
         ihost['boot_device'] = 'sda'
         ihost['rootfs_device'] = 'sda'
+        ihost['hw_settle'] = '0'
         ihost['install_output'] = 'text'
         ihost['console'] = 'ttyS0,115200'
 
@@ -654,6 +658,7 @@ class ManagerTestCase(base.DbTestCase):
         ihost['serialid'] = '1234567890abc'
         ihost['boot_device'] = 'sda'
         ihost['rootfs_device'] = 'sda'
+        ihost['hw_settle'] = '0'
         ihost['install_output'] = 'text'
         ihost['console'] = 'ttyS0,115200'
 
@@ -1702,6 +1707,7 @@ class ManagerTestCase(base.DbTestCase):
         ihost['serialid'] = '1234567890abc'
         ihost['boot_device'] = 'sda'
         ihost['rootfs_device'] = 'sda'
+        ihost['hw_settle'] = '0'
         ihost['install_output'] = 'text'
         ihost['console'] = 'ttyS0,115200'
 

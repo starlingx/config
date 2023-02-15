@@ -90,6 +90,7 @@ class Host(base.SysinvObject):
 
             'boot_device': utils.str_or_none,
             'rootfs_device': utils.str_or_none,
+            'hw_settle': utils.str_or_none,
             'install_output': utils.str_or_none,
             'console': utils.str_or_none,
             'tboot': utils.str_or_none,

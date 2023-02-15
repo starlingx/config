@@ -102,12 +102,11 @@ from sysinv.openstack.common.rpc import common as rpc_common
 LOG = log.getLogger(__name__)
 KEYRING_BM_SERVICE = "BM"
 ERR_CODE_LOCK_SOLE_SERVICE_PROVIDER = "-1003"
-HOST_XML_ATTRIBUTES = ['hostname', 'personality', 'subfunctions',
-                       'mgmt_mac', 'mgmt_ip',
-                       'bm_ip', 'bm_type', 'bm_username',
+HOST_XML_ATTRIBUTES = ['hostname', 'personality', 'subfunctions', 'mgmt_mac',
+                       'mgmt_ip', 'bm_ip', 'bm_type', 'bm_username',
                        'bm_password', 'boot_device', 'rootfs_device',
-                       'install_output', 'console', 'vsc_controllers',
-                       'power_on', 'location', 'apparmor']
+                       'hw_settle', 'install_output', 'console',
+                       'vsc_controllers', 'power_on', 'location', 'apparmor']
 
 
 def _get_controller_address(hostname):
@@ -528,6 +527,7 @@ class Host(base.APIBase):
 
     boot_device = wtypes.text
     rootfs_device = wtypes.text
+    hw_settle = wtypes.text
     install_output = wtypes.text
     console = wtypes.text
     tboot = wtypes.text
@@ -578,25 +578,22 @@ class Host(base.APIBase):
 
     @classmethod
     def convert_with_links(cls, rpc_ihost, expand=True):
-        minimum_fields = ['id', 'uuid', 'hostname',
-                          'personality', 'subfunctions',
-                          'subfunction_oper', 'subfunction_avail',
-                          'administrative', 'operational', 'availability',
-                          'invprovision',
-                          'task', 'mtce_info', 'action', 'uptime', 'reserved',
-                          'ihost_action', 'vim_progress_status',
-                          'mgmt_mac', 'mgmt_ip', 'location',
-                          'bm_ip', 'bm_type', 'bm_username',
+        minimum_fields = ['id', 'uuid', 'hostname', 'personality',
+                          'subfunctions', 'subfunction_oper',
+                          'subfunction_avail', 'administrative', 'operational',
+                          'availability', 'invprovision', 'task', 'mtce_info',
+                          'action', 'uptime', 'reserved', 'ihost_action',
+                          'vim_progress_status', 'mgmt_mac', 'mgmt_ip',
+                          'location', 'bm_ip', 'bm_type', 'bm_username',
                           'isystem_uuid', 'capabilities', 'serialid',
                           'config_status', 'config_applied', 'config_target',
                           'created_at', 'updated_at', 'boot_device',
-                          'rootfs_device', 'install_output', 'console',
-                          'tboot', 'vsc_controllers', 'ttys_dcd',
+                          'rootfs_device', 'hw_settle', 'install_output',
+                          'console', 'tboot', 'vsc_controllers', 'ttys_dcd',
                           'software_load', 'target_load', 'peers', 'peer_id',
                           'install_state', 'install_state_info',
-                          'iscsi_initiator_name',
-                          'device_image_update', 'reboot_needed',
-                          'inv_state', 'clock_synchronization',
+                          'iscsi_initiator_name', 'device_image_update',
+                          'reboot_needed', 'inv_state', 'clock_synchronization',
                           'max_cpu_mhz_configured', 'max_cpu_mhz_allowed',
                           'apparmor']
 
@@ -5228,7 +5225,8 @@ class HostController(rest.RestController):
                           hostupdate.ihost_orig['hostname']))
 
         # Check whether any configurable installation parameters are updated
-        install_parms = ['boot_device', 'rootfs_device', 'install_output', 'console', 'tboot']
+        install_parms = ['boot_device', 'rootfs_device', 'hw_settle',
+                         'install_output', 'console', 'tboot']
         if any(p in install_parms for p in delta):
             # Disallow changes if the node is not locked
             if ihost['administrative'] != constants.ADMIN_LOCKED:
@@ -7396,6 +7394,7 @@ def _create_node(host, xml_node, personality, is_dynamic_ip):
 
     et.SubElement(host_node, 'boot_device').text = host.boot_device
     et.SubElement(host_node, 'rootfs_device').text = host.rootfs_device
+    et.SubElement(host_node, 'hw_settle').text = host.hw_settle
     et.SubElement(host_node, 'install_output').text = host.install_output
     if host.vsc_controllers is not None:
         et.SubElement(host_node, 'vsc_controllers').text = host.vsc_controllers

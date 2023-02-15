@@ -232,6 +232,7 @@ class ihost(Base):
 
     boot_device = Column(String(255), default="/dev/sda")
     rootfs_device = Column(String(255), default="/dev/sda")
+    hw_settle = Column(String(4), default="0")
     install_output = Column(String(255), default="text")
     console = Column(String(255), default="ttyS0,115200")
     tboot = Column(String(64), default="")

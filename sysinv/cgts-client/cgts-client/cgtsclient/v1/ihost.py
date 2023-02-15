@@ -13,11 +13,10 @@ from cgtsclient import exc
 from cgtsclient.v1 import icpu
 
 
-CREATION_ATTRIBUTES = ['hostname', 'personality', 'subfunctions',
-                       'mgmt_mac', 'mgmt_ip',
-                       'bm_ip', 'bm_type', 'bm_username',
-                       'bm_password', 'serialid', 'location',
-                       'boot_device', 'rootfs_device', 'install_output',
+CREATION_ATTRIBUTES = ['hostname', 'personality', 'subfunctions', 'mgmt_mac',
+                       'mgmt_ip', 'bm_ip', 'bm_type', 'bm_username',
+                       'bm_password', 'serialid', 'location', 'boot_device',
+                       'rootfs_device', 'hw_settle', 'install_output',
                        'console', 'tboot', 'vsc_controllers', 'ttys_dcd',
                        'administrative', 'operational', 'availability',
                        'invprovision', 'clock_synchronization']
