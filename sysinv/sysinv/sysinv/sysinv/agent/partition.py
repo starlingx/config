@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -88,8 +88,11 @@ class PartitionOperator(object):
         for partition in sfdisk_partitions:
             partition_number = partition.get('part_number')
             size_mib = partition.get('size_mib')
-            if 'nvme' in device_node:
+            if constants.DEVICE_NAME_NVME in device_node:
                 part_device_node = '{}p{}'.format(device_node,
+                                                  partition_number)
+            elif constants.DEVICE_NAME_MPATH in device_node:
+                part_device_node = '{}-part{}'.format(device_node,
                                                   partition_number)
             else:
                 part_device_node = '{}{}'.format(device_node, partition_number)
@@ -137,8 +140,8 @@ class PartitionOperator(object):
                     device_path = "/dev/disk/by-path/" + device['ID_PATH']
                     device_node = device.device_node
                 elif (constants.DEVICE_NAME_MPATH in device.get("DM_NAME", "")
-                      and 'DM_UUID' in device):
-                    device_path = "/dev/disk/by-id/dm-uuid-" + device['DM_UUID']
+                      and 'DM_WWN' in device):
+                    device_path = "/dev/disk/by-id/wwn-" + device['DM_WWN']
                     device_node = utils.get_mpath_from_dm(device.device_node)
 
                 try:

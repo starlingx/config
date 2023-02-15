@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2022 Wind River Systems, Inc.
+# Copyright (c) 2017-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -204,7 +204,8 @@ class PartitionController(rest.RestController):
         # Only return user created partitions.
         partitions = [
             p for p in partitions
-            if p.type_guid == constants.USER_PARTITION_PHYSICAL_VOLUME]
+            if (p.type_guid == constants.USER_PARTITION_PHYSICAL_VOLUME or
+                p.type_name == "Linux LVM")]
 
         return PartitionCollection.convert_with_links(partitions, limit,
                                                       url=resource_url,
@@ -409,6 +410,9 @@ def _build_device_node_path(partition):
         if constants.DEVICE_NAME_NVME in idisk.device_node:
             device_node = "%sp%s" %\
                           (idisk.device_node, len(partitions) + 1)
+        elif constants.DEVICE_NAME_MPATH in idisk.device_node:
+            device_node = "%s-part%s" %\
+                (idisk.device_node, len(partitions) + 1)
         else:
             device_node = "%s%s" % (idisk.device_node, len(partitions) + 1)
         device_path = cutils.get_part_device_path(idisk.device_path,
@@ -416,6 +420,8 @@ def _build_device_node_path(partition):
     else:
         if constants.DEVICE_NAME_NVME in idisk.device_node:
             device_node = idisk.device_node + "p1"
+        elif constants.DEVICE_NAME_MPATH in idisk.device_node:
+            device_node = idisk.device_node + "-part1"
         else:
             device_node = idisk.device_node + '1'
         device_path = cutils.get_part_device_path(idisk.device_path, "1")

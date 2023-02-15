@@ -3,7 +3,7 @@
 #
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -47,7 +47,7 @@ device_nodes=( `echo "$sfdisk_part_info" | awk '$1 == "Device" {i=1; next}; i {p
 sector_size=$(blockdev --getss $device_path)
 
 for device in "${device_nodes[@]}"; do
-    part_number=$(udevadm info $device | grep -oP 'E: PARTN=\K.*')
+    part_number=$(udevadm info $device | grep -oP -m1 'E: PARTN=\K.*|E: DM_PART=\K.*')
     # Parse the output and put it in the right return format.
     part_type_guid=$(sfdisk --part-type $device_path $part_number)
     part_type_name=$(echo "$sfdisk_part_info" | grep -w $device | awk '{print substr($0, index($0, $6))}' | tr ' ' '.')

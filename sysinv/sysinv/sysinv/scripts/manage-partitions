@@ -3,7 +3,7 @@
 #
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2017-2018 Wind River Systems, Inc.
+# Copyright (c) 2017-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -170,15 +170,9 @@ def _get_disk_device_path(part_device_path):
     :returns the device path of the disk on which the partition resides
     """
     disk_device_path = ""
-    if 'by-path' in part_device_path:
-        disk_device_path = re.match('(/dev/disk/by-path/(.+))-part([0-9]+)',
+    if 'by-path' in part_device_path or 'by-id' in part_device_path:
+        disk_device_path = re.match('(/dev/disk/by-(path|id)/(.+))-part([0-9]+)',
                                     part_device_path).group(1)
-    if constants.DEVICE_NAME_MPATH in part_device_path:
-        match_path = re.match('(/dev/disk/by-id/.+)-part([0-9]+)(-mpath.*)',
-                              part_device_path)
-        if match_path:
-            disk_device_path = match_path.group(1) + match_path.group(3)
-
     return disk_device_path
 
 

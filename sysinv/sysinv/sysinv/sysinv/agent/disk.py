@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -247,8 +247,8 @@ class DiskOperator(object):
                     device_path = "/dev/disk/by-path/" + device['ID_PATH']
                     LOG.debug("[DiskEnum] device_path: %s ", device_path)
                 elif (constants.DEVICE_NAME_MPATH in device.get("DM_NAME", "")
-                      and 'DM_UUID' in device):
-                    device_path = "/dev/disk/by-id/dm-uuid-" + device['DM_UUID']
+                      and 'DM_WWN' in device):
+                    device_path = "/dev/disk/by-id/wwn-" + device['DM_WWN']
                     LOG.debug("[DiskEnum] device_path: %s ", device_path)
                     device_node = utils.get_mpath_from_dm(device.device_node)
                     LOG.debug("[DiskEnum] device_node: %s ", device_node)

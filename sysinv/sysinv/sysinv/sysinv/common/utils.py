@@ -568,8 +568,7 @@ def is_system_usable_block_device(pydev_device):
     if pydev_device.get("DM_VG_NAME") or pydev_device.get("DM_LV_NAME"):
         # Skip LVM devices
         return False
-    if (constants.DEVICE_NAME_MPATH in pydev_device.get("DM_NAME", "")
-            and "part" in pydev_device.get("DM_UUID", "").split("-")[0]):
+    if constants.DEVICE_NAME_MPATH in pydev_device.get("DM_NAME", "") and pydev_device.get("DM_PART", ""):
         # Skip mpath partition devices
         return False
     if pydev_device.get("ID_FS_TYPE") == constants.DEVICE_FS_TYPE_MPATH:
@@ -3713,13 +3712,15 @@ def get_mpath_from_dm(dm_device):
 
     context = pyudev.Context()
 
-    pydev_device = pyudev.Device.from_device_file(context, dm_device)
+    pydev_device = pyudev.Devices.from_device_file(context, dm_device)
 
-    if constants.DEVICE_NAME_MPATH in pydev_device.get("DM_NAME", ""):
-        re_line = re.compile(r'^(\D*)')
-        match = re_line.search(pydev_device.get("DM_NAME"))
-        if match:
-            mpath_device = os.path.join("/dev/mapper", match.group(1))
+    device_mapper_name = pydev_device.get("DM_NAME", "")
+    if constants.DEVICE_NAME_MPATH in device_mapper_name:
+        device_mapper_mpath = pydev_device.get("DM_MPATH", None)
+        if device_mapper_mpath:
+            mpath_device = os.path.join("/dev/mapper", device_mapper_mpath)
+        else:
+            mpath_device = os.path.join("/dev/mapper", device_mapper_name)
 
     return mpath_device
 
@@ -3731,15 +3732,7 @@ def get_part_device_path(disk_device_path, part_number):
     :param   part_number: the partition number
     :returns the partition device path
     """
-    if constants.DEVICE_NAME_MPATH in disk_device_path:
-        path_split = disk_device_path.split(constants.DEVICE_NAME_MPATH)
-        part_device_path = '{}part{}-{}{}'.format(path_split[0],
-                                                  part_number,
-                                                  constants.DEVICE_NAME_MPATH,
-                                                  path_split[1])
-    else:
-        part_device_path = '{}-part{}'.format(disk_device_path, part_number)
-
+    part_device_path = '{}-part{}'.format(disk_device_path, part_number)
     return part_device_path
 
 
@@ -3749,15 +3742,8 @@ def get_part_number(part_device_path):
     :returns  the partition's number
     """
     part_num = ""
-    if 'by-path' in part_device_path:
+    if 'by-path' in part_device_path or 'by-id' in part_device_path:
         part_num = re.match('.*?([0-9]+)$', part_device_path).group(1)
-
-    if constants.DEVICE_NAME_MPATH in part_device_path:
-        match_path = re.match('(/dev/disk/by-id/.+)-part([0-9]+)(-mpath.*)',
-                              part_device_path)
-        if match_path:
-            part_num = match_path.group(2)
-
     return part_num
 
 
