@@ -52,6 +52,24 @@ FAKE_KUBE_VERSIONS = [
      'applied_patches': ['KUBE.11', 'KUBE.12'],
      'available_patches': ['KUBE.13'],
      },
+    {'version': 'v1.44.0',
+     'upgrade_from': ['v1.43.1'],
+     'downgrade_to': [],
+     'applied_patches': ['KUBE.11', 'KUBE.12'],
+     'available_patches': ['KUBE.13'],
+     },
+    {'version': 'v1.45.1',
+     'upgrade_from': ['v1.44.0'],
+     'downgrade_to': [],
+     'applied_patches': ['KUBE.11', 'KUBE.12'],
+     'available_patches': ['KUBE.13'],
+     },
+    {'version': 'v1.45.3',
+     'upgrade_from': ['v1.45.1'],
+     'downgrade_to': [],
+     'applied_patches': ['KUBE.11', 'KUBE.12'],
+     'available_patches': ['KUBE.13'],
+     }
 ]
 
 FAKE_POD_STATUS = kubernetes.client.V1PodStatus(
@@ -952,6 +970,27 @@ class TestKubeOperator(base.TestCase):
         result = self.kube_operator.kube_get_kubelet_versions()
         assert result == {'test-node-1': 'v1.42.4'}
 
+    def test_kube_get_higher_patch_version(self):
+
+        self.list_node_result = self.single_node_result
+
+        result = self.kube_operator.kube_get_higher_patch_version('v1.41.3', 'v1.43.1')
+        assert result == ['v1.42.4', 'v1.43.1']
+
+    def test_kube_get_higher_patch_version_increment_check(self):
+
+        self.list_node_result = self.single_node_result
+
+        result = self.kube_operator.kube_get_higher_patch_version('v1.41.3', 'v1.45.1')
+        assert result == ['v1.42.4', 'v1.43.1', 'v1.44.0', 'v1.45.1']
+
+    def test_kube_get_higher_patch_wrong_version(self):
+
+        self.list_node_result = self.single_node_result
+
+        result = self.kube_operator.kube_get_higher_patch_version('v1.43.1', 'v1.42.4')
+        assert result is None
+
     def test_kube_get_kubelet_versions_multi_node(self):
 
         self.list_node_result = self.multi_node_result
@@ -972,7 +1011,10 @@ class TestKubeOperator(base.TestCase):
                           'v1.42.1': 'partial',
                           'v1.42.3': 'unavailable',
                           'v1.42.4': 'partial',
-                          'v1.43.1': 'unavailable'}
+                          'v1.43.1': 'unavailable',
+                          'v1.44.0': 'unavailable',
+                          'v1.45.1': 'unavailable',
+                          'v1.45.3': 'unavailable'}
 
     def test_kube_get_version_states_active(self):
 
@@ -987,7 +1029,10 @@ class TestKubeOperator(base.TestCase):
                           'v1.42.1': 'active',
                           'v1.42.3': 'available',
                           'v1.42.4': 'available',
-                          'v1.43.1': 'unavailable'}
+                          'v1.43.1': 'unavailable',
+                          'v1.44.0': 'unavailable',
+                          'v1.45.1': 'unavailable',
+                          'v1.45.3': 'unavailable'}
 
     def test_kube_get_version_states_multi_node(self):
 
@@ -1000,7 +1045,10 @@ class TestKubeOperator(base.TestCase):
                           'v1.42.1': 'partial',
                           'v1.42.3': 'partial',
                           'v1.42.4': 'partial',
-                          'v1.43.1': 'unavailable'}
+                          'v1.43.1': 'unavailable',
+                          'v1.44.0': 'unavailable',
+                          'v1.45.1': 'unavailable',
+                          'v1.45.3': 'unavailable'}
 
     def test_kube_get_version_states_ignore_unknown_version(self):
 
@@ -1017,7 +1065,10 @@ class TestKubeOperator(base.TestCase):
                           'v1.42.1': 'active',
                           'v1.42.3': 'available',
                           'v1.42.4': 'available',
-                          'v1.43.1': 'unavailable'}
+                          'v1.43.1': 'unavailable',
+                          'v1.44.0': 'unavailable',
+                          'v1.45.1': 'unavailable',
+                          'v1.45.3': 'unavailable'}
 
     def test_kube_get_kubernetes_version(self):
 

@@ -958,6 +958,47 @@ class KubeOperator(object):
 
         return kubelet_versions
 
+    def kube_get_higher_patch_version(self, current_version, target_version):
+        """Returns the list of all k8s "v<major>.<minor>.<patch>"
+        versions that are greater than the current_version and up
+        to the final target_version, keeping only the highest patch
+        version for a given minor version. The list will contain minor
+        versions that increment by 1 each time."""
+
+        if LooseVersion(target_version) <= LooseVersion(current_version):
+            LOG.error("Target version should be greater than or "
+                      "equal to current version")
+            return None
+        # Get version lists
+        kube_versions = get_kube_versions()
+        kube_versions = sorted(kube_versions, key=lambda v: LooseVersion(v['version']))
+        current_major_minor = ".".join(current_version.split(".")[:2])
+        major_minor_version = set()
+        final_versions = list()
+        intermediate_versions = list()
+
+        # loop over all k8s versions in minor.major.patch version sorted order
+        # exclude from the list:
+        # -- versions > the current version
+        # -- versions <= target_version
+        # -- version == current version
+        for version in kube_versions:
+            major_minor = ".".join(version['version'].split(".")[:2])
+            if LooseVersion(version['version']) > LooseVersion(current_version) \
+                and LooseVersion(version['version']) <= LooseVersion(target_version) \
+                    and current_major_minor not in major_minor:
+                intermediate_versions.append(version['version'])
+                major_minor_version.add(major_minor)
+
+        # Get Max patch version list of all intermediate versions
+        for ver_list in major_minor_version:
+            result = [v for v in intermediate_versions if ver_list in v]
+            final_versions.append(max(result, key=lambda x: LooseVersion(x)))
+
+        final_versions = sorted(final_versions, key=lambda v: LooseVersion(v))
+
+        return final_versions
+
     def kube_get_version_states(self):
         """Returns the state of each known kubernetes version."""
 
