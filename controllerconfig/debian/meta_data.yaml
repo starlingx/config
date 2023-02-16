@@ -5,3 +5,5 @@ src_path: controllerconfig
 revision:
   dist: $STX_DIST
   PKG_GITREVCOUNT: true
+  SRC_GITREVCOUNT:
+    SRC_BASE_SRCREV: 10c4a075f6d21f0561fbe58c468650791db8fc2d

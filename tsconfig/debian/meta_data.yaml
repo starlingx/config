@@ -5,3 +5,5 @@ src_path: tsconfig
 revision:
   dist: $STX_DIST
   PKG_GITREVCOUNT: true
+  SRC_GITREVCOUNT:
+    SRC_BASE_SRCREV: 73eb89d8634e1d06ab1dbcf34621fcb1c8b0d344

@@ -5,3 +5,5 @@ src_path: workerconfig
 revision:
   dist: $STX_DIST
   PKG_GITREVCOUNT: true
+  SRC_GITREVCOUNT:
+    SRC_BASE_SRCREV: 2b9f8c28c7e3608b2a557909f4ccee529c90fe8a
