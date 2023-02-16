@@ -2801,6 +2801,26 @@ class AppOperator(object):
                                                     app.name,
                                                     metadata)
 
+    @staticmethod
+    def retrieve_application_metadata_from_file(sync_metadata_file):
+        """ Retrieve application metadata from the metadata file of the app
+
+        :param sync_metadata_file: metadata file path
+
+        :return dictionary: metadata fields and respective values
+        """
+
+        metadata = {}
+        if os.path.exists(sync_metadata_file):
+            with io.open(sync_metadata_file, 'r', encoding='utf-8') as f:
+                # The RoundTripLoader removes the superfluous quotes by default.
+                # Set preserve_quotes=True to preserve all the quotes.
+                # The assumption here: there is just one yaml section
+                metadata = yaml.load(
+                    f, Loader=yaml.RoundTripLoader, preserve_quotes=True) or {}
+
+        return metadata
+
     def load_application_metadata_from_file(self, rpc_app):
         """ Load the application metadata from the metadata file of the app
 
@@ -2811,15 +2831,7 @@ class AppOperator(object):
                  "".format(rpc_app.name))
 
         app = AppOperator.Application(rpc_app)
-        metadata = {}
-
-        if os.path.exists(app.sync_metadata_file):
-            with io.open(app.sync_metadata_file, 'r', encoding='utf-8') as f:
-                # The RoundTripLoader removes the superfluous quotes by default.
-                # Set preserve_quotes=True to preserve all the quotes.
-                # The assumption here: there is just one yaml section
-                metadata = yaml.load(
-                    f, Loader=yaml.RoundTripLoader, preserve_quotes=True) or {}
+        metadata = self.retrieve_application_metadata_from_file(app.sync_metadata_file)
 
         AppOperator.update_and_process_app_metadata(self._apps_metadata,
                                                     app.name,
@@ -2828,6 +2840,56 @@ class AppOperator(object):
         # Save metadata as a dictionary in a column in the database
         rpc_app.app_metadata = metadata
         rpc_app.save()
+
+    @staticmethod
+    def get_desired_state_from_metadata(app_metadata):
+        """ Retrieve desired state from application metadata
+
+        :param app_metadata: full application metadata
+
+        :return string: desired application state
+        """
+
+        desired_state = None
+        behavior = app_metadata.get(constants.APP_METADATA_BEHAVIOR, None)
+        if behavior is not None:
+            desired_state = behavior.get(constants.APP_METADATA_DESIRED_STATE, None)
+
+        return desired_state
+
+    def update_desired_state(self, app, required_desired_state, new_desired_state):
+        """ Update application desired state
+
+        This method updates the application 'desired_state'
+        metadata field on the database.
+
+        :param app: AppOperator application object
+        :param required_desired_state: desired state the app is required
+                                       to have in the database
+        :param new_desired_state: new desired state that will be saved
+                                  to the database
+        """
+
+        current_desired_state = self.get_desired_state_from_metadata(app.app_metadata)
+
+        if current_desired_state == required_desired_state:
+            metadata = copy.deepcopy(app.app_metadata)
+
+            if new_desired_state is None and \
+                    constants.APP_METADATA_BEHAVIOR in metadata and \
+                    constants.APP_METADATA_DESIRED_STATE in metadata[constants.APP_METADATA_BEHAVIOR]:
+                del metadata[
+                    constants.APP_METADATA_BEHAVIOR][
+                    constants.APP_METADATA_DESIRED_STATE]
+            else:
+                metadata[
+                    constants.APP_METADATA_BEHAVIOR][
+                    constants.APP_METADATA_DESIRED_STATE] = new_desired_state
+
+            app.update_app_metadata(metadata)
+            AppOperator.update_and_process_app_metadata(self._apps_metadata,
+                                                        app.name,
+                                                        metadata)
 
     def perform_app_apply(self, rpc_app, mode, lifecycle_hook_info_app_apply, caller=None):
         """Process application install request
@@ -2854,6 +2916,17 @@ class AppOperator(object):
         :return boolean: whether application apply was successful
         """
 
+        def promote_desired_state(app):
+            """ Promote application desired state from uploaded to applied
+
+            This method makes sure that applied apps will keep the 'applied'
+            state when reapplying them across sysinv-conductor restarts.
+
+            :param app: AppOperator application object
+            """
+
+            self.update_desired_state(app, constants.APP_UPLOAD_SUCCESS, constants.APP_APPLY_SUCCESS)
+
         app = AppOperator.Application(rpc_app)
 
         # If apply is called from update method, the app's abort status has
@@ -2879,6 +2952,9 @@ class AppOperator(object):
 
             if AppOperator.is_app_aborted(app.name):
                 raise exception.KubeAppAbort()
+
+            # Promote desired state if needed
+            promote_desired_state(app)
 
             # Perform app resources actions
             lifecycle_hook_info_app_apply.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
@@ -3269,6 +3345,20 @@ class AppOperator(object):
         :return boolean: whether application remove was successful
         """
 
+        def demote_desired_state(app):
+            """ Demote application desired state
+
+            This method demotes applications that were promoted to the 'applied'
+            desired state back to their original desired state.
+
+            :param app: AppOperator application object
+            """
+
+            metadata = self.retrieve_application_metadata_from_file(app.sync_metadata_file)
+            original_desired_state = self.get_desired_state_from_metadata(metadata)
+
+            self.update_desired_state(app, constants.APP_APPLY_SUCCESS, original_desired_state)
+
         app = AppOperator.Application(rpc_app)
         self._register_app_abort(app.name)
 
@@ -3323,6 +3413,9 @@ class AppOperator(object):
                 self._dbapi.kube_app_destroy(app.name, inactive=True)
 
             try:
+                # Restore original desired state if needed
+                demote_desired_state(app)
+
                 # Perform rbd actions
                 lifecycle_hook_info_app_remove.relative_timing = constants.APP_LIFECYCLE_TIMING_POST
                 lifecycle_hook_info_app_remove.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RBD
