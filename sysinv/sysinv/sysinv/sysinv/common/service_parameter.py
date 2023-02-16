@@ -274,14 +274,10 @@ def _validate_ldap_access_filter(name, value):
 def _validate_intel_nic_driver_version(name, value):
     """Check if Intel NIC driver version value is valid"""
 
-    valid_values = (constants.SERVICE_PARAM_PLAT_CONFIG_INTEL_CVL_2_54,
-        constants.SERVICE_PARAM_PLAT_CONFIG_INTEL_CVL_4_0_1)
-
-    if value not in valid_values:
+    if value not in constants.SERVICE_PARAM_PLAT_CONFIG_INTEL_CVL_VALUES:
         raise wsme.exc.ClientSideError(_(
-            "Parameter '%s' value must be either '%s' or '%s'" %
-            (name, constants.SERVICE_PARAM_PLAT_CONFIG_INTEL_CVL_2_54,
-            constants.SERVICE_PARAM_PLAT_CONFIG_INTEL_CVL_4_0_1)))
+            "Parameter '{}' value must be one of {}".format(
+                name, constants.SERVICE_PARAM_PLAT_CONFIG_INTEL_CVL_VALUES)))
 
 
 def _get_network_pool_from_ip_address(ip, networks):
