@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2022 Wind River Systems, Inc.
+# Copyright (c) 2020-2023 Wind River Systems, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -354,14 +354,18 @@ def get_system(token, method, api_cmd, api_cmd_headers=None,
 
 def get_token():
     """Get token for the sysinv user."""
+
+    keystone_conf = CONF.get('KEYSTONE_AUTHTOKEN')
+
     token = _get_token(
-        CONF.keystone_authtoken.auth_url + '/v3/auth/tokens',
-        CONF.keystone_authtoken.project_name,
-        CONF.keystone_authtoken.username,
-        CONF.keystone_authtoken.password,
-        CONF.keystone_authtoken.user_domain_name,
-        CONF.keystone_authtoken.project_domain_name,
-        CONF.keystone_authtoken.region_name)
+        keystone_conf.auth_url + '/v3/auth/tokens',
+        keystone_conf.project_name,
+        keystone_conf.username,
+        keystone_conf.password,
+        keystone_conf.user_domain_name,
+        keystone_conf.project_domain_name,
+        keystone_conf.region_name)
+
     return token
 
 
@@ -466,7 +470,7 @@ def init_keystone_auth_opts():
                    help='Authorization url')
     ]
 
-    keystone_opt_group = cfg.OptGroup(name='keystone_authtoken',
+    keystone_opt_group = cfg.OptGroup(name='KEYSTONE_AUTHTOKEN',
                                       title='Keystone options')
     cfg.CONF.register_opts(keystone_opts, group=keystone_opt_group.name)
 
