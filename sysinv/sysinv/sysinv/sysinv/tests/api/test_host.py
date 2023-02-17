@@ -1589,6 +1589,154 @@ class TestPostKubeUpgrades(TestHost):
                       result.json['error_message'])
 
 
+class TestSimplexPostKubeUpgrades(TestHost):
+    system_mode = constants.SYSTEM_MODE_SIMPLEX
+
+    def setUp(self):
+        super(TestSimplexPostKubeUpgrades, self).setUp()
+
+        # Mock the KubeOperator
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.42.1'}
+
+        def mock_kube_get_control_plane_versions(obj):
+            return self.kube_get_control_plane_versions_result
+        self.mocked_kube_get_control_plane_versions = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_get_control_plane_versions',
+            mock_kube_get_control_plane_versions)
+        self.mocked_kube_get_control_plane_versions.start()
+        self.addCleanup(self.mocked_kube_get_control_plane_versions.stop)
+
+        self.kube_get_kubelet_versions_result = {
+            'controller-0': 'v1.42.1'}
+
+        def mock_kube_get_kubelet_versions(obj):
+            return self.kube_get_kubelet_versions_result
+        self.mocked_kube_get_kubelet_versions = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_get_kubelet_versions',
+            mock_kube_get_kubelet_versions)
+        self.mocked_kube_get_kubelet_versions.start()
+        self.addCleanup(self.mocked_kube_get_kubelet_versions.stop)
+
+        # Mock the KubeVersion
+        self.get_kube_versions_result = [
+            {'version': 'v1.42.1',
+             'upgrade_from': [],
+             'downgrade_to': [],
+             'applied_patches': [],
+             'available_patches': [],
+             },
+            {'version': 'v1.42.2',
+             'upgrade_from': ['v1.42.1'],
+             'downgrade_to': [],
+             'applied_patches': [],
+             'available_patches': [],
+             },
+        ]
+
+        def mock_get_kube_versions():
+            return self.get_kube_versions_result
+        self.mocked_get_kube_versions = mock.patch(
+            'sysinv.common.kubernetes.get_kube_versions',
+            mock_get_kube_versions)
+        self.mocked_get_kube_versions.start()
+        self.addCleanup(self.mocked_get_kube_versions.stop)
+
+        # Mock the patching API
+        self.mock_patch_is_applied_result = True
+
+        def mock_patch_is_applied(token, timeout, region_name, patches):
+            return self.mock_patch_is_applied_result
+        self.mocked_patch_is_applied = mock.patch(
+            'sysinv.api.controllers.v1.patch_api.patch_is_applied',
+            mock_patch_is_applied)
+        self.mocked_patch_is_applied.start()
+        self.addCleanup(self.mocked_patch_is_applied.stop)
+
+        self.mock_patch_is_available_result = True
+
+        def mock_patch_is_available(token, timeout, region_name, patches):
+            return self.mock_patch_is_available_result
+        self.mocked_patch_is_available = mock.patch(
+            'sysinv.api.controllers.v1.patch_api.patch_is_available',
+            mock_patch_is_available)
+        self.mocked_patch_is_available.start()
+        self.addCleanup(self.mocked_patch_is_available.stop)
+
+    def test_force_kube_upgrade_kubelet_controller_0_wrong_host_state(self):
+        # Test upgrading kubernetes kubelet on controller-0 with controller
+        # in the wrong state using force option.
+
+        # Create controller-0
+        c0 = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_DEGRADED)
+
+        # Create the upgrade
+        kube_upgrade = dbutils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADED_FIRST_MASTER,
+        )
+
+        # Upgrade the kubelet
+        body = {'force': True}
+        result = self.post_json(
+            '/ihosts/controller-0/kube_upgrade_kubelet',
+            body, headers={'User-Agent': 'sysinv-test'})
+
+        # Verify the host was returned
+        self.assertEqual(result.json['hostname'], 'controller-0')
+
+        # Verify the kubelet was upgraded
+        self.fake_conductor_api.kube_upgrade_kubelet.\
+            assert_called_with(mock.ANY, c0.uuid)
+
+        # Verify that the status was updated
+        result = self.get_json('/kube_host_upgrades/1')
+        self.assertEqual(result['status'],
+                        kubernetes.KUBE_HOST_UPGRADING_KUBELET)
+
+        # Verify that the upgrade state was updated
+        result = self.get_json('/kube_upgrade/%s' % kube_upgrade.uuid)
+        self.assertEqual(result['state'],
+                        kubernetes.KUBE_UPGRADING_KUBELETS)
+
+    def test_kube_upgrade_kubelet_controller_0_wrong_host_state(self):
+        # Test upgrading kubernetes kubelet on controller-0 with controller
+        # in the wrong state.
+
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_DEGRADED)
+
+        # Create the upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADED_FIRST_MASTER,
+        )
+
+        # Upgrade the kubelet
+        body = {}
+        result = self.post_json(
+            '/ihosts/controller-0/kube_upgrade_kubelet',
+            body, headers={'User-Agent': 'sysinv-test'},
+            expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertTrue(result.json['error_message'])
+        self.assertIn("The host must be unlocked and available",
+                      result.json['error_message'])
+
+
 class TestSimplexHostDelete(TestHost):
     system_mode = constants.SYSTEM_MODE_SIMPLEX
 
