@@ -814,7 +814,7 @@ class ConductorManager(service.PeriodicService):
         {'service': constants.SERVICE_TYPE_PLATFORM,
          'section': constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
          'name': constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION,
-         'value': constants.SERVICE_PARAM_PLAT_CONFIG_INTEL_CVL_4_0_1,
+         'value': constants.SERVICE_PARAM_PLAT_CONFIG_INTEL_CVL_VALUES[-1],
          },
         {'service': constants.SERVICE_TYPE_RADOSGW,
          'section': constants.SERVICE_PARAM_SECTION_RADOSGW_CONFIG,
