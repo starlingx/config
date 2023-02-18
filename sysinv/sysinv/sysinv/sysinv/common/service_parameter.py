@@ -51,6 +51,13 @@ def _validate_yes_no(name, value):
             "Parameter '%s' must be a yes/no value." % name))
 
 
+def _validate_enabled_disabled(name, value):
+    if value.lower() not in ['enabled', 'disabled']:
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' must be of either enabled or disabled value."
+            % name))
+
+
 def _validate_integer(name, value):
     try:
         int(value)
@@ -824,6 +831,19 @@ IDENTITY_CONFIG_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_IDENTITY_CONFIG_TOKEN_EXPIRATION: 'openstack::keystone::params::token_expiration',
 }
 
+IDENTITY_LOCAL_OPENLDAP_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_IDENTITY_LOCAL_OPENLDAP_INSECURE_SERVICE,
+]
+
+IDENTITY_LOCAL_OPENLDAP_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_IDENTITY_LOCAL_OPENLDAP_INSECURE_SERVICE:
+        _validate_enabled_disabled,
+}
+
+IDENTITY_LOCAL_OPENLDAP_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_IDENTITY_LOCAL_OPENLDAP_INSECURE_SERVICE:
+        'platform::ldap::params::insecure_service',
+}
 # Maintenance Service Parameters
 PLATFORM_MTCE_PARAMETER_MANDATORY = [
     constants.SERVICE_PARAM_PLAT_MTCE_WORKER_BOOT_TIMEOUT,
@@ -1390,7 +1410,12 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: PLATFORM_KEYSTONE_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: PLATFORM_KEYSTONE_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: PLATFORM_KEYSTONE_PARAMETER_RESOURCE,
-        }
+        },
+        constants.SERVICE_PARAM_SECTION_IDENTITY_LOCAL_OPENLDAP: {
+            SERVICE_PARAM_OPTIONAL: IDENTITY_LOCAL_OPENLDAP_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: IDENTITY_LOCAL_OPENLDAP_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: IDENTITY_LOCAL_OPENLDAP_PARAMETER_RESOURCE,
+        },
     },
     constants.SERVICE_TYPE_PLATFORM: {
         constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG: {

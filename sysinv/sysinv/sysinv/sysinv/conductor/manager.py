@@ -10127,6 +10127,7 @@ class ConductorManager(service.PeriodicService):
                 remote_ldap_domains = [constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN1,
                                        constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN2,
                                        constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN3]
+                local_openldap = [constants.SERVICE_PARAM_SECTION_IDENTITY_LOCAL_OPENLDAP]
 
                 if section in remote_ldap_domains:
                     personalities = [
@@ -10138,6 +10139,13 @@ class ConductorManager(service.PeriodicService):
                         "classes": ['platform::sssd::domain::runtime']
                     }
                     LOG.info("Applying SSSD domain runtime manifest")
+                    self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+                elif section in local_openldap:
+                    personalities = [constants.CONTROLLER]
+                    config_dict = {
+                        "personalities": personalities,
+                        "classes": ['platform::ldap::insecure::runtime']
+                    }
                     self._config_apply_runtime_manifest(context, config_uuid, config_dict)
                 else:
                     personalities = [constants.CONTROLLER]
