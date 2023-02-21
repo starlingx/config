@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2022 Wind River Systems, Inc.
+# Copyright (c) 2017-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -210,13 +210,15 @@ class NetworkingPuppet(base.BasePuppet):
             'ts2phc': {
                 'ts2phc.pulsewidth': constants.PTP_TS2PHC_PULSEWIDTH_100000000,
                 'leapfile': constants.PTP_LEAPFILE_PATH
-            }
+            },
+            'synce4l': {}
         }
 
         default_cmdline_opts = {
             'ptp4l': '',
             'phc2sys': '-a -r -R 2 -u 600',
-            'ts2phc': '-s nmea'
+            'ts2phc': '-s nmea',
+            'synce4l': '',
         }
 
         default_pmc_parameters = {
@@ -233,8 +235,22 @@ class NetworkingPuppet(base.BasePuppet):
             'timeSource': constants.PTP_PMC_TIME_SOURCE
         }
 
+        default_device_parameters = {
+            'input_mode': constants.PTP_SYNCE_INPUT_MODE_LINE,
+            'external_input_QL': constants.PTP_SYNCE_EXTERNAL_INPUT_QL,
+            'external_input_ext_QL': constants.PTP_SYNCE_EXTERNAL_INPUT_EXT_QL,
+            'extended_tlv': constants.PTP_SYNCE_EXTERNAL_TLV,
+            'network_option': constants.PTP_SYNCE_NETWORK_OPTION,
+            'recover_time': constants.PTP_SYNCE_RECOVER_TIME,
+            'eec_holdover_value': constants.PTP_SYNCE_EEC_HOLDOVER_VALUE,
+            'eec_locked_ho_value': constants.PTP_SYNCE_EEC_LOCKED_HO_VALUE,
+            'eec_locked_value': constants.PTP_SYNCE_EEC_LOCKED_VALUE,
+            'eec_freerun_value': constants.PTP_SYNCE_EEC_FREERUN_VALUE,
+            'eec_invalid_value': constants.PTP_SYNCE_EEC_INVALID_VALUE
+        }
+
         allowed_instance_fields = ['global_parameters', 'interfaces', 'name', 'service',
-                                   'cmdline_opts', 'id', 'pmc_gm_settings']
+                                   'cmdline_opts', 'id', 'pmc_gm_settings', 'device_parameters']
         ptp_config = {}
 
         for instance in ptp_instances:
@@ -245,6 +261,7 @@ class NetworkingPuppet(base.BasePuppet):
             instance['cmdline_opts'] = default_cmdline_opts[instance['service']]
             instance['interfaces'] = []
             instance['pmc_gm_settings'] = {}
+            instance['device_parameters'] = {}
 
             # Additional defaults for ptp4l instances
             if instance['service'] == constants.PTP_INSTANCE_TYPE_PTP4L:
@@ -262,11 +279,24 @@ class NetworkingPuppet(base.BasePuppet):
                 instance['global_parameters'].update({
                     'message_tag': instance['name']
                 })
+            elif instance['service'] == constants.PTP_INSTANCE_TYPE_SYNCE4L:
+                instance['global_parameters'].update({
+                    'message_tag': instance['name']
+                })
+                instance['device_parameters'].update(default_device_parameters)
 
             for global_param in ptp_parameters_instance:
                 # Add the supplied instance parameters to global_parameters
                 if instance['uuid'] in global_param['owners']:
-                    instance['global_parameters'][global_param['name']] = global_param['value']
+                    if instance['service'] != constants.PTP_INSTANCE_TYPE_SYNCE4L:
+                        instance['global_parameters'][global_param['name']] = global_param['value']
+                    else:
+                        # Separate the global and device parameters for synce4l
+                        if global_param['name'] in ['logging_level', 'use_syslog',
+                                                    'verbose', 'message_tag']:
+                            instance['global_parameters'][global_param['name']] = global_param['value']
+                        else:
+                            instance['device_parameters'][global_param['name']] = global_param['value']
                 if 'cmdline_opts' in instance['global_parameters']:
                     instance['cmdline_opts'] = instance['global_parameters'].pop('cmdline_opts')
                 # Add pmc parameters so that currentUtcOffsetValid can be set by puppet
@@ -337,7 +367,11 @@ class NetworkingPuppet(base.BasePuppet):
             'ts2phc': {
                 'ts2phc.extts_polarity': 'rising'
             },
-            'clock': {}
+            'clock': {},
+            'synce4l': {
+                'tx_heartbeat_msec': constants.PTP_SYNCE_TX_HEARTBEAT_MSEC,
+                'rx_heartbeat_msec': constants.PTP_SYNCE_RX_HEARTBEAT_MSEC,
+            },
         }
 
         for instance in ptp_instances:

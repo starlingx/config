@@ -171,6 +171,7 @@ class TestListPtpInstance(BasePtpInstanceTestCase):
     def _create_test_ptp_instances(self, name_prefix='test'):
         services = [constants.PTP_INSTANCE_TYPE_PTP4L,
                     constants.PTP_INSTANCE_TYPE_PHC2SYS,
+                    constants.PTP_INSTANCE_TYPE_SYNCE4L,
                     constants.PTP_INSTANCE_TYPE_TS2PHC]
         for service in services:
             name = '%s-%s' % (name_prefix, service)

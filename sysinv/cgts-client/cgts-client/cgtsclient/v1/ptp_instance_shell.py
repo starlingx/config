@@ -1,6 +1,6 @@
 ########################################################################
 #
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2021-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -45,7 +45,7 @@ def do_ptp_instance_list(cc, args):
            help="Name of PTP instance [REQUIRED]")
 @utils.arg('service',
            metavar='<service type>',
-           choices=['ptp4l', 'phc2sys', 'ts2phc', 'clock'],
+           choices=['ptp4l', 'phc2sys', 'ts2phc', 'clock', 'synce4l'],
            help="Service type [REQUIRED]")
 def do_ptp_instance_add(cc, args):
     """Add a PTP instance."""
