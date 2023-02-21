@@ -55,10 +55,11 @@ ADDRPOOL_CONTROLLER1_ADDRESS_ID = 'controller1_address_id'
 ADDRPOOL_FLOATING_ADDRESS_ID = 'floating_address_id'
 ADDRPOOL_GATEWAY_ADDRESS_ID = 'gateway_address_id'
 
-# Address pool for system controller in the subcloud are
-# allowed to be deleted/modified post install
-SYSTEM_CONTROLLER_ADDRPOOLS = ['system-controller-subnet',
-                               'system-controller-oam-subnet']
+# Address pool for the admin network and system controller in the subcloud
+# are allowed to be deleted/modified post install
+SUBCLOUD_WRITABLE_ADDRPOOLS = ['system-controller-subnet',
+                               'system-controller-oam-subnet',
+                               'admin']
 
 
 class AddressPoolPatchType(types.JsonPatchType):
@@ -338,9 +339,9 @@ class AddressPoolController(rest.RestController):
             ipset.update(netaddr.IPRange(start, end))
 
     def _check_pool_readonly(self, addrpool):
-        # The system controller's network pools are expected writeable for re-home
-        # a subcloud to new system controllers.
-        if addrpool.name not in SYSTEM_CONTROLLER_ADDRPOOLS:
+        # The admin and system controller address pools which exist on the
+        # subcloud are expected for re-home a subcloud to new system controllers.
+        if addrpool.name not in SUBCLOUD_WRITABLE_ADDRPOOLS:
             networks = pecan.request.dbapi.networks_get_by_pool(addrpool.id)
             # An addresspool except the system controller's pools, is considered
             # readonly after the initial configuration is complete. During bootstrap
@@ -572,12 +573,12 @@ class AddressPoolController(rest.RestController):
         addresses = pecan.request.dbapi.addresses_get_by_pool(
             addrpool.id)
         if addresses:
-            # All the initial configured addresspools are not deleteable,
-            # except the system controller's network addresspool, which
-            # can be deleted/re-added during re-homing a subcloud to new
-            # system controllers
+            # All of the initial configured addresspools are not deleteable,
+            # except the admin and system controller address pools on the
+            # subcloud. These can be deleted/re-added during re-homing
+            # a subcloud to new system controllers
             if cutils.is_initial_config_complete() and \
-               (addrpool.name not in SYSTEM_CONTROLLER_ADDRPOOLS):
+               (addrpool.name not in SUBCLOUD_WRITABLE_ADDRPOOLS):
                 raise exception.AddressPoolInUseByAddresses()
             else:
                 # Must be a request as a result of network reconfiguration

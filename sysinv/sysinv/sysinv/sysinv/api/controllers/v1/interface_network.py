@@ -196,6 +196,7 @@ class InterfaceNetworkController(rest.RestController):
             cutils.perform_distributed_cloud_config(pecan.request.dbapi,
                                                     interface_id)
         elif network_type == constants.NETWORK_TYPE_ADMIN:
+            pecan.request.rpcapi.update_admin_config(pecan.request.context, host)
             cutils.perform_distributed_cloud_config(pecan.request.dbapi,
                                                     interface_id)
         elif network_type == constants.NETWORK_TYPE_OAM:
