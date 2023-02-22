@@ -137,7 +137,9 @@ def do_certificate_uninstall(cc, args):
 
     supported_modes = ['ssl_ca']
     if args.mode not in supported_modes:
-        raise exc.CommandError('Unsupported mode: %s' % args.mode)
+        msg = ("Unsupported mode: {}\nPlease use certificate-install"
+               " instead to update the existing certificate").format(args.mode)
+        raise exc.CommandError(msg)
 
     cc.certificate.certificate_uninstall(args.certificate_uuid)
     print('Uninstalled certificate: %s' % (args.certificate_uuid))

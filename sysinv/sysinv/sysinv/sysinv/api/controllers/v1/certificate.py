@@ -575,7 +575,9 @@ class CertificateController(rest.RestController):
 
         if certificate and \
                 certificate.certtype not in [constants.CERT_MODE_SSL_CA]:
-            msg = "Unupported mode: {}".format(certificate.certtype)
+            msg = ("Unsupported mode: {}\nPlease use certificate-install"
+                   " instead to update the existing certificate").format(
+                    certificate.certtype)
             raise wsme.exc.ClientSideError(_(msg))
 
         LOG.info("certificate %s certificate_uuid=%s" %
