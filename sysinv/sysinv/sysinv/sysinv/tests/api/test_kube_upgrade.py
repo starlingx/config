@@ -249,6 +249,58 @@ class TestListKubeUpgrade(TestKubeUpgrade):
                          kubernetes.KUBE_UPGRADING_FIRST_MASTER)
 
 
+class TestPostKubeUpgradeSimplex(TestKubeUpgrade,
+                          dbbase.ProvisionedControllerHostTestCase):
+    system_mode = constants.SYSTEM_MODE_SIMPLEX
+
+    @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
+    def test_create_simplex(self):
+        # Test creation of upgrade
+        self.kube_get_kubernetes_version_result = 'v1.42.1'
+        self.kube_get_version_states_result = {'v1.42.1': 'active',
+                                               'v1.42.2': 'available',
+                                               'v1.43.1': 'available',
+                                               'v1.43.2': 'available',
+                                               'v1.43.3': 'available'}
+        create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.3')
+        result = self.post_json('/kube_upgrade', create_dict,
+                                headers={'User-Agent': 'sysinv-test'})
+
+        # Verify that the upgrade has the expected attributes
+        self.assertEqual(result.json['from_version'], 'v1.42.1')
+        self.assertEqual(result.json['to_version'], 'v1.43.3')
+        self.assertEqual(result.json['state'],
+                         kubernetes.KUBE_UPGRADE_STARTED)
+
+        # see if kubeadm_version was changed in DB
+        kube_cmd_version = self.dbapi.kube_cmd_version_get()
+        self.assertEqual(kube_cmd_version.kubeadm_version, '1.43.3')
+
+        # Verify that the target version for the host is still the current version
+        kube_host_upgrade = self.dbapi.kube_host_upgrade_get_by_host(
+            self.host.id)
+        self.assertEqual('v1.42.1', kube_host_upgrade.target_version)
+
+    def test_create_simplex_upgrade_path_not_supported(self):
+        # Test creation of upgrade when upgrade path is not supported
+        self.kube_get_kubernetes_version_result = 'v1.42.1'
+        self.kube_get_version_states_result = {'v1.42.1': 'active',
+                                               'v1.42.2': 'available',
+                                               'v1.43.1': 'unavailable',
+                                               'v1.43.2': 'unavailable',
+                                               'v1.43.3': 'unavailable'}
+
+        create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.3')
+        result = self.post_json('/kube_upgrade', create_dict,
+                                headers={'User-Agent': 'sysinv-test'},
+                                expect_errors=True)
+
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertIn("version v1.43.3 is not in available state",
+                      result.json['error_message'])
+
+
 class TestPostKubeUpgrade(TestKubeUpgrade,
                           dbbase.ProvisionedControllerHostTestCase):
 
