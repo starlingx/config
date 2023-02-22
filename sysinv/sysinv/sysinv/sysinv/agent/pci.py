@@ -24,15 +24,7 @@ from sysinv.common import constants
 from sysinv.common import device as dconstants
 from sysinv.common import utils
 
-dpdk_opts = [
-             cfg.StrOpt('dpdk_elf',
-                        default='/usr/sbin/ovs-vswitchd',
-                        help='DPDK ELF file used for compatibility checks'),
-            ]
-
 CONF = cfg.CONF
-CONF.register_opts(dpdk_opts, 'dpdk')
-
 LOG = logging.getLogger(__name__)
 
 # Look for PCI class 0x0200 and 0x0280 so that we get generic ethernet
