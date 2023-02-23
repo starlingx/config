@@ -17,7 +17,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 
 
@@ -51,6 +51,7 @@ from six import StringIO
 
 from oslo_config import cfg
 from oslo_log import log
+from oslo_service import periodic_task
 from oslo_utils import timeutils
 from sysinv.agent import disk
 from sysinv.agent import partition
@@ -69,7 +70,6 @@ from sysinv.objects import base as objects_base
 from sysinv.puppet import common as puppet
 from sysinv.conductor import rpcapiproxy as conductor_rpcapi
 from sysinv.openstack.common import context as mycontext
-from sysinv.openstack.common import periodic_task
 from sysinv.openstack.common.rpc.common import Timeout
 from sysinv.openstack.common.rpc.common import serialize_remote_exception
 from sysinv.openstack.common.rpc import service as rpc_service

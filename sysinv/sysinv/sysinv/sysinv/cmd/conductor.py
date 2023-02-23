@@ -26,7 +26,7 @@ import sys
 
 from oslo_config import cfg
 
-from sysinv.openstack.common import service
+from oslo_service import service
 
 from sysinv.common import service as sysinv_service
 from sysinv.conductor import manager
@@ -42,5 +42,5 @@ def main():
     sysinv_service.prepare_service(sys.argv)
 
     mgr = manager.ConductorManager(CONF.host, manager.MANAGER_TOPIC)
-    launcher = service.launch(mgr)
+    launcher = service.launch(CONF, mgr)
     launcher.wait()
