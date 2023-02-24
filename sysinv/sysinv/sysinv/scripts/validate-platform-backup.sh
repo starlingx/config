@@ -1,13 +1,25 @@
 #!/bin/bash
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
 NAME=$(basename $0)
-rootfs_part=$(findmnt -n -o SOURCE /)
-device_path=$(lsblk -pno pkname $rootfs_part)
+rootfs_part=$(findmnt -n -o SOURCE / | sed 's/\[[^]]*\]//g')
+device_path=$(lsblk -pno pkname ${rootfs_part})
+if [ -z $device_path ] ; then
+    base_device=$(dmsetup deps -o devname ${rootfs_part%} | grep -wo "(.*.)")
+    device_path=$(find /dev -name "${base_device:1:-1}")
+    check_parent_path_1=$(lsblk -pno pkname ${device_path} | head -n 1)
+    if [ ! -z $check_parent_path_1 ] ; then
+        device_path=${check_parent_path_1}
+    fi
+    check_parent_path_2=$(dmsetup deps -o devname ${device_path} | grep -wo "(.*.)")
+    if [ ! -z $check_parent_path_2 ] ; then
+        device_path=$(find /dev -name "${check_parent_path_2:1:-1}")
+    fi
+fi
 
 BACKUP_PART_GUID="BA5EBA11-0000-1111-2222-000000000002"
 PLATFORM_BACKUP_SIZE=10000
