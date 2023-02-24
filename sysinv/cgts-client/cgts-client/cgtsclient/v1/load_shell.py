@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015-2022 Wind River Systems, Inc.
+# Copyright (c) 2015-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -73,6 +73,11 @@ def do_load_delete(cc, args):
            help=("Perform an active load import operation. "
                  "Applicable only for SystemController to allow import of "
                  "an active load for subcloud install"))
+@utils.arg('-i', '--inactive',
+           action='store_true',
+           default=False,
+           help=("Perform an inactive load import operation. "
+                 "Import a previous release load for subcloud install"))
 @utils.arg('--local',
            action='store_true',
            default=False,
@@ -84,6 +89,8 @@ def do_load_import(cc, args):
     """Import a load."""
 
     local = args.local
+    active = args.active
+    inactive = args.inactive
 
     # If absolute path is not specified, we assume it is the relative path.
     # args.isopath will then be set to the absolute path
@@ -99,10 +106,7 @@ def do_load_import(cc, args):
     if not os.path.isfile(args.sigpath):
         raise exc.CommandError(_("File %s does not exist." % args.sigpath))
 
-    active = None
-    if args.active is True:
-        active = 'true'
-    else:
+    if not active and not inactive:
         # The following logic is taken from sysinv api as it takes a while for
         # this large POST request to reach the server.
         #
@@ -114,8 +118,13 @@ def do_load_import(cc, args):
                 "Max number of loads (2) reached. Please remove the "
                 "old or unused load before importing a new one."))
 
-    patch = {'path_to_iso': args.isopath, 'path_to_sig': args.sigpath,
-             'active': active, 'local': local}
+    patch = {
+        'path_to_iso': args.isopath,
+        'path_to_sig': args.sigpath,
+        'inactive': inactive,
+        'active': active,
+        'local': local,
+    }
 
     try:
         print("This operation will take a while. Please wait.")

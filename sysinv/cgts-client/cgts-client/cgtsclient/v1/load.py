@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2022 Wind River Systems, Inc.
+# Copyright (c) 2015-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -11,7 +11,8 @@ from cgtsclient import exc
 CREATION_ATTRIBUTES = ['software_version', 'compatible_version',
                        'required_patches']
 
-IMPORT_ATTRIBUTES = ['path_to_iso', 'path_to_sig', 'active', 'local']
+IMPORT_ATTRIBUTES = ['path_to_iso', 'path_to_sig', 'active', 'local',
+                     'inactive']
 
 
 class Load(base.Resource):
@@ -48,27 +49,33 @@ class LoadManager(base.Manager):
 
     def import_load(self, **kwargs):
         path = '/v1/loads/import_load'
-
-        active = None
-        local = False
+        local = kwargs.pop('local')
         load_info = {}
-        for (key, value) in kwargs.items():
+
+        for key, value in kwargs.items():
             if key in IMPORT_ATTRIBUTES:
-                if key == 'active':
-                    active = value
-                elif key == 'local':
-                    local = value
+                if isinstance(value, bool):
+                    load_info[key] = str(value).lower()
                 else:
                     load_info[key] = value
             else:
                 raise exc.InvalidAttribute(key)
 
-        if local is True:
-            load_info['active'] = active
+        if local:
             return self._create(path, body=load_info)
 
+        data = {
+            'active': load_info.pop('active', 'false'),
+            'inactive': load_info.pop('inactive', 'false'),
+        }
+
         json_data = self._upload_multipart(
-            path, body=load_info, data={'active': active}, check_exceptions=True)
+            path,
+            body=load_info,
+            data=data,
+            check_exceptions=True,
+        )
+
         return self.resource_class(self, json_data)
 
     def delete(self, load_id):

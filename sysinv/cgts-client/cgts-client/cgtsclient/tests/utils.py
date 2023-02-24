@@ -47,6 +47,22 @@ class FakeAPI(object):
         fixture = self._request(*args, **kwargs)
         return FakeResponse(fixture[0]), fixture[1]
 
+    def upload_request_with_multipart(self, *args, **kwargs):
+        # TODO(gdossant): add 'data' parameter to _request method.
+        # It will impact more than 40 tests and must be done in
+        # a specific commit.
+
+        kwargs.pop('check_exceptions')
+        data = kwargs.pop('data')
+
+        fixture = self._request(*args, **kwargs)
+
+        call = list(self.calls[0])
+        call.append(data)
+        self.calls[0] = tuple(call)
+
+        return fixture[1]
+
 
 class FakeResponse(object):
     def __init__(self, headers, body=None, version=None):
