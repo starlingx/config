@@ -336,10 +336,11 @@ class LoadController(rest.RestController):
                                              " %s is active.")
                                              % constants.CONTROLLER_0_HOSTNAME)
 
-        system_controller_import_active = False
         req_content = dict()
         load_files = dict()
         is_multiform_req = True
+        import_type = None
+
         # Request coming from dc-api-proxy is not multiform, file transfer is handled
         # by dc-api-proxy, the request contains only the vault file location
         if request.content_type == "application/json":
@@ -351,15 +352,27 @@ class LoadController(rest.RestController):
         if not req_content:
             raise wsme.exc.ClientSideError(_("Empty request."))
 
-        if 'active' in req_content:
-            if req_content['active'] == 'true':
-                if pecan.request.dbapi.isystem_get_one().\
-                        distributed_cloud_role == \
-                        constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-                    LOG.info("System Controller allow start import_load")
-                    system_controller_import_active = True
+        active = req_content.get('active')
+        inactive = req_content.get('inactive')
 
-            self._check_existing_loads(active_import=system_controller_import_active)
+        if active == 'true' and inactive == 'true':
+            raise wsme.exc.ClientSideError(_("Invalid use of --active and"
+                                             " --inactive arguments at"
+                                             " the same time."))
+
+        if active == 'true' or inactive == 'true':
+            isystem = pecan.request.dbapi.isystem_get_one()
+
+            if isystem.distributed_cloud_role == \
+                    constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+                LOG.info("System Controller allow start import_load")
+
+                if active == 'true':
+                    import_type = constants.ACTIVE_LOAD_IMPORT
+                elif inactive == 'true':
+                    import_type = constants.INACTIVE_LOAD_IMPORT
+
+        self._check_existing_loads(import_type=import_type)
 
         try:
             for file in constants.IMPORT_LOAD_FILES:
@@ -395,18 +408,21 @@ class LoadController(rest.RestController):
                 pecan.request.context,
                 load_files[constants.LOAD_ISO],
                 load_files[constants.LOAD_SIGNATURE],
-                system_controller_import_active)
+                import_type,
+            )
 
             if new_load is None:
                 raise wsme.exc.ClientSideError(_("Error importing load. Load not found"))
 
-            if not system_controller_import_active:
+            if import_type != constants.ACTIVE_LOAD_IMPORT:
                 # Signature and upgrade path checks have passed, make rpc call
                 # to the conductor to run import script in the background.
                 pecan.request.rpcapi.import_load(
                     pecan.request.context,
                     load_files[constants.LOAD_ISO],
-                    new_load)
+                    new_load,
+                    import_type,
+                )
         except (rpc.common.Timeout, common.RemoteError) as e:
             if os.path.isdir(constants.LOAD_FILES_STAGING_DIR):
                 shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
@@ -454,34 +470,50 @@ class LoadController(rest.RestController):
 
         return load.convert_with_links(new_load)
 
-    def _check_existing_loads(self, active_import=False):
+    def _check_existing_loads(self, import_type=None):
+        # Only are allowed at one time:
+        # - the active load
+        # - an imported load regardless of its current state
+        # - an inactive load.
+
         loads = pecan.request.dbapi.load_get_list()
 
-        # Only 2 loads are allowed at one time: the active load
-        # and an imported load regardless of its current state
-        # (e.g. importing, error, deleting).
-        load_state = None
-        if len(loads) > constants.IMPORTED_LOAD_MAX_COUNT:
-            for load in loads:
-                if load.state != constants.ACTIVE_LOAD_STATE:
-                    load_state = load.state
-        else:
+        if len(loads) <= constants.IMPORTED_LOAD_MAX_COUNT:
             return
 
-        if load_state == constants.ERROR_LOAD_STATE:
-            err_msg = _("Please remove the load in error state "
-                        "before importing a new one.")
-        elif load_state == constants.DELETING_LOAD_STATE:
-            err_msg = _("Please wait for the current load delete "
-                        "to complete before importing a new one.")
-        elif not active_import:
-            # Already imported or being imported
-            err_msg = _("Max number of loads (2) reached. Please "
-                        "remove the old or unused load before "
-                        "importing a new one.")
-        else:
-            return
-        raise wsme.exc.ClientSideError(err_msg)
+        for load in loads:
+            if load.state == constants.ACTIVE_LOAD_STATE:
+                continue
+
+            load_state = load.state
+
+            if load_state == constants.ERROR_LOAD_STATE:
+                err_msg = _("Please remove the load in error state "
+                            "before importing a new one.")
+
+            elif load_state == constants.DELETING_LOAD_STATE:
+                err_msg = _("Please wait for the current load delete "
+                            "to complete before importing a new one.")
+
+            elif load_state == constants.INACTIVE_LOAD_STATE:
+                if import_type != constants.INACTIVE_LOAD_IMPORT:
+                    continue
+
+                err_msg = _("An inactived load already exists. "
+                        "Please, remove the inactive load "
+                        "before trying to import a new one.")
+
+            elif import_type == constants.ACTIVE_LOAD_IMPORT or \
+                    import_type == constants.INACTIVE_LOAD_IMPORT:
+                continue
+
+            elif not err_msg:
+                # Already imported or being imported
+                err_msg = _("Max number of loads (2) reached. Please "
+                            "remove the old or unused load before "
+                            "importing a new one.")
+
+            raise wsme.exc.ClientSideError(err_msg)
 
     @cutils.synchronized(LOCK_NAME)
     @wsme.validate(six.text_type, [LoadPatchType])
