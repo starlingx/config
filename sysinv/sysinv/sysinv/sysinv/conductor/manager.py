@@ -49,7 +49,6 @@ import uuid
 import xml.etree.ElementTree as ElementTree
 from contextlib import contextmanager
 from datetime import datetime
-from datetime import timedelta
 from distutils.util import strtobool
 from copy import deepcopy
 
@@ -16657,12 +16656,14 @@ class ConductorManager(service.PeriodicService):
             current_state = getattr(kube_upgrade, 'state', '')
             if kube_upgrade_state_map.get(current_state):
                 kube_upgrade_time_stamp = getattr(kube_upgrade, 'updated_at')
-                if datetime.utcnow() - kube_upgrade_time_stamp >= timedelta(
-                        seconds=CONF.conductor_periodic_task_intervals.kube_upgrade_states * 2):
+                if timeutils.is_older_than(
+                    kube_upgrade_time_stamp,
+                    CONF.conductor_periodic_task_intervals.kube_upgrade_states * 2
+                ):
                     self.dbapi.kube_upgrade_update(kube_upgrade.uuid,
                                         {'state': kube_upgrade_state_map[current_state]})
                     LOG.info(
-                        "Kube_upgrade state changed from "
+                        "kube_upgrade state changed from "
                         "'%s' to '%s'", current_state,
                         kube_upgrade_state_map[current_state])
         except exception.NotFound:
