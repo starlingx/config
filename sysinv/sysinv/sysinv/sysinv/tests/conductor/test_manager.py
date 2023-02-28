@@ -17,7 +17,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 
 """Test class for Sysinv ManagerService."""
@@ -31,6 +31,7 @@ from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 
 from fm_api import constants as fm_constants
+from oslo_context import context
 from oslo_serialization import base64
 from sysinv.agent import rpcapi as agent_rpcapi
 from sysinv.common import constants
@@ -40,7 +41,6 @@ from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
 from sysinv.conductor import manager
 from sysinv.db import api as dbapi
-from sysinv.openstack.common import context
 
 from sysinv.tests.db import base
 from sysinv.tests.db import utils
@@ -4191,7 +4191,7 @@ class ManagerTestCase(base.DbTestCase):
         }
         mock_config_apply_runtime_manifest.assert_called_with(mock.ANY, '1234', config_dict)
 
-    @mock.patch("sysinv.openstack.common.context.RequestContext")
+    @mock.patch("oslo_context.context.RequestContext")
     def test_get_keystone_callback_endpoints(self, requestCtx):
         mock_config_update_hosts = mock.MagicMock()
         mock_config_apply_runtime_manifest = mock.MagicMock()

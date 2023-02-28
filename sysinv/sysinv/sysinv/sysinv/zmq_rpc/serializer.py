@@ -1,4 +1,4 @@
-# Copyright (c) 2022 Wind River Systems, Inc.
+# Copyright (c) 2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,9 +8,9 @@ import netaddr
 import uuid
 
 from oslo_utils import timeutils
+from oslo_context.context import RequestContext as BaseRequestContext
 from sysinv.objects.base import SysinvObject
 from sysinv.common.context import RequestContext
-from sysinv.openstack.common.context import RequestContext as BaseRequestContext
 from sysinv.openstack.common.rpc.amqp import RpcContext
 from sysinv.openstack.common.rpc.common import CommonRpcContext
 

@@ -26,6 +26,7 @@ import time
 from collections import defaultdict
 
 from oslo_config import cfg
+from oslo_context import context
 from oslo_log import log
 
 from sysinv._i18n import _
@@ -36,7 +37,6 @@ from sysinv.common import utils
 from sysinv.common import disk_utils
 
 from sysinv.conductor import rpcapiproxy as conductor_rpcapi
-from sysinv.openstack.common import context
 
 from functools import cmp_to_key
 

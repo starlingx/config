@@ -1,6 +1,6 @@
 # sim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2019-2022 Wind River Systems, Inc.
+# Copyright (c) 2019-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -19,12 +19,12 @@ import threading
 import zlib
 
 from eventlet.green import subprocess
+from oslo_context import context
 from oslo_log import log as logging
 from sysinv.agent import rpcapiproxy as agent_rpcapi
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common.retrying import retry
-from sysinv.openstack.common import context
 
 LOG = logging.getLogger(__name__)
 

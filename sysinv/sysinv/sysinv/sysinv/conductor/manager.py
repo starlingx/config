@@ -69,6 +69,7 @@ from fm_api import fm_api
 from netaddr import IPAddress
 from netaddr import IPNetwork
 from oslo_config import cfg
+from oslo_context import context as ctx
 from oslo_log import log
 from oslo_serialization import base64
 from oslo_serialization import jsonutils
@@ -114,7 +115,6 @@ from sysinv.db import api as dbapi
 from sysinv import objects
 from sysinv.objects import base as objects_base
 from sysinv.objects import kube_app as kubeapp_obj
-from sysinv.openstack.common import context as ctx
 from sysinv.openstack.common.rpc import service as rpc_service
 from sysinv.puppet import common as puppet_common
 from sysinv.puppet import puppet
@@ -402,7 +402,7 @@ class ConductorManager(service.PeriodicService):
         """ Get call back endpoints for keystone listener"""
 
         callback_endpoints = []
-        context = ctx.RequestContext(user='admin', tenant='admin',
+        context = ctx.RequestContext(user_id='admin', project_id='admin',
                                      is_admin=True)
         for username in KEYSTONE_USER_PASSWORD_UPDATE.keys():
             if username == 'admin':

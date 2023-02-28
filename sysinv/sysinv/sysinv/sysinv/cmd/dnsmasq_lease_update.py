@@ -19,7 +19,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2016 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 
 
@@ -34,11 +34,11 @@ import os
 import sys
 
 from oslo_config import cfg
+from oslo_context import context
 from oslo_log import log
 from sysinv._i18n import _
 from sysinv.common import service as sysinv_service
 from sysinv.conductor import rpcapiproxy as conductor_rpcapi
-from sysinv.openstack.common import context
 
 CONF = cfg.CONF
 

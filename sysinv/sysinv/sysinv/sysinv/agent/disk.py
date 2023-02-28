@@ -17,13 +17,13 @@ import pyudev
 import re
 import sys
 
+from oslo_context import context
 from oslo_log import log as logging
 
 from sysinv.common import disk_utils
 from sysinv.common import constants
 from sysinv.common import utils
 from sysinv.conductor import rpcapiproxy as conductor_rpcapi
-from sysinv.openstack.common import context
 
 LOG = logging.getLogger(__name__)
 

@@ -12,7 +12,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2016 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 
 
@@ -22,11 +22,11 @@ import collections
 import copy
 import six
 
+from oslo_context import context
 from oslo_log import log as logging
 from sysinv._i18n import _
 from sysinv.common import exception
 from sysinv.objects import utils as obj_utils
-from sysinv.openstack.common import context
 from sysinv.openstack.common.rpc import common as rpc_common
 from sysinv.openstack.common.rpc import serializer as rpc_serializer
 

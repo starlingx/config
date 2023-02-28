@@ -21,10 +21,10 @@ import abc
 import socket
 
 from oslo_config import cfg
+from oslo_context import context
 from oslo_log import log as logging
 from oslo_service import periodic_task
 from oslo_service import service as base_service
-from sysinv.openstack.common import context
 from sysinv.openstack.common import rpc
 from sysinv import version
 

@@ -11,10 +11,10 @@ import os
 import subprocess
 import sys
 from controllerconfig.common import log
-from sysinv.openstack.common import context
 from sysinv.conductor import rpcapiproxy as conductor_rpcapi
 from cgtsclient import client as cgts_client
 from oslo_config import cfg
+from oslo_context import context
 from sysinv.common import constants
 
 CONF = cfg.CONF

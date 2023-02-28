@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2017-2021 Wind River Systems, Inc.
+# Copyright (c) 2017-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -28,6 +28,7 @@ except ImportError:
         """
         with ExitStack() as stack:
             yield tuple(stack.enter_context(cm) for cm in contexts)
+from oslo_context import context
 from oslo_serialization import jsonutils
 from oslo_utils import uuidutils
 from sysinv.conductor import manager
@@ -36,7 +37,6 @@ from sysinv.common import constants
 from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.db import api as dbapi
-from sysinv.openstack.common import context
 from sysinv.tests.api import base
 from sysinv.tests.db import utils as dbutils
 
