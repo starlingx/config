@@ -96,9 +96,16 @@ audit_intervals_opts = [
        cfg.IntOpt('lldp_audit', default=300)
                   ]
 
+dpdk_opts = [
+             cfg.StrOpt('dpdk_elf',
+                        default='/usr/sbin/ovs-vswitchd',
+                        help='DPDK ELF file used for compatibility checks'),
+            ]
+
 CONF = cfg.CONF
 CONF.register_opts(agent_opts, 'agent')
 CONF.register_opts(audit_intervals_opts, 'agent_periodic_task_intervals')
+CONF.register_opts(dpdk_opts, 'dpdk')
 
 MAXSLEEP = 600  # 10 minutes
 
