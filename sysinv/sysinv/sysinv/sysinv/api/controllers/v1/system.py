@@ -280,6 +280,7 @@ class SystemController(rest.RestController):
         iinterfaces = pecan.request.dbapi.iinterface_get_all()
         mgmt_if = None
         cluster_host_if = None
+        admin_if = None
 
         for iif in iinterfaces:
             if iif.networktypelist:
@@ -287,7 +288,9 @@ class SystemController(rest.RestController):
                     mgmt_if = iif
                 if constants.NETWORK_TYPE_CLUSTER_HOST in iif.networktypelist:
                     cluster_host_if = iif
-            if mgmt_if and cluster_host_if:
+                if constants.NETWORK_TYPE_ADMIN in iif.networktypelist:
+                    admin_if = iif
+            if mgmt_if and cluster_host_if and admin_if:
                 break
 
         if mgmt_if is None:
@@ -312,6 +315,15 @@ class SystemController(rest.RestController):
                     "configured on loopback. "
                     % system_mode)
             raise wsme.exc.ClientSideError(msg)
+        if admin_if:
+            # admin interface can be none, it is optional and only can be
+            # configured on a subcloud controller.
+            if admin_if.ifname == constants.LOOPBACK_IFNAME:
+                msg = _("Cannot modify system mode to %s "
+                        "when the admin interface is "
+                        "configured on loopback. "
+                        % system_mode)
+                raise wsme.exc.ClientSideError(msg)
 
     def _check_controller_locked(self):
         controller = api_utils.HostHelper.get_active_controller()

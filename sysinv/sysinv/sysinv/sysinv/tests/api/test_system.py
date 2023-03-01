@@ -206,6 +206,32 @@ class TestNetworkSetup(object):
             interface_id=self.cluster_host_interface_controller.id,
             network_id=self.cluster_host_network.id)
 
+    def _create_admin_interface_network(self, interface='admin'):
+        self.address_pool_admin = dbutils.create_test_address_pool(
+            id=3,
+            network='192.168.205.0',
+            name='admin',
+            ranges=[['192.168.205.2', '192.168.205.254']],
+            prefix=24)
+        self.admin_network = dbutils.create_test_network(
+            id=3,
+            name='admin',
+            type=constants.NETWORK_TYPE_ADMIN,
+            link_capacity=10000,
+            vlan_id=4,
+            address_pool_id=self.address_pool_admin.id)
+        self.admin_interface_controller = dbutils.create_test_interface(
+            ifname=interface,
+            id=3,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=self.controller.id,
+            ihost_uuid=self.controller.uuid,
+            networktypelist=[constants.NETWORK_TYPE_ADMIN])
+
+        dbutils.create_test_interface_network(
+            interface_id=self.address_pool_admin.id,
+            network_id=self.admin_network.id)
+
 
 @mock.patch('socket.gethostname', return_value='controller-0')
 class TestSystemUpdateModeFromSimplex(TestSystem):
@@ -268,6 +294,35 @@ class TestSystemUpdateModeFromSimplex(TestSystem):
         update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
         msg = ("Cannot modify system mode to %s "
                "when the cluster-host interface is "
+               "configured on loopback. "
+               % constants.SYSTEM_MODE_DUPLEX)
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update, expect_errors=True,
+                              expected_error_message=msg)
+
+    @mock.patch('sysinv.common.utils.is_initial_config_complete',
+                return_value=True)
+    def test_update_system_mode_simplex_to_duplex_with_admin(self,
+                                                             mock_init_config,
+                                                             mock_controller):
+        self.test_network._create_mgmt_interface_network()
+        self.test_network._create_cluster_host_interface_network()
+        self.test_network._create_admin_interface_network()
+        update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update)
+
+    @mock.patch('sysinv.common.utils.is_initial_config_complete',
+                return_value=True)
+    def test_update_system_mode_simplex_to_duplex_admin_on_lo(self,
+                                                              mock_init_config,
+                                                              mock_controller):
+        self.test_network._create_mgmt_interface_network()
+        self.test_network._create_cluster_host_interface_network()
+        self.test_network._create_admin_interface_network(interface=constants.LOOPBACK_IFNAME)
+        update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
+        msg = ("Cannot modify system mode to %s "
+               "when the admin interface is "
                "configured on loopback. "
                % constants.SYSTEM_MODE_DUPLEX)
         self._patch_and_check(self._get_path(self.system.uuid),
@@ -355,6 +410,35 @@ class TestSystemUpdateModeFromSimplex(TestSystem):
         msg = ("Cannot modify system mode to %s "
                "without configuring the cluster-host "
                "interface." % constants.SYSTEM_MODE_DUPLEX_DIRECT)
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update, expect_errors=True,
+                              expected_error_message=msg)
+
+    @mock.patch('sysinv.common.utils.is_initial_config_complete',
+                return_value=True)
+    def test_update_system_mode_simplex_to_duplex_direct_with_admin(self,
+                                                                    mock_init_config,
+                                                                    mock_controller):
+        self.test_network._create_mgmt_interface_network()
+        self.test_network._create_cluster_host_interface_network()
+        self.test_network._create_admin_interface_network()
+        update = {"system_mode": constants.SYSTEM_MODE_DUPLEX_DIRECT}
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update)
+
+    @mock.patch('sysinv.common.utils.is_initial_config_complete',
+                return_value=True)
+    def test_update_system_mode_simplex_to_duplex_direct_admin_on_lo(self,
+                                                                     mock_init_config,
+                                                                     mock_controller):
+        self.test_network._create_mgmt_interface_network()
+        self.test_network._create_cluster_host_interface_network()
+        self.test_network._create_admin_interface_network(interface=constants.LOOPBACK_IFNAME)
+        update = {"system_mode": constants.SYSTEM_MODE_DUPLEX_DIRECT}
+        msg = ("Cannot modify system mode to %s "
+               "when the admin interface is "
+               "configured on loopback. "
+               % constants.SYSTEM_MODE_DUPLEX_DIRECT)
         self._patch_and_check(self._get_path(self.system.uuid),
                               update, expect_errors=True,
                               expected_error_message=msg)
