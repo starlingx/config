@@ -37,77 +37,122 @@ extension-pkg-whitelist=lxml.etree,greenlet
 # it should appear only once).
 # See "Messages Control" section of
 # https://pylint.readthedocs.io/en/latest/user_guide
-
-# We are disabling (C)onvention
-# We are disabling (R)efactor
-# We are selectively disabling (W)arning
-# We are not disabling (F)atal, (E)rror
-# The following warnings should be fixed:
-# fixme (todo, xxx, fixme)
-# W0101: unreachable
-# W0105: pointless-string-statement
-# W0106: expression-not-assigned
-# W0107: unnecessary-pass
-# W0108: unnecessary-lambda
-# W0109: duplicate-key                  !!!
-# W0123: eval-used
-# W0125: using-constant-test            !!!
-# W0133: pointless-exception-statement  !!!
-# W0143: comparison-with-callable       !!!
-# W0150: lost-exception
-# W0201: attribute-defined-outside-init
-# W0211: bad-staticmethod-argument
-# W0212: protected-access
-# W0221: arguments-differ
-# W0223: abstract-method
-# W0231: super-init-not-called
-# W0235: useless-super-delegation
-# W0237: arguments-renamed  !!!
-# W0311: bad-indentation
-# W0402: deprecated-module
-# W0404: reimported
-# W0602: global-variable-not-assigned  !!!
-# W0603: global-statement
-# W0612: unused-variable
-# W0613: unused-argument
-# W0621: redefined-outer-name
-# W0622: redefined-builtin
-# W0631: undefined-loop-variable
-# W0632: unbalanced-tuple-unpacking
-# W0703: broad-except (pylint 2.16 renamed to broad-except-caught)
-# W0706: try-except-raise
-# W0707: raise-missing-from
-# W0719: broad-exception-raised
-# W1113: keyword-arg-before-vararg
-# W1201: logging-not-lazy
-# W1310: format-string-without-interpolation  !!!
-# W1401: anomalous-backslash-in-string
-# W1406: redundant-u-string-prefix
-# W1501: subprocess-popen-preexec-fn
-# W1505: deprecated-method
-# W1509: subprocess-popen-preexec-fn
-# W1514: unspecified-encoding
-# W1618: no-absolute-import
-# W3101: missing-timeout
-# All these errors should be fixed:
-# E0601: used-before-assignment  !!!
-# E0605: invalid-all-format      !!!
-# E1101: no-member
-# E1111: assignment-from-no-return
-# E1120: no-value-for-parameter  !!!
-# E1121: too-many-function-args  !!!
-# E1123: unexpected-keyword-arg  !!!
-# E1136: unsubscriptable-object  !!!
-disable=C, R, fixme,
-        W0101, W0105, W0106, W0107, W0108, W0109, W0123,
-        W0125, W0133, W0143, W0150, W0201, W0211, W0212,
-        W0221, W0223, W0231, W0235, W0237, W0311, W0402,
-        W0404, W0602, W0603, W0612, W0613, W0621, W0622,
-        W0631, W0632, W0701, W0703, W0706, W0707, W0719,
-        W1113, W1201, W1310, W1401, W1406, W1505, W1509,
-        W1514, W1618, W3101,
-        E0601, E0605, E1101, E1111, E1120, E1121, E1123,
-        E1136
+disable=
+        # C codes refer to Convention
+ C0103, # invalid-name
+ C0104, # disallowed-nameA
+ C0112, # empty-docstring
+ C0114, # missing-module-docstring
+ C0115, # missing-class-docstring
+ C0116, # missing-function-docstring
+ C0123, # unidiomatic-typecheck !!!
+ C0201, # consider-iterating-dictionary
+ C0202, # bad-classmethod-argument
+ C0206, # consider-using-dict-items
+ C0207, # use-maxsplit-arg
+ C0209, # consider-using-f-string
+ C0301, # line-too-long
+ C0302, # too-many-lines
+ C0325, # superfluous-parens
+ C0411, # wrong-import-order
+ C0412, # ungrouped-imports
+ C0413, # wrong-import-position
+ C0414, # useless-import-alias  !!!
+ C0415, # import-outside-toplevel
+ C1802, # use-implicit-booleaness-not-len !!!
+ C2801, # unnecessary-dunder-call  !!!
+ C3002, # unnecessary-direct-lambda-call !!!
+        # R codes refer to refactoring
+ R0022, # useless-option-value !!!
+ R0205, # useless-object-inheritance
+ R0402, # consider-using-from-import
+ R0901, # too-many-ancestors
+ R0902, # too-many-instance-attributes
+ R0903, # too-few-public-methods
+ R0904, # too-many-public-methods
+ R0911, # too-many-return-statements
+ R0912, # too-many-branches
+ R0913, # too-many-arguments
+ R0914, # too-many-locals
+ R0915, # too-many-statements
+ R0916, # too-many-boolean-expressions
+ R1702, # too-many-nested-blocks
+ R1703, # simplifiable-if-statement
+ R1704, # redefined-argument-from-local !!!
+ R1705, # no-else-return
+ R1707, # trailing-comma-tuple  !!!
+ R1708, # stop-iteration-return !!!
+ R1710, # inconsistent-return-statements
+ R1711, # useless-return
+ R1714, # consider-using-in
+ R1717, # consider-using-dict-comprehension !!!
+ R1718, # consider-using-set-comprehension
+ R1719, # simplifiable-if-expression
+ R1720, # no-else-raise
+ R1721, # unnecessary-comprehension
+ R1722, # consider-using-sys-exit !!!
+ R1723, # no-else-break
+ R1724, # no-else-continue
+ R1725, # super-with-arguments
+ R1726, # simplifiable-condition  !!!
+ R1728, # consider-using-generator
+ R1729, # use-a-generator
+ R1730, # consider-using-min-builtin  !!!
+ R1731, # consider-using-max-builtin  !!!
+ R1732, # consider-using-with
+ R1733, # unnecessary-dict-index-lookup !!
+ R1734, # use-list-literal
+ R1735, # use-dict-literal
+        # W codes are warnings
+ W0101, # unreachable
+ W0105, # pointless-string-statement
+ W0106, # expression-not-assigned
+ W0107, # unnecessary-pass
+ W0108, # unnecessary-lambda
+ W0109, # duplicate-key                  !!!
+ W0123, # eval-used
+ W0125, # using-constant-test            !!!
+ W0133, # pointless-exception-statement  !!!
+ W0143, # comparison-with-callable       !!!
+ W0150, # lost-exception
+ W0201, # attribute-defined-outside-init
+ W0211, # bad-staticmethod-argument
+ W0212, # protected-access
+ W0221, # arguments-differ
+ W0223, # abstract-method
+ W0231, # super-init-not-called
+ W0235, # useless-super-delegation
+ W0237, # arguments-renamed  !!!
+ W0311, # bad-indentation
+ W0402, # deprecated-module
+ W0404, # reimported
+ W0511, # fixme
+ W0602, # global-variable-not-assigned  !!!
+ W0603, # global-statement
+ W0612, # unused-variable
+ W0613, # unused-argument
+ W0621, # redefined-outer-name
+ W0622, # redefined-builtin
+ W0631, # undefined-loop-variable
+ W0703, # broad-except (pylint 2.16 renamed to broad-except-caught)
+ W0706, # try-except-raise
+ W0707, # raise-missing-from
+ W0719, # broad-exception-raised
+ W1113, # keyword-arg-before-vararg
+ W1310, # format-string-without-interpolation  !!!
+ W1401, # anomalous-backslash-in-string
+ W1406, # redundant-u-string-prefix
+ W1505, # deprecated-method
+ W1514, # unspecified-encoding
+ W3101, # missing-timeout
+ E0601, # used-before-assignment  !!!
+ E0605, # invalid-all-format      !!!
+ E1101, # no-member
+ E1111, # assignment-from-no-return
+ E1120, # no-value-for-parameter  !!!
+ E1121, # too-many-function-args  !!!
+ E1123, # unexpected-keyword-arg  !!!
+ E1136, # unsubscriptable-object  !!!
 
 [REPORTS]
 # Set the output format. Available formats are text, parseable, colorized, msvs
