@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 
 """
@@ -342,7 +342,8 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('icpus_update_by_ihost',
                                        ihost_uuid=ihost_uuid,
                                        icpu_dict_array=icpu_dict_array,
-                                       force_grub_update=force_grub_update))
+                                       force_grub_update=force_grub_update),
+                         timeout=120)
 
     def imemory_update_by_ihost(self, context,
                                 ihost_uuid, imemory_dict_array,
