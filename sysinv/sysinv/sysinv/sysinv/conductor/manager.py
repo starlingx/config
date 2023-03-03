@@ -7057,6 +7057,28 @@ class ConductorManager(service.PeriodicService):
                 self.check_pending_app_reapply(context)
                 self._auto_update_managed_app(context, app_name)
 
+        # Special case, we want to apply some logic to non-managed applications
+        for app_name in self.apps_metadata[constants.APP_METADATA_APPS].keys():
+            if app_name in self.apps_metadata[constants.APP_METADATA_PLATFORM_MANAGED_APPS].keys():
+                continue
+
+            # Handle initial loading states
+            status = constants.APP_NOT_PRESENT
+            try:
+                app = kubeapp_obj.get_by_name(context, app_name)
+                status = app.status
+            except exception.KubeAppNotFound:
+                pass
+
+            LOG.debug("Platform non-managed application %s: %s" % (app_name, status))
+
+            # Automatically update non-managed applications
+            if status == constants.APP_APPLY_SUCCESS:
+                self.check_pending_app_reapply(context)
+                # Please ignore the name of the next function, even though it contains
+                # 'managed' in its name, it actually does the same job to non-managed.
+                self._auto_update_managed_app(context, app_name)
+
         LOG.debug("Periodic Task: _k8s_application_audit: Finished")
 
     def check_pending_app_reapply(self, context):
