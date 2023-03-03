@@ -24,6 +24,7 @@ class SssdPuppet(base.BasePuppet):
         domains = {}
         nss = self._get_nss_parameters()
         pam = self._get_pam_parameters()
+        sudo = self._get_sudo_parameters()
 
         # update local domain
         domains.update({'controller': self._get_local_domain()})
@@ -50,6 +51,7 @@ class SssdPuppet(base.BasePuppet):
                 'platform::sssd::params::domains': domains,
                 'platform::sssd::params::nss_options': nss,
                 'platform::sssd::params::pam_options': pam,
+                'platform::sssd::params::sudo_options': sudo,
             })
 
         return config
@@ -207,6 +209,7 @@ class SssdPuppet(base.BasePuppet):
             'access_provider': 'ldap',
             'ldap_access_filter': '(& (objectclass=posixAccount))',
             'ldap_search_base': 'dc=cgcs,dc=local',
+            'ldap_sudo_search_base': 'ou=SUDOers,dc=cgcs,dc=local',
             'ldap_user_home_directory': '/home/$cn',
             'ldap_user_shell': '/bin/bash',
             'ldap_uri': ldap_uri,
@@ -276,6 +279,8 @@ class SssdPuppet(base.BasePuppet):
                     domain_parameters['ldap_uri'] = uri
                     domain_parameters['ldap_access_filter'] = access_filter
                     domain_parameters['ldap_search_base'] = search_base
+                    sudo_search_base = "OU=sudoers" + search_base[search_base.find(','):]
+                    domain_parameters['ldap_sudo_search_base'] = sudo_search_base
                     domain_parameters['ldap_default_bind_dn'] = default_bind_dn
                     domain_parameters['ldap_default_authtok'] = default_authtok
         else:
@@ -333,6 +338,16 @@ class SssdPuppet(base.BasePuppet):
         }
 
         return pam_parameters
+
+    def _get_sudo_parameters(self):
+        # debug_level = 0x0070 Log fatal failures, critical failures,
+        # serious failures
+
+        sudo_parameters = {
+            'debug_level': '0x0070',
+        }
+
+        return sudo_parameters
 
     def _get_local_domain_uri(self):
         ldapserver_host = constants.CONTROLLER
