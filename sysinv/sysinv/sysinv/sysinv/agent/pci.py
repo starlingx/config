@@ -632,7 +632,7 @@ class PCIOperator(object):
                                             "-v " + str(vendor),
                                             "-d " + str(device)]
                         if(CONF.dpdk.dpdk_elf is not None):
-                            elf_arg = "--elfbinary " + str(CONF.dpdk.dpdk_elf)
+                            elf_arg = "-e " + str(CONF.dpdk.dpdk_elf)
                             query_pci_id_cmd.append(elf_arg)
                         subprocess.check_call(query_pci_id_cmd,  # pylint: disable=not-callable
                                               stdout=fnull, stderr=fnull)
