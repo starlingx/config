@@ -843,6 +843,7 @@ ACTION_UPDATE_JOURNAL = "update"
 MNT_DIR = '/tmp/mnt'
 
 ACTIVE_LOAD_STATE = 'active'
+INACTIVE_LOAD_STATE = 'inactive'
 IMPORTING_LOAD_STATE = 'importing'
 IMPORTED_LOAD_STATE = 'imported'
 IMPORTED_METADATA_LOAD_STATE = 'imported-metadata'
@@ -860,6 +861,10 @@ LOAD_SIGNATURE = 'path_to_sig'
 IMPORT_LOAD_FILES = [LOAD_ISO, LOAD_SIGNATURE]
 LOAD_FILES_STAGING_DIR = '/scratch/tmp_load'
 STAGING_LOAD_FILES_REMOVAL_WAIT_TIME = 30
+CURRENT_METADATA_FILE_PATH = '/usr/rootdirs/opt/upgrades/metadata.xml'
+
+ACTIVE_LOAD_IMPORT = 'active'
+INACTIVE_LOAD_IMPORT = 'inactive'
 
 # Ceph
 CEPH_HEALTH_OK = 'HEALTH_OK'

@@ -51,6 +51,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from datetime import timedelta
 from distutils.util import strtobool
+from distutils.version import LooseVersion
 from copy import deepcopy
 
 import tsconfig.tsconfig as tsc
@@ -11825,6 +11826,47 @@ class ConductorManager(service.PeriodicService):
             LOG.error("Host: %s not found in database" % ihost_id)
             return None
 
+    def _get_current_supported_upgrade_versions(self):
+        supported_versions = []
+
+        try:
+            metadata_file = open(constants.CURRENT_METADATA_FILE_PATH, 'r')
+            root = ElementTree.fromstring(metadata_file.read())
+            metadata_file.close()
+        except Exception:
+            raise exception.SysinvException(_(
+                "Unable to read metadata file from current version"))
+
+        supported_upgrades_elm = root.find('supported_upgrades')
+
+        if not supported_upgrades_elm:
+            raise exception.SysinvException(
+                _("Invalid Metadata XML from current version"))
+
+        upgrade_paths = supported_upgrades_elm.findall('upgrade')
+
+        for upgrade_element in upgrade_paths:
+            valid_from_version = upgrade_element.findtext('version')
+            versions = valid_from_version.split(",")
+            supported_versions.extend(versions)
+
+        return supported_versions
+
+    def _create_symlink_install_uuid(self, current_version):
+        """
+        If the current version is Debian and the imported load
+        is Centos, the install_uuid path is different. It's
+        necessary to create a symlink for import.sh to find it.
+        """
+        centos_feed_path = '/www/pages/feed/rel-%s' % current_version
+
+        os.makedirs(centos_feed_path, exist_ok=True)
+
+        src = '/var/www/pages/feed/rel-%s/install_uuid' % current_version
+        dst = '%s/install_uuid' % centos_feed_path
+
+        os.symlink(src, dst)
+
     def _import_load_error(self, new_load):
         """
         Update the load state to 'error' in the database
@@ -11851,7 +11893,7 @@ class ConductorManager(service.PeriodicService):
         shutil.rmtree(mntdir)
 
     def start_import_load(self, context, path_to_iso, path_to_sig,
-                          import_active=False):
+                          import_type=None):
         """
         Mount the ISO and validate the load for import
         """
@@ -11859,7 +11901,7 @@ class ConductorManager(service.PeriodicService):
 
         active_load = cutils.get_active_load(loads)
 
-        if not import_active:
+        if import_type != constants.ACTIVE_LOAD_IMPORT:
             cutils.validate_loads_for_import(loads)
 
         current_version = active_load.software_version
@@ -11887,6 +11929,7 @@ class ConductorManager(service.PeriodicService):
                 "Unable to mount iso"))
 
         metadata_file_path = mntdir + '/upgrades/metadata.xml'
+
         if not os.path.exists(metadata_file_path):
             self._unmount_iso(mounted_iso, mntdir)
             raise exception.SysinvException(_("Metadata file not found"))
@@ -11907,7 +11950,7 @@ class ConductorManager(service.PeriodicService):
 
         new_version = root.findtext('version')
 
-        if import_active:
+        if import_type == constants.ACTIVE_LOAD_IMPORT:
             if new_version != current_version:
                 raise exception.SysinvException(
                     _("Active version and import version must match (%s)")
@@ -11915,6 +11958,7 @@ class ConductorManager(service.PeriodicService):
 
             # return the matching (active) load in the database
             loads = self.dbapi.load_get_list()
+
             for load in loads:
                 if load.software_version == new_version:
                     break
@@ -11923,6 +11967,19 @@ class ConductorManager(service.PeriodicService):
                     _("Active load not found (%s)") % current_version)
 
             return load
+
+        if import_type == constants.INACTIVE_LOAD_IMPORT:
+            if LooseVersion(new_version) >= LooseVersion(current_version):
+                raise exception.SysinvException(
+                    _("Inactive version must be less than the current version (%s)")
+                    % current_version)
+
+            supported_versions = self._get_current_supported_upgrade_versions()
+
+            if new_version not in supported_versions:
+                raise exception.SysinvException(
+                    _("Inactive version must be upgradable to the current version (%s)")
+                    % current_version)
 
         if new_version == current_version:
             raise exception.SysinvException(
@@ -11946,7 +12003,7 @@ class ConductorManager(service.PeriodicService):
                 upgrade_path = upgrade_element
                 break
 
-        if not path_found:
+        if not path_found and import_type != constants.INACTIVE_LOAD_IMPORT:
             raise exception.SysinvException(
                 _("No valid upgrade path found"))
 
@@ -11958,9 +12015,12 @@ class ConductorManager(service.PeriodicService):
         patch['compatible_version'] = current_version
 
         required_patches = []
-        patch_elements = upgrade_path.findall('required_patch')
-        for patch_element in patch_elements:
-            required_patches.append(patch_element.text)
+
+        if upgrade_path:
+            patch_elements = upgrade_path.findall('required_patch')
+            for patch_element in patch_elements:
+                required_patches.append(patch_element.text)
+
         patch['required_patches'] = "\n".join(required_patches)
 
         # create the new imported load in the database
@@ -11968,7 +12028,8 @@ class ConductorManager(service.PeriodicService):
 
         return new_load
 
-    def import_load(self, context, path_to_iso, new_load):
+    def import_load(self, context, path_to_iso, new_load,
+                    import_type=None):
         """
         Run the import script and add the load to the database
         """
@@ -11997,6 +12058,13 @@ class ConductorManager(service.PeriodicService):
             self._import_load_error(new_load)
             raise exception.SysinvException(_("Unable to mount iso"))
 
+        state = constants.IMPORTED_LOAD_STATE
+
+        if import_type == constants.INACTIVE_LOAD_IMPORT:
+            active_load = cutils.get_active_load(loads)
+            self._create_symlink_install_uuid(active_load.software_version)
+            state = constants.INACTIVE_LOAD_STATE
+
         # Run the upgrade script
         with open(os.devnull, "w") as fnull:
             try:
@@ -12014,8 +12082,7 @@ class ConductorManager(service.PeriodicService):
 
         # Update the load status in the database
         try:
-            self.dbapi.load_update(new_load['id'],
-                                   {'state': constants.IMPORTED_LOAD_STATE})
+            self.dbapi.load_update(new_load['id'], {'state': state})
 
         except exception.SysinvException as e:
             LOG.exception(e)

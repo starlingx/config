@@ -1205,14 +1205,16 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        ihost_uuid=ihost_uuid))
 
     def start_import_load(self, context, path_to_iso, path_to_sig,
-                          import_active=False, timeout=180):
+                          import_type=None, timeout=180):
         """Synchronously, mount the ISO and validate the load for import
 
         :param context: request context.
         :param path_to_iso: the file path of the iso on this host
         :param path_to_sig: the file path of the iso's detached signature on
                             this host
-        :param import_active: boolean allow import of active load
+        :param import_type: the type of the import, the possible values are
+                            constants.ACTIVE_LOAD_IMPORT for active load or
+                            constants.INACTIVE_LOAD_IMPORT for inactive load.
         :param timeout:       rpc call timeout in seconds
         :returns: the newly create load object.
         """
@@ -1220,21 +1222,24 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('start_import_load',
                                        path_to_iso=path_to_iso,
                                        path_to_sig=path_to_sig,
-                                       import_active=import_active),
+                                       import_type=import_type),
                          timeout=timeout)
 
-    def import_load(self, context, path_to_iso, new_load):
+    def import_load(self, context, path_to_iso, new_load,
+                    import_type=None):
         """Asynchronously, import a load and add it to the database
 
         :param context: request context.
         :param path_to_iso: the file path of the iso on this host
         :param new_load: the load object
+        :param import_type: the type of the import (active or inactive)
         :returns: none.
         """
         return self.cast(context,
                          self.make_msg('import_load',
                                        path_to_iso=path_to_iso,
-                                       new_load=new_load))
+                                       new_load=new_load,
+                                       import_type=import_type))
 
     def delete_load(self, context, load_id):
         """Asynchronously, cleanup a load from both controllers

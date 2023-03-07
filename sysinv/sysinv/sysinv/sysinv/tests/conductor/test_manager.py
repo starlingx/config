@@ -25,10 +25,13 @@
 import copy
 import mock
 import os.path
+import tempfile
 import uuid
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
+from shutil import copy as shutil_copy
+from shutil import rmtree
 
 from fm_api import constants as fm_constants
 from oslo_context import context
@@ -40,7 +43,9 @@ from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils as cutils
 from sysinv.conductor import manager
+from sysinv.db.sqlalchemy.api import Connection
 from sysinv.db import api as dbapi
+from sysinv.objects.load import Load
 
 from sysinv.tests.db import base
 from sysinv.tests.db import utils
@@ -4229,8 +4234,318 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(endpoints, config_dict)
 
 
-class ManagerTestCaseInternal(base.BaseHostTestCase):
+@mock.patch('sysinv.conductor.manager.verify_files', lambda x, y: True)
+@mock.patch('sysinv.conductor.manager.cutils.ISO', mock.MagicMock())
+class ManagerStartLoadImportTest(base.BaseHostTestCase):
+    def setUp(self):
+        super(ManagerStartLoadImportTest, self).setUp()
 
+        # Set up objects for testing
+        self.service = manager.ConductorManager('test-host', 'test-topic')
+        self.service.dbapi = dbapi.get_instance()
+        self.context = context.get_admin_context()
+
+        self.tmp_dir = tempfile.mkdtemp(dir='/tmp')
+
+        patch_mkdtemp = mock.patch('tempfile.mkdtemp')
+        mock_mkdtemp = patch_mkdtemp.start()
+        mock_mkdtemp.return_value = self.tmp_dir
+        self.addCleanup(patch_mkdtemp.stop)
+
+        self.upgrades_path = '%s/upgrades' % self.tmp_dir
+        os.makedirs(self.upgrades_path, exist_ok=True)
+
+        self.metadata = os.path.join(
+            os.path.dirname(__file__), "data", "metadata.xml"
+        )
+        shutil_copy(self.metadata, self.upgrades_path)
+
+        self.iso = os.path.join(
+            os.path.dirname(__file__), "data", "bootimage.iso"
+        )
+        self.sig = os.path.join(
+            os.path.dirname(__file__), "data", "bootimage.sig"
+        )
+
+    def test_start_import_load(self):
+        result = self.service.start_import_load(
+            self.context,
+            path_to_iso=self.iso,
+            path_to_sig=self.sig,
+        )
+
+        self.assertIsInstance(result, Load)
+        self.assertEqual(result.state, constants.IMPORTING_LOAD_STATE)
+
+    @mock.patch('sysinv.conductor.manager.cutils.get_active_load')
+    def test_start_import_load_same_version(self, mock_get_active_load):
+        mock_get_active_load.return_value.software_version = '0.1'
+
+        self.assertRaises(
+            exception.SysinvException,
+            self.service.start_import_load,
+            self.context,
+            self.iso,
+            self.sig,
+        )
+
+    @mock.patch('sysinv.conductor.manager.cutils.get_active_load')
+    def test_start_import_load_invalid_from_version(self, mock_get_active_load):
+        mock_get_active_load.return_value.software_version = '0.2'
+
+        self.assertRaises(
+            exception.SysinvException,
+            self.service.start_import_load,
+            self.context,
+            self.iso,
+            self.sig,
+        )
+
+    @mock.patch.object(Connection, 'load_get_list')
+    @mock.patch('sysinv.conductor.manager.cutils.get_active_load')
+    def test_start_import_load_active(self, mock_get_active_load, mock_load_get_list):
+        mock_get_active_load.return_value.software_version = '0.1'
+
+        load = utils.create_test_load(**{"software_version": "0.1"})
+        mock_load_get_list.return_value = [load]
+
+        result = self.service.start_import_load(
+            self.context,
+            path_to_iso=self.iso,
+            path_to_sig=self.sig,
+            import_type=constants.ACTIVE_LOAD_IMPORT,
+        )
+
+        self.assertIsInstance(result, Load)
+        self.assertEqual(result.state, constants.ACTIVE_LOAD_STATE)
+
+    def test_start_import_load_active_invalid_version(self):
+        self.assertRaises(
+            exception.SysinvException,
+            self.service.start_import_load,
+            self.context,
+            self.iso,
+            self.sig,
+            import_type=constants.ACTIVE_LOAD_IMPORT,
+        )
+
+    @mock.patch.object(Connection, 'load_get_list')
+    def test_start_import_load_active_load_not_found(self, mock_load_get_list):
+        load = utils.create_test_load(**{"software_version": "0.1"})
+        mock_load_get_list.side_effect = [[load], []]
+
+        self.assertRaises(
+            exception.SysinvException,
+            self.service.start_import_load,
+            self.context,
+            self.iso,
+            self.sig,
+            import_type=constants.ACTIVE_LOAD_IMPORT,
+        )
+
+    @mock.patch('sysinv.conductor.manager.cutils.get_active_load')
+    def test_start_import_load_inactive(self, mock_get_active_load):
+        mock_get_active_load.return_value.software_version = '0.2'
+
+        metadata_orig = open(self.metadata, 'r').read()
+        metadata_fake = b'''
+            <build>\n<version>0.2</version>\n<supported_upgrades>
+            \n<upgrade>\n<version>0.1</version>\n<required_patch>PATCH_0001
+            </required_patch>\n</upgrade>\n</supported_upgrades>\n</build>
+        '''
+
+        mock_files = [
+            mock.mock_open(read_data=metadata_orig).return_value,
+            mock.mock_open(read_data=metadata_fake).return_value,
+        ]
+        mock_open = mock.mock_open()
+        mock_open.side_effect = mock_files
+
+        with mock.patch('builtins.open', mock_open):
+            result = self.service.start_import_load(
+                self.context,
+                path_to_iso=self.iso,
+                path_to_sig=self.sig,
+                import_type=constants.INACTIVE_LOAD_IMPORT,
+            )
+
+        self.assertIsInstance(result, Load)
+        self.assertEqual(result.state, constants.IMPORTING_LOAD_STATE)
+
+    @mock.patch('sysinv.conductor.manager.open')
+    @mock.patch('sysinv.conductor.manager.cutils.get_active_load')
+    def test_start_import_load_inactive_incompatible_version(self, mock_get_active_load, mock_open):
+        mock_get_active_load.return_value.software_version = '0.3'
+
+        metadata_orig = open(self.metadata, 'r').read()
+        metadata_fake = b'''
+            <build>\n<version>0.3</version>\n<supported_upgrades>
+            \n<upgrade>\n<version>0.2</version>\n<required_patch>PATCH_0001
+            </required_patch>\n</upgrade>\n</supported_upgrades>\n</build>
+        '''
+
+        mock_files = [
+            mock.mock_open(read_data=metadata_orig).return_value,
+            mock.mock_open(read_data=metadata_fake).return_value,
+        ]
+        mock_open.side_effect = mock_files
+
+        self.assertRaises(
+            exception.SysinvException,
+            self.service.start_import_load,
+            self.context,
+            path_to_iso=self.iso,
+            path_to_sig=self.sig,
+            import_type=constants.INACTIVE_LOAD_IMPORT,
+        )
+
+    def test_start_import_load_invalid_path(self):
+        self.assertRaises(
+            exception.SysinvException,
+            self.service.start_import_load,
+            self.context,
+            'invalid/path/bootimage.iso',
+            'invalid/path/bootimage.sig',
+        )
+
+    def test_start_import_load_invalid_files(self):
+        with mock.patch('sysinv.conductor.manager.verify_files', lambda x, y: False):
+            self.assertRaises(
+                exception.SysinvException,
+                self.service.start_import_load,
+                self.context,
+                self.iso,
+                self.sig,
+            )
+
+    def test_start_import_load_without_metadata(self):
+        rmtree(self.upgrades_path, ignore_errors=True)
+
+        self.assertRaises(
+            exception.SysinvException,
+            self.service.start_import_load,
+            self.context,
+            self.iso,
+            self.sig,
+        )
+
+    def test_start_import_load_invalid_metadata(self):
+        iso = os.path.join(
+            os.path.dirname(__file__), "data", "bootimage.iso"
+        )
+        shutil_copy(iso, self.upgrades_path)
+        os.rename(
+            '%s/bootimage.iso' % self.upgrades_path,
+            '%s/metadata.xml' % self.upgrades_path,
+        )
+
+        self.assertRaises(
+            exception.SysinvException,
+            self.service.start_import_load,
+            self.context,
+            self.iso,
+            self.sig,
+        )
+
+
+@mock.patch('sysinv.conductor.manager.subprocess', mock.MagicMock())
+@mock.patch('sysinv.conductor.manager.cutils.ISO', mock.MagicMock())
+class ManagerLoadImportTest(base.BaseHostTestCase):
+    def setUp(self):
+        super(ManagerLoadImportTest, self).setUp()
+
+        # Set up objects for testing
+        self.service = manager.ConductorManager('test-host', 'test-topic')
+        self.service.dbapi = dbapi.get_instance()
+        self.context = context.get_admin_context()
+
+        self.iso = os.path.join(
+            os.path.dirname(__file__), "data", "bootimage.iso"
+        )
+
+        self.load = utils.create_test_load(
+            **{"software_version": "0.1"}
+        )
+
+        load_update = mock.patch.object(Connection, 'load_update')
+        self.mock_load_update = load_update.start()
+        self.mock_load_update.return_value = mock.MagicMock()
+        self.addCleanup(load_update.stop)
+
+    def test_import_load(self):
+        result = self.service.import_load(
+            self.context,
+            path_to_iso=self.iso,
+            new_load=self.load,
+        )
+
+        self.assertTrue(result)
+
+        self.mock_load_update.assert_called_once_with(
+            mock.ANY,
+            {'state': constants.IMPORTED_LOAD_STATE},
+        )
+
+    @mock.patch('sysinv.conductor.manager.os.symlink', mock.Mock())
+    @mock.patch('sysinv.conductor.manager.os.makedirs', mock.Mock())
+    def test_import_load_inactive(self):
+        result = self.service.import_load(
+            self.context,
+            path_to_iso=self.iso,
+            new_load=self.load,
+            import_type=constants.INACTIVE_LOAD_IMPORT,
+        )
+
+        self.assertTrue(result)
+
+        self.mock_load_update.assert_called_once_with(
+            mock.ANY,
+            {'state': constants.INACTIVE_LOAD_STATE},
+        )
+
+    def test_import_load_empty_new_load(self):
+        self.assertRaises(
+            exception.SysinvException,
+            self.service.import_load,
+            self.context,
+            path_to_iso=self.iso,
+            new_load=None,
+        )
+
+        self.mock_load_update.assert_not_called()
+
+    def test_import_load_invalid_iso_path(self):
+        self.assertRaises(
+            exception.SysinvException,
+            self.service.import_load,
+            self.context,
+            path_to_iso='invalid',
+            new_load=self.load,
+        )
+
+        self.mock_load_update.assert_called_once_with(
+            mock.ANY,
+            {'state': constants.ERROR_LOAD_STATE},
+        )
+
+    def test_import_load_load_update_failed(self):
+        self.mock_load_update.side_effect = exception.SysinvException()
+
+        self.assertRaises(
+            exception.SysinvException,
+            self.service.import_load,
+            self.context,
+            path_to_iso=self.iso,
+            new_load=self.load,
+        )
+
+        self.mock_load_update.assert_called_once_with(
+            mock.ANY,
+            {'state': constants.IMPORTED_LOAD_STATE},
+        )
+
+
+class ManagerTestCaseInternal(base.BaseHostTestCase):
     def setUp(self):
         super(ManagerTestCaseInternal, self).setUp()
 

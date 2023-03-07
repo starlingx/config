@@ -1299,6 +1299,7 @@ def validate_load_for_delete(load):
     valid_delete_states = [
         constants.IMPORTED_LOAD_STATE,
         constants.IMPORTED_METADATA_LOAD_STATE,
+        constants.INACTIVE_LOAD_STATE,
         constants.ERROR_LOAD_STATE,
         constants.DELETING_LOAD_STATE
     ]

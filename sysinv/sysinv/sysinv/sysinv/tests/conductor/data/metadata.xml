@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<build>
+    <version>0.1</version>
+    <supported_upgrades>
+        <upgrade>
+            <version>0.0</version>
+            <required_patch>PATCH_0001</required_patch>
+        </upgrade>
+    </supported_upgrades>
+</build>
