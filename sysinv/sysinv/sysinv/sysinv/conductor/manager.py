@@ -16418,6 +16418,10 @@ class ConductorManager(service.PeriodicService):
         try:
             with open(FILENAME, "r") as stream:
                 info = newyaml.load(stream)
+        except FileNotFoundError:
+            # For "skip version" upgrades this is normal.
+            LOG.info("File %s not found, ignoring." % FILENAME)
+            return 0
         except Exception as ex:
             LOG.error("Problem reading from %s" % FILENAME)
             LOG.error(str(ex))
