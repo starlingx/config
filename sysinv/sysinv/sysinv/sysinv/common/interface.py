@@ -18,7 +18,7 @@ LOG = log.getLogger(__name__)
 
 # NOTE: updates in the following functions should also be reflected in
 #       its corresponding duplicate in openstack-armada-app nova plugin
-#       - openstack-armada-app/python-k8sapp-openstack/k8sapp_openstack/k8sapp_openstack/helm/nova.py
+#       - openstack-armada-app/python3-k8sapp-openstack/k8sapp_openstack/k8sapp_openstack/helm/nova.py
 #
 #       _get_port_interface_id_index()
 #       _get_interface_name_index()
