@@ -3768,9 +3768,11 @@ class DockerHelper(object):
                 "%s" % secret_ref))
 
         try:
+            if not isinstance(payload, str):
+                payload = payload.decode('utf-8')
             username, password = payload.split()
-            username = username.decode('utf-8').split('username:')[1]
-            password = password.decode('utf-8').split('password:')[1]
+            username = username.split('username:')[1]
+            password = password.split('password:')[1]
             return dict(username=username, password=password)
         except Exception as e:
             LOG.error("Unable to parse the secret payload, "
