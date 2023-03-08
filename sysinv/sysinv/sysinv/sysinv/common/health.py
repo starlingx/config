@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2022 Wind River Systems, Inc.
+# Copyright (c) 2018-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -18,6 +18,7 @@ from sysinv.common import kubernetes
 from sysinv.common import utils
 from sysinv.common.fm import fmclient
 from sysinv.common.storage_backend_conf import StorageBackendConfig
+from sysinv.cert_alarm.audit import CertAlarmAudit
 from sysinv.api.controllers.v1 import patch_api
 from sysinv.api.controllers.v1 import vim_api
 
@@ -37,6 +38,7 @@ class Health(object):
         self._dbapi = dbapi
         self._ceph = ceph.CephApiOperator()
         self._kube_operator = kubernetes.KubeOperator()
+        self._cert_alarm_manager = CertAlarmAudit()
 
     def _check_hosts_provisioned(self, hosts):
         """Checks that each host is provisioned"""
@@ -105,16 +107,24 @@ class Health(object):
         if alarm_ignore_list is None:
             alarm_ignore_list = []
 
+        self._cert_alarm_manager.run_full_audit()
+
         alarms = fmclient(context).alarm.list(include_suppress=True)
 
         success = True
         allowed = 0
         affecting = 0
+        cert_alarm = 0
+
         # Separate alarms that are mgmt affecting
         for alarm in alarms:
             if alarm.alarm_id not in alarm_ignore_list:
                 mgmt_affecting = alarm.mgmt_affecting == "True"
-                if not mgmt_affecting:
+                if alarm.alarm_id in constants.CERT_ALARM_IDS:
+                    cert_alarm += 1
+                    if not force:
+                        success = False
+                elif not mgmt_affecting:
                     allowed += 1
                     if not force:
                         success = False
@@ -122,7 +132,7 @@ class Health(object):
                     affecting += 1
                     success = False
 
-        return success, allowed, affecting
+        return success, allowed, affecting, cert_alarm
 
     def _check_active_is_controller_0(self):
         """Checks that active controller is controller-0"""
@@ -425,15 +435,17 @@ class Health(object):
 
         health_ok = health_ok and success
 
-        success, allowed, affecting = self._check_alarms(
+        success, allowed, affecting, cert_alarm = self._check_alarms(
             context,
             force=force,
             alarm_ignore_list=alarm_ignore_list)
         output += _('No alarms: [%s]\n') \
             % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
         if not success:
-            output += _('[%s] alarms found, [%s] of which are management '
-                        'affecting\n') % (allowed + affecting, affecting)
+            output += _('[%s] alarms found, [%s] of which are management affecting '
+                        'and [%s] are certificate expiration alarms. '
+                        'Use "fm alarm-list" for details') % (allowed + affecting + cert_alarm,
+                                                                           affecting, cert_alarm)
 
         health_ok = health_ok and success
 

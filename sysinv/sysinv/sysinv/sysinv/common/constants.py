@@ -2271,6 +2271,9 @@ CERT_LOCATION_MAP = {
     # TODO(): TPM
 }
 
+# Certificates alarm id
+CERT_ALARM_IDS = ['500.200', '500.210']
+
 CERT_ALARM_ANNOTATION_ALARM = 'starlingx.io/alarm'
 CERT_ALARM_ANNOTATION_ALARM_BEFORE = 'starlingx.io/alarm-before'
 CERT_ALARM_ANNOTATION_ALARM_SEVERITY = 'starlingx.io/alarm-severity'
