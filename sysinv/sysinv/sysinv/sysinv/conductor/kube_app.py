@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2018-2022 Wind River Systems, Inc.
+# Copyright (c) 2018-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -2891,6 +2891,24 @@ class AppOperator(object):
                                                         app.name,
                                                         metadata)
 
+    def _remove_from_metadata_dict(self, app_name):
+        """Remove all the information about an app in apps_metadada dict
+
+        This method will perform the removal of an app in all collections from
+        self._apps_metadata. It is called after an application delete.
+
+        :param app_name: Name of the app
+        """
+
+        if app_name in self._apps_metadata[constants.APP_METADATA_APPS]:
+            del self._apps_metadata[constants.APP_METADATA_APPS][app_name]
+        if app_name in self._apps_metadata[constants.APP_METADATA_PLATFORM_MANAGED_APPS]:
+            del self._apps_metadata[constants.APP_METADATA_PLATFORM_MANAGED_APPS][app_name]
+        if app_name in self._apps_metadata[constants.APP_METADATA_DESIRED_STATES]:
+            del self._apps_metadata[constants.APP_METADATA_DESIRED_STATES][app_name]
+        if app_name in self._apps_metadata[constants.APP_METADATA_ORDERED_APPS]:
+            self._apps_metadata[constants.APP_METADATA_ORDERED_APPS].remove(app_name)
+
     def perform_app_apply(self, rpc_app, mode, lifecycle_hook_info_app_apply, caller=None):
         """Process application install request
 
@@ -3540,6 +3558,10 @@ class AppOperator(object):
             # One last check of app alarm, should be no-op unless the
             # user deletes the application following an upload failure.
             self._clear_app_alarm(app.name)
+
+            # Remove the deleted app from _apps_metadata, since it's
+            # not in the system anymore.
+            self._remove_from_metadata_dict(app.name)
             LOG.info("Application (%s) has been purged from the system." %
                      app.name)
             msg = None
