@@ -163,7 +163,8 @@ class InterfaceNetworkController(rest.RestController):
         # Update address mode based on network type
         if network_type in [constants.NETWORK_TYPE_MGMT,
                             constants.NETWORK_TYPE_OAM,
-                            constants.NETWORK_TYPE_CLUSTER_HOST]:
+                            constants.NETWORK_TYPE_CLUSTER_HOST,
+                            constants.NETWORK_TYPE_ADMIN]:
             pool_uuid = pecan.request.dbapi.network_get_by_type(network_type).pool_uuid
             pool = pecan.request.dbapi.address_pool_get(pool_uuid)
             if pool.family == constants.IPV4_FAMILY:

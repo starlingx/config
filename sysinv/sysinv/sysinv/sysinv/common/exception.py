@@ -771,7 +771,7 @@ class AddressesStillExist(Conflict):
 
 
 class AddressPoolAlreadyExists(Conflict):
-    message = _("Address pool %(uuid)s already exists")
+    message = _("Address pool %(name)s already exists")
 
 
 class AddressPoolFamilyMismatch(Conflict):

@@ -5688,7 +5688,7 @@ class Connection(api.Connection):
                 session.add(address_pool)
                 session.flush()
             except db_exc.DBDuplicateEntry:
-                raise exception.AddressPoolAlreadyExists(uuid=values['uuid'])
+                raise exception.AddressPoolAlreadyExists(name=values['name'])
             return self._address_pool_get(values['uuid'])
 
     def _address_pool_range_update(self, session, address_pool, ranges):

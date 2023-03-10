@@ -668,7 +668,11 @@ def get_test_address_pool(**kw):
             'ranges': kw.get('ranges'),
             'prefix': kw.get('prefix'),
             'order': kw.get('order', 'random'),
-            'uuid': kw.get('uuid')
+            'uuid': kw.get('uuid'),
+            'controller0_address': kw.get('controller0_address'),
+            'controller1_address': kw.get('controller1_address'),
+            'floating_address': kw.get('floating_address'),
+            'gateway_address': kw.get('gateway_address'),
            }
     return inv
 

@@ -221,10 +221,24 @@ class NetworkController(rest.RestController):
         return addresses
 
     def _create_admin_network_address(self, pool):
-        addresses = collections.OrderedDict()
-        addresses[constants.CONTROLLER_HOSTNAME] = None
-        addresses[constants.CONTROLLER_0_HOSTNAME] = None
-        addresses[constants.CONTROLLER_1_HOSTNAME] = None
+        addresses = {}
+        if pool.floating_address:
+            addresses.update(
+                {constants.CONTROLLER_HOSTNAME: pool.floating_address})
+        else:
+            addresses.update({constants.CONTROLLER_HOSTNAME: None})
+
+        if pool.controller0_address:
+            addresses.update(
+                {constants.CONTROLLER_0_HOSTNAME: pool.controller0_address})
+        else:
+            addresses.update({constants.CONTROLLER_0_HOSTNAME: None})
+
+        if pool.controller1_address:
+            addresses.update(
+                {constants.CONTROLLER_1_HOSTNAME: pool.controller1_address})
+        else:
+            addresses.update({constants.CONTROLLER_1_HOSTNAME: None})
 
         if pool.gateway_address is not None:
             if utils.get_distributed_cloud_role() == \
