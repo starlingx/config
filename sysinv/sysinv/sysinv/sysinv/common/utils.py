@@ -2489,7 +2489,7 @@ def find_metadata_file(path, metadata_file, upgrade_from_release=None):
                     raise exception.SysinvException(_(
                         "Invalid {}: {} should be {}."
                         "".format(metadata_file,
-                                  constants.constants.APP_METADATA_MINIMUM,
+                                  constants.APP_METADATA_MINIMUM,
                                   six.string_types)))
             except KeyError:
                 pass
@@ -2500,7 +2500,7 @@ def find_metadata_file(path, metadata_file, upgrade_from_release=None):
                     raise exception.SysinvException(_(
                         "Invalid {}: {} should be {}."
                         "".format(metadata_file,
-                                  constants.constants.APP_METADATA_MAXIMUM,
+                                  constants.APP_METADATA_MAXIMUM,
                                   six.string_types)))
             except KeyError:
                 pass
