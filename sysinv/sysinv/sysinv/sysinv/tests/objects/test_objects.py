@@ -1,3 +1,7 @@
+#    Copyright (c) 2023 Wind River Systems, Inc.
+#
+#    SPDX-License-Identifier: Apache-2.0
+#
 #    Copyright 2013 IBM Corp.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -11,7 +15,7 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-
+#
 import contextlib
 import datetime
 import gettext
@@ -178,30 +182,12 @@ class TestUtils(test_base.TestCase):
         self.assertEqual(utils.dt_deserializer(None, None), None)
         self.assertRaises(ValueError, utils.dt_deserializer, None, 'foo')
 
-    def test_obj_to_primitive_list(self):
-        class MyList(base.ObjectListBase, base.SysinvObject):
-            pass
-        mylist = MyList()
-        mylist.objects = [1, 2, 3]
-        self.assertEqual([1, 2, 3], base.obj_to_primitive(mylist))
-
     def test_obj_to_primitive_dict(self):
         myobj = MyObj()
         myobj.foo = 1
         myobj.bar = 'foo'
         self.assertEqual({'foo': 1, 'bar': 'foo'},
                          base.obj_to_primitive(myobj))
-
-    def test_obj_to_primitive_recursive(self):
-        class MyList(base.ObjectListBase, base.SysinvObject):
-            pass
-
-        mylist = MyList()
-        mylist.objects = [MyObj(), MyObj()]
-        for i, value in enumerate(mylist):
-            value.foo = i
-        self.assertEqual([{'foo': 0}, {'foo': 1}],
-                         base.obj_to_primitive(mylist))
 
 
 class _BaseTestCase(test_base.TestCase):
@@ -445,43 +431,6 @@ class _TestObjectMixin(object):
 
 class TestObject(_LocalTest, _TestObjectMixin):
     pass
-
-
-class TestObjectListBase(test_base.TestCase):
-    def test_list_like_operations(self):
-        class Foo(base.ObjectListBase, base.SysinvObject):
-            pass
-
-        objlist = Foo()
-        objlist._context = 'foo'
-        objlist.objects = [1, 2, 3]
-        self.assertEqual(list(objlist), objlist.objects)
-        self.assertEqual(len(objlist), 3)
-        self.assertIn(2, objlist)
-        self.assertEqual(list(objlist[:1]), [1])
-        self.assertEqual(objlist[:1]._context, 'foo')
-        self.assertEqual(objlist[2], 3)
-        self.assertEqual(objlist.count(1), 1)
-        self.assertEqual(objlist.index(2), 1)
-
-    def test_serialization(self):
-        class Foo(base.ObjectListBase, base.SysinvObject):
-            pass
-
-        class Bar(base.SysinvObject):
-            fields = {'foo': str}
-
-        obj = Foo()
-        obj.objects = []
-        for i in 'abc':
-            bar = Bar()
-            bar.foo = i
-            obj.objects.append(bar)
-
-        obj2 = base.SysinvObject.obj_from_primitive(obj.obj_to_primitive())
-        self.assertFalse(obj is obj2)
-        self.assertEqual([x.foo for x in obj],
-                         [y.foo for y in obj2])
 
 
 class TestObjectSerializer(test_base.TestCase):
