@@ -12806,9 +12806,6 @@ class ConductorManager(service.PeriodicService):
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-    def get_ceph_pools_config(self, context):
-        return self._ceph.get_pools_config()
-
     def get_controllerfs_lv_sizes(self, context):
         system = self.dbapi.isystem_get_one()
         system_dc_role = system.get('distributed_cloud_role', None)
