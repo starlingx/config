@@ -14,6 +14,8 @@ import mock
 from sysinv.common import kubernetes as kube
 
 from sysinv.tests import base
+from sysinv.common import constants
+import tsconfig.tsconfig as tsc
 
 FAKE_KUBE_VERSIONS = [
     {'version': 'v1.41.3',
@@ -1033,6 +1035,25 @@ class TestKubeOperator(base.TestCase):
                           'v1.44.0': 'unavailable',
                           'v1.45.1': 'unavailable',
                           'v1.45.3': 'unavailable'}
+
+    def test_kube_get_version_states_active_simplex(self):
+
+        tsc.system_mode = constants.SYSTEM_MODE_SIMPLEX
+        self.list_namespaced_pod_result = self.cp_pods_result
+        self.list_node_result = self.single_node_result
+        self.single_node_result.items[0].status.node_info.kubelet_version = \
+            "v1.42.1"
+
+        result = self.kube_operator.kube_get_version_states()
+        assert result == {'v1.41.3': 'unavailable',
+                          'v1.42.0': 'unavailable',
+                          'v1.42.1': 'active',
+                          'v1.42.3': 'available',
+                          'v1.42.4': 'available',
+                          'v1.43.1': 'available',
+                          'v1.44.0': 'available',
+                          'v1.45.1': 'available',
+                          'v1.45.3': 'available'}
 
     def test_kube_get_version_states_multi_node(self):
 

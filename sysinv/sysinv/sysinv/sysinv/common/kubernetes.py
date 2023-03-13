@@ -15,6 +15,7 @@ import json
 import os
 import re
 import time
+import tsconfig.tsconfig as tsc
 
 from kubernetes import __version__ as K8S_MODULE_VERSION
 from kubernetes import config
@@ -28,6 +29,7 @@ from urllib3.exceptions import MaxRetryError
 
 from oslo_log import log as logging
 from sysinv.common import exception
+from sysinv.common import constants
 from sysinv.common.retrying import retry
 
 K8S_MODULE_MAJOR_VERSION = int(K8S_MODULE_VERSION.split('.')[0])
@@ -1073,6 +1075,9 @@ class KubeOperator(object):
             # mark the versions who can upgrade_from the active one as available
             for version in kube_versions:
                 if active_version in version['upgrade_from']:
+                    version_states[version['version']] = KUBE_STATE_AVAILABLE
+                if (tsc.system_mode == constants.SYSTEM_MODE_SIMPLEX) and \
+                        LooseVersion(version['version']) > LooseVersion(active_version):
                     version_states[version['version']] = KUBE_STATE_AVAILABLE
 
         return version_states
