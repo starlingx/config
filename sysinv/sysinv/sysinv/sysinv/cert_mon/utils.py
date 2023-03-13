@@ -152,6 +152,13 @@ def dc_get_subcloud_sysinv_url(subcloud_name, dc_token):
         raise Exception('Cannot find sysinv endpoint for %s' % subcloud_name)
 
 
+def dc_update_subcloud_sysinv_url(subcloud_name, sysinv_url, dc_token):
+    dc_token.update_service_admin_url(constants.SERVICE_TYPE_PLATFORM,
+                                      constants.SYSINV_USERNAME,
+                                      subcloud_name,
+                                      sysinv_url)
+
+
 def dc_get_service_endpoint_url(token,
                                 service_name='dcmanager',
                                 service_type='dcmanager',
