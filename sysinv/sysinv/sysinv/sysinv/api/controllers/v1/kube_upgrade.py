@@ -192,6 +192,7 @@ class KubeUpgradeController(rest.RestController):
 
         force = body.get('force', False) is True
         alarm_ignore_list = body.get('alarm_ignore_list')
+        system = pecan.request.dbapi.isystem_get_one()
 
         # There must not be a platform upgrade in progress
         try:
@@ -212,7 +213,7 @@ class KubeUpgradeController(rest.RestController):
             raise wsme.exc.ClientSideError(_(
                 "A kubernetes upgrade is already in progress"))
 
-        # The target version must be available
+        # Check whether target version is available or not
         try:
             target_version_obj = objects.kube_version.get_by_version(
                 to_version)
@@ -221,16 +222,23 @@ class KubeUpgradeController(rest.RestController):
                 "Kubernetes version %s is not available" % to_version))
 
         # The upgrade path must be supported
-        current_kube_version = \
-            self._kube_operator.kube_get_kubernetes_version()
-        if not target_version_obj.can_upgrade_from(current_kube_version):
-            raise wsme.exc.ClientSideError(_(
-                "The installed Kubernetes version %s cannot upgrade to "
-                "version %s" % (current_kube_version,
-                                target_version_obj.version)))
+        current_kube_version = self._kube_operator.kube_get_kubernetes_version()
+        version_states = self._kube_operator.kube_get_version_states()
+
+        # The target version must be available state
+        if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+            if version_states.get(to_version) != kubernetes.KUBE_STATE_AVAILABLE:
+                raise wsme.exc.ClientSideError(_(
+                    "The target Kubernetes version %s is not in "
+                    "available state" % (target_version_obj.version)))
+        else:
+            if not target_version_obj.can_upgrade_from(current_kube_version):
+                raise wsme.exc.ClientSideError(_(
+                    "The installed Kubernetes version %s cannot upgrade to "
+                    "version %s" % (current_kube_version,
+                                    target_version_obj.version)))
 
         # The current kubernetes version must be active
-        version_states = self._kube_operator.kube_get_version_states()
         if version_states.get(current_kube_version) != \
                 kubernetes.KUBE_STATE_ACTIVE:
             raise wsme.exc.ClientSideError(_(
