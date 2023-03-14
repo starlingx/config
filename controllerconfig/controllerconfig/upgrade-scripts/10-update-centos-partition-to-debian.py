@@ -268,8 +268,8 @@ def is_device_path_on_disk(device_path, disk_device_path, disk_device_node):
     if disk_device_path in device_path:
         return True
     elif constants.DEVICE_NAME_MPATH in disk_device_node:
-        path_split = disk_device_node.split(constants.DEVICE_NAME_MPATH)
-        if path_split[0] in device_path and path_split[1] in device_path:
+        split_path = device_path.split("-part")
+        if split_path[0] in disk_device_path:
             return True
     return False
 
