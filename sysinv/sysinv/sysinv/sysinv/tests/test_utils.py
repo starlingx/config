@@ -21,13 +21,16 @@
 #
 
 import errno
+import io
 import mock
 import netaddr
 import os
 import os.path
 import six.moves.builtins as __builtin__
 import tempfile
+import testtools
 import string
+import yaml
 
 from oslo_config import cfg
 
@@ -444,3 +447,131 @@ class IntLikeTestCase(base.TestCase):
         self.assertFalse(
             utils.is_int_like("0cc3346e-9fef-4445-abe6-5d2b2690ec64"))
         self.assertFalse(utils.is_int_like("a1"))
+
+
+# these unit tests do not need to subclass base.TestCase
+class FindMetadataTestCase(testtools.TestCase):
+
+    sample_contents = """
+app_name: sample-app
+app_version: 1.2-3
+helm_repo: stx-platform
+maintain_user_overrides: true
+supported_k8s_version:
+  minimum: 'v1.2.3'
+  maximum: 'v2.4.6'
+behavior:
+  platform_managed_app: yes
+  desired_state: applied
+  evaluate_reapply:
+    triggers:
+      - type: runtime-apply-puppet # TODO(someuser): an inline comment
+      - type: host-availability-updated
+      - type: kube-upgrade-complete
+        filters:
+          - availability: services-enabled
+      - type: host-delete
+        filters:
+          - personality: controller
+"""
+
+    bad_contents = """
+app_name: sample-app
+app_version: 1.2-3
+helm_repo: stx-platform
+maintain_user_overrides: true
+supported_k8s_version:
+  minimum: 1       # must be a string, not a number
+  maximum: true   # must be a string, not a boolean
+behavior:
+  platform_managed_app: yes
+  desired_state: applied
+  evaluate_reapply:
+    triggers:
+      - type: runtime-apply-puppet # TODO(someuser): an inline comment
+      - type: host-availability-updated
+      - type: kube-upgrade-complete
+        filters:
+          - availability: services-enabled
+      - type: host-delete
+        filters:
+          - personality: controller
+"""
+
+    def test_find_metadata_file_nofile(self):
+        """Verify results of find_metadata_file
+
+        when if no file is found, returns:
+        app_name =  "", app_version = "", patches = []
+        """
+        app_name, app_version, patches = \
+            utils.find_metadata_file("invalid_path",
+                                     "invalid_file",
+                                     upgrade_from_release=None)
+        # if the file is not loaded or has invalid contents
+        # find_metadata_file returns two empty strings and
+        # an empty list  ie:  "","",[]
+        self.assertEqual(app_name, "")
+        self.assertEqual(app_version, "")
+        self.assertEqual(patches, [])
+
+    @mock.patch.object(io, 'open')
+    @mock.patch.object(os.path, 'isfile')
+    def test_find_metadata_file(self,
+                                _mock_isfile,
+                                _mock_open):
+        """This test mocks file operations
+         and returns static file contents to allow unit
+         testing the validation code
+        """
+
+        _mock_isfile.return_value = "True"
+
+        # load fake yaml file contents for: sample-app 1.2-3
+        _mock_open.return_value = io.StringIO(self.sample_contents)
+
+        app_name, app_version, patches = \
+            utils.find_metadata_file("valid_path",
+                                     "valid_file",
+                                     upgrade_from_release=None)
+        self.assertEqual(app_name, "sample-app")
+        self.assertEqual(app_version, "1.2-3")
+
+    @mock.patch.object(io, 'open')
+    @mock.patch.object(os.path, 'isfile')
+    def test_find_metadata_file_bad_contents(self,
+                                _mock_isfile,
+                                _mock_open):
+        """This test mocks file operations and verifies
+         failure handling in how the yaml is validated
+        """
+        _mock_isfile.return_value = "True"
+
+        # bad_replacements is a list of atomic changes that
+        # will trigger a SysinvException in the validator
+        bad_replacements = [
+                # app_name cannot be None
+                {"app_name": None},
+                # app_version cannot be None
+                {"app_version": None},
+                # behavior must be a dictionary (not a list)
+                {"behavior": []},
+                # minimum or maximum cannot be a boolean
+                {"supported_k8s_version": {"minimum": True, "maximum": "2.4.6"}},
+                # minimum or maximum cannot be a number
+                {"supported_k8s_version": {"minimum": "1.2.3", "maximum": 2}},
+        ]
+
+        # start each loop with valid contents and replace
+        # a certain section with bad contents so that the
+        # validator will raise a SysinvException
+        for bad_dict in bad_replacements:
+            contents = yaml.safe_load(self.sample_contents)
+            for key, value in bad_dict.items():
+                contents[key] = value
+            bad_contents = yaml.dump(contents)
+            _mock_open.return_value = io.StringIO(bad_contents)
+            self.assertRaises(exception.SysinvException,
+                              utils.find_metadata_file,
+                              "valid_path",
+                              "valid_file")
