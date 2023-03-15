@@ -338,6 +338,12 @@ class AddressPoolController(rest.RestController):
             self._check_valid_range(network, start, end, ipset)
             ipset.update(netaddr.IPRange(start, end))
 
+    def _check_valid_address(self, addrpool_dict, address):
+        subnet = netaddr.IPNetwork(
+            addrpool_dict['network'] + "/" + str(addrpool_dict['prefix']))
+        addr = netaddr.IPAddress(address)
+        utils.is_valid_address_within_subnet(addr, subnet)
+
     def _check_pool_readonly(self, addrpool):
         # The admin and system controller address pools which exist on the
         # subcloud are expected for re-home a subcloud to new system controllers.
@@ -487,18 +493,22 @@ class AddressPoolController(rest.RestController):
 
         # Create addresses if specified
         if floating_address:
+            self._check_valid_address(addrpool_dict, floating_address)
             f_addr = self._address_create(addrpool_dict, floating_address)
             addrpool_dict[ADDRPOOL_FLOATING_ADDRESS_ID] = f_addr.id
 
         if controller0_address:
+            self._check_valid_address(addrpool_dict, controller0_address)
             c0_addr = self._address_create(addrpool_dict, controller0_address)
             addrpool_dict[ADDRPOOL_CONTROLLER0_ADDRESS_ID] = c0_addr.id
 
         if controller1_address:
+            self._check_valid_address(addrpool_dict, controller1_address)
             c1_addr = self._address_create(addrpool_dict, controller1_address)
             addrpool_dict[ADDRPOOL_CONTROLLER1_ADDRESS_ID] = c1_addr.id
 
         if gateway_address:
+            self._check_valid_address(addrpool_dict, gateway_address)
             g_addr = self._address_create(addrpool_dict, gateway_address)
             addrpool_dict[ADDRPOOL_GATEWAY_ADDRESS_ID] = g_addr.id
 
