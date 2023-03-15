@@ -485,63 +485,6 @@ class SysinvObject(object):
         return cls._from_db_object(cls(), db_obj)
 
 
-class ObjectListBase(object):
-    """Mixin class for lists of objects.
-
-    This mixin class can be added as a base class for an object that
-    is implementing a list of objects. It adds a single field of 'objects',
-    which is the list store, and behaves like a list itself. It supports
-    serialization of the list of objects automatically.
-    """
-    fields = {
-        'objects': list,
-              }
-
-    def __iter__(self):
-        """List iterator interface."""
-        return iter(self.objects)
-
-    def __len__(self):
-        """List length."""
-        return len(self.objects)
-
-    def __getitem__(self, index):
-        """List index access."""
-        if isinstance(index, slice):
-            new_obj = self.__class__()
-            new_obj.objects = self.objects[index]
-            # NOTE(danms): We must be mixed in with an SysinvObject!
-            new_obj.obj_reset_changes()  # pylint: disable=no-member
-            new_obj._context = self._context
-            return new_obj
-        return self.objects[index]
-
-    def __contains__(self, value):
-        """List membership test."""
-        return value in self.objects
-
-    def count(self, value):
-        """List count of value occurrences."""
-        return self.objects.count(value)
-
-    def index(self, value):
-        """List index of value."""
-        return self.objects.index(value)
-
-    def _attr_objects_to_primitive(self):
-        """Serialization of object list."""
-        return [x.obj_to_primitive() for x in self.objects]
-
-    def _attr_objects_from_primitive(self, value):
-        """Deserialization of object list."""
-        objects = []
-        for entity in value:
-            obj = SysinvObject.obj_from_primitive(entity,
-                                                  context=self._context)
-            objects.append(obj)
-        return objects
-
-
 class SysinvObjectSerializer(rpc_serializer.Serializer):
     """A SysinvObject-aware Serializer.
 
@@ -588,12 +531,9 @@ class SysinvObjectSerializer(rpc_serializer.Serializer):
 def obj_to_primitive(obj):
     """Recursively turn an object into a python primitive.
 
-    An SysinvObject becomes a dict, and anything that implements ObjectListBase
-    becomes a list.
+    A SysinvObject becomes a dict
     """
-    if isinstance(obj, ObjectListBase):
-        return [obj_to_primitive(x) for x in obj]
-    elif isinstance(obj, SysinvObject):
+    if isinstance(obj, SysinvObject):
         result = {}
         for key, value in obj.items():
             result[key] = obj_to_primitive(value)
