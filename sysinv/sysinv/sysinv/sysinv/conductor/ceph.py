@@ -1,7 +1,7 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
 #
-# Copyright (c) 2016-2019 Wind River Systems, Inc.
+# Copyright (c) 2016-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -772,15 +772,6 @@ class CephOperator(object):
             # No storage node is available
             return False
         return True
-
-    # TODO(CephPoolsDecouple): rework - determine the existing pools
-    def get_pools_config(self):
-        for pool in CEPH_POOLS:
-            # Here it is okay for object pool name is either
-            # constants.CEPH_POOL_OBJECT_GATEWAY_NAME_JEWEL or
-            # constants.CEPH_POOL_OBJECT_GATEWAY_NAME_HAMMER
-            pool['quota_gib'] = self.set_quota_gib(pool['pool_name'])
-        return CEPH_POOLS
 
     # TODO(CephPoolsDecouple): remove
     # This used to be a rpc call to ceph-manager, however after
