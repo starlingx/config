@@ -81,6 +81,26 @@ class Token(object):
         return self._get_service_url(service_type, service_name, 'admin',
                                      region_name)
 
+    def update_service_admin_url(
+            self, service_type, service_name, region_name, endpoint):
+        """Update the catalog of a service for the administrative url"""
+        return self._set_service_url(service_type, service_name,
+                                     'admin', region_name, endpoint)
+
+    def _set_service_url(self, service_type, service_name, interface_type,
+                         region_name, new_endpoint):
+        """Update the url of a service in a region"""
+        if region_name is None:
+            region_name = self.region_name
+        for catalog in self.data['token']['catalog']:
+            if (catalog['type'] == service_type and
+                    catalog['name'] == service_name and
+                    catalog['endpoints']):
+                for endpoint in catalog['endpoints']:
+                    if (endpoint['interface'] == interface_type
+                            and endpoint['region'] == region_name):
+                        endpoint['url'] = new_endpoint
+
     def get_service_internal_url(self,
                                  service_type,
                                  service_name,

@@ -120,3 +120,8 @@ class CertificateMonitorService(service.Service):
         LOG.info("%s is managed. An audit is queued"
                  % subcloud_name)
         self.manager.audit_subcloud(subcloud_name)
+
+    def subcloud_sysinv_endpoint_update(self, ctxt, subcloud_name, endpoint):
+        """Update sysinv endpoint of dc token cache"""
+        LOG.info("Update subloud: %s sysinv endpoint" % subcloud_name)
+        self.manager.subcloud_sysinv_endpoint_update(subcloud_name, endpoint)

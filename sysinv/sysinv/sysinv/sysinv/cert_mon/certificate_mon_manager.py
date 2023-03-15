@@ -428,6 +428,14 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             subcloud_audit_queue.SubcloudAuditData(subcloud_name),
             allow_requeue=allow_requeue)
 
+    def subcloud_sysinv_endpoint_update(self, subcloud_name, sysinv_url):
+        dc_token = self.dc_token_cache.get_token()
+        subcloud_sysinv_url = utils.dc_get_subcloud_sysinv_url(
+            subcloud_name, dc_token)
+        if subcloud_sysinv_url != sysinv_url:
+            utils.dc_update_subcloud_sysinv_url(
+                subcloud_name, sysinv_url, dc_token)
+
     def monitor_cert(self, monitor):
         while True:
             # never exit until exit signal received
