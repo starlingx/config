@@ -1443,55 +1443,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('region_has_ceph_backend'))
 
-    def get_system_tpmconfig(self, context):
-        """
-        Retrieve the system tpmconfig object
-        """
-        return self.call(context, self.make_msg('get_system_tpmconfig'))
-
-    def get_tpmdevice_by_host(self, context, host_id):
-        """
-        Retrieve the tpmdevice object for this host
-        """
-        return self.call(context,
-                         self.make_msg('get_tpmdevice_by_host',
-                                       host_id=host_id))
-
-    def tpm_config_update_by_host(self, context,
-                                  host_uuid, response_dict):
-        """Get TPM configuration status from Agent host.
-
-        This method allows for alarms to be raised for hosts if TPM
-        is not configured properly.
-
-        :param context: an admin context
-        :param host_uuid: host unique id
-        :param response_dict: configuration status
-        :returns: pass or fail
-        """
-        return self.call(
-            context,
-            self.make_msg('tpm_config_update_by_host',
-                          host_uuid=host_uuid,
-                          response_dict=response_dict))
-
-    def tpm_device_update_by_host(self, context,
-                                  host_uuid, tpmdevice_dict):
-        """Synchronously , have the conductor create or update
-        a tpmdevice per host.
-
-        :param context: request context.
-        :param host_uuid: uuid or id of the host
-        :param tpmdevice_dict: a dictionary of tpm device attributes
-
-        :returns: tpmdevice object
-        """
-        return self.call(
-            context,
-            self.make_msg('tpm_device_update_by_host',
-                          host_uuid=host_uuid,
-                          tpmdevice_dict=tpmdevice_dict))
-
     def cinder_prepare_db_for_volume_restore(self, context):
         """
         Send a request to cinder to remove all volume snapshots and set all
