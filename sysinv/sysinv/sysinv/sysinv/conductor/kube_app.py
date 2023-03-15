@@ -1806,6 +1806,42 @@ class AppOperator(object):
 
             return False
 
+        def _recover_via_removal(release_name, release_err_msg):
+            """ Verify if a given helm release error can be recovered
+                by removing the app and applying it again.
+
+            This leverages the retry mechanism triggered when an
+            ApplicationApplyFailure exception is raised.
+
+            :param release_name: helm release name
+            :param released_err_msg: helm error message
+            """
+
+            for error_string in \
+                    constants.FLUXCD_RECOVERY_HELM_RELEASE_STATUS_ERRORS_REMOVAL_REQUIRED:
+                if release_err_msg.startswith(error_string):
+                    LOG.info("For helm release {} found a matching error string. "
+                                "Application removal is required to recover from: {}"
+                                "".format(release_name, release_err_msg))
+
+                    lifecycle_hook_info_app_remove = LifecycleHookInfo()
+                    lifecycle_hook_info_app_remove.operation = constants.APP_REMOVE_OP
+                    self.perform_app_remove(app._kube_app, lifecycle_hook_info_app_remove)
+
+                    progress_str = "Recovering from: {}.".format(error_string)
+                    self._update_app_status(app,
+                                            constants.APP_RECOVER_IN_PROGRESS,
+                                            progress_str
+                                            )
+
+                    lifecycle_hook_info_app_apply = LifecycleHookInfo()
+                    lifecycle_hook_info_app_apply.operation = constants.APP_APPLY_OP
+                    self.perform_app_apply(app._kube_app, mode=None,
+                                lifecycle_hook_info_app_apply=lifecycle_hook_info_app_apply,
+                                caller=constants.RECOVER_VIA_REMOVAL)
+
+                    raise exception.ApplicationApplyFailure(name=app.name)
+
         def _check_progress():
             tadjust = 0
             last_successful_chart = None
@@ -1886,6 +1922,10 @@ class AppOperator(object):
                             flux_error_message=err_msg)
 
                         if not attempt:
+                            # Handle corner cases in which application removal
+                            # and apply are required to recover from failure
+                            _recover_via_removal(release_name, err_msg)
+
                             LOG.exception("Application {}: release {}: Failed during {} :{}"
                                           "".format(app.name, release_name, request, err_msg))
                             return False
@@ -1926,6 +1966,8 @@ class AppOperator(object):
                 # check progress only for apply for now
                 if rc and request == constants.APP_APPLY_OP:
                     rc = _check_progress()
+        except (exception.ApplicationApplyFailure):
+            raise
         except Exception as e:
             # timeout or subprocess error
             LOG.exception(e)
@@ -3050,6 +3092,9 @@ class AppOperator(object):
 
                 if AppOperator.is_app_aborted(app.name):
                     raise exception.KubeAppAbort()
+
+                if caller == constants.RECOVER_VIA_REMOVAL:
+                    return True
 
                 if self._make_app_request(app, constants.APP_APPLY_OP, overrides_str):
                     self._update_app_releases_version(app.name)
