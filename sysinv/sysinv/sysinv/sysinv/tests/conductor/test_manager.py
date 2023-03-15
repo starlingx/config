@@ -220,6 +220,35 @@ class ManagerTestCase(base.DbTestCase):
                         namespace='kube-system'),
         )
 
+        self.kubeadm_config_map_read_image_repository = kubernetes.client.V1ConfigMap(
+            api_version='v1',
+            data={'ClusterConfiguration': 'apiServer:\n'
+                                            '  certSANs:\n'
+                                            '  - 192.168.206.1\n'
+                                            '  - 127.0.0.1\n'
+                                            '  - 10.10.6.3\n'
+                                            '  extraArgs:\n'
+                                            '    event-ttl: 24h\n'
+                                            '  extraVolumes:\n'
+                                            '  - hostPath: '
+                                            '/etc/kubernetes/encryption-provider.yaml\n'
+                                            'apiVersion: kubeadm.k8s.io/v1beta3\n'
+                                            'controllerManager:\n'
+                                            '  extraArgs:\n'
+                                            '    feature-gates: CSIMigrationPortworx=false\n'
+                                            '    pod-eviction-timeout: 30s\n'
+                                            '  extraVolumes:\n'
+                                            'imageRepository: registry.local:9001/k8s.gcr.io\n'
+                                            'kind: ClusterConfiguration\n'
+                                            'kubernetesVersion: v1.42.1\n'
+                                            'scheduler: {}\n'},
+
+            metadata=kubernetes.client.V1ObjectMeta(
+                        name='kubeadm-config',
+                        namespace='kube-system'),
+        )
+
+        self.kubeadm_config_map_patch_image_repository = {'data': {'ClusterConfiguration': 'apiServer:\n  certSANs: [192.168.206.1, 127.0.0.1, 10.10.6.3]\n  extraArgs: {event-ttl: 24h}\n  extraVolumes:\n  - {hostPath: /etc/kubernetes/encryption-provider.yaml}\napiVersion: kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  extraArgs: {feature-gates: CSIMigrationPortworx=false, pod-eviction-timeout: 30s}\n  extraVolumes: null\nimageRepository: registry.local:9001/registry.k8s.io\nkind: ClusterConfiguration\nkubernetesVersion: v1.42.1\nscheduler: {}\n'}}  # noqa: E501
         super(ManagerTestCase, self).setUp()
 
         # Set up objects for testing
@@ -1187,6 +1216,13 @@ class ManagerTestCase(base.DbTestCase):
         p2.start().return_value = 0
         self.addCleanup(p2.stop)
 
+        mock_sanitize_image_repository_kubeadm_configmap = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_image_repository_kubeadm_configmap',
+            mock_sanitize_image_repository_kubeadm_configmap)
+        p2.start().return_value = 0
+        self.addCleanup(p2.stop)
+
         # Speed up the test
         kubernetes.MANIFEST_APPLY_INTERVAL = 1
         kubernetes.POD_START_INTERVAL = 1
@@ -1257,6 +1293,13 @@ class ManagerTestCase(base.DbTestCase):
         p2.start().return_value = 0
         self.addCleanup(p2.stop)
 
+        mock_sanitize_image_repository_kubeadm_configmap = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_image_repository_kubeadm_configmap',
+            mock_sanitize_image_repository_kubeadm_configmap)
+        p2.start().return_value = 0
+        self.addCleanup(p2.stop)
+
         # Speed up the test
         kubernetes.MANIFEST_APPLY_INTERVAL = 1
         kubernetes.MANIFEST_APPLY_TIMEOUT = 1
@@ -1323,6 +1366,13 @@ class ManagerTestCase(base.DbTestCase):
         p2 = mock.patch(
             'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_kubelet_configmap',
             mock_sanitize_feature_gates_kubelet_configmap)
+        p2.start().return_value = 0
+        self.addCleanup(p2.stop)
+
+        mock_sanitize_image_repository_kubeadm_configmap = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_image_repository_kubeadm_configmap',
+            mock_sanitize_image_repository_kubeadm_configmap)
         p2.start().return_value = 0
         self.addCleanup(p2.stop)
 
@@ -1693,6 +1743,33 @@ class ManagerTestCase(base.DbTestCase):
         ret2 = kubernetes.KubeOperator.kube_patch_config_map(configmap_name,
                      'kube-system', self.kubeadm_config_map_patch_RemoveSelfLink)
         self.assertEqual(ret2, self.kubeadm_config_map_patch_RemoveSelfLink)
+
+    def test_sanitize_image_repository_kubeadm_configmap(self):
+        """
+        This unit test covers the following use cases:
+        1. a component with an 'extraArgs' field containing 'feature-gates' with
+           only a "RemoveSelfLink=false" entry
+        2. a component with an 'extraArgs' field containing 'feature-gates' with a
+           "RemoveSelfLink=false" entry as well as others
+        """
+        mock_kube_read_config_map = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_read_config_map',
+            mock_kube_read_config_map)
+        p.start().return_value = self.kubeadm_config_map_read_image_repository
+        self.addCleanup(p.stop)
+
+        mock_kube_patch_config_map = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_patch_config_map',
+            mock_kube_patch_config_map)
+        p2.start().return_value = self.kubeadm_config_map_patch_image_repository
+        self.addCleanup(p2.stop)
+
+        self.service.start()
+        self.service.sanitize_image_repository_kubeadm_configmap('v1.42.2')
+        mock_kube_patch_config_map.assert_called_with(
+                'kubeadm-config', 'kube-system', self.kubeadm_config_map_patch_image_repository)
 
     def _create_test_controller_config_out_of_date(self, hostname):
         config_applied = self.service._config_set_reboot_required(uuid.uuid4())
