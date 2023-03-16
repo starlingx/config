@@ -11383,13 +11383,9 @@ class ConductorManager(service.PeriodicService):
                      self._host_deferred_runtime_config)
             return False
 
-        # the config will be processed so remove from deferred list if it is a
-        # deferred one.
-        if deferred_config:
-            self._host_deferred_runtime_config.remove(deferred_config)
-
-        # Ensure hiera data is updated prior to active apply.
-        self._config_update_puppet(config_uuid, config_dict)
+        if not self._try_config_update_puppet(
+                config_uuid, config_dict, deferred_config):
+            return False
 
         rpcapi = agent_rpcapi.AgentAPI()
         try:
@@ -11488,6 +11484,41 @@ class ConductorManager(service.PeriodicService):
                 break
         return config
 
+    def _try_config_update_puppet(
+            self, config_uuid, config_dict,
+            deferred_config=None, host_uuids=None, force=False):
+        """Attempt the config puppet hierdata update.
+
+           In the case of a deferred config, the puppet update can be
+           asynchronously retried on exception.
+           In the case of synchronous (non-deferred) config, exceptions
+           are raised.
+        """
+
+        # the config will be processed so remove from deferred list if it is a
+        # deferred one.
+        if deferred_config:
+            self._host_deferred_runtime_config.remove(deferred_config)
+
+        # Update hiera data for all hosts prior to runtime apply if host_uuid
+        # is not set. If host_uuids is set only update hiera data for those hosts.
+        try:
+            self._config_update_puppet(config_uuid,
+                                       config_dict,
+                                       host_uuids=host_uuids,
+                                       force=force)
+        except Exception as e:
+            LOG.exception("_config_update_puppet %s" % e)
+            if deferred_config:
+                self._host_deferred_runtime_config.append(deferred_config)
+                LOG.warn("deferred update runtime config %s exception. Retry." %
+                         deferred_config)
+                return False
+            else:
+                raise
+
+        return True
+
     def _config_apply_runtime_manifest(self,
                                        context,
                                        config_uuid,
@@ -11557,17 +11588,9 @@ class ConductorManager(service.PeriodicService):
                      self._host_deferred_runtime_config)
             return
 
-        # the config will be processed so remove from deferred list if it is a
-        # deferred one.
-        if deferred_config:
-            self._host_deferred_runtime_config.remove(deferred_config)
-
-        # Update hiera data for all hosts prior to runtime apply if host_uuid
-        # is not set. If host_uuids is set only update hiera data for those hosts.
-        self._config_update_puppet(config_uuid,
-                                   config_dict,
-                                   host_uuids=host_uuids,
-                                   force=force)
+        if not self._try_config_update_puppet(
+                config_uuid, config_dict, deferred_config, host_uuids, force):
+            return
 
         self.evaluate_apps_reapply(context, trigger={'type': constants.APP_EVALUATE_REAPPLY_TYPE_RUNTIME_APPLY_PUPPET})
 
