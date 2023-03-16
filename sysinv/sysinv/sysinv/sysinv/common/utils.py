@@ -2258,10 +2258,16 @@ def find_metadata_file(path, metadata_file, upgrade_from_release=None):
     - <chart name>
     - <chart name>
     ...
+
+    maintain_attributes: <true|false>
+      - optional: defaults to false. Over an app update any system overrides are
+        preserved for the new version of the application. This can be renamed to
+        'maintain_system_overrides', but will require more effort to keep
+        the naming of 'helm-chart-attribute-modify' command in sync with this.
     maintain_user_overrides: <true|false>
       - optional: defaults to false. Over an app update any user overrides are
         preserved for the new version of the application
-    ...
+
     behavior: - optional: describes the app behavior
         platform_managed_app: <true/false/yes/no> - optional: when absent behaves as false
         desired_state: <uploaded/applied> - optional: state the app should reach
