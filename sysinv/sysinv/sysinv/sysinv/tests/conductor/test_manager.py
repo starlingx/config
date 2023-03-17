@@ -408,6 +408,12 @@ class ManagerTestCase(base.DbTestCase):
 
         # Mock the KubeVersion
         self.get_kube_versions_result = [
+            {'version': 'v1.41.1',
+             'upgrade_from': [],
+             'downgrade_to': [],
+             'applied_patches': [],
+             'available_patches': [],
+             },
             {'version': 'v1.42.1',
              'upgrade_from': [],
              'downgrade_to': [],
@@ -416,6 +422,12 @@ class ManagerTestCase(base.DbTestCase):
              },
             {'version': 'v1.42.2',
              'upgrade_from': ['v1.42.1'],
+             'downgrade_to': [],
+             'applied_patches': [],
+             'available_patches': [],
+             },
+            {'version': 'v1.43.1',
+             'upgrade_from': ['v1.43.1'],
              'downgrade_to': [],
              'applied_patches': [],
              'available_patches': [],
@@ -912,6 +924,58 @@ class ManagerTestCase(base.DbTestCase):
 
         # Download images
         self.service.kube_download_images(self.context, 'v1.42.2')
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
+
+    def test_kube_download_images_simplex(self):
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.41.1',
+            to_version='v1.43.1',
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
+        )
+        mock_kube_get_higher_patch_version = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_get_higher_patch_version',
+            mock_kube_get_higher_patch_version)
+        p.start().return_value = ['v1.42.2', 'v1.43.1']
+        self.addCleanup(p.stop)
+
+        next_versions = kubernetes.KubeOperator.kube_get_higher_patch_version('v1.41.1',
+                                                                              'v1.43.1')
+        mock_run_playbook = mock.MagicMock()
+        p1 = mock.patch('sysinv.common.utils.run_playbook', mock_run_playbook)
+        p1.start().return_value = 0
+        self.addCleanup(p1.stop)
+
+        # Download images
+        self.service.kube_download_images(self.context, 'v1.43.1')
+
+        # Verify that we called ansible to download both versions
+        for k8s_version in next_versions:
+            playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % k8s_version,
+                            constants.ANSIBLE_KUBE_PUSH_IMAGES_PLAYBOOK]
+            mock_run_playbook.assert_any_call(playbook_cmd)
 
         # Verify that the upgrade state was updated
         updated_upgrade = self.dbapi.kube_upgrade_get_one()

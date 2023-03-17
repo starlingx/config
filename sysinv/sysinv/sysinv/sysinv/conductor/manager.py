@@ -14730,93 +14730,70 @@ class ConductorManager(service.PeriodicService):
     def kube_download_images(self, context, kube_version):
         """Download the kubernetes images for this version"""
 
-        # Update the config for the controller host(s)
-        personalities = [constants.CONTROLLER]
-        config_uuid = self._config_update_hosts(context, personalities)
-
-        # Apply the runtime manifest to have the kubernetes
-        # bind mounts updated on the active controller
-        config_dict = {
-            "personalities": personalities,
-            "classes": 'platform::kubernetes::bindmounts'
-        }
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-        # Wait for the manifest(s) to be applied
-        elapsed = 0
-        while elapsed < kubernetes.MANIFEST_APPLY_TIMEOUT:
-            elapsed += kubernetes.MANIFEST_APPLY_INTERVAL
-            greenthread.sleep(kubernetes.MANIFEST_APPLY_INTERVAL)
-            controller_0 = self.dbapi.ihost_get_by_hostname(
-                constants.CONTROLLER_0_HOSTNAME)
-            if controller_0.config_target != controller_0.config_applied:
-                LOG.debug("Waiting for config apply on %s" %
-                          constants.CONTROLLER_0_HOSTNAME)
-            else:
-                LOG.info("Config was applied for %s" % constants.CONTROLLER_0_HOSTNAME)
-                break
+        kube_operator = kubernetes.KubeOperator()
+        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        system = self.dbapi.isystem_get_one()
+        if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+            next_versions = kube_operator.kube_get_higher_patch_version(kube_upgrade_obj.from_version,
+                                                                        kube_version)
         else:
-            LOG.warning("Manifest apply failed for %s" % constants.CONTROLLER_0_HOSTNAME)
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = \
-                kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
-            kube_upgrade_obj.save()
-            return
+            next_versions = [kube_version]
 
-        LOG.info("executing playbook: %s for version %s" %
-                 (constants.ANSIBLE_KUBE_PUSH_IMAGES_PLAYBOOK, kube_version))
+        for k8s_version in next_versions:
+            LOG.info("executing playbook: %s for version %s" %
+                (constants.ANSIBLE_KUBE_PUSH_IMAGES_PLAYBOOK, k8s_version))
+            # Execute the playbook to download the images from the external
+            # registry to registry.local.
+            playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % k8s_version,
+                            constants.ANSIBLE_KUBE_PUSH_IMAGES_PLAYBOOK]
+            returncode = cutils.run_playbook(playbook_cmd)
 
-        # Execute the playbook to download the images from the external
-        # registry to registry.local.
-        playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
-                        constants.ANSIBLE_KUBE_PUSH_IMAGES_PLAYBOOK]
-        returncode = cutils.run_playbook(playbook_cmd)
+            if returncode:
+                LOG.warning("ansible-playbook returned an error: %s" %
+                            returncode)
+                # Update the upgrade state
+                kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+                kube_upgrade_obj.state = \
+                    kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
+                kube_upgrade_obj.save()
+                return
 
-        if returncode:
-            LOG.warning("ansible-playbook returned an error: %s" %
-                        returncode)
-            # Update the upgrade state
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = \
-                kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
-            kube_upgrade_obj.save()
-            return
+        if system.system_mode == constants.SYSTEM_MODE_DUPLEX:
+            # Update the config for the controller host(s)
+            personalities = [constants.CONTROLLER]
+            config_uuid = self._config_update_hosts(context, personalities)
 
-        # Update the config for the controller host(s)
-        personalities = [constants.CONTROLLER]
-        config_uuid = self._config_update_hosts(context, personalities)
+            # Apply the runtime manifest to have docker download the images on
+            # each controller.
+            config_dict = {
+                "personalities": personalities,
+                "classes": 'platform::kubernetes::pre_pull_control_plane_images'
+            }
+            self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-        # Apply the runtime manifest to have docker download the images on
-        # each controller.
-        config_dict = {
-            "personalities": personalities,
-            "classes": 'platform::kubernetes::pre_pull_control_plane_images'
-        }
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-        # Wait for the manifest(s) to be applied
-        elapsed = 0
-        while elapsed < kubernetes.MANIFEST_APPLY_TIMEOUT:
-            elapsed += kubernetes.MANIFEST_APPLY_INTERVAL
-            greenthread.sleep(kubernetes.MANIFEST_APPLY_INTERVAL)
-            controller_hosts = self.dbapi.ihost_get_by_personality(
-                constants.CONTROLLER)
-            for host_obj in controller_hosts:
-                if host_obj.config_target != host_obj.config_applied:
-                    # At least one controller has not been updated yet
-                    LOG.debug("Waiting for config apply on host %s" %
-                              host_obj.hostname)
+            # Wait for the manifest(s) to be applied
+            elapsed = 0
+            while elapsed < kubernetes.MANIFEST_APPLY_TIMEOUT:
+                elapsed += kubernetes.MANIFEST_APPLY_INTERVAL
+                greenthread.sleep(kubernetes.MANIFEST_APPLY_INTERVAL)
+                controller_hosts = self.dbapi.ihost_get_by_personality(
+                    constants.CONTROLLER)
+                for host_obj in controller_hosts:
+                    if host_obj.config_target != host_obj.config_applied:
+                        # At least one controller has not been updated yet
+                        LOG.debug("Waiting for config apply on host %s" %
+                                host_obj.hostname)
+                        break
+                else:
+                    LOG.info("Config was applied for all controller hosts")
                     break
             else:
-                LOG.info("Config was applied for all controller hosts")
-                break
-        else:
-            LOG.warning("Manifest apply failed for a controller host")
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = \
-                kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
-            kube_upgrade_obj.save()
-            return
+                LOG.warning("Manifest apply failed for a controller host")
+                kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+                kube_upgrade_obj.state = \
+                    kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED
+                kube_upgrade_obj.save()
+                return
 
         # Update the upgrade state
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
