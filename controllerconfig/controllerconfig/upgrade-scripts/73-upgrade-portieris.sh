@@ -291,6 +291,48 @@ if [ "x${UPGRADE_APP_VERSION}" != "x${EXISTING_APP_VERSION}" ]; then
 
         fi
 
+        # download new portieris image, since it comes from a new registry
+        # which is not configured in the previous release
+        log "$NAME: adding portieris image to local registry"
+        IMAGE="portieris/portieris:v0.13.1"
+        system registry-image-tags icr.io/portieris/portieris| grep 'v0\.13\.1'
+        if [ $? -eq 0 ]; then
+            log "$NAME: image ${IMAGE} already exists, nothing needs to be done."
+        else
+            DOCKER_REGISTRY_UUID=$( system service-parameter-list --service docker --section docker-registry | grep " url " | awk -F '|' '{print $2}'| xargs );
+            DOCKER_REGISTRY_VALUE=$( system service-parameter-show $DOCKER_REGISTRY_UUID | grep " value " | awk -F '|' '{print $3}'| xargs );
+            ICR_REGISTRY=$(echo $DOCKER_REGISTRY_VALUE | sed 's;/docker;/icr;');
+
+            # check if the system is configured to pull from an authenticated registry
+            REGISTRY_IS_AUTHED=0
+            system service-parameter-list --service docker --section docker-registry | grep auth-secret
+            if [ $? -eq 0 ]; then
+                REGISTRY_IS_AUTHED=1
+                log "$NAME: logging in to docker registry using credentials stored in barbican"
+                BARBICAN_SECRET_UUID=$(system service-parameter-list --service docker --section docker-registry | grep auth-secret | awk -F '|' '{print $6}' | xargs);
+                BARBICAN_SECRET=$( openstack secret get $BARBICAN_SECRET_UUID -p -f value );
+                DOCKER_REGISTRY_CREDS=$(echo $BARBICAN_SECRET | sed 's;username:;-u ;' | sed 's;password:;-p ;')
+                docker login $DOCKER_REGISTRY_VALUE $DOCKER_REGISTRY_CREDS
+            fi
+            docker pull ${ICR_REGISTRY}/${IMAGE};
+            docker tag ${ICR_REGISTRY}/${IMAGE} registry.local:9001/icr.io/${IMAGE}
+            echo ${OS_PASSWORD} | docker login -u ${OS_USERNAME} --password-stdin registry.local:9001
+            docker push registry.local:9001/icr.io/${IMAGE}
+
+            if [ $REGISTRY_IS_AUTHED -eq 1 ]; then
+                docker logout $DOCKER_REGISTRY_VALUE
+            fi
+
+            # double check the image tag
+            system registry-image-tags icr.io/portieris/portieris | grep 'v0\.13\.1'
+            if [ $? -ne 0 ]; then
+                log "$NAME: $IMAGE not tagged correctly, exiting for manual intervention"
+                exit 1
+            else
+                log "$NAME: done."
+            fi
+        fi
+
         # apply new portieris
         log "$NAME: Applying ${UPGRADE_APP_NAME}, version ${UPGRADE_APP_VERSION}"
         system application-apply ${UPGRADE_APP_NAME}
