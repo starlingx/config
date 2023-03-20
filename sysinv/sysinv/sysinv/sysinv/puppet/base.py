@@ -241,6 +241,15 @@ class BasePuppet(object):
         cpus = self._get_host_cpu_list(host, constants.PLATFORM_FUNCTION)
         return sorted(cpus, key=lambda c: c.cpu)
 
+    def _is_all_platform_cpu(self, host):
+        """
+        Check all cpus are for platform
+        """
+        for c in self.dbapi.icpu_get_by_ihost(host.id):
+            if c.allocated_function != constants.PLATFORM_FUNCTION:
+                return False
+        return True
+
     def _get_hyperthreading_enabled(self, host):
         """
         Check if the Hyper-Threading feature is enabled on host

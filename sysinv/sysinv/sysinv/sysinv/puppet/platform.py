@@ -6,6 +6,7 @@
 import keyring
 import os
 
+from oslo_log import log as logging
 from oslo_serialization import base64
 from sysinv.common import constants
 from sysinv.common import exception
@@ -16,6 +17,9 @@ from tsconfig import tsconfig
 from sysinv.puppet import base
 
 HOSTNAME_CLUSTER_HOST_SUFFIX = '-cluster-host'
+LOG = logging.getLogger(__name__)
+# 28 bytes string mask for drdb cpu mask
+CPU_MASK_28 = 2 ** 112 - 1
 
 
 class PlatformPuppet(base.BasePuppet):
@@ -445,14 +449,29 @@ class PlatformPuppet(base.BasePuppet):
         config = {}
         system = self._get_system()
         if system.system_type == constants.TIS_AIO_BUILD:
-            # restrict DRBD syncing to platform cores/threads
-            platform_cpus = self._get_host_cpu_list(
-                host, function=constants.PLATFORM_FUNCTION, threads=True)
 
             # build a hex bitmap of the platform cores
             platform_cpumask = 0
-            for cpu in platform_cpus:
-                platform_cpumask |= 1 << cpu.cpu
+
+            if self._is_all_platform_cpu(host):
+                # It is all platform cores. Set 0 to use all cpus
+                LOG.info("All cpus for platform function. Set drbd cpu mask=0")
+            else:
+                # restrict DRBD syncing to platform cores/threads
+                platform_cpus = self._get_host_cpu_list(
+                    host, function=constants.PLATFORM_FUNCTION, threads=True)
+
+                for cpu in platform_cpus:
+                    platform_cpumask |= 1 << cpu.cpu
+
+                # Truncate to 31 bytes drbd cpu mask string to avoid
+                # parameter error by overflow length
+                # But we need to mask 28 bytes because later comma is
+                # added for every 8 bytes by header.res.erb
+                # Comma needs to be added because of launchpad 1900174
+                if len('%x' % platform_cpumask) > 28:
+                    LOG.warn("Truncate to 31 bytes drbd cpu mask string")
+                    platform_cpumask = platform_cpumask & CPU_MASK_28
 
             drbd_cpumask = '%x' % platform_cpumask
 

@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -24,6 +24,7 @@ CORE_FUNCTIONS = [
 
 VSWITCH_MIN_CORES = 0
 VSWITCH_MAX_CORES = 8
+DRBD_CPU_MASK_LIMIT = 112
 
 
 def lookup_function(s):
@@ -254,6 +255,22 @@ def check_core_allocations(host, cpu_counts, cpu_lists=None):
             constants.APPLICATION_FUNCTION)
 
 
+def check_drbd_platform_limitation(ihost):
+    # No limit if all cpu are for platform function (e.g. DC central controller)
+    is_all_platform = True
+    for cpu in ihost.cpus:
+        function = get_cpu_function(ihost, cpu)
+        if function != constants.PLATFORM_FUNCTION:
+            is_all_platform = False
+            break
+    if not is_all_platform:
+        for cpu in ihost.cpus:
+            function = get_cpu_function(ihost, cpu)
+            if function == constants.PLATFORM_FUNCTION and cpu.cpu >= DRBD_CPU_MASK_LIMIT:
+                raise wsme.exc.ClientSideError(
+                    "platform function need to be assign to cpu log_core id lower than %d." % DRBD_CPU_MASK_LIMIT)
+
+
 def node_from_cpu(host, cpu_num):
     for cpu in host.cpus:
         if cpu.cpu == cpu_num:
@@ -284,10 +301,22 @@ def update_core_allocations(host, cpu_counts, cpulists=None):
                 cpu_lists[node].remove(cpu)
 
     for s in range(0, len(host.nodes)):
+        # Create cpu list for drbd cpu mask limitation
+        # Platform function will be assigned cpu in this list first.
+        list_drbd_limit = [
+            c for c in cpu_lists[s] if c < DRBD_CPU_MASK_LIMIT
+        ]
+
         # Reserve for the platform first
         for i in range(0, cpu_counts[s][constants.PLATFORM_FUNCTION]):
-            host.cpu_functions[s][constants.PLATFORM_FUNCTION].append(
-                cpu_lists[s].pop(0))
+            if len(list_drbd_limit) > 0:
+                p_cpu = list_drbd_limit.pop(0)
+                host.cpu_functions[s][constants.PLATFORM_FUNCTION].append(
+                    p_cpu)
+                cpu_lists[s].remove(p_cpu)
+            else:
+                host.cpu_functions[s][constants.PLATFORM_FUNCTION].append(
+                    cpu_lists[s].pop(0))
 
         # Reserve for the vswitch next
         for i in range(0, cpu_counts[s][constants.VSWITCH_FUNCTION]):

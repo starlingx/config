@@ -328,6 +328,9 @@ class HostStatesController(rest.RestController):
         # Update cpu assignments to new values
         cpu_utils.update_core_allocations(ihost, cpu_counts, cpu_lists)
 
+        # Check drbd limistaion for platform function cpu
+        cpu_utils.check_drbd_platform_limitation(ihost)
+
         for cpu in ihost.cpus:
             function = cpu_utils.get_cpu_function(ihost, cpu)
             if function == constants.NO_FUNCTION:
