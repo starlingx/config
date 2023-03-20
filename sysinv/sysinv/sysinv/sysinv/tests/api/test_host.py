@@ -1618,8 +1618,13 @@ class TestSimplexPostKubeUpgrades(TestHost):
         self.mocked_kube_get_kubelet_versions.start()
         self.addCleanup(self.mocked_kube_get_kubelet_versions.stop)
 
-        # Mock the KubeVersion
         self.get_kube_versions_result = [
+            {'version': 'v1.41.1',
+             'upgrade_from': [],
+             'downgrade_to': [],
+             'applied_patches': [],
+             'available_patches': [],
+             },
             {'version': 'v1.42.1',
              'upgrade_from': [],
              'downgrade_to': [],
@@ -1628,6 +1633,12 @@ class TestSimplexPostKubeUpgrades(TestHost):
              },
             {'version': 'v1.42.2',
              'upgrade_from': ['v1.42.1'],
+             'downgrade_to': [],
+             'applied_patches': [],
+             'available_patches': [],
+             },
+            {'version': 'v1.43.1',
+             'upgrade_from': ['v1.43.1'],
              'downgrade_to': [],
              'applied_patches': [],
              'available_patches': [],
@@ -1735,6 +1746,55 @@ class TestSimplexPostKubeUpgrades(TestHost):
         self.assertTrue(result.json['error_message'])
         self.assertIn("The host must be unlocked and available",
                       result.json['error_message'])
+
+    def test_kube_upgrade_control_plane_controller_0_after_upgrading_kubelet(self):
+        # Test upgrading kubernetes control plane on controller-0
+
+        # Create controller-0
+        system_dict = self.system.as_dict()
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+        c0 = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create the upgrade
+        kube_upgrade = dbutils.create_test_kube_upgrade(
+            from_version='v1.41.1',
+            to_version='v1.43.1',
+            state=kubernetes.KUBE_UPGRADING_KUBELETS,
+        )
+
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.42.2'}
+
+        self.kube_get_kubelet_versions_result = {
+            'controller-0': 'v1.42.2'}
+
+        # Upgrade the control plane
+        body = {}
+        result = self.post_json(
+            '/ihosts/controller-0/kube_upgrade_control_plane',
+            body, headers={'User-Agent': 'sysinv-test'})
+
+        # Verify the host was returned
+        self.assertEqual(result.json['hostname'], 'controller-0')
+
+        # Verify the control plane was upgraded
+        self.fake_conductor_api.kube_upgrade_control_plane.\
+            assert_called_with(mock.ANY, c0.uuid)
+
+        # Verify that the target version and status was updated
+        result = self.get_json('/kube_host_upgrades/1')
+        self.assertEqual(result['target_version'], 'v1.43.1')
+        self.assertEqual(result['status'],
+                         kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE)
+
+        # Verify that the upgrade state was updated
+        result = self.get_json('/kube_upgrade/%s' % kube_upgrade.uuid)
+        self.assertEqual(result['state'],
+                         kubernetes.KUBE_UPGRADING_FIRST_MASTER)
 
 
 class TestSimplexHostDelete(TestHost):

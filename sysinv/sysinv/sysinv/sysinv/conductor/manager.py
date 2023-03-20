@@ -14954,8 +14954,22 @@ class ConductorManager(service.PeriodicService):
             context, host_obj.id)
         target_version = kube_host_upgrade_obj.target_version
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        kube_operator = kubernetes.KubeOperator()
+        current_versions = kube_operator.kube_get_kubelet_versions()
+        system = self.dbapi.isystem_get_one()
 
         if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_FIRST_MASTER:
+            if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+                next_versions = kube_operator.kube_get_higher_patch_version(current_versions.get(host_name, None),
+                                                                    kube_upgrade_obj.to_version)
+                target_version = next_versions[0]
+                kube_cmd_versions = objects.kube_cmd_version.get(context)
+                kube_cmd_versions.kubeadm_version = target_version.lstrip('v')
+                kube_cmd_versions.kubelet_version = current_versions.get(host_name, None).lstrip('v')
+                kube_cmd_versions.save()
+                kube_host_upgrade_obj.target_version = target_version
+                kube_host_upgrade_obj.save()
+
             puppet_class = 'platform::kubernetes::upgrade_first_control_plane'
             new_state = kubernetes.KUBE_UPGRADED_FIRST_MASTER
             fail_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
@@ -15045,7 +15059,6 @@ class ConductorManager(service.PeriodicService):
             return
 
         # Wait for the control plane pods to start with the new version
-        kube_operator = kubernetes.KubeOperator()
         elapsed = 0
         while elapsed < kubernetes.POD_START_TIMEOUT:
             elapsed += kubernetes.POD_START_INTERVAL

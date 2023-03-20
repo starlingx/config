@@ -7089,6 +7089,7 @@ class HostController(rest.RestController):
         host_obj = objects.host.get_by_uuid(pecan.request.context, uuid)
         kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
             pecan.request.context, host_obj.id)
+        system = pecan.request.dbapi.isystem_get_one()
 
         # The kubernetes upgrade must have been started
         try:
@@ -7106,19 +7107,34 @@ class HostController(rest.RestController):
             raise wsme.exc.ClientSideError(_(
                 "This host does not have a kubernetes control plane."))
 
+        cp_versions = self._kube_operator.kube_get_control_plane_versions()
+        current_cp_version = cp_versions.get(host_obj.hostname)
+        kubelet_version = self._kube_operator.kube_get_kubelet_versions()
+        current_kubelet_version = kubelet_version.get(host_obj.hostname)
+
         # Verify the upgrade is in the correct state
         if kube_upgrade_obj.state in [
                 kubernetes.KUBE_UPGRADED_NETWORKING,
                 kubernetes.KUBE_UPGRADED_FIRST_MASTER]:
             # We are upgrading a control plane
             pass
+        elif kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_KUBELETS and \
+            current_cp_version != kube_upgrade_obj.to_version and \
+                system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+            pass
+        elif kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_KUBELETS and \
+            current_cp_version == kube_upgrade_obj.to_version and \
+                system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+            raise wsme.exc.ClientSideError(_(
+                    "The control plane is already running the target version."))
         elif kube_upgrade_obj.state in [
                 kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED,
                 kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED]:
             # We are re-attempting the upgrade of a control plane. Make sure
             # this really is a re-attempt.
             if kube_host_upgrade_obj.target_version != \
-                    kube_upgrade_obj.to_version:
+                        kube_upgrade_obj.to_version and \
+                        system.system_mode != constants.SYSTEM_MODE_SIMPLEX:
                 raise wsme.exc.ClientSideError(_(
                     "The first control plane upgrade must be completed before "
                     "upgrading the second control plane."))
@@ -7129,7 +7145,7 @@ class HostController(rest.RestController):
 
         # Verify patching requirements (since the api server may not be
         # upgraded yet, patches could have been removed)
-        system = pecan.request.dbapi.isystem_get_one()
+
         target_version_obj = objects.kube_version.get_by_version(
             kube_upgrade_obj.to_version)
         self._check_patch_requirements(
@@ -7137,9 +7153,21 @@ class HostController(rest.RestController):
             applied_patches=target_version_obj.applied_patches,
             available_patches=target_version_obj.available_patches)
 
+        if current_cp_version != kube_upgrade_obj.to_version and \
+                system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+            # Make sure kubelet is updated before updating
+            # control plane again
+            next_versions = self._kube_operator.kube_get_higher_patch_version(current_cp_version,
+                                                                    kube_upgrade_obj.to_version)
+            if kube_host_upgrade_obj.status != kubernetes.KUBE_HOST_UPGRADED_KUBELET and \
+                    current_cp_version != current_kubelet_version:
+                LOG.info("Upgrade kubelet version to %s before upgrading control plane "
+                         "version to %s " % (current_cp_version, next_versions[0]))
+                raise wsme.exc.ClientSideError(_(
+                    "Update kubelet before updating control plane "
+                    "again."))
+
         # Check the existing control plane version
-        cp_versions = self._kube_operator.kube_get_control_plane_versions()
-        current_cp_version = cp_versions.get(host_obj.hostname)
         if current_cp_version == kube_upgrade_obj.to_version:
             # Make sure we are not attempting to upgrade the first upgraded
             # control plane again
@@ -7183,6 +7211,21 @@ class HostController(rest.RestController):
             # Update the upgrade state
             kube_upgrade_obj.state = kubernetes.KUBE_UPGRADING_FIRST_MASTER
             kube_upgrade_obj.save()
+
+            # Tell the conductor to upgrade the control plane
+            pecan.request.rpcapi.kube_upgrade_control_plane(
+                pecan.request.context, host_obj.uuid)
+        elif kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_KUBELETS and \
+            current_cp_version != kube_upgrade_obj.to_version and \
+                system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+            LOG.info("In state upgrading kubelets, kubelet version %s, transitioning to "
+                     "upgrading control plane, current control plane version %s, "
+                     "target version %s." % (current_kubelet_version, current_cp_version,
+                                            next_versions[0]))
+            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADING_FIRST_MASTER
+            kube_upgrade_obj.save()
+            kube_host_upgrade_obj.status = kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE
+            kube_host_upgrade_obj.save()
 
             # Tell the conductor to upgrade the control plane
             pecan.request.rpcapi.kube_upgrade_control_plane(

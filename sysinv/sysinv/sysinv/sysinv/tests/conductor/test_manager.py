@@ -1363,6 +1363,181 @@ class ManagerTestCase(base.DbTestCase):
         updated_host_upgrade = self.dbapi.kube_host_upgrade_get(1)
         self.assertEqual(updated_host_upgrade.status, None)
 
+    def test_kube_upgrade_control_plane_first_master_simplex(self):
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.41.1',
+            to_version='v1.43.1',
+            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
+        )
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        c0 = self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        # Set the target version for controller-0
+        self.dbapi.kube_host_upgrade_update(1, {'target_version': 'v1.43.1'})
+        # Make the control plane upgrade pass
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.42.2'}
+
+        self.kube_get_kubelet_versions_result = {
+            'controller-0': 'v1.41.1'}
+
+        mock_sanitize_feature_gates_bootstrap_config_file = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_bootstrap_config_file',
+            mock_sanitize_feature_gates_bootstrap_config_file)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_sanitize_feature_gates_service_parameters = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_service_parameters',
+            mock_sanitize_feature_gates_service_parameters)
+        p2.start().return_value = 0
+        self.addCleanup(p2.stop)
+
+        mock_sanitize_feature_gates_kubeadm_configmap = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_kubeadm_configmap',
+            mock_sanitize_feature_gates_kubeadm_configmap)
+        p2.start().return_value = 0
+        self.addCleanup(p2.stop)
+
+        mock_sanitize_feature_gates_kubelet_configmap = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_kubelet_configmap',
+            mock_sanitize_feature_gates_kubelet_configmap)
+        p2.start().return_value = 0
+        self.addCleanup(p2.stop)
+
+        mock_sanitize_image_repository_kubeadm_configmap = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_image_repository_kubeadm_configmap',
+            mock_sanitize_image_repository_kubeadm_configmap)
+        p2.start().return_value = 0
+        self.addCleanup(p2.stop)
+
+        self.service._kube = FakeKubeOperator()
+
+        # Speed up the test
+        kubernetes.MANIFEST_APPLY_INTERVAL = 1
+        kubernetes.POD_START_INTERVAL = 1
+
+        # Upgrade the control plane
+        self.service.kube_upgrade_control_plane(self.context, c0.uuid)
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_UPGRADED_FIRST_MASTER)
+
+        # Verify that the host upgrade status was cleared
+        updated_host_upgrade = self.dbapi.kube_host_upgrade_get(1)
+        self.assertEqual(updated_host_upgrade.status, None)
+
+    def test_kube_upgrade_control_plane_first_master_simplex_failed(self):
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.41.1',
+            to_version='v1.43.1',
+            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER,
+        )
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        c0 = self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        # Set the target version for controller-0
+        self.dbapi.kube_host_upgrade_update(1, {'target_version': 'v1.43.1'})
+        # Check the control plane upgrade
+        self.kube_get_control_plane_versions_result = {
+            'controller-0': 'v1.43.1'}
+
+        self.kube_get_kubelet_versions_result = {
+            'controller-0': 'v1.41.1'}
+
+        mock_sanitize_feature_gates_bootstrap_config_file = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_bootstrap_config_file',
+            mock_sanitize_feature_gates_bootstrap_config_file)
+        p.start().return_value = 0
+        self.addCleanup(p.stop)
+
+        mock_sanitize_feature_gates_service_parameters = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_service_parameters',
+            mock_sanitize_feature_gates_service_parameters)
+        p2.start().return_value = 0
+        self.addCleanup(p2.stop)
+
+        mock_sanitize_feature_gates_kubeadm_configmap = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_kubeadm_configmap',
+            mock_sanitize_feature_gates_kubeadm_configmap)
+        p2.start().return_value = 0
+        self.addCleanup(p2.stop)
+
+        mock_sanitize_feature_gates_kubelet_configmap = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_feature_gates_kubelet_configmap',
+            mock_sanitize_feature_gates_kubelet_configmap)
+        p2.start().return_value = 0
+        self.addCleanup(p2.stop)
+
+        mock_sanitize_image_repository_kubeadm_configmap = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.sanitize_image_repository_kubeadm_configmap',
+            mock_sanitize_image_repository_kubeadm_configmap)
+        p2.start().return_value = 0
+        self.addCleanup(p2.stop)
+
+        self.service._kube = FakeKubeOperator()
+
+        # Speed up the test
+        kubernetes.MANIFEST_APPLY_INTERVAL = 1
+        kubernetes.POD_START_INTERVAL = 1
+        kubernetes.POD_START_TIMEOUT = 1
+
+        # Upgrade the control plane
+        self.service.kube_upgrade_control_plane(self.context, c0.uuid)
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED)
+
+        # Verify that the host upgrade status was set
+        updated_host_upgrade = self.dbapi.kube_host_upgrade_get(1)
+        self.assertEqual(updated_host_upgrade.status,
+                         kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED)
+
     def test_kube_upgrade_control_plane_first_master_manifest_timeout(self):
         # Create an upgrade
         utils.create_test_kube_upgrade(
