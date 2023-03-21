@@ -10,6 +10,7 @@ Tests for the restore logic
 
 from oslo_context import context
 
+from fm_api import fm_api
 from sysinv.common import constants
 from sysinv.conductor import manager
 from sysinv.db import api as dbapi
@@ -24,6 +25,7 @@ class RestoreTestCase(base.BaseHostTestCase):
         # Set up objects for testing
         self.service = manager.ConductorManager('test-host', 'test-topic')
         self.service.dbapi = dbapi.get_instance()
+        self.service.fm_api = fm_api.FaultAPIs()
         self.context = context.get_admin_context()
         self.valid_restore_states = [
             constants.RESTORE_PROGRESS_ALREADY_COMPLETED,
