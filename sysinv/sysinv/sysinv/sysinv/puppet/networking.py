@@ -60,6 +60,23 @@ class NetworkingPuppet(base.BasePuppet):
                 gateway_address,
         })
 
+        # TODO: platform-nfs-iaddress is just necessary to allow an upgrade
+        # from StarlingX releases 6 or 7 to new releases.
+        # remove it when StarlingX rel. 6 or 7 are not being used anymore
+        # During the upgrade If platform-nfs-ip is still available in the DB,
+        # add it to the config to allow downgrade if something goes wrong
+        try:
+            platform_nfs_address = self._get_address_by_name(
+                'controller-platform-nfs', networktype).address
+        except exception.AddressNotFoundByName:
+            platform_nfs_address = None
+
+        if platform_nfs_address is not None:
+            config.update({
+                'platform::network::%s::params::platform_nfs_address' % networktype:
+                    platform_nfs_address,
+            })
+
         return config
 
     def _get_cluster_network_config(self):

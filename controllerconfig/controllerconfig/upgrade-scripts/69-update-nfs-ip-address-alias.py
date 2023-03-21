@@ -74,13 +74,6 @@ def _add_nfs_alias_to_hosts_file(connection, to_release):
                  'in {}'.format(ctrl_mgmt_ip['address'], host_file))
 
 
-def _remove_nfs_ip_allocation(connection):
-    with connection.cursor(cursor_factory=DictCursor) as cur:
-        LOG.info("Del controller-platform-nfs-mgmt from 'addresses' table")
-        cur.execute("DELETE FROM addresses WHERE "
-                    "name = 'controller-platform-nfs-mgmt';")
-
-
 def main():
     action = None
     from_release = None
@@ -110,7 +103,6 @@ def main():
         conn = psycopg2.connect("dbname=sysinv user=postgres")
         try:
             _add_nfs_alias_to_hosts_file(conn, to_release)
-            _remove_nfs_ip_allocation(conn)
 
         except psycopg2.Error as ex:
             LOG.exception(ex)
@@ -121,10 +113,9 @@ def main():
             LOG.warning("Exception")
             res = 1
         else:
-            LOG.info("committing changes into database")
-            conn.commit()
+            LOG.info("controller-platform-nfs alias updated")
         finally:
-            LOG.info("Closing connection")
+            LOG.info("Closing DB connection")
             conn.close()
 
     return res
