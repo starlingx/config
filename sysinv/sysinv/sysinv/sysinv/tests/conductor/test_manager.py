@@ -45,6 +45,7 @@ from sysinv.common import utils as cutils
 from sysinv.conductor import manager
 from sysinv.db.sqlalchemy.api import Connection
 from sysinv.db import api as dbapi
+from sysinv.loads.loads import LoadImport
 from sysinv.objects.load import Load
 
 from sysinv.tests.db import base
@@ -4472,6 +4473,11 @@ class ManagerLoadImportTest(base.BaseHostTestCase):
         self.mock_load_update.return_value = mock.MagicMock()
         self.addCleanup(load_update.stop)
 
+        extract_files = mock.patch.object(LoadImport, 'extract_files')
+        self.mock_extract_files = extract_files.start()
+        self.mock_extract_files.return_value = mock.MagicMock()
+        self.addCleanup(extract_files.stop)
+
     def test_import_load(self):
         result = self.service.import_load(
             self.context,
@@ -4501,6 +4507,25 @@ class ManagerLoadImportTest(base.BaseHostTestCase):
         self.mock_load_update.assert_called_once_with(
             mock.ANY,
             {'state': constants.INACTIVE_LOAD_STATE},
+        )
+
+    @mock.patch('sysinv.conductor.manager.os.symlink', mock.Mock())
+    @mock.patch('sysinv.conductor.manager.os.makedirs', mock.Mock())
+    def test_import_load_inactive_failed_extract_files(self):
+        self.mock_extract_files.side_effect = exception.SysinvException()
+
+        self.assertRaises(
+            exception.SysinvException,
+            self.service.import_load,
+            self.context,
+            path_to_iso=self.iso,
+            new_load=self.load,
+            import_type=constants.INACTIVE_LOAD_IMPORT,
+        )
+
+        self.mock_load_update.assert_called_once_with(
+            mock.ANY,
+            {'state': constants.ERROR_LOAD_STATE},
         )
 
     def test_import_load_empty_new_load(self):
