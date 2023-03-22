@@ -444,7 +444,7 @@ class Health(object):
         if not success:
             output += _('[%s] alarms found, [%s] of which are management affecting '
                         'and [%s] are certificate expiration alarms. '
-                        'Use "fm alarm-list" for details') % (allowed + affecting + cert_alarm,
+                        'Use "fm alarm-list" for details\n') % (allowed + affecting + cert_alarm,
                                                                            affecting, cert_alarm)
 
         health_ok = health_ok and success
