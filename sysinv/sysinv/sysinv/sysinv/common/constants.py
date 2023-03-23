@@ -1772,6 +1772,9 @@ FLUXCD_CRD_HELM_CHART_PLURAL = 'helmcharts'
 FLUXCD_RECOVERY_HELM_RELEASE_STATUS_ERRORS = [
     'Helm upgrade failed: another operation (install/upgrade/rollback) is in progress'
 ]
+FLUXCD_RECOVERY_HELM_RELEASE_STATUS_ERRORS_REMOVAL_REQUIRED = [
+    'Helm upgrade failed: pre-upgrade hooks failed: timed out waiting for the condition'
+]
 FLUXCD_RECOVERABLE_HELM_RELEASE_STATUS = [
     'pending-install',
     'pending-upgrade',
@@ -2299,3 +2302,6 @@ NOT_CONFIGURABLE = 'not-configurable'
 # apparmor states
 APPARMOR_STATE_ENABLED = 'enabled'
 APPARMOR_STATE_DISABLED = 'disabled'
+
+# Method callers
+RECOVER_VIA_REMOVAL = 'recover_via_removal'
