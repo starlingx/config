@@ -16408,6 +16408,12 @@ class ConductorManager(service.PeriodicService):
 
         Once we no longer need to worry about upgrading from 1.23 we can remove
         this function.
+
+        HugePageStorageMedium feature gate could only have been true
+        starting from 1.22 and it removed entirely in 1.24.
+
+        TTLAfterFinished feature gate could only have been true starting
+        from 1.23 and it removed entirely in 1.25.
         """
         FILENAME = tsc.CONFIG_PATH + "last_kube_extra_config_bootstrap.yaml"
         newyaml = yaml.YAML()
@@ -16438,7 +16444,10 @@ class ConductorManager(service.PeriodicService):
                     info, 'HugePageStorageMediumSize=true')
                 rc |= tmp
 
-            # TODO: for 1.25 remove TTLAfterFinished=true
+            if target_version == 'v1.25.3':
+                info, tmp = sanitize_feature_gates_bootstrap(
+                    info, 'TTLAfterFinished=true')
+                rc |= tmp
 
         except exception.Exception as ex:
             # Unexpected problem
@@ -16483,14 +16492,16 @@ class ConductorManager(service.PeriodicService):
             # Edit the feature gates
             if target_version == 'v1.24.4':
                 # RemoveSelfLink can only be true as of 1.24
-                if feature_gates.get('RemoveSelfLink', None) is False:
+                if feature_gates.get('RemoveSelfLink') is False:
                     feature_gates.pop('RemoveSelfLink', None)
                 # HugePageStorageMedium removed entirely in 1.24
                 # but could only have been true starting with 1.22
-                if feature_gates.get('HugePageStorageMediumSize', None) is True:
+                if feature_gates.get('HugePageStorageMediumSize') is True:
                     feature_gates.pop('HugePageStorageMediumSize', None)
 
-            # TODO: for 1.25 remove TTLAfterFinished=true
+            if target_version == 'v1.25.3':
+                if feature_gates.get('TTLAfterFinished') is True:
+                    feature_gates.pop('TTLAfterFinished', None)
 
             # If there aren't any feature gates left, remove the whole thing
             if not feature_gates:
@@ -16534,6 +16545,9 @@ class ConductorManager(service.PeriodicService):
                 try:
                     feature_gates = sanitize_feature_gates(feature_gates,
                                 'RemoveSelfLink=false')
+                    if target_version == 'v1.25.3':
+                        feature_gates = sanitize_feature_gates(feature_gates,
+                                    'TTLAfterFinished=true')
                     if not feature_gates:
                         # No feature gates left, so delete the entry
                         LOG.info('Deleting %s feature gates in Kubeadm_config.'
@@ -16589,7 +16603,9 @@ class ConductorManager(service.PeriodicService):
                     rc |= self.sanitize_feature_gates_service_parameter_section(
                         section, 'HugePageStorageMediumSize=true')
 
-                # TODO: for 1.25 remove TTLAfterFinished=true
+                if target_version == 'v1.25.3':
+                    rc |= self.sanitize_feature_gates_service_parameter_section(
+                        section, 'TTLAfterFinished=true')
 
         except exception.Exception as ex:
             # No apiserver feature gates, nothing to do
