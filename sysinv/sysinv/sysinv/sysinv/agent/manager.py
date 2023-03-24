@@ -153,6 +153,7 @@ class AgentManager(service.PeriodicService):
     PV = 'pv'
     LVG = 'lvg'
     HOST_FILESYSTEMS = 'host_filesystems'
+    K8S_DEVICE_PLUGIN = 'k8s_device_plugin'
 
     # Note that this set must be extended when there are
     # additional inventory required for the initial
@@ -166,7 +167,8 @@ class AgentManager(service.PeriodicService):
         DISK,
         PV,
         LVG,
-        HOST_FILESYSTEMS}
+        HOST_FILESYSTEMS,
+        K8S_DEVICE_PLUGIN}
 
     def __init__(self, host, topic):
         self.host = host
@@ -840,6 +842,8 @@ class AgentManager(service.PeriodicService):
         self._report_port_inventory(icontext, rpcapi,
                                     port_list, pci_device_list)
 
+        self._report_supported_device_plugin(icontext, rpcapi, pci_device_list)
+
         # Find list of numa_nodes and cpus for this ihost
         inumas, icpus = self._inode_operator.inodes_get_inumas_icpus()
 
@@ -949,6 +953,36 @@ class AgentManager(service.PeriodicService):
 
                 self._report_to_conductor_iplatform_avail()
                 self._iconfig_read_config_reported = config_uuid
+
+    @retrying.retry(wait_fixed=15 * 1000, stop_max_delay=300 * 1000,
+                    retry_on_exception=_retry_on_missing_host_uuid)
+    def _report_supported_device_plugin(self, context, rpcapi, pci_device_list=None):
+
+        if not self._ihost_uuid:
+            raise exception.LocalHostUUIDNotFound()
+
+        if pci_device_list is None:
+            port_list, pci_device_list, host_macs = self._get_ports_inventory()
+
+        device_plugins = self._ipci_operator.get_supported_device_plugins(pci_device_list)
+
+        if not device_plugins:
+            # self.K8S_DEVICE_PLUGIN is an expected inventory report, so need to add it.
+            self._inventory_reported.add(self.K8S_DEVICE_PLUGIN)
+            LOG.info("No plugins proposed by PCIOperator.")
+            return
+
+        try:
+            rpcapi.device_plugin_labels_update_by_ihost(context,
+                                             self._ihost_uuid,
+                                             device_plugins)
+            self._inventory_reported.add(self.K8S_DEVICE_PLUGIN)
+        except RemoteError as e:
+            LOG.error("device_plugin_labels_update_by_ihost RemoteError exc_type=%s" %
+                      e.exc_type)
+        except exception.SysinvException:
+            LOG.exception("Sysinv Agent uncaught exception updating device plugin labels.")
+            pass
 
     def subfunctions_get(self):
         """ returns subfunctions on this host.

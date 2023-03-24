@@ -32,6 +32,7 @@ collection of inventory data for each host.
 import errno
 import filecmp
 import hashlib
+import json
 import io
 import math
 import os
@@ -5501,6 +5502,55 @@ class ConductorManager(service.PeriodicService):
                                          stor_nodes_uuids,
                                          tsc.install_uuid)
             greenthread.sleep(constants.FIX_INSTALL_UUID_INTERVAL_SECS)
+
+    def _get_enabled_kube_plugins(self):
+
+        # this file will be generated after initial config process if the
+        # kubernetes device plugin list is not empty.
+        if not os.path.isfile(constants.ENABLED_KUBE_PLUGINS):
+            return None
+
+        try:
+            file_object = open(constants.ENABLED_KUBE_PLUGINS)
+            plugins = json.loads(file_object.read())
+            return plugins
+        except Exception as e:
+            LOG.error("failed to get kube_plugin list from file. \
+                       exception: %s" % str(e))
+            return None
+
+    def device_plugin_labels_update_by_ihost(self, context,
+                                             host_uuid, device_plugins):
+
+        """Assign device plugins to an ihost with the supplied data.
+
+        :param context: an admin context
+        :param host_uuid: host uuid unique id
+        :param device_plugins: kubernetes device plugins request to assign
+        """
+        enabled_kube_plugins = self._get_enabled_kube_plugins()
+        if not enabled_kube_plugins:
+            LOG.info("Vendor k8s device plugin list is empty. \
+                     Set parameters in ansible override file if required.")
+            return
+
+        host_uuid.strip()
+        try:
+            ihost = self.dbapi.ihost_get(host_uuid)
+        except exception.ServerNotFound:
+            LOG.exception("Invalid host_uuid %s" % host_uuid)
+            return
+
+        for device_plugin in device_plugins:
+            if device_plugin not in enabled_kube_plugins:
+                continue
+
+            label = {}
+            label.update({'label_key': device_plugin, 'label_value': 'enabled', 'host_id': ihost.id})
+            try:
+                self.dbapi.label_create(host_uuid, label)
+            except exception.HostLabelAlreadyExists:
+                pass
 
     @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.agent_update_request)
     def _agent_update_request(self, context):

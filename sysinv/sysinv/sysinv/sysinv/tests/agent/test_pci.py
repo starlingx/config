@@ -155,6 +155,43 @@ class TestPciOperator(base.TestCase):
         result = self.pci_operator.get_pci_sriov_vf_module_name(pfaddr, vfaddrs)
         assert result is None
 
+    def test_get_supported_device_plugins(self):
+        self.fake_pci_device_list = [
+                {
+                    'name': 'pci_0000_00_01_1',
+                    'pclass_id': '01018a',
+                    'pclass': 'IDE interface',
+                    'driver': 'ata_piix',
+                },
+                {
+                    'name': 'pci_0000_00_02_0',
+                    'pclass_id': '030000',
+                    'pclass': 'VGA compatible controller',
+                    'driver': 'i915'
+                },
+                {
+                    'name': 'pci_0000_00_05_0',
+                    'pclass_id': '040100',
+                    'pclass': 'Multimedia audio controller',
+                    'driver': None
+                },
+                {
+                    'name': 'pci_0000_00_0d_0',
+                    'pclass_id': '010601',
+                    'pclass': 'VGA compatible controller',
+                    'driver': 'ahci'
+                },
+                {
+                    'name': 'pci_0000_00_01_2',
+                    'pclass_id': '01018b',
+                    'pclass': 'VGA compatible controller',
+                    'driver': None
+                }]
+        # Verify the expected label_key and label_value with the actual output
+        expected_label = ['intelgpu']
+        actual_label = self.pci_operator.get_supported_device_plugins(self.fake_pci_device_list)
+        self.assertEqual(expected_label, actual_label)
+
 
 class TestAgentOperator(base.TestCase):
 

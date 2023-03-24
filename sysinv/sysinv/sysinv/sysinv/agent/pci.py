@@ -179,6 +179,31 @@ class PCIDevice(object):
         return "<PCIDevice '%s'>" % str(self)
 
 
+class DevicePlugin(object):
+    '''Class to record specific information of each k8s device plugins'''
+    def __init__(self):
+        return
+
+    def get_plugin(self, pci_device_list):
+        return None
+
+
+class IntelGPUDp(DevicePlugin):
+    def __init__(self):
+        return
+
+    def get_plugin(self, pci_device_list):
+
+        for device in pci_device_list:
+            if constants.GPU_DEVICE_PCLASS_VGA in device['pclass'] and device['driver'] is not None:
+                if constants.GPU_DEVICE_DRIVER_I915 in device['driver']:
+                    return constants.K8S_INTEL_GPU_DEVICE_PLUGIN
+        return None
+
+
+DEVICE_PLUGIN_LIST = [IntelGPUDp()]
+
+
 class PCIOperator(object):
     '''Class to encapsulate PCI operations for System Inventory'''
 
@@ -784,3 +809,13 @@ class PCIOperator(object):
                     pci_attrs_array.append(attrs)
 
         return pci_attrs_array
+
+    def get_supported_device_plugins(self, pci_device_list):
+
+        plugins = []
+        for device_plugin in DEVICE_PLUGIN_LIST:
+            plugin = device_plugin.get_plugin(pci_device_list)
+            if plugin is not None:
+                plugins.append(plugin)
+
+        return plugins
