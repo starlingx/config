@@ -233,6 +233,20 @@ class TestNetworkSetup(object):
             network_id=self.admin_network.id)
 
 
+class TestStorageBackend(object):
+    def __init__(self, system, dbapi):
+        self.system = system
+        self.dbapi = dbapi
+
+    def _create_ceph_storage_backend(self, backend_type=constants.SB_TYPE_CEPH):
+        backend = dbutils.get_test_ceph_storage_backend(backend=backend_type)
+        self.dbapi.storage_ceph_create(backend)
+
+    def _create_helm_app(self, app_status, app_name=constants.HELM_APP_PLATFORM):
+        self.helm_app = dbutils.create_test_app(name=app_name,
+                                                status=app_status)
+
+
 @mock.patch('socket.gethostname', return_value='controller-0')
 class TestSystemUpdateModeFromSimplex(TestSystem):
 
@@ -243,6 +257,7 @@ class TestSystemUpdateModeFromSimplex(TestSystem):
                                                   system_mode=constants.SYSTEM_MODE_SIMPLEX)
         self.test_network = TestNetworkSetup(self.system,
                                              controller_administrative_status=constants.ADMIN_LOCKED)
+        self.test_storage_backend = TestStorageBackend(self.system, self.dbapi)
 
     @mock.patch('sysinv.common.utils.is_initial_config_complete',
                 return_value=True)
@@ -253,6 +268,35 @@ class TestSystemUpdateModeFromSimplex(TestSystem):
         update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
         self._patch_and_check(self._get_path(self.system.uuid),
                               update)
+
+    @mock.patch('sysinv.common.utils.is_initial_config_complete',
+                return_value=True)
+    def test_update_system_mode_simplex_to_duplex_with_ceph_and_helm_app_applied(self,
+                                                                                 mock_init_config,
+                                                                                 mock_controller):
+        self.test_network._create_mgmt_interface_network()
+        self.test_network._create_cluster_host_interface_network()
+        self.test_storage_backend._create_ceph_storage_backend()
+        self.test_storage_backend._create_helm_app(app_status=constants.APP_APPLY_SUCCESS)
+        update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update)
+
+    @mock.patch('sysinv.common.utils.is_initial_config_complete',
+                return_value=True)
+    def test_update_system_mode_simplex_to_duplex_with_ceph_and_no_helm_app_applied(self,
+                                                                                    mock_init_config,
+                                                                                    mock_controller):
+        self.test_network._create_mgmt_interface_network()
+        self.test_network._create_cluster_host_interface_network()
+        self.test_storage_backend._create_ceph_storage_backend()
+        update = {"system_mode": constants.SYSTEM_MODE_DUPLEX}
+        msg = ("Cannot modify system mode to %s, %s must be "
+               "applied when ceph storage is configured as backend." %
+               (constants.SYSTEM_MODE_DUPLEX, constants.HELM_APP_PLATFORM))
+        self._patch_and_check(self._get_path(self.system.uuid),
+                              update, expect_errors=True,
+                              expected_error_message=msg)
 
     @mock.patch('sysinv.common.utils.is_initial_config_complete',
                 return_value=True)

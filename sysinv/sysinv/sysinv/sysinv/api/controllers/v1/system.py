@@ -334,6 +334,20 @@ class SystemController(rest.RestController):
                     "locked." % controller.hostname)
             raise wsme.exc.ClientSideError(msg)
 
+    def _check_storage_backend_ready_for_migration(self):
+        ceph_backend = pecan.request.dbapi.storage_backend_get_list_by_type(
+            backend_type=constants.SB_TYPE_CEPH)
+        if ceph_backend:
+            msg = _("Cannot modify system mode to %s, %s must be "
+                    "applied when ceph storage is configured as backend." %
+                    (constants.SYSTEM_MODE_DUPLEX, constants.HELM_APP_PLATFORM))
+            try:
+                helm_app = pecan.request.dbapi.kube_app_get(constants.HELM_APP_PLATFORM)
+                if helm_app.status != constants.APP_APPLY_SUCCESS:
+                    raise wsme.exc.ClientSideError(msg)
+            except exception.KubeAppNotFound:
+                raise wsme.exc.ClientSideError(msg)
+
     def _get_isystem_collection(self, marker, limit, sort_key, sort_dir,
                                 expand=False, resource_url=None):
         limit = api_utils.validate_limit(limit)
@@ -461,6 +475,9 @@ class SystemController(rest.RestController):
                         self._check_controller_locked()
                     if new_system_mode != constants.SYSTEM_MODE_SIMPLEX:
                         self._check_interfaces(new_system_mode)
+                        if rpc_isystem.system_mode == constants.SYSTEM_MODE_SIMPLEX and \
+                                new_system_mode == constants.SYSTEM_MODE_DUPLEX:
+                            self._check_storage_backend_ready_for_migration()
 
             if p['path'] == '/timezone':
                 timezone = p['value']
