@@ -201,6 +201,9 @@ PLATFORM_BACKUP_PATH = '/opt/platform-backup'
 # Set after the first application of controller manifests
 INITIAL_CONTROLLER_CONFIG_COMPLETE = os.path.join(
     PLATFORM_CONF_PATH, ".initial_controller_config_complete")
+# Set after initial K8s config is completed
+INITIAL_K8S_CONFIG_COMPLETE = os.path.join(
+    PLATFORM_CONF_PATH, ".initial_k8s_config_complete")
 # Set after each application of controller manifests
 VOLATILE_CONTROLLER_CONFIG_COMPLETE = os.path.join(
     VOLATILE_PATH, ".controller_config_complete")

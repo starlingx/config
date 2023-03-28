@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2022 Wind River Systems, Inc.
+# Copyright (c) 2015-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -39,6 +39,8 @@ from sysinv.common import service_parameter
 from sysinv.common import utils as cutils
 from sysinv.openstack.common.rpc import common as rpc_common
 
+from tsconfig.tsconfig import INITIAL_K8S_CONFIG_COMPLETE
+
 LOG = log.getLogger(__name__)
 
 k8s_volumes_sections = [
@@ -62,6 +64,13 @@ def delete_k8s_configmap(parameter, kube_operator):
     wsme.exc.ClientSideError
     """
     _volume, _noConfigMap = service_parameter.parse_volume_string_to_dict(parameter)
+
+    # only removes the configmaps if k8s has been initialized
+    # this case is only valid during the bootstrap scenario. When the ansible
+    # playbook fails before the k8s service is initialized, during a replay
+    # it will fail when trying to remove configmaps that don't exist yet.
+    if not os.path.isfile(INITIAL_K8S_CONFIG_COMPLETE):
+        return
 
     # only delete configmaps for 'File' type since
     # 'DirectoryorCreate' type has no associated configmaps
