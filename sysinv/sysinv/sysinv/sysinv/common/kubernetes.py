@@ -308,7 +308,7 @@ class KubeOperator(object):
     def _get_kubernetesclient_admission_registration(self):
         if not self._kube_client_admission_registration:
             self._load_kube_config()
-            self._kube_client_admission_registration = client.AdmissionregistrationV1beta1Api()
+            self._kube_client_admission_registration = client.AdmissionregistrationV1Api()
         return self._kube_client_admission_registration
 
     def _retry_on_urllibs3_MaxRetryError(ex):  # pylint: disable=no-self-argument
