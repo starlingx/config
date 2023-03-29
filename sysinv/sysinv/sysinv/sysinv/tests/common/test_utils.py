@@ -335,3 +335,81 @@ class TestCommonUtils(base.TestCase):
         )
 
         self.assertTrue(mock_subprocess.method_calls)
+
+    @mock.patch("sysinv.common.utils.subprocess")
+    def test_get_ostree_commit(self, mock_subprocess):
+        commit = "c1bb601e1dc78b4a1ad7b687badd16edeb5ca59e28413902d1b3"
+
+        refs_return = subprocess.CompletedProcess(
+            args="",
+            returncode=0,
+            stdout="starlingx",
+            stderr=None,
+        )
+
+        commit_return = subprocess.CompletedProcess(
+            args="",
+            returncode=0,
+            stdout="""
+            commit c1bb601e1dc78b4a1ad7b687badd16edeb5ca59e28413902d1b3
+            ContentChecksum:  4aacd1c71b056f8e28a8be27c508f21f62afba955
+            Date:  2022-12-18 18:55:09 +0000
+
+            Commit-id: starlingx-intel-x86-64-20221218185325
+            """,
+            stderr=None,
+        )
+
+        mock_subprocess.run.side_effect = [
+            refs_return,
+            commit_return,
+        ]
+
+        result = utils.get_ostree_commit("/tmp/ostree_repo")
+
+        self.assertTrue(mock_subprocess.method_calls)
+
+        self.assertEqual(result, commit)
+
+    @mock.patch("sysinv.common.utils.subprocess")
+    def test_get_ostree_commit_without_commit(self, mock_subprocess):
+        refs_return = subprocess.CompletedProcess(
+            args="",
+            returncode=0,
+            stdout="starlingx",
+            stderr=None,
+        )
+
+        commit_return = subprocess.CompletedProcess(
+            args="",
+            returncode=0,
+            stdout="No metadata header found",
+            stderr=None,
+        )
+
+        mock_subprocess.run.side_effect = [
+            refs_return,
+            commit_return,
+        ]
+
+        result = utils.get_ostree_commit("/tmp/ostree_repo")
+
+        self.assertTrue(mock_subprocess.method_calls)
+
+        self.assertIsNone(result)
+
+    @mock.patch("sysinv.common.utils.subprocess")
+    def test_get_ostree_commit_exception(self, mock_subprocess):
+        mock_subprocess.CalledProcessError = \
+            subprocess.CalledProcessError
+
+        mock_subprocess.run.side_effect = \
+            subprocess.CalledProcessError(1, "Generic error")
+
+        self.assertRaises(
+            exception.SysinvException,
+            utils.get_ostree_commit,
+            "/tmp/ostree_repo",
+        )
+
+        self.assertTrue(mock_subprocess.method_calls)

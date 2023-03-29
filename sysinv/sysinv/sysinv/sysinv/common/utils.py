@@ -3838,3 +3838,51 @@ def extract_rpm_package(rpm_package, target_dir):
         raise exception.SysinvException(
             "Error extracting rpm %s: %s" % (rpm_package, error),
         )
+
+
+def get_ostree_commit(ostree_repo):
+    repo_arg = "--repo=%s" % ostree_repo
+
+    try:
+        refs = subprocess.run(
+            ["ostree", repo_arg, "refs"],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+
+        commit = subprocess.run(
+            ["ostree", repo_arg, "log", refs.stdout],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except Exception as error:
+        raise exception.SysinvException(
+            "Error getting ostree commit: %s" % (error),
+        )
+
+    result = commit.stdout.split()
+
+    if result[0] != "commit":
+        return None
+
+    return result[1]
+
+
+def checkout_ostree(ostree_repo, commit, target_dir, subpath):
+    repo_arg = "--repo=%s" % ostree_repo
+    path_arg = None
+
+    if subpath:
+        path_arg = "--subpath=%s" % subpath
+
+    try:
+        subprocess.run(
+            ["ostree", repo_arg, path_arg, "--union", "checkout", commit, target_dir],
+            check=True,
+        )
+    except Exception as error:
+        raise exception.SysinvException(
+            "Error checkout ostree commit: %s" % (error),
+        )

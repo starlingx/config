@@ -24,6 +24,8 @@ class ExtractFiles(base.BaseLoadImport):
 
         if os_version == constants.OS_CENTOS:
             self._extract_centos_playbooks(load_version, target_dir)
+        elif os_version == constants.OS_DEBIAN:
+            self._extract_debian_playbooks(load_version, target_dir)
 
     def _extract_centos_playbooks(self, load_version, target_dir):
         package_name = "playbookconfig"
@@ -48,3 +50,14 @@ class ExtractFiles(base.BaseLoadImport):
         for file_name in file_names:
             file_path = os.path.join(source_dir, file_name)
             shutil.move(file_path, target_dir)
+
+    def _extract_debian_playbooks(self, load_version, target_dir):
+        ostree_repo = "/var/www/pages/feed/rel-%s/ostree_repo/" % load_version
+        repo_commit = utils.get_ostree_commit(ostree_repo)
+
+        if not repo_commit:
+            raise exception.SysinvException(
+                "Commit ostree not found for repo: %s" % ostree_repo
+            )
+
+        utils.checkout_ostree(ostree_repo, repo_commit, target_dir, subpath=PLAYBOOKS_PATH)
