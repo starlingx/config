@@ -94,6 +94,7 @@ from sysinv.common import constants
 from sysinv.common import ceph as cceph
 from sysinv.common import dc_api
 from sysinv.common import device as dconstants
+from sysinv.common import etcd
 from sysinv.common import exception
 from sysinv.common import fm
 from sysinv.common import fernet
@@ -14872,6 +14873,23 @@ class ConductorManager(service.PeriodicService):
                 self.dbapi.kube_host_upgrade_update(kube_host_upgrade.id,
                                                     {'status': fail_status})
 
+    def backup_kube_control_plane(self, context):
+        """Backup control plane static pods and etcd to a secured location """
+        # Remove stale/uncleaned backup if any
+        self.remove_kube_control_plane_backup(context)
+
+        LOG.info("Backing up control-plane components to %s"
+                 % kubernetes.KUBE_CONTROL_PLANE_BACKUP_PATH)
+
+        kubernetes.backup_kube_static_pods(
+            kubernetes.KUBE_CONTROL_PLANE_STATIC_PODS_BACKUP_PATH)
+
+        etcd.snapshot_etcd(
+            os.path.join(kubernetes.KUBE_CONTROL_PLANE_ETCD_BACKUP_PATH,
+                         etcd.ETCD_SNAPSHOT_FILE_NAME))
+
+        LOG.info("Successfully completed k8s control plane backup.")
+
     def kube_download_images(self, context, kube_version):
         """Download the kubernetes images for this version"""
 
@@ -15165,6 +15183,18 @@ class ConductorManager(service.PeriodicService):
 
     def kube_upgrade_networking(self, context, kube_version):
         """Upgrade kubernetes networking for this kubernetes version"""
+        try:
+            self.backup_kube_control_plane(context)
+        except Exception as e:
+            LOG.exception("Control-plane components backup failed: %s" % e)
+            # Remove any partially created backup
+            self.remove_kube_control_plane_backup(context)
+            # Update the upgrade state
+            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+            kube_upgrade_obj.state = \
+                kubernetes.KUBE_UPGRADING_NETWORKING_FAILED
+            kube_upgrade_obj.save()
+            return
 
         LOG.info("executing playbook: %s for version %s" %
                  (constants.ANSIBLE_KUBE_NETWORKING_PLAYBOOK, kube_version))
@@ -15187,6 +15217,22 @@ class ConductorManager(service.PeriodicService):
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
         kube_upgrade_obj.state = kubernetes.KUBE_UPGRADED_NETWORKING
         kube_upgrade_obj.save()
+
+    def remove_kube_control_plane_backup(self, context):
+        """Remove backup of k8s control plane static manifests and etcd data
+        after k8s upgrade is complete"""
+        LOG.info("Removing control-plane backup data at %s" %
+                    kubernetes.KUBE_CONTROL_PLANE_BACKUP_PATH)
+
+        try:
+            if os.path.exists(kubernetes.KUBE_CONTROL_PLANE_BACKUP_PATH):
+                shutil.rmtree(kubernetes.KUBE_CONTROL_PLANE_BACKUP_PATH)
+                LOG.info("Control-plane backup data at %s removed"
+                        % kubernetes.KUBE_CONTROL_PLANE_BACKUP_PATH)
+            else:
+                LOG.info("Control-plane backup does not exist. Nothing to do.")
+        except OSError as oe:
+            LOG.error("Failed to remove k8s control-plane backup: %s" % oe)
 
     def store_bitstream_file(self, context, filename):
         """Store FPGA bitstream file """

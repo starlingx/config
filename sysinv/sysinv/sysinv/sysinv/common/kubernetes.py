@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -18,6 +18,7 @@ import os
 import re
 import ruamel.yaml as yaml
 from ruamel.yaml.compat import StringIO
+import shutil
 import time
 import tsconfig.tsconfig as tsc
 
@@ -140,6 +141,14 @@ POD_START_INTERVAL = 10
 API_RETRY_ATTEMPT_NUMBER = 20
 API_RETRY_INTERVAL = 10 * 1000  # millisecond
 
+# kubernetes control-plane backup path
+# (this is used during k8s upgrades)
+KUBE_CONTROL_PLANE_BACKUP_PATH = '/opt/backups/k8s-control-plane/'
+KUBE_CONTROL_PLANE_STATIC_PODS_BACKUP_PATH = os.path.join(
+    KUBE_CONTROL_PLANE_BACKUP_PATH, 'static-pod-manifests')
+KUBE_CONTROL_PLANE_ETCD_BACKUP_PATH = os.path.join(
+    KUBE_CONTROL_PLANE_BACKUP_PATH, 'etcd')
+
 
 def get_kube_versions():
     """Provides a list of supported kubernetes versions in
@@ -237,6 +246,20 @@ def create_configmap_obj(namespace, name, filename, **kwargs):
                 data={data_section_name: data})
     except Exception as e:
         LOG.error("Kubernetes exception in create_configmap_obj: %s" % e)
+        raise
+
+
+def backup_kube_static_pods(backup_path):
+    """Backup manifests of control plane static pods i.e. kube-apiserver,
+    kube-controller-manager, kube-scheduler to a secured location.
+
+    :param backup_path: secured location to backup static pods
+     """
+    try:
+        shutil.copytree('/etc/kubernetes/manifests/', backup_path)
+        LOG.info('Kubernetes static pod manifests copied to: %s' % backup_path)
+    except Exception as e:
+        LOG.error('Error copying kubernetes static pods manifests: %s' % e)
         raise
 
 
