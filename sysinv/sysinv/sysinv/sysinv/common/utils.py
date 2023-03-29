@@ -3332,6 +3332,26 @@ def get_admin_ep_cert(dc_role):
     return secret_data
 
 
+def get_secret_type(secret_name, secret_ns):
+    """
+    Get k8s secret type
+    :param secret_name: the name of the secret
+    :param secret_ns: the namespace of the secret
+    :return: secret type as string in lowercase or None if secret isn't found
+    raise Exception if thrown by kubernetes api
+    """
+    kube = kubernetes.KubeOperator()
+    try:
+        secret = kube.kube_get_secret(secret_name, secret_ns)
+        if secret is not None:
+            return secret.type.lower()
+        else:
+            return None
+    except Exception as e:
+        LOG.error("Could not retrieve secret type: %s" % str(e))
+        raise
+
+
 def get_certificate_from_secret(secret_name, secret_ns):
     """
     Get certificate from k8s secret

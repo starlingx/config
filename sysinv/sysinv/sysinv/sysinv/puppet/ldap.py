@@ -55,25 +55,30 @@ class LdapPuppet(base.BasePuppet):
 
         # Retrieve openldap CA certificate, and server certificate/key.
         # For subcloud, only CA certificate is needed.
+        # Subcloud secret can be Opaque or TLS.
         if self._is_openldap_certificate_created():
             is_subcloud = \
                 self._distributed_cloud_role() == \
                 constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD
 
-            if is_subcloud:
+            ldap_ca_secret_type = utils.get_secret_type(
+                constants.OPENLDAP_CA_CERT_SECRET_NAME,
+                constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
+
+            if is_subcloud and ldap_ca_secret_type == constants.K8S_SECRET_TYPE_OPAQUE.lower():
                 ldap_ca_cert = utils.get_ca_certificate_from_opaque_secret(
                     constants.OPENLDAP_CA_CERT_SECRET_NAME,
                     constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
-
-                config.update({
-                    'platform::ldap::params::ca_cert': ldap_ca_cert,
-                })
-
             else:
                 ldap_ca_cert, _ = utils.get_certificate_from_secret(
                     constants.OPENLDAP_CA_CERT_SECRET_NAME,
                     constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
 
+            if is_subcloud:
+                config.update({
+                    'platform::ldap::params::ca_cert': ldap_ca_cert,
+                })
+            else:
                 ldap_cert, ldap_key = utils.get_certificate_from_secret(
                     constants.OPENLDAP_CERT_SECRET_NAME,
                     constants.CERT_NAMESPACE_PLATFORM_CERTS)
