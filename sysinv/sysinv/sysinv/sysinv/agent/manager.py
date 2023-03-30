@@ -998,6 +998,9 @@ class AgentManager(service.PeriodicService):
                          reports_required)
                 return False
 
+        if self._inventory_reported:
+            utils.touch(constants.SYSINV_REPORTED)
+
         if (_conditions_for_inventory_complete_met() and not
                 self._inventoried_initial):
             LOG.info("Initial inventory completed host %s" %
