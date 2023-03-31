@@ -112,6 +112,7 @@ from sysinv.conductor import openstack
 from sysinv.conductor import docker_registry
 from sysinv.conductor import keystone_listener
 from sysinv.db import api as dbapi
+from sysinv.loads.loads import LoadImport
 from sysinv import objects
 from sysinv.objects import base as objects_base
 from sysinv.objects import kube_app as kubeapp_obj
@@ -11927,6 +11928,9 @@ class ConductorManager(service.PeriodicService):
         src = '/var/www/pages/feed/rel-%s/install_uuid' % current_version
         dst = '%s/install_uuid' % centos_feed_path
 
+        if os.path.isfile(dst):
+            return None
+
         os.symlink(src, dst)
 
     def _import_load_error(self, new_load):
@@ -12120,12 +12124,9 @@ class ConductorManager(service.PeriodicService):
             self._import_load_error(new_load)
             raise exception.SysinvException(_("Unable to mount iso"))
 
-        state = constants.IMPORTED_LOAD_STATE
-
         if import_type == constants.INACTIVE_LOAD_IMPORT:
             active_load = cutils.get_active_load(loads)
             self._create_symlink_install_uuid(active_load.software_version)
-            state = constants.INACTIVE_LOAD_STATE
 
         # Run the upgrade script
         with open(os.devnull, "w") as fnull:
@@ -12138,9 +12139,21 @@ class ConductorManager(service.PeriodicService):
                 raise exception.SysinvException(_(
                     "Failure during import script"))
 
-        # unmount iso
         mounted_iso._umount_iso()
         shutil.rmtree(mntdir)
+
+        state = constants.IMPORTED_LOAD_STATE
+
+        if import_type == constants.INACTIVE_LOAD_IMPORT:
+            state = constants.INACTIVE_LOAD_STATE
+
+            try:
+                LoadImport.extract_files(new_load['software_version'])
+            except exception.SysinvException as error:
+                self._import_load_error(new_load)
+                raise exception.SysinvException(
+                    "Failure during load extract_files: %s" % (error)
+                )
 
         # Update the load status in the database
         try:

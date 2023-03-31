@@ -3767,3 +3767,30 @@ def is_filesystem_enabled(dbapi, host_id_or_uuid, fs_name):
         if fs.name == fs_name:
             return True
     return False
+
+
+def get_rpm_package(load_version, package_name):
+    packages_dir = "/www/pages/feed/rel-%s/Packages/" % load_version
+
+    for package in os.listdir(packages_dir):
+        if package.startswith(package_name):
+            return os.path.join(packages_dir, package)
+
+
+def extract_rpm_package(rpm_package, target_dir):
+    try:
+        rpm2cpio_cmd = subprocess.run(
+            ["rpm2cpio", rpm_package],
+            capture_output=True,
+            check=True,
+        )
+
+        subprocess.run(
+            ["cpio", "-idm", "-D", target_dir],
+            input=rpm2cpio_cmd.stdout,
+            check=True,
+        )
+    except Exception as error:
+        raise exception.SysinvException(
+            "Error extracting rpm %s: %s" % (rpm_package, error),
+        )
