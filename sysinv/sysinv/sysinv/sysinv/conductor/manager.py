@@ -6232,9 +6232,27 @@ class ConductorManager(service.PeriodicService):
                                          'install_state_info':
                                              host.install_state_info})
     PUPPET_RUNTIME_CLASS_ROUTES = 'platform::network::routes::runtime'
+    PUPPET_RUNTIME_CLASS_DOCKERDISTRIBUTION = 'platform::dockerdistribution::runtime'
+    PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_KEY_FILE = constants.DOCKER_REGISTRY_KEY_FILE
+    PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_CERT_FILE = constants.DOCKER_REGISTRY_CERT_FILE
+    PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_PKCS1_KEY_FILE = constants.DOCKER_REGISTRY_PKCS1_KEY_FILE
+    PUPPET_RUNTIME_FILES_DOCKER_CERT_FILE = constants.DOCKER_CERT_FILE
 
     PUPPET_RUNTIME_FILTER_CLASSES = [
         PUPPET_RUNTIME_CLASS_ROUTES,
+        PUPPET_RUNTIME_CLASS_DOCKERDISTRIBUTION
+    ]
+    PUPPET_RUNTIME_FILTER_FILES = [
+        PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_KEY_FILE,
+        PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_CERT_FILE,
+        PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_PKCS1_KEY_FILE,
+        PUPPET_RUNTIME_FILES_DOCKER_CERT_FILE
+    ]
+    PUPPET_FILTER_FILES_RESTORING_APPS = [
+        PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_KEY_FILE,
+        PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_CERT_FILE,
+        PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_PKCS1_KEY_FILE,
+        PUPPET_RUNTIME_FILES_DOCKER_CERT_FILE
     ]
 
     def _check_ready_route_runtime_config(self):
@@ -6244,11 +6262,14 @@ class ConductorManager(service.PeriodicService):
         return True
 
     def _ready_to_apply_runtime_config(
-            self, context, personalities=None, host_uuids=None, filter_classes=None):
+            self, context, personalities=None, host_uuids=None,
+            filter_classes=None, filter_files=None):
         """Determine whether ready to apply runtime config"""
 
         if filter_classes is None:
             filter_classes = set()
+        if filter_files is None:
+            filter_files = set()
 
         if personalities is None:
             personalities = []
@@ -6271,13 +6292,30 @@ class ConductorManager(service.PeriodicService):
                      constants.SYSINV_REPORTED)
             return False
 
-        # check if need to wait for filter class
+        # check if needed to wait for filter class
         for filter_class in filter_classes:
             if filter_class == self.PUPPET_RUNTIME_CLASS_ROUTES:
                 if not self._check_ready_route_runtime_config():
-                    LOG.info("config runtime filter_mapping %s False (wait)" % filter_class)
+                    LOG.info("config type %s filter_mapping %s False (wait)" %
+                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
                     return False
-            LOG.info("config runtime filter_mapping %s True (continue)" % filter_class)
+            if filter_class == self.PUPPET_RUNTIME_CLASS_DOCKERDISTRIBUTION:
+                if self.check_restoring_apps_in_progress():
+                    LOG.info("config type %s filter_mapping %s False (wait)" %
+                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
+                    return False
+            LOG.info("config type %s filter_mapping %s True (continue)" %
+                     (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
+
+        # check if needed to wait for filter files
+        for filter_file in filter_files:
+            if filter_file in self.PUPPET_FILTER_FILES_RESTORING_APPS:
+                if self.check_restoring_apps_in_progress():
+                    LOG.info("config type %s filter_mapping %s False (wait)" %
+                             (CONFIG_UPDATE_FILE, filter_file))
+                    return False
+            LOG.info("config type %s filter_mapping %s True (continue)" %
+                     (CONFIG_UPDATE_FILE, filter_file))
 
         return True
 
@@ -6304,8 +6342,8 @@ class ConductorManager(service.PeriodicService):
                 config_dict = config.get('config_dict') or {}
                 classes_list = list(config_dict.get('classes') or [])
                 filter_classes = [x for x in self.PUPPET_RUNTIME_FILTER_CLASSES if x in classes_list]
-                LOG.info("config runtime found route config filter_classes=%s cd= %s" %
-                            (filter_classes, config_dict))
+                LOG.info("config type %s found filter_classes=%s cd= %s" %
+                            (config_type, filter_classes, config_dict))
                 self._config_apply_runtime_manifest(
                     context,
                     config['config_uuid'],
@@ -6313,10 +6351,16 @@ class ConductorManager(service.PeriodicService):
                     force=config.get('force', False),
                     filter_classes=filter_classes)
             elif config_type == CONFIG_UPDATE_FILE:
+                config_dict = config.get('config_dict') or {}
+                file_names = list(config_dict.get('file_names') or [])
+                filter_files = [x for x in self.PUPPET_RUNTIME_FILTER_FILES if x in file_names]
+                LOG.info("config type %s found filter_files=%s cd= %s" %
+                         (config_type, filter_files, config_dict))
                 self._config_update_file(
                     context,
                     config['config_uuid'],
-                    config['config_dict'])
+                    config['config_dict'],
+                    filter_files=filter_files)
             else:
                 LOG.error("Removed unsupported deferred config_type %s" %
                             config_type)
@@ -6871,6 +6915,20 @@ class ConductorManager(service.PeriodicService):
             LOG.exception(e)
 
         LOG.debug("Helper Task: _k8s_application_images_audit: Finished")
+
+    def check_restoring_apps_in_progress(self):
+        """ Check if restoring apps is possible to be in progress """
+        try:
+            for kapp in self.dbapi.kube_app_get_all():
+                if kapp.status == constants.APP_RESTORE_REQUESTED or \
+                        kapp.status == constants.APP_APPLY_IN_PROGRESS:
+                    return True
+
+            return False
+        except Exception as e:
+            LOG.exception(e)
+
+        return True
 
     def _restore_download_images(self, app):
         try:
@@ -11370,7 +11428,8 @@ class ConductorManager(service.PeriodicService):
     def _config_update_file(self,
                             context,
                             config_uuid,
-                            config_dict):
+                            config_dict,
+                            filter_files=None):
         """Apply the file on all hosts affected by supplied personalities.
 
         :param context: request context.
@@ -11384,13 +11443,17 @@ class ConductorManager(service.PeriodicService):
         :          }
         """
 
+        if filter_files is None:
+            filter_files = []
+
         # try to get the config from deferred list
         deferred_config = self._get_from_host_deferred_runtime_config(config_uuid)
 
         if not self._ready_to_apply_runtime_config(
                 context,
                 config_dict.get('personalities'),
-                config_dict.get('host_uuids')):
+                config_dict.get('host_uuids'),
+                filter_files=filter_files):
             if deferred_config is None:
                 # append to deferred for audit
                 self._host_deferred_runtime_config.append(
@@ -13439,7 +13502,8 @@ class ConductorManager(service.PeriodicService):
                 'nobackup': True,
                 'permissions': constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY,
             }
-            self._config_update_file(context, config_uuid, config_dict)
+            self._config_update_file(context, config_uuid, config_dict,
+                                     filter_files=[key_path, cert_path, pkcs1_key_path])
 
             # copy certificate to shared directory
             with os.fdopen(os.open(constants.DOCKER_REGISTRY_CERT_FILE_SHARED,
@@ -13465,12 +13529,11 @@ class ConductorManager(service.PeriodicService):
             }
             self._config_apply_runtime_manifest(context,
                                                 config_uuid,
-                                                config_dict)
+                                                config_dict,
+                                                filter_classes=[self.PUPPET_RUNTIME_CLASS_DOCKERDISTRIBUTION])
 
             # install docker certificate on controllers and workers
-            docker_cert_path = os.path.join("/etc/docker/certs.d",
-                                            constants.DOCKER_REGISTRY_SERVER,
-                                            "registry-cert.crt")
+            docker_cert_path = constants.DOCKER_CERT_FILE
 
             personalities = [constants.CONTROLLER,
                              constants.WORKER]
@@ -13483,7 +13546,8 @@ class ConductorManager(service.PeriodicService):
                 'nobackup': True,
                 'permissions': constants.CONFIG_FILE_PERMISSION_ROOT_READ_ONLY,
             }
-            self._config_update_file(context, config_uuid, config_dict)
+            self._config_update_file(context, config_uuid, config_dict,
+                                     filter_files=[docker_cert_path])
         elif mode == constants.CERT_MODE_OPENLDAP:
             LOG.info("OpenLDAP certificate install")
             # install certificate, key to controllers
