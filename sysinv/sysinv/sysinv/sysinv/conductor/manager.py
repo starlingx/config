@@ -6511,7 +6511,7 @@ class ConductorManager(service.PeriodicService):
             LOG.exception(e)
             return
 
-        tarfile = self._search_tarfile(app_name)
+        tarfile = self._search_tarfile(app_name, managed_app=True)
         if tarfile is None:
             # Skip if no tarball or multiple tarballs found
             return
@@ -6571,8 +6571,8 @@ class ConductorManager(service.PeriodicService):
 
         self._inner_sync_auto_apply(context, app_name)
 
-    def _auto_update_managed_app(self, context, app_name):
-        """Auto update the platform managed applications"""
+    def _auto_update_app(self, context, app_name, managed_app):
+        """Auto update applications"""
         try:
             app = kubeapp_obj.get_by_name(context, app_name)
         except exception.KubeAppNotFound as e:
@@ -6607,9 +6607,9 @@ class ConductorManager(service.PeriodicService):
         if self._patching_operation_is_occurring():
             return
 
-        LOG.debug("Platform managed application %s: Checking "
+        LOG.debug("Application %s: Checking "
                   "for update ..." % app_name)
-        tarfile = self._search_tarfile(app_name)
+        tarfile = self._search_tarfile(app_name, managed_app=managed_app)
         if tarfile is None:
             # Skip if no tarball or multiple tarballs found
             return
@@ -6709,7 +6709,7 @@ class ConductorManager(service.PeriodicService):
         greenthread.spawn(self.perform_app_update, context, applied_app,
                           target_app, tarball.tarball_name, operation, hook_info)
 
-    def _search_tarfile(self, app_name):
+    def _search_tarfile(self, app_name, managed_app):
         """Search a specified application tarfile from the directory
            containing apps bundled with the iso"""
 
@@ -6719,7 +6719,8 @@ class ConductorManager(service.PeriodicService):
                 tarfiles.append(f)
 
         if not tarfiles:
-            LOG.error("Failed to find an application tarball for {}.".format(app_name))
+            if managed_app:
+                LOG.error("Failed to find an application tarball for {}.".format(app_name))
             return None
         elif len(tarfiles) > 1:
             LOG.error("Found multiple application tarballs for {}.".format(app_name))
@@ -7120,7 +7121,7 @@ class ConductorManager(service.PeriodicService):
                 self._auto_recover_managed_app(context, app_name)
             elif status == constants.APP_APPLY_SUCCESS:
                 self.check_pending_app_reapply(context)
-                self._auto_update_managed_app(context, app_name)
+                self._auto_update_app(context, app_name, managed_app=True)
 
         # Special case, we want to apply some logic to non-managed applications
         for app_name in self.apps_metadata[constants.APP_METADATA_APPS].keys():
@@ -7140,9 +7141,7 @@ class ConductorManager(service.PeriodicService):
             # Automatically update non-managed applications
             if status == constants.APP_APPLY_SUCCESS:
                 self.check_pending_app_reapply(context)
-                # Please ignore the name of the next function, even though it contains
-                # 'managed' in its name, it actually does the same job to non-managed.
-                self._auto_update_managed_app(context, app_name)
+                self._auto_update_app(context, app_name, managed_app=False)
 
         LOG.debug("Periodic Task: _k8s_application_audit: Finished")
 
