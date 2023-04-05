@@ -51,6 +51,7 @@ def main():
             do_update_i_idisks(conn)
             do_update_partitions(conn)
             do_update_i_pv(conn)
+            do_update_hw_settle(conn)
         except Exception as e:
             LOG.exception("Error: {}".format(e))
             res = 1
@@ -134,7 +135,7 @@ def do_update_i_host(conn):
     for i_host in i_hosts:
         query = (
             "UPDATE i_host SET boot_device='/dev/mapper/mpatha', "
-            "rootfs_device='/dev/mapper/mpatha', hw_settle='30' "
+            "rootfs_device='/dev/mapper/mpatha' "
             "WHERE id={};".format(
                 i_host["id"]
             )
@@ -188,6 +189,12 @@ def do_update_query(conn, query):
     conn.commit()
 
 
+def do_update_hw_settle(conn):
+    query = "UPDATE i_host SET hw_settle='30'; "
+    LOG.info("Update hw_settle query= {}".format(query))
+    do_update_query(conn, query)
+
+
 def is_multipath():
     disk_operator = disk.DiskOperator()
     system_disk = disk_operator.idisk_get()[0]
@@ -205,7 +212,9 @@ def transform_device_node_path(path):
 
 
 def transform_device_path(path):
-    regex = r"(\/dev\/disk\/by-id\/)dm-uuid-mpath-3(.*)"
+    # This regex is used to support QEMU virtualization devices,
+    # while all other real iSCSI devices start with 0
+    regex = r"(\/dev\/disk\/by-id\/)dm-uuid-mpath-[0-9](.*)"
     result = re.match(regex, path)
     if result:
         return "{}wwn-0x{}".format(result[1], result[2])
@@ -213,7 +222,9 @@ def transform_device_path(path):
 
 
 def transform_part_device_path(path):
-    regex = r"(\/dev\/disk\/by-id\/)dm-uuid-(.*)-mpath-3(.*)"
+    # This regex is used to support QEMU virtualization devices,
+    # while all other real iSCSI devices start with 0
+    regex = r"(\/dev\/disk\/by-id\/)dm-uuid-(.*)-mpath-[0-9](.*)"
     result = re.match(regex, path)
     if result:
         return "{}wwn-0x{}-{}".format(result[1], result[3], result[2])
