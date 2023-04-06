@@ -845,6 +845,11 @@ def check_partitions(data, mode, pfile):
         for p in sorted(sortable_partitions,
                         key=cmp_to_key(lambda p, q: p.get('start_mib') - q.get('start_mib'))):
             disk = _get_disk_device_path(p.get('device_path'))
+            # If ceph partition then skip it, as these are managed by puppet
+            if p.get('type_guid').upper() in constants.CEPH_PARTITIONS:
+                print('Skipping ceph partition {} managed '
+                      'by puppet'.format(p.get('device_path')))
+                continue
             if _partition_exists(p.get('device_path')):
                 print('Partition {} already exists on disk {}'.format(
                     p.get('device_path'), disk))
