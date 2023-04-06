@@ -7536,8 +7536,8 @@ class ConductorManager(service.PeriodicService):
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-    # TODO: update_platform_nfs_ip_references is just necessary to allow an upgrade
-    # from StarlingX releases 6 or 7 to new releases.
+    # TODO(fcorream): update_platform_nfs_ip_references is just necessary to allow
+    # an upgrade from StarlingX releases 6 or 7 to new releases.
     # remove it when StarlingX rel. 6 or 7 are not being used anymore
     def update_platform_nfs_ip_references(self, context):
         """Update platform nfs ip references during upgrade"""
@@ -7559,6 +7559,7 @@ class ConductorManager(service.PeriodicService):
             # remove IP address from DB
             address_uuid = self.dbapi.address_get_by_name(address_name).uuid
             self.dbapi.address_destroy(address_uuid)
+            LOG.info("{} removed from addresses DB".format(address_name))
         except exception.AddressNotFoundByName:
             LOG.info("exception: AddressNotFoundByName: {}".format(address_name))
         except exception.AddressNotFound:
@@ -12536,20 +12537,23 @@ class ConductorManager(service.PeriodicService):
                     {'state': constants.UPGRADE_ACTIVATION_FAILED})
 
         # Remove platform-nfs-ip references if it exists
-        # TODO: platform-nfs-ip is just necessary to allow an upgrade from StarlingX
-        # releases 6 or 7 to new releases.
+        # TODO(fcorream): platform-nfs-ip is just necessary to allow an upgrade from
+        # StarlingX releases 6 or 7 to new releases.
         # remove the plat_nfs_address_name and update_platform_nfs_ip_references when
         # StarlingX rel. 6 or 7 are not being used anymore
         plat_nfs_address_name = cutils.format_address_name("controller-platform-nfs",
                                                 constants.NETWORK_TYPE_MGMT)
         try:
             self.dbapi.address_get_by_name(plat_nfs_address_name)
-
             LOG.info("platform-nfs-ip exists in the DB, updating all references")
             self.update_platform_nfs_ip_references(context)
 
         except exception.AddressNotFoundByName:
             LOG.debug("activate_upgrade: {} does not exist".format(plat_nfs_address_name))
+        except Exception as e:
+            LOG.exception(e)
+            LOG.error("exception: update {} references could not be completed"
+                      .format(plat_nfs_address_name))
 
         manifests_applied = False
 

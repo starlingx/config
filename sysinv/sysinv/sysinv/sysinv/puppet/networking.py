@@ -60,8 +60,8 @@ class NetworkingPuppet(base.BasePuppet):
                 gateway_address,
         })
 
-        # TODO: platform-nfs-iaddress is just necessary to allow an upgrade
-        # from StarlingX releases 6 or 7 to new releases.
+        # TODO(fcorream): platform-nfs-iaddress is just necessary to allow
+        # an upgrade from StarlingX releases 6 or 7 to new releases.
         # remove it when StarlingX rel. 6 or 7 are not being used anymore
         # During the upgrade If platform-nfs-ip is still available in the DB,
         # add it to the config to allow downgrade if something goes wrong
