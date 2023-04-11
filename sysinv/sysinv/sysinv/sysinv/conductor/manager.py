@@ -16490,7 +16490,12 @@ class ConductorManager(service.PeriodicService):
 
         rc = 0
         try:
-            if target_version == 'v1.24.4':
+            if target_version == 'v1.22.5':
+                # SCTPSupport feature gate is not supported in k8s 1.22
+                info, tmp = sanitize_feature_gates_bootstrap(
+                    info, 'SCTPSupport=true')
+                rc |= tmp
+            elif target_version == 'v1.24.4':
                 # RemoveSelfLink can only be true as of 1.24
                 info, tmp = sanitize_feature_gates_bootstrap(
                     info, 'RemoveSelfLink=false')
@@ -16501,7 +16506,7 @@ class ConductorManager(service.PeriodicService):
                     info, 'HugePageStorageMediumSize=true')
                 rc |= tmp
 
-            if target_version == 'v1.25.3':
+            elif target_version == 'v1.25.3':
                 info, tmp = sanitize_feature_gates_bootstrap(
                     info, 'TTLAfterFinished=true')
                 rc |= tmp
@@ -16530,8 +16535,12 @@ class ConductorManager(service.PeriodicService):
         newyaml = yaml.YAML()
 
         # Get the configmap name based on target version
-        if target_version == 'v1.24.4':
+        if target_version == 'v1.22.5':
+            configmap_name = 'kubelet-config-1.21'
+        elif target_version == 'v1.24.4':
             configmap_name = 'kubelet-config-1.23'
+        elif target_version == 'v1.25.3':
+            configmap_name = 'kubelet-config'
         else:
             LOG.error("Unsupported target version %s, can't edit kubelet cm.",
                 target_version)
@@ -16547,7 +16556,10 @@ class ConductorManager(service.PeriodicService):
             feature_gates = kubelet_config.get('featureGates', {})
 
             # Edit the feature gates
-            if target_version == 'v1.24.4':
+            if target_version == 'v1.22.5':
+                if feature_gates.get('SCTPSupport') is True:
+                    feature_gates.pop('SCTPSupport', None)
+            elif target_version == 'v1.24.4':
                 # RemoveSelfLink can only be true as of 1.24
                 if feature_gates.get('RemoveSelfLink') is False:
                     feature_gates.pop('RemoveSelfLink', None)
@@ -16556,7 +16568,7 @@ class ConductorManager(service.PeriodicService):
                 if feature_gates.get('HugePageStorageMediumSize') is True:
                     feature_gates.pop('HugePageStorageMediumSize', None)
 
-            if target_version == 'v1.25.3':
+            elif target_version == 'v1.25.3':
                 if feature_gates.get('TTLAfterFinished') is True:
                     feature_gates.pop('TTLAfterFinished', None)
 
@@ -16605,6 +16617,10 @@ class ConductorManager(service.PeriodicService):
                     if target_version == 'v1.24.4':
                         feature_gates = sanitize_feature_gates(feature_gates,
                                     'HugePageStorageMediumSize=true')
+                    elif target_version == 'v1.22.5':
+                        # SCTPSupport feature gate is not supported in k8s 1.22
+                        feature_gates = sanitize_feature_gates(feature_gates,
+                                    'SCTPSupport=true')
                     elif target_version == 'v1.25.3':
                         feature_gates = sanitize_feature_gates(feature_gates,
                                     'TTLAfterFinished=true')
@@ -16651,7 +16667,11 @@ class ConductorManager(service.PeriodicService):
         rc = 0
         try:
             for section in k8s_sections:
-                if target_version == 'v1.24.4':
+                if target_version == 'v1.22.5':
+                    # SCTPSupport feature gate is not supported in k8s 1.22
+                    rc |= self.sanitize_feature_gates_service_parameter_section(
+                        section, 'SCTPSupport=true')
+                elif target_version == 'v1.24.4':
                     # This could be optimized to pass down a list of
                     # feature gates to remove.  Future optimization maybe.
 
@@ -16663,7 +16683,7 @@ class ConductorManager(service.PeriodicService):
                     rc |= self.sanitize_feature_gates_service_parameter_section(
                         section, 'HugePageStorageMediumSize=true')
 
-                if target_version == 'v1.25.3':
+                elif target_version == 'v1.25.3':
                     rc |= self.sanitize_feature_gates_service_parameter_section(
                         section, 'TTLAfterFinished=true')
 

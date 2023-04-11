@@ -292,6 +292,37 @@ class ManagerTestCase(base.DbTestCase):
         )
 
         self.kubeadm_config_map_patch_image_repository = {'data': {'ClusterConfiguration': 'apiServer:\n  certSANs: [192.168.206.1, 127.0.0.1, 10.10.6.3]\n  extraArgs: {event-ttl: 24h}\n  extraVolumes:\n  - {hostPath: /etc/kubernetes/encryption-provider.yaml}\napiVersion: kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  extraArgs: {feature-gates: CSIMigrationPortworx=false, pod-eviction-timeout: 30s}\n  extraVolumes: null\nimageRepository: registry.local:9001/registry.k8s.io\nkind: ClusterConfiguration\nkubernetesVersion: v1.42.1\nscheduler: {}\n'}}  # noqa: E501
+
+        self.kubeadm_config_read_SCTPSupport = kubernetes.client.V1ConfigMap(
+            api_version='v1',
+            data={'ClusterConfiguration': 'apiServer:\n'
+                                            '  certSANs:\n'
+                                            '  - 192.168.206.1\n'
+                                            '  - 127.0.0.1\n'
+                                            '  - 10.10.6.3\n'
+                                            '  extraArgs:\n'
+                                            '    event-ttl: 24h\n'
+                                            '    feature-gates: SCTPSupport=true\n'
+                                            '  extraVolumes:\n'
+                                            '  - hostPath: '
+                                            '/etc/kubernetes/encryption-provider.yaml\n'
+                                            'apiVersion: kubeadm.k8s.io/v1beta3\n'
+                                            'controllerManager:\n'
+                                            '  extraArgs:\n'
+                                            '    pod-eviction-timeout: 30s\n'
+                                            '    feature-gates: CSIMigrationPortworx=false,SCTPSupport=true\n'
+                                            '  extraVolumes:\n'
+                                            'kind: ClusterConfiguration\n'
+                                            'kubernetesVersion: v1.21.8\n'
+                                            'scheduler: {}\n'},
+
+            metadata=kubernetes.client.V1ObjectMeta(
+                        name='kubeadm-config',
+                        namespace='kube-system'),
+        )
+
+        self.kubeadm_config_map_patch_SCTPSupport = {'data': {'ClusterConfiguration': 'apiServer:\n  certSANs: [192.168.206.1, 127.0.0.1, 10.10.6.3]\n  extraArgs: {event-ttl: 24h}\n  extraVolumes:\n  - {hostPath: /etc/kubernetes/encryption-provider.yaml}\napiVersion: kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  extraArgs: {feature-gates: CSIMigrationPortworx=false, pod-eviction-timeout: 30s}\n  extraVolumes: null\nkind: ClusterConfiguration\nkubernetesVersion: v1.21.8\nscheduler: {}\n'}}  # noqa: E501
+
         super(ManagerTestCase, self).setUp()
 
         # Set up objects for testing
@@ -1909,6 +1940,26 @@ class ManagerTestCase(base.DbTestCase):
         self.service.sanitize_image_repository_kubeadm_configmap('v1.42.2')
         mock_kube_patch_config_map.assert_called_with(
                 'kubeadm-config', 'kube-system', self.kubeadm_config_map_patch_image_repository)
+
+    def test_sanitize_feature_gates_kubeadm_configmap_with_SCTPSupport(self):
+        mock_kube_read_config_map = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_read_config_map',
+            mock_kube_read_config_map)
+        p.start().return_value = self.kubeadm_config_read_SCTPSupport
+        self.addCleanup(p.stop)
+
+        mock_kube_patch_config_map = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_patch_config_map',
+            mock_kube_patch_config_map)
+        p2.start().return_value = self.kubeadm_config_map_patch_SCTPSupport
+        self.addCleanup(p2.stop)
+
+        self.service.start()
+        self.service.sanitize_feature_gates_kubeadm_configmap('v1.22.5')
+        mock_kube_patch_config_map.assert_called_with(
+                'kubeadm-config', 'kube-system', self.kubeadm_config_map_patch_SCTPSupport)
 
     def _create_test_controller_config_out_of_date(self, hostname):
         config_applied = self.service._config_set_reboot_required(uuid.uuid4())
