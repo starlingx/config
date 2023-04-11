@@ -1359,9 +1359,14 @@ class ConductorManager(service.PeriodicService):
                          dashed_mac] + install_opts,
                         stdout=fnull,
                         stderr=fnull)
-                    source = "/var/pxeboot/pxelinux.cfg/efi-01-" + dashed_mac
-                    link_name = "/var/pxeboot/pxelinux.cfg/efi-01-" + dashed_mac + ".cfg"
-                    os.symlink(source, link_name)
+                    if LooseVersion(sw_version) >= LooseVersion("22.12"):
+                        # in release earlier than 22.12, the efi-01-<mac>.cfg files
+                        # are physical files created in pxeboot-update.sh for backward
+                        # compatible (removing the patch that brings in 22.12 boot loader)
+                        # so only create link when it is running 22.12 pxeboot-update.sh
+                        source = "/var/pxeboot/pxelinux.cfg/efi-01-" + dashed_mac
+                        link_name = "/var/pxeboot/pxelinux.cfg/efi-01-" + dashed_mac + ".cfg"
+                        os.symlink(source, link_name)
                 except subprocess.CalledProcessError:
                     raise exception.SysinvException(_(
                         "Failed to create pxelinux.cfg file"))
