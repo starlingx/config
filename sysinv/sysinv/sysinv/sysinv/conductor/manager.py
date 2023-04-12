@@ -14958,6 +14958,11 @@ class ConductorManager(service.PeriodicService):
                 LOG.error("Problem sanitizing kubelet configmap feature gates.")
                 rc = 1
 
+            # Work around upstream kubeadm configmap parsing issue.
+            if self._kube.kubeadm_configmap_reformat(target_version) == 1:
+                LOG.error("Problem reformatting kubelet configmap.")
+                rc = 1
+
             if rc == 1:
                 kube_upgrade_obj.state = fail_state
                 kube_upgrade_obj.save()
@@ -16592,7 +16597,10 @@ class ConductorManager(service.PeriodicService):
                 try:
                     feature_gates = sanitize_feature_gates(feature_gates,
                                 'RemoveSelfLink=false')
-                    if target_version == 'v1.25.3':
+                    if target_version == 'v1.24.4':
+                        feature_gates = sanitize_feature_gates(feature_gates,
+                                    'HugePageStorageMediumSize=true')
+                    elif target_version == 'v1.25.3':
                         feature_gates = sanitize_feature_gates(feature_gates,
                                     'TTLAfterFinished=true')
                     if not feature_gates:

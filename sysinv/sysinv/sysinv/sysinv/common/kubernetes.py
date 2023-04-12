@@ -11,9 +11,13 @@
 
 from __future__ import absolute_import
 from distutils.version import LooseVersion
+from ipaddress import ip_address
+from ipaddress import IPv4Address
 import json
 import os
 import re
+import ruamel.yaml as yaml
+from ruamel.yaml.compat import StringIO
 import time
 import tsconfig.tsconfig as tsc
 
@@ -1293,3 +1297,58 @@ class KubeOperator(object):
                 return secret
             time.sleep(1)
         return None
+
+    def kubeadm_configmap_reformat(self, target_version):
+        """
+        There is an upstream issue in Kubeadm (affecting at least up till 1.24.4)
+        where if the "certSANs" field of the kubeadm configmap contains unquoted
+        IPv6 addresses in "flow style" it will choke while parsing.  The problematic
+        formatting looks like this:
+
+        ClusterConfiguration: |
+            apiServer:
+                certSANs: [::1, 192.168.206.1, 127.0.0.1, 10.20.7.3]
+
+        While this is fine:
+
+          ClusterConfiguration: |
+            apiServer:
+                certSANs:
+                - ::1
+                - 192.168.206.1
+                - 127.0.0.1
+                - 10.20.7.3
+        """
+        try:
+            configmap_name = 'kubeadm-config'
+            configmap = self.kube_read_config_map(configmap_name, 'kube-system')
+            newyaml = yaml.YAML()
+            stream = StringIO(configmap.data['ClusterConfiguration'])
+            info = newyaml.load(stream)
+            flow_style = info['apiServer']['certSANs'].fa.flow_style()
+            if flow_style:
+                # It's using flow syle, so we need to check if any addresses are IPv6.
+                need_reformat = False
+                try:
+                    for addr in info['apiServer']['certSANs']:
+                        if type(ip_address(addr)) is not IPv4Address:
+                            need_reformat = True
+                            break
+                except ValueError:
+                    # Shouldn't happen if addresses are well-formed.
+                    # If it does then reformat to be safe.
+                    need_reformat = True
+
+                if need_reformat:
+                    LOG.info('Converting kubeadm configmap certSANs to block style.')
+                    info['apiServer']['certSANs'].fa.set_block_style()
+                    outstream = StringIO()
+                    newyaml.dump(info, outstream)
+                    configmap = {'data': {'ClusterConfiguration': outstream.getvalue()}}
+                    self.kube_patch_config_map(configmap_name, 'kube-system', configmap)
+                    LOG.info('Successfully reformatted kubeadm configmap.')
+        except Exception as e:
+            LOG.exception("Unable to patch kubeadm config_map: %s" % e)
+            return 1
+
+        return 0
