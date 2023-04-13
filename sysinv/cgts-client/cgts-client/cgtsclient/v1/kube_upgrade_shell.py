@@ -14,6 +14,7 @@ KUBE_UPGRADE_STATE_UPGRADING_NETWORKING = 'upgrading-networking'
 KUBE_UPGRADE_STATE_COMPLETE = 'upgrade-complete'
 KUBE_UPGRADE_STATE_UPGRADING_FIRST_MASTER = 'upgrading-first-master'
 KUBE_UPGRADE_STATE_UPGRADING_SECOND_MASTER = 'upgrading-second-master'
+KUBE_UPGRADE_STATE_ABORTING = 'upgrade-aborting'
 KUBE_UPGRADE_STATE_CORDON = 'cordon-started'
 KUBE_UPGRADE_STATE_UNCORDON = 'uncordon-started'
 
@@ -126,6 +127,23 @@ def do_kube_upgrade_networking(cc, args):
         kube_upgrade = cc.kube_upgrade.update(patch)
     except exc.HTTPNotFound:
         raise exc.CommandError('Kubernetes upgrade UUID not found')
+
+    _print_kube_upgrade_show(kube_upgrade)
+
+
+def do_kube_upgrade_abort(cc, args):
+    """Kubernetes upgrade aborting."""
+
+    data = dict()
+    data['state'] = KUBE_UPGRADE_STATE_ABORTING
+
+    patch = []
+    for (k, v) in data.items():
+        patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
+    try:
+        kube_upgrade = cc.kube_upgrade.update(patch)
+    except exc.HTTPNotFound:
+        raise exc.CommandError('Kubernetes upgrade not found')
 
     _print_kube_upgrade_show(kube_upgrade)
 

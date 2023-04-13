@@ -1955,6 +1955,16 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.cast(context, self.make_msg('kube_upgrade_networking',
                                                 kube_version=kube_version))
 
+    def kube_upgrade_abort(self, context, kube_state):
+        """Asynchronously, have the conductor abort the kubernetes
+        upgrade.
+
+        :param context: request context
+        :param kube_state: kubernetes state before abort
+        """
+        return self.cast(context, self.make_msg('kube_upgrade_abort',
+                                                kube_state=kube_state))
+
     def kube_config_kubelet(self, context):
         """Sychronously, have the conductor configure kubelet.
 

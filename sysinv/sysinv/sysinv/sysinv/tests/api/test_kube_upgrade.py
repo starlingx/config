@@ -74,6 +74,7 @@ class FakeConductorAPI(object):
     def __init__(self):
         self.kube_download_images = mock.MagicMock()
         self.kube_upgrade_networking = mock.MagicMock()
+        self.kube_upgrade_abort = mock.MagicMock()
         self.evaluate_apps_reapply = mock.MagicMock()
         self.remove_kube_control_plane_backup = mock.MagicMock()
         self.service = ConductorManager('test-host', 'test-topic')
@@ -318,6 +319,63 @@ class TestPostKubeUpgradeSimplex(TestKubeUpgrade,
         self.assertEqual(result.content_type, 'application/json')
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
         self.assertIn("version v1.43.3 is not in available state",
+                      result.json['error_message'])
+
+    def test_update_state_upgrade_abort(self):
+        # Test updating the state of an upgrade to upgrade aborting
+
+        # Create the upgrade
+        kube_upgrade = dbutils.create_test_kube_upgrade(
+            from_version='v1.43.1',
+            to_version='v1.43.2',
+            state=kubernetes.KUBE_UPGRADING_FIRST_MASTER)
+        uuid = kube_upgrade.uuid
+
+        # Update state
+        new_state = kubernetes.KUBE_UPGRADE_ABORTING
+        response = self.patch_json('/kube_upgrade',
+                                   [{'path': '/state',
+                                     'value': new_state,
+                                     'op': 'replace'}],
+                                   headers={'User-Agent': 'sysinv-test'})
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+        self.assertEqual(response.json['from_version'], 'v1.43.1')
+        self.assertEqual(response.json['to_version'], 'v1.43.2')
+        self.assertEqual(response.json['state'], new_state)
+
+        # Verify that k8s was upgraded
+        self.fake_conductor_api.kube_upgrade_abort.\
+            assert_called_with(mock.ANY, kubernetes.KUBE_UPGRADING_FIRST_MASTER)
+
+        # Verify that the upgrade was updated with the new state
+        result = self.get_json('/kube_upgrade/%s' % uuid)
+        self.assertEqual(result['from_version'], 'v1.43.1')
+        self.assertEqual(result['to_version'], 'v1.43.2')
+        self.assertEqual(result['state'], new_state)
+
+    def test_update_state_upgrade_abort_invalid_state(self):
+        # Attempt to abort a K8s upgrade that is already completed.
+
+        # Create the upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.43.1',
+            to_version='v1.43.2',
+            state=kubernetes.KUBE_UPGRADE_COMPLETE)
+
+        # Update state
+        new_state = kubernetes.KUBE_UPGRADE_ABORTING
+        result = self.patch_json('/kube_upgrade',
+                                 [{'path': '/state',
+                                   'value': new_state,
+                                   'op': 'replace'}],
+                                 headers={'User-Agent': 'sysinv-test'},
+                                 expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertIn("Cannot abort the kubernetes upgrade",
                       result.json['error_message'])
 
 
@@ -978,7 +1036,8 @@ class TestPatch(TestKubeUpgrade,
                       result.json['error_message'])
 
 
-class TestDelete(TestKubeUpgrade):
+class TestDelete(TestKubeUpgrade,
+                 dbbase.ProvisionedControllerHostTestCase):
 
     def test_delete(self):
         # Test deleting an upgrade

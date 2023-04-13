@@ -402,6 +402,55 @@ class KubeUpgradeController(rest.RestController):
                 kube_upgrade_obj.to_version)
             return KubeUpgrade.convert_with_links(kube_upgrade_obj)
 
+        elif updates['state'] == kubernetes.KUBE_UPGRADE_ABORTING:
+            system = pecan.request.dbapi.isystem_get_one()
+            if system.system_mode != constants.SYSTEM_MODE_SIMPLEX:
+                raise wsme.exc.ClientSideError(_(
+                    "The 'system kube-upgrade-abort' is not supported "
+                    "in %s" % system.system_mode))
+            if kube_upgrade_obj.state in [kubernetes.KUBE_UPGRADE_ABORTING,
+                                          kubernetes.KUBE_UPGRADE_ABORTED,
+                                          kubernetes.KUBE_UPGRADE_COMPLETE]:
+                raise wsme.exc.ClientSideError(_(
+                    "Cannot abort the kubernetes upgrade it is in %s state" %
+                    (kube_upgrade_obj.state)))
+
+            # Assign the original state of the k8s upgrade before the abort.
+            kube_state = kube_upgrade_obj.state
+            # Restore the kube upgrade target version for each host to the from_version
+            # and set the status as aborting.
+            update_values = {'target_version': kube_upgrade_obj.from_version,
+                             'status': kubernetes.KUBE_UPGRADE_ABORTING}
+            kube_host_upgrades = pecan.request.dbapi.kube_host_upgrade_get_list()
+            for kube_host_upgrade in kube_host_upgrades:
+                pecan.request.dbapi.kube_host_upgrade_update(kube_host_upgrade.id,
+                                                            update_values)
+            # Restore the kubeadm_version and kubelet_version to the from_version
+            kube_cmd_versions = objects.kube_cmd_version.get(pecan.request.context)
+            kube_cmd_versions.kubeadm_version = kube_upgrade_obj.from_version.lstrip('v')
+            kube_cmd_versions.kubelet_version = kube_upgrade_obj.from_version.lstrip('v')
+            kube_cmd_versions.save()
+
+            # Update the state as aborted for these states since no actual k8s changes done
+            # so we don't need to do anything more to complete the abort.
+            if kube_upgrade_obj.state in [kubernetes.KUBE_UPGRADE_STARTED,
+                                          kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
+                                          kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED,
+                                          kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES]:
+                kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTED
+                kube_upgrade_obj.save()
+            else:
+                kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTING
+                kube_upgrade_obj.save()
+
+                # Tell the conductor to abort k8s upgrade
+                pecan.request.rpcapi.kube_upgrade_abort(
+                    pecan.request.context, kube_state)
+
+            LOG.info("Aborting kubernetes upgrade version: %s" %
+                kube_upgrade_obj.to_version)
+            return KubeUpgrade.convert_with_links(kube_upgrade_obj)
+
         elif updates['state'] == kubernetes.KUBE_UPGRADE_CORDON:
             system = pecan.request.dbapi.isystem_get_one()
             if system.system_mode != constants.SYSTEM_MODE_SIMPLEX:
@@ -563,13 +612,13 @@ class KubeUpgradeController(rest.RestController):
         except exception.NotFound:
             raise wsme.exc.ClientSideError(_(
                 "A kubernetes upgrade is not in progress"))
-
-        # The upgrade must be complete
-        if kube_upgrade_obj.state != \
-                kubernetes.KUBE_UPGRADE_COMPLETE:
+        if kube_upgrade_obj.state not in [kubernetes.KUBE_UPGRADE_COMPLETE,
+                                            kubernetes.KUBE_UPGRADE_ABORTED]:
+            # The upgrade must be in complete or abort state to delete
             raise wsme.exc.ClientSideError(_(
-                "Kubernetes upgrade must be in %s state to delete" %
-                kubernetes.KUBE_UPGRADE_COMPLETE))
+                "Kubernetes upgrade must be in %s or %s state to delete" %
+                (kubernetes.KUBE_UPGRADE_COMPLETE,
+                kubernetes.KUBE_UPGRADE_ABORTED)))
 
         # Clean up k8s control-plane backup
         pecan.request.rpcapi.remove_kube_control_plane_backup(
