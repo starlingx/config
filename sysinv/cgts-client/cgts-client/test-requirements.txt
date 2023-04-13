@@ -3,11 +3,8 @@
 # process, which may cause wedges in the gate later.
 
 # Newer hacking already pins down pep8, pyflakes and flake8
-flake8<3.8.0
-astroid<2.0;python_version<"3.0" # GPLv2
-astroid<= 2.2.5;python_version>="3.0" # GPLv2
-pycodestyle<2.6.0 # MIT License
 hacking>=1.1.0,<=2.0.0 # Apache-2.0
+astroid
 coverage!=4.4,>=4.0 # Apache-2.0
 fixtures>=3.0.0 # Apache-2.0/BSD
 mock>=2.0 # BSD
@@ -17,7 +14,8 @@ stestr
 testscenarios>=0.4 # Apache-2.0/BSD
 testtools>=1.4.0 # MIT
 testresources>=0.2.4 # Apache-2.0/BSD
+flake8-bugbear
 httplib2
+isort<5
 python-keystoneclient
-pylint<2.1.0;python_version<"3.0" # GPLv2
-pylint<2.4.0;python_version>="3.0" # GPLv2
+pylint

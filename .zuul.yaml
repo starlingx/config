@@ -187,7 +187,7 @@
     parent: tox
     description: |
       Run pep8 test for cgts-client
-    nodeset: ubuntu-bionic
+    nodeset: debian-bullseye
     files:
       - sysinv/cgts-client/*
     vars:
@@ -199,7 +199,7 @@
     parent: tox
     description: |
       Run pylint test for cgts-client
-    nodeset: ubuntu-xenial
+    nodeset: debian-bullseye
     files:
       - sysinv/cgts-client/*
     vars:
