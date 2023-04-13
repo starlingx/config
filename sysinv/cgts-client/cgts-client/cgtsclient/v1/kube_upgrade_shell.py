@@ -1,11 +1,12 @@
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2019-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
 from cgtsclient.common import utils
 from cgtsclient import exc
+from cgtsclient.v1 import ihost as ihost_utils
 
 # Kubernetes constants
 KUBE_UPGRADE_STATE_DOWNLOADING_IMAGES = 'downloading-images'
@@ -13,6 +14,8 @@ KUBE_UPGRADE_STATE_UPGRADING_NETWORKING = 'upgrading-networking'
 KUBE_UPGRADE_STATE_COMPLETE = 'upgrade-complete'
 KUBE_UPGRADE_STATE_UPGRADING_FIRST_MASTER = 'upgrading-first-master'
 KUBE_UPGRADE_STATE_UPGRADING_SECOND_MASTER = 'upgrading-second-master'
+KUBE_UPGRADE_STATE_CORDON = 'cordon-started'
+KUBE_UPGRADE_STATE_UNCORDON = 'uncordon-started'
 
 
 def _print_kube_upgrade_show(obj):
@@ -56,6 +59,48 @@ def do_kube_upgrade_download_images(cc, args):
 
     data = dict()
     data['state'] = KUBE_UPGRADE_STATE_DOWNLOADING_IMAGES
+
+    patch = []
+    for (k, v) in data.items():
+        patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
+    try:
+        kube_upgrade = cc.kube_upgrade.update(patch)
+    except exc.HTTPNotFound:
+        raise exc.CommandError('Kubernetes upgrade UUID not found')
+
+    _print_kube_upgrade_show(kube_upgrade)
+
+
+@utils.arg('hostid', metavar='<hostname or id>',
+           help="Name or ID of host")
+def do_kube_host_cordon(cc, args):
+    """Cordon to evict pods from host."""
+
+    data = dict()
+    ihost = ihost_utils._find_ihost(cc, args.hostid)
+    data['hostname'] = ihost.hostname
+    data['state'] = KUBE_UPGRADE_STATE_CORDON
+
+    patch = []
+    for (k, v) in data.items():
+        patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
+    try:
+        kube_upgrade = cc.kube_upgrade.update(patch)
+    except exc.HTTPNotFound:
+        raise exc.CommandError('Kubernetes upgrade UUID not found')
+
+    _print_kube_upgrade_show(kube_upgrade)
+
+
+@utils.arg('hostid', metavar='<hostname or id>',
+           help="Name or ID of host")
+def do_kube_host_uncordon(cc, args):
+    """Cordon to evict pods from host."""
+
+    data = dict()
+    ihost = ihost_utils._find_ihost(cc, args.hostid)
+    data['hostname'] = ihost.hostname
+    data['state'] = KUBE_UPGRADE_STATE_UNCORDON
 
     patch = []
     for (k, v) in data.items():

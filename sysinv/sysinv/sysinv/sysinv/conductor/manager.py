@@ -14990,6 +14990,60 @@ class ConductorManager(service.PeriodicService):
         kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES
         kube_upgrade_obj.save()
 
+    def kube_host_cordon(self, context, host_name):
+        """Cordon the pods to evict on this host"""
+
+        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        system = self.dbapi.isystem_get_one()
+
+        if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+            cordon_cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
+                          'drain', host_name, '--ignore-daemonsets', '--delete-emptydir-data',
+                          '--delete-local-data', '--force', '--skip-wait-for-delete-timeout=1']
+
+            proc = subprocess.Popen(cordon_cmd, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, universal_newlines=True)
+            stdout, stderr = proc.communicate()
+            if proc.returncode != 0:
+                LOG.error('Error in executing %s: %s' %
+                        (cordon_cmd, stderr))
+                cordon_status = kubernetes.KUBE_UPGRADE_CORDON_FAILED
+            else:
+                LOG.info('Executed the cordon command %s: %s' %
+                        (cordon_cmd, stdout))
+                cordon_status = kubernetes.KUBE_UPGRADE_CORDON_COMPLETE
+
+            # Update the upgrade state
+            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+            kube_upgrade_obj.state = cordon_status
+            kube_upgrade_obj.save()
+
+    def kube_host_uncordon(self, context, host_name):
+        """Uncordon the evicted pods on this host"""
+
+        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        system = self.dbapi.isystem_get_one()
+
+        if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+            uncordon_cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
+                            'uncordon', host_name]
+            proc = subprocess.Popen(uncordon_cmd, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, universal_newlines=True)
+            stdout, stderr = proc.communicate()
+            if proc.returncode != 0:
+                LOG.error('Error in executing %s: %s' %
+                        (uncordon_cmd, stderr))
+                uncordon_status = kubernetes.KUBE_UPGRADE_UNCORDON_FAILED
+            else:
+                LOG.info('Executed the uncordon command %s: %s' %
+                        (uncordon_cmd, stdout))
+                uncordon_status = kubernetes.KUBE_UPGRADE_UNCORDON_COMPLETE
+
+            # Update the upgrade state
+            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+            kube_upgrade_obj.state = uncordon_status
+            kube_upgrade_obj.save()
+
     def kube_upgrade_control_plane(self, context, host_uuid):
         """Upgrade the kubernetes control plane on this host"""
 

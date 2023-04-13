@@ -1889,6 +1889,26 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.cast(context, self.make_msg('kube_download_images',
                                                 kube_version=kube_version))
 
+    def kube_host_cordon(self, context, host_name):
+        """Asynchronously, have the conductor cordon the pods to be evicted
+        on this host.
+
+        :param context: request context
+        :param host_name: name of the host
+        """
+        return self.cast(context, self.make_msg('kube_host_cordon',
+                                                host_name=host_name))
+
+    def kube_host_uncordon(self, context, host_name):
+        """Asynchronously, have the conductor uncordon evicted pods
+        on this host.
+
+        :param context: request context
+        :param host_name: name of the host
+        """
+        return self.cast(context, self.make_msg('kube_host_uncordon',
+                                                host_name=host_name))
+
     def kube_upgrade_control_plane(self, context, host_uuid):
         """Asynchronously, have the conductor upgrade the kubernetes control
         plane on this host.

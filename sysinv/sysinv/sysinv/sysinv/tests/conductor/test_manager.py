@@ -1281,6 +1281,92 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(updated_upgrade.state,
                          kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
 
+    def test_kube_host_cordon(self):
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADE_CORDON,
+        )
+
+        self.fake_subprocess_popen.returncode = 0
+
+        # Cordon node
+        self.service.kube_host_cordon(self.context, constants.CONTROLLER_0_HOSTNAME)
+
+        # Verify that we called kubectl drain command to cordon
+        cordon_cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
+                      'drain', constants.CONTROLLER_0_HOSTNAME, '--ignore-daemonsets',
+                      '--delete-emptydir-data', '--delete-local-data', '--force',
+                      '--skip-wait-for-delete-timeout=1']
+        self.mock_subprocess_popen.assert_called_with(cordon_cmd, stdout=-1, stderr=-1,
+                                                      universal_newlines=True)
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_UPGRADE_CORDON_COMPLETE)
+
+    def test_kube_host_uncordon(self):
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADE_UNCORDON,
+        )
+
+        self.fake_subprocess_popen.returncode = 0
+
+        # Uncordon node
+        self.service.kube_host_uncordon(self.context, constants.CONTROLLER_0_HOSTNAME)
+
+        # Verify that we called kubectl command to uncordon
+        uncordon_cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
+                        'uncordon', constants.CONTROLLER_0_HOSTNAME]
+        self.mock_subprocess_popen.assert_called_with(uncordon_cmd, stdout=-1, stderr=-1,
+                                                      universal_newlines=True)
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_UPGRADE_UNCORDON_COMPLETE)
+
     def test_kube_upgrade_control_plane_first_master(self):
         # Create an upgrade
         utils.create_test_kube_upgrade(

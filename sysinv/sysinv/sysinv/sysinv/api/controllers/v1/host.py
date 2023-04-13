@@ -7112,10 +7112,17 @@ class HostController(rest.RestController):
         kubelet_version = self._kube_operator.kube_get_kubelet_versions()
         current_kubelet_version = kubelet_version.get(host_obj.hostname)
 
-        # Verify the upgrade is in the correct state
-        if kube_upgrade_obj.state in [
+        if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
+            check_upgraded_state = [
+                kubernetes.KUBE_UPGRADED_FIRST_MASTER,
+                kubernetes.KUBE_UPGRADE_CORDON_COMPLETE]
+        else:
+            check_upgraded_state = [
                 kubernetes.KUBE_UPGRADED_NETWORKING,
-                kubernetes.KUBE_UPGRADED_FIRST_MASTER]:
+                kubernetes.KUBE_UPGRADED_FIRST_MASTER]
+
+        # Verify the upgrade is in the correct state
+        if kube_upgrade_obj.state in check_upgraded_state:
             # We are upgrading a control plane
             pass
         elif kube_upgrade_obj.state == kubernetes.KUBE_UPGRADING_KUBELETS and \
@@ -7207,7 +7214,8 @@ class HostController(rest.RestController):
 
         if kube_upgrade_obj.state in [
                 kubernetes.KUBE_UPGRADED_NETWORKING,
-                kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED]:
+                kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED,
+                kubernetes.KUBE_UPGRADE_CORDON_COMPLETE]:
             # Update the upgrade state
             kube_upgrade_obj.state = kubernetes.KUBE_UPGRADING_FIRST_MASTER
             kube_upgrade_obj.save()

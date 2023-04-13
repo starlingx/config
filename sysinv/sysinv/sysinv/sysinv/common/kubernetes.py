@@ -92,6 +92,12 @@ KUBE_UPGRADING_SECOND_MASTER_FAILED = 'upgrading-second-master-failed'
 KUBE_UPGRADED_SECOND_MASTER = 'upgraded-second-master'
 KUBE_UPGRADING_KUBELETS = 'upgrading-kubelets'
 KUBE_UPGRADE_COMPLETE = 'upgrade-complete'
+KUBE_UPGRADE_CORDON = 'cordon-started'
+KUBE_UPGRADE_CORDON_COMPLETE = 'cordon-complete'
+KUBE_UPGRADE_CORDON_FAILED = 'cordon-failed'
+KUBE_UPGRADE_UNCORDON = 'uncordon-started'
+KUBE_UPGRADE_UNCORDON_COMPLETE = 'uncordon-complete'
+KUBE_UPGRADE_UNCORDON_FAILED = 'uncordon-failed'
 
 # Kubernetes host upgrade statuses
 KUBE_HOST_UPGRADING_CONTROL_PLANE = 'upgrading-control-plane'
