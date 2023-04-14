@@ -9,10 +9,8 @@ from eventlet.green import subprocess
 import json
 import keyring
 import netaddr
-import os
 import random
 import re
-import tempfile
 
 from oslo_log import log as logging
 from sysinv.common import constants
@@ -244,41 +242,15 @@ class KubernetesPuppet(base.BasePuppet):
         try:
             join_cmd_additions = ''
             if host.personality == constants.CONTROLLER:
-                # Upload the certificates used during kubeadm join
-                # The cert key will be printed in the last line of the output
-
-                # We will create a temp file with the kubeadm config
-                # We need this because the kubeadm config could have changed
-                # since bootstrap. Reading the kubeadm config each time
-                # it is needed ensures we are not using stale data
-
-                fd, temp_kubeadm_config_view = tempfile.mkstemp(
-                    dir='/tmp', suffix='.yaml')
-                with os.fdopen(fd, 'w') as f:
-                    cmd = ['kubectl', 'get', 'cm', '-n', 'kube-system',
-                           'kubeadm-config', '-o=jsonpath={.data.ClusterConfiguration}',
-                           KUBECONFIG]
-                    subprocess.check_call(cmd, stdout=f)  # pylint: disable=not-callable
-
-                # We will use a custom key to encrypt kubeadm certificates
-                # to make sure all hosts decrypt using the same key
-
+                # Upload the certificates used during kubeadm join.
                 key = str(keyring.get_password(CERTIFICATE_KEY_SERVICE,
-                        CERTIFICATE_KEY_USER))
-
-                with open(temp_kubeadm_config_view, "a") as f:
-                    f.write("---\r\napiVersion: kubeadm.k8s.io/v1beta2\r\n"
-                            "kind: InitConfiguration\r\ncertificateKey: "
-                            "{}".format(key))
-
+                                               CERTIFICATE_KEY_USER))
                 cmd = ['kubeadm', 'init', 'phase', 'upload-certs',
-                       '--upload-certs', '--config',
-                       temp_kubeadm_config_view]
-
+                       '--upload-certs', '--certificate-key', key]
                 subprocess.check_call(cmd)  # pylint: disable=not-callable
-                join_cmd_additions = \
-                    " --control-plane --certificate-key %s" % key
-                os.unlink(temp_kubeadm_config_view)
+
+                # Now add the key to the join command.
+                join_cmd_additions = " --control-plane --certificate-key %s" % key
 
                 # Configure the IP address of the API Server for the controller host.
                 # If not set the default network interface will be used, which does not

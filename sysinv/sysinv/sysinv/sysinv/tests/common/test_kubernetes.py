@@ -1249,6 +1249,79 @@ class TestKubeOperator(base.TestCase):
             watch=False
         )
 
+    def test_kubeadm_configmap_reformat(self):
+        mock_kube_patch_config_map = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_patch_config_map',
+            mock_kube_patch_config_map)
+        p2.start().return_value = None
+        self.addCleanup(p2.stop)
+
+        # Test IPv4 only in block style
+        self.read_namespaced_config_map_result = kubernetes.client.V1ConfigMap(
+            api_version="v1",
+            data={"ClusterConfiguration":
+                  "apiServer:\n"
+                  "  certSANs:\n"
+                  "  - 127.0.0.1\n"
+                  "  - 192.168.206.2\n"
+                  },
+            metadata=kubernetes.client.V1ObjectMeta(
+                name="kubeadm-config",
+                namespace="kube-system"),
+        )
+        self.kube_operator.kubeadm_configmap_reformat('dummy')
+        mock_kube_patch_config_map.assert_not_called()
+
+        # Test IPv4 only in flow style
+        self.read_namespaced_config_map_result = kubernetes.client.V1ConfigMap(
+            api_version="v1",
+            data={"ClusterConfiguration":
+                  "apiServer:\n"
+                  "  certSANs: [127.0.0.1, 192.168.206.2]\n"
+                  },
+            metadata=kubernetes.client.V1ObjectMeta(
+                name="kubeadm-config",
+                namespace="kube-system"),
+        )
+        self.kube_operator.kubeadm_configmap_reformat('dummy')
+        mock_kube_patch_config_map.assert_not_called()
+
+        # Test IPv6 and IPv4 in block style
+        self.read_namespaced_config_map_result = kubernetes.client.V1ConfigMap(
+            api_version="v1",
+            data={"ClusterConfiguration":
+                  "apiServer:\n"
+                  "  certSANs:\n"
+                  "  - ::1\n"
+                  "  - 192.168.206.2\n"
+                  },
+            metadata=kubernetes.client.V1ObjectMeta(
+                name="kubeadm-config",
+                namespace="kube-system"),
+        )
+        self.kube_operator.kubeadm_configmap_reformat('dummy')
+        mock_kube_patch_config_map.assert_not_called()
+
+        # Test IPv6 and IPv4 in flow style
+        self.read_namespaced_config_map_result = kubernetes.client.V1ConfigMap(
+            api_version="v1",
+            data={"ClusterConfiguration":
+                  "apiServer:\n"
+                  "  certSANs: [::1, 127.0.0.1]\n"
+                  },
+            metadata=kubernetes.client.V1ObjectMeta(
+                name="kubeadm-config",
+                namespace="kube-system"),
+        )
+        self.kube_operator.kubeadm_configmap_reformat('dummy')
+        patch_config_map_arg = {
+            'data': {
+                'ClusterConfiguration':
+                    'apiServer:\n  certSANs:\n  - ::1\n  - 127.0.0.1\n'}}
+        mock_kube_patch_config_map.assert_called_with(
+                'kubeadm-config', 'kube-system', patch_config_map_arg)
+
 
 class TestKubernetesUtilities(base.TestCase):
     def test_is_kube_version_supported(self):
