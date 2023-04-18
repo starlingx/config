@@ -287,6 +287,15 @@ def _validate_intel_nic_driver_version(name, value):
                 name, constants.SERVICE_PARAM_PLAT_CONFIG_INTEL_CVL_VALUES)))
 
 
+def _validate_intel_pstate(name, value):
+    """Check if intel_pstate value is valid"""
+
+    if value not in constants.SERVICE_PARAM_PLAT_CONFIG_INTEL_PSTATE_VALUES:
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '{}' value must be one of {}".format(
+                name, constants.SERVICE_PARAM_PLAT_CONFIG_INTEL_PSTATE_VALUES)))
+
+
 def _get_network_pool_from_ip_address(ip, networks):
     for name in networks:
         try:
@@ -751,6 +760,7 @@ PLATFORM_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL,
     constants.SERVICE_PARAM_NAME_PLATFORM_MAX_CPU_PERCENTAGE,
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION,
+    constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE,
 ]
 
 PLATFORM_CONFIG_PARAMETER_READONLY = [
@@ -764,12 +774,16 @@ PLATFORM_CONFIG_PARAMETER_VALIDATOR = {
         _validate_max_cpu_min_percentage,
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION:
         _validate_intel_nic_driver_version,
+    constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE:
+        _validate_intel_pstate,
 }
 
 PLATFORM_CONFIG_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL: 'platform::params::virtual_system',
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION:
         'platform::compute::grub::params::g_intel_nic_driver_version',
+    constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE:
+        'platform::compute::grub::params::g_intel_pstate',
 }
 
 IDENTITY_LDAP_PARAMETER_OPTIONAL = [

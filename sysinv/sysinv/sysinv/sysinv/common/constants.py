@@ -1117,6 +1117,24 @@ SERVICE_PARAM_PLAT_CONFIG_INTEL_CVL_VALUES = (
     'cvl-4.10',
     'cvl-4.0.1')
 
+SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE = 'intel_pstate'
+# Valid 'intel_pstate' values
+# Kernel Command Line Options for intel_pstate at
+# https://www.kernel.org/doc/html/v4.12/admin-guide/pm/intel_pstate.html
+#   The last entry is used as the default. Currently none was kept as default
+#   to be consistent with previous(there is not intel_pstate in the boot
+#   commandline). The user can set none if they do not want pass argument to
+#   the kernel in the command line for intel_pstate.
+SERVICE_PARAM_PLAT_CONFIG_INTEL_PSTATE_VALUES = (
+    'disable',
+    'passive',
+    'force',
+    'per_cpu_perf_limits',
+    'hwp_only',
+    'support_acpi_ppc',
+    'no_hwp',
+    'none')
+
 # default time to live seconds
 PM_TTL_DEFAULT = 86400
 
