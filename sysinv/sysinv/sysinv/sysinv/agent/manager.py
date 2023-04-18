@@ -93,7 +93,8 @@ agent_opts = [
 audit_intervals_opts = [
        cfg.IntOpt('default', default=60),
        cfg.IntOpt('inventory_audit', default=60),
-       cfg.IntOpt('lldp_audit', default=300)
+       cfg.IntOpt('lldp_audit', default=300),
+       cfg.IntOpt('security_audit', default=900),
                   ]
 
 dpdk_opts = [
@@ -1312,6 +1313,51 @@ class AgentManager(service.PeriodicService):
             self.host_lldp_get_and_report(icontext, rpcapi, self._ihost_uuid)
         else:
             self._lldp_enable_and_report(icontext, rpcapi, self._ihost_uuid)
+
+    @periodic_task.periodic_task(spacing=CONF.agent_periodic_task_intervals.security_audit)
+    def _security_audit(self, context):
+        if not self._ihost_uuid:
+            return
+
+        LOG.debug("Sysinv Agent Security Audit running.")
+
+        # get sysadmin password locally
+        with open("/etc/shadow", "r") as f:
+            user_attrs = []
+            lines = f.readlines()
+            for line in lines:
+                if "sysadmin" in line:
+                    user_attrs = line.split(":")
+                    break
+            if not user_attrs:
+                LOG.warn("No shadow entry found for 'sysadmin' user.")
+                return
+
+        icontext = mycontext.get_admin_context()
+        rpcapi = conductor_rpcapi.ConductorAPI(topic=conductor_rpcapi.MANAGER_TOPIC)
+
+        # get user information from the database
+        try:
+            iuser = rpcapi.get_iuser(icontext)
+        except RemoteError as e:
+            # ignore because active controller is not yet upgraded,
+            # so it's current load may not implement this RPC call
+            if "AttributeError" in str(e):
+                LOG.warn("Skip security audit. Upgrade in progress.")
+            else:
+                LOG.error("Failed to get user configuration via RPC.")
+            return
+        if not iuser.passwd_hash:
+            LOG.warn("No password configured for 'sysadmin' in the database.")
+            return
+
+        # compare sysadmin password hash with the value retrieved from the
+        # database and trigger user config manifest reapply if values differ
+        if iuser.passwd_hash != user_attrs[1]:
+            LOG.info("Configuration mismatch for 'sysadmin' user, attempting to reconfigure...")
+            rpcapi.update_user_config(icontext, [self._ihost_uuid])
+        else:
+            LOG.debug("No divergence found within 'sysadmin' user configuration.")
 
     @utils.synchronized(LOCK_AGENT_ACTION, external=False)
     def agent_audit(self, context, host_uuid, force_updates, cinder_device=None):

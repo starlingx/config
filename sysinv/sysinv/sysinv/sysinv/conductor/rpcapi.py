@@ -190,6 +190,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('get_isystem',))
 
+    def get_iuser(self, context):
+        """Return iuser object
+
+        This method returns an iuser object
+
+        :returns: iuser object, including all field
+        """
+        return self.call(context, self.make_msg('get_iuser',))
+
     def get_ihost_by_macs(self, context, ihost_macs):
         """Finds ihost db entry based upon the mac list
 
@@ -752,12 +761,16 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('update_oam_config'))
 
-    def update_user_config(self, context):
+    def update_user_config(self, context, hosts_uuid=None):
         """Synchronously, have the conductor update the user configuration.
 
         :param context: request context.
+        :param hosts_uuid: list of host_uuids to run user puppet manifest
         """
-        return self.call(context, self.make_msg('update_user_config'))
+        return self.call(
+            context,
+            self.make_msg('update_user_config', hosts_uuid=hosts_uuid)
+        )
 
     def update_controller_rollback_flag(self, context):
         """Synchronously, have a conductor update controller rollback flag
