@@ -9,8 +9,10 @@ from eventlet.green import subprocess
 import json
 import keyring
 import netaddr
+import os
 import random
 import re
+import tempfile
 
 from oslo_log import log as logging
 from sysinv.common import constants
@@ -242,15 +244,51 @@ class KubernetesPuppet(base.BasePuppet):
         try:
             join_cmd_additions = ''
             if host.personality == constants.CONTROLLER:
-                # Upload the certificates used during kubeadm join.
-                key = str(keyring.get_password(CERTIFICATE_KEY_SERVICE,
-                                               CERTIFICATE_KEY_USER))
-                cmd = ['kubeadm', 'init', 'phase', 'upload-certs',
-                       '--upload-certs', '--certificate-key', key]
-                subprocess.check_call(cmd)  # pylint: disable=not-callable
+                # Upload the certificates used during kubeadm join
 
-                # Now add the key to the join command.
-                join_cmd_additions = " --control-plane --certificate-key %s" % key
+                # NOTE: In theory it should be possible to use
+                # "kubeadm init phase upload-certs --upload-certs --certificate-key <key>"
+                # to upload the certs and skip the need to reformat the kubeadm configmap.
+                # In practice (as of K8s 1.23 at least) this does not upload the
+                # external-etcd-ca.crt/external-etcd.crt/external-etcd.key entries in the
+                # "kubeadm-certs" Secret, which results in being unable to join the
+                # cluster.  So we're stuck with dumping the configmap and reformatting
+                # it if needed.
+
+                # Fix up kubeadm-config ConfigMap IPv6 address formatting if needed
+                self._kube_operator.kubeadm_configmap_reformat(None)
+
+                # We will create a temp file with the kubeadm config
+                # We need this because the kubeadm config could have changed
+                # since bootstrap. Reading the kubeadm config each time
+                # it is needed ensures we are not using stale data
+
+                fd, temp_kubeadm_config_view = tempfile.mkstemp(
+                    dir='/tmp', suffix='.yaml')
+                with os.fdopen(fd, 'w') as f:
+                    cmd = ['kubectl', 'get', 'cm', '-n', 'kube-system',
+                           'kubeadm-config', '-o=jsonpath={.data.ClusterConfiguration}',
+                           KUBECONFIG]
+                    subprocess.check_call(cmd, stdout=f)  # pylint: disable=not-callable
+
+                # We will use a custom key to encrypt kubeadm certificates
+                # to make sure all hosts decrypt using the same key
+                key = str(keyring.get_password(CERTIFICATE_KEY_SERVICE,
+                        CERTIFICATE_KEY_USER))
+
+                with open(temp_kubeadm_config_view, "a") as f:
+                    f.write("---\r\napiVersion: kubeadm.k8s.io/v1beta2\r\n"
+                            "kind: InitConfiguration\r\ncertificateKey: "
+                            "{}".format(key))
+
+                cmd = ['kubeadm', 'init', 'phase', 'upload-certs',
+                       '--upload-certs', '--config',
+                       temp_kubeadm_config_view]
+
+                subprocess.check_call(cmd)  # pylint: disable=not-callable
+                join_cmd_additions = \
+                    " --control-plane --certificate-key %s" % key
+                os.unlink(temp_kubeadm_config_view)
 
                 # Configure the IP address of the API Server for the controller host.
                 # If not set the default network interface will be used, which does not
