@@ -1211,7 +1211,6 @@ def create_test_interface(**kw):
     :param kw: kwargs with overriding values for interface's attributes.
     :returns: Test Interface DB object.
     """
-
     interface = get_test_interface(**kw)
     datanetworks_list = interface.get('datanetworks') or []
     networks_list = interface.get('networks') or []
@@ -1262,6 +1261,20 @@ def create_test_interface_network(**kw):
         del interface_network['id']
     dbapi = db_api.get_instance()
     return dbapi.interface_network_create(interface_network)
+
+
+def create_test_interface_network_assign(interface_id, network_id):
+    """Create test network interface entry in DB and return Network DB
+    object. Function to be used to create test Network objects in the database.
+    :param interface_id: interface object id.
+    :param network_id: interface object id.
+    :returns: Test Network DB object.
+    """
+    dbapi = db_api.get_instance()
+    net = dbapi.network_get(network_id)
+    values = {'interface_id': interface_id,
+                'network_id': net.id}
+    return dbapi.interface_network_create(values)
 
 
 def get_test_interface_network(**kw):
