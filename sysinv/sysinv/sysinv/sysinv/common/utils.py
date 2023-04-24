@@ -3770,7 +3770,7 @@ def is_filesystem_enabled(dbapi, host_id_or_uuid, fs_name):
 
 
 def get_rpm_package(load_version, package_name):
-    packages_dir = "/www/pages/feed/rel-%s/Packages/" % load_version
+    packages_dir = "/var/www/pages/feed/rel-%s/Packages/" % load_version
 
     for package in os.listdir(packages_dir):
         if package.startswith(package_name):
