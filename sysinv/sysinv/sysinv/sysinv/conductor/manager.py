@@ -15505,6 +15505,26 @@ class ConductorManager(service.PeriodicService):
         else:
             return constants.RESTORE_PROGRESS_ALREADY_IN_PROGRESS
 
+        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,
+                                        constants.CONTROLLER_HOSTNAME)
+
+        fault = fm_api.Fault(
+            alarm_id=fm_constants.FM_ALARM_ID_RESTORE_IN_PROGRESS,
+            alarm_state=fm_constants.FM_ALARM_STATE_SET,
+            entity_type_id=fm_constants.FM_ENTITY_TYPE_HOST,
+            entity_instance_id=entity_instance_id,
+            severity=fm_constants.FM_ALARM_SEVERITY_MINOR,
+            reason_text=("System Restore in progress."),
+            # operational
+            alarm_type=fm_constants.FM_ALARM_TYPE_7,
+            # congestion
+            probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_8,
+            proposed_repair_action=("Run 'system restore-complete' to complete restore "
+                                    "if running restore manually."),
+            service_affecting=False)
+
+        self.fm_api.set_fault(fault)
+
         # TODO (agrosu): no use case at this point for sending a BACKUP_ACTION_PRE_RESTORE notification.
         return constants.RESTORE_PROGRESS_STARTED
 
@@ -15553,6 +15573,11 @@ class ConductorManager(service.PeriodicService):
 
             self.dbapi.restore_update(restore.uuid,
                                       values={'state': state})
+
+        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,
+                                        constants.CONTROLLER_HOSTNAME)
+
+        self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_RESTORE_IN_PROGRESS, entity_instance_id)
 
         LOG.info("Complete the restore procedure.")
 
