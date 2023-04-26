@@ -15523,6 +15523,17 @@ class ConductorManager(service.PeriodicService):
             LOG.error(e)
             return message
 
+        # Do not allow restore to complete if some apps are still in restore-requested state
+        waiting_apps = [
+            v.name for v in self.dbapi.kube_app_get_all()
+            if v.status in [constants.APP_APPLY_IN_PROGRESS, constants.APP_RESTORE_REQUESTED]]
+
+        if waiting_apps:
+            message = "Some apps are still restoring, " \
+                      "try restore-complete later: {}".format(waiting_apps)
+            LOG.info(message)
+            return message
+
         try:
             restore = self.dbapi.restore_get_one(
                 filters={'state': constants.RESTORE_STATE_IN_PROGRESS})
