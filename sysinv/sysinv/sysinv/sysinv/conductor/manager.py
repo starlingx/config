@@ -5797,6 +5797,16 @@ class ConductorManager(service.PeriodicService):
         system = self.dbapi.isystem_get_one()
         return system
 
+    def get_iuser(self, context):
+        """Return iuser object
+
+        This method returns an iuser object
+
+        :returns: iuser object, including all field
+        """
+        user = self.dbapi.iuser_get_one()
+        return user
+
     def get_ihost_by_macs(self, context, ihost_macs):
         """Finds ihost db entry based upon the mac list
 
@@ -8144,7 +8154,7 @@ class ConductorManager(service.PeriodicService):
             cutils.touch(
                 self._get_oam_runtime_apply_file(standby_controller=True))
 
-    def update_user_config(self, context):
+    def update_user_config(self, context, hosts_uuid=None):
         """Update the user configuration"""
         LOG.info("update_user_config")
 
@@ -8157,6 +8167,9 @@ class ConductorManager(service.PeriodicService):
             "personalities": personalities,
             "classes": ['platform::users::runtime']
         }
+        if hosts_uuid:
+            config_dict.update({"hosts_uuid": hosts_uuid})
+
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
     def update_controller_rollback_flag(self, context):
