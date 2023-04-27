@@ -278,13 +278,14 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
 
     def _create_bond(self, ifname, networktype=None, ifclass=None,
                      datanetworks=None, host=None, expect_errors=False,
-                     aemode=None, ptp_role=None, error_message=None):
+                     aemode=None, ptp_role=None, error_message=None,
+                     portifclass=None):
         if not ptp_role:
             ptp_role = constants.INTERFACE_PTP_ROLE_NONE
         if not host:
             host = self.controller
-        port1, iface1 = self._create_ethernet(host=host)
-        port2, iface2 = self._create_ethernet(host=host)
+        port1, iface1 = self._create_ethernet(host=host, ifclass=portifclass)
+        port2, iface2 = self._create_ethernet(host=host, ifclass=portifclass)
         interface_id = len(self.profile['interfaces'])
         if not ifname:
             ifname = (networktype or 'eth') + str(interface_id)
@@ -862,6 +863,25 @@ class TestPatchMixin(object):
         self.assertEqual('application/json', response.content_type)
         self.assertEqual(http_client.OK, response.status_code)
         self.assertEqual('new_name', response.json['ifname'])
+
+    # Test AE bond of member interfaces of class pci-sriov
+    # modify AE interface to add another port
+    def test_ae_pci_sriov_interface_usesmodify_success(self):
+        bond0 = self._create_bond('bond0',
+                                  ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                                  host=self.worker,
+                                  portifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+                                  aemode=constants.AE_MODE_ACTIVE_STANDBY,
+                                  ptp_role=constants.INTERFACE_PTP_ROLE_NONE)
+        port, new_ethernet = self._create_ethernet(
+            'new', constants.NETWORK_TYPE_NONE, host=self.worker)
+        # Modify AE interface to add another port
+        uses = ','.join(bond0['uses'])
+        patch_result = self.patch_dict_json(
+            '%s' % self._get_path(bond0['uuid']),
+            usesmodify=uses + ',' + new_ethernet['uuid'])
+        self.assertEqual('application/json', patch_result.content_type)
+        self.assertEqual(http_client.OK, patch_result.status_code)
 
     def test_modify_mtu(self):
         interface = dbutils.create_test_interface(forihostid=self.worker.id)

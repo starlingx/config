@@ -1232,8 +1232,8 @@ def _check_interface_data(op, interface, ihost, existing_interface,
                         raise wsme.exc.ClientSideError(msg)
 
     # Ensure that the interfaces being used in the AE interface
-    # are originally set to None when creating the AE interface
-    # and have no PTP role
+    # are originally set to None or 'pci-sriov' when creating
+    # the AE interface and have no PTP role
     if iftype == constants.INTERFACE_TYPE_AE:
         for i in interface['uses']:
             msg = None
@@ -1242,10 +1242,11 @@ def _check_interface_data(op, interface, ihost, existing_interface,
                 msg = _("None of interfaces being used in an 'aggregated "
                         "ethernet' interface can have a PTP role "
                         "(must be 'none').")
-            elif iface_lower.ifclass:
+            elif iface_lower.ifclass and \
+                    iface_lower.ifclass != constants.INTERFACE_CLASS_PCI_SRIOV:
                 msg = _("All interfaces being used in an 'aggregated ethernet' "
                         "interface must have the interface class set to "
-                        "'none'.")
+                        "'none' or 'pci-sriov'.")
             if msg:
                 raise wsme.exc.ClientSideError(msg)
 
@@ -1263,11 +1264,12 @@ def _check_interface_data(op, interface, ihost, existing_interface,
                             "therefore the PTP role cannot be changed from "
                             "'none'.".format(
                                 interface['ifname'], iface.ifname))
-                elif interface['ifclass']:
+                elif interface['ifclass'] and \
+                        interface['ifclass'] != constants.INTERFACE_CLASS_PCI_SRIOV:
                     msg = _("Interface '{}' is being used by interface '{}' "
                             "as an 'aggregated ethernet' interface and "
                             "therefore the interface class cannot be changed "
-                            "from 'none'.".format(
+                            "from 'none' or 'pci-sriov'.".format(
                                 interface['ifname'], iface.ifname))
                 if msg:
                     raise wsme.exc.ClientSideError(msg)
