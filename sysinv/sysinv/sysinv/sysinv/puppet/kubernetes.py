@@ -258,6 +258,14 @@ class KubernetesPuppet(base.BasePuppet):
                 # Fix up kubeadm-config ConfigMap IPv6 address formatting if needed
                 self._kube_operator.kubeadm_configmap_reformat(None)
 
+                # Get kubeadm version
+                try:
+                    kube_version = self.dbapi.kube_cmd_version_get()
+                    kubeadm_version = kube_version.kubeadm_version
+                except Exception:
+                    LOG.exception("Exception getting kubeadm version")
+                    raise exception.KubeVersionUnavailable()
+
                 # We will create a temp file with the kubeadm config
                 # We need this because the kubeadm config could have changed
                 # since bootstrap. Reading the kubeadm config each time
@@ -281,8 +289,12 @@ class KubernetesPuppet(base.BasePuppet):
                             "kind: InitConfiguration\r\ncertificateKey: "
                             "{}".format(key))
 
-                cmd = ['kubeadm', 'init', 'phase', 'upload-certs',
-                       '--upload-certs', '--config',
+                # Because we're passing in the entire kubeadm config, if we're doing
+                # a K8s upgrade we need to use the "new" version of kubeadm in case
+                # changes have been made to the kubeadm-config ConfigMap that are
+                # not understood by the "old" kubeadm.
+                cmd = [f'/usr/local/kubernetes/{kubeadm_version}/stage1/usr/bin/kubeadm',
+                       'init', 'phase', 'upload-certs', '--upload-certs', '--config',
                        temp_kubeadm_config_view]
 
                 subprocess.check_call(cmd)  # pylint: disable=not-callable
