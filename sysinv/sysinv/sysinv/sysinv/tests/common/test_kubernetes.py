@@ -1072,7 +1072,11 @@ class TestKubeOperator(base.TestCase):
                           'v1.45.3': 'unavailable'}
 
     def test_kube_get_version_states_ignore_unknown_version(self):
-
+        # As of today, we support multi-version k8s upgrade only on
+        # AIO-SX. So for AIO-SX, assertion may fail as all versions
+        # higher than active version can be "available". For AIO-DX
+        # assertion will not fail.
+        tsc.system_mode = constants.SYSTEM_MODE_DUPLEX
         self.list_namespaced_pod_result = self.cp_pods_result
         self.cp_pods_result['kube-controller-manager-test-node-1'].items[0].\
             spec.containers[0].image = "test-image-2:v1.48.0"
