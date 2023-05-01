@@ -6,6 +6,8 @@
 # Copyright (c) 2021-2023 Wind River Systems, Inc.
 #
 
+. /usr/bin/tsconfig
+
 #
 # This script is to rotate kubernetes cluster certificates automatically
 #
@@ -282,6 +284,11 @@ if [ ${ERR} -eq 0 ]; then
     result=$?
     if [ ${result} -eq 0 ]; then
         RESTART_ETCD=1
+        # Update the cert and key shared with standby controller
+        if [ -d ${CONFIG_PATH}/etcd ]; then
+            cp "/etc/etcd/etcd-server.crt" ${CONFIG_PATH}/etcd
+            cp "/etc/etcd/etcd-server.key" ${CONFIG_PATH}/etcd
+        fi
     elif [ ${result} -eq 1 ]; then
         ERR=1
     fi
@@ -304,7 +311,13 @@ if [ ${ERR} -eq 0 ]; then
     "
     renew_cert_by_openssl "/etc/etcd" "etcd-client" "${config}"
     result=$?
-    if [ ${result} -eq 1 ]; then
+    if [ ${result} -eq 0 ]; then
+        # Update the cert and key shared with standby controller
+        if [ -d ${CONFIG_PATH}/etcd ]; then
+            cp "/etc/etcd/etcd-client.crt" ${CONFIG_PATH}/etcd
+            cp "/etc/etcd/etcd-client.key" ${CONFIG_PATH}/etcd
+        fi
+    elif [ ${result} -eq 1 ]; then
         ERR=1
     fi
 fi
