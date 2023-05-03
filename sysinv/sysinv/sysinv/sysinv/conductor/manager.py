@@ -11688,6 +11688,20 @@ class ConductorManager(service.PeriodicService):
                      self._host_deferred_runtime_config)
             return
 
+        # If this is a new config but there are deferred configs waiting,
+        # make this one a deferred config as well.
+        # This will prevent newer configs from being applied
+        # before older deferred configs.
+        elif deferred_config is None and self._host_deferred_runtime_config:
+            self._update_host_deferred_runtime_config(
+                CONFIG_APPLY_RUNTIME_MANIFEST,
+                config_uuid,
+                config_dict,
+                force)
+            LOG.info("defer apply runtime manifest due to ordering %s" %
+                     self._host_deferred_runtime_config)
+            return
+
         if not self._try_config_update_puppet(
                 config_uuid, config_dict, deferred_config, host_uuids, force):
             return
