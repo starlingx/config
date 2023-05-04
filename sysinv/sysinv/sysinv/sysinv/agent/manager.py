@@ -2136,5 +2136,7 @@ class AgentManager(service.PeriodicService):
     def report_initial_inventory(self, context, host_uuid):
         # conductor requests re-report initial inventory
         if self._ihost_uuid and self._ihost_uuid == host_uuid:
+            os.remove(constants.SYSINV_REPORTED)
+            self._prev_fs = None
             self._inventoried_initial = False
             self._inventory_reported = set()
