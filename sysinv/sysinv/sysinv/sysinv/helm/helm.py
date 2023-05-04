@@ -124,15 +124,18 @@ class HelmOperator(object):
                 if project_location == install_location:
                     extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_LIFECYCLE].remove(lifecycle_ep)
                     break
-            except exception.SysinvException:
+            except Exception as e:
+                LOG.error("Error while trying to purge lifecycle entry point {}, error: {}".
+                          format(lifecycle_ep, e))
+
                 # Temporary suppress errors on Debian until Stevedore is reworked.
                 # See https://storyboard.openstack.org/#!/story/2009101
                 if utils.is_debian():
-                    LOG.info("Didn't find distribution for {}. Deleting from cache".format(lifecycle_ep))
+                    LOG.info("Deleting {} from cache".format(lifecycle_ep))
                     try:
                         extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_LIFECYCLE].remove(lifecycle_ep)
                     except Exception as e:
-                        LOG.info("Tried removing lifecycle_ep {}, error: {}".format(lifecycle_ep, e))
+                        LOG.error("Tried removing lifecycle_ep {}, error: {}".format(lifecycle_ep, e))
                 else:
                     raise
         else:
@@ -150,15 +153,18 @@ class HelmOperator(object):
                 if project_location == install_location:
                     extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_FLUXCD].remove(fluxcd_ep)
                     break
-            except exception.SysinvException:
+            except Exception as e:
+                LOG.error("Error while trying to purge flux entry point {}, error: {}".
+                          format(fluxcd_ep, e))
+
                 # Temporary suppress errors on Debian until Stevedore is reworked.
                 # See https://storyboard.openstack.org/#!/story/2009101
                 if utils.is_debian():
-                    LOG.info("Didn't find distribution for {}. Deleting from cache".format(fluxcd_ep))
+                    LOG.info("Deleting {} from cache".format(fluxcd_ep))
                     try:
                         extension.ExtensionManager.ENTRY_POINT_CACHE[self.STEVEDORE_FLUXCD].remove(fluxcd_ep)
                     except Exception as e:
-                        LOG.info("Tried removing fluxcd_ep {}, error: {}".format(fluxcd_ep, e))
+                        LOG.error("Tried removing fluxcd_ep {}, error: {}".format(fluxcd_ep, e))
                 else:
                     raise
         else:
