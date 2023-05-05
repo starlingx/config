@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2014 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 
 
@@ -54,6 +54,14 @@ UPDATED_IHOST = copy.deepcopy(IHOST)
 NEW_LOC = 'newlocOttawa'
 UPDATED_IHOST['location'] = NEW_LOC
 
+KERNEL = {'ihost_uuid': IHOST['uuid'],
+          'hostname': IHOST['hostname'],
+          'kernel_provisioned': 'standard',
+          'kernel_running': 'standard'}
+
+UPDATED_KERNEL = copy.deepcopy(KERNEL)
+NEW_KERNEL = 'lowlatency'
+UPDATED_KERNEL['kernel_provisioned'] = NEW_KERNEL
 
 fixtures = {
     '/v1/ihosts':
@@ -87,6 +95,17 @@ fixtures = {
         'GET': (
             {},
             {"ports": [PORT]},
+        ),
+    },
+    '/v1/ihosts/%s/kernel' % IHOST['uuid']:
+    {
+        'GET': (
+            {},
+            KERNEL,
+        ),
+        'PATCH': (
+            {},
+            UPDATED_KERNEL,
         ),
     },
 }
@@ -142,3 +161,25 @@ class HostManagerTest(testtools.TestCase):
         ]
         self.assertEqual(self.api.calls, expect)
         self.assertEqual(ihost.location, NEW_LOC)
+
+    def test_host_kernel_modify(self):
+        patch = {'op': 'replace',
+                 'value': NEW_KERNEL,
+                 'path': '/kernel_provisioned'}
+        kernel = self.mgr.host_kernel_modify(hostid=IHOST['uuid'],
+                                             patch=patch)
+        expect = [
+            ('PATCH', '/v1/ihosts/%s/kernel' % IHOST['uuid'], {}, patch),
+        ]
+        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(kernel.kernel_provisioned, NEW_KERNEL)
+        self.assertEqual(kernel.kernel_running, 'standard')
+
+    def test_host_kernel_show(self):
+        kernel = self.mgr.host_kernel_show(hostid=IHOST['uuid'])
+        expect = [
+            ('GET', '/v1/ihosts/%s/kernel' % IHOST['uuid'], {}, None),
+        ]
+        self.assertEqual(self.api.calls, expect)
+        self.assertEqual(kernel.kernel_provisioned, 'standard')
+        self.assertEqual(kernel.kernel_running, 'standard')

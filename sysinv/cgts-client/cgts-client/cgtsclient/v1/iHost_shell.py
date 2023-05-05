@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -711,3 +711,46 @@ def do_host_cpu_max_frequency_modify(cc, args):
     except exc.HTTPNotFound:
         raise exc.CommandError('host not found: %s' % args.hostnameorid)
     _print_ihost_show(ihost)
+
+
+@utils.arg('hostnameorid',
+           metavar='<hostnameorid>',
+           help="Name or ID of host")
+@utils.arg('kernel',
+           metavar='<kernel>',
+           choices=['standard', 'lowlatency'],
+           help="Kernel image is either standard or lowlatency")
+def do_host_kernel_modify(cc, args):
+    """
+    Modify the kernel image to either standard or lowlatency.
+    """
+    attributes = {'kernel_provisioned': args.kernel}
+    patch = utils.dict_to_patch(attributes)
+
+    ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
+    try:
+        cc.ihost.host_kernel_modify(ihost.uuid, patch)
+    except exc.HTTPNotFound:
+        raise exc.CommandError('Host not found: %s' % args.hostnameorid)
+
+
+def _print_kernel_show(kernel, output_format=None):
+    fields = ['hostname', 'kernel_provisioned', 'kernel_running']
+    data_list = [(f, getattr(kernel, f, '')) for f in fields]
+    data = dict(data_list)
+    utils.print_dict_with_format(data, wrap=72, output_format=output_format)
+
+
+@utils.arg('hostnameorid', metavar='<hostname or id>',
+           help="Name or ID of host")
+@utils.arg('--format',
+           choices=['table', 'yaml', 'value'],
+           help="specify the output format, defaults to table")
+def do_host_kernel_show(cc, args):
+    """Show kernel attributes."""
+    ihost = ihost_utils._find_ihost(cc, args.hostnameorid)
+    try:
+        kernel = cc.ihost.host_kernel_show(ihost.uuid)
+    except exc.HTTPNotFound:
+        raise exc.CommandError('Host not found: %s' % args.hostnameorid)
+    _print_kernel_show(kernel, args.format)

@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -204,6 +204,7 @@ class ihost(Base):
     bm_username = Column(String(255))
 
     personality = Column(invPersonalityEnum)
+    kernel_running = Column(String(64))
     subfunctions = Column(String(255))
     subfunction_oper = Column(operEnum, default="disabled")
     subfunction_avail = Column(availEnum, default="not-installed")

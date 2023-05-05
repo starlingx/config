@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -36,7 +36,8 @@ class Host(base.SysinvObject):
 
     dbapi = db_api.get_instance()
 
-    fields = {
+    fields = \
+        {
             'id': int,
             'forisystemid': utils.int_or_none,
             'isystem_uuid': utils.str_or_none,
@@ -47,6 +48,7 @@ class Host(base.SysinvObject):
             # 'updated_at': utils.datetime_str_or_none,
             'hostname': utils.str_or_none,
             'personality': utils.str_or_none,
+            'kernel_running': utils.str_or_none,
             'subfunctions': utils.str_or_none,
             'subfunction_oper': utils.str_or_none,
             'subfunction_avail': utils.str_or_none,
@@ -105,7 +107,7 @@ class Host(base.SysinvObject):
             'reboot_needed': utils.bool_or_none,
             'max_cpu_mhz_configured': utils.str_or_none,
             'max_cpu_mhz_allowed': utils.str_or_none
-             }
+        }
 
     _foreign_fields = {
         'isystem_uuid': 'system:uuid',

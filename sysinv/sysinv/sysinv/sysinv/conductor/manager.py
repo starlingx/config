@@ -128,7 +128,6 @@ from sysinv.helm.lifecycle_hook import LifecycleHookInfo
 from sysinv.zmq_rpc.zmq_rpc import ZmqRpcServer
 from sysinv.zmq_rpc.zmq_rpc import is_rpc_hybrid_mode_active
 
-
 MANAGER_TOPIC = 'sysinv.conductor_manager'
 
 LOG = log.getLogger(__name__)
@@ -1231,6 +1230,181 @@ class ConductorManager(service.PeriodicService):
         }
 
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+    def kernel_runtime_manifests(self, context, ihost_uuid):
+        """Execute kernel runtime manifests
+           Uses db lowlatency value from ihost.subfunctions
+
+        :param context: an admin context
+        :param ihost_uuid: uuid of host getting kernel config update
+
+        """
+        try:
+            host = self.dbapi.ihost_get(ihost_uuid)
+        except exception.ServerNotFound:
+            LOG.error(f'Host not found {ihost_uuid}')
+            return None
+
+        personalities = [host['personality']]
+        host_uuids = [host['uuid']]
+        config_uuid = self._config_update_hosts(
+            context=context,
+            personalities=personalities,
+            host_uuids=host_uuids,
+            reboot=True)  # TODO: check if reboot is required
+        config_dict = {
+            "personalities": personalities,
+            "host_uuids": host_uuids,
+            "classes": [
+                'platform::grub::kernel_image::runtime',
+                'platform::config::file::subfunctions::lowlatency::runtime'
+            ]
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+    def report_kernel_running(self, context, ihost_uuid, kernel_running: str):
+        """Report from sysinv agent with the running kernel of that host
+
+        :param context: admin context
+        :param ihost_uuid: host uuid
+        :param kernel_running (str): the running kernel
+        """
+        ihost_uuid = ihost_uuid.strip()
+        try:
+            host = self.dbapi.ihost_get(ihost_uuid)
+        except exception.ServerNotFound:
+            LOG.info(f'Report from uuid={ihost_uuid} '
+                     f'kernel_running={kernel_running}')
+            LOG.error(f'Host not found {ihost_uuid}')
+            return None
+
+        hostname = host['hostname']
+        LOG.info(f'Report from {hostname} running kernel={kernel_running}')
+
+        # validate reported running kernel
+        if kernel_running not in constants.SUPPORTED_KERNELS:
+            error_msg = (f'{hostname} reported unexpected '
+                         f'kernel_running {kernel_running}')
+            LOG.error(error_msg)
+            raise exception.SysinvException(_(error_msg))
+
+        # update db with kernel_running update and reload host object
+        host.save_changes(context, {'kernel_running': kernel_running})
+        host = self.dbapi.ihost_get(ihost_uuid)
+        LOG.info(f"DB updated {hostname} "
+                 f"kernel_running={host['kernel_running']}")
+
+        # raise and clear running kernel mismatch alarms
+        self._update_controllers_kernel_mismatch_alarms()
+        self._update_kernel_provisioned_mismatch_alarm(host)
+
+    def _clear_kernel_mismatch_alarm(self, alarm_id: str, hostname: str):
+        """Clear alarm that matches the alarm id and hostname
+           entity_id include host=<hostname>.kernel...
+           match the hostname
+
+        Args:
+            alarm_id (str): alarm id
+            hostname (str): hostname
+        """
+        entity_instance_id_partial = f"host={hostname}"
+        alarms = self.fm_api.get_faults_by_id(alarm_id)
+        if alarms is None:
+            return None
+
+        for alarm in alarms:
+            if entity_instance_id_partial in alarm.entity_instance_id:
+                entity_instance_id = alarm.entity_instance_id
+                LOG.info(f"Clearing alarm {alarm_id} {entity_instance_id}")
+                self.fm_api.clear_fault(alarm_id, entity_instance_id)
+
+    def _update_controllers_kernel_mismatch_alarms(self):
+        """ Raise or clear the 100.120 alarm
+            Controllers running mismtached kernels.
+            compares the 2 controllers running kernels
+        """
+        alarm_id = fm_constants.FM_ALARM_ID_CONTROLLERS_KERNEL_MISMATCH
+        pra = _(fm_constants.FM_PRA_CONTROLLERS_KERNEL_MISMATCH)
+        reason_text = _("Controllers running mismatched kernels.")
+
+        controller_kernels = set()
+        controllers = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+        if len(controllers) != 2:
+            return None
+
+        for host in controllers:
+            hostname = host['hostname']
+            kernel_running = host['kernel_running']
+            # incomplete info, wait for reports from all controller agents
+            if not kernel_running:
+                LOG.info(f"{hostname} missing running kernel info")
+                return None
+            controller_kernels.add(kernel_running)
+
+        if len(controller_kernels) == 1:
+            # all running kernels match
+            for host in controllers:
+                hostname = host['hostname']
+                self._clear_kernel_mismatch_alarm(alarm_id, hostname)
+            return None
+
+        # detected mismatched running kernels
+        for host in controllers:
+            hostname = host['hostname']
+            kernel_running = host['kernel_running']
+            entity_instance_id = f"host={hostname}.kernel={kernel_running}"
+            fault = fm_api.Fault(
+                alarm_id=alarm_id,
+                alarm_state=fm_constants.FM_ALARM_STATE_SET,
+                entity_type_id=fm_constants.FM_ENTITY_TYPE_HOST,
+                entity_instance_id=entity_instance_id,
+                severity=fm_constants.FM_ALARM_SEVERITY_MINOR,
+                reason_text=reason_text,
+                alarm_type=fm_constants.FM_ALARM_TYPE_4,
+                probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_65,
+                proposed_repair_action=pra,
+                service_affecting=False)
+            LOG.info(f"Raising alarm {alarm_id} {entity_instance_id}")
+            self.fm_api.set_fault(fault)
+
+    def _update_kernel_provisioned_mismatch_alarm(self, host):
+        """Raise or clear the 100.121 alarm
+           Host not running the provisioned kernel.
+           Compares the provisioned kernel vs the running kernel of the
+           specified host
+
+        Args:
+            host: the host the alarm is against
+        """
+        alarm_id = fm_constants.FM_ALARM_ID_PROVISIONED_KERNEL_MISMATCH
+        pra = _(fm_constants.FM_PRA_PROVISIONED_KERNEL_MISMATCH)
+        reason_text = _("Host not running the provisioned kernel.")
+
+        if constants.LOWLATENCY in host[constants.SUBFUNCTIONS]:
+            kernel_provisioned = constants.KERNEL_LOWLATENCY
+        else:
+            kernel_provisioned = constants.KERNEL_STANDARD
+
+        hostname = host['hostname']
+        kernel_running = host['kernel_running']
+        entity_instance_id = f"host={hostname}.kernel={kernel_running}"
+
+        if kernel_running != kernel_provisioned:
+            fault = fm_api.Fault(
+                alarm_id=alarm_id,
+                alarm_state=fm_constants.FM_ALARM_STATE_SET,
+                entity_type_id=fm_constants.FM_ENTITY_TYPE_HOST,
+                entity_instance_id=entity_instance_id,
+                severity=fm_constants.FM_ALARM_SEVERITY_MAJOR,
+                reason_text=reason_text,
+                alarm_type=fm_constants.FM_ALARM_TYPE_4,
+                probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_65,
+                proposed_repair_action=pra,
+                service_affecting=False)
+            LOG.info(f"Raising alarm {alarm_id} {entity_instance_id}")
+            self.fm_api.set_fault(fault)
+        else:
+            self._clear_kernel_mismatch_alarm(alarm_id, hostname)
 
     def _update_pxe_config(self, host, load=None):
         """Set up the PXE config file for this host so it can run
@@ -7093,7 +7267,6 @@ class ConductorManager(service.PeriodicService):
                 self.evaluate_apps_reapply(
                     context,
                     trigger={'type': constants.APP_EVALUATE_REAPPLY_TYPE_DETECTED_SWACT})
-
         else:
             LOG.info("Initial save active controller {}"
                      "".format(new_active))
@@ -15778,7 +15951,7 @@ class ConductorManager(service.PeriodicService):
         """
         LOG.info("Entering device_update_by_host %s %s" %
                   (host_uuid, fpga_device_dict_array))
-        host_uuid.strip()
+        host_uuid = host_uuid.strip()
         try:
             host = self.dbapi.ihost_get(host_uuid)
         except exception.ServerNotFound:

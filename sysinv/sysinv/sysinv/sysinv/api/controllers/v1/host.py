@@ -88,6 +88,7 @@ from sysinv.api.controllers.v1 import vim_api
 from sysinv.api.controllers.v1 import patch_api
 from sysinv.api.controllers.v1 import ptp_instance
 from sysinv.api.controllers.v1 import ptp_interface
+from sysinv.api.controllers.v1 import kernel
 from sysinv.common import ceph
 from sysinv.common import constants
 from sysinv.common import device
@@ -1144,6 +1145,9 @@ class HostController(rest.RestController):
 
     ptp_interfaces = ptp_interface.PtpInterfaceController(parent="ihosts")
     "Expose PTP interfaces as a sub-element of ihosts"
+
+    kernel = kernel.KernelController()
+    "Expose kernel as a sub-element of ihosts"
 
     _custom_actions = {
         'detail': ['GET'],

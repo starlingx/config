@@ -2192,3 +2192,27 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('update_host_max_cpu_mhz_configured',
                                        host=host))
+
+    def kernel_runtime_manifests(self, context, ihost_uuid):
+        """Synchronously, execute runtime manifests to update kernel
+
+        :param context: request context.
+        :param ihost_uuid: uuid of host getting kernel config update
+
+        """
+
+        return self.call(context,
+                         self.make_msg('kernel_runtime_manifests',
+                                       ihost_uuid=ihost_uuid))
+
+    def report_kernel_running(self, context, ihost_uuid, kernel_running: str):
+        """Report the local running kernel to the Conductor
+
+        :param context: request context
+        :param ihost_uuid: uuid of the host sending the update
+        :param kernel_running (str): the running kernel
+        """
+        return self.cast(context,
+                         self.make_msg('report_kernel_running',
+                                       ihost_uuid=ihost_uuid,
+                                       kernel_running=kernel_running))

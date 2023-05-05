@@ -1,13 +1,15 @@
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2019-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
 import mock
+import yaml
 
 from cgtsclient.tests import test_shell
 from cgtsclient.v1.ihost import ihost
+from cgtsclient.v1.ihost import ihost_kernel
 from cgtsclient.v1.kube_host_upgrade import KubeHostUpgrade
 
 FAKE_KUBE_HOST_UPGRADE = {
@@ -59,6 +61,12 @@ FAKE_IHOST_3 = {
     'uuid': '3a966002-14b9-4b96-bcf5-345ff50086b8',
     'hostname': 'storage-0',
     'personality': 'storage',
+}
+
+FAKE_KERNEL = {
+    'hostname': 'controller-0',
+    'kernel_provisioned': 'lowlatency',
+    'kernel_running': 'lowlatency',
 }
 
 
@@ -210,3 +218,20 @@ class HostTest(test_shell.ShellTest):
                       results)
         self.assertIn(str(FAKE_KUBE_HOST_UPGRADE_2['status']),
                       results)
+
+    @mock.patch('cgtsclient.v1.ihost.ihostManager.host_kernel_show')
+    def test_host_kernel_show(self, mock_host_kernel_show):
+        """Returns a single kernel """
+        self.make_env()
+        mock_host_kernel_show.return_value = ihost_kernel(None,
+                                                          FAKE_KERNEL,
+                                                          True)
+        results = self.shell("host-kernel-show --format=yaml "
+                             f"{FAKE_KERNEL['hostname']}")
+        kernel = yaml.safe_load(results)
+        self.assertEqual(kernel['hostname'],
+                         FAKE_KERNEL['hostname'])
+        self.assertEqual(kernel['kernel_provisioned'],
+                         FAKE_KERNEL['kernel_provisioned'])
+        self.assertEqual(kernel['kernel_running'],
+                         FAKE_KERNEL['kernel_running'])

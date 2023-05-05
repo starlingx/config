@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -25,6 +25,11 @@ CREATION_ATTRIBUTES = ['hostname', 'personality', 'subfunctions', 'mgmt_mac',
 class ihost(base.Resource):
     def __repr__(self):
         return "<ihost %s>" % self._info
+
+
+class ihost_kernel(base.Resource):
+    def __repr__(self):
+        return "<kernel %s>" % self._info
 
 
 class ihostManager(base.Manager):
@@ -150,6 +155,16 @@ class ihostManager(base.Manager):
         path = self._path(hostid) + "/device_image_update_abort"
         resp, body = self.api.json_request('POST', path)
         return self.resource_class(self, body)
+
+    def host_kernel_modify(self, hostid, patch):
+        url = self._path(hostid) + "/kernel"
+        resp, body = self.api.json_request('PATCH', url, body=patch)
+        return ihost_kernel(self, body)
+
+    def host_kernel_show(self, hostid):
+        url = self._path(hostid) + "/kernel"
+        resp, body = self.api.json_request('GET', url)
+        return ihost_kernel(self, body)
 
 
 def _find_ihost(cc, ihost_id):

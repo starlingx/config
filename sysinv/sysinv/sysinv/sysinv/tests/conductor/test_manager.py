@@ -551,6 +551,7 @@ class ManagerTestCase(base.DbTestCase):
         self.service._ceph_mon_create = mock.Mock()
         self.service._sx_to_dx_post_migration_actions = mock.Mock()
         self.alarm_raised = False
+        self.kernel_alarms = {}
 
     def tearDown(self):
         super(ManagerTestCase, self).tearDown()
@@ -5087,6 +5088,226 @@ class ManagerTestCase(base.DbTestCase):
         actual_output = self.service._get_enabled_kube_plugins()
         expected_ouput = ['intelgpu', 'intelqat', 'intelfpga']
         self.assertEqual(actual_output, expected_ouput)
+
+    def _kernel_alarms_fix_keys(self, alarm_id, entity_id=None):
+        """Create the nested dictionary keys if they are missing
+           Prevents KeyError exceptions
+        """
+        if alarm_id not in self.kernel_alarms:
+            self.kernel_alarms[alarm_id] = {}
+        if entity_id and entity_id not in self.kernel_alarms[alarm_id]:
+            self.kernel_alarms[alarm_id][entity_id] = None
+
+    def _kernel_set_fault(self, fault):
+        self._kernel_alarms_fix_keys(fault.alarm_id)
+        self.kernel_alarms[fault.alarm_id][fault.entity_instance_id] = fault
+
+    def _kernel_clear_fault(self, alarm_id, entity_id):
+        self._kernel_alarms_fix_keys(alarm_id, entity_id)
+        self.kernel_alarms[alarm_id][entity_id] = None
+
+    def _kernel_get_faults_by_id(self, alarm_id):
+        faults = []
+        self._kernel_alarms_fix_keys(alarm_id)
+        for fault in self.kernel_alarms[alarm_id].values():
+            if fault is not None:
+                faults.append(fault)
+        if not faults:
+            faults = None
+        return faults
+
+    def _is_kernel_alarm_raised(self, alarm_id, hostname):
+        self._kernel_alarms_fix_keys(alarm_id)
+        entity_id = None
+        for key in self.kernel_alarms[alarm_id].keys():
+            entity_id_partial = f"host={hostname}.kernel="
+            if entity_id_partial in key:
+                entity_id = key
+                return self.kernel_alarms[alarm_id][entity_id] is not None
+
+        return False
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_kernel_runtime_manifests(self,
+                                      mock_config_update_hosts,
+                                      mock_config_apply_runtime_manifest):
+        self._create_test_ihosts()
+        ihost_hostname = 'controller-0'
+        ihost = self.service.get_ihost_by_hostname(self.context,
+                                                   ihost_hostname)
+        ihost_uuid = ihost['uuid']
+        personalities = [ihost['personality']]
+        host_uuids = [ihost_uuid]
+        config_dict = {
+            "personalities": personalities,
+            "host_uuids": host_uuids,
+            "classes": [
+                'platform::grub::kernel_image::runtime',
+                'platform::config::file::subfunctions::lowlatency::runtime'
+            ]
+        }
+        config_uuid = '1234'
+        mock_config_update_hosts.return_value = config_uuid
+        self.service.kernel_runtime_manifests(context=self.context,
+                                              ihost_uuid=ihost_uuid)
+
+        mock_config_update_hosts.assert_called_once()
+        mock_config_apply_runtime_manifest.assert_called_once_with(mock.ANY,
+                                                                   config_uuid,
+                                                                   config_dict)
+
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_apply_runtime_manifest')
+    @mock.patch('sysinv.conductor.manager.'
+                'ConductorManager._config_update_hosts')
+    def test_kernel_runtime_manifests_no_host(self,
+                                              mock_config_update_hosts,
+                                              mock_apply_runtime_manifest):
+        ihost_uuid = str(uuid.uuid4())
+        self.service.kernel_runtime_manifests(context=self.context,
+                                              ihost_uuid=ihost_uuid)
+
+        mock_config_update_hosts.assert_not_called()
+        mock_apply_runtime_manifest.assert_not_called()
+
+    def test_host_kernel_mismatch_alarm(self):
+        """Test raising and clearing 100.121 alarm id"""
+        alarm_id = fm_constants.FM_ALARM_ID_PROVISIONED_KERNEL_MISMATCH
+
+        self.service.fm_api.set_fault.side_effect = self._kernel_set_fault
+        self.service.fm_api.clear_fault.side_effect = self._kernel_clear_fault
+        self.service.fm_api.get_faults_by_id.side_effect = \
+            self._kernel_get_faults_by_id
+
+        # Create controller-0
+        ihost_hostname = 'controller-0'
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=ihost_hostname,
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55',
+            mgmt_ip='1.2.3.4')
+
+        ihost = self.service.get_ihost_by_hostname(self.context,
+                                                   ihost_hostname)
+
+        # before - no alarm
+        self.assertFalse(self._is_kernel_alarm_raised(alarm_id, ihost_hostname))
+
+        # simulate a running kernel update from controller-0 agent
+        kernel_running = constants.KERNEL_LOWLATENCY
+        self.service.report_kernel_running(self.context,
+                                           ihost['uuid'],
+                                           kernel_running)
+
+        # after kernel=lowlatency update - alarm raised
+        self.assertTrue(self._is_kernel_alarm_raised(alarm_id, ihost_hostname))
+
+        # simulate a running kernel update from controller-0 agent
+        kernel_running = constants.KERNEL_STANDARD
+        self.service.report_kernel_running(self.context,
+                                           ihost['uuid'],
+                                           kernel_running)
+
+        # after kernel=standard update - alarm cleared
+        self.assertFalse(self._is_kernel_alarm_raised(alarm_id, ihost_hostname))
+
+    def test_controllers_kernel_mismatch_alarms(self):
+        """Test raising and clearing 100.120 alarm id"""
+        alarm_id = fm_constants.FM_ALARM_ID_CONTROLLERS_KERNEL_MISMATCH
+
+        self.service.fm_api.set_fault.side_effect = self._kernel_set_fault
+        self.service.fm_api.clear_fault.side_effect = self._kernel_clear_fault
+        self.service.fm_api.get_faults_by_id.side_effect = \
+            self._kernel_get_faults_by_id
+
+        # Create controller-0
+        ihost_hostname0 = 'controller-0'
+        config_uuid = str(uuid.uuid4())
+        controller_0_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=ihost_hostname0,
+            uuid=controller_0_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='00:11:22:33:44:55',
+            mgmt_ip='1.2.3.4')
+
+        # Create controller-1
+        ihost_hostname1 = 'controller-1'
+        config_uuid = str(uuid.uuid4())
+        controller_1_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname=ihost_hostname1,
+            uuid=controller_1_uuid,
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            mgmt_mac='22:44:33:55:11:66',
+            mgmt_ip='1.2.3.5')
+
+        # before - no alarm
+        self.assertFalse(self._is_kernel_alarm_raised(alarm_id,
+                                                      ihost_hostname0))
+        self.assertFalse(self._is_kernel_alarm_raised(alarm_id,
+                                                      ihost_hostname1))
+
+        # simulate a running kernel update from controller-0 agent
+        kernel_running = constants.KERNEL_STANDARD
+        self.service.report_kernel_running(self.context,
+                                           controller_0_uuid,
+                                           kernel_running)
+
+        self.assertFalse(self._is_kernel_alarm_raised(alarm_id,
+                                                      ihost_hostname0))
+        self.assertFalse(self._is_kernel_alarm_raised(alarm_id,
+                                                      ihost_hostname1))
+
+        # simulate a running kernel update from controller-1 agent
+        kernel_running = constants.KERNEL_LOWLATENCY
+        self.service.report_kernel_running(self.context,
+                                           controller_1_uuid,
+                                           kernel_running)
+
+        # 2 alarms raised - for each controller
+        self.assertTrue(self._is_kernel_alarm_raised(alarm_id,
+                                                     ihost_hostname0))
+        self.assertTrue(self._is_kernel_alarm_raised(alarm_id,
+                                                     ihost_hostname1))
+
+        # simulate a running kernel update from controller-0 agent
+        kernel_running = constants.KERNEL_LOWLATENCY
+        self.service.report_kernel_running(self.context,
+                                           controller_0_uuid,
+                                           kernel_running)
+
+        # 2 alarms cleared - for each controller
+        self.assertFalse(self._is_kernel_alarm_raised(alarm_id,
+                                                      ihost_hostname0))
+        self.assertFalse(self._is_kernel_alarm_raised(alarm_id,
+                                                      ihost_hostname1))
 
 
 @mock.patch('sysinv.conductor.manager.verify_files', lambda x, y: True)

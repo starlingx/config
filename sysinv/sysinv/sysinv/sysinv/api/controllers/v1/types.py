@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2015 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 
 import re
@@ -205,7 +205,7 @@ class JsonPatchType(wtypes.Base):
 
     @staticmethod
     def mandatory_attrs():
-        """Retruns a list of mandatory attributes.
+        """Returns a list of mandatory attributes.
 
         Mandatory attributes can't be removed from the document. This
         method should be overwritten by derived class.

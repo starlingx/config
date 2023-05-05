@@ -154,6 +154,7 @@ class AgentManager(service.PeriodicService):
     LVG = 'lvg'
     HOST_FILESYSTEMS = 'host_filesystems'
     K8S_DEVICE_PLUGIN = 'k8s_device_plugin'
+    KERNEL = 'kernel'
 
     # Note that this set must be extended when there are
     # additional inventory required for the initial
@@ -168,7 +169,8 @@ class AgentManager(service.PeriodicService):
         PV,
         LVG,
         HOST_FILESYSTEMS,
-        K8S_DEVICE_PLUGIN}
+        K8S_DEVICE_PLUGIN,
+        KERNEL}
 
     def __init__(self, host, topic):
         self.host = host
@@ -725,6 +727,21 @@ class AgentManager(service.PeriodicService):
                 LOG.exception("Sysinv Agent exception updating pci_device.")
                 pass
 
+    def _get_kernel_running(self):
+        """Get the running kernel
+           Examples:
+           lowlatency - 5.10.0-6-rt-amd64
+           standard   - 5.10.0-6-amd64
+        Returns:
+            str: running kernel either standard or lowlatency
+        """
+        kernel_release = os.uname().release
+        if '-rt-' in kernel_release:
+            kernel_running = constants.KERNEL_LOWLATENCY
+        else:
+            kernel_running = constants.KERNEL_STANDARD
+        return kernel_running
+
     def ihost_inv_get_and_report(self, icontext):
         """Collect data for an ihost.
 
@@ -918,6 +935,19 @@ class AgentManager(service.PeriodicService):
             self._inventory_reported.add(self.LVG)
         except exception.SysinvException:
             LOG.exception("Sysinv Agent exception updating ilvg conductor.")
+            pass
+
+        kernel_running = self._get_kernel_running()
+        try:
+            rpcapi.report_kernel_running(icontext,
+                                         ihost['uuid'],
+                                         kernel_running)
+            self._inventory_reported.add(self.KERNEL)
+        except RemoteError as e:
+            LOG.error("report_kernel_running "
+                      f"RemoteError exc_type={e.exc_type}")
+        except exception.SysinvException:
+            LOG.exception("Sysinv Agent exception updating kernel conductor.")
             pass
 
         if constants.WORKER in self.subfunctions_list_get():

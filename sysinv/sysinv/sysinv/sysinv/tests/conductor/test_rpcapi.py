@@ -33,6 +33,7 @@ from sysinv.db import api as dbapi
 from sysinv.openstack.common import rpc
 from sysinv.tests.db import base
 from sysinv.tests.db import utils as dbutils
+from sysinv.common import constants
 
 CONF = cfg.CONF
 
@@ -101,3 +102,14 @@ class RPCAPITestCase(base.DbTestCase):
 
     def test_update_dnsmasq_config(self):
         self._test_rpcapi('update_dnsmasq_config', 'call')
+
+    def test_kernel_runtime_manifests(self):
+        self._test_rpcapi('kernel_runtime_manifests',
+                          'call',
+                          ihost_uuid=self.fake_ihost['uuid'])
+
+    def test_report_kernel_running(self):
+        self._test_rpcapi('report_kernel_running',
+                          'cast',
+                          ihost_uuid=self.fake_ihost['uuid'],
+                          kernel_running=constants.KERNEL_LOWLATENCY)

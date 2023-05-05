@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 
 """Sysinv test utilities."""
@@ -111,11 +111,13 @@ def post_get_test_ihost(**kw):
     del inv['action_state']
     del inv['recordtype']
     del inv['uuid']
+    del inv['kernel_running']
     return inv
 
 
 def get_test_ihost(**kw):
-    inv = {
+    inv = \
+        {
             'id': kw.get('id', 123),
             'forisystemid': kw.get('forisystemid', None),
             'peer_id': kw.get('peer_id', None),
@@ -139,6 +141,7 @@ def get_test_ihost(**kw):
             'action': kw.get('action', "none"),
             'task': kw.get('task', None),
             'capabilities': kw.get('capabilities', {}),
+            'kernel_running': kw.get('kernel_running', constants.KERNEL_STANDARD),
             'subfunctions': kw.get('subfunctions', "ihostsubfunctions"),
             'subfunction_oper': kw.get('subfunction_oper', "disabled"),
             'subfunction_avail': kw.get('subfunction_avail', "not-installed"),
@@ -168,7 +171,7 @@ def get_test_ihost(**kw):
             'clock_synchronization': kw.get('clock_synchronization', constants.NTP),
             'max_cpu_mhz_configured': kw.get('max_cpu_mhz_configured', ''),
             'max_cpu_mhz_allowed': kw.get('max_cpu_mhz_allowed', '')
-             }
+        }
     return inv
 
 
