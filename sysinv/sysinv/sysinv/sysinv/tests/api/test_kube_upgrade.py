@@ -75,6 +75,7 @@ class FakeConductorAPI(object):
         self.kube_download_images = mock.MagicMock()
         self.kube_upgrade_networking = mock.MagicMock()
         self.evaluate_apps_reapply = mock.MagicMock()
+        self.remove_kube_control_plane_backup = mock.MagicMock()
         self.service = ConductorManager('test-host', 'test-topic')
 
     def get_system_health(self, context, force=False, upgrade=False,
@@ -980,6 +981,8 @@ class TestDelete(TestKubeUpgrade):
         self.assertEqual(response.status_int, 404)
         self.assertEqual(response.content_type, 'application/json')
         self.assertTrue(response.json['error_message'])
+        self.fake_conductor_api.\
+            remove_kube_control_plane_backup.assert_called()
 
     def test_delete_upgrade_not_complete(self):
         # Test deleting an upgrade when upgrade is not complete
@@ -1000,6 +1003,8 @@ class TestDelete(TestKubeUpgrade):
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
         self.assertIn("upgrade must be in upgrade-complete",
                       result.json['error_message'])
+        self.fake_conductor_api.\
+            remove_kube_control_plane_backup.assert_not_called()
 
     def test_delete_no_upgrade(self):
         # Test deleting an upgrade when no upgrade exists
@@ -1014,3 +1019,5 @@ class TestDelete(TestKubeUpgrade):
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
         self.assertIn("upgrade is not in progress",
                       result.json['error_message'])
+        self.fake_conductor_api.\
+            remove_kube_control_plane_backup.assert_not_called()

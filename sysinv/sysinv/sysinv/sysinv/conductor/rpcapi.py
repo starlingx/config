@@ -1926,6 +1926,14 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('kube_config_kubelet'))
 
+    def remove_kube_control_plane_backup(self, context):
+        """Asynchronously, have the conductor remove k8s control backup
+           after k8s upgrade is complete.
+
+        :param context: request context.
+        """
+        return self.cast(context, self.make_msg('remove_kube_control_plane_backup'))
+
     def store_bitstream_file(self, context, filename):
         """Asynchronously, have the conductor store the device image
         on this host.

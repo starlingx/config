@@ -481,6 +481,10 @@ class KubeUpgradeController(rest.RestController):
                 "Kubernetes upgrade must be in %s state to delete" %
                 kubernetes.KUBE_UPGRADE_COMPLETE))
 
+        # Clean up k8s control-plane backup
+        pecan.request.rpcapi.remove_kube_control_plane_backup(
+            pecan.request.context)
+
         # Delete the upgrade
         pecan.request.dbapi.kube_upgrade_destroy(kube_upgrade_obj.id)
 
