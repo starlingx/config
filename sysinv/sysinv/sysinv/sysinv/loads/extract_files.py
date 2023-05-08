@@ -18,7 +18,7 @@ PLAYBOOKS_PATH = "/usr/share/ansible/stx-ansible/playbooks"
 
 class ExtractFiles(base.BaseLoadImport):
     def extract_files(self, load_version):
-        target_dir = "/var/opt/ansible/%s" % load_version
+        target_dir = "/opt/dc-vault/playbooks/%s" % load_version
         os.makedirs(target_dir, exist_ok=True)
         os_version = utils.get_os_target(load_version)
 
@@ -38,7 +38,7 @@ class ExtractFiles(base.BaseLoadImport):
 
         utils.extract_rpm_package(playbook_pkg, target_dir)
 
-        source_dir = os.path.join(target_dir, PLAYBOOKS_PATH)
+        source_dir = target_dir + PLAYBOOKS_PATH
 
         self._move_all_files(source_dir, target_dir)
 
