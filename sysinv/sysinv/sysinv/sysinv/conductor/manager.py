@@ -12010,23 +12010,45 @@ class ConductorManager(service.PeriodicService):
 
         return supported_versions
 
-    def _create_symlink_install_uuid(self, current_version):
+    def _modify_import_script(self, import_script):
         """
-        If the current version is Debian and the imported load
-        is Centos, the install_uuid path is different. It's
-        necessary to create a symlink for import.sh to find it.
+        Copy and modify the import.sh script to change shell variables
+        to always set the path under /var directory.
         """
-        centos_feed_path = '/www/pages/feed/rel-%s' % current_version
+        try:
+            with open(import_script, "r") as file:
+                file_data = file.read()
+        except Exception:
+            msg = "Unable to copy the import.sh script"
+            raise exception.SysinvException(msg)
 
-        os.makedirs(centos_feed_path, exist_ok=True)
+        # Change FEED_DIR variable.
+        feed_dir = "FEED_DIR=/www/pages/feed/rel-"
+        new_feed_dir = "FEED_DIR=/var/www/pages/feed/rel-"
+        file_data = file_data.replace(feed_dir, new_feed_dir, 1)
 
-        src = '/var/www/pages/feed/rel-%s/install_uuid' % current_version
-        dst = '%s/install_uuid' % centos_feed_path
+        # Change CURRENT_FEED_DIR variable.
+        current_feed_dir = "CURRENT_FEED_DIR=/www/pages/feed/rel-"
+        new_current_feed_dir = "CURRENT_FEED_DIR=/var/www/pages/feed/rel-"
+        file_data = file_data.replace(current_feed_dir, new_current_feed_dir, 1)
 
-        if os.path.isfile(dst):
-            return None
+        # Change SCRIPT_DIR variable.
+        script_dir = "SCRIPT_DIR=$(dirname $0)"
+        new_script_dir = "SCRIPT_DIR=" + os.path.dirname(import_script)
+        file_data = file_data.replace(script_dir, new_script_dir, 1)
 
-        os.symlink(src, dst)
+        tmp_import_script = "/tmp/import.sh"
+
+        try:
+            with open(tmp_import_script, "w") as file:
+                file.write(file_data)
+        except Exception:
+            msg = "Unable to save the import.sh script"
+            raise exception.SysinvException(msg)
+
+        os.chmod(tmp_import_script, 0o100)
+
+        return tmp_import_script
 
     def _import_load_error(self, new_load):
         """
@@ -12219,16 +12241,21 @@ class ConductorManager(service.PeriodicService):
             self._import_load_error(new_load)
             raise exception.SysinvException(_("Unable to mount iso"))
 
+        import_script = mntdir + "/upgrades/import.sh"
+
         if import_type == constants.INACTIVE_LOAD_IMPORT:
-            active_load = cutils.get_active_load(loads)
-            self._create_symlink_install_uuid(active_load.software_version)
+            try:
+                import_script = self._modify_import_script(import_script)
+            except exception.SysinvException as error:
+                self._import_load_error(new_load)
+                raise exception.SysinvException(
+                    "Failure to modify import script: %s" % (error)
+                )
 
         # Run the upgrade script
         with open(os.devnull, "w") as fnull:
             try:
-                subprocess.check_call(mntdir +  # pylint: disable=not-callable
-                                      '/upgrades/import.sh',
-                                      stdout=fnull, stderr=fnull)
+                subprocess.check_call(import_script, stdout=fnull, stderr=fnull)  # pylint: disable=not-callable
             except subprocess.CalledProcessError:
                 self._import_load_error(new_load)
                 raise exception.SysinvException(_(

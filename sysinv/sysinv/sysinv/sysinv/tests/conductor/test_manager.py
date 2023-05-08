@@ -4933,15 +4933,16 @@ class ManagerLoadImportTest(base.BaseHostTestCase):
             {'state': constants.IMPORTED_LOAD_STATE},
         )
 
-    @mock.patch('sysinv.conductor.manager.os.symlink', mock.Mock())
+    @mock.patch('sysinv.conductor.manager.os.chmod', mock.Mock())
     @mock.patch('sysinv.conductor.manager.os.makedirs', mock.Mock())
     def test_import_load_inactive(self):
-        result = self.service.import_load(
-            self.context,
-            path_to_iso=self.iso,
-            new_load=self.load,
-            import_type=constants.INACTIVE_LOAD_IMPORT,
-        )
+        with mock.patch('builtins.open', mock.mock_open()):
+            result = self.service.import_load(
+                self.context,
+                path_to_iso=self.iso,
+                new_load=self.load,
+                import_type=constants.INACTIVE_LOAD_IMPORT,
+            )
 
         self.assertTrue(result)
 
@@ -4950,19 +4951,39 @@ class ManagerLoadImportTest(base.BaseHostTestCase):
             {'state': constants.INACTIVE_LOAD_STATE},
         )
 
-    @mock.patch('sysinv.conductor.manager.os.symlink', mock.Mock())
+    @mock.patch('sysinv.conductor.manager.os.chmod', mock.Mock())
     @mock.patch('sysinv.conductor.manager.os.makedirs', mock.Mock())
     def test_import_load_inactive_failed_extract_files(self):
         self.mock_extract_files.side_effect = exception.SysinvException()
 
-        self.assertRaises(
-            exception.SysinvException,
-            self.service.import_load,
-            self.context,
-            path_to_iso=self.iso,
-            new_load=self.load,
-            import_type=constants.INACTIVE_LOAD_IMPORT,
+        with mock.patch('builtins.open', mock.mock_open()):
+            self.assertRaises(
+                exception.SysinvException,
+                self.service.import_load,
+                self.context,
+                path_to_iso=self.iso,
+                new_load=self.load,
+                import_type=constants.INACTIVE_LOAD_IMPORT,
+            )
+
+        self.mock_load_update.assert_called_once_with(
+            mock.ANY,
+            {'state': constants.ERROR_LOAD_STATE},
         )
+
+    def test_import_load_inactive_failed_copy_import_script(self):
+        mock_file = mock.mock_open()
+        mock_file.side_effect = IOError
+
+        with mock.patch('builtins.open', mock_file):
+            self.assertRaises(
+                exception.SysinvException,
+                self.service.import_load,
+                self.context,
+                path_to_iso=self.iso,
+                new_load=self.load,
+                import_type=constants.INACTIVE_LOAD_IMPORT,
+            )
 
         self.mock_load_update.assert_called_once_with(
             mock.ANY,
