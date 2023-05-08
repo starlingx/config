@@ -1954,6 +1954,129 @@ class ManagerTestCase(base.DbTestCase):
         updated_host_upgrade = self.dbapi.kube_host_upgrade_get(1)
         self.assertIsNotNone(updated_host_upgrade.status)
 
+    def test_backup_kube_control_plane(self):
+        """ The unit test covers the success path of the method
+            backup_kube_control_plane
+        """
+        mock_remove_kube_control_plane_backup = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.'
+            'remove_kube_control_plane_backup',
+            mock_remove_kube_control_plane_backup)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_backup_kube_static_pods = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.backup_kube_static_pods',
+            mock_backup_kube_static_pods)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_etcd_snapshot_etcd = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.etcd.snapshot_etcd',
+            mock_etcd_snapshot_etcd)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.service.backup_kube_control_plane(self.context)
+        mock_remove_kube_control_plane_backup.assert_called()
+        mock_backup_kube_static_pods.assert_called()
+        mock_etcd_snapshot_etcd.assert_called()
+
+    def test_backup_kube_control_plane_backup_kube_static_pods_fail(self):
+        """ The unit test covers the behavior of the method
+            backup_kube_control_plane when backup_kube_static_pods raises
+            an exception
+        """
+        mock_remove_kube_control_plane_backup = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.'
+            'remove_kube_control_plane_backup',
+            mock_remove_kube_control_plane_backup)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_backup_kube_static_pods = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.backup_kube_static_pods',
+            mock_backup_kube_static_pods)
+        p.start().side_effect = Exception("backup failed")
+        self.addCleanup(p.stop)
+
+        mock_etcd_snapshot_etcd = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.etcd.snapshot_etcd',
+            mock_etcd_snapshot_etcd)
+        p.start()
+        self.addCleanup(p.stop)
+
+        self.assertRaises(  # noqa: H202
+            Exception,
+            self.service.backup_kube_control_plane,
+            self.context
+        )
+        mock_remove_kube_control_plane_backup.assert_called()
+        mock_backup_kube_static_pods.assert_called()
+        mock_etcd_snapshot_etcd.assert_not_called()
+
+    def test_backup_kube_control_plane_etcd_snapshot_etcd_fail(self):
+        """ The unit test covers the behavior of the method
+            backup_kube_control_plane when snapshot_etcd
+            raises an exception
+        """
+        mock_remove_kube_control_plane_backup = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.'
+            'remove_kube_control_plane_backup',
+            mock_remove_kube_control_plane_backup)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_backup_kube_static_pods = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.backup_kube_static_pods',
+            mock_backup_kube_static_pods)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_etcd_snapshot_etcd = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.etcd.snapshot_etcd',
+            mock_etcd_snapshot_etcd)
+        p.start().side_effect = Exception("Failed to snapshot etcd")
+        self.addCleanup(p.stop)
+
+        self.assertRaises(  # noqa: H202
+            Exception,
+            self.service.backup_kube_control_plane,
+            self.context
+        )
+        mock_remove_kube_control_plane_backup.assert_called()
+        mock_backup_kube_static_pods.assert_called()
+        mock_etcd_snapshot_etcd.assert_called()
+
+    def test_remove_kube_control_plane_backup(self):
+        """ The unit test covers success case of the method
+            remove_kube_control_plane_backup
+        """
+        mock_shutil_rmtree = mock.MagicMock()
+        p = mock.patch('shutil.rmtree', mock_shutil_rmtree)
+        p.start()
+        self.addCleanup(p.stop)
+
+        mock_os_path_exists = mock.MagicMock()
+        p = mock.patch('os.path.exists', mock_os_path_exists)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        self.service.remove_kube_control_plane_backup(self.context)
+        mock_os_path_exists.assert_called_with(
+            kubernetes.KUBE_CONTROL_PLANE_BACKUP_PATH)
+        mock_shutil_rmtree.assert_called_with(
+            kubernetes.KUBE_CONTROL_PLANE_BACKUP_PATH)
+
     def test_kube_upgrade_networking(self):
         # Create an upgrade
         utils.create_test_kube_upgrade(
@@ -1962,6 +2085,13 @@ class ManagerTestCase(base.DbTestCase):
             state=kubernetes.KUBE_UPGRADING_NETWORKING,
         )
 
+        mock_backup_kube_control_plane = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.'
+            'backup_kube_control_plane', mock_backup_kube_control_plane)
+        p.start()
+        self.addCleanup(p.stop)
+
         # Upgrade kubernetes networking
         self.service.kube_upgrade_networking(self.context, 'v1.42.2')
 
@@ -1969,6 +2099,7 @@ class ManagerTestCase(base.DbTestCase):
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state,
                          kubernetes.KUBE_UPGRADED_NETWORKING)
+        mock_backup_kube_control_plane.assert_called()
 
     def test_kube_upgrade_networking_ansible_fail(self):
         # Create an upgrade
@@ -1977,6 +2108,14 @@ class ManagerTestCase(base.DbTestCase):
             to_version='v1.42.2',
             state=kubernetes.KUBE_UPGRADING_NETWORKING,
         )
+
+        mock_backup_kube_control_plane = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.'
+            'backup_kube_control_plane', mock_backup_kube_control_plane)
+        p.start()
+        self.addCleanup(p.stop)
+
         # Fake an ansible failure
         self.fake_subprocess_popen.returncode = 1
 
@@ -1987,6 +2126,40 @@ class ManagerTestCase(base.DbTestCase):
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state,
                          kubernetes.KUBE_UPGRADING_NETWORKING_FAILED)
+        mock_backup_kube_control_plane.assert_called()
+
+    def test_kube_upgrade_networking_backup_control_plane_fail(self):
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADING_NETWORKING,
+        )
+
+        mock_backup_kube_control_plane = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.'
+            'backup_kube_control_plane', mock_backup_kube_control_plane)
+        p.start().side_effect = Exception("backup error")
+        self.addCleanup(p.stop)
+
+        mock_remove_kube_control_plane_backup = mock.MagicMock()
+        p2 = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.'
+            'remove_kube_control_plane_backup',
+            mock_remove_kube_control_plane_backup)
+        p2.start()
+        self.addCleanup(p.stop)
+
+        # Upgrade kubernetes networking
+        self.service.kube_upgrade_networking(self.context, 'v1.42.2')
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_UPGRADING_NETWORKING_FAILED)
+        mock_backup_kube_control_plane.assert_called()
+        mock_remove_kube_control_plane_backup.assert_called()
 
     def test_sanitize_feature_gates_kubeadm_configmap(self):
         """
