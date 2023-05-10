@@ -69,14 +69,14 @@ def refresh_helm_repo_information():
     rpcapi.refresh_helm_repo_information(context.get_admin_context())
 
 
-def _retry_on_HelmTillerFailure(ex):
+def _retry_on_HelmFailure(ex):
     LOG.info('Caught exception retrieving helm releases. Retrying... Exception: {}'.format(ex))
-    return isinstance(ex, exception.HelmTillerFailure)
+    return isinstance(ex, exception.HelmFailure)
 
 
 @retry(stop_max_attempt_number=6, wait_fixed=20 * 1000,
-       retry_on_exception=_retry_on_HelmTillerFailure)
-def retrieve_helm_v3_releases():
+       retry_on_exception=_retry_on_HelmFailure)
+def retrieve_helm_releases():
     helm_list = subprocess.Popen(
         ['helm', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
          'list', '--all-namespaces', '--output', 'yaml'],
@@ -89,15 +89,15 @@ def retrieve_helm_v3_releases():
         out, err = helm_list.communicate()
         if helm_list.returncode != 0:
             if err:
-                raise exception.HelmTillerFailure(reason=err)
+                raise exception.HelmFailure(reason=err)
 
             # killing the subprocesses with +kill() when timer expires returns EBADF
             # because the pipe is closed, but no error string on stderr.
             if helm_list.returncode == -9:
-                raise exception.HelmTillerFailure(
+                raise exception.HelmFailure(
                     reason="helm list operation timed out after "
                            "20 seconds. Terminated by threading timer.")
-            raise exception.HelmTillerFailure(
+            raise exception.HelmFailure(
                 reason="helm list operation failed without error "
                        "message, errno=%s" % helm_list.returncode)
 
@@ -114,28 +114,14 @@ def retrieve_helm_v3_releases():
 
         return deployed_releases
     except Exception as e:
-        raise exception.HelmTillerFailure(
-            reason="Failed to retrieve helmv3 releases: %s" % e)
+        raise exception.HelmFailure(
+            reason="Failed to retrieve helm releases: %s" % e)
     finally:
         timer.cancel()
 
 
-def retrieve_helm_releases():
-    """Retrieve the deployed helm releases
-
-    Get the name, namespace and version for the deployed releases
-    by querying helm tiller
-    :return: a dict of deployed helm releases
-    """
-    deployed_releases = {}
-
-    deployed_releases.update(retrieve_helm_v3_releases())
-
-    return deployed_releases
-
-
-def delete_helm_v3_release(release, namespace="default", flags=None):
-    """Delete helm v3 release
+def delete_helm_release(release, namespace="default", flags=None):
+    """Delete helm release via callout to helm command
 
     :param release: Helm release name
     :param namespace: Helm release namespace
@@ -161,19 +147,19 @@ def delete_helm_v3_release(release, namespace="default", flags=None):
         out, err = process.communicate()
         if err:
             if "not found" in err:
-                LOG.debug("Release %s not found or deleted already" % release)
+                LOG.error("Release %s/%s not found or deleted already" % (namespace, release))
                 return out, err
-            raise exception.HelmTillerFailure(
+            raise exception.HelmFailure(
                 reason="Failed to delete release: %s" % err)
         elif not out:
-            err_msg = "Failed to execute helm v3 command. " \
+            err_msg = "Failed to execute helm command. " \
                       "Helm response timeout."
-            raise exception.HelmTillerFailure(reason=err_msg)
+            raise exception.HelmFailure(reason=err_msg)
         return out, err
     except Exception as e:
-        LOG.error("Failed to execute helm v3 command: %s" % e)
-        raise exception.HelmTillerFailure(
-            reason="Failed to execute helm v3 command: %s" % e)
+        LOG.error("Failed to execute helm command: %s" % e)
+        raise exception.HelmFailure(
+            reason="Failed to execute helm command: %s" % e)
     finally:
         timer.cancel()
 
@@ -214,12 +200,12 @@ def install_helm_chart_with_dry_run(args=None):
         if helm_install.returncode == 0:
             return out
         elif err:
-            raise exception.HelmTillerFailure(reason=err)
+            raise exception.HelmFailure(reason=err)
         else:
             err_msg = "Helm install --dry-run operation timeout."
-            raise exception.HelmTillerFailure(reason=err_msg)
+            raise exception.HelmFailure(reason=err_msg)
     except Exception as e:
-        raise exception.HelmTillerFailure(
+        raise exception.HelmFailure(
             reason="Failed to render helm chart: %s" % e)
     finally:
         if timer:

@@ -1537,7 +1537,7 @@ class KubeVersionUnavailable(NotFound):
     message = "Getting kubeadm and kubelet versions failed"
 
 
-class HelmTillerFailure(SysinvException):
+class HelmFailure(SysinvException):
     message = _("Helm operation failure: %(reason)s")
 
 
