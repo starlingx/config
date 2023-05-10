@@ -12038,6 +12038,11 @@ class ConductorManager(service.PeriodicService):
         new_script_dir = "SCRIPT_DIR=" + os.path.dirname(import_script)
         file_data = file_data.replace(script_dir, new_script_dir, 1)
 
+        # Change patch path destination.
+        updates_dir = " /www/pages/updates/rel-"
+        new_updates_dir = " /var/www/pages/updates/rel-"
+        file_data = file_data.replace(updates_dir, new_updates_dir, 3)
+
         tmp_import_script = "/tmp/import.sh"
 
         try:
