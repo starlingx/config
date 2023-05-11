@@ -5033,3 +5033,17 @@ class Connection(object):
 
         :param values: a dictionary with the respective fields and values to be updated in the db entry.
         """
+
+    @abc.abstractmethod
+    def address_pool_get(self, address_pool_uuid):
+        """ Get address-pool object
+
+        :param address_pool_uuid: address pool unique identifier
+        """
+
+    @abc.abstractmethod
+    def network_get(self, network_uuid):
+        """ get network object
+
+        :param network_uuid: network unique identifier
+        """
