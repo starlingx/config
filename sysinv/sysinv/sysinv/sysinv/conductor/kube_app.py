@@ -117,7 +117,6 @@ def get_app_install_root_path_ownership():
     return (uid, gid)
 
 
-Chart = namedtuple('Chart', 'metadata_name name namespace location release labels sequenced')
 FluxCDChart = namedtuple('FluxCDChart', 'metadata_name name namespace location '
                                         'release chart_os_path chart_label '
                                         'helm_repo_name')
@@ -1782,82 +1781,6 @@ class AppOperator(object):
             LOG.error("Application %s recover to version %s aborted!"
                       % (old_app.name, old_app.version))
 
-    def _perform_app_rollback(self, from_app, to_app):
-        """Perform application rollback request
-
-        This method invokes fluxcd to rollback the application releases to
-        previous installed versions. The jobs for the current installed
-        releases require to be cleaned up before starting fluxcd rollback.
-
-        :param from_app: application object that application updating from
-        :param to_app: application object that application updating to
-        :return boolean: whether application rollback was successful
-        """
-
-        LOG.info("Application %s (%s) rollback started." % (to_app.name, to_app.version))
-
-        try:
-            if AppOperator.is_app_aborted(to_app.name):
-                raise exception.KubeAppAbort()
-
-            to_db_app = self._dbapi.kube_app_get(to_app.name)
-            to_app_releases = \
-                self._dbapi.kube_app_chart_release_get_all(to_db_app.id)
-
-            from_db_app = self._dbapi.kube_app_get_inactive_by_name_version(
-                from_app.name, version=from_app.version)
-            from_app_releases = \
-                self._dbapi.kube_app_chart_release_get_all(from_db_app.id)
-            from_app_r_dict = {r.release: r.version for r in from_app_releases}
-
-            self._update_app_status(
-                to_app, new_progress=constants.APP_PROGRESS_ROLLBACK_RELEASES)
-
-            if AppOperator.is_app_aborted(to_app.name):
-                raise exception.KubeAppAbort()
-
-            charts_sequence = {c.release: c.sequenced for c in to_app.charts}
-            charts_labels = {c.release: c.labels for c in to_app.charts}
-            for to_app_r in to_app_releases:
-                if to_app_r.version != 0:
-                    if (to_app_r.release not in from_app_r_dict or
-                            (to_app_r.release in from_app_r_dict and
-                             to_app_r.version != from_app_r_dict[to_app_r.release])):
-                        # Append the release which needs to be rolled back
-                        to_app.releases.append(
-                            {'release': to_app_r.release,
-                             'version': to_app_r.version,
-                             'sequenced': charts_sequence[to_app_r.release]})
-
-                        # Cleanup the jobs for the current installed release
-                        if to_app_r.release in charts_labels:
-                            for label in charts_labels[to_app_r.release]:
-                                self._kube.kube_delete_collection_namespaced_job(
-                                    to_app_r.namespace, label)
-                        LOG.info("Jobs deleted for release %s" % to_app_r.release)
-
-            if AppOperator.is_app_aborted(to_app.name):
-                raise exception.KubeAppAbort()
-
-            if self._make_app_request(to_app, constants.APP_ROLLBACK_OP):
-                self._update_app_status(to_app, constants.APP_APPLY_SUCCESS,
-                                        constants.APP_PROGRESS_COMPLETED)
-                LOG.info("Application %s (%s) rollback completed."
-                         % (to_app.name, to_app.version))
-                return True
-        except exception.KubeAppAbort:
-            # If the update operation is aborted before fluxcd request is made,
-            # we don't want to return False which would trigger the recovery
-            # routine with an fluxcd request.
-            raise
-        except Exception as e:
-            # unexpected KubeAppNotFound, KubeAppInactiveNotFound, KeyError
-            # k8s exception:fail to cleanup release jobs
-            LOG.exception(e)
-
-        LOG.error("Application rollback aborted!")
-        return False
-
     def perform_app_upload(self, rpc_app, tarfile, lifecycle_hook_info_app_upload, images=False):
         """Process application upload request
 
@@ -2770,15 +2693,6 @@ class AppOperator(object):
                                                 lifecycle_hook_info_app_apply=lifecycle_hook_info_app_update,
                                                 caller='update')
                 lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
-            elif operation == constants.APP_ROLLBACK_OP:
-                # The app_rollback will use the previous helm releases known to
-                # the k8s cluster. Overrides are not generated from any plugins
-                # in the case. Make sure that the enabled plugins correspond to
-                # the version expected to be activated
-                self._plugins.activate_plugins(to_app)
-
-                # lifecycle hooks not used in perform_app_rollback
-                result = self._perform_app_rollback(from_app, to_app)
 
             operation_successful = result
 
