@@ -717,9 +717,10 @@ class AppOperator(object):
                 if chart_images:
                     images_by_charts.update({chart.name: chart_images})
 
-        with open(app.sync_imgfile, 'w') as f:
-            yaml.safe_dump(images_by_charts, f, explicit_start=True,
-                           default_flow_style=False)
+        if images_by_charts:
+            with open(app.sync_imgfile, 'w') as f:
+                yaml.safe_dump(images_by_charts, f, explicit_start=True,
+                               default_flow_style=False)
 
     def _retrieve_images_list(self, app_images_file):
         with io.open(app_images_file, 'r', encoding='utf-8') as f:
@@ -1737,11 +1738,21 @@ class AppOperator(object):
                     old_app_charts = [c.release for c in old_app.charts]
                     deployed_releases = helm_utils.retrieve_helm_releases()
                     for new_chart in new_app.charts:
+                        # Cleanup the releases in the new application version
+                        # but are not in the old application version
                         if (new_chart.release not in old_app_charts and
                                 new_chart.release in deployed_releases):
-                            # Cleanup the releases in the new application version
-                            # but are not in the old application version
-                            helm_utils.delete_helm_v3_release(new_chart.release)
+                            # Send delete request in FluxCD so it doesn't
+                            # recreate the helm release
+                            self._kube.delete_custom_resource(
+                                constants.FLUXCD_CRD_HELM_REL_GROUP,
+                                constants.FLUXCD_CRD_HELM_REL_VERSION,
+                                new_chart.namespace,
+                                constants.FLUXCD_CRD_HELM_REL_PLURAL,
+                                new_chart.metadata_name)
+                            # Use helm to immediately remove the release
+                            helm_utils.delete_helm_release(new_chart.release,
+                                                           new_chart.namespace)
                 else:
                     rc = False
 
@@ -2810,13 +2821,24 @@ class AppOperator(object):
             to_app_charts = [c.release for c in to_app.charts]
             deployed_releases = helm_utils.retrieve_helm_releases()
             for from_chart in from_app.charts:
+                # Cleanup the releases in the old application version
+                # but are not in the new application version
                 if (from_chart.release not in to_app_charts and
                         from_chart.release in deployed_releases):
-                    # Cleanup the releases in the old application version
-                    # but are not in the new application version
-                    helm_utils.delete_helm_v3_release(from_chart.release)
+                    # Send delete request in FluxCD so it doesn't
+                    # recreate the helm release
+                    self._kube.delete_custom_resource(
+                        constants.FLUXCD_CRD_HELM_REL_GROUP,
+                        constants.FLUXCD_CRD_HELM_REL_VERSION,
+                        from_chart.namespace,
+                        constants.FLUXCD_CRD_HELM_REL_PLURAL,
+                        from_chart.metadata_name)
+                    # Use helm to immediately remove the release
+                    helm_utils.delete_helm_release(from_chart.release,
+                                                   from_chart.namespace)
                     LOG.info("Helm release %s for Application %s (%s) deleted"
-                             % (from_chart.release, from_app.name, from_app.version))
+                             % (from_chart.release, from_app.name,
+                                from_app.version))
 
             self._cleanup(from_app, app_dir=False)
             self._utils._patch_report_app_dependencies(
@@ -2925,8 +2947,10 @@ class AppOperator(object):
 
             helm_release_status, _ = self._fluxcd.get_helm_release_status(helm_release_dict)
             if helm_release_status == self._fluxcd.HELM_RELEASE_STATUS_UNKNOWN:
-                LOG.info("Removing helm release which has an operation in progress: {} - {}".format(namespace, release))
-                # Send delete request in FluxCD so it doesn't recreate the helm release
+                LOG.info("Removing helm release which has an operation in "
+                         "progress: {} - {}".format(namespace, release))
+                # Send delete request in FluxCD so it doesn't recreate the helm
+                # release
                 self._kube.delete_custom_resource(
                     constants.FLUXCD_CRD_HELM_REL_GROUP,
                     constants.FLUXCD_CRD_HELM_REL_VERSION,
@@ -2934,7 +2958,9 @@ class AppOperator(object):
                     constants.FLUXCD_CRD_HELM_REL_PLURAL,
                     release)
                 # Remove resource in Helm
-                helm_utils.delete_helm_v3_release(helm_release_dict['spec']['releaseName'], namespace=namespace)
+                helm_utils.delete_helm_release(
+                    helm_release_dict['spec']['releaseName'],
+                    namespace=namespace)
 
         if self._make_app_request(app, constants.APP_REMOVE_OP):
             # After fluxcd delete, the data for the releases are purged from
