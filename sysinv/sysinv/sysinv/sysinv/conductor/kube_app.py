@@ -3457,6 +3457,10 @@ class AppImageParser(object):
               5. image: <str>
                  imageTag(tag/imagetag): <str>
 
+              6. image:
+                    registry: <str>
+                    repository: <str>
+
         :param var_dict: dict
         :return: a list of image references
         """
@@ -3480,6 +3484,9 @@ class AppImageParser(object):
                         keys = v.keys()
                         if 'repository' in keys:
                             image.update({'repository': v['repository']})
+                            if 'registry' in keys:
+                                image.update({'repository': '{}/{}'.format(
+                                    v['registry'], v['repository'])})
                         if 'tag' in keys:
                             image.update({'tag': v['tag']})
                         if image:
