@@ -178,6 +178,9 @@ class PlatformFirewallPuppet(base.BasePuppet):
             nodetype_selector = f"has(nodetype) && nodetype == '{host.personality}'"
             iftype_selector = f"has(iftype) && iftype contains '{network.type}'"
             selector = f"{nodetype_selector} && {iftype_selector}"
+            ICMP = "ICMP"
+            if (ip_version == 6):
+                ICMP = "ICMPv6"
 
             firewall_gnp = dict()
             firewall_gnp["apiVersion"] = "crd.projectcalico.org/v1"
@@ -191,7 +194,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
             firewall_gnp["spec"].update({"types": ["Ingress", "Egress"]})
             firewall_gnp["spec"].update({"egress": list()})
 
-            for proto in ["TCP", "UDP", "ICMP"]:
+            for proto in ["TCP", "UDP", ICMP]:
                 rule = {"metadata": dict()}
                 rule["metadata"] = {"annotations": dict()}
                 rule["metadata"]["annotations"] = {"name":
@@ -202,7 +205,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 firewall_gnp["spec"]["egress"].append(rule)
 
             firewall_gnp["spec"].update({"ingress": list()})
-            for proto in ["TCP", "UDP", "ICMP"]:
+            for proto in ["TCP", "UDP", ICMP]:
                 rule = {"metadata": dict()}
                 rule["metadata"] = {"annotations": dict()}
                 rule["metadata"]["annotations"] = {"name":
