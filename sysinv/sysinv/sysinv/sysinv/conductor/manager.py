@@ -1275,6 +1275,15 @@ class ConductorManager(service.PeriodicService):
         # Defaults for configurable install parameters
         install_opts = []
 
+        # add intel driver ver to pxeboot config if it is set
+        intel_driver_ver = self.dbapi.service_parameter_get_all(
+            service=constants.SERVICE_TYPE_PLATFORM,
+            section=constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG,
+            name=constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION)
+        if len(intel_driver_ver) == 1:
+            param = intel_driver_ver[0]
+            install_opts += ['-v', param['value']]
+
         boot_device = host.get('boot_device') or "/dev/sda"
         install_opts += ['-b', boot_device]
 
