@@ -236,7 +236,7 @@ class SssdPuppet(base.BasePuppet):
             'debug_level': '0x0270',
             'id_provider': 'ldap',
             'access_provider': 'ldap',
-            'ldap_id_mapping': 'true',
+            'ldap_id_mapping': 'false',
             'ldap_schema': 'rfc2307bis',
             'ldap_user_object_class': 'user',
             'ldap_group_member': 'member',
@@ -245,8 +245,6 @@ class SssdPuppet(base.BasePuppet):
             'ldap_user_principal': 'userPrincipalName',
             'ldap_user_name': 'sAMAccountName',
             'ldap_group_name': 'sAMAccountName',
-            'ldap_user_objectsid': 'objectSid',
-            'ldap_group_objectsid': 'objectSid',
             'ldap_user_primary_group': 'primaryGroupID',
             'case_sensitive': 'false',
             'default_shell': '/bin/bash',
@@ -279,7 +277,7 @@ class SssdPuppet(base.BasePuppet):
                     domain_parameters['ldap_uri'] = uri
                     domain_parameters['ldap_access_filter'] = access_filter
                     domain_parameters['ldap_search_base'] = search_base
-                    sudo_search_base = "OU=sudoers" + search_base[search_base.find(','):]
+                    sudo_search_base = "OU=sudoers" + search_base[search_base.find('DC='):]
                     domain_parameters['ldap_sudo_search_base'] = sudo_search_base
                     domain_parameters['ldap_default_bind_dn'] = default_bind_dn
                     domain_parameters['ldap_default_authtok'] = default_authtok
