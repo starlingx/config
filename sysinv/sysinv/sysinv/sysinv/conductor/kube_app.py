@@ -298,6 +298,10 @@ class AppOperator(object):
                          progress=constants.APP_PROGRESS_ABORTED,
                          user_initiated=False, reset_status=False,
                          forced_operation=False):
+        # Adds the app object error message if it exists
+        progress = "{}: {}".format(app.error_message, progress)
+        app.clear_error_message()
+
         if user_initiated:
             progress = constants.APP_PROGRESS_ABORTED_BY_USER
 
@@ -762,7 +766,7 @@ class AppOperator(object):
             pool = greenpool.GreenPool(size=threads)
             for tag, success in pool.imap(
                     functools.partial(self._docker.download_an_image,
-                                      app.name,
+                                      app,
                                       registries_info),
                     images_to_download):
                 if success:
@@ -795,6 +799,12 @@ class AppOperator(object):
                          "after %d seconds", app.name, wait_before_retry)
                 time.sleep(wait_before_retry)
         else:
+            # Clears the error cache caused by failure to download one or more images
+            # in 'def download_an_image'. At this point it wasn't just one image that
+            # failed, but all of them. The 'raise' below already reports the error
+            # correctly.
+            app.clear_error_message()
+
             raise exception.KubeAppApplyFailure(
                 name=app.name,
                 version=app.version,
@@ -1591,25 +1601,29 @@ class AppOperator(object):
                     if release_status == "False":
                         # If the helm release failed the app must also be in a
                         # failed state
-                        err_msg = "{}".format(msg) if msg else ""
-
+                        helm_err_msg = "{}".format(msg) if msg else ""
                         # Handle corner cases in which retries are exhausted due to another operation in progress.
                         # If retries are exhausted we fail.
-                        if _check_upgrade_retries_exhausted(helm_rel, err_msg):
+                        if _check_upgrade_retries_exhausted(helm_rel, helm_err_msg):
                             return False
 
                         attempt, _ = _recover_from_helm_operation_in_progress_on_app_apply(
                             metadata_name=release_name,
                             namespace=chart_obj['namespace'],
-                            flux_error_message=err_msg)
+                            flux_error_message=helm_err_msg)
 
                         if not attempt:
                             # Handle corner cases in which application removal
                             # and apply are required to recover from failure
-                            _recover_via_removal(release_name, err_msg)
+                            _recover_via_removal(release_name, helm_err_msg)
 
                             LOG.exception("Application {}: release {}: Failed during {} :{}"
-                                          "".format(app.name, release_name, request, err_msg))
+                                          "".format(app.name, release_name, request, helm_err_msg))
+
+                            # Store the error in the app object for use in def _abort_operation
+                            app.update_error_message("Failed to apply helm "
+                                                     "release \"{}\".".format(release_name))
+
                             return False
                     elif release_status == "True":
                         # Special validation check needed for AIO-SX only, can
@@ -1789,9 +1803,10 @@ class AppOperator(object):
                 old_app, constants.APP_APPLY_FAILURE,
                 constants.APP_PROGRESS_UPDATE_ABORTED.format(old_app.version, new_app.version) +
                 constants.APP_PROGRESS_RECOVER_ABORTED.format(old_app.version) +
+                old_app.error_message +
                 'Please check logs for details.')
             LOG.error("Application %s recover to version %s aborted!"
-                      % (old_app.name, old_app.version))
+                    % (old_app.name, old_app.version))
 
     def _perform_app_rollback(self, from_app, to_app):
         """Perform application rollback request
@@ -2566,8 +2581,7 @@ class AppOperator(object):
                 self._abort_operation(app, constants.APP_APPLY_OP,
                                       user_initiated=True)
             else:
-                self._abort_operation(app, constants.APP_APPLY_OP,
-                                      constants.APP_PROGRESS_ABORTED)
+                self._abort_operation(app, constants.APP_APPLY_OP, e)
 
             if not caller:
                 # If apply is not called from update method, deregister the app's
@@ -3160,6 +3174,7 @@ class AppOperator(object):
             self.patch_dependencies = []
             self.charts = []
             self.releases = []
+            self.error_message = ""
 
         @property
         def system_app(self):
@@ -3217,6 +3232,12 @@ class AppOperator(object):
                 self._kube_app.active = active
                 self._kube_app.save()
             return was_active
+
+        def update_error_message(self, new_error_message):
+            self.error_message = new_error_message
+
+        def clear_error_message(self):
+            self.error_message = ""
 
         def regenerate_manifest_filename(self, new_mname, new_mfile):
             self._kube_app.manifest_name = new_mname
@@ -3379,14 +3400,14 @@ class DockerHelper(object):
         # must be unauthenticated in this case.)
         return pub_img_tag, None
 
-    def download_an_image(self, app_name, registries_info, img_tag):
+    def download_an_image(self, app, registries_info, img_tag):
 
         rc = True
 
         start = time.time()
         if img_tag.startswith(constants.DOCKER_REGISTRY_HOST):
             try:
-                if AppOperator.is_app_aborted(app_name):
+                if AppOperator.is_app_aborted(app.name):
                     LOG.info("User aborted. Skipping download of image %s " % img_tag)
                     return img_tag, False
 
@@ -3412,6 +3433,9 @@ class DockerHelper(object):
                     client.pull(target_img_tag, auth_config=registry_auth)
 
                 except Exception as e:
+                    # Store the error in the app object for use in def _abort_operation
+                    app.update_error_message("Failed to download image: " + target_img_tag)
+
                     rc = False
                     LOG.error("Image %s download failed from public/private"
                               "registry: %s" % (img_tag, e))
