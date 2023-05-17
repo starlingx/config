@@ -7114,6 +7114,7 @@ class HostController(rest.RestController):
 
         if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
             check_upgraded_state = [
+                kubernetes.KUBE_UPGRADED_NETWORKING,
                 kubernetes.KUBE_UPGRADED_FIRST_MASTER,
                 kubernetes.KUBE_UPGRADE_CORDON_COMPLETE]
         else:
