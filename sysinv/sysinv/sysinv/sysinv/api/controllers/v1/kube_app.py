@@ -491,26 +491,14 @@ class KubeAppController(rest.RestController):
         applied_app.progress = None
         applied_app.save()
 
-        # TODO revise comment below regarding armada
-        # If the version has ever applied before(inactive app found),
-        # use ----- rollback to apply application later, otherwise,
-        # use ----- apply.
-        # On the AIO-SX, always use ----- apply even it was applied
-        # before, issue on AIO-SX(replicas is 1) to leverage rollback,
-        # -----/helm rollback --wait does not wait for pods to be
-        # ready before it returns.
-        # related to helm issue,
-        # https://github.com/helm/helm/issues/4210
-        # https://github.com/helm/helm/issues/2006
+        # If the version has been applied before (inactive app found)
+        # then use the already existing app information,
+        # otherwise create the necessary target structure for updating
         try:
             target_app = objects.kube_app.get_inactive_app_by_name_version(
                 pecan.request.context, name, version)
             target_app.status = constants.APP_UPDATE_IN_PROGRESS
             target_app.save()
-            if cutils.is_aio_simplex_system(pecan.request.dbapi):
-                operation = constants.APP_APPLY_OP
-            else:
-                operation = constants.APP_ROLLBACK_OP
         except exception.KubeAppInactiveNotFound:
             target_app_data = {
                 'name': name,
@@ -520,7 +508,6 @@ class KubeAppController(rest.RestController):
                 'status': constants.APP_UPDATE_IN_PROGRESS,
                 'active': True
             }
-            operation = constants.APP_APPLY_OP
 
             try:
                 target_app = pecan.request.dbapi.kube_app_create(target_app_data)
@@ -538,7 +525,8 @@ class KubeAppController(rest.RestController):
 
         pecan.request.rpcapi.perform_app_update(pecan.request.context,
                                                 applied_app, target_app,
-                                                tarfile, operation,
+                                                tarfile,
+                                                constants.APP_APPLY_OP,
                                                 lifecycle_hook_info,
                                                 reuse_overrides,
                                                 reuse_attributes)
