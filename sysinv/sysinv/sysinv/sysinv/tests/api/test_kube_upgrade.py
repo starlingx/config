@@ -133,6 +133,17 @@ class TestKubeUpgrade(base.FunctionalTest):
         self.addCleanup(self.mocked_get_kube_versions.stop)
 
         # Mock the KubeOperator
+        self.kube_get_node_status_result = None
+
+        def mock_kube_get_node_status(obj):
+            return self.kube_get_node_status_result
+        self.mocked_kube_get_node_status = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_get_node_status',
+            mock_kube_get_node_status)
+        self.mocked_kube_get_node_status.start()
+        self.addCleanup(self.mocked_kube_get_node_status.stop)
+
+        # Mock the KubeOperator
         self.kube_get_kubernetes_version_result = 'v1.43.1'
 
         def mock_kube_get_kubernetes_version(obj):

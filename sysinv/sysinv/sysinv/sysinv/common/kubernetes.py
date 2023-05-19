@@ -392,6 +392,18 @@ class KubeOperator(object):
             LOG.warn("Kubernetes exception in kube_get_nodes: %s" % e)
             raise
 
+    @retry(stop_max_attempt_number=API_RETRY_ATTEMPT_NUMBER,
+           wait_fixed=API_RETRY_INTERVAL,
+           retry_on_exception=_retry_on_urllibs3_MaxRetryError)
+    def kube_get_node_status(self, name):
+        try:
+            api_response = self._get_kubernetesclient_core().read_node_status(name)
+            LOG.debug("Response: %s" % api_response)
+            return api_response
+        except Exception as e:
+            LOG.warn("Kubernetes exception in kube_get_node_status: %s" % e)
+            raise
+
     def kube_namespaced_pods_exist(self, namespace):
         LOG.debug("kube_namespaced_pods_exist, namespace=%s" %
                   (namespace))

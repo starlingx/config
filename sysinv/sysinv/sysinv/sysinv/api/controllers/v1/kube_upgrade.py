@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2019-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -468,14 +468,31 @@ class KubeUpgradeController(rest.RestController):
             # Make sure upgrade is in the correct state to complete
             system = pecan.request.dbapi.isystem_get_one()
             if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
-                if kube_upgrade_obj.state not in [
-                        kubernetes.KUBE_UPGRADE_UNCORDON_COMPLETE]:
-                    raise wsme.exc.ClientSideError(_(
-                        "Kubernetes upgrade must be in %s state to complete" %
-                        kubernetes.KUBE_UPGRADE_UNCORDON_COMPLETE))
+                # If the node is unschedulable=True then the cordon command
+                # executed already and some of the pods are in pending status.
+                # The uncordon command needs to be triggered.
+                # If the node is unschedulable=None then the pods are in the
+                # running status.
+                unschedulable = None
+                node_status = self._kube_operator.kube_get_node_status(constants.CONTROLLER_0_HOSTNAME)
+                LOG.debug("Node status: %s" % node_status)
+                if node_status:
+                    unschedulable = node_status.spec.unschedulable
 
-                kube_host_upgrades = \
-                    pecan.request.dbapi.kube_host_upgrade_get_list()
+                if unschedulable:
+                    if kube_upgrade_obj.state not in [
+                            kubernetes.KUBE_UPGRADE_UNCORDON_COMPLETE]:
+                        raise wsme.exc.ClientSideError(_(
+                            "Kubernetes upgrade must be in %s state to complete" %
+                            kubernetes.KUBE_UPGRADE_UNCORDON_COMPLETE))
+                else:
+                    if kube_upgrade_obj.state not in [
+                            kubernetes.KUBE_UPGRADING_KUBELETS,
+                            kubernetes.KUBE_UPGRADE_UNCORDON_COMPLETE]:
+                        raise wsme.exc.ClientSideError(_(
+                            "Kubernetes upgrade must be in %s or %s state to complete" %
+                            (kubernetes.KUBE_UPGRADING_KUBELETS,
+                            kubernetes.KUBE_UPGRADE_UNCORDON_COMPLETE)))
             else:
                 if kube_upgrade_obj.state not in [
                         kubernetes.KUBE_UPGRADING_KUBELETS]:
@@ -483,15 +500,15 @@ class KubeUpgradeController(rest.RestController):
                         "Kubernetes upgrade must be in %s state to complete" %
                         kubernetes.KUBE_UPGRADING_KUBELETS))
 
-                # Make sure no hosts are in a transitory or failed state
-                kube_host_upgrades = \
-                    pecan.request.dbapi.kube_host_upgrade_get_list()
-                for kube_host_upgrade in kube_host_upgrades:
-                    if kube_host_upgrade.status != \
-                            kubernetes.KUBE_HOST_UPGRADED_KUBELET:
-                        raise wsme.exc.ClientSideError(_(
-                            "At least one host has not completed the kubernetes "
-                            "upgrade"))
+            # Make sure no hosts are in a transitory or failed state
+            kube_host_upgrades = \
+                pecan.request.dbapi.kube_host_upgrade_get_list()
+            for kube_host_upgrade in kube_host_upgrades:
+                if kube_host_upgrade.status != \
+                        kubernetes.KUBE_HOST_UPGRADED_KUBELET:
+                    raise wsme.exc.ClientSideError(_(
+                        "At least one host has not completed the kubernetes "
+                        "upgrade"))
 
             # Make sure the target version is active
             version_states = self._kube_operator.kube_get_version_states()
