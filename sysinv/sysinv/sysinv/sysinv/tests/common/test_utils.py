@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2021-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -284,10 +284,23 @@ class TestCommonUtils(base.TestCase):
         self.assertFalse(utils.has_sriovdp_enabled([mock_host_label]))
 
     @mock.patch("sysinv.common.utils.os")
-    def test_get_rpm_package(self, mock_os):
+    def test_get_rpm_package_updates(self, mock_os):
         load_version = "1.0"
         playbook_pkg = "playbookconfig"
 
+        mock_os.path.isdir.return_value = True
+        mock_os.listdir.return_value = [playbook_pkg]
+
+        result = utils.get_rpm_package(load_version, playbook_pkg)
+
+        self.assertIsNotNone(result, playbook_pkg)
+
+    @mock.patch("sysinv.common.utils.os")
+    def test_get_rpm_package_feed(self, mock_os):
+        load_version = "1.0"
+        playbook_pkg = "playbookconfig"
+
+        mock_os.path.isdir.side_effect = [False, True]
         mock_os.listdir.return_value = [playbook_pkg]
 
         result = utils.get_rpm_package(load_version, playbook_pkg)

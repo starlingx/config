@@ -3770,11 +3770,26 @@ def is_filesystem_enabled(dbapi, host_id_or_uuid, fs_name):
 
 
 def get_rpm_package(load_version, package_name):
-    packages_dir = "/var/www/pages/feed/rel-%s/Packages/" % load_version
+    """Search for a package or its initial characters in a specific
+    load version. First, it will look in the patch directory, if it
+    doesn't find it, it will look in the feed directory.
 
-    for package in os.listdir(packages_dir):
-        if package.startswith(package_name):
-            return os.path.join(packages_dir, package)
+    :param   load_version: the load version where the package is located.
+    :param   package_name: the package name or its initial characters.
+    :returns the package full path or None if not found.
+    """
+    packages_dir = [
+        "/var/www/pages/updates/rel-%s/Packages/" % load_version,
+        "/var/www/pages/feed/rel-%s/Packages/" % load_version,
+    ]
+
+    for package_dir in packages_dir:
+        if not os.path.isdir(package_dir):
+            continue
+
+        for package in os.listdir(package_dir):
+            if package.startswith(package_name):
+                return os.path.join(package_dir, package)
 
 
 def extract_rpm_package(rpm_package, target_dir):
