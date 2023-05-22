@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016-2022 Wind River Systems, Inc.
+# Copyright (c) 2016-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -41,6 +41,8 @@ CONTROLLER_1_HOSTNAME = "controller-1"
 DB_CONNECTION = "postgresql://%s:%s@127.0.0.1/%s\n"
 KUBERNETES_CONF_PATH = "/etc/kubernetes"
 KUBERNETES_ADMIN_CONF_FILE = "admin.conf"
+PLATFORM_LOG = '/var/log/platform.log'
+ERROR_FILE = '/tmp/upgrade_fail_msg'
 
 # well-known default domain name
 DEFAULT_DOMAIN_NAME = 'Default'
@@ -104,10 +106,18 @@ def execute_migration_scripts(from_release, to_release, action,
                                      stdout=subprocess.PIPE,
                                      text=True)
                 if ret.returncode != 0:
+                    script_output = ret.stdout.splitlines()
+                    output_list = []
+                    for item in script_output:
+                        if item not in output_list:
+                            output_list.append(item)
+                    output_script = "\n".join(output_list)
                     msg = MSG_SCRIPT_FAILURE % (migration_script,
                                                 ret.returncode,
-                                                ret.stdout)
+                                                output_script)
                     LOG.error(msg)
+                    msg_temp = search_script_output(PLATFORM_LOG, f)
+                    save_temp_file(msg, msg_temp)
                     raise Exception(msg)
 
         except subprocess.CalledProcessError as e:
@@ -120,6 +130,43 @@ def execute_migration_scripts(from_release, to_release, action,
             # log exception if script not executed.
             LOG.exception(e)
             raise
+
+
+def search_script_output(file_name, script):
+    cmd = [
+        "awk",
+        "/{script}/ {{last_match = $0}} "
+        "END {{if (last_match) print last_match}}".format(script=script),
+        file_name
+    ]
+    try:
+        process = subprocess.Popen(cmd,
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE)
+        output, error = process.communicate()
+        last_match = output.decode().strip()
+    except Exception:
+        LOG.error("Failed to exec cmd. \n %s" % error)
+        return None
+    return last_match
+
+
+def save_temp_file(msg, error=None):
+    if os.path.isfile(ERROR_FILE):
+        os.remove(ERROR_FILE)
+
+    MSG_FAILURE = '%s \n\n'\
+                  '%s \n\n'\
+                  'Check specific service log or search for' \
+                  'this app in sysinv.log for details'
+    msg = MSG_FAILURE % (msg,
+                         error)
+    try:
+        with open(ERROR_FILE, 'w+') as error_file:
+            error_file.write(msg)
+    except Exception:
+        LOG.warning("Error opening file %s" % ERROR_FILE)
+        return None
 
 
 def get_db_connection(hiera_db_records, database):

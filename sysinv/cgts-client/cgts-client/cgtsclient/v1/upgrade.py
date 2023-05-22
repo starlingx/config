@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015 Wind River Systems, Inc.
+# Copyright (c) 2015-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -49,3 +49,7 @@ class UpgradeManager(base.Manager):
 
     def update(self, patch):
         return self._update(self._path(), patch)
+
+    def get_upgrade_msg(self):
+        path = self._path() + '/get_upgrade_msg'
+        return self._json_get(path)
