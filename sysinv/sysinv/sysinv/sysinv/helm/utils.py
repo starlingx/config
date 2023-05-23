@@ -14,6 +14,8 @@ import os
 import psutil
 import ruamel.yaml as yaml
 import tempfile
+import random
+import string
 import threading
 import zlib
 
@@ -164,6 +166,23 @@ def delete_helm_release(release, namespace="default", flags=None):
         timer.cancel()
 
 
+def create_tmp_chart_dir():
+    """ Create a helm-compatible temporary chart directory
+
+    Chart directory names must have only lower cases letters and
+    numbers in order to be accepted as valid by Helm.
+
+    :returns: full path of the temporary directory created
+    """
+
+    dir_name = ''.join(random.choices(
+                    string.ascii_lowercase + string.digits, k=32))
+    dir_path = os.path.join(tempfile.gettempdir(), dir_name)
+    os.mkdir(dir_path)
+
+    return dir_path
+
+
 def install_helm_chart_with_dry_run(args=None):
     """Simulate a chart install
 
@@ -183,7 +202,7 @@ def install_helm_chart_with_dry_run(args=None):
     timer = None
     try:
         # Make a temporary directory with a fake chart in it
-        tmpdir = tempfile.mkdtemp()
+        tmpdir = create_tmp_chart_dir()
         chartfile = tmpdir + '/Chart.yaml'
         with open(chartfile, 'w') as tmpchart:
             tmpchart.write('name: mychart\napiVersion: v1\n'
