@@ -83,30 +83,49 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 if (intf.uuid in intf_ep.keys()):
                     intf_ep[intf.uuid][1] = '.'.join(iftype_lbl)
 
+        # since we selected the networks that will receive firewall in the interface_network DB,
+        # when the pxeboot is not present we need to allow the pxeboot firewall in the management
+        # interface, if the mgmt is an ethernet device.
+        is_pxeboot_present = [network.type for network in firewall_networks
+                              if network.type == constants.NETWORK_TYPE_PXEBOOT]
+        is_mgmt_present = [network.type for network in firewall_networks
+                            if network.type == constants.NETWORK_TYPE_MGMT]
+        if not is_pxeboot_present and is_mgmt_present:
+            # first add the pxeboot label in the management interface, if ethernet
+            for intf_uuid in intf_ep.keys():
+                if constants.NETWORK_TYPE_MGMT in intf_ep[intf_uuid][1]:
+                    intf = intf_ep[intf_uuid][0]
+                    iftype = intf_ep[intf_uuid][1]
+                    if intf.iftype == constants.INTERFACE_TYPE_ETHERNET:
+                        intf_ep[intf_uuid][1] = iftype + "." + constants.NETWORK_TYPE_PXEBOOT
+            # second, add the pxeboot network object to the list of firewalls
+            pxe_net = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_PXEBOOT)
+            firewall_networks.add(pxe_net)
+
         if (firewall_networks):
             self._get_hostendpoints(host, intf_ep, config[FIREWALL_HE_INTERFACE_CFG])
 
             self._get_basic_firewall_gnp(host, firewall_networks, config)
             networks = {network.type: network for network in firewall_networks}
 
-            if _activate_filtering():
-                if (config[FIREWALL_GNP_MGMT_CFG]):
-                    self._set_rules_mgmt(config[FIREWALL_GNP_MGMT_CFG],
-                                        networks[constants.NETWORK_TYPE_MGMT])
+            if (config[FIREWALL_GNP_MGMT_CFG]):
+                self._set_rules_mgmt(config[FIREWALL_GNP_MGMT_CFG],
+                                    networks[constants.NETWORK_TYPE_MGMT], host)
 
-                if (config[FIREWALL_GNP_CLUSTER_HOST_CFG]):
-                    self._set_rules_cluster_host(config[FIREWALL_GNP_CLUSTER_HOST_CFG],
-                                        networks[constants.NETWORK_TYPE_CLUSTER_HOST])
+            if (config[FIREWALL_GNP_CLUSTER_HOST_CFG]):
+                self._set_rules_cluster_host(config[FIREWALL_GNP_CLUSTER_HOST_CFG],
+                                    networks[constants.NETWORK_TYPE_CLUSTER_HOST], host)
 
-                if (config[FIREWALL_GNP_PXEBOOT_CFG]):
-                    self._set_rules_pxeboot(config[FIREWALL_GNP_PXEBOOT_CFG],
-                                        networks[constants.NETWORK_TYPE_PXEBOOT])
+            if (config[FIREWALL_GNP_PXEBOOT_CFG]):
+                self._set_rules_pxeboot(config[FIREWALL_GNP_PXEBOOT_CFG],
+                                    networks[constants.NETWORK_TYPE_PXEBOOT], host)
 
-                if (config[FIREWALL_GNP_STORAGE_CFG]):
-                    self._set_rules_storage(config[FIREWALL_GNP_STORAGE_CFG],
-                                        networks[constants.NETWORK_TYPE_STORAGE])
+            if (config[FIREWALL_GNP_STORAGE_CFG]):
+                self._set_rules_storage(config[FIREWALL_GNP_STORAGE_CFG],
+                                    networks[constants.NETWORK_TYPE_STORAGE], host)
 
-                if (host.personality == constants.CONTROLLER):
+            if (host.personality == constants.CONTROLLER):
+                if _activate_filtering():
                     if (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
                         if (config[FIREWALL_GNP_ADMIN_CFG]):
                             self._set_rules_subcloud_admin(config[FIREWALL_GNP_ADMIN_CFG],
@@ -216,17 +235,25 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 firewall_gnp["spec"]["ingress"].append(rule)
             config[PLATFORM_FIREWALL_CLASSES[network.type]] = copy.copy(firewall_gnp)
 
-    def _set_rules_mgmt(self, gnp_config, network):
+    def _set_rules_mgmt(self, gnp_config, network, host):
         """ Fill the management network specific filtering data
 
         :param gnp_config: the dict containing the hiera data to be filled
         :param network: the sysinv.object.network object for this network
         """
         addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
+        ip_version = IPAddress(f"{addr_pool.network}").version
         self._add_source_net_filter(gnp_config["spec"]["ingress"],
                                     f"{addr_pool.network}/{addr_pool.prefix}")
+        if (ip_version == 6):
+            self._add_source_net_filter(gnp_config["spec"]["ingress"], "fe80::/64")
+        if (ip_version == 4):
+            # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
+            # worker/storage nodes request IP dynamically
+            rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
+            gnp_config["spec"]["ingress"].append(rule)
 
-    def _set_rules_cluster_host(self, gnp_config, network):
+    def _set_rules_cluster_host(self, gnp_config, network, host):
         """ Fill the cluster-host network specific filtering data
 
         :param gnp_config: the dict containing the hiera data to be filled
@@ -234,10 +261,42 @@ class PlatformFirewallPuppet(base.BasePuppet):
         """
 
         addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
+        ip_version = IPAddress(f"{addr_pool.network}").version
         self._add_source_net_filter(gnp_config["spec"]["ingress"],
                                     f"{addr_pool.network}/{addr_pool.prefix}")
+        if (ip_version == 6):
+            # add cluster-pod since in IPv6 there is no tunneling, the pod traffic goes directly
+            # in the cluster-host interface
+            cpod_net = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_CLUSTER_POD)
+            if cpod_net:
+                cpod_pool = self.dbapi.address_pool_get(cpod_net.pool_uuid)
+                cpod_ip_version = IPAddress(f"{cpod_pool.network}").version
+                if (cpod_ip_version == 6):
+                    self._add_source_net_filter(gnp_config["spec"]["ingress"],
+                                                f"{cpod_pool.network}/{cpod_pool.prefix}")
+            else:
+                LOG.info("In IPv6 cannot find cluster-pod network to add to cluster-host firewall")
+            # add link-local network too
+            self._add_source_net_filter(gnp_config["spec"]["ingress"], "fe80::/64")
 
-    def _set_rules_pxeboot(self, gnp_config, network):
+            # copy the TCP rule and do the same for SCTP
+            sctp_egr_rule = copy.deepcopy(gnp_config["spec"]["egress"][0])
+            sctp_egr_rule["protocol"] = "SCTP"
+            sctp_egr_rule["metadata"]["annotations"]["name"] = \
+                f"stx-egr-{host.personality}-{network.type}-sctp{ip_version}"
+            gnp_config["spec"]["egress"].append(sctp_egr_rule)
+            sctp_ingr_rule = copy.deepcopy(gnp_config["spec"]["ingress"][0])
+            sctp_ingr_rule["protocol"] = "SCTP"
+            sctp_ingr_rule["metadata"]["annotations"]["name"] = \
+                f"stx-ingr-{host.personality}-{network.type}-sctp{ip_version}"
+            gnp_config["spec"]["ingress"].append(sctp_ingr_rule)
+
+        if (ip_version == 4):
+            # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
+            rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
+            gnp_config["spec"]["ingress"].append(rule)
+
+    def _set_rules_pxeboot(self, gnp_config, network, host):
         """ Fill the pxeboot network specific filtering data
 
         :param gnp_config: the dict containing the hiera data to be filled
@@ -245,10 +304,17 @@ class PlatformFirewallPuppet(base.BasePuppet):
         """
 
         addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
+        ip_version = IPAddress(f"{addr_pool.network}").version
         self._add_source_net_filter(gnp_config["spec"]["ingress"],
                                     f"{addr_pool.network}/{addr_pool.prefix}")
+        if (ip_version == 6):
+            self._add_source_net_filter(gnp_config["spec"]["ingress"], "fe80::/64")
+        if (ip_version == 4):
+            # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
+            rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
+            gnp_config["spec"]["ingress"].append(rule)
 
-    def _set_rules_storage(self, gnp_config, network):
+    def _set_rules_storage(self, gnp_config, network, host):
         """ Fill the storage network specific filtering data
 
         :param gnp_config: the dict containing the hiera data to be filled
@@ -256,8 +322,15 @@ class PlatformFirewallPuppet(base.BasePuppet):
         """
 
         addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
+        ip_version = IPAddress(f"{addr_pool.network}").version
         self._add_source_net_filter(gnp_config["spec"]["ingress"],
                                     f"{addr_pool.network}/{addr_pool.prefix}")
+        if (ip_version == 6):
+            self._add_source_net_filter(gnp_config["spec"]["ingress"], "fe80::/64")
+        if (ip_version == 4):
+            # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
+            rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
+            gnp_config["spec"]["ingress"].append(rule)
 
     def _add_source_net_filter(self, rule_list, source_net):
         """ Add source network in the rule list
@@ -289,7 +362,11 @@ class PlatformFirewallPuppet(base.BasePuppet):
 
         addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
         ip_version = IPAddress(f"{addr_pool.network}").version
-        for proto in ["TCP", "UDP", "ICMP"]:
+        ICMP = "ICMP"
+        if ip_version == 6:
+            ICMP = "ICMPv6"
+
+        for proto in ["TCP", "UDP", ICMP]:
             rule = {"metadata": dict()}
             rule["metadata"] = {"annotations": dict()}
             rule["metadata"]["annotations"] = {"name":
@@ -316,7 +393,11 @@ class PlatformFirewallPuppet(base.BasePuppet):
 
         addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
         ip_version = IPAddress(f"{addr_pool.network}").version
-        for proto in ["TCP", "UDP", "ICMP"]:
+        ICMP = "ICMP"
+        if ip_version == 6:
+            ICMP = "ICMPv6"
+
+        for proto in ["TCP", "UDP", ICMP]:
             rule = {"metadata": dict()}
             rule["metadata"] = {"annotations": dict()}
             rule["metadata"]["annotations"] = {"name":
@@ -340,7 +421,11 @@ class PlatformFirewallPuppet(base.BasePuppet):
 
         addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
         ip_version = IPAddress(f"{addr_pool.network}").version
-        for proto in ["TCP", "UDP", "ICMP"]:
+        ICMP = "ICMP"
+        if ip_version == 6:
+            ICMP = "ICMPv6"
+
+        for proto in ["TCP", "UDP", ICMP]:
             rule = {"metadata": dict()}
             rule["metadata"] = {"annotations": dict()}
             rule["metadata"]["annotations"] = {"name":
@@ -401,6 +486,17 @@ class PlatformFirewallPuppet(base.BasePuppet):
                                                              name="http_port")
             tcp_port = int(http_port.value)
         return tcp_port
+
+    def _get_dhcp_rule(self, personality, proto, ip_version):
+        rule = {"metadata": dict()}
+        rule["metadata"] = {"annotations": dict()}
+        rule["metadata"]["annotations"] = {"name":
+            f"stx-ingr-{personality}-dhcp-{proto.lower()}{ip_version}"}
+        rule.update({"protocol": proto})
+        rule.update({"ipVersion": ip_version})
+        rule.update({"action": "Allow"})
+        rule.update({"destination": {"ports": [67]}})
+        return rule
 
 
 def _activate_filtering():

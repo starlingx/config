@@ -5047,3 +5047,10 @@ class Connection(object):
 
         :param network_uuid: network unique identifier
         """
+
+    @abc.abstractmethod
+    def network_get_by_type(self, networktype):
+        """ get network object by type
+
+        :param networktype: network type
+        """
