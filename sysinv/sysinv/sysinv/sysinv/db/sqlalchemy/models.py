@@ -1415,7 +1415,7 @@ class InterfaceDataNetworks(Base):
         Integer, ForeignKey('datanetworks.id', ondelete='CASCADE'))
 
     interface = relationship(
-        "Interfaces", lazy="joined", backref="interface_datanetworks")
+        "Interfaces", lazy="joined", backref=backref("interface_datanetworks", lazy="joined"))
     datanetwork = relationship(
         "DataNetworks", lazy="joined", backref="interface_datanetworks")
     UniqueConstraint(
