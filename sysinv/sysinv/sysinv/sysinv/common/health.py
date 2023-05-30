@@ -360,6 +360,17 @@ class Health(object):
                 continue
         return success, message
 
+    def _check_psp_policies(self):
+        """ Checks for any existing PodSecurityPolicies on the system """
+        psp_list = []
+        psp_policies = self._kube_operator.get_psp_resource()
+        if psp_policies:
+            for item in psp_policies:
+                psp_list.append(item.metadata.name)
+            return False, psp_list
+        else:
+            return True, psp_list
+
     def get_system_health(self, context, force=False, alarm_ignore_list=None):
         """Returns the general health of the system
 
@@ -372,6 +383,7 @@ class Health(object):
         - For ceph systems: The storage cluster is healthy
         - All kubernetes nodes are ready
         - All kubernetes control plane pods are ready
+        - All PodSecurityPolicies are removed
 
         :param context: request context.
         :param force: set to true to ignore minor and warning alarms
@@ -464,6 +476,15 @@ class Health(object):
         if not success:
             output += _('Kubernetes control plane pods not ready: %s\n') \
                 % ', '.join(error_nodes)
+
+        health_ok = health_ok and success
+
+        success, psp_list = self._check_psp_policies()
+        output += ('All PodSecurityPolicies are removed: [%s]\n') \
+                % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
+        if not success:
+            output += _('PSP policies exists, please remove them before upgrade: %s\n') \
+                    % ', '.join(psp_list)
 
         health_ok = health_ok and success
 

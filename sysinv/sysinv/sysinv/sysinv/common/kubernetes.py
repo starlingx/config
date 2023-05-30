@@ -302,6 +302,7 @@ class KubeOperator(object):
     def __init__(self):
         self._kube_client_batch = None
         self._kube_client_core = None
+        self._kube_client_policy = None
         self._kube_client_custom_objects = None
         self._kube_client_admission_registration = None
 
@@ -331,6 +332,12 @@ class KubeOperator(object):
             self._load_kube_config()
             self._kube_client_core = client.CoreV1Api()
         return self._kube_client_core
+
+    def _get_kubernetesclient_policy(self):
+        if not self._kube_client_policy:
+            self._load_kube_config()
+            self._kube_client_policy = client.PolicyV1beta1Api()
+        return self._kube_client_policy
 
     def _get_kubernetesclient_custom_objects(self):
         if not self._kube_client_custom_objects:
@@ -1393,3 +1400,19 @@ class KubeOperator(object):
             return 1
 
         return 0
+
+    def get_psp_resource(self):
+        try:
+            # Create an API client
+            c = self._get_kubernetesclient_policy()
+
+            # Retrieve the resource items
+            api_response = c.list_pod_security_policy()
+            LOG.debug("Response: %s" % api_response)
+            items = api_response.items
+
+            # Return the items if present, or False if not found
+            return items if items else False
+        except Exception as e:
+            LOG.exception("Failed to fetch PodSecurityPolicies: %s" % e)
+            raise

@@ -158,6 +158,17 @@ class TestHealth(dbbase.BaseHostTestCase):
         self.addCleanup(
             self.mocked_kube_get_control_plane_pod_ready_status.stop)
 
+        self.get_psp_resource_result = None
+
+        def mock_get_psp_resource(obj):
+            return self.get_psp_resource_result
+        self.mocked_get_psp_resource = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.get_psp_resource',
+            mock_get_psp_resource)
+        self.mocked_get_psp_resource.start()
+        self.mocked_get_psp_resource.return_value = []
+        self.addCleanup(self.mocked_get_psp_resource.stop)
+
         # Mock the fm API
         p = mock.patch('sysinv.common.health.fmclient')
         self.mock_fm_client_alarm_list = p.start()

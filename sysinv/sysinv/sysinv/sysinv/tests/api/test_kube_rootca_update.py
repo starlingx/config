@@ -160,6 +160,13 @@ class TestKubeRootCAUpdate(base.FunctionalTest):
         self.mock_check_kube_control_plane_pods.return_value = (True, [])
         self.addCleanup(p.stop)
 
+        # _check_psp_policies
+        # returns (Success Boolean, List of psp resources [])
+        p = mock.patch.object(health.Health, '_check_psp_policies')
+        self.mock_check_psp_policies = p.start()
+        self.mock_check_psp_policies.return_value = (True, [])
+        self.addCleanup(p.stop)
+
     def _patch_current(self, bool_val=True):
         return {
             'data': [
