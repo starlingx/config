@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2022 Wind River Systems, Inc.
+# Copyright (c) 2017-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -223,7 +223,7 @@ class PuppetOperator(object):
 
         with io.open(os.path.join(path, filename), 'r',
                      encoding='utf-8') as yaml_file:
-            host_config = yaml.load(yaml_file)
+            host_config = yaml.load(yaml_file, Loader=yaml.FullLoader)
 
         host_config.update(config)
 
