@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015-2017 Wind River Systems, Inc.
+# Copyright (c) 2015-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -115,6 +115,7 @@ class UpgradeCollection(collection.Collection):
         return collection
 
 
+ERROR_FILE = '/tmp/upgrade_fail_msg'
 LOCK_NAME = 'UpgradeController'
 
 
@@ -125,6 +126,7 @@ class UpgradeController(rest.RestController):
         'check_reinstall': ['GET'],
         'in_upgrade': ['GET'],
         'upgrade_in_progress': ['GET'],
+        'get_upgrade_msg': ['GET'],
     }
 
     def __init__(self, parent=None, **kwargs):
@@ -174,6 +176,17 @@ class UpgradeController(rest.RestController):
                 reinstall_necessary = True
 
         return {'reinstall_necessary': reinstall_necessary}
+
+    @expose('json')
+    def get_upgrade_msg(self):
+        output = ''
+        try:
+            with open(ERROR_FILE, 'r') as error_file:
+                output = error_file.read()
+        except Exception:
+            LOG.warning("Error opening file %s" % ERROR_FILE)
+
+        return {'error_msg:': output}
 
     @wsme_pecan.wsexpose(UpgradeCollection, types.uuid, int, wtypes.text,
                          wtypes.text)
