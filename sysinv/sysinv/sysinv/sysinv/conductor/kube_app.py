@@ -1692,7 +1692,9 @@ class AppOperator(object):
         with self._lock:
             from_app.update_app_metadata(new_metadata)
 
-    def _perform_app_recover(self, old_app, new_app, fluxcd_process_required=True):
+    def _perform_app_recover(self, rpc_app, old_app, new_app,
+                             lifecycle_hook_info_app,
+                             fluxcd_process_required=True):
         """Perform application recover
 
         This recover method is triggered when application update failed, it cleans
@@ -1703,8 +1705,10 @@ class AppOperator(object):
         The app status will be populated to "apply-failed" if recover fails so that
         the user can re-apply app.
 
+        :param rpc_app: application object in the RPC request
         :param old_app: the application object that application recovering to
         :param new_app: the application object that application recovering from
+        :param lifecycle_hook_info_app: LifecycleHookInfo object
         :param fluxcd_process_required: boolean, whether fluxcd operation is needed
         """
 
@@ -1732,6 +1736,15 @@ class AppOperator(object):
             self._dbapi.kube_app_destroy(new_app.name,
                                          version=new_app.version,
                                          inactive=True)
+
+            lifecycle_hook_info_app_recover = copy.deepcopy(lifecycle_hook_info_app)
+            lifecycle_hook_info_app_recover.operation = constants.APP_RECOVER_OP
+
+            lifecycle_hook_info_app_recover.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RBD
+            self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_recover)
+
+            lifecycle_hook_info_app_recover.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RESOURCE
+            self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_recover)
 
             LOG.info("Recovering helm charts for Application %s (%s)..."
                      % (old_app.name, old_app.version))
@@ -2660,14 +2673,14 @@ class AppOperator(object):
             except exception.LifecycleSemanticCheckException as e:
                 LOG.info("App {} rejected operation {} for reason: {}"
                          "".format(to_app.name, constants.APP_UPDATE_OP, str(e)))
-                # lifecycle hooks not used in perform_app_recover
-                return self._perform_app_recover(from_app, to_app,
+                return self._perform_app_recover(to_rpc_app, from_app, to_app,
+                                                 lifecycle_hook_info_app_update,
                                                  fluxcd_process_required=False)
             except Exception as e:
                 LOG.error("App {} operation {} semantic check error: {}"
                           "".format(to_app.name, constants.APP_UPDATE_OP, str(e)))
-                # lifecycle hooks not used in perform_app_recover
-                return self._perform_app_recover(from_app, to_app,
+                return self._perform_app_recover(to_rpc_app, from_app, to_app,
+                                                 lifecycle_hook_info_app_update,
                                                  fluxcd_process_required=False)
 
             self.load_application_metadata_from_file(to_rpc_app)
@@ -2736,9 +2749,8 @@ class AppOperator(object):
             if do_recovery:
                 LOG.error("Application %s update from version %s to version "
                           "%s aborted." % (to_app.name, from_app.version, to_app.version))
-
-                # lifecycle hooks not used in perform_app_recover
-                return self._perform_app_recover(from_app, to_app)
+                return self._perform_app_recover(to_rpc_app, from_app, to_app,
+                                                 lifecycle_hook_info_app_update)
 
             self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS,
                                     "cleanup application version {}".format(from_app.version))
@@ -2799,8 +2811,8 @@ class AppOperator(object):
             # ie.images download/k8s resource creation failure
             # Start recovering without trigger fluxcd process
             LOG.exception(e)
-            # lifecycle hooks not used in perform_app_recover
-            return self._perform_app_recover(from_app, to_app,
+            return self._perform_app_recover(to_rpc_app, from_app, to_app,
+                                             lifecycle_hook_info_app_update,
                                              fluxcd_process_required=False)
         except Exception as e:
             # Application update successfully(fluxcd apply/rollback)
