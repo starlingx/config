@@ -136,7 +136,8 @@ class FmPuppet(openstack.OpenstackBasePuppet):
                                                 self.SNMP_CHART_NAME,
                                                 self.SNMP_NAME_SPACE)
         if db_chart is not None and db_chart.user_overrides is not None:
-            user_overrides = yaml.load(db_chart.user_overrides)
+            user_overrides = yaml.load(db_chart.user_overrides,
+                                       Loader=yaml.FullLoader)
             if self.TRAP_SERVER_PORT_CONFIG_KEY in user_overrides:
                 snmp_trap_port = user_overrides[
                     self.TRAP_SERVER_PORT_CONFIG_KEY]

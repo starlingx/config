@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2022 Wind River Systems, Inc.
+# Copyright (c) 2018-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -712,8 +712,14 @@ class HelmOperator(object):
                                 app.id, chart_name, chart_namespace)
                             db_user_overrides = db_chart.user_overrides
                             if db_user_overrides:
-                                file_overrides.append(yaml.dump(
-                                    {chart_namespace: yaml.load(db_user_overrides)}))
+                                file_overrides.append(
+                                    yaml.dump(
+                                        {chart_namespace: yaml.load(
+                                            db_user_overrides,
+                                            Loader=yaml.FullLoader
+                                        )}
+                                    )
+                                )
                         except exception.HelmOverrideNotFound:
                             pass
 
@@ -724,7 +730,10 @@ class HelmOperator(object):
                         file_overrides.insert(0, system_overrides)
                         combined_overrides = self.merge_overrides(
                             file_overrides=file_overrides)
-                        overrides = yaml.load(combined_overrides)
+                        overrides = yaml.load(
+                            combined_overrides,
+                            Loader=yaml.FullLoader
+                        )
 
                 self._write_chart_overrides(path, chart_name, cnamespace, overrides)
 
@@ -765,8 +774,14 @@ class HelmOperator(object):
                 user_overrides = {chart.namespace: {}}
                 db_user_overrides = db_chart.user_overrides
                 if db_user_overrides:
-                    user_overrides = yaml.load(yaml.dump(
-                        {chart.namespace: yaml.load(db_user_overrides)}))
+                    user_overrides = yaml.load(
+                        yaml.dump(
+                            {chart.namespace: yaml.load(
+                                db_user_overrides,
+                                Loader=yaml.FullLoader
+                            )}),
+                        Loader=yaml.FullLoader
+                    )
 
                 self._write_chart_overrides(path, chart.name,
                                             cnamespace, user_overrides)
