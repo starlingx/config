@@ -168,13 +168,14 @@ class AppOperator(object):
         return app.system_app
 
     def _clear_stuck_applications(self):
-        apps = self._dbapi.kube_app_get_all()
-        for app in apps:
-            if app.status in [constants.APP_UPLOAD_IN_PROGRESS,
+        db_apps = self._dbapi.kube_app_get_all()
+        for db_app in db_apps:
+            if db_app.status in [constants.APP_UPLOAD_IN_PROGRESS,
                               constants.APP_APPLY_IN_PROGRESS,
                               constants.APP_UPDATE_IN_PROGRESS,
                               constants.APP_RECOVER_IN_PROGRESS,
                               constants.APP_REMOVE_IN_PROGRESS]:
+                app = AppOperator.Application(db_app)
                 self._abort_operation(app, app.status, reset_status=True)
             else:
                 continue
@@ -297,9 +298,19 @@ class AppOperator(object):
                          progress=constants.APP_PROGRESS_ABORTED,
                          user_initiated=False, reset_status=False,
                          forced_operation=False):
+        """Abort application operations
+
+        This function is responsible for canceling operations
+        like upload, apply, remove
+
+        :param app: Instance of the AppOperation.Application
+        :operation: String with application status
+        """
+
         # Adds the app object error message if it exists
-        progress = "{}: {}".format(app.error_message, progress)
-        app.clear_error_message()
+        if (app.error_message):
+            progress = "{}: {}".format(app.error_message, progress)
+            app.clear_error_message()
 
         if user_initiated:
             progress = constants.APP_PROGRESS_ABORTED_BY_USER
@@ -3043,6 +3054,7 @@ class AppOperator(object):
         def __init__(self, rpc_app):
             self._kube_app = rpc_app
 
+            self.id = self._kube_app.get('id')
             self.tarfile = None
             self.downloaded_tarfile = False
 
