@@ -206,6 +206,7 @@ class SssdPuppet(base.BasePuppet):
             'debug_level': '0x0270',
             'id_provider': 'ldap',
             'enumerate': 'true',
+            'ldap_sudo_smart_refresh_interval': '300',
             'access_provider': 'ldap',
             'ldap_access_filter': '(& (objectclass=posixAccount))',
             'ldap_search_base': 'dc=cgcs,dc=local',
@@ -277,7 +278,7 @@ class SssdPuppet(base.BasePuppet):
                     domain_parameters['ldap_uri'] = uri
                     domain_parameters['ldap_access_filter'] = access_filter
                     domain_parameters['ldap_search_base'] = search_base
-                    sudo_search_base = "OU=sudoers" + search_base[search_base.find('DC='):]
+                    sudo_search_base = "OU=sudoers," + search_base[search_base.find('DC='):]
                     domain_parameters['ldap_sudo_search_base'] = sudo_search_base
                     domain_parameters['ldap_default_bind_dn'] = default_bind_dn
                     domain_parameters['ldap_default_authtok'] = default_authtok
