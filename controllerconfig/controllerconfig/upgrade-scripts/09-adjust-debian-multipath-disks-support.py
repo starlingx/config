@@ -38,8 +38,8 @@ def main():
     )
     res = 0
     if action == "migrate" and (
-        from_release == "21.12"
-        and to_release == "22.12"
+        from_release == "21.12" and
+        to_release == "22.12"
     ):
         if not is_multipath():
             LOG.info("Multipath not detected, nothing to do")
@@ -229,6 +229,7 @@ def transform_part_device_path(path):
     if result:
         return "{}wwn-0x{}-{}".format(result[1], result[3], result[2])
     return path
+
 
 if __name__ == "__main__":
     sys.exit(main())

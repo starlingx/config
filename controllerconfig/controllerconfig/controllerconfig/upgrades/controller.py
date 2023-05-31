@@ -107,8 +107,8 @@ def get_db_credentials(shared_services, from_release, role=None):
     hiera_path = os.path.join(PLATFORM_PATH, "puppet", from_release,
                               "hieradata")
     static_file = os.path.join(hiera_path, "static.yaml")
-    with open(static_file, 'r') as file:
-        static_config = yaml.load(file)
+    with open(static_file, 'r') as s_file:
+        static_config = yaml.safe_load(s_file)
 
     db_credentials = dict()
     for database, values in db_credential_keys.items():
@@ -411,8 +411,8 @@ def migrate_sysinv_data(from_release, to_release):
     hiera_path = os.path.join(PLATFORM_PATH, "puppet", from_release,
                               "hieradata")
     static_file = os.path.join(hiera_path, "static.yaml")
-    with open(static_file, 'r') as file:
-        static_config = yaml.load(file)
+    with open(static_file, 'r') as s_file:
+        static_config = yaml.safe_load(s_file)
 
     username = static_config["sysinv::db::postgresql::user"]
     password = utils.get_password_from_keyring("sysinv", "database")
@@ -448,8 +448,8 @@ def prepare_postgres_filesystems():
 
     # Create a temporary filesystem for the dumped database
     from_dir = os.path.join(POSTGRES_MOUNT_PATH, "upgrade")
-    stat = os.statvfs(from_dir)
-    db_dump_filesystem_size = str(stat.f_frsize * stat.f_blocks) + "B"
+    statvfs = os.statvfs(from_dir)
+    db_dump_filesystem_size = str(statvfs.f_frsize * statvfs.f_blocks) + "B"
 
     # Move the dumped files to a temporary filesystem.
     os.mkdir(POSTGRES_DUMP_MOUNT_PATH)
@@ -459,8 +459,8 @@ def prepare_postgres_filesystems():
     shutil.move(from_dir, POSTGRES_DUMP_MOUNT_PATH)
 
     # Create a temporary filesystem for the migrated database
-    stat = os.statvfs(POSTGRES_MOUNT_PATH)
-    db_filesystem_size = str(stat.f_frsize * stat.f_blocks) + "B"
+    statvfs = os.statvfs(POSTGRES_MOUNT_PATH)
+    db_filesystem_size = str(statvfs.f_frsize * statvfs.f_blocks) + "B"
     if not os.path.isdir(utils.POSTGRES_PATH):
         os.mkdir(utils.POSTGRES_PATH)
     create_temp_filesystem("cgts-vg", "postgres-temp-lv", utils.POSTGRES_PATH,
@@ -808,7 +808,7 @@ def migrate_hiera_data(from_release, to_release, role=None):
     # Update the static.yaml file
     static_file = os.path.join(constants.HIERADATA_PERMDIR, "static.yaml")
     with open(static_file, 'r') as yaml_file:
-        static_config = yaml.load(yaml_file)
+        static_config = yaml.safe_load(yaml_file)
     static_config.update({
         'platform::params::software_version': SW_VERSION,
         'platform::client::credentials::params::keyring_directory':
@@ -823,7 +823,7 @@ def migrate_hiera_data(from_release, to_release, role=None):
     secure_static_file = os.path.join(
         constants.HIERADATA_PERMDIR, "secure_static.yaml")
     with open(secure_static_file, 'r') as yaml_file:
-        secure_static_config = yaml.load(yaml_file)
+        secure_static_config = yaml.safe_load(yaml_file)
 
     with open(secure_static_file, 'w') as yaml_file:
         yaml.dump(secure_static_config, yaml_file, default_flow_style=False)

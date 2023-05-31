@@ -79,7 +79,7 @@ def configure_management():
     try:
         lldp_interfaces = json.loads(
             lldpcli_show_output)['lldp'][0]['interface']
-    except Exception as e:
+    except Exception:
         lldp_interfaces = {}
     print("DONE")
 

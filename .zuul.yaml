@@ -116,7 +116,7 @@
     name: controllerconfig-tox-flake8
     parent: tox
     description: Run flake8 tests for controllerconfig
-    nodeset: ubuntu-xenial
+    nodeset: debian-bullseye
     files:
       - controllerconfig/*
     vars:
@@ -127,7 +127,7 @@
     name: controllerconfig-tox-pylint
     parent: tox
     description: Run pylint tests for controllerconfig
-    nodeset: ubuntu-xenial
+    nodeset: debian-bullseye
     required-projects:
       - starlingx/fault
     files:

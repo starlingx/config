@@ -264,7 +264,7 @@ def persist_config():
 
 def apply_banner_customization():
     """ Apply and Install banners provided by the user """
-    """ execute: /usr/sbin/apply_banner_customization """
+    # execute: /usr/sbin/apply_banner_customization
     logfile = "/tmp/apply_banner_customization.log"
     try:
         with open(logfile, "w") as blog:

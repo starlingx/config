@@ -1,12 +1,15 @@
-hacking!=0.13.0,<0.14,>=0.12.0 # Apache-2.0
-pytest
-mockproc>= 0.3.1 # BSD
+# The order of packages is significant, because pip processes them in the order
+# of appearance. Changing the order has an impact on the overall integration
+# process, which may cause wedges in the gate later.
+
+hacking>=1.1.0,<=2.0.0 # Apache-2.0
 coverage>=3.6
-PyYAML>=3.10.0 # MIT
+isort<5
+mockproc>= 0.3.1 # BSD
 os-testr>=0.8.0 # Apache-2.0
+pylint<2.4.0 # GPLv2
+pytest
+PyYAML>=3.10.0 # MIT
 stestr>=1.0.0 # Apache-2.0
 testresources>=0.2.4 # Apache-2.0/BSD
 testrepository>=0.0.18 # Apache-2.0/BSD
-isort<5;python_version>="3.0"
-pylint<2.1.0;python_version<"3.0" # GPLv2
-pylint<2.4.0;python_version>="3.0" # GPLv2

@@ -179,7 +179,7 @@ def prepare_upgrade(from_load, to_load, i_system, mgmt_address):
     admin_conf = os.path.join(tsc.PLATFORM_PATH, "config", to_load,
                               "kubernetes", utils.KUBERNETES_ADMIN_CONF_FILE)
     with open(admin_conf, 'r') as yaml_file:
-        config = yaml.load(yaml_file)
+        config = yaml.safe_load(yaml_file)
 
     for item, values in config.items():
         # update server address in cluster

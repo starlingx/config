@@ -56,7 +56,7 @@ class OpenStack(object):
             try:
                 with open(openstack_config_file_path) as f:
                     openstack_config_data = \
-                        yaml.load(f)['clouds']['openstack_helm']
+                        yaml.safe_load(f)['clouds']['openstack_helm']
                 self.conf['admin_user'] = \
                     openstack_config_data['auth']['username']
                 self.conf['admin_pwd'] = \
@@ -459,7 +459,7 @@ def tidy_storage(result_file):
                 c_client.volumes.reset_state(
                     c_utils.find_volume(c_client, vol), state='error')
                 print("Setting state to error for volume %s \n" % vol)
-            except Exception as e:
+            except Exception:
                 LOG.error("Failed to update volume to error state for %s"
                           % vol)
                 raise TidyStorageFail("Failed to update volume to error state")
@@ -597,8 +597,8 @@ def tidy_storage(result_file):
                 f.write("\n\n")
                 f.write('{0[0]:<40}{0[1]:<50}\n'.format(['ID', 'NAME']))
                 for snap in snaps_no_backend_vol:
-                        f.write('{0[0]:<40}{0[1]:<50}\n'.format(
-                            [snap.id.encode('utf-8'), snap.name]))
+                    f.write('{0[0]:<40}{0[1]:<50}\n'.format(
+                        [snap.id.encode('utf-8'), snap.name]))
 
                 f.write("\n\n")
 
@@ -620,6 +620,5 @@ def main():
         open(result_file, 'w')
     except IOError:
         raise TidyStorageFail("Failed to open file: %s" % result_file)
-        exit(1)
 
     tidy_storage(result_file)
