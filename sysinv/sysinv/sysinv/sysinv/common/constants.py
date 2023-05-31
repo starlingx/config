@@ -2193,7 +2193,9 @@ HOST_BM_VALID_PROVISIONED_TYPE_LIST = [HOST_BM_TYPE_DYNAMIC,
 # K8s device plugins
 DEVICE_PLUGINS_FILE = "enabled_kube_plugins"
 ENABLED_KUBE_PLUGINS = os.path.join(tsc.CONFIG_PATH, DEVICE_PLUGINS_FILE)
-KUBE_INTEL_GPU_DEVICE_PLUGIN_LABEL = "intelgpu=enabled"
+K8S_INTEL_GPU_DEVICE_PLUGIN = "intelgpu"
+GPU_DEVICE_DRIVER_I915 = "i915"
+GPU_DEVICE_PCLASS_VGA = "VGA"
 
 # Port on which ceph manager and ceph-mgr listens
 CEPH_MGR_PORT = 7999

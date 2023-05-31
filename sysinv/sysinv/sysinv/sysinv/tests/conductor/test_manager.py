@@ -4934,6 +4934,24 @@ class ManagerTestCase(base.DbTestCase):
 
         self.assertEqual(endpoints, config_dict)
 
+    def mock_os_file_path(self):
+        # Mock _get_kube_plugin_labels os.path.isfile
+        mock_isfile = mock.patch('os.path.isfile')
+        mock_isfile.return_value = True
+        mock_isfile.start()
+        self.addCleanup(mock_isfile.stop)
+
+    def test_get_enabled_kube_plugins(self):
+        self.mock_os_file_path()
+        open_mock = mock.mock_open(read_data='''["intelgpu", "intelqat", "intelfpga"]''')
+        open_patch = mock.patch('builtins.open', open_mock)
+        open_patch.start()
+        self.addCleanup(open_patch.stop)
+        # Verify the _get_enabled_kube_plugins return all plugins when all are enabled
+        actual_output = self.service._get_enabled_kube_plugins()
+        expected_ouput = ['intelgpu', 'intelqat', 'intelfpga']
+        self.assertEqual(actual_output, expected_ouput)
+
 
 @mock.patch('sysinv.conductor.manager.verify_files', lambda x, y: True)
 @mock.patch('sysinv.conductor.manager.cutils.ISO', mock.MagicMock())

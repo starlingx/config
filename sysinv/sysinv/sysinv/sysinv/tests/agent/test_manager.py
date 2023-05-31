@@ -23,6 +23,7 @@ class FakeConductorAPI(object):
     def __init__(self, isystem=None):
         self.create_host_filesystems = mock.MagicMock()
         self.update_host_max_cpu_mhz_configured = mock.MagicMock()
+        self.device_plugin_labels_update_by_ihost = mock.MagicMock()
         self.is_virtual_system_config_result = False
         self.isystem = isystem
 
@@ -472,3 +473,29 @@ class TestAgentManager(base.TestCase):
             self.agent_manager._ihost_uuid,
             expected_filesystems)
         self.assertEqual(self.agent_manager._prev_fs, expected_filesystems)
+
+    def test_report_supported_device_plugin(self):
+
+        # Mock _get_ports_inventory
+        self.mock_get_ports_inventory = mock.MagicMock()
+        p = mock.patch('sysinv.agent.manager.AgentManager._get_ports_inventory',
+                       self.mock_get_ports_inventory)
+        p.start().return_value = ["", ['k8s_device_plugin', 'port', 'pci_device'], ""]
+        self.addCleanup(p.stop)
+
+        # Mock get_supported_device_plugins
+        self.mock_get_supported_device_plugins = mock.MagicMock()
+        p = mock.patch('sysinv.agent.pci.PCIOperator.get_supported_device_plugins',
+                       self.mock_get_supported_device_plugins)
+        p.start().return_value = ['intelgpu']
+        self.addCleanup(p.stop)
+
+        self.agent_manager._ihost_uuid = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+        # Verify the expected label_key and label_value to be called
+        expected_label = ['intelgpu']
+        self.agent_manager._report_supported_device_plugin(self.context, self.fake_conductor_api)
+        self.fake_conductor_api.device_plugin_labels_update_by_ihost.assert_called_with(
+            self.context,
+            self.agent_manager._ihost_uuid,
+            expected_label)
+        self.assertIn('k8s_device_plugin', self.agent_manager._inventory_reported)
