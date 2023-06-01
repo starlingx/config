@@ -411,6 +411,17 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 rule.update({"destination": {"ports": self._get_subcloud_udp_ports()}})
             gnp_config["spec"]["ingress"].append(rule)
 
+    def _get_subcloud_networks(self):
+        routes = self.dbapi.routes_get_by_network_type_and_host_personality(
+                constants.NETWORK_TYPE_MGMT, constants.CONTROLLER)
+        networks = set()
+        for route in routes:
+            network = route.network + '/' + str(route.prefix)
+            networks.add(network)
+        networks = list(networks)
+        networks.sort()
+        return networks
+
     def _set_rules_systemcontroller(self, gnp_config, network, host_personality):
         """ Add filtering rules for mgmt network in a system controller installation
 
@@ -419,6 +430,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
         :param host_personality: the node personality (controller, storage, or worker)
         """
 
+        rules = []
         addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
         ip_version = IPAddress(f"{addr_pool.network}").version
         ICMP = "ICMP"
@@ -440,6 +452,11 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 udp_list = self._get_systemcontroller_udp_ports()
                 rule.update({"destination": {"ports": udp_list}})
             gnp_config["spec"]["ingress"].append(rule)
+            rules.append(rule)
+
+        networks = self._get_subcloud_networks()
+        for network in networks:
+            self._add_source_net_filter(rules, network)
 
     def _get_subcloud_tcp_ports(self):
         """ Get the TCP L4 ports for subclouds

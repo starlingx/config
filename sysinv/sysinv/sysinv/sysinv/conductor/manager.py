@@ -8041,6 +8041,21 @@ class ConductorManager(service.PeriodicService):
         self._config_apply_runtime_manifest(context, config_uuid, config_dict,
                                             filter_classes=[self.PUPPET_RUNTIME_CLASS_ROUTES])
 
+        system = self.dbapi.isystem_get_one()
+        system_dc_role = system.get('distributed_cloud_role', None)
+
+        if (system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER
+                and host.personality == constants.CONTROLLER):
+
+            config_uuid = self._config_update_hosts(context, [constants.CONTROLLER])
+            config_dict = {
+                "personalities": [constants.CONTROLLER],
+                "classes": 'platform::firewall::mgmt::runtime',
+            }
+
+            self._config_apply_runtime_manifest(context, config_uuid, config_dict,
+                                                filter_classes=[self.PUPPET_RUNTIME_CLASS_ROUTES])
+
     def update_sriov_config(self, context, host_uuid):
         """update sriov configuration for a host
 

@@ -79,7 +79,9 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
         return networks
 
     def _create_ethernet_test(self, ifname=None, ifclass=None,
-                              networktype=None, **kwargs):
+                              networktype=None, host_id=None, **kwargs):
+        if not host_id:
+            host_id = self.host.id
         interface_id = len(self.interfaces)
         if not ifname:
             ifname = (networktype or 'eth') + str(interface_id)
@@ -91,7 +93,7 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
             networks = []
         interface = {'id': interface_id,
                      'uuid': str(uuid.uuid4()),
-                     'forihostid': self.host.id,
+                     'forihostid': host_id,
                      'ifname': ifname,
                      'iftype': constants.INTERFACE_TYPE_ETHERNET,
                      'imac': '02:11:22:33:44:' + str(10 + interface_id),
@@ -113,7 +115,7 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
                 'uuid': str(uuid.uuid4()),
                 'name': 'eth' + str(port_id),
                 'interface_id': interface_id,
-                'host_id': self.host.id,
+                'host_id': host_id,
                 'mac': interface['imac'],
                 'driver': kwargs.get('driver', 'ixgbe'),
                 'dpdksupport': kwargs.get('dpdksupport', True),
@@ -161,6 +163,7 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
                           lower_iface=None):
         if not lower_iface:
             lower_port, lower_iface = self._create_ethernet_test()
+        host_id = lower_iface.forihostid
         if not ifname:
             ifname = 'vlan' + str(vlan_id)
         if not ifclass:
@@ -172,7 +175,7 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
         interface_id = len(self.interfaces)
         interface = {'id': interface_id,
                      'uuid': str(uuid.uuid4()),
-                     'forihostid': self.host.id,
+                     'forihostid': host_id,
                      'ifname': ifname,
                      'iftype': constants.INTERFACE_TYPE_VLAN,
                      'vlan_id': vlan_id,
@@ -189,9 +192,11 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
         self.interfaces.append(db_interface)
         return db_interface
 
-    def _create_bond_test(self, ifname, ifclass=None, networktype=None):
-        port1, iface1 = self._create_ethernet_test()
-        port2, iface2 = self._create_ethernet_test()
+    def _create_bond_test(self, ifname, ifclass=None, networktype=None, host_id=None):
+        if not host_id:
+            host_id = self.host.id
+        port1, iface1 = self._create_ethernet_test(host_id=host_id)
+        port2, iface2 = self._create_ethernet_test(host_id=host_id)
         interface_id = len(self.interfaces)
         if not ifname:
             ifname = 'bond' + str(interface_id)
@@ -203,7 +208,7 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
             networks = []
         interface = {'id': interface_id,
                      'uuid': str(uuid.uuid4()),
-                     'forihostid': self.host.id,
+                     'forihostid': host_id,
                      'ifname': ifname,
                      'iftype': constants.INTERFACE_TYPE_AE,
                      'imac': '02:11:22:33:44:' + str(10 + interface_id),
@@ -229,6 +234,16 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
             dbutils.create_test_interface_network_assign(db_interface['id'], network)
         self.interfaces.append(db_interface)
         return db_interface
+
+    def _create_test_route(self, interface, network, prefix, gateway='192.168.0.1'):
+        route_db = dbutils.create_test_route(
+            interface_id=interface.id,
+            family=4,
+            network=network,
+            prefix=prefix,
+            gateway=gateway)
+        self.routes.append(route_db)
+        return route_db
 
     def _create_hieradata_directory(self):
         hiera_path = os.path.join(os.environ['VIRTUAL_ENV'], 'hieradata')
@@ -1272,7 +1287,8 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup01(PlatformFirewallTestCa
 
     def __init__(self, *args, **kwargs):
         super(PlatformFirewallTestCaseControllerDcSysCtrl_Setup01, self).__init__(*args, **kwargs)
-        self.test_interfaces = dict()
+        self.test_interfaces = []
+        self.hosts = []
 
     def setUp(self):
         super(PlatformFirewallTestCaseControllerDcSysCtrl_Setup01, self).setUp()
@@ -1290,33 +1306,119 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup01(PlatformFirewallTestCa
     def _update_context(self):
         # ensure DB entries are updated prior to updating the context which
         # will re-read the entries from the DB.
-        self.host.save(self.admin_context)
+        for host in self.hosts:
+            host.save(self.admin_context)
         super(PlatformFirewallTestCaseControllerDcSysCtrl_Setup01, self)._update_context()
 
-    def _setup_configuration(self):
-        # Create a single port/interface for basic function testing
-        self.host = self._create_test_host(constants.CONTROLLER)
+    def _setup_controller(self, unit):
+        host = self._create_test_host(constants.CONTROLLER, unit=unit)
+        self.hosts.append(host)
+
+        interfaces = dict()
 
         port, iface = self._create_ethernet_test("oam0",
             constants.INTERFACE_CLASS_PLATFORM,
-            constants.NETWORK_TYPE_OAM)
-        self.test_interfaces.update({constants.NETWORK_TYPE_OAM: iface})
+            constants.NETWORK_TYPE_OAM,
+            host.id)
+        interfaces.update({constants.NETWORK_TYPE_OAM: iface})
 
         port, iface = self._create_ethernet_test("pxe0",
             constants.INTERFACE_CLASS_PLATFORM,
-            constants.NETWORK_TYPE_PXEBOOT)
-        self.test_interfaces.update({constants.NETWORK_TYPE_PXEBOOT: iface})
+            constants.NETWORK_TYPE_PXEBOOT,
+            host.id)
+        interfaces.update({constants.NETWORK_TYPE_PXEBOOT: iface})
 
         iface = self._create_vlan_test("mgmt0",
             constants.INTERFACE_CLASS_PLATFORM,
             [constants.NETWORK_TYPE_MGMT], 100,
-            self.test_interfaces[constants.NETWORK_TYPE_PXEBOOT])
-        self.test_interfaces.update({constants.NETWORK_TYPE_MGMT: iface})
+            interfaces[constants.NETWORK_TYPE_PXEBOOT])
+        interfaces.update({constants.NETWORK_TYPE_MGMT: iface})
 
         iface = self._create_bond_test("cluster0",
             constants.INTERFACE_CLASS_PLATFORM,
-            [constants.NETWORK_TYPE_CLUSTER_HOST, constants.NETWORK_TYPE_STORAGE])
-        self.test_interfaces.update({constants.NETWORK_TYPE_CLUSTER_HOST: iface})
+            [constants.NETWORK_TYPE_CLUSTER_HOST, constants.NETWORK_TYPE_STORAGE],
+            host.id)
+        interfaces.update({constants.NETWORK_TYPE_CLUSTER_HOST: iface})
+
+        self.test_interfaces.append(interfaces)
+
+    def _setup_worker(self):
+        host = self._create_test_host(constants.WORKER)
+        self.hosts.append(host)
+
+        interfaces = dict()
+
+        port, iface = self._create_ethernet_test("mgmt0",
+            constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_MGMT,
+            host.id)
+        interfaces.update({constants.NETWORK_TYPE_MGMT: iface})
+
+        port, iface = self._create_ethernet_test("cluster0",
+            constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_CLUSTER_HOST,
+            host.id)
+        interfaces.update({constants.NETWORK_TYPE_CLUSTER_HOST: iface})
+
+        port, iface = self._create_ethernet_test("pxe0",
+            constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_PXEBOOT,
+            host.id)
+        interfaces.update({constants.NETWORK_TYPE_PXEBOOT: iface})
+
+        self.test_interfaces.append(interfaces)
+
+    def _setup_routes(self):
+        # Controller-0
+
+        # Common management route in controller-0 and controller-1
+        self._create_test_route(self.test_interfaces[0][constants.NETWORK_TYPE_MGMT],
+                                '192.168.1.0', 26)
+
+        # Management route exclusive to controller-0
+        self._create_test_route(self.test_interfaces[0][constants.NETWORK_TYPE_MGMT],
+                                '192.168.1.64', 26)
+
+        # Non-management routes
+        self._create_test_route(self.test_interfaces[0][constants.NETWORK_TYPE_OAM],
+                                '192.168.5.0', 24)
+        self._create_test_route(self.test_interfaces[0][constants.NETWORK_TYPE_PXEBOOT],
+                                '192.168.20.0', 24)
+
+        # Controller-1
+
+        # Common management route in controller-0 and controller-1
+        self._create_test_route(self.test_interfaces[1][constants.NETWORK_TYPE_MGMT],
+                                '192.168.1.0', 26)
+
+        # Management route exclusive to controller-1
+        self._create_test_route(self.test_interfaces[1][constants.NETWORK_TYPE_MGMT],
+                                '192.168.1.128', 26)
+
+        # Non-management routes
+        self._create_test_route(self.test_interfaces[1][constants.NETWORK_TYPE_OAM],
+                                '192.168.5.0', 24)
+        self._create_test_route(self.test_interfaces[1][constants.NETWORK_TYPE_PXEBOOT],
+                                '192.168.20.0', 24)
+
+        # Worker
+        self._create_test_route(self.test_interfaces[2][constants.NETWORK_TYPE_MGMT],
+                                '192.168.1.192', 26)
+        self._create_test_route(self.test_interfaces[2][constants.NETWORK_TYPE_CLUSTER_HOST],
+                                '192.168.6.0', 24)
+        self._create_test_route(self.test_interfaces[2][constants.NETWORK_TYPE_PXEBOOT],
+                                '192.168.30.0', 24)
+
+    def _setup_configuration(self):
+
+        self._setup_controller(0)
+        self._setup_controller(1)
+
+        self._setup_worker()
+
+        self.host = self.hosts[0]
+
+        self._setup_routes()
 
         self._create_service_parameter_test_set()
         self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER)
@@ -1325,11 +1427,14 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup01(PlatformFirewallTestCa
 
         ip_version = gnp['spec']['ingress'][0]['ipVersion']
 
+        subcloud_networks = ['192.168.1.0/26', '192.168.1.128/26', '192.168.1.64/26']
+
         # ingress rules
         self.assertEqual(gnp['spec']['ingress'][4]['protocol'], "TCP")
         self.assertEqual(gnp['spec']['ingress'][4]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-systemcontroller-tcp{ip_version}")
         self.assertEqual(gnp['spec']['ingress'][4]['ipVersion'], ip_version)
+        self.assertEqual(gnp['spec']['ingress'][4]['source']['nets'], subcloud_networks)
 
         tcp_ports = list(firewall.SYSTEMCONTROLLER["tcp"].keys())
         tcp_ports.append(constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT)
@@ -1340,6 +1445,7 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup01(PlatformFirewallTestCa
         self.assertEqual(gnp['spec']['ingress'][5]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-systemcontroller-udp{ip_version}")
         self.assertEqual(gnp['spec']['ingress'][5]['ipVersion'], ip_version)
+        self.assertEqual(gnp['spec']['ingress'][5]['source']['nets'], subcloud_networks)
 
         udp_ports = list(firewall.SYSTEMCONTROLLER["udp"].keys())
         udp_ports.sort()
@@ -1349,6 +1455,7 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup01(PlatformFirewallTestCa
         self.assertEqual(gnp['spec']['ingress'][6]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-systemcontroller-icmp{ip_version}")
         self.assertEqual(gnp['spec']['ingress'][6]['ipVersion'], ip_version)
+        self.assertEqual(gnp['spec']['ingress'][6]['source']['nets'], subcloud_networks)
 
     def test_generate_firewall_config(self):
         hieradata_directory = self._create_hieradata_directory()
@@ -1400,15 +1507,15 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup01(PlatformFirewallTestCa
         self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 3)
 
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
-                              self.test_interfaces[constants.NETWORK_TYPE_MGMT],
+                              self.test_interfaces[0][constants.NETWORK_TYPE_MGMT],
                               [constants.NETWORK_TYPE_MGMT])
 
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
-                              self.test_interfaces[constants.NETWORK_TYPE_CLUSTER_HOST],
+                              self.test_interfaces[0][constants.NETWORK_TYPE_CLUSTER_HOST],
                               [constants.NETWORK_TYPE_CLUSTER_HOST, constants.NETWORK_TYPE_STORAGE])
 
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
-                              self.test_interfaces[constants.NETWORK_TYPE_PXEBOOT],
+                              self.test_interfaces[0][constants.NETWORK_TYPE_PXEBOOT],
                               [constants.NETWORK_TYPE_PXEBOOT])
 
         # for now we do NOT handle OAM configuration

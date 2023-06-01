@@ -5560,6 +5560,22 @@ class Connection(api.Connection):
         return _paginate_query(models.Routes, limit, marker,
                                sort_key, sort_dir, query)
 
+    @db_objects.objectify(objects.route)
+    def routes_get_by_network_type_and_host_personality(self, network_type,
+                                                        personality):
+        query = model_query(models.Routes)
+        query = (query.
+                 join(models.Interfaces).
+                 join(models.ihost,
+                      models.ihost.id == models.Interfaces.forihostid).
+                 join(models.InterfaceNetworks).
+                 join(models.Networks).
+                 filter(models.Networks.type == network_type).
+                 filter(models.ihost.personality == personality))
+        result = _paginate_query(models.Routes, None, None,
+                                 None, None, query)
+        return result
+
     def route_destroy(self, route_uuid):
         query = model_query(models.Routes)
         query = add_identity_filter(query, route_uuid)
