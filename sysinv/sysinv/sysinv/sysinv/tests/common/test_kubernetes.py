@@ -832,6 +832,15 @@ class TestKubeOperator(base.TestCase):
             mock_read_namespaced_secret)
         self.mocked_read_namespaced_secret.start()
 
+        self.list_pod_security_policy_result = None
+
+        def mock_list_pod_security_policy(obj):
+            return self.list_pod_security_policy_result
+        self.mocked_list_pod_security_policy = mock.patch(
+            'kubernetes.client.PolicyV1beta1Api.list_pod_security_policy',
+            mock_list_pod_security_policy)
+        self.mocked_list_pod_security_policy.start()
+
         self.kube_operator = kube.KubeOperator()
 
     def tearDown(self):
@@ -843,6 +852,7 @@ class TestKubeOperator(base.TestCase):
         self.mocked_read_namespaced_config_map.stop()
         self.mocked_read_namespaced_service_account.stop()
         self.mocked_read_namespaced_secret.stop()
+        self.mocked_list_pod_security_policy.stop()
 
     def test_kube_get_image_by_pod_name(self):
 
