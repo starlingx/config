@@ -136,7 +136,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
                                                         networks[constants.NETWORK_TYPE_MGMT],
                                                         host.personality)
 
-                    if (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
+                    elif (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
                         self._set_rules_systemcontroller(config[FIREWALL_GNP_MGMT_CFG],
                                                         networks[constants.NETWORK_TYPE_MGMT],
                                                         host.personality)
@@ -366,6 +366,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
         if ip_version == 6:
             ICMP = "ICMPv6"
 
+        rules = list()
         for proto in ["TCP", "UDP", ICMP]:
             rule = {"metadata": dict()}
             rule["metadata"] = {"annotations": dict()}
@@ -379,6 +380,11 @@ class PlatformFirewallPuppet(base.BasePuppet):
             elif (proto == "UDP"):
                 rule.update({"destination": {"ports": self._get_subcloud_udp_ports()}})
             gnp_config["spec"]["ingress"].append(rule)
+            rules.append(rule)
+
+        networks = self._get_routes_networks(network.type)
+        for network in networks:
+            self._add_source_net_filter(rules, network)
 
     def _set_rules_subcloud_mgmt(self, gnp_config, network, host_personality):
         """ Add filtering rules for mgmt network in a subcloud installation
@@ -397,6 +403,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
         if ip_version == 6:
             ICMP = "ICMPv6"
 
+        rules = list()
         for proto in ["TCP", "UDP", ICMP]:
             rule = {"metadata": dict()}
             rule["metadata"] = {"annotations": dict()}
@@ -410,10 +417,15 @@ class PlatformFirewallPuppet(base.BasePuppet):
             elif (proto == "UDP"):
                 rule.update({"destination": {"ports": self._get_subcloud_udp_ports()}})
             gnp_config["spec"]["ingress"].append(rule)
+            rules.append(rule)
 
-    def _get_subcloud_networks(self):
+        networks = self._get_routes_networks(network.type)
+        for network in networks:
+            self._add_source_net_filter(rules, network)
+
+    def _get_routes_networks(self, network_type):
         routes = self.dbapi.routes_get_by_network_type_and_host_personality(
-                constants.NETWORK_TYPE_MGMT, constants.CONTROLLER)
+                network_type, constants.CONTROLLER)
         networks = set()
         for route in routes:
             network = route.network + '/' + str(route.prefix)
@@ -454,7 +466,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
             gnp_config["spec"]["ingress"].append(rule)
             rules.append(rule)
 
-        networks = self._get_subcloud_networks()
+        networks = self._get_routes_networks(network.type)
         for network in networks:
             self._add_source_net_filter(rules, network)
 
