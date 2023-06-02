@@ -38,7 +38,7 @@ def _populate_journal(migrate_engine, meta, journal, i_istor, i_idisk):
     storage_items = list(i_istor.select().execute())
     # Go through all the OSDs.
     for osd in storage_items:
-        journal_insert = journal.insert()
+        journal_insert = journal.insert()  # pylint: disable=no-value-for-parameter
 
         # Obtain the disk on which the OSD is kept.
         sel = select([i_idisk]).where(i_idisk.c.foristorid == osd['id'])

@@ -1048,8 +1048,8 @@ class ManagerTestCase(base.DbTestCase):
         p.start().return_value = ['v1.42.2', 'v1.43.1']
         self.addCleanup(p.stop)
 
-        next_versions = kubernetes.KubeOperator.kube_get_higher_patch_version('v1.41.1',
-                                                                              'v1.43.1')
+        next_versions = kubernetes.KubeOperator().kube_get_higher_patch_version('v1.41.1',
+                                                                                'v1.43.1')
         mock_run_playbook = mock.MagicMock()
         p1 = mock.patch('sysinv.common.utils.run_playbook', mock_run_playbook)
         p1.start().return_value = 0
