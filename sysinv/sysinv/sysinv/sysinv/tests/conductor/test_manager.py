@@ -5309,6 +5309,94 @@ class ManagerLoadImportTest(base.BaseHostTestCase):
         )
 
 
+@mock.patch('sysinv.conductor.manager.os.path.isfile', mock.MagicMock())
+@mock.patch('sysinv.conductor.manager.subprocess.check_call', mock.MagicMock())
+class ManagerLoadDeleteTest(base.BaseHostTestCase):
+    def setUp(self):
+        super(ManagerLoadDeleteTest, self).setUp()
+
+        self.context = context.get_admin_context()
+        self.service = manager.ConductorManager('test-host', 'test-topic')
+        self.service.dbapi = dbapi.get_instance()
+
+        self.load = utils.create_test_load(
+            **{
+                'software_version': '0.1',
+                'state': constants.INACTIVE_LOAD_STATE,
+            }
+        )
+
+        ihost = utils.create_test_ihost()
+
+        controller_hostname = mock.patch.object(
+            cutils,
+            'get_mate_controller_hostname',
+            lambda: ihost.hostname,
+        )
+        self.mock_controller_hostname = controller_hostname.start()
+        self.addCleanup(controller_hostname.stop)
+
+        rpcapi_delete_load = mock.patch.object(
+            agent_rpcapi.AgentAPI,
+            'delete_load',
+            mock.MagicMock(),
+        )
+        self.mocked_rpcapi_delete_load = rpcapi_delete_load.start()
+        self.addCleanup(rpcapi_delete_load.stop)
+
+    def tearDown(self):
+        super(ManagerLoadDeleteTest, self).tearDown()
+
+    def test_load_delete(self):
+        self.service.delete_load(
+            self.context,
+            self.load.id,
+        )
+
+        self.mocked_rpcapi_delete_load.assert_called_once()
+
+    def test_load_delete_run_again(self):
+        utils.update_test_load(
+            self.load.id,
+            **{'state': constants.DELETING_LOAD_STATE},
+        )
+
+        self.service.delete_load(
+            self.context,
+            self.load.id,
+        )
+
+        self.mocked_rpcapi_delete_load.assert_called_once()
+
+    @mock.patch.object(cutils, 'get_mate_controller_hostname', lambda: '')
+    def test_load_delete_meta_controller_not_configured(self):
+        self.service.delete_load(
+            self.context,
+            self.load.id,
+        )
+
+        loads = self.dbapi.load_get_list()
+
+        self.assertEqual(1, len(loads))
+
+        self.mocked_rpcapi_delete_load.assert_not_called()
+
+    def test_load_delete_invalid_state(self):
+        utils.update_test_load(
+            self.load.id,
+            **{'state': constants.IMPORTING_LOAD_STATE},
+        )
+
+        self.assertRaises(
+            exception.SysinvException,
+            self.service.delete_load,
+            self.context,
+            self.load.id,
+        )
+
+        self.mocked_rpcapi_delete_load.assert_not_called()
+
+
 class ManagerTestCaseInternal(base.BaseHostTestCase):
     def setUp(self):
         super(ManagerTestCaseInternal, self).setUp()

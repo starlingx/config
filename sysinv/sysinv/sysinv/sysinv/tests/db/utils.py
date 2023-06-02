@@ -242,6 +242,21 @@ def create_test_load(**kw):
     return dbapi.load_create(load)
 
 
+def get_test_load_values(**kw):
+    values = {}
+
+    for key, value in kw.items():
+        values[key] = value
+
+    return values
+
+
+def update_test_load(load_id, **kw):
+    values = get_test_load_values(**kw)
+    dbapi = db_api.get_instance()
+    return dbapi.load_update(load_id, values)
+
+
 def get_test_upgrade(**kw):
     upgrade = {'from_load': kw.get('from_load', 1),
                'to_load': kw.get('to_load', 2),

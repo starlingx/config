@@ -4,9 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-'''
-Tests for the API /loads/import_load methods.
-'''
 
 import os
 import webtest.app
@@ -21,10 +18,10 @@ from sysinv.openstack.common.rpc import common
 
 class FakeConductorAPI(object):
     def __init__(self):
+        self.import_load = MagicMock()
+        self.delete_load = MagicMock()
         self.start_import_load = MagicMock()
         self.start_import_load.return_value = utils.create_test_load()
-
-        self.import_load = MagicMock()
 
 
 class TestLoad(base.FunctionalTest):
@@ -197,3 +194,76 @@ class TestLoadImport(TestLoad):
 
         self.fake_conductor_api.start_import_load.assert_called_once()
         self.fake_conductor_api.import_load.assert_called_once()
+
+
+class TestLoadDelete(TestLoad):
+    def setUp(self):
+        super(TestLoadDelete, self).setUp()
+
+        load_data = {
+            "software_version": "1.0",
+            "state": constants.INACTIVE_LOAD_STATE,
+        }
+
+        self.load = utils.create_test_load(**load_data)
+
+        self.request_json = {
+            'path': f'{self.PATH_PREFIX}/{self.load.id}',
+            'headers': self.API_HEADERS,
+        }
+
+    def tearDown(self):
+        super(TestLoadDelete, self).tearDown()
+
+    def test_load_delete(self):
+        response = self.delete(**self.request_json)
+
+        self.assertEqual(response.status_int, 200)
+
+        self.fake_conductor_api.delete_load.assert_called_once()
+
+    def test_load_delete_used_by_software_upgrade(self):
+        software_upgrade_get_one = self.dbapi.software_upgrade_get_one
+
+        self.dbapi.software_upgrade_get_one = MagicMock()
+
+        upgrade = utils.create_test_upgrade(**{'to_load': self.load.id})
+
+        self.dbapi.software_upgrade_get_one.return_value = upgrade
+
+        self.assertRaises(
+            webtest.app.AppError,
+            self.delete,
+            **self.request_json,
+        )
+
+        self.dbapi.software_upgrade_get_one = software_upgrade_get_one
+
+        self.fake_conductor_api.delete_load.assert_not_called()
+
+    def test_load_delete_used_by_host(self):
+        self.dbapi.host_upgrade_get_list = MagicMock()
+
+        self.dbapi.host_upgrade_get_list.return_value = {"target_load": self.load.id}
+
+        self.assertRaises(
+            webtest.app.AppError,
+            self.delete,
+            **self.request_json,
+        )
+
+        self.fake_conductor_api.delete_load.assert_not_called()
+
+    def test_load_delete_invalid_state(self):
+        utils.update_test_load(
+            self.load.id,
+            **{'state': constants.IMPORTING_LOAD_STATE},
+        )
+
+        self.assertRaises(
+            webtest.app.AppError,
+            self.delete,
+            **self.request_json,
+        )
+
+        self.fake_conductor_api.delete_load.assert_not_called()
