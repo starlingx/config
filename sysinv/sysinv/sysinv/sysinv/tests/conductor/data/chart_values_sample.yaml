@@ -25,6 +25,12 @@ image:
   repository: docker.elastic.co/elasticsearch/elasticsearch-oss
   tag: 7.4.0
 
+metricsServer:
+  image:
+    registry: k8s.gcr.io
+    repository: metrics-server/metrics-server
+    tag: 0.6.1
+
 extraInitContainers:
   limitset:
     image: docker.elastic.co/beats/filebeat-oss:7.4.0

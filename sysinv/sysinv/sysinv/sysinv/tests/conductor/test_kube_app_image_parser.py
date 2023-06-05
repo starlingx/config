@@ -90,6 +90,12 @@ IMAGES_RESOURCE = {
     'image': {
         'tag': '7.4.0',
         'repository': 'docker.elastic.co/elasticsearch/elasticsearch-oss'
+    },
+    'metricsServer': {
+        'image': {
+            'tag': '0.6.1',
+            'repository': 'k8s.gcr.io/metrics-server/metrics-server'
+        }
     }
 }
 
@@ -189,6 +195,12 @@ class TestKubeAppImageParser(base.TestCase):
             'image': {
                 'tag': '7.4.0',
                 'repository': 'registry.local:9001/docker.elastic.co/elasticsearch/elasticsearch-oss'
+            },
+            'metricsServer': {
+                'image': {
+                    'tag': '0.6.1',
+                    'repository': 'registry.local:9001/k8s.gcr.io/metrics-server/metrics-server'
+                }
             }
         }
 
@@ -309,6 +321,12 @@ class TestKubeAppImageParser(base.TestCase):
             'image': {
                 'tag': '7.5.2',
                 'repository': 'docker.elastic.co/elasticsearch/elasticsearch-oss'
+            },
+            'metricsServer': {
+                'image': {
+                    'tag': '0.6.1',
+                    'repository': 'k8s.gcr.io/metrics-server/metrics-server'
+                }
             }
         }
 
@@ -331,7 +349,8 @@ class TestKubeAppImageParser(base.TestCase):
             'quay.io/silicom/phc2sys:3.1.1',
             'quay.io/silicom/grpc-tsyncd:2.1.2.8',
             'quay.io/silicom/gpsd:3.23.1',
-            'docker.io/starlingx/stx-heat:master-centos-stable-latest'
+            'docker.io/starlingx/stx-heat:master-centos-stable-latest',
+            'k8s.gcr.io/metrics-server/metrics-server:0.6.1'
         ]
 
         download_imgs_list = self.image_parser.generate_download_images_list(
