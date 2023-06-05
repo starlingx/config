@@ -2795,8 +2795,6 @@ class HostController(rest.RestController):
             raise wsme.exc.ClientSideError(_(
                 "host-downgrade rejected: Not supported for EDGEWORKER node."))
 
-        disable_storage_monitor = False
-
         simplex = (utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX)
 
         # If this is a simplex upgrade just check that we are aborting
@@ -2811,17 +2809,11 @@ class HostController(rest.RestController):
             if rpc_ihost.hostname == constants.CONTROLLER_0_HOSTNAME:
                 # Before we downgrade controller-0 during a rollback/reinstall
                 # we check that all other worker/storage nodes are locked and
-                # offline. We also disable the storage monitor on controller-1
-                # and set a flag on controller-1 to indicate we are in a
-                # rollback. When controller-0 comes up it will check for this
-                # flag and update its database as necessary.
+                # offline. We also set a flag on controller-1 to indicate we
+                # are in a rollback. When controller-0 comes up it will check
+                # for this flag and update its database as necessary.
                 self._semantic_check_rollback()
-                if StorageBackendConfig.has_backend_configured(
-                        pecan.request.dbapi, constants.CINDER_BACKEND_CEPH):
-                    # elif block ensures this is a duplex env.
-                    # We do not set disable_storage_monitor True for AIO-DX
-                    if not cutils.is_aio_duplex_system(pecan.request.dbapi):
-                        disable_storage_monitor = True
+
                 # the upgrade rollback flag can only be created by root so
                 # send an rpc request to sysinv-conductor to create the flag
                 pecan.request.rpcapi.update_controller_rollback_flag(
@@ -2865,15 +2857,6 @@ class HostController(rest.RestController):
         force = body.get('force', False) is True
         self._semantic_check_downgrade_refresh(upgrade, rpc_ihost, force)
 
-        if disable_storage_monitor:
-            # When we downgrade controller-0 during a rollback we need to
-            # disable the storage monitor on controller-1. We want to ensure
-            # that when controller-0 comes up it starts with clean ceph data,
-            # and does not use any stale data that might be present on
-            # controller-1.
-            pecan.request.rpcapi.kill_ceph_storage_monitor(
-                    pecan.request.context)
-
         # Remove the host manifest. This is similar to the process taken
         # during host-reinstall. The manifest needs to be removed to prevent
         # the host from running kubeadm prematurely.
@@ -2888,11 +2871,14 @@ class HostController(rest.RestController):
         for host in hosts:
             if host.personality not in [constants.WORKER, constants.STORAGE]:
                 continue
+            ceph_mon = pecan.request.dbapi.ceph_mon_get_by_ihost(host.uuid)
+            if ceph_mon:
+                continue
             if host.administrative != constants.ADMIN_LOCKED or \
                     host.availability != constants.AVAILABILITY_OFFLINE:
                 raise wsme.exc.ClientSideError(
-                    _("All worker and storage hosts must be locked and "
-                      "offline before this operation can proceed"))
+                    _("All worker and storage hosts not running a Ceph monitor "
+                      "must be locked and offline before this operation can proceed"))
 
     def _check_personality_load(self, personality, load):
         hosts = pecan.request.dbapi.ihost_get_by_personality(personality)
@@ -5742,28 +5728,8 @@ class HostController(rest.RestController):
                     constants.OPERATIONAL_ENABLED):
                 # If the node is unlocked and enabled we need to check that we
                 # have enough storage monitors.
-
-                # If we are in an upgrade and aborting/rolling back the upgrade
-                # we need to skip the storage monitor check for controller-1.
-                # Before we downgrade controller-0 we shutdown the storage
-                # nodes and disable the storage monitor on controller-1.
-                # After controller-0 is downgraded and we go to lock
-                # controller-1, there will only be one storage monitor running
-                # (on controller-0) and the ceph api will fail/timeout.
-                check_storage_monitors = True
-                try:
-                    upgrade = pecan.request.dbapi.software_upgrade_get_one()
-                except exception.NotFound:
-                    pass
-                else:
-                    if upgrade.state == constants.UPGRADE_ABORTING_ROLLBACK \
-                            and hostupdate.ihost_orig['hostname'] == \
-                            constants.CONTROLLER_1_HOSTNAME:
-                        check_storage_monitors = False
-
-                if check_storage_monitors:
-                    utils.check_node_lock_ceph_mon(
-                        hostupdate.ihost_orig, force=force, ceph_helper=self._ceph)
+                utils.check_node_lock_ceph_mon(
+                    hostupdate.ihost_orig, force=force, ceph_helper=self._ceph)
 
         if not force:
             # sm-lock-pre-check

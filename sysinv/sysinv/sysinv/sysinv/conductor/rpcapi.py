@@ -703,16 +703,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('get_ceph_pools_df_stats'))
 
-    def kill_ceph_storage_monitor(self, context):
-        """Stop the ceph storage monitor.
-        pmon will not restart it. This should only be used in an
-        upgrade/rollback
-
-        :param context: request context.
-        """
-        return self.call(context,
-                         self.make_msg('kill_ceph_storage_monitor'))
-
     def update_dns_config(self, context):
         """Synchronously, have the conductor update the DNS configuration.
 

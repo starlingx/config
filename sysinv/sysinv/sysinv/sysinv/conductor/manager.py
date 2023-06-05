@@ -7569,34 +7569,6 @@ class ConductorManager(service.PeriodicService):
     def _ceph_osd_remove(self, *args, **kwargs):
         return self._ceph.osd_remove(*args, **kwargs)
 
-    def kill_ceph_storage_monitor(self, context):
-        """Stop the ceph storage monitor.
-        pmon will not restart it.
-        This should only be used in an upgrade/rollback.
-        This should not be called for an AIO (SX or DX).
-
-        :param context: request context.
-        """
-        try:
-            with open(os.devnull, "w") as fnull:
-                subprocess.check_call(["mv", "/etc/pmon.d/ceph.conf",  # pylint: disable=not-callable
-                                      "/etc/pmond.ceph.conf.bak"],
-                                      stdout=fnull, stderr=fnull)
-
-                subprocess.check_call(["systemctl", "restart", "pmon"],  # pylint: disable=not-callable
-                                      stdout=fnull, stderr=fnull)
-
-                subprocess.check_call(["/etc/init.d/ceph", "stop", "mon"],  # pylint: disable=not-callable
-                                      stdout=fnull, stderr=fnull)
-
-                subprocess.check_call(["mv", "/etc/services.d/controller/ceph.sh",  # pylint: disable=not-callable
-                                       "/etc/services.d.controller.ceph.sh"],
-                                      stdout=fnull, stderr=fnull)
-        except subprocess.CalledProcessError as e:
-            LOG.exception(e)
-            raise exception.SysinvException(
-                _("Unable to shut down ceph storage monitor."))
-
     def update_dns_config(self, context):
         """Update the DNS configuration"""
         personalities = [constants.CONTROLLER]
