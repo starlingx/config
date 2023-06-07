@@ -264,32 +264,34 @@ class PlatformFirewallPuppet(base.BasePuppet):
         ip_version = IPAddress(f"{addr_pool.network}").version
         self._add_source_net_filter(gnp_config["spec"]["ingress"],
                                     f"{addr_pool.network}/{addr_pool.prefix}")
+
+        # add cluster-pod to cover the cases where there is no tunneling, the pod traffic goes
+        # directly in the cluster-host interface
+        cpod_net = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_CLUSTER_POD)
+        if cpod_net:
+            cpod_pool = self.dbapi.address_pool_get(cpod_net.pool_uuid)
+            cpod_ip_version = IPAddress(f"{cpod_pool.network}").version
+            if (cpod_ip_version == ip_version):
+                self._add_source_net_filter(gnp_config["spec"]["ingress"],
+                                            f"{cpod_pool.network}/{cpod_pool.prefix}")
+        else:
+            LOG.info("Cannot find cluster-pod network to add to cluster-host firewall")
+
+        # copy the TCP rule and do the same for SCTP
+        sctp_egr_rule = copy.deepcopy(gnp_config["spec"]["egress"][0])
+        sctp_egr_rule["protocol"] = "SCTP"
+        sctp_egr_rule["metadata"]["annotations"]["name"] = \
+            f"stx-egr-{host.personality}-{network.type}-sctp{ip_version}"
+        gnp_config["spec"]["egress"].append(sctp_egr_rule)
+        sctp_ingr_rule = copy.deepcopy(gnp_config["spec"]["ingress"][0])
+        sctp_ingr_rule["protocol"] = "SCTP"
+        sctp_ingr_rule["metadata"]["annotations"]["name"] = \
+            f"stx-ingr-{host.personality}-{network.type}-sctp{ip_version}"
+        gnp_config["spec"]["ingress"].append(sctp_ingr_rule)
+
         if (ip_version == 6):
-            # add cluster-pod since in IPv6 there is no tunneling, the pod traffic goes directly
-            # in the cluster-host interface
-            cpod_net = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_CLUSTER_POD)
-            if cpod_net:
-                cpod_pool = self.dbapi.address_pool_get(cpod_net.pool_uuid)
-                cpod_ip_version = IPAddress(f"{cpod_pool.network}").version
-                if (cpod_ip_version == 6):
-                    self._add_source_net_filter(gnp_config["spec"]["ingress"],
-                                                f"{cpod_pool.network}/{cpod_pool.prefix}")
-            else:
-                LOG.info("In IPv6 cannot find cluster-pod network to add to cluster-host firewall")
             # add link-local network too
             self._add_source_net_filter(gnp_config["spec"]["ingress"], "fe80::/64")
-
-            # copy the TCP rule and do the same for SCTP
-            sctp_egr_rule = copy.deepcopy(gnp_config["spec"]["egress"][0])
-            sctp_egr_rule["protocol"] = "SCTP"
-            sctp_egr_rule["metadata"]["annotations"]["name"] = \
-                f"stx-egr-{host.personality}-{network.type}-sctp{ip_version}"
-            gnp_config["spec"]["egress"].append(sctp_egr_rule)
-            sctp_ingr_rule = copy.deepcopy(gnp_config["spec"]["ingress"][0])
-            sctp_ingr_rule["protocol"] = "SCTP"
-            sctp_ingr_rule["metadata"]["annotations"]["name"] = \
-                f"stx-ingr-{host.personality}-{network.type}-sctp{ip_version}"
-            gnp_config["spec"]["ingress"].append(sctp_ingr_rule)
 
         if (ip_version == 4):
             # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
