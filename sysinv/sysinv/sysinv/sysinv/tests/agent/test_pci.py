@@ -131,6 +131,17 @@ class TestPciOperator(base.TestCase):
     def mock_get_lspci_output_by_addr(addr):  # pylint: disable=no-self-argument
         return FAKE_LSPCI_OUTPUT[addr]
 
+    def mock_subprocess_popen(self):
+        # Mock the subprocess.Popen call
+        mock_stdout = mock.Mock()
+        mock_stdout.stdout.read.return_value = b'''
+        0000:f7:00.0 "Co-processor" "Intel Corporation" "Device 4942" "-r40" "Intel Corporation" "Device 0000",
+        0000:f3:00.0 "Co-processor" "Intel Corporation" "Device 4042" "-r40" "Intel Corporation" "Device 0000"'''
+        p = mock.patch('eventlet.green.subprocess.Popen')
+        self.mock_subprocess = p.start()
+        self.mock_subprocess.return_value = mock_stdout
+        self.addCleanup(p.stop)
+
     @mock.patch.object(PCIOperator, 'get_lspci_output_by_addr',
                        side_effect=mock_get_lspci_output_by_addr)
     def test_get_pci_sriov_vf_driver_name(self, get_lspci_output_by_addr):
@@ -155,7 +166,8 @@ class TestPciOperator(base.TestCase):
         result = self.pci_operator.get_pci_sriov_vf_module_name(pfaddr, vfaddrs)
         assert result is None
 
-    def test_get_supported_device_plugins(self):
+    def test_get_supported_device_plugin_gpu(self):
+        # testing gpu device plugin only
         self.fake_pci_device_list = [
                 {
                     'name': 'pci_0000_00_01_1',
@@ -187,9 +199,57 @@ class TestPciOperator(base.TestCase):
                     'pclass': 'VGA compatible controller',
                     'driver': None
                 }]
+        # Mock the subprocess.Popen call
+        mock_stdout = mock.Mock()
+        mock_stdout.stdout.read.return_value = None
+        p = mock.patch('eventlet.green.subprocess.Popen')
+        self.mock_subprocess = p.start()
+        self.mock_subprocess.return_value = mock_stdout
+        self.addCleanup(p.stop)
         # Verify the expected label_key and label_value with the actual output
         expected_label = ['intelgpu']
         actual_label = self.pci_operator.get_supported_device_plugins(self.fake_pci_device_list)
+        self.assertEqual(expected_label, actual_label)
+
+    def test_get_supported_device_plugin_qat(self):
+        # testing qat device plugin only
+        self.mock_subprocess_popen()
+        self.fake_pci_device_list = [
+                {
+                    'name': 'pci_0000_00_01_1',
+                    'pclass_id': '01018a',
+                    'pclass': 'IDE interface',
+                    'driver': 'ata_piix',
+                },
+                {
+                    'name': 'pci_0000_00_05_0',
+                    'pclass_id': '040100',
+                    'pclass': 'Multimedia audio controller',
+                    'driver': None
+                }]
+        expected_label = ['intelqat']
+        actual_label = self.pci_operator.get_supported_device_plugins(self.fake_pci_device_list)
+        self.assertEqual(expected_label, actual_label)
+
+    def test_get_supported_device_plugin_qat_and_gpu(self):
+        # testing both gpu and qat device plugin
+        self.mock_subprocess_popen()
+        self.fake_pci_device_list = [
+                {
+                    'name': 'pci_0000_00_01_1',
+                    'pclass_id': '01018a',
+                    'pclass': 'IDE interface',
+                    'driver': 'ata_piix',
+                },
+                {
+                    'name': 'pci_0000_00_02_0',
+                    'pclass_id': '030000',
+                    'pclass': 'VGA compatible controller',
+                    'driver': 'i915'
+                }]
+        expected_label = ['intelgpu', 'intelqat']
+        actual_label = self.pci_operator.get_supported_device_plugins(self.fake_pci_device_list)
+        print(actual_label)
         self.assertEqual(expected_label, actual_label)
 
 

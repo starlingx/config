@@ -41,6 +41,15 @@ KNOWN_PCI_DEVICES = [{"vendor_id": constants.NOVA_PCI_ALIAS_QAT_PF_VENDOR,
                      {"class_id": constants.NOVA_PCI_ALIAS_GPU_CLASS},
                      {"class_id": dconstants.PCI_DEVICE_CLASS_FPGA}]
 
+# Look for QAT PF and VF devices for k8s device plugin enabling.
+QAT_PF_VF_DEVICES_PCI_DEVICE_ID = [
+    constants.NOVA_PCI_ALIAS_QAT_DH895XCC_VF_DEVICE,
+    constants.NOVA_PCI_ALIAS_QAT_C62X_VF_DEVICE,
+    constants.NOVA_PCI_ALIAS_QAT_C3XXX_VF_DEVICE,
+    constants.NOVA_PCI_ALIAS_QAT_D15XX_VF_DEVICE,
+    constants.NOVA_PCI_ALIAS_QAT_CO_PROC_4940_PF_DEVICE,
+    constants.NOVA_PCI_ALIAS_QAT_CO_PROC_4942_PF_DEVICE]
+
 # PCI-SIG 0x06 bridge devices to not inventory.
 IGNORE_BRIDGE_PCI_CLASSES = ['bridge', 'isa bridge', 'host bridge']
 
@@ -201,7 +210,24 @@ class IntelGPUDp(DevicePlugin):
         return None
 
 
-DEVICE_PLUGIN_LIST = [IntelGPUDp()]
+class IntelQATDp(DevicePlugin):
+    def __init__(self):
+        return
+
+    def get_plugin(self, pci_device_list):
+        # look for qat pf and vf devices
+        for qat_device_id in QAT_PF_VF_DEVICES_PCI_DEVICE_ID:
+            qat_vendor_device_id = constants.NOVA_PCI_ALIAS_QAT_VENDOR + ":" + \
+                    qat_device_id
+            p = subprocess.Popen(["lspci", "-d", qat_vendor_device_id],
+                                 stdout=subprocess.PIPE, universal_newlines=True)
+            output = p.stdout.read()
+            if output:
+                return constants.KUBE_INTEL_QAT_DEVICE_PLUGIN
+        return None
+
+
+DEVICE_PLUGIN_LIST = [IntelGPUDp(), IntelQATDp()]
 
 
 class PCIOperator(object):
