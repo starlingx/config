@@ -1883,3 +1883,65 @@ class PlatformFirewallTestCaseStorageNonDc_Setup01(PlatformFirewallTestCaseMixin
         self.assertFalse(hiera_data['platform::firewall::calico::mgmt::config'])
         self.assertFalse(hiera_data['platform::firewall::calico::storage::config'])
         self.assertFalse(hiera_data['platform::firewall::calico::hostendpoint::config'])
+
+
+class PlatformFirewallTestCaseSystemConfig(PlatformFirewallTestCaseMixin,
+                                                      dbbase.BaseHostTestCase):
+
+    def __init__(self, *args, **kwargs):
+        super(PlatformFirewallTestCaseSystemConfig, self).__init__(*args, **kwargs)
+        self.test_interfaces = dict()
+
+    def setUp(self):
+        super(PlatformFirewallTestCaseSystemConfig, self).setUp()
+        self.dbapi = db_api.get_instance()
+        self._setup_context()
+
+    def _update_context(self):
+        # ensure DB entries are updated prior to updating the context which
+        # will re-read the entries from the DB.
+
+        self.host.save(self.admin_context)
+        super(PlatformFirewallTestCaseSystemConfig, self)._update_context()
+
+    def _setup_configuration(self):
+        self.host = self._create_test_host(constants.CONTROLLER)
+
+    def test_generate_system_config(self):
+        hieradata_directory = self._create_hieradata_directory()
+        config_filename = self._get_config_filename(hieradata_directory)
+        with open(config_filename, 'w') as config_file:
+            config = self.operator.platform_firewall.get_system_config()  # pylint: disable=no-member
+            yaml.dump(config, config_file, default_flow_style=False)
+
+        hiera_data = dict()
+        with open(config_filename, 'r') as config_file:
+            hiera_data = yaml.safe_load(config_file)
+
+        self.assertEqual(len(hiera_data), 13)
+        self.assertEqual(hiera_data["openstack::barbican::params::api_port"],
+                         constants.OPENSTACK_BARBICAN_PARAMS_API_PORT)
+        self.assertEqual(hiera_data["openstack::keystone::params::api_port"],
+                         constants.OPENSTACK_KEYSTONE_PARAMS_API_PORT)
+        self.assertEqual(hiera_data["platform::ceph::params::rgw_port"],
+                         constants.PLATFORM_CEPH_PARAMS_RGW_PORT)
+        self.assertEqual(hiera_data["platform::dcmanager::params::api_port"],
+                         constants.PLATFORM_DCMANAGER_PARAMS_API_PORT)
+        self.assertEqual(hiera_data["platform::dcorch::params::identity_api_proxy_port"],
+                         constants.PLATFORM_DCORCH_PARAMS_IDENTITY_API_PROXY_PORT)
+        self.assertEqual(hiera_data["platform::dcorch::params::patch_api_proxy_port"],
+                         constants.PLATFORM_DCORCH_PARAMS_PATCH_API_PROXY_PORT)
+        self.assertEqual(hiera_data["platform::dcorch::params::sysinv_api_proxy_port"],
+                         constants.PLATFORM_DCORCH_PARAMS_SYSINV_API_PROXY_PORT)
+        self.assertEqual(hiera_data["platform::docker::params::registry_port"],
+                         constants.PLATFORM_DOCKER_PARAMS_REGISTRY_PORT)
+        self.assertEqual(hiera_data["platform::docker::params::token_port"],
+                         constants.PLATFORM_DOCKER_PARAMS_TOKEN_PORT)
+        self.assertEqual(hiera_data["platform::fm::params::api_port"],
+                         constants.PLATFORM_FM_PARAMS_API_PORT)
+        self.assertEqual(hiera_data["platform::nfv::params::api_port"],
+                         constants.PLATFORM_NFV_PARAMS_API_PORT)
+        self.assertEqual(hiera_data["platform::patching::params::public_port"],
+                         constants.PLATFORM_PATCHING_PARAMS_PUBLIC_PORT)
+        self.assertEqual(hiera_data["platform::sysinv::params::api_port"],
+                         constants.PLATFORM_SYSINV_PARAMS_API_PORT)

@@ -4,9 +4,43 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-# the ports below are configured via service-parameter, they cannot be statically set
-# 8080: "horizon https",
-# 8443: "horizon https",
+from sysinv.common import constants
+
+OAM_COMMON = {
+    "tcp":
+        {
+            constants.PLATFORM_FIREWALL_SSH_PORT,
+            constants.PLATFORM_FIREWALL_KUBE_APISERVER_PORT,
+            constants.PLATFORM_NFV_PARAMS_API_PORT,
+            constants.PLATFORM_PATCHING_PARAMS_PUBLIC_PORT,
+            constants.PLATFORM_SYSINV_PARAMS_API_PORT,
+            constants.PLATFORM_SMAPI_PARAMS_PORT,
+            constants.PLATFORM_DOCKER_PARAMS_REGISTRY_PORT,
+            constants.PLATFORM_DOCKER_PARAMS_TOKEN_PORT,
+            constants.OPENSTACK_BARBICAN_PARAMS_API_PORT,
+            constants.OPENSTACK_KEYSTONE_PARAMS_API_PORT,
+            constants.PLATFORM_FM_PARAMS_API_PORT,
+        },
+    "udp":
+        {
+            constants.PLATFORM_FIREWALL_SM_PORT_1,
+            constants.PLATFORM_FIREWALL_SM_PORT_2,
+            constants.PLATFORM_FIREWALL_NTP_PORT,
+            constants.PLATFORM_FIREWALL_PTP_PORT,
+            constants.PLATFORM_FIREWALL_PTP_PORT,
+        }
+}
+
+OAM_DC = {
+    "tcp":
+        {
+            constants.PLATFORM_DCMANAGER_PARAMS_API_PORT,
+            constants.PLATFORM_DCORCH_PARAMS_SYSINV_API_PROXY_PORT,
+            constants.PLATFORM_DCORCH_PARAMS_PATCH_API_PROXY_PORT,
+            constants.PLATFORM_DCORCH_PARAMS_IDENTITY_API_PROXY_PORT
+        }
+}
+
 
 # list of ports to be open in the system controller side
 SYSTEMCONTROLLER = \
