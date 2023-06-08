@@ -12076,25 +12076,29 @@ class ConductorManager(service.PeriodicService):
         supported_versions = []
 
         try:
-            metadata_file = open(constants.CURRENT_METADATA_FILE_PATH, 'r')
-            root = ElementTree.fromstring(metadata_file.read())
-            metadata_file.close()
+            with open(constants.CURRENT_METADATA_FILE_PATH) as file:
+                root = ElementTree.fromstring(file.read())
         except Exception:
-            raise exception.SysinvException(_(
-                "Unable to read metadata file from current version"))
+            msg = "Unable to read metadata file from current version"
+            raise exception.SysinvException(_(msg))
 
-        supported_upgrades_elm = root.find('supported_upgrades')
+        supported_upgrades = root.find('supported_upgrades')
 
-        if not supported_upgrades_elm:
-            raise exception.SysinvException(
-                _("Invalid Metadata XML from current version"))
+        if not supported_upgrades:
+            msg = "Invalid Metadata XML from current version"
+            raise exception.SysinvException(_(msg))
 
-        upgrade_paths = supported_upgrades_elm.findall('upgrade')
+        upgrades = supported_upgrades.findall("upgrade")
 
-        for upgrade_element in upgrade_paths:
-            valid_from_version = upgrade_element.findtext('version')
-            versions = valid_from_version.split(",")
-            supported_versions.extend(versions)
+        for upgrade in upgrades:
+            version = upgrade.findtext("version")
+            required_patch = upgrade.findtext("required_patch")
+            supported_versions.append(
+                {
+                    "version": version.strip(),
+                    "required_patch": required_patch.strip(),
+                },
+            )
 
         return supported_versions
 
@@ -12185,6 +12189,7 @@ class ConductorManager(service.PeriodicService):
         if not os.path.exists(path_to_iso):
             raise exception.SysinvException(_("Specified path not found %s") %
                                             path_to_iso)
+
         if not os.path.exists(path_to_sig):
             raise exception.SysinvException(_("Specified path not found %s") %
                                             path_to_sig)
@@ -12215,11 +12220,21 @@ class ConductorManager(service.PeriodicService):
             metadata_file = open(metadata_file_path, 'r')
             root = ElementTree.fromstring(metadata_file.read())
             metadata_file.close()
-
         except Exception:
             self._unmount_iso(mounted_iso, mntdir)
             raise exception.SysinvException(_(
                 "Unable to read metadata file"))
+
+        # Read comps file
+        # TODO (gdossant): comps file only exists on CentOS ISO.
+        # For Debian, we have to implement a way to get the patches
+        # the ISO has.
+        comps_content = ""
+        comps_file_path = mntdir + "/patches/comps.xml"
+
+        if os.path.exists(comps_file_path):
+            with open(comps_file_path) as file:
+                comps_content = file.read()
 
         # unmount iso
         self._unmount_iso(mounted_iso, mntdir)
@@ -12245,17 +12260,24 @@ class ConductorManager(service.PeriodicService):
             return load
 
         if import_type == constants.INACTIVE_LOAD_IMPORT:
-            if LooseVersion(new_version) >= LooseVersion(current_version):
-                raise exception.SysinvException(
-                    _("Inactive version must be less than the current version (%s)")
-                    % current_version)
-
             supported_versions = self._get_current_supported_upgrade_versions()
+            is_version_upgradable = False
 
-            if new_version not in supported_versions:
-                raise exception.SysinvException(
-                    _("Inactive version must be upgradable to the current version (%s)")
-                    % current_version)
+            for supported_version in supported_versions:
+                if new_version != supported_version["version"]:
+                    continue
+
+                if not supported_version["required_patch"] or \
+                        supported_version["required_patch"] in comps_content:
+                    is_version_upgradable = True
+
+            if not is_version_upgradable:
+                msg = """
+                    Inactive version must be upgradable to the
+                    current version (%s), please check the version
+                    and the necessary patches.
+                """ % current_version
+                raise exception.SysinvException(_(msg))
 
         if new_version == current_version:
             raise exception.SysinvException(

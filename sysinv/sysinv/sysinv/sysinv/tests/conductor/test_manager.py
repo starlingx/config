@@ -5062,20 +5062,23 @@ class ManagerStartLoadImportTest(base.BaseHostTestCase):
             import_type=constants.ACTIVE_LOAD_IMPORT,
         )
 
+    @mock.patch('os.path.exists', mock.MagicMock())
     @mock.patch('sysinv.conductor.manager.cutils.get_active_load')
     def test_start_import_load_inactive(self, mock_get_active_load):
         mock_get_active_load.return_value.software_version = '0.2'
 
-        metadata_orig = open(self.metadata, 'r').read()
-        metadata_fake = b'''
+        comps_file = "<packagereq>PATCH_0001</packagereq>"
+        loading_metadata = open(self.metadata, 'r').read()
+        current_metadata = b'''
             <build>\n<version>0.2</version>\n<supported_upgrades>
             \n<upgrade>\n<version>0.1</version>\n<required_patch>PATCH_0001
             </required_patch>\n</upgrade>\n</supported_upgrades>\n</build>
         '''
 
         mock_files = [
-            mock.mock_open(read_data=metadata_orig).return_value,
-            mock.mock_open(read_data=metadata_fake).return_value,
+            mock.mock_open(read_data=loading_metadata).return_value,
+            mock.mock_open(read_data=comps_file).return_value,
+            mock.mock_open(read_data=current_metadata).return_value,
         ]
         mock_open = mock.mock_open()
         mock_open.side_effect = mock_files
@@ -5096,16 +5099,46 @@ class ManagerStartLoadImportTest(base.BaseHostTestCase):
     def test_start_import_load_inactive_incompatible_version(self, mock_get_active_load, mock_open):
         mock_get_active_load.return_value.software_version = '0.3'
 
-        metadata_orig = open(self.metadata, 'r').read()
-        metadata_fake = b'''
+        loading_metadata = open(self.metadata, 'r').read()
+        current_metadata = b'''
             <build>\n<version>0.3</version>\n<supported_upgrades>
             \n<upgrade>\n<version>0.2</version>\n<required_patch>PATCH_0001
             </required_patch>\n</upgrade>\n</supported_upgrades>\n</build>
         '''
 
         mock_files = [
-            mock.mock_open(read_data=metadata_orig).return_value,
-            mock.mock_open(read_data=metadata_fake).return_value,
+            mock.mock_open(read_data=loading_metadata).return_value,
+            mock.mock_open(read_data=current_metadata).return_value,
+        ]
+        mock_open.side_effect = mock_files
+
+        self.assertRaises(
+            exception.SysinvException,
+            self.service.start_import_load,
+            self.context,
+            path_to_iso=self.iso,
+            path_to_sig=self.sig,
+            import_type=constants.INACTIVE_LOAD_IMPORT,
+        )
+
+    @mock.patch('os.path.exists', mock.MagicMock())
+    @mock.patch('sysinv.conductor.manager.open')
+    @mock.patch('sysinv.conductor.manager.cutils.get_active_load')
+    def test_start_import_load_inactive_invalid_patch(self, mock_get_active_load, mock_open):
+        mock_get_active_load.return_value.software_version = '0.3'
+
+        comps_file = "<packagereq>PATCH_0001</packagereq>"
+        loading_metadata = open(self.metadata, 'r').read()
+        current_metadata = b'''
+            <build>\n<version>0.2</version>\n<supported_upgrades>
+            \n<upgrade>\n<version>0.1</version>\n<required_patch>PATCH_0002
+            </required_patch>\n</upgrade>\n</supported_upgrades>\n</build>
+        '''
+
+        mock_files = [
+            mock.mock_open(read_data=loading_metadata).return_value,
+            mock.mock_open(read_data=comps_file).return_value,
+            mock.mock_open(read_data=current_metadata).return_value,
         ]
         mock_open.side_effect = mock_files
 
