@@ -938,7 +938,6 @@ class PlatformFirewallTestCaseControllerNonDc_Setup05(PlatformFirewallTestCaseMi
         with open(config_filename, 'w') as config_file:
             config = self.operator.platform_firewall.get_host_config(self.host)  # pylint: disable=no-member
             yaml.dump(config, config_file, default_flow_style=False)
-        print(config_filename)
 
         hiera_data = dict()
         with open(config_filename, 'r') as config_file:
@@ -1118,7 +1117,8 @@ class PlatformFirewallTestCaseControllerNonDc_Setup06(PlatformFirewallTestCaseMi
 # Controller, DC, Subcloud
 #   eth0:              oam
 #   eth1:              pxeboot
-#   vlan100@eth1:      mgmt.admin
+#   vlan100@eth1:      mgmt
+#   vlan101@eth1:      admin
 #   bond0@[eth2,eth3]: cluster-host.storage
 class PlatformFirewallTestCaseControllerDcSubcloud_Setup01(PlatformFirewallTestCaseMixin,
                                                            dbbase.BaseHostTestCase):
@@ -1161,10 +1161,14 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup01(PlatformFirewallTestC
         self.test_interfaces.update({constants.NETWORK_TYPE_PXEBOOT: iface})
 
         iface = self._create_vlan_test("mgmt0",
-            constants.INTERFACE_CLASS_PLATFORM,
-            [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_ADMIN], 100,
+            constants.INTERFACE_CLASS_PLATFORM, [constants.NETWORK_TYPE_MGMT], 100,
             self.test_interfaces[constants.NETWORK_TYPE_PXEBOOT])
         self.test_interfaces.update({constants.NETWORK_TYPE_MGMT: iface})
+
+        iface = self._create_vlan_test("admin0",
+            constants.INTERFACE_CLASS_PLATFORM, [constants.NETWORK_TYPE_ADMIN], 101,
+            self.test_interfaces[constants.NETWORK_TYPE_PXEBOOT])
+        self.test_interfaces.update({constants.NETWORK_TYPE_ADMIN: iface})
 
         iface = self._create_bond_test("cluster0",
             constants.INTERFACE_CLASS_PLATFORM,
@@ -1173,6 +1177,19 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup01(PlatformFirewallTestC
 
         self._create_service_parameter_test_set()
         self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
+
+        self._create_test_route(self.test_interfaces[constants.NETWORK_TYPE_MGMT],
+                                '192.168.1.0', 26)
+        self._create_test_route(self.test_interfaces[constants.NETWORK_TYPE_MGMT],
+                                '192.168.1.64', 26)
+        self._create_test_route(self.test_interfaces[constants.NETWORK_TYPE_ADMIN],
+                                '192.168.3.0', 24)
+        self._create_test_route(self.test_interfaces[constants.NETWORK_TYPE_ADMIN],
+                                '192.168.4.0', 24)
+        self._create_test_route(self.test_interfaces[constants.NETWORK_TYPE_OAM],
+                                '192.168.5.0', 24)
+        self._create_test_route(self.test_interfaces[constants.NETWORK_TYPE_PXEBOOT],
+                                '192.168.20.0', 24)
 
     def _check_gnp_admin_values(self, gnp, net_type, db_api, egress_size=3, ingress_size=3):
 
@@ -1230,17 +1247,26 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup01(PlatformFirewallTestC
                 f"stx-ingr-{self.host.personality}-subcloud-tcp{ip_version}")
         self.assertEqual(gnp['spec']['ingress'][0]['ipVersion'], ip_version)
         self.assertEqual(gnp['spec']['ingress'][0]['destination']['ports'], tcp_ports)
+        # only the admin network routes will be added to the firewall
+        self.assertEqual(gnp['spec']['ingress'][0]['source']['nets'][0], "192.168.3.0/24")
+        self.assertEqual(gnp['spec']['ingress'][0]['source']['nets'][1], "192.168.4.0/24")
 
         self.assertEqual(gnp['spec']['ingress'][1]['protocol'], "UDP")
         self.assertEqual(gnp['spec']['ingress'][1]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-subcloud-udp{ip_version}")
         self.assertEqual(gnp['spec']['ingress'][1]['ipVersion'], ip_version)
         self.assertEqual(gnp['spec']['ingress'][1]['destination']['ports'], udp_ports)
+        # only the admin network routes will be added to the firewall
+        self.assertEqual(gnp['spec']['ingress'][1]['source']['nets'][0], "192.168.3.0/24")
+        self.assertEqual(gnp['spec']['ingress'][1]['source']['nets'][1], "192.168.4.0/24")
 
         self.assertEqual(gnp['spec']['ingress'][2]['protocol'], "ICMP")
         self.assertEqual(gnp['spec']['ingress'][2]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-subcloud-icmp{ip_version}")
         self.assertEqual(gnp['spec']['ingress'][2]['ipVersion'], ip_version)
+        # only the admin network routes will be added to the firewall
+        self.assertEqual(gnp['spec']['ingress'][2]['source']['nets'][0], "192.168.3.0/24")
+        self.assertEqual(gnp['spec']['ingress'][2]['source']['nets'][1], "192.168.4.0/24")
 
     def test_generate_firewall_config(self):
         hieradata_directory = self._create_hieradata_directory()
@@ -1289,11 +1315,15 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup01(PlatformFirewallTestC
 
         # the HE is filled
         self.assertTrue(hiera_data['platform::firewall::calico::hostendpoint::config'])
-        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 3)
+        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 4)
 
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[constants.NETWORK_TYPE_MGMT],
-                              [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_ADMIN])
+                              [constants.NETWORK_TYPE_MGMT])
+
+        self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
+                              self.test_interfaces[constants.NETWORK_TYPE_ADMIN],
+                              [constants.NETWORK_TYPE_ADMIN])
 
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[constants.NETWORK_TYPE_CLUSTER_HOST],
@@ -1613,6 +1643,15 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup02(PlatformFirewallTestC
         self._create_service_parameter_test_set()
         self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
 
+        self._create_test_route(self.test_interfaces[constants.NETWORK_TYPE_MGMT],
+                                '192.168.1.0', 26)
+        self._create_test_route(self.test_interfaces[constants.NETWORK_TYPE_MGMT],
+                                '192.168.1.64', 26)
+        self._create_test_route(self.test_interfaces[constants.NETWORK_TYPE_OAM],
+                                '192.168.5.0', 24)
+        self._create_test_route(self.test_interfaces[constants.NETWORK_TYPE_PXEBOOT],
+                                '192.168.20.0', 24)
+
     def _check_gnp_values_mgmt_subcloud(self, gnp):
 
         ip_version = gnp['spec']['ingress'][0]['ipVersion']
@@ -1627,6 +1666,8 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup02(PlatformFirewallTestC
         tcp_ports.append(constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT)
         tcp_ports.sort()
         self.assertEqual(gnp['spec']['ingress'][4]['destination']['ports'], tcp_ports)
+        self.assertEqual(gnp['spec']['ingress'][4]['source']['nets'][0], "192.168.1.0/26")
+        self.assertEqual(gnp['spec']['ingress'][4]['source']['nets'][1], "192.168.1.64/26")
 
         self.assertEqual(gnp['spec']['ingress'][5]['protocol'], "UDP")
         self.assertEqual(gnp['spec']['ingress'][5]['metadata']['annotations']['name'],
@@ -1636,11 +1677,15 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup02(PlatformFirewallTestC
         udp_ports = list(firewall.SUBCLOUD["udp"].keys())
         udp_ports.sort()
         self.assertEqual(gnp['spec']['ingress'][5]['destination']['ports'], udp_ports)
+        self.assertEqual(gnp['spec']['ingress'][5]['source']['nets'][0], "192.168.1.0/26")
+        self.assertEqual(gnp['spec']['ingress'][5]['source']['nets'][1], "192.168.1.64/26")
 
         self.assertEqual(gnp['spec']['ingress'][6]['protocol'], "ICMP")
         self.assertEqual(gnp['spec']['ingress'][6]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-subcloud-icmp{ip_version}")
         self.assertEqual(gnp['spec']['ingress'][6]['ipVersion'], ip_version)
+        self.assertEqual(gnp['spec']['ingress'][6]['source']['nets'][0], "192.168.1.0/26")
+        self.assertEqual(gnp['spec']['ingress'][6]['source']['nets'][1], "192.168.1.64/26")
 
     def test_generate_firewall_config(self):
         hieradata_directory = self._create_hieradata_directory()
