@@ -44,6 +44,7 @@ REMOVE_RESULT_SLEEP=10
 REMOVE_RESULT_ATTEMPTS=48 # ~8 min to remove app
 
 PLATFORM_APPLICATION_PATH='/usr/local/share/applications/helm'
+UPGRADE_IN_PROGRESS_APPS_FILE='/etc/platform/.upgrade_in_progress_apps'
 PATH=$PATH:/usr/local/sbin
 
 source /etc/platform/openrc
@@ -171,6 +172,11 @@ if [ "x${UPGRADE_APP_VERSION}" == "x${EXISTING_APP_VERSION}" ]; then
     exit 0
 fi
 
+# Include app in upgrade in progress file
+if ! grep -q "${EXISTING_APP_NAME},${EXISTING_APP_VERSION},${UPGRADE_APP_VERSION}" $UPGRADE_IN_PROGRESS_APPS_FILE; then
+    echo "${EXISTING_APP_NAME},${EXISTING_APP_VERSION},${UPGRADE_APP_VERSION}" >> $UPGRADE_IN_PROGRESS_APPS_FILE
+fi
+
 if [ "${ORIGINAL_APP_STATUS}" == "${STATE_APPLIED}" ]; then
     # remove old app version
     log "$NAME: Removing ${EXISTING_APP_NAME}, version ${EXISTING_APP_VERSION}"
@@ -257,25 +263,5 @@ fi
 # apply new app version
 log "$NAME: Applying ${UPGRADE_APP_NAME}, version ${UPGRADE_APP_VERSION}"
 system application-apply ${UPGRADE_APP_NAME}
-
-# Wait on the apply
-for tries in $(seq 1 $APPLY_RESULT_ATTEMPTS); do
-    UPGRADE_APP_STATUS=$(
-        system application-show $UPGRADE_APP_NAME \
-            --column status --format value
-    )
-    if [ "${UPGRADE_APP_STATUS}" == "${STATE_APPLIED}" ]; then
-        log "$NAME: ${UPGRADE_APP_NAME} has been applied."
-        break
-    fi
-    sleep $APPLY_RESULT_SLEEP
-done
-
-if [ $tries == $APPLY_RESULT_ATTEMPTS ]; then
-    log "$NAME: ${UPGRADE_APP_NAME}, version ${UPGRADE_APP_VERSION}," \
-        "was not applied in the allocated time. Exiting for manual" \
-        "intervention..."
-    exit 1
-fi
 
 exit 0

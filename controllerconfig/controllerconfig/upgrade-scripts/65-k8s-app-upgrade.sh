@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2020-2021 Wind River Systems, Inc.
+# Copyright (c) 2020-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -23,6 +23,8 @@ TO_RELEASE=$2
 ACTION=$3
 
 PLATFORM_APPLICATION_PATH='/usr/local/share/applications/helm'
+UPGRADE_IN_PROGRESS_APPS_FILE='/etc/platform/.upgrade_in_progress_apps'
+
 RECOVER_RESULT_SLEEP=30
 RECOVER_RESULT_ATTEMPTS=30 # ~15 min to recover app
 DELETE_RESULT_SLEEP=10
@@ -41,6 +43,11 @@ function verify_apps_are_not_recovering {
     # Scrape app names. Skip header and footer.
     APPS=$(system application-list --nowrap | head -n-1 | tail -n+4 | awk '{print $2}')
     for a in ${APPS}; do
+        # If app is being upgraded then ignore
+        if grep -q $a $UPGRADE_IN_PROGRESS_APPS_FILE; then
+            continue
+        fi
+
         APP_STATUS=$(system application-show $a --column status --format value)
         if [[ "${APP_STATUS}" =~ ^(applying|restore-requested)$ ]]; then
             if [ ${system_type} == 'All-in-one' ] && [ ${system_mode} == 'simplex' ]; then
@@ -63,6 +70,9 @@ if [ "$ACTION" == "activate" ]; then
         log "not upgrading to 22.12, skip"
         exit 0
     fi
+
+    # remove upgrade in progress file
+    [[ -f $UPGRADE_IN_PROGRESS_APPS_FILE ]] && rm -f $UPGRADE_IN_PROGRESS_APPS_FILE
 
     # move the costly source command in the if branch, so only execute when needed.
     source /etc/platform/openrc
@@ -152,56 +162,11 @@ if [ "$ACTION" == "activate" ]; then
 
                 log "$NAME: Uploading ${UPGRADE_APP_NAME}, version ${UPGRADE_APP_VERSION} from $fqpn_app"
                 system application-upload $fqpn_app
-                # Wait on the upload, should be quick
-                for tries in $(seq 1 $UPLOAD_RESULT_ATTEMPTS); do
-                    UPGRADE_APP_STATUS=$(system application-show $UPGRADE_APP_NAME --column status --format value)
-                    if [ "${UPGRADE_APP_STATUS}" == 'uploaded' ]; then
-                        log "$NAME: ${UPGRADE_APP_NAME} has been uploaded."
-                        break
-                    fi
-                    sleep $UPLOAD_RESULT_SLEEP
-                done
-
-                if [ $tries == $UPLOAD_RESULT_ATTEMPTS ]; then
-                    log "$NAME: ${UPGRADE_APP_NAME}, version ${UPGRADE_APP_VERSION}, was not uploaded in the alloted time. Exiting for manual intervention..."
-                    exit 1
-                fi
-
                 ;;
 
             applied)
                 log "$NAME: Updating ${EXISTING_APP_NAME}, from version ${EXISTING_APP_VERSION} to version ${UPGRADE_APP_VERSION} from $fqpn_app"
                 system application-update $fqpn_app
-                # Wait on the upload, should be quick
-                for tries in $(seq 1 $UPDATE_RESULT_ATTEMPTS); do
-                    UPDATING_APP_INFO=$(system application-show $UPGRADE_APP_NAME --column name --column app_version --column status --format yaml)
-                    UPDATING_APP_NAME=$(echo ${UPDATING_APP_INFO} | sed 's/.*name:[[:space:]]\(\S*\).*/\1/')
-                    UPDATING_APP_VERSION=$(echo ${UPDATING_APP_INFO} | sed 's/.*app_version:[[:space:]]\(\S*\).*/\1/')
-                    UPDATING_APP_STATUS=$(echo ${UPDATING_APP_INFO} | sed 's/.*status:[[:space:]]\(\S*\).*/\1/')
-
-                    if [ "${UPDATING_APP_NAME}" == "${UPGRADE_APP_NAME}" ] && \
-                       [ "${UPDATING_APP_VERSION}" == "${UPGRADE_APP_VERSION}" ] && \
-                       [ "${UPDATING_APP_STATUS}" == "applied" ]; then
-                        ALARMS=$(fm alarm-list --nowrap --uuid --query "alarm_id=750.005;entity_type_id=k8s_application;entity_instance_id=${UPGRADE_APP_NAME}" | head -n-1 | tail -n+4 | awk '{print $2}')
-                        for alarm in ${ALARMS}; do
-                            log "$NAME: [Warning] A stale 750.005 Application Update In Progress alarm was found for ${UPGRADE_APP_NAME}. Clearing it (UUID: ${alarm})."
-                            fm alarm-delete $alarm
-                        done
-                        log "$NAME: ${UPGRADE_APP_NAME} has been updated to version ${UPGRADE_APP_VERSION} from version ${EXISTING_APP_VERSION}"
-                        break
-                    fi
-                    sleep $UPDATE_RESULT_SLEEP
-                done
-
-                if [ $tries == $UPDATE_RESULT_ATTEMPTS ]; then
-                    log "$NAME: ${UPGRADE_APP_NAME}, version ${UPGRADE_APP_VERSION}, was not updated in the alloted time. Exiting for manual intervention..."
-                    exit 1
-                fi
-
-                if [ $tries != $UPDATE_RESULT_ATTEMPTS ] && [ "${UPDATING_APP_VERSION}" == "${EXISTING_APP_VERSION}" ] ; then
-                    log "$NAME: ${UPGRADE_APP_NAME}, version ${UPGRADE_APP_VERSION}, update failed and was rolled back. Exiting for manual intervention..."
-                    exit 1
-                fi
                 ;;
 
             # States that are unexpected
@@ -216,6 +181,10 @@ if [ "$ACTION" == "activate" ]; then
                 ;;
         esac
 
+        # Include app in upgrade in progress file
+        if ! grep -q "${EXISTING_APP_NAME},${EXISTING_APP_VERSION},${UPGRADE_APP_VERSION}" $UPGRADE_IN_PROGRESS_APPS_FILE; then
+            echo "${EXISTING_APP_NAME},${EXISTING_APP_VERSION},${UPGRADE_APP_VERSION}" >> $UPGRADE_IN_PROGRESS_APPS_FILE
+        fi
     done
 
     log "$NAME: Completed Kubernetes application updates for release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
