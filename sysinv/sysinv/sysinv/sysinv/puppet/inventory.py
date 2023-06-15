@@ -48,6 +48,7 @@ class SystemInventoryPuppet(openstack.OpenstackBasePuppet):
         neutron_region_name = self._get_service_region_name(constants.SERVICE_NAME_NEUTRON)
         nova_region_name = self._get_service_region_name(constants.SERVICE_NAME_NOVA)
         barbican_region_name = self._operator.barbican.get_region_name()
+        bind_host, host = self._get_bind_host()
 
         return {
             # The region in which the identity server can be found
@@ -64,11 +65,11 @@ class SystemInventoryPuppet(openstack.OpenstackBasePuppet):
             'sysinv::keystone::auth::service_name': self.SERVICE_NAME,
             'sysinv::keystone::auth::tenant': self._get_service_tenant_name(),
 
-            'sysinv::api::bind_host': self._get_management_address(),
+            'sysinv::api::bind_host': bind_host,
             'sysinv::api::pxeboot_host': self._get_pxeboot_address(),
-            'sysinv::api::keystone_auth_uri': self._keystone_auth_uri(),
+            'sysinv::api::keystone_auth_uri': self._keystone_auth_uri(host),
             'sysinv::api::keystone_identity_uri':
-                self._keystone_identity_uri(),
+                self._keystone_identity_uri(host),
             'sysinv::api::keystone_tenant': self._get_service_project_name(),
             'sysinv::api::keystone_user_domain':
                 self._get_service_user_domain_name(),
@@ -81,9 +82,9 @@ class SystemInventoryPuppet(openstack.OpenstackBasePuppet):
                 self._to_create_services(),
 
             'sysinv::api::openstack_keystone_auth_uri':
-                self._keystone_auth_uri(),
+                self._keystone_auth_uri(host),
             'sysinv::api::openstack_keystone_identity_uri':
-                self._keystone_identity_uri(),
+                self._keystone_identity_uri(host),
             'sysinv::api::openstack_keystone_user_domain':
                 self._operator.keystone.get_admin_user_domain(),
             'sysinv::api::openstack_keystone_project_domain':
@@ -95,7 +96,7 @@ class SystemInventoryPuppet(openstack.OpenstackBasePuppet):
             'sysinv::api::openstack_keyring_service':
                 self.OPENSTACK_KEYRING_SERVICE,
 
-            'sysinv::rpc_zeromq_conductor_bind_ip': self._get_management_address()
+            'sysinv::rpc_zeromq_conductor_bind_ip': bind_host
         }
 
     def get_host_config(self, host):

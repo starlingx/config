@@ -184,12 +184,20 @@ class PlatformPuppet(base.BasePuppet):
         }
 
     def _get_amqp_config(self):
-        return {
-            'platform::amqp::params::host':
-                self._get_management_address(),
-            'platform::amqp::params::host_url':
-                self._format_url_address(self._get_management_address()),
-        }
+        if utils.is_fqdn_ready_to_use():
+            amqp_config_dict = {
+                'platform::amqp::params::host': constants.CONTROLLER_FQDN,
+                'platform::amqp::params::host_url': constants.CONTROLLER_FQDN,
+            }
+        else:
+            amqp_config_dict = {
+                'platform::amqp::params::host':
+                    self._get_management_address(),
+                'platform::amqp::params::host_url':
+                    self._format_url_address(self._get_management_address()),
+            }
+
+        return amqp_config_dict
 
     def _get_resolv_config(self):
         servers = [self._get_management_address()]
@@ -227,13 +235,18 @@ class PlatformPuppet(base.BasePuppet):
         public_address_url = self._format_url_address(public_address.address)
         https_enabled = self._https_enabled()
 
+        if utils.is_fqdn_ready_to_use():
+            priv_addr = constants.CONTROLLER_FQDN
+        else:
+            priv_addr = private_address.address
+
         config = {
             'platform::haproxy::params::public_ip_address':
                 public_address.address,
             'platform::haproxy::params::public_address_url':
                 public_address_url,
             'platform::haproxy::params::private_ip_address':
-                private_address.address,
+                priv_addr,
             'platform::haproxy::params::private_dc_ip_address':
                 private_dc_address.address,
             'platform::haproxy::params::enable_https':
@@ -306,30 +319,23 @@ class PlatformPuppet(base.BasePuppet):
 
         if host.personality == constants.CONTROLLER:
 
-            controller0_address = self._get_address_by_name(
-                constants.CONTROLLER_0_HOSTNAME, constants.NETWORK_TYPE_MGMT)
-
-            controller1_address = self._get_address_by_name(
-                constants.CONTROLLER_1_HOSTNAME, constants.NETWORK_TYPE_MGMT)
-
             if host.hostname == constants.CONTROLLER_0_HOSTNAME:
                 mate_hostname = constants.CONTROLLER_1_HOSTNAME
-                mate_address = controller1_address
             else:
                 mate_hostname = constants.CONTROLLER_0_HOSTNAME
-                mate_address = controller0_address
 
             config.update({
-                'platform::params::controller_0_ipaddress':
-                    controller0_address.address,
-                'platform::params::controller_1_ipaddress':
-                    controller1_address.address,
+                'platform::params::controller_fqdn':
+                    constants.CONTROLLER_FQDN,
+                'platform::params::controller_0_fqdn':
+                    constants.CONTROLLER_0_FQDN,
+                'platform::params::controller_1_fqdn':
+                    constants.CONTROLLER_1_FQDN,
                 'platform::params::controller_0_hostname':
                     constants.CONTROLLER_0_HOSTNAME,
                 'platform::params::controller_1_hostname':
                     constants.CONTROLLER_1_HOSTNAME,
                 'platform::params::mate_hostname': mate_hostname,
-                'platform::params::mate_ipaddress': mate_address.address,
             })
 
         system = self._get_system()

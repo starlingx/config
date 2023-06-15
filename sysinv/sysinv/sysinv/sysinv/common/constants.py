@@ -196,6 +196,13 @@ STORAGE_1_HOSTNAME = '%s-1' % STORAGE_HOSTNAME
 STORAGE_2_HOSTNAME = '%s-2' % STORAGE_HOSTNAME
 # Other Storage Hostnames are built dynamically.
 
+# FQDN host entries
+INTERNAL_DOMAIN = 'internal'
+
+CONTROLLER_FQDN = '%s.%s' % (CONTROLLER_HOSTNAME, INTERNAL_DOMAIN)
+CONTROLLER_0_FQDN = '%s.%s' % (CONTROLLER_0_HOSTNAME, INTERNAL_DOMAIN)
+CONTROLLER_1_FQDN = '%s.%s' % (CONTROLLER_1_HOSTNAME, INTERNAL_DOMAIN)
+
 # Replication Peer groups
 PEER_PREFIX = 'group-'
 
@@ -2077,7 +2084,7 @@ DEFAULT_DNS_SERVICE_DOMAIN = 'cluster.local'
 
 # Ansible bootstrap
 ANSIBLE_BOOTSTRAP_FLAG = os.path.join(tsc.VOLATILE_PATH, ".ansible_bootstrap")
-ANSIBLE_BOOTSTRAP_COMPLETED_FLAG = os.path.join(tsc.CONFIG_PATH,
+ANSIBLE_BOOTSTRAP_COMPLETED_FLAG = os.path.join(tsc.PLATFORM_CONF_PATH,
                                                 ".bootstrap_completed")
 UNLOCK_READY_FLAG = os.path.join(tsc.PLATFORM_CONF_PATH, ".unlock_ready")
 INVENTORY_WAIT_TIMEOUT_IN_SECS = 120

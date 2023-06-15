@@ -60,6 +60,17 @@ class NetworkingPuppet(base.BasePuppet):
                 gateway_address,
         })
 
+        # create flag for the mate controller to use FQDN or not
+        if utils.is_fqdn_ready_to_use():
+            fqdn_ready = True
+        else:
+            fqdn_ready = False
+
+        config.update({
+            'platform::network::%s::params::fqdn_ready' % networktype:
+                fqdn_ready,
+        })
+
         # TODO(fcorream): platform-nfs-iaddress is just necessary to allow
         # an upgrade from StarlingX releases 6 or 7 to new releases.
         # remove it when StarlingX rel. 6 or 7 are not being used anymore

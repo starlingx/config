@@ -7,6 +7,7 @@
 from tsconfig.tsconfig import KEYRING_PATH
 from sysinv.common import constants
 from sysinv.puppet import openstack
+from sysinv.common import utils
 
 
 class MtcePuppet(openstack.OpenstackBasePuppet):
@@ -31,13 +32,17 @@ class MtcePuppet(openstack.OpenstackBasePuppet):
             constants.MTCE_MULTICAST_MGMT_IP_NAME,
             constants.NETWORK_TYPE_MULTICAST)
 
+        host = (constants.CONTROLLER_FQDN
+                if utils.is_fqdn_ready_to_use()
+                else None)
+
         config = {
             'platform::mtce::params::auth_host':
                 self._keystone_auth_address(),
             'platform::mtce::params::auth_port':
                 self._keystone_auth_port(),
             'platform::mtce::params::auth_uri':
-                self._keystone_auth_uri(),
+                self._keystone_auth_uri(host),
             'platform::mtce::params::auth_username':
                 self._get_service_user_name(self.SERVICE_NAME),
             'platform::mtce::params::auth_user_domain':

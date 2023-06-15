@@ -36,9 +36,13 @@ class SmPuppet(openstack.OpenstackBasePuppet):
     def get_system_config(self):
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
 
+        host = (constants.CONTROLLER_FQDN
+                if utils.is_fqdn_ready_to_use()
+                else None)
+
         config = {
             'smapi::keystone::authtoken::username': ksuser,
-            'smapi::keystone::authtoken::auth_url': self._keystone_identity_uri(),
+            'smapi::keystone::authtoken::auth_url': self._keystone_identity_uri(host),
             'smapi::keystone::auth::auth_name': ksuser,
             'smapi::keystone::auth::public_url': self.get_public_url(),
             'smapi::keystone::auth::region': self._region_name(),
@@ -47,7 +51,7 @@ class SmPuppet(openstack.OpenstackBasePuppet):
 
             'platform::smapi::params::admin_url': self.get_admin_url(),
             'platform::smapi::params::internal_url': self.get_internal_url(),
-            'platform::smapi::params::keystone_auth_url': self._keystone_identity_uri(),
+            'platform::smapi::params::keystone_auth_url': self._keystone_identity_uri(host),
             'platform::smapi::params::keystone_username': ksuser,
             'platform::smapi::params::public_url': self.get_public_url(),
             'platform::smapi::params::port': self.SERVICE_PORT,
@@ -60,8 +64,17 @@ class SmPuppet(openstack.OpenstackBasePuppet):
         if (constants.CONTROLLER not in utils.get_personalities(host)):
             return {}
 
+        if (utils.is_fqdn_ready_to_use() and
+                host.personality == constants.CONTROLLER):
+            if host.hostname == constants.CONTROLLER_0_HOSTNAME:
+                host_ip = constants.CONTROLLER_0_FQDN
+            elif host.hostname == constants.CONTROLLER_1_HOSTNAME:
+                host_ip = constants.CONTROLLER_1_FQDN
+        else:
+            host_ip = host.mgmt_ip
+
         config = {
-            'platform::smapi::params::bind_ip': host.mgmt_ip,
+            'platform::smapi::params::bind_ip': host_ip,
         }
 
         return config

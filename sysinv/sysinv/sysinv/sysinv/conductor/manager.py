@@ -1177,17 +1177,19 @@ class ConductorManager(service.PeriodicService):
                 hostname = re.sub("-%s$" % constants.NETWORK_TYPE_MGMT,
                                   '', str(address.name))
 
-                if cutils.is_aio_simplex_system(self.dbapi):
-                    hostname_internal = hostname + ".internal"
-                    controller_alias = ["registry.local", "controller-platform-nfs"]
+                if (hostname != constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME):
+                    controller_alias = [constants.CONTROLLER_HOSTNAME,
+                                        constants.DOCKER_REGISTRY_HOST,
+                                        "controller-platform-nfs"]
 
-                    if not hostname_internal == "controller.internal":
+                    if hostname == constants.CONTROLLER_HOSTNAME:
                         addn_line_internal = self._dnsmasq_addn_host_entry_to_string(
-                                address.address, hostname_internal)
+                                address.address, constants.CONTROLLER_FQDN, controller_alias)
                     else:
+                        hostname_internal = hostname + "." + constants.INTERNAL_DOMAIN
+                        hostname_alias = [hostname]
                         addn_line_internal = self._dnsmasq_addn_host_entry_to_string(
-                                address.address, hostname_internal, controller_alias)
-
+                                address.address, hostname_internal, hostname_alias)
                     f_out_addn.write(addn_line_internal)
 
                 if address.interface:

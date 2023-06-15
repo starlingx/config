@@ -10,7 +10,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2023 Wind River Systems, Inc.
 #
 
 import socket
@@ -23,6 +23,7 @@ from oslo_service import wsgi
 from sysinv._i18n import _
 from sysinv.api import app
 from sysinv.common import exception
+from sysinv.common import utils
 
 
 CONF = cfg.CONF
@@ -36,6 +37,9 @@ class WSGIService(service.ServiceBase):
         """Initialize, but do not start the WSGI server.
 
         :param name: The name of the WSGI server given to the loader.
+        :param host: The FQDN/IP WSGI will listen ( sysinv-api )
+        :param port: which port to listen
+        :param workers: list of workers to handle the requests
         :param use_ssl: Wraps the socket in an SSL context if True.
         :returns: None
         """
@@ -47,11 +51,14 @@ class WSGIService(service.ServiceBase):
                 _("api_workers value of %d is invalid, "
                   "must be greater than 0.") % self.workers)
 
-        socket_family = None
-        if IPAddress(host).version == 4:
-            socket_family = socket.AF_INET
-        elif IPAddress(host).version == 6:
-            socket_family = socket.AF_INET6
+        if not utils.is_valid_ip(host):
+            socket_family = None
+        else:
+            socket_family = None
+            if IPAddress(host).version == 4:
+                socket_family = socket.AF_INET
+            elif IPAddress(host).version == 6:
+                socket_family = socket.AF_INET6
 
         # If not defined, pool_size will default to 100. In order
         # to increase the amount of threads handling multiple parallel

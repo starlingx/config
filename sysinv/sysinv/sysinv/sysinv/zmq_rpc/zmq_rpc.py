@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+import dns.resolver
 import zerorpc
 import eventlet
 import os
@@ -11,6 +12,8 @@ from oslo_log import log
 from zerorpc import exceptions
 
 from sysinv.db import api
+from sysinv.common import constants
+from sysinv.common import utils
 from sysinv.objects.base import SysinvObject
 from sysinv.zmq_rpc.client_provider import ClientProvider
 from sysinv.zmq_rpc.serializer import decode
@@ -81,12 +84,35 @@ class RpcWrapper(object):
 class ZmqRpcServer(object):
     def __init__(self, target, host, port):
         self.target = target
+        self.host = host
+        self.port = port
         self.endpoint = get_tcp_endpoint(host, port)
         self.server = None
 
     def run(self):
         def _run_in_thread():
             try:
+                if self.host in [constants.CONTROLLER_FQDN,
+                                 constants.CONTROLLER_0_FQDN,
+                                 constants.CONTROLLER_1_FQDN]:
+                    v4_results = dns.resolver.resolve(self.host, 'A',
+                                                      raise_on_no_answer=False)
+                    v6_results = dns.resolver.resolve(self.host, 'AAAA',
+                                                      raise_on_no_answer=False)
+                    dns_results = None
+                    if v6_results:
+                        dns_results = v6_results
+                    elif v4_results:
+                        dns_results = v4_results
+                    if dns_results is not None:
+                        host_ip = dns_results[0]
+                    else:
+                        LOG.error("Failed to resolve DNS host {}".format(self.host))
+                        return
+                    self.endpoint = get_tcp_endpoint(host_ip, self.port)
+                    LOG.debug("Resolved fqdn host={} host_ip={} endpoint={}"
+                              .format(self.host, host_ip, self.endpoint))
+
                 LOG.info("Starting zmq server at {}".format(self.endpoint))
                 # pylint: disable=unexpected-keyword-arg
                 # TODO with the default of 5s hearbeat we get LostRemote
@@ -138,7 +164,18 @@ class ZmqRpcClient(object):
                 raise Exception("Missing host_uuid parameter for rpc endpoint")
             dbapi = api.get_instance()
             host = dbapi.ihost_get(host_uuid)
-            endpoint = get_tcp_endpoint(host.mgmt_ip, self.port)
+            if (utils.is_fqdn_ready_to_use()
+                    and host.personality == constants.CONTROLLER):
+                if host.hostname == constants.CONTROLLER_0_HOSTNAME:
+                    host_fqdn = constants.CONTROLLER_0_FQDN
+                elif host.hostname == constants.CONTROLLER_1_HOSTNAME:
+                    host_fqdn = constants.CONTROLLER_1_FQDN
+                endpoint = get_tcp_endpoint(host_fqdn, self.port)
+            else:
+                address_name = utils.format_address_name(host.hostname,
+                                              constants.NETWORK_TYPE_MGMT)
+                address = dbapi.address_get_by_name(address_name)
+                endpoint = get_tcp_endpoint(address.address, self.port)
             client = client_provider.get_client_for_endpoint(endpoint)
 
         try:
@@ -193,7 +230,19 @@ class ZmqRpcClient(object):
                 "personality={}, subfunctions={})".format(
                     host.hostname, host.availability, host.operational,
                     host.personality, host.subfunctions))
-            endpoint = get_tcp_endpoint(host.mgmt_ip, self.port)
+            if (utils.is_initial_config_complete() and utils.is_fqdn_ready_to_use()
+                    and host.personality == constants.CONTROLLER):
+                if host.hostname == constants.CONTROLLER_0_HOSTNAME:
+                    host_fqdn = constants.CONTROLLER_0_FQDN
+                elif host.hostname == constants.CONTROLLER_1_HOSTNAME:
+                    host_fqdn = constants.CONTROLLER_1_FQDN
+                endpoint = get_tcp_endpoint(host_fqdn, self.port)
+            else:
+                address_name = utils.format_address_name(host.hostname,
+                                                         constants.NETWORK_TYPE_MGMT)
+                address = dbapi.address_get_by_name(address_name)
+                endpoint = get_tcp_endpoint(address.address, self.port)
+
             endpoints.append(endpoint)
             LOG.debug("Add host {} with endpoint {} to fanout request".format(
                 host.hostname, endpoint))

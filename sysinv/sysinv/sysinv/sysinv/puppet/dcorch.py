@@ -76,6 +76,7 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
     def get_system_config(self):
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
         dm_ksuser = self._operator.dcmanager.get_ks_user_name()
+        bind_host, host = self._get_bind_host()
 
         config = {
             # The region in which the identity server can be found
@@ -157,10 +158,10 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
             'dcorch::keystone::auth::service_name': self.SERVICE_NAME,
             'dcorch::keystone::auth::tenant': self._get_service_tenant_name(),
 
-            'dcorch::api_proxy::bind_host': self._get_management_address(),
-            'dcorch::api_proxy::keystone_auth_uri': self._keystone_auth_uri(),
+            'dcorch::api_proxy::bind_host': bind_host,
+            'dcorch::api_proxy::keystone_auth_uri': self._keystone_auth_uri(host),
             'dcorch::api_proxy::keystone_identity_uri':
-                self._keystone_identity_uri(),
+                self._keystone_identity_uri(host),
             'dcorch::api_proxy::keystone_tenant': self._get_service_project_name(),
             'dcorch::api_proxy::keystone_user_domain':
                 self._get_service_user_domain_name(),

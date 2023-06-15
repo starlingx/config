@@ -50,6 +50,7 @@ class DCManagerPuppet(openstack.OpenstackBasePuppet):
 
     def get_system_config(self):
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
+        bind_host, host = self._get_bind_host()
 
         return {
             # The region in which the identity server can be found
@@ -68,10 +69,10 @@ class DCManagerPuppet(openstack.OpenstackBasePuppet):
                 self._operator.keystone.get_admin_project_name(),
             'dcmanager::keystone::auth::admin_project_domain':
                 self._operator.keystone.get_admin_project_domain(),
-            'dcmanager::api::bind_host': self._get_management_address(),
-            'dcmanager::api::keystone_auth_uri': self._keystone_auth_uri(),
+            'dcmanager::api::bind_host': bind_host,
+            'dcmanager::api::keystone_auth_uri': self._keystone_auth_uri(host),
             'dcmanager::api::keystone_identity_uri':
-                self._keystone_identity_uri(),
+                self._keystone_identity_uri(host),
             'dcmanager::api::keystone_tenant': self._get_service_project_name(),
             'dcmanager::api::keystone_user_domain':
                 self._get_service_user_domain_name(),
