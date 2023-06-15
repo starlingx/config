@@ -17968,23 +17968,6 @@ class ConductorManager(service.PeriodicService):
 
     def sanitize_feature_gates_bootstrap_config_file(self, target_version):
         """
-        Remove the "RemoveSelfLink=false" kube-apiserver feature gate from the
-        last_kube_extra_config_bootstrap.yaml file when doing an upgrade from
-        K8s 1.23 to 1.24.
-
-        The yaml file contains information that is used during backup and restore.
-        We want to remove the "RemoveSelfLink=false" kube-apiserver feature gate
-        if it's present so that if we do a backup and restore after the upgrade
-        to K8s 1.24 we won't try to use this feature gate any more.  Any other feature
-        gates should be left alone, and if there aren't any other feature gates
-        we want to delete the entire "feature-gates" line.
-
-        Once we no longer need to worry about upgrading from 1.23 we can remove
-        this function.
-
-        HugePageStorageMedium feature gate could only have been true
-        starting from 1.22 and it removed entirely in 1.24.
-
         TTLAfterFinished feature gate could only have been true starting
         from 1.23 and it removed entirely in 1.25.
         """
@@ -18006,23 +17989,7 @@ class ConductorManager(service.PeriodicService):
 
         rc = 0
         try:
-            if target_version == 'v1.22.5':
-                # SCTPSupport feature gate is not supported in k8s 1.22
-                info, tmp = sanitize_feature_gates_bootstrap(
-                    info, 'SCTPSupport=true')
-                rc |= tmp
-            elif target_version == 'v1.24.4':
-                # RemoveSelfLink can only be true as of 1.24
-                info, tmp = sanitize_feature_gates_bootstrap(
-                    info, 'RemoveSelfLink=false')
-                rc |= tmp
-                # HugePageStorageMedium removed entirely in 1.24
-                # but could only have been true starting with 1.22
-                info, tmp = sanitize_feature_gates_bootstrap(
-                    info, 'HugePageStorageMediumSize=true')
-                rc |= tmp
-
-            elif target_version == 'v1.25.3':
+            if target_version == 'v1.25.3':
                 info, tmp = sanitize_feature_gates_bootstrap(
                     info, 'TTLAfterFinished=true')
                 rc |= tmp
@@ -18050,17 +18017,7 @@ class ConductorManager(service.PeriodicService):
         """
         newyaml = yaml.YAML()
 
-        # Get the configmap name based on target version
-        if target_version == 'v1.22.5':
-            configmap_name = 'kubelet-config-1.21'
-        elif target_version == 'v1.24.4':
-            configmap_name = 'kubelet-config-1.23'
-        elif target_version == 'v1.25.3':
-            configmap_name = 'kubelet-config'
-        else:
-            LOG.error("Unsupported target version %s, can't edit kubelet cm.",
-                target_version)
-            return 0
+        configmap_name = 'kubelet-config'
 
         try:
             configmap = self._kube.kube_read_config_map(
@@ -18072,19 +18029,7 @@ class ConductorManager(service.PeriodicService):
             feature_gates = kubelet_config.get('featureGates', {})
 
             # Edit the feature gates
-            if target_version == 'v1.22.5':
-                if feature_gates.get('SCTPSupport') is True:
-                    feature_gates.pop('SCTPSupport', None)
-            elif target_version == 'v1.24.4':
-                # RemoveSelfLink can only be true as of 1.24
-                if feature_gates.get('RemoveSelfLink') is False:
-                    feature_gates.pop('RemoveSelfLink', None)
-                # HugePageStorageMedium removed entirely in 1.24
-                # but could only have been true starting with 1.22
-                if feature_gates.get('HugePageStorageMediumSize') is True:
-                    feature_gates.pop('HugePageStorageMediumSize', None)
-
-            elif target_version == 'v1.25.3':
+            if target_version == 'v1.25.3':
                 if feature_gates.get('TTLAfterFinished') is True:
                     feature_gates.pop('TTLAfterFinished', None)
 
@@ -18128,16 +18073,7 @@ class ConductorManager(service.PeriodicService):
                     continue
 
                 try:
-                    feature_gates = sanitize_feature_gates(feature_gates,
-                                'RemoveSelfLink=false')
-                    if target_version == 'v1.24.4':
-                        feature_gates = sanitize_feature_gates(feature_gates,
-                                    'HugePageStorageMediumSize=true')
-                    elif target_version == 'v1.22.5':
-                        # SCTPSupport feature gate is not supported in k8s 1.22
-                        feature_gates = sanitize_feature_gates(feature_gates,
-                                    'SCTPSupport=true')
-                    elif target_version == 'v1.25.3':
+                    if target_version == 'v1.25.3':
                         feature_gates = sanitize_feature_gates(feature_gates,
                                     'TTLAfterFinished=true')
                     if not feature_gates:
@@ -18183,23 +18119,7 @@ class ConductorManager(service.PeriodicService):
         rc = 0
         try:
             for section in k8s_sections:
-                if target_version == 'v1.22.5':
-                    # SCTPSupport feature gate is not supported in k8s 1.22
-                    rc |= self.sanitize_feature_gates_service_parameter_section(
-                        section, 'SCTPSupport=true')
-                elif target_version == 'v1.24.4':
-                    # This could be optimized to pass down a list of
-                    # feature gates to remove.  Future optimization maybe.
-
-                    # RemoveSelfLink can only be true as of 1.24
-                    rc |= self.sanitize_feature_gates_service_parameter_section(
-                        section, 'RemoveSelfLink=false')
-                    # HugePageStorageMedium removed entirely in 1.24
-                    # but could only have been true starting with 1.22
-                    rc |= self.sanitize_feature_gates_service_parameter_section(
-                        section, 'HugePageStorageMediumSize=true')
-
-                elif target_version == 'v1.25.3':
+                if target_version == 'v1.25.3':
                     rc |= self.sanitize_feature_gates_service_parameter_section(
                         section, 'TTLAfterFinished=true')
 
@@ -18359,12 +18279,11 @@ def sanitize_feature_gates_bootstrap(info, feature):
       audit-log-maxsize: '100'
       audit-log-path: /var/log/kubernetes/audit/audit.log
       event-ttl: 24h
-      feature-gates: TTLAfterFinished=true,RemoveSelfLink=false
+      feature-gates: TTLAfterFinished=true
 
     kubelet_configurations:
       failSwapOn: false
       featureGates:
-        HugePageStorageMediumSize: true
         TTLAfterFinished: true
 
     We need to remove "feature" from the feature-gates field for the three

@@ -206,7 +206,7 @@ class ManagerTestCase(base.DbTestCase):
                                             'apiVersion: kubeadm.k8s.io/v1beta3\n'
                                             'controllerManager:\n'
                                             '  extraArgs:\n'
-                                            '    feature-gates: TTLAfterFinished=true,RemoveSelfLink=false\n'
+                                            '    feature-gates: TTLAfterFinished=true\n'
                                             '  extraVolumes:\n'
                                             'kind: ClusterConfiguration\n'
                                             'kubernetesVersion: v1.42.1\n'
@@ -225,42 +225,6 @@ class ManagerTestCase(base.DbTestCase):
         ttl_patch += 'null\nkind: ClusterConfiguration\nkubernetesVersion: '
         ttl_patch += 'v1.42.1\nscheduler: {}\n'
         self.kubeadm_config_map_patch_ttlafterfinished = {'data': {'ClusterConfiguration': ttl_patch}}
-
-        self.kubeadm_config_read_HugePageStorageMediumSize = kubernetes.client.V1ConfigMap(
-            api_version='v1',
-            data={'ClusterConfiguration': 'apiServer:\n'
-                                            '  certSANs:\n'
-                                            '  - 192.168.206.1\n'
-                                            '  - 127.0.0.1\n'
-                                            '  - 10.10.6.3\n'
-                                            '  extraArgs:\n'
-                                            '    event-ttl: 24h\n'
-                                            '    feature-gates: HugePageStorageMediumSize=true,Foo=false\n'
-                                            '  extraVolumes:\n'
-                                            '  - hostPath: '
-                                            '/etc/kubernetes/encryption-provider.yaml\n'
-                                            'apiVersion: kubeadm.k8s.io/v1beta3\n'
-                                            'controllerManager:\n'
-                                            '  extraArgs:\n'
-                                            '    feature-gates: HugePageStorageMediumSize=true\n'
-                                            '  extraVolumes:\n'
-                                            'kind: ClusterConfiguration\n'
-                                            'kubernetesVersion: v1.23.1\n'
-                                            'scheduler: {}\n'},
-
-            metadata=kubernetes.client.V1ObjectMeta(
-                        name='kubeadm-config',
-                        namespace='kube-system'),
-        )
-        ttl_patch = 'apiServer:\n  certSANs: [192.168.206.1, 127.0.0.1, '
-        ttl_patch += '10.10.6.3]\n  extraArgs: {event-ttl: 24h, feature-gates: '
-        ttl_patch += 'Foo=false}\n  extraVolumes:\n  - '
-        ttl_patch += '{hostPath: /etc/kubernetes/encryption-provider.yaml}\n'
-        ttl_patch += 'apiVersion: kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  '
-        ttl_patch += 'extraArgs: {}\n  extraVolumes: '
-        ttl_patch += 'null\nkind: ClusterConfiguration\nkubernetesVersion: '
-        ttl_patch += 'v1.23.1\nscheduler: {}\n'
-        self.kubeadm_config_map_patch_HugePageStorageMediumSize = {'data': {'ClusterConfiguration': ttl_patch}}
 
         self.kubeadm_config_map_read_image_repository = kubernetes.client.V1ConfigMap(
             api_version='v1',
@@ -290,35 +254,6 @@ class ManagerTestCase(base.DbTestCase):
         )
 
         self.kubeadm_config_map_patch_image_repository = {'data': {'ClusterConfiguration': 'apiServer:\n  certSANs: [192.168.206.1, 127.0.0.1, 10.10.6.3]\n  extraArgs: {event-ttl: 24h}\n  extraVolumes:\n  - {hostPath: /etc/kubernetes/encryption-provider.yaml}\napiVersion: kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  extraArgs: {feature-gates: CSIMigrationPortworx=false}\n  extraVolumes: null\nimageRepository: registry.local:9001/registry.k8s.io\nkind: ClusterConfiguration\nkubernetesVersion: v1.42.1\nscheduler: {}\n'}}  # noqa: E501
-
-        self.kubeadm_config_read_SCTPSupport = kubernetes.client.V1ConfigMap(
-            api_version='v1',
-            data={'ClusterConfiguration': 'apiServer:\n'
-                                            '  certSANs:\n'
-                                            '  - 192.168.206.1\n'
-                                            '  - 127.0.0.1\n'
-                                            '  - 10.10.6.3\n'
-                                            '  extraArgs:\n'
-                                            '    event-ttl: 24h\n'
-                                            '    feature-gates: SCTPSupport=true\n'
-                                            '  extraVolumes:\n'
-                                            '  - hostPath: '
-                                            '/etc/kubernetes/encryption-provider.yaml\n'
-                                            'apiVersion: kubeadm.k8s.io/v1beta3\n'
-                                            'controllerManager:\n'
-                                            '  extraArgs:\n'
-                                            '    feature-gates: CSIMigrationPortworx=false,SCTPSupport=true\n'
-                                            '  extraVolumes:\n'
-                                            'kind: ClusterConfiguration\n'
-                                            'kubernetesVersion: v1.21.8\n'
-                                            'scheduler: {}\n'},
-
-            metadata=kubernetes.client.V1ObjectMeta(
-                        name='kubeadm-config',
-                        namespace='kube-system'),
-        )
-
-        self.kubeadm_config_map_patch_SCTPSupport = {'data': {'ClusterConfiguration': 'apiServer:\n  certSANs: [192.168.206.1, 127.0.0.1, 10.10.6.3]\n  extraArgs: {event-ttl: 24h}\n  extraVolumes:\n  - {hostPath: /etc/kubernetes/encryption-provider.yaml}\napiVersion: kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  extraArgs: {feature-gates: CSIMigrationPortworx=false}\n  extraVolumes: null\nkind: ClusterConfiguration\nkubernetesVersion: v1.21.8\nscheduler: {}\n'}}  # noqa: E501
 
         super(ManagerTestCase, self).setUp()
 
@@ -2482,60 +2417,6 @@ class ManagerTestCase(base.DbTestCase):
         mock_kube_patch_config_map.assert_called_with(
                 'kubeadm-config', 'kube-system', self.kubeadm_config_map_patch)
 
-    def test_sanitize_feature_gates_kubeadm_configmap_with_RemoveSelfLink(self):
-        """
-        This unit test covers the following use cases:
-        1. a component with an 'extraArgs' field containing 'feature-gates' with
-           only a "RemoveSelfLink=false" entry
-        2. a component with an 'extraArgs' field containing 'feature-gates' with a
-           "RemoveSelfLink=false" entry as well as others
-        """
-        mock_kube_read_config_map = mock.MagicMock()
-        p = mock.patch(
-            'sysinv.common.kubernetes.KubeOperator.kube_read_config_map',
-            mock_kube_read_config_map)
-        p.start().return_value = self.kubeadm_config_read_RemoveSelfLink
-        self.addCleanup(p.stop)
-
-        mock_kube_patch_config_map = mock.MagicMock()
-        p2 = mock.patch(
-            'sysinv.common.kubernetes.KubeOperator.kube_patch_config_map',
-            mock_kube_patch_config_map)
-        p2.start().return_value = self.kubeadm_config_map_patch_RemoveSelfLink
-        self.addCleanup(p2.stop)
-
-        self.service.start()
-        self.service.sanitize_feature_gates_kubeadm_configmap('v1.42.2')
-        mock_kube_patch_config_map.assert_called_with(
-                'kubeadm-config', 'kube-system', self.kubeadm_config_map_patch_RemoveSelfLink)
-
-    def test_sanitize_feature_gates_kubeadm_configmap_with_HugePageStorageMediumSize(self):
-        """
-        This unit test covers the following use cases:
-        1. a component with an 'extraArgs' field containing 'feature-gates' with
-           only a "HugePageStorageMediumSize=true" entry
-        2. a component with an 'extraArgs' field containing 'feature-gates' with a
-           "HugePageStorageMediumSize=true" entry as well as others
-        """
-        mock_kube_read_config_map = mock.MagicMock()
-        p = mock.patch(
-            'sysinv.common.kubernetes.KubeOperator.kube_read_config_map',
-            mock_kube_read_config_map)
-        p.start().return_value = self.kubeadm_config_read_HugePageStorageMediumSize
-        self.addCleanup(p.stop)
-
-        mock_kube_patch_config_map = mock.MagicMock()
-        p2 = mock.patch(
-            'sysinv.common.kubernetes.KubeOperator.kube_patch_config_map',
-            mock_kube_patch_config_map)
-        p2.start().return_value = None
-        self.addCleanup(p2.stop)
-
-        self.service.start()
-        self.service.sanitize_feature_gates_kubeadm_configmap('v1.24.4')
-        mock_kube_patch_config_map.assert_called_with(
-                'kubeadm-config', 'kube-system', self.kubeadm_config_map_patch_HugePageStorageMediumSize)
-
     def test_sanitize_feature_gates_kubeadm_configmap_with_ttlafterfinished(self):
         mock_kube_read_config_map = mock.MagicMock()
         p = mock.patch(
@@ -2582,26 +2463,6 @@ class ManagerTestCase(base.DbTestCase):
         self.service.sanitize_image_repository_kubeadm_configmap('v1.42.2')
         mock_kube_patch_config_map.assert_called_with(
                 'kubeadm-config', 'kube-system', self.kubeadm_config_map_patch_image_repository)
-
-    def test_sanitize_feature_gates_kubeadm_configmap_with_SCTPSupport(self):
-        mock_kube_read_config_map = mock.MagicMock()
-        p = mock.patch(
-            'sysinv.common.kubernetes.KubeOperator.kube_read_config_map',
-            mock_kube_read_config_map)
-        p.start().return_value = self.kubeadm_config_read_SCTPSupport
-        self.addCleanup(p.stop)
-
-        mock_kube_patch_config_map = mock.MagicMock()
-        p2 = mock.patch(
-            'sysinv.common.kubernetes.KubeOperator.kube_patch_config_map',
-            mock_kube_patch_config_map)
-        p2.start().return_value = self.kubeadm_config_map_patch_SCTPSupport
-        self.addCleanup(p2.stop)
-
-        self.service.start()
-        self.service.sanitize_feature_gates_kubeadm_configmap('v1.22.5')
-        mock_kube_patch_config_map.assert_called_with(
-                'kubeadm-config', 'kube-system', self.kubeadm_config_map_patch_SCTPSupport)
 
     def _create_test_controller_config_out_of_date(self, hostname):
         config_applied = self.service._config_set_reboot_required(uuid.uuid4())
