@@ -3834,7 +3834,7 @@ class FluxCDHelper(object):
                     rc = self._cleanup_disabled_helm_releases(manifest_dir)
                 else:
                     LOG.error("Applying %s failed. Skipping helm release "
-                              "cleanup...")
+                              "cleanup..." % manifest_dir)
             elif operation in [constants.APP_DELETE_OP, constants.APP_REMOVE_OP]:
                 rc = self._delete(manifest_dir)
             elif operation == constants.APP_ROLLBACK_OP:
