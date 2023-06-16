@@ -17,7 +17,7 @@ PLAYBOOKS_DIR=/opt/dc-vault/playbooks/$VERSION
 rm -f /var/pxeboot/pxelinux.cfg.files/*-$VERSION
 rm -rf /var/pxeboot/rel-$VERSION
 
-rm -f /usr/sbin/pxeboot-update-$VERSION.sh
+rm -f /etc/pxeboot-update-$VERSION.sh
 
 rm -rf $FEED_DIR
 

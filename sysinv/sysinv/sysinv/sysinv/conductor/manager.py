@@ -1345,7 +1345,7 @@ class ConductorManager(service.PeriodicService):
 
         if host['mgmt_mac']:
             dashed_mac = host["mgmt_mac"].replace(":", "-")
-            pxeboot_update = "/usr/sbin/pxeboot-update-%s.sh" % sw_version
+            pxeboot_update = "/etc/pxeboot-update-%s.sh" % sw_version
 
             # Remove an old file if it exists
             try:
