@@ -366,15 +366,6 @@ class BaseHelm(object):
 
         return limit_enabled, limit_cpus, limit_mem_mib
 
-    def get_namespaces(self):
-        """
-        Return list of namespaces supported by this chart
-
-        If a chart supports namespaces other than common.HELM_NS_OPENSTACK
-        then it can override self.SUPPORTED_NAMESPACES as desired.
-        """
-        return self.SUPPORTED_NAMESPACES
-
     def get_namespaces_by_app(self, app_name):
         """
         Return list of namespaces supported by an applcation
