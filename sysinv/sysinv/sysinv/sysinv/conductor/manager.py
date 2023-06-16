@@ -6631,6 +6631,10 @@ class ConductorManager(service.PeriodicService):
         except exception.LifecycleSemanticCheckException as e:
             LOG.info("Auto-apply failed prerequisites for {}: {}".format(app.name, e))
             return
+        except exception.SysinvException:
+            LOG.exception("Internal sysinv error while auto applying {}"
+                          .format(app.name))
+            return
         except Exception as e:
             LOG.exception("Automatic operation:{} "
                           "for app {} failed with: {}".format(hook_info,
@@ -6668,6 +6672,11 @@ class ConductorManager(service.PeriodicService):
             return
         except exception.LifecycleSemanticCheckOperationNotSupported as e:
             LOG.debug(e)
+            return
+        except exception.SysinvException:
+            LOG.exception("Internal sysinv error while checking automatic "
+                          "updates for {}"
+                          .format(app.name))
             return
         except Exception as e:
             LOG.exception("Automatic operation:{} "
