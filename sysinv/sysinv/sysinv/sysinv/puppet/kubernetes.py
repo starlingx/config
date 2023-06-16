@@ -16,6 +16,7 @@ import tempfile
 
 from oslo_log import log as logging
 from sysinv.common import constants
+from sysinv.common import etcd
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils
@@ -95,6 +96,33 @@ class KubernetesPuppet(base.BasePuppet):
 
         # Get the kubernetes version for this host
         config.update(self._get_kubeadm_kubelet_version(host))
+
+        # Get the cluster details for this host
+        config.update(self._get_etcd_config(host))
+
+        return config
+
+    def _get_etcd_config(self, host):
+        """Update the hiera configuration to add etcd details"""
+        config = {}
+        ca_cert = 'undef'
+        cert_file = 'undef'
+        key_file = 'undef'
+        endpoints = 'undef'
+        try:
+            etcd_config = etcd.get_cluster_information()
+            ca_cert = etcd_config['caFile']
+            cert_file = etcd_config['certFile']
+            key_file = etcd_config['keyFile']
+            endpoints = ",".join(etcd_config['endpoints'])
+        except Exception:
+            LOG.warning("Unable to retrieve etcd cluster details")
+
+        config.update({'platform::kubernetes::params::etcd_ca_cert': ca_cert,
+                       'platform::kubernetes::params::etcd_cert_file': cert_file,
+                       'platform::kubernetes::params::etcd_key_file': key_file,
+                       'platform::kubernetes::params::etcd_endpoints': endpoints,
+                       })
 
         return config
 

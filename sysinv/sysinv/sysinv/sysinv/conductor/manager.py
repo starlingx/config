@@ -15384,6 +15384,104 @@ class ConductorManager(service.PeriodicService):
         kube_upgrade_obj.state = kubernetes.KUBE_UPGRADED_NETWORKING
         kube_upgrade_obj.save()
 
+    def kube_upgrade_abort(self, context, kube_state):
+        """
+        This is an abort procedure we call via 'system kube-upgrade-abort'
+        to restore kubernetes back to its initial state during k8s upgrade.
+        This will call a puppet class platform::kubernetes::upgrade_abort
+        to do the actual abort, and update the database kube_upgrade state
+        field to 'upgrade-aborted', or 'upgrade-aborting-failed' if this
+        procedure fails.
+
+        The initial Kubernetes version control plane state is stored in a backup
+        containing etcd snapshot and static-pod-manifests. This backup is taken
+        when 'system kube-upgrade-networking' is issued.
+
+        On the controller node, under the hood, the puppet class
+        platform::kubernetes::upgrade_abort does the following to restore
+        initial operating state:
+
+        - drain the node
+        - remove static pod manifests
+        - wait for control plane pods to terminate
+        - mask/stop services: kubelet, containerd, docker, etcd
+        - restore etcd snapshot
+        - restore static pod manifests
+        - unmask/start services: etcd, docker, containerd
+        - revert and update bindmount k8s binaries
+        - unmask/start the kubelet service
+        - wait for control plane pod health
+        """
+
+        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        controller_hosts = self.dbapi.ihost_get_by_personality(
+            constants.CONTROLLER)
+        system = self.dbapi.isystem_get_one()
+        if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+            # check for the control plane backup path exists
+            if not os.path.exists(kubernetes.KUBE_CONTROL_PLANE_ETCD_BACKUP_PATH) or \
+                    not os.path.exists(kubernetes.KUBE_CONTROL_PLANE_STATIC_PODS_BACKUP_PATH):
+                LOG.info("Kubernetes control plane backup path doesn't exists.")
+                if kube_state in [kubernetes.KUBE_UPGRADING_NETWORKING,
+                                          kubernetes.KUBE_UPGRADING_NETWORKING_FAILED]:
+                    # Indicate that kubernetes upgrade is aborted
+                    for host_obj in controller_hosts:
+                        kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
+                                context, host_obj.id)
+                        kube_host_upgrade_obj.status = None
+                        kube_host_upgrade_obj.save()
+                    kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTED
+                    kube_upgrade_obj.save()
+                else:
+                    kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTING_FAILED
+                    kube_upgrade_obj.save()
+                return
+
+            if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADE_ABORTING:
+                # Update the config for this host
+
+                personalities = [constants.CONTROLLER]
+                config_uuid = self._config_update_hosts(context, personalities)
+
+                # Apply the runtime manifest to revert the k8s upgrade process
+                config_dict = {
+                    "personalities": personalities,
+                    "classes": 'platform::kubernetes::upgrade_abort'
+                }
+                self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+                # Wait for the manifest to be applied
+                elapsed = 0
+                while elapsed < kubernetes.MANIFEST_APPLY_TIMEOUT:
+                    elapsed += kubernetes.MANIFEST_APPLY_INTERVAL
+                    greenthread.sleep(kubernetes.MANIFEST_APPLY_INTERVAL)
+                    controller_hosts = self.dbapi.ihost_get_by_personality(
+                        constants.CONTROLLER)
+                    for host_obj in controller_hosts:
+                        if host_obj.config_target != host_obj.config_applied:
+                            # At least one controller has not been updated yet
+                            LOG.debug("Waiting for config apply on host %s" %
+                                    host_obj.hostname)
+                            break
+                    else:
+                        LOG.info("Config was applied for all controller hosts")
+                        break
+                else:
+                    LOG.warning("Manifest apply failed for a controller host.")
+                    kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+                    kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTING_FAILED
+                    kube_upgrade_obj.save()
+                    return
+
+            # Indicate that kubernetes upgrade is aborted
+            for host_obj in controller_hosts:
+                kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
+                        context, host_obj.id)
+                kube_host_upgrade_obj.status = None
+                kube_host_upgrade_obj.save()
+            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTED
+            kube_upgrade_obj.save()
+
     def remove_kube_control_plane_backup(self, context):
         """Remove backup of k8s control plane static manifests and etcd data
         after k8s upgrade is complete"""

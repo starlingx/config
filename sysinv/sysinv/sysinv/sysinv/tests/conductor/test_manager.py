@@ -2247,6 +2247,142 @@ class ManagerTestCase(base.DbTestCase):
         mock_backup_kube_control_plane.assert_called()
         mock_remove_kube_control_plane_backup.assert_called()
 
+    def test_kube_upgrade_abort(self):
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADE_ABORTING,
+        )
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        mock_os_path_dirname = mock.MagicMock()
+        p = mock.patch('os.path.dirname', mock_os_path_dirname)
+        p.start().return_value = "/fake/path/"
+        self.addCleanup(p.stop)
+
+        mock_os_path_exists = mock.MagicMock()
+        p = mock.patch('os.path.exists', mock_os_path_exists)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        self.service.kube_upgrade_abort(self.context,
+                                        kubernetes.KUBE_UPGRADED_NETWORKING)
+
+        # Speed up the test
+        kubernetes.MANIFEST_APPLY_INTERVAL = 1
+        kubernetes.POD_START_INTERVAL = 1
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                            kubernetes.KUBE_UPGRADE_ABORTED)
+
+    def test_kube_upgrade_abort_no_path(self):
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADE_ABORTING,
+        )
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        self.service.kube_upgrade_abort(self.context,
+                                        kubernetes.KUBE_UPGRADED_NETWORKING)
+
+        # Speed up the test
+        kubernetes.MANIFEST_APPLY_INTERVAL = 1
+        kubernetes.POD_START_INTERVAL = 1
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                            kubernetes.KUBE_UPGRADE_ABORTING_FAILED)
+
+    def test_kube_upgrade_abort_manifest_failed(self):
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_SIMPLEX
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.42.1',
+            to_version='v1.42.2',
+            state=kubernetes.KUBE_UPGRADE_ABORTING,
+        )
+
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+
+        mock_os_path_dirname = mock.MagicMock()
+        p = mock.patch('os.path.dirname', mock_os_path_dirname)
+        p.start().return_value = "/fake/path/"
+        self.addCleanup(p.stop)
+
+        mock_os_path_exists = mock.MagicMock()
+        p = mock.patch('os.path.exists', mock_os_path_exists)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        # Make the manifest apply fail
+        self.fail_config_apply_runtime_manifest = True
+
+        # Speed up the test
+        kubernetes.MANIFEST_APPLY_INTERVAL = 1
+        kubernetes.MANIFEST_APPLY_TIMEOUT = 1
+
+        self.service.kube_upgrade_abort(self.context, kubernetes.KUBE_UPGRADED_NETWORKING)
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                            kubernetes.KUBE_UPGRADE_ABORTING_FAILED)
+
     def test_sanitize_feature_gates_kubeadm_configmap(self):
         """
         This unit test covers the following use cases:
