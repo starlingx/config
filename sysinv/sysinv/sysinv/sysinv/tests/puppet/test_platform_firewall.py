@@ -485,10 +485,6 @@ class PlatformFirewallTestCaseControllerNonDc_Setup01(PlatformFirewallTestCaseMi
         super(PlatformFirewallTestCaseControllerNonDc_Setup01, self).setUp()
         self.dbapi = db_api.get_instance()
         self._setup_context()
-        p = mock.patch('sysinv.puppet.platform_firewall._activate_filtering')
-        self.mock_platform_firewall_activate_filtering = p.start()
-        self.mock_platform_firewall_activate_filtering.return_value = True
-        self.addCleanup(p.stop)
 
     def _update_context(self):
         # ensure DB entries are updated prior to updating the context which
@@ -595,10 +591,6 @@ class PlatformFirewallTestCaseControllerNonDc_Setup02(PlatformFirewallTestCaseMi
         super(PlatformFirewallTestCaseControllerNonDc_Setup02, self).setUp()
         self.dbapi = db_api.get_instance()
         self._setup_context()
-        p = mock.patch('sysinv.puppet.platform_firewall._activate_filtering')
-        self.mock_platform_firewall_activate_filtering = p.start()
-        self.mock_platform_firewall_activate_filtering.return_value = True
-        self.addCleanup(p.stop)
         p = mock.patch('sysinv.puppet.platform_firewall._get_dc_role')
         self.mock_platform_firewall_get_dc_role = p.start()
         self.mock_platform_firewall_get_dc_role.return_value = None
@@ -709,10 +701,6 @@ class PlatformFirewallTestCaseControllerNonDc_Setup03(PlatformFirewallTestCaseMi
         super(PlatformFirewallTestCaseControllerNonDc_Setup03, self).setUp()
         self.dbapi = db_api.get_instance()
         self._setup_context()
-        p = mock.patch('sysinv.puppet.platform_firewall._activate_filtering')
-        self.mock_platform_firewall_activate_filtering = p.start()
-        self.mock_platform_firewall_activate_filtering.return_value = True
-        self.addCleanup(p.stop)
         p = mock.patch('sysinv.puppet.platform_firewall._get_dc_role')
         self.mock_platform_firewall_get_dc_role = p.start()
         self.mock_platform_firewall_get_dc_role.return_value = None
@@ -786,10 +774,6 @@ class PlatformFirewallTestCaseControllerNonDc_Setup04(PlatformFirewallTestCaseMi
         super(PlatformFirewallTestCaseControllerNonDc_Setup04, self).setUp()
         self.dbapi = db_api.get_instance()
         self._setup_context()
-        p = mock.patch('sysinv.puppet.platform_firewall._activate_filtering')
-        self.mock_platform_firewall_activate_filtering = p.start()
-        self.mock_platform_firewall_activate_filtering.return_value = True
-        self.addCleanup(p.stop)
         p = mock.patch('sysinv.puppet.platform_firewall._get_dc_role')
         self.mock_platform_firewall_get_dc_role = p.start()
         self.mock_platform_firewall_get_dc_role.return_value = None
@@ -902,10 +886,6 @@ class PlatformFirewallTestCaseControllerNonDc_Setup05(PlatformFirewallTestCaseMi
         super(PlatformFirewallTestCaseControllerNonDc_Setup05, self).setUp()
         self.dbapi = db_api.get_instance()
         self._setup_context()
-        p = mock.patch('sysinv.puppet.platform_firewall._activate_filtering')
-        self.mock_platform_firewall_activate_filtering = p.start()
-        self.mock_platform_firewall_activate_filtering.return_value = True
-        self.addCleanup(p.stop)
         p = mock.patch('sysinv.puppet.platform_firewall._get_dc_role')
         self.mock_platform_firewall_get_dc_role = p.start()
         self.mock_platform_firewall_get_dc_role.return_value = None
@@ -1002,10 +982,6 @@ class PlatformFirewallTestCaseControllerNonDc_Setup06(PlatformFirewallTestCaseMi
         super(PlatformFirewallTestCaseControllerNonDc_Setup06, self).setUp()
         self.dbapi = db_api.get_instance()
         self._setup_context()
-        p = mock.patch('sysinv.puppet.platform_firewall._activate_filtering')
-        self.mock_platform_firewall_activate_filtering = p.start()
-        self.mock_platform_firewall_activate_filtering.return_value = True
-        self.addCleanup(p.stop)
         p = mock.patch('sysinv.puppet.platform_firewall._get_dc_role')
         self.mock_platform_firewall_get_dc_role = p.start()
         self.mock_platform_firewall_get_dc_role.return_value = None
@@ -1131,14 +1107,6 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup01(PlatformFirewallTestC
         super(PlatformFirewallTestCaseControllerDcSubcloud_Setup01, self).setUp()
         self.dbapi = db_api.get_instance()
         self._setup_context()
-        p = mock.patch('sysinv.puppet.platform_firewall._activate_filtering')
-        self.mock_platform_firewall_activate_filtering = p.start()
-        self.mock_platform_firewall_activate_filtering.return_value = True
-        self.addCleanup(p.stop)
-        p = mock.patch('sysinv.puppet.platform_firewall._exclude_DC_system')
-        self.mock_platform_firewall_exclude_DC_system = p.start()
-        self.mock_platform_firewall_exclude_DC_system.return_value = False
-        self.addCleanup(p.stop)
 
     def _update_context(self):
         # ensure DB entries are updated prior to updating the context which
@@ -1355,14 +1323,6 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup01(PlatformFirewallTestCa
         super(PlatformFirewallTestCaseControllerDcSysCtrl_Setup01, self).setUp()
         self.dbapi = db_api.get_instance()
         self._setup_context()
-        p = mock.patch('sysinv.puppet.platform_firewall._activate_filtering')
-        self.mock_platform_firewall_activate_filtering = p.start()
-        self.mock_platform_firewall_activate_filtering.return_value = True
-        self.addCleanup(p.stop)
-        p = mock.patch('sysinv.puppet.platform_firewall._exclude_DC_system')
-        self.mock_platform_firewall_exclude_DC_system = p.start()
-        self.mock_platform_firewall_exclude_DC_system.return_value = False
-        self.addCleanup(p.stop)
 
     def _update_context(self):
         # ensure DB entries are updated prior to updating the context which
@@ -1600,14 +1560,6 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup02(PlatformFirewallTestC
         super(PlatformFirewallTestCaseControllerDcSubcloud_Setup02, self).setUp()
         self.dbapi = db_api.get_instance()
         self._setup_context()
-        p = mock.patch('sysinv.puppet.platform_firewall._activate_filtering')
-        self.mock_platform_firewall_activate_filtering = p.start()
-        self.mock_platform_firewall_activate_filtering.return_value = True
-        self.addCleanup(p.stop)
-        p = mock.patch('sysinv.puppet.platform_firewall._exclude_DC_system')
-        self.mock_platform_firewall_exclude_DC_system = p.start()
-        self.mock_platform_firewall_exclude_DC_system.return_value = False
-        self.addCleanup(p.stop)
 
     def _update_context(self):
         # ensure DB entries are updated prior to updating the context which
@@ -1768,10 +1720,6 @@ class PlatformFirewallTestCaseWorkerNonDc_Setup01(PlatformFirewallTestCaseMixin,
         super(PlatformFirewallTestCaseWorkerNonDc_Setup01, self).setUp()
         self.dbapi = db_api.get_instance()
         self._setup_context()
-        p = mock.patch('sysinv.puppet.platform_firewall._activate_filtering')
-        self.mock_platform_firewall_activate_filtering = p.start()
-        self.mock_platform_firewall_activate_filtering.return_value = True
-        self.addCleanup(p.stop)
 
     def _update_context(self):
         # ensure DB entries are updated prior to updating the context which
@@ -1874,10 +1822,6 @@ class PlatformFirewallTestCaseStorageNonDc_Setup01(PlatformFirewallTestCaseMixin
         super(PlatformFirewallTestCaseStorageNonDc_Setup01, self).setUp()
         self.dbapi = db_api.get_instance()
         self._setup_context()
-        p = mock.patch('sysinv.puppet.platform_firewall._activate_filtering')
-        self.mock_platform_firewall_activate_filtering = p.start()
-        self.mock_platform_firewall_activate_filtering.return_value = True
-        self.addCleanup(p.stop)
 
     def _update_context(self):
         # ensure DB entries are updated prior to updating the context which

@@ -54,9 +54,6 @@ class PlatformFirewallPuppet(base.BasePuppet):
         }
 
         dc_role = _get_dc_role(self.dbapi)
-        if (dc_role is not None and _exclude_DC_system()):
-            LOG.info("Do not apply platform firewall to DC installations for now")
-            return config
 
         if (host.personality == constants.STORAGE):
             LOG.info("Do not add calico firewall to storage nodes (they do not run k8s)")
@@ -125,21 +122,20 @@ class PlatformFirewallPuppet(base.BasePuppet):
                                     networks[constants.NETWORK_TYPE_STORAGE], host)
 
             if (host.personality == constants.CONTROLLER):
-                if _activate_filtering():
-                    if (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
-                        if (config[FIREWALL_GNP_ADMIN_CFG]):
-                            self._set_rules_subcloud_admin(config[FIREWALL_GNP_ADMIN_CFG],
-                                                        networks[constants.NETWORK_TYPE_ADMIN],
-                                                        host.personality)
-                        else:
-                            self._set_rules_subcloud_mgmt(config[FIREWALL_GNP_MGMT_CFG],
-                                                        networks[constants.NETWORK_TYPE_MGMT],
-                                                        host.personality)
+                if (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+                    if (config[FIREWALL_GNP_ADMIN_CFG]):
+                        self._set_rules_subcloud_admin(config[FIREWALL_GNP_ADMIN_CFG],
+                                                    networks[constants.NETWORK_TYPE_ADMIN],
+                                                    host.personality)
+                    else:
+                        self._set_rules_subcloud_mgmt(config[FIREWALL_GNP_MGMT_CFG],
+                                                    networks[constants.NETWORK_TYPE_MGMT],
+                                                    host.personality)
 
-                    elif (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
-                        self._set_rules_systemcontroller(config[FIREWALL_GNP_MGMT_CFG],
-                                                        networks[constants.NETWORK_TYPE_MGMT],
-                                                        host.personality)
+                elif (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
+                    self._set_rules_systemcontroller(config[FIREWALL_GNP_MGMT_CFG],
+                                                    networks[constants.NETWORK_TYPE_MGMT],
+                                                    host.personality)
 
         return config
 
@@ -528,18 +524,6 @@ class PlatformFirewallPuppet(base.BasePuppet):
         rule.update({"action": "Allow"})
         rule.update({"destination": {"ports": [67]}})
         return rule
-
-
-def _activate_filtering():
-    """ Temporary function to be removed at the end of the feature implementation
-    """
-    return False
-
-
-def _exclude_DC_system():
-    """ Temporary function to be removed at the end of the feature implementation
-    """
-    return True
 
 
 def _get_dc_role(dbapi):
