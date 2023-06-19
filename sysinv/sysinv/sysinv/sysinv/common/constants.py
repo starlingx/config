@@ -2396,3 +2396,6 @@ PLATFORM_FIREWALL_PTP_PORT = 320
 # CState support. Whether the path exists depends on hardware support and driver availability.
 # Validating the existence of the path is important.
 CSTATE_PATH = "/sys/devices/system/cpu/cpu0/cpuidle"
+
+# Auto-recovery limits for kube upgrade abort
+AUTO_RECOVERY_COUNT = 3

@@ -2109,6 +2109,7 @@ class KubeUpgrade(Base):
     from_version = Column(String(255), nullable=False)
     to_version = Column(String(255), nullable=False)
     state = Column(String(128), nullable=False)
+    recovery_attempts = Column(Integer, nullable=False, default=0)
     reserved_1 = Column(String(255))
     reserved_2 = Column(String(255))
     reserved_3 = Column(String(255))

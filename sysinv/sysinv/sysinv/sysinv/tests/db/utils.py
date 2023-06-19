@@ -295,6 +295,7 @@ def get_test_kube_upgrade(**kw):
         "from_version": kw.get('from_version', 'v1.42.1'),
         "to_version": kw.get('to_version', 'v1.42.2'),
         "state": kw.get('state', 'upgrade-started'),
+        "recovery_attempts": kw.get('recovery_attempts', 0),
         "reserved_1": "res1",
         "reserved_2": "res2",
         "reserved_3": "res3",

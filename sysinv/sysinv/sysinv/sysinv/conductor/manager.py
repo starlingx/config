@@ -6737,6 +6737,15 @@ class ConductorManager(service.PeriodicService):
             LOG.debug("_audit_kubernetes_labels skip")
             return
 
+        # Skip kubernetes labels audit when K8S upgrade is in progress.
+        # The kube-apiserver will not be available during kube-upgrade-abort operation.
+        try:
+            self.verify_k8s_upgrade_not_in_progress()
+        except Exception:
+            LOG.info("k8s Upgrade in progress - _audit_kubernetes_labels skip "
+                     "activity")
+            return
+
         LOG.debug("Starting kubernetes label audit")
         sysinv_labels = self.dbapi.label_get_all()
         nodes = self._kube.kube_get_nodes()
@@ -7419,6 +7428,15 @@ class ConductorManager(service.PeriodicService):
         # Defer platform managed application activity during update orchestration.
         if self._check_software_orchestration_in_progress():
             LOG.debug("Software update orchestration in progress. Defer audit.")
+            return
+
+        # Skip kubernetes labels audit when K8S upgrade is in progress.
+        # The kube-apiserver will not be available during kube-upgrade-abort operation.
+        try:
+            self.verify_k8s_upgrade_not_in_progress()
+        except Exception:
+            LOG.info("k8s Upgrade in progress - _k8s_application_audit skip "
+                     "activity")
             return
 
         if self._verify_restore_in_progress():
@@ -9154,6 +9172,50 @@ class ConductorManager(service.PeriodicService):
             self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_STORAGE_BACKEND_FAILED,
                                     entity_instance_id)
 
+    def handle_upgrade_abort_failure(self, context, kube_upgrade_obj):
+        # Increment the value by 1 to track abort retry count
+        kube_upgrade_obj.recovery_attempts += 1
+        kube_upgrade_obj.save()
+
+        active_controller = utils.HostHelper.get_active_controller(self.dbapi)
+        personalities = [constants.CONTROLLER]
+
+        # Apply the runtime manifest to revert the k8s upgrade process
+        config_dict = {
+            "personalities": personalities,
+            "classes": 'platform::kubernetes::upgrade_abort',
+            puppet_common.REPORT_STATUS_CFG:
+                puppet_common.REPORT_UPGRADE_ABORT
+        }
+        self._config_apply_runtime_manifest(
+            context, config_uuid=active_controller.config_target, config_dict=config_dict,
+            skip_update_config=True)
+
+    def handle_upgrade_abort_success(self, context, kube_upgrade_obj):
+        controller_hosts = self.dbapi.ihost_get_by_personality(
+            constants.CONTROLLER)
+        for host_obj in controller_hosts:
+            kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
+                    context, host_obj.id)
+            kube_host_upgrade_obj.status = None
+            kube_host_upgrade_obj.save()
+        kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTED
+        kube_upgrade_obj.save()
+
+    def kube_upgrade_abort_recovery(self, context):
+
+        active_controller = utils.HostHelper.get_active_controller(self.dbapi)
+        personalities = [constants.CONTROLLER]
+
+        # Apply the runtime manifest to revert the k8s upgrade process
+        config_dict = {
+            "personalities": personalities,
+            "classes": 'platform::kubernetes::upgrade_abort_recovery',
+        }
+        self._config_apply_runtime_manifest(
+            context, config_uuid=active_controller.config_target,
+            config_dict=config_dict, skip_update_config=True)
+
     def report_config_status(self, context, iconfig, status, error=None):
         """ Callback from Sysinv Agent on manifest apply success or failure
 
@@ -9325,6 +9387,34 @@ class ConductorManager(service.PeriodicService):
                 LOG.error("No match for sysinv-agent manifest application reported! "
                           "reported_cfg: %(cfg)s status: %(status)s "
                           "iconfig: %(iconfig)s" % args)
+        elif reported_cfg == puppet_common.REPORT_UPGRADE_ABORT:
+            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+            # The agent is reporting the runtime kube_upgrade_abort has been applied.
+            # Currently kube upgrade abort is only available on AIO-SX,
+            # we may need to change the implementation for multi-node abort.
+            if status == puppet_common.REPORT_SUCCESS:
+                # Upgrade abort action was successful.
+                success = True
+                # below function updates the db with kube_upgrade state
+                # 'upgrade-aborted'
+                self.handle_upgrade_abort_success(context, kube_upgrade_obj)
+            if status == puppet_common.REPORT_FAILURE:
+                # Upgrade abort action failed
+
+                # retry count is incremented in function handle_upgrade_abort_failure
+                # once the retry count reaches AUTO_RECOVERY_COUNT this routine updates
+                # db with state 'upgrade-aborting-failed' until then abort failure handler
+                # is called
+                if kube_upgrade_obj.recovery_attempts < constants.AUTO_RECOVERY_COUNT:
+                    LOG.info("k8s upgrade abort failed - retrying attempt %s"
+                                     % kube_upgrade_obj.recovery_attempts)
+                    self.handle_upgrade_abort_failure(context, kube_upgrade_obj)
+                else:
+                    LOG.warning("k8s upgrade abort failed %s times, giving up"
+                                  % constants.AUTO_RECOVERY_COUNT)
+                    kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTING_FAILED
+                    kube_upgrade_obj.save()
+                    self.kube_upgrade_abort_recovery(context)
         else:
             LOG.error("Reported configuration '%(cfg)s' is not handled by"
                       " report_config_status! iconfig: %(iconfig)s" %
@@ -11011,7 +11101,6 @@ class ConductorManager(service.PeriodicService):
         filepath = os.path.join(path, filename)
         fd, tmppath = tempfile.mkstemp(dir=path, prefix=filename,
                                        text=True)
-
         with open(tmppath, 'w') as f:
             f.write(file_content)
         # Atomically replace the updated file
@@ -11817,7 +11906,7 @@ class ConductorManager(service.PeriodicService):
         return config_uuid
 
     def _config_update_puppet(self, config_uuid, config_dict, force=False,
-                              host_uuids=None):
+                              host_uuids=None, skip_update_config=False):
         """Regenerate puppet hiera data files for each affected host that is
            provisioned. If host_uuid is provided, only that host's puppet
            hiera data file will be regenerated.
@@ -11857,8 +11946,9 @@ class ConductorManager(service.PeriodicService):
                         # controller. The Hieradata of a host during an upgrade/rollback
                         # will be saved by update_host_config_upgrade() to the
                         # directory of the host's software load.
-                        self._puppet.update_host_config(host, config_uuid)
-                        host_updated = True
+                        if not skip_update_config:
+                            self._puppet.update_host_config(host, config_uuid)
+                            host_updated = True
                 else:
                     LOG.info(
                         "Cannot regenerate the configuration for %s, "
@@ -12018,7 +12108,7 @@ class ConductorManager(service.PeriodicService):
 
     def _try_config_update_puppet(
             self, config_uuid, config_dict,
-            deferred_config=None, host_uuids=None, force=False):
+            deferred_config=None, host_uuids=None, force=False, skip_update_config=False):
         """Attempt the config puppet hierdata update.
 
            In the case of a deferred config, the puppet update can be
@@ -12038,7 +12128,8 @@ class ConductorManager(service.PeriodicService):
             self._config_update_puppet(config_uuid,
                                        config_dict,
                                        host_uuids=host_uuids,
-                                       force=force)
+                                       force=force,
+                                       skip_update_config=skip_update_config)
         except Exception as e:
             LOG.exception("_config_update_puppet %s" % e)
             if deferred_config:
@@ -12056,7 +12147,8 @@ class ConductorManager(service.PeriodicService):
                                        config_uuid,
                                        config_dict,
                                        force=False,
-                                       filter_classes=None):
+                                       filter_classes=None,
+                                       skip_update_config=False):
         """Apply manifests on all hosts affected by the supplied personalities.
            If host_uuids is set in config_dict, only update hiera data and apply
            manifests for these hosts.
@@ -12135,7 +12227,7 @@ class ConductorManager(service.PeriodicService):
             return
 
         if not self._try_config_update_puppet(
-                config_uuid, config_dict, deferred_config, host_uuids, force):
+                config_uuid, config_dict, deferred_config, host_uuids, force, skip_update_config):
             return
 
         self.evaluate_apps_reapply(context, trigger={'type': constants.APP_EVALUATE_REAPPLY_TYPE_RUNTIME_APPLY_PUPPET})
@@ -15426,6 +15518,17 @@ class ConductorManager(service.PeriodicService):
                 self.dbapi.kube_host_upgrade_update(kube_host_upgrade.id,
                                                     {'status': fail_status})
 
+    def _retry_on_etcd_operation_failure(ex):  # pylint: disable=no-self-argument
+        if isinstance(ex, (subprocess.TimeoutExpired, exception.EtcdOperationFailure)):
+            LOG.warn('Caught exception etcd operation failure. '
+                 'Retrying...Exception: {}'.format(ex))
+            return True
+        else:
+            return False
+
+    @retry(stop_max_attempt_number=3,
+               wait_fixed=10 * 1000,
+               retry_on_exception=_retry_on_etcd_operation_failure)
     def backup_kube_control_plane(self, context):
         """Backup control plane static pods and etcd to a secured location """
         # Remove stale/uncleaned backup if any
@@ -15902,47 +16005,24 @@ class ConductorManager(service.PeriodicService):
             if kube_upgrade_obj.state == kubernetes.KUBE_UPGRADE_ABORTING:
                 # Update the config for this host
 
+                active_controller = utils.HostHelper.get_active_controller(self.dbapi)
                 personalities = [constants.CONTROLLER]
-                config_uuid = self._config_update_hosts(context, personalities)
+                config_uuid = self._config_update_hosts(context, personalities,
+                    [active_controller.uuid])
 
-                # Apply the runtime manifest to revert the k8s upgrade process
+                # Apply the runtime manifest to revert the k8s upgrade process.
+                # This uses the sysinv REPORT_STATUS callback mechanism to wait
+                # for completion, and handle success or failure. This mechanism
+                # enables failure retry and recovery if there are problems with
+                # the abort process.
+
                 config_dict = {
                     "personalities": personalities,
-                    "classes": 'platform::kubernetes::upgrade_abort'
+                    "classes": 'platform::kubernetes::upgrade_abort',
+                    puppet_common.REPORT_STATUS_CFG:
+                        puppet_common.REPORT_UPGRADE_ABORT
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
-                # Wait for the manifest to be applied
-                elapsed = 0
-                while elapsed < kubernetes.MANIFEST_APPLY_TIMEOUT:
-                    elapsed += kubernetes.MANIFEST_APPLY_INTERVAL
-                    greenthread.sleep(kubernetes.MANIFEST_APPLY_INTERVAL)
-                    controller_hosts = self.dbapi.ihost_get_by_personality(
-                        constants.CONTROLLER)
-                    for host_obj in controller_hosts:
-                        if host_obj.config_target != host_obj.config_applied:
-                            # At least one controller has not been updated yet
-                            LOG.debug("Waiting for config apply on host %s" %
-                                    host_obj.hostname)
-                            break
-                    else:
-                        LOG.info("Config was applied for all controller hosts")
-                        break
-                else:
-                    LOG.warning("Manifest apply failed for a controller host.")
-                    kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-                    kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTING_FAILED
-                    kube_upgrade_obj.save()
-                    return
-
-            # Indicate that kubernetes upgrade is aborted
-            for host_obj in controller_hosts:
-                kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
-                        context, host_obj.id)
-                kube_host_upgrade_obj.status = None
-                kube_host_upgrade_obj.save()
-            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTED
-            kube_upgrade_obj.save()
 
     def remove_kube_control_plane_backup(self, context):
         """Remove backup of k8s control plane static manifests and etcd data

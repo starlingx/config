@@ -24,6 +24,7 @@ class KubeUpgrade(base.SysinvObject):
         'from_version': utils.str_or_none,
         'to_version': utils.str_or_none,
         'state': utils.str_or_none,
+        'recovery_attempts': utils.int_or_zero,
         'reserved_1': utils.str_or_none,
         'reserved_2': utils.str_or_none,
         'reserved_3': utils.str_or_none,
