@@ -413,7 +413,7 @@ class HelmOperator(object):
 
         namespaces = []
         if chart_name in self.chart_operators:
-            namespaces = self.chart_operators[chart_name].get_namespaces()
+            namespaces = self.chart_operators[chart_name].SUPPORTED_NAMESPACES
         return namespaces
 
     @helm_context
@@ -632,7 +632,7 @@ class HelmOperator(object):
         """
 
         if chart_name in self.chart_operators:
-            namespaces = self.chart_operators[chart_name].get_namespaces()
+            namespaces = self.chart_operators[chart_name].SUPPORTED_NAMESPACES
             if cnamespace and cnamespace not in namespaces:
                 LOG.exception("The %s chart does not support namespace: %s" %
                               (chart_name, cnamespace))
@@ -798,7 +798,7 @@ class HelmOperator(object):
         """Remove the overrides files for a chart"""
 
         if chart_name in self.chart_operators:
-            namespaces = self.chart_operators[chart_name].get_namespaces()
+            namespaces = self.chart_operators[chart_name].SUPPORTED_NAMESPACES
 
             filenames = []
             if cnamespace and cnamespace in namespaces:
