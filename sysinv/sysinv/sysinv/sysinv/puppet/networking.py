@@ -316,6 +316,18 @@ class NetworkingPuppet(base.BasePuppet):
                             instance['device_parameters'][global_param['name']] = global_param['value']
                 if 'cmdline_opts' in instance['global_parameters']:
                     instance['cmdline_opts'] = instance['global_parameters'].pop('cmdline_opts')
+
+                # Prune phc2sys_ha parameters if phc2sys_ha is not enabled
+                if instance['service'] == constants.PTP_INSTANCE_TYPE_PHC2SYS:
+                    if 'phc2sys_ha' not in instance['global_parameters'] or \
+                            instance['global_parameters']['phc2sys_ha'] != 'enabled':
+                        keys_to_remove = []
+                        for key in instance['global_parameters'].keys():
+                            if key.startswith("phc2sys_ha"):
+                                keys_to_remove.append(key)
+                        for key in keys_to_remove:
+                            del instance['global_parameters'][key]
+
                 # Add pmc parameters so that currentUtcOffsetValid can be set by puppet
                 if 'currentUtcOffsetValid' in instance['global_parameters']:
                     offset_valid = instance['global_parameters'].pop('currentUtcOffsetValid')
