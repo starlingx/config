@@ -227,11 +227,10 @@ def get_tcp_endpoint(host, port):
 
 def check_connection(host, port):
     ret = True
-    client = zerorpc.Client(heartbeat=None)
+    endpoint = get_tcp_endpoint(host, port)
+    client = client_provider.get_client_for_endpoint(endpoint)
     try:
-        client.connect(get_tcp_endpoint(host, port))
         client._zerorpc_list()
     except (zerorpc.TimeoutExpired, zerorpc.RemoteError):
         ret = False
-    client.close()
     return ret
