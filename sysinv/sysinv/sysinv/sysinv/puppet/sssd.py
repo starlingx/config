@@ -243,13 +243,12 @@ class SssdPuppet(base.BasePuppet):
             'ldap_group_member': 'member',
             'ldap_group_object_class': 'group',
             'override_homedir': '/home/%d/%u',
-            'ldap_user_principal': 'userPrincipalName',
             'ldap_user_name': 'sAMAccountName',
             'ldap_group_name': 'sAMAccountName',
-            'ldap_user_primary_group': 'primaryGroupID',
             'case_sensitive': 'false',
             'default_shell': '/bin/bash',
             'fallback_homedir': '/home/%d/%u',
+            'use_fully_qualified_names': 'true',
             'ldap_tls_cacert': '/etc/ssl/certs/ca-certificates.crt',
         }
 
