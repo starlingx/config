@@ -546,12 +546,12 @@ class PlatformFirewallTestCaseControllerNonDc_Setup01(PlatformFirewallTestCaseMi
         self.assertTrue(hiera_data['platform::firewall::calico::cluster_host::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::mgmt::config'],
                                constants.NETWORK_TYPE_MGMT, self.dbapi,
-                               egress_size=3, ingress_size=4)
+                               egress_size=4, ingress_size=5)
 
         self.assertTrue(hiera_data['platform::firewall::calico::mgmt::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::cluster_host::config'],
                                constants.NETWORK_TYPE_CLUSTER_HOST, self.dbapi,
-                               egress_size=4, ingress_size=5)
+                               egress_size=5, ingress_size=6)
 
         self.assertTrue(hiera_data['platform::firewall::calico::pxeboot::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::pxeboot::config'],
@@ -652,12 +652,12 @@ class PlatformFirewallTestCaseControllerNonDc_Setup02(PlatformFirewallTestCaseMi
         self.assertTrue(hiera_data['platform::firewall::calico::cluster_host::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::mgmt::config'],
                                constants.NETWORK_TYPE_MGMT, self.dbapi,
-                               egress_size=3, ingress_size=4)
+                               egress_size=4, ingress_size=5)
 
         self.assertTrue(hiera_data['platform::firewall::calico::mgmt::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::cluster_host::config'],
                                constants.NETWORK_TYPE_CLUSTER_HOST, self.dbapi,
-                               egress_size=4, ingress_size=5)
+                               egress_size=5, ingress_size=6)
 
         self.assertTrue(hiera_data['platform::firewall::calico::pxeboot::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::pxeboot::config'],
@@ -839,12 +839,12 @@ class PlatformFirewallTestCaseControllerNonDc_Setup04(PlatformFirewallTestCaseMi
         self.assertTrue(hiera_data['platform::firewall::calico::mgmt::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::mgmt::config'],
                                constants.NETWORK_TYPE_MGMT, self.dbapi,
-                               egress_size=3, ingress_size=4)
+                               egress_size=4, ingress_size=5)
 
         self.assertTrue(hiera_data['platform::firewall::calico::cluster_host::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::cluster_host::config'],
                                constants.NETWORK_TYPE_CLUSTER_HOST, self.dbapi,
-                               egress_size=4, ingress_size=5)
+                               egress_size=5, ingress_size=6)
 
         self.assertTrue(hiera_data['platform::firewall::calico::pxeboot::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::pxeboot::config'],
@@ -940,12 +940,12 @@ class PlatformFirewallTestCaseControllerNonDc_Setup05(PlatformFirewallTestCaseMi
         self.assertTrue(hiera_data['platform::firewall::calico::mgmt::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::mgmt::config'],
                                constants.NETWORK_TYPE_MGMT, self.dbapi,
-                               egress_size=3, ingress_size=4)
+                               egress_size=4, ingress_size=5)
 
         self.assertTrue(hiera_data['platform::firewall::calico::cluster_host::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::cluster_host::config'],
                                constants.NETWORK_TYPE_CLUSTER_HOST, self.dbapi,
-                               egress_size=4, ingress_size=5)
+                               egress_size=5, ingress_size=6)
 
         self.assertTrue(hiera_data['platform::firewall::calico::pxeboot::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::pxeboot::config'],
@@ -1260,12 +1260,12 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup01(PlatformFirewallTestC
         self.assertTrue(hiera_data['platform::firewall::calico::cluster_host::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::cluster_host::config'],
                                constants.NETWORK_TYPE_CLUSTER_HOST, self.dbapi,
-                               egress_size=4, ingress_size=5)
+                               egress_size=5, ingress_size=6)
 
         self.assertTrue(hiera_data['platform::firewall::calico::mgmt::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::mgmt::config'],
                                constants.NETWORK_TYPE_MGMT, self.dbapi,
-                               egress_size=3, ingress_size=4)
+                               egress_size=4, ingress_size=5)
 
         self.assertTrue(hiera_data['platform::firewall::calico::pxeboot::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::pxeboot::config'],
@@ -1451,32 +1451,35 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup01(PlatformFirewallTestCa
         subcloud_networks = ['192.168.1.0/26', '192.168.1.128/26', '192.168.1.64/26']
 
         # ingress rules
-        self.assertEqual(gnp['spec']['ingress'][4]['protocol'], "TCP")
-        self.assertEqual(gnp['spec']['ingress'][4]['metadata']['annotations']['name'],
+        idx = 5
+        self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "TCP")
+        self.assertEqual(gnp['spec']['ingress'][idx]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-systemcontroller-tcp{ip_version}")
-        self.assertEqual(gnp['spec']['ingress'][4]['ipVersion'], ip_version)
-        self.assertEqual(gnp['spec']['ingress'][4]['source']['nets'], subcloud_networks)
+        self.assertEqual(gnp['spec']['ingress'][idx]['ipVersion'], ip_version)
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'], subcloud_networks)
 
         tcp_ports = list(firewall.SYSTEMCONTROLLER["tcp"].keys())
         tcp_ports.append(constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT)
         tcp_ports.sort()
-        self.assertEqual(gnp['spec']['ingress'][4]['destination']['ports'], tcp_ports)
+        self.assertEqual(gnp['spec']['ingress'][idx]['destination']['ports'], tcp_ports)
 
-        self.assertEqual(gnp['spec']['ingress'][5]['protocol'], "UDP")
-        self.assertEqual(gnp['spec']['ingress'][5]['metadata']['annotations']['name'],
+        idx += 1
+        self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "UDP")
+        self.assertEqual(gnp['spec']['ingress'][idx]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-systemcontroller-udp{ip_version}")
-        self.assertEqual(gnp['spec']['ingress'][5]['ipVersion'], ip_version)
-        self.assertEqual(gnp['spec']['ingress'][5]['source']['nets'], subcloud_networks)
+        self.assertEqual(gnp['spec']['ingress'][idx]['ipVersion'], ip_version)
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'], subcloud_networks)
 
         udp_ports = list(firewall.SYSTEMCONTROLLER["udp"].keys())
         udp_ports.sort()
-        self.assertEqual(gnp['spec']['ingress'][5]['destination']['ports'], udp_ports)
+        self.assertEqual(gnp['spec']['ingress'][idx]['destination']['ports'], udp_ports)
 
-        self.assertEqual(gnp['spec']['ingress'][6]['protocol'], "ICMP")
-        self.assertEqual(gnp['spec']['ingress'][6]['metadata']['annotations']['name'],
+        idx += 1
+        self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "ICMP")
+        self.assertEqual(gnp['spec']['ingress'][idx]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-systemcontroller-icmp{ip_version}")
-        self.assertEqual(gnp['spec']['ingress'][6]['ipVersion'], ip_version)
-        self.assertEqual(gnp['spec']['ingress'][6]['source']['nets'], subcloud_networks)
+        self.assertEqual(gnp['spec']['ingress'][idx]['ipVersion'], ip_version)
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'], subcloud_networks)
 
     def test_generate_firewall_config(self):
         hieradata_directory = self._create_hieradata_directory()
@@ -1505,12 +1508,12 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup01(PlatformFirewallTestCa
         self.assertTrue(hiera_data['platform::firewall::calico::cluster_host::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::cluster_host::config'],
                                constants.NETWORK_TYPE_CLUSTER_HOST, self.dbapi,
-                               egress_size=4, ingress_size=5)
+                               egress_size=5, ingress_size=6)
 
         self.assertTrue(hiera_data['platform::firewall::calico::mgmt::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::mgmt::config'],
                                constants.NETWORK_TYPE_MGMT, self.dbapi,
-                               egress_size=3, ingress_size=7)
+                               egress_size=4, ingress_size=8)
         self._check_gnp_values_mgmt_sysctrl(hiera_data['platform::firewall::calico::mgmt::config'])
 
         self.assertTrue(hiera_data['platform::firewall::calico::pxeboot::config'])
@@ -1609,35 +1612,38 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup02(PlatformFirewallTestC
         ip_version = gnp['spec']['ingress'][0]['ipVersion']
 
         # ingress rules
-        self.assertEqual(gnp['spec']['ingress'][4]['protocol'], "TCP")
-        self.assertEqual(gnp['spec']['ingress'][4]['metadata']['annotations']['name'],
+        idx = 5
+        self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "TCP")
+        self.assertEqual(gnp['spec']['ingress'][idx]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-subcloud-tcp{ip_version}")
-        self.assertEqual(gnp['spec']['ingress'][4]['ipVersion'], ip_version)
+        self.assertEqual(gnp['spec']['ingress'][idx]['ipVersion'], ip_version)
 
         tcp_ports = list(firewall.SUBCLOUD["tcp"].keys())
         tcp_ports.append(constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT)
         tcp_ports.sort()
-        self.assertEqual(gnp['spec']['ingress'][4]['destination']['ports'], tcp_ports)
-        self.assertEqual(gnp['spec']['ingress'][4]['source']['nets'][0], "192.168.1.0/26")
-        self.assertEqual(gnp['spec']['ingress'][4]['source']['nets'][1], "192.168.1.64/26")
+        self.assertEqual(gnp['spec']['ingress'][idx]['destination']['ports'], tcp_ports)
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "192.168.1.0/26")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "192.168.1.64/26")
 
-        self.assertEqual(gnp['spec']['ingress'][5]['protocol'], "UDP")
-        self.assertEqual(gnp['spec']['ingress'][5]['metadata']['annotations']['name'],
+        idx += 1
+        self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "UDP")
+        self.assertEqual(gnp['spec']['ingress'][idx]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-subcloud-udp{ip_version}")
-        self.assertEqual(gnp['spec']['ingress'][5]['ipVersion'], ip_version)
+        self.assertEqual(gnp['spec']['ingress'][idx]['ipVersion'], ip_version)
 
         udp_ports = list(firewall.SUBCLOUD["udp"].keys())
         udp_ports.sort()
-        self.assertEqual(gnp['spec']['ingress'][5]['destination']['ports'], udp_ports)
-        self.assertEqual(gnp['spec']['ingress'][5]['source']['nets'][0], "192.168.1.0/26")
-        self.assertEqual(gnp['spec']['ingress'][5]['source']['nets'][1], "192.168.1.64/26")
+        self.assertEqual(gnp['spec']['ingress'][idx]['destination']['ports'], udp_ports)
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "192.168.1.0/26")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "192.168.1.64/26")
 
-        self.assertEqual(gnp['spec']['ingress'][6]['protocol'], "ICMP")
-        self.assertEqual(gnp['spec']['ingress'][6]['metadata']['annotations']['name'],
+        idx += 1
+        self.assertEqual(gnp['spec']['ingress'][idx]['protocol'], "ICMP")
+        self.assertEqual(gnp['spec']['ingress'][idx]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-subcloud-icmp{ip_version}")
-        self.assertEqual(gnp['spec']['ingress'][6]['ipVersion'], ip_version)
-        self.assertEqual(gnp['spec']['ingress'][6]['source']['nets'][0], "192.168.1.0/26")
-        self.assertEqual(gnp['spec']['ingress'][6]['source']['nets'][1], "192.168.1.64/26")
+        self.assertEqual(gnp['spec']['ingress'][idx]['ipVersion'], ip_version)
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][0], "192.168.1.0/26")
+        self.assertEqual(gnp['spec']['ingress'][idx]['source']['nets'][1], "192.168.1.64/26")
 
     def test_generate_firewall_config(self):
         hieradata_directory = self._create_hieradata_directory()
@@ -1663,12 +1669,12 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup02(PlatformFirewallTestC
         self.assertTrue(hiera_data['platform::firewall::calico::cluster_host::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::cluster_host::config'],
                                constants.NETWORK_TYPE_CLUSTER_HOST, self.dbapi,
-                               egress_size=4, ingress_size=5)
+                               egress_size=5, ingress_size=6)
 
         self.assertTrue(hiera_data['platform::firewall::calico::mgmt::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::mgmt::config'],
                                constants.NETWORK_TYPE_MGMT, self.dbapi,
-                               egress_size=3, ingress_size=7)
+                               egress_size=4, ingress_size=8)
         self._check_gnp_values_mgmt_subcloud(hiera_data['platform::firewall::calico::mgmt::config'])
 
         self.assertTrue(hiera_data['platform::firewall::calico::pxeboot::config'])
@@ -1776,12 +1782,12 @@ class PlatformFirewallTestCaseWorkerNonDc_Setup01(PlatformFirewallTestCaseMixin,
         self.assertTrue(hiera_data['platform::firewall::calico::mgmt::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::mgmt::config'],
                                constants.NETWORK_TYPE_MGMT, self.dbapi,
-                               egress_size=3, ingress_size=4)
+                               egress_size=4, ingress_size=5)
 
         self.assertTrue(hiera_data['platform::firewall::calico::cluster_host::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::cluster_host::config'],
                                constants.NETWORK_TYPE_CLUSTER_HOST, self.dbapi,
-                               egress_size=4, ingress_size=5)
+                               egress_size=5, ingress_size=6)
 
         self.assertTrue(hiera_data['platform::firewall::calico::pxeboot::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::pxeboot::config'],
