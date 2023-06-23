@@ -249,6 +249,19 @@ class PlatformFirewallPuppet(base.BasePuppet):
             rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
             gnp_config["spec"]["ingress"].append(rule)
 
+            # copy the TCP rule and do the same for IGMP
+            igmp_proto = 2
+            igmp_egr_rule = copy.deepcopy(gnp_config["spec"]["egress"][0])
+            igmp_egr_rule["protocol"] = igmp_proto
+            igmp_egr_rule["metadata"]["annotations"]["name"] = \
+                f"stx-egr-{host.personality}-{network.type}-igmp{ip_version}"
+            gnp_config["spec"]["egress"].append(igmp_egr_rule)
+            igmp_ingr_rule = copy.deepcopy(gnp_config["spec"]["ingress"][0])
+            igmp_ingr_rule["protocol"] = igmp_proto
+            igmp_ingr_rule["metadata"]["annotations"]["name"] = \
+                f"stx-ingr-{host.personality}-{network.type}-igmp{ip_version}"
+            gnp_config["spec"]["ingress"].append(igmp_ingr_rule)
+
     def _set_rules_cluster_host(self, gnp_config, network, host):
         """ Fill the cluster-host network specific filtering data
 
@@ -293,6 +306,19 @@ class PlatformFirewallPuppet(base.BasePuppet):
             # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
             rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
             gnp_config["spec"]["ingress"].append(rule)
+
+            # copy the TCP rule and do the same for IGMP
+            igmp_proto = 2
+            igmp_egr_rule = copy.deepcopy(gnp_config["spec"]["egress"][0])
+            igmp_egr_rule["protocol"] = igmp_proto
+            igmp_egr_rule["metadata"]["annotations"]["name"] = \
+                f"stx-egr-{host.personality}-{network.type}-igmp{ip_version}"
+            gnp_config["spec"]["egress"].append(igmp_egr_rule)
+            igmp_ingr_rule = copy.deepcopy(gnp_config["spec"]["ingress"][0])
+            igmp_ingr_rule["protocol"] = igmp_proto
+            igmp_ingr_rule["metadata"]["annotations"]["name"] = \
+                f"stx-ingr-{host.personality}-{network.type}-igmp{ip_version}"
+            gnp_config["spec"]["ingress"].append(igmp_ingr_rule)
 
     def _set_rules_pxeboot(self, gnp_config, network, host):
         """ Fill the pxeboot network specific filtering data
