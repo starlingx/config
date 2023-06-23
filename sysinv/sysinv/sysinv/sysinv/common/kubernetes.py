@@ -16,6 +16,7 @@ from ipaddress import IPv4Address
 import json
 import os
 import re
+import requests
 import ruamel.yaml as yaml
 from ruamel.yaml.compat import StringIO
 import shutil
@@ -157,6 +158,54 @@ KUBE_CONTROL_PLANE_STATIC_PODS_BACKUP_PATH = os.path.join(
     KUBE_CONTROL_PLANE_BACKUP_PATH, 'static-pod-manifests')
 KUBE_CONTROL_PLANE_ETCD_BACKUP_PATH = os.path.join(
     KUBE_CONTROL_PLANE_BACKUP_PATH, 'etcd')
+
+
+def k8s_health_check(tries=20, try_sleep=5, timeout=5,
+                     healthz_endpoint='https://localhost:6443/readyz'):
+    """This checks k8s control-plane component health for a specified
+    endpoint, and waits for that endpoint to be up and running.
+    This checks the endpoint 'tries' times using a API connection
+    timeout, and a sleep interval between tries.
+
+    The default healthz_endpoint corresponds to apiserver on the localhost.
+
+    :param tries: Maximum number of retries to check endpoint health.
+    :param try_sleep: sleep interval between retries.
+    :param timeout: Time which wait on a response before timing
+    out (in seconds).
+    :param healthz_endpoint: Endpoint url to check the health.
+
+    Return:
+    - rc = True, k8s component health check ok.
+    - rc = False, k8s component health check failed.
+    """
+    # pylint: disable-msg=broad-except
+    rc = False
+    _tries = tries
+    kwargs = {"verify": False, "timeout": timeout}
+
+    while _tries:
+        try:
+            response = requests.get(healthz_endpoint, **kwargs)
+            if response.status_code == 200:
+                rc = True
+                break
+        except requests.exceptions.Timeout:
+            rc = False
+        except requests.exceptions.RequestException as e:
+            LOG.error("requests error occurred: %s" % e)
+            rc = False
+        _tries -= 1
+        if _tries:
+            time.sleep(try_sleep)
+    if not rc:
+        LOG.error('k8s control-plane endpoint %s unhealthy' %
+                  healthz_endpoint)
+        return rc
+
+    LOG.info('k8s control-plane endpoint %s healthy' %
+             healthz_endpoint)
+    return rc
 
 
 def get_kube_versions():
