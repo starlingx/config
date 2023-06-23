@@ -15369,6 +15369,17 @@ class ConductorManager(service.PeriodicService):
     def kube_upgrade_control_plane(self, context, host_uuid):
         """Upgrade the kubernetes control plane on this host"""
 
+        def manifest_apply_failed_state(context, fail_state, host_obj):
+            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+            kube_upgrade_obj.state = fail_state
+            kube_upgrade_obj.save()
+            kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
+                context, host_obj.id)
+            kube_host_upgrade_obj.status = \
+                kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
+            kube_host_upgrade_obj.save()
+            return
+
         host_obj = objects.host.get_by_uuid(context, host_uuid)
         host_name = host_obj.hostname
         kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
@@ -15455,7 +15466,12 @@ class ConductorManager(service.PeriodicService):
             "host_uuids": [host_uuid],
             "classes": [puppet_class]
         }
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+        try:
+            self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+        except Exception:
+            LOG.error("Manifest apply failed for host %s with config_uuid %s" %
+                      (host_name, config_uuid))
+            manifest_apply_failed_state(context, fail_state, host_obj)
 
         # Wait for the manifest to be applied
         elapsed = 0
@@ -15469,15 +15485,7 @@ class ConductorManager(service.PeriodicService):
             LOG.debug("Waiting for config apply on host %s" % host_name)
         else:
             LOG.warning("Manifest apply failed for host %s" % host_name)
-            kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(
-                context, host_obj.id)
-            kube_host_upgrade_obj.status = \
-                kubernetes.KUBE_HOST_UPGRADING_CONTROL_PLANE_FAILED
-            kube_host_upgrade_obj.save()
-            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-            kube_upgrade_obj.state = fail_state
-            kube_upgrade_obj.save()
-            return
+            manifest_apply_failed_state(context, fail_state, host_obj)
 
         # Wait for the control plane pods to start with the new version
         elapsed = 0
