@@ -30,6 +30,14 @@ log "$NAME: Saving backup of openldap schema files from release $FROM_RELEASE to
 
 if [[ "${ACTION}" == "start" ]] && [[ "${FROM_RELEASE}" == "21.12" ]] && [[ "${TO_RELEASE}" == "22.12" ]]; then
 
+    DISTRIBUTED_CLOUD_ROLE=$(source /etc/platform/platform.conf; \
+    echo $distributed_cloud_role)
+
+    if [[ $DISTRIBUTED_CLOUD_ROLE == "subcloud" ]] ; then
+        log "$NAME: No actions required for subclouds"
+        exit 0
+    fi
+
     BACKUP_DIR="/opt/platform/config/$FROM_RELEASE/ldap"
 
     rm -rf $BACKUP_DIR \
