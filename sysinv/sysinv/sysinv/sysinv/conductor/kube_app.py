@@ -3662,7 +3662,10 @@ class PluginHelper(object):
                               constants.APP_APPLY_SUCCESS,
                               constants.APP_APPLY_FAILURE,
                               constants.APP_RESTORE_REQUESTED]:
-                self.activate_plugins(AppOperator.Application(app))
+                try:
+                    self.activate_plugins(AppOperator.Application(app))
+                except exception.SysinvException:
+                    LOG.exception("Error while loading plugins for {}".format(app.name))
 
     def install_plugins(self, app):
         """ Install application plugins. """
@@ -3706,30 +3709,44 @@ class PluginHelper(object):
     def activate_plugins(self, app):
         pth_fqpn = self._get_pth_fqpn(app)
 
-        # If this isn't an app with plugins or the plugin path is already
-        # active, skip activation
-        if not app.system_app or os.path.isfile(pth_fqpn):
+        # Check if plugins are available for the given app and already loaded
+        if app.system_app and app.sync_plugins_dir in site.removeduppaths():
             return
 
-        # Add a .pth file to a site-packages directory so the plugin is picked
-        # automatically on a conductor restart
-        with open(pth_fqpn, 'w') as f:
-            f.write(app.sync_plugins_dir + '\n')
-            LOG.info("PluginHelper: Enabled plugin directory %s: created %s" % (
-                app.sync_plugins_dir, pth_fqpn))
+        # If a plugin path does not exist but a .pth files does then raise an
+        # exception because the path was supposed to be available at this point.
+        # If a plugin path does exist then activate the plugins.
+        # Otherwise, the app does not have any plugins and activation should
+        # be skipped.
+        # Note: If app.system_app equals true that implies that app.sync_plugins_dir
+        # exists and is readable.
+        if not app.system_app and os.path.isfile(pth_fqpn):
+            raise exception.SysinvException(_(
+                    "Error while activating plugins for {}. "
+                    "File {} was found but the required plugin "
+                    "directory {} does not exist."
+                    .format(app.name, pth_fqpn, app.sync_plugins_dir)))
+        elif app.system_app:
+            # Add a .pth file to a site-packages directory so the plugin is picked
+            # automatically on a conductor restart
+            if not os.path.isfile(pth_fqpn):
+                with open(pth_fqpn, 'w') as f:
+                    f.write(app.sync_plugins_dir + '\n')
+                    LOG.info("PluginHelper: Enabled plugin directory %s: created %s" % (
+                        app.sync_plugins_dir, pth_fqpn))
 
-        # Make sure the sys.path reflects enabled plugins Add the plugin to
-        # sys.path
-        site.addsitedir(app.sync_plugins_dir)
+            # Make sure the sys.path reflects enabled plugins Add the plugin to
+            # sys.path
+            site.addsitedir(app.sync_plugins_dir)
 
-        # Find the distribution and add it to the resources working set
-        for d in pkg_resources.find_distributions(app.sync_plugins_dir,
-                                                  only=True):
-            pkg_resources.working_set.add(d, entry=None, insert=True,
-                                          replace=True)
+            # Find the distribution and add it to the resources working set
+            for d in pkg_resources.find_distributions(app.sync_plugins_dir,
+                                                      only=True):
+                pkg_resources.working_set.add(d, entry=None, insert=True,
+                                              replace=True)
 
-        if self._helm_op:
-            self._helm_op.discover_plugins()
+            if self._helm_op:
+                self._helm_op.discover_plugins()
 
     def deactivate_plugins(self, app):
         # If the application doesn't have any plugins, skip deactivation
