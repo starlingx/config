@@ -46,17 +46,17 @@ OAM_DC = {
 SYSTEMCONTROLLER = \
     {"tcp":
         {
-            22: "ssh",
+            constants.PLATFORM_FIREWALL_SSH_PORT: "ssh",
             389: "openLDAP",
             636: "openLDAP",
             4546: "stx-nfv",
             5001: "keystone-api",
             5492: "patching-api",
             6386: "sysinv-api",
-            6443: "K8s API server",
+            constants.PLATFORM_FIREWALL_KUBE_APISERVER_PORT: "K8s API server",
             8220: "dcdbsync-api",
-            9001: "Docker registry",
-            9002: "Registry token server",
+            constants.PLATFORM_DOCKER_PARAMS_REGISTRY_PORT: "Docker registry",
+            constants.PLATFORM_DOCKER_PARAMS_TOKEN_PORT: "Registry token server",
             9312: "barbican-api",
             18003: "stx-fault",
             31001: "Elastic Dashboard and API",
@@ -80,14 +80,14 @@ SYSTEMCONTROLLER = \
 SUBCLOUD = \
     {"tcp":
         {
-            22: "ssh",
+            constants.PLATFORM_FIREWALL_SSH_PORT: "ssh",
             4546: "stx-nfv",
             5001: "keystone-api",
             5492: "patching-api",
             6386: "sysinv-api",
             8220: "dcdbsync-api",
-            9001: "Docker registry",
-            9002: "Registry token server",
+            constants.PLATFORM_DOCKER_PARAMS_REGISTRY_PORT: "Docker registry",
+            constants.PLATFORM_DOCKER_PARAMS_TOKEN_PORT: "Registry token server",
             9312: "barbican-api",
             18003: "stx-fault",
             31001: "Elastic Dashboard and API"

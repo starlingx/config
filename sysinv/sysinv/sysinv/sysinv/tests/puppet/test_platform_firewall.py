@@ -15,6 +15,7 @@ from sysinv.objects import base as objbase
 from sysinv.tests.db import base as dbbase
 from sysinv.common import constants
 from sysinv.common import platform_firewall as firewall
+from sysinv.common import utils as cutils
 from sysinv.tests.db import utils as dbutils
 from sysinv.db import api as db_api
 from sysinv.puppet import interface as puppet_intf
@@ -255,6 +256,35 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
         class_name = self.__class__.__name__
         return os.path.join(hiera_directory, class_name) + ".yaml"
 
+    def _check_egress_rules(self, gnp, ip_version, net_type, ICMP):
+
+        self.assertEqual(gnp['spec']['egress'][0]['protocol'], "TCP")
+        self.assertEqual(gnp['spec']['egress'][0]['metadata']['annotations']['name'],
+                f"stx-egr-{self.host.personality}-{net_type}-tcp{ip_version}")
+        self.assertEqual(gnp['spec']['egress'][0]['ipVersion'], ip_version)
+        self.assertFalse('destination' in gnp['spec']['egress'][0].keys())
+        self.assertFalse('source' in gnp['spec']['egress'][0].keys())
+
+        self.assertEqual(gnp['spec']['egress'][1]['protocol'], "UDP")
+        self.assertEqual(gnp['spec']['egress'][1]['metadata']['annotations']['name'],
+                f"stx-egr-{self.host.personality}-{net_type}-udp{ip_version}")
+        self.assertEqual(gnp['spec']['egress'][1]['ipVersion'], ip_version)
+        self.assertFalse('destination' in gnp['spec']['egress'][1].keys())
+        self.assertFalse('source' in gnp['spec']['egress'][1].keys())
+
+        self.assertEqual(gnp['spec']['egress'][2]['protocol'], ICMP)
+        self.assertEqual(gnp['spec']['egress'][2]['metadata']['annotations']['name'],
+                f"stx-egr-{self.host.personality}-{net_type}-{ICMP.lower()}{ip_version}")
+        self.assertEqual(gnp['spec']['egress'][2]['ipVersion'], ip_version)
+        self.assertFalse('destination' in gnp['spec']['egress'][2].keys())
+        self.assertFalse('source' in gnp['spec']['egress'][2].keys())
+
+    def _check_tcp_port(self, gnp, port, present=True):
+            if (present):
+                self.assertIn(port, gnp['spec']['ingress'][0]['destination']['ports'])
+            else:
+                self.assertNotIn(port, gnp['spec']['ingress'][0]['destination']['ports'])
+
     def _check_gnp_values(self, gnp, net_type, db_api, egress_size=3, ingress_size=3):
 
         network = self.context['networks'][net_type]
@@ -281,48 +311,39 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
         self.assertEqual(len(gnp['spec']['ingress']), ingress_size)
 
         # egress rules
-        self.assertEqual(gnp['spec']['egress'][0]['protocol'], "TCP")
-        self.assertEqual(gnp['spec']['egress'][0]['metadata']['annotations']['name'],
-                f"stx-egr-{self.host.personality}-{net_type}-tcp{ip_version}")
-        self.assertEqual(gnp['spec']['egress'][0]['ipVersion'], ip_version)
-        self.assertFalse('destination' in gnp['spec']['egress'][0].keys())
-        self.assertFalse('source' in gnp['spec']['egress'][0].keys())
-
-        self.assertEqual(gnp['spec']['egress'][1]['protocol'], "UDP")
-        self.assertEqual(gnp['spec']['egress'][1]['metadata']['annotations']['name'],
-                f"stx-egr-{self.host.personality}-{net_type}-udp{ip_version}")
-        self.assertEqual(gnp['spec']['egress'][1]['ipVersion'], ip_version)
-        self.assertFalse('destination' in gnp['spec']['egress'][1].keys())
-        self.assertFalse('source' in gnp['spec']['egress'][1].keys())
-
-        self.assertEqual(gnp['spec']['egress'][2]['protocol'], ICMP)
-        self.assertEqual(gnp['spec']['egress'][2]['metadata']['annotations']['name'],
-                f"stx-egr-{self.host.personality}-{net_type}-{ICMP.lower()}{ip_version}")
-        self.assertEqual(gnp['spec']['egress'][2]['ipVersion'], ip_version)
-        self.assertFalse('destination' in gnp['spec']['egress'][2].keys())
-        self.assertFalse('source' in gnp['spec']['egress'][2].keys())
+        self._check_egress_rules(gnp, ip_version, net_type, ICMP)
 
         # ingress rules
         self.assertEqual(gnp['spec']['ingress'][0]['protocol'], "TCP")
         self.assertEqual(gnp['spec']['ingress'][0]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-{net_type}-tcp{ip_version}")
         self.assertEqual(gnp['spec']['ingress'][0]['ipVersion'], ip_version)
-        self.assertEqual(gnp['spec']['ingress'][0]['source']['nets'][0],
-                         f"{addr_pool.network}/{addr_pool.prefix}")
 
         self.assertEqual(gnp['spec']['ingress'][1]['protocol'], "UDP")
         self.assertEqual(gnp['spec']['ingress'][1]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-{net_type}-udp{ip_version}")
         self.assertEqual(gnp['spec']['ingress'][1]['ipVersion'], ip_version)
-        self.assertEqual(gnp['spec']['ingress'][1]['source']['nets'][0],
-                         f"{addr_pool.network}/{addr_pool.prefix}")
 
         self.assertEqual(gnp['spec']['ingress'][2]['protocol'], ICMP)
         self.assertEqual(gnp['spec']['ingress'][2]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-{net_type}-{ICMP.lower()}{ip_version}")
         self.assertEqual(gnp['spec']['ingress'][2]['ipVersion'], ip_version)
-        self.assertEqual(gnp['spec']['ingress'][2]['source']['nets'][0],
-                         f"{addr_pool.network}/{addr_pool.prefix}")
+
+        if (net_type == constants.NETWORK_TYPE_OAM):
+            tcp_ports = set(gnp['spec']['ingress'][0]['destination']['ports'])
+            udp_ports = set(gnp['spec']['ingress'][1]['destination']['ports'])
+            for port in firewall.OAM_COMMON["tcp"]:
+                self.assertIn(port, tcp_ports)
+            for port in firewall.OAM_COMMON["udp"]:
+                self.assertIn(port, udp_ports)
+
+        else:
+            self.assertEqual(gnp['spec']['ingress'][0]['source']['nets'][0],
+                            f"{addr_pool.network}/{addr_pool.prefix}")
+            self.assertEqual(gnp['spec']['ingress'][1]['source']['nets'][0],
+                            f"{addr_pool.network}/{addr_pool.prefix}")
+            self.assertEqual(gnp['spec']['ingress'][2]['source']['nets'][0],
+                            f"{addr_pool.network}/{addr_pool.prefix}")
 
         cpod_net = db_api.network_get_by_type(constants.NETWORK_TYPE_CLUSTER_POD)
         cpod_pool = db_api.address_pool_get(cpod_net.pool_uuid)
@@ -397,7 +418,8 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
                              f"{cpod_pool.network}/{cpod_pool.prefix}")
             self.assertEqual(gnp['spec']['ingress'][3]['source']['nets'][2], "fe80::/64")
 
-        if (ip_version == 6 and (net_type != constants.NETWORK_TYPE_CLUSTER_HOST)):
+        if (ip_version == 6 and (net_type != constants.NETWORK_TYPE_CLUSTER_HOST)
+                and (net_type != constants.NETWORK_TYPE_OAM)):
             self.assertEqual(gnp['spec']['ingress'][0]['source']['nets'][1], "fe80::/64")
             self.assertEqual(gnp['spec']['ingress'][1]['source']['nets'][1], "fe80::/64")
             self.assertEqual(gnp['spec']['ingress'][2]['source']['nets'][1], "fe80::/64")
@@ -407,19 +429,36 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
         nodename = self.host.hostname
         ifname = intf.ifname
         os_ifname = puppet_intf.get_interface_os_ifname(self.context, intf)
-        hep_name = f'{nodename}-{ifname}-if-hep'
-        self.assertTrue(hep_name in hep.keys())
         network_list.sort()
         iftype = '.'.join(network_list)
+
+        hep_name = f'{nodename}-{ifname}-if-hep'
+        if constants.NETWORK_TYPE_OAM in iftype:
+            # to keep compatible with current implementation
+            hep_name = f'{nodename}-oam-if-hep'
+        self.assertTrue(hep_name in hep.keys())
 
         self.assertEqual(hep[hep_name]["apiVersion"], "crd.projectcalico.org/v1")
         self.assertEqual(hep[hep_name]["kind"], "HostEndpoint")
         self.assertEqual(hep[hep_name]['metadata']['labels']['iftype'], iftype)
         self.assertEqual(hep[hep_name]['metadata']['labels']['nodetype'], self.host.personality)
         self.assertEqual(hep[hep_name]['metadata']['labels']['ifname'], f"{nodename}.{ifname}")
-        self.assertEqual(hep[hep_name]['metadata']['name'], f"{nodename}-{ifname}-if-hep")
+        self.assertEqual(hep[hep_name]['metadata']['name'], hep_name)
         self.assertEqual(hep[hep_name]['spec']['interfaceName'], os_ifname)
         self.assertEqual(hep[hep_name]['spec']['node'], nodename)
+
+    def _check_oam_expected_IPs(self, db_api, hep):
+        nodename = self.host.hostname
+        hep_name = f'{nodename}-oam-if-hep'
+        if cutils.is_aio_simplex_system(db_api):
+            address = db_api.address_get_by_name("controller-oam")
+        else:
+            if nodename == "controller-0":
+                address = db_api.address_get_by_name("controller-0-oam")
+            if nodename == "controller-1":
+                address = db_api.address_get_by_name("controller-1-oam")
+        self.assertTrue(address)
+        self.assertEqual(hep[hep_name]["spec"]["expectedIPs"], [str(address.address)])
 
     def _create_service_parameter_test_set(self):
         service_parameter_data = [
@@ -517,6 +556,8 @@ class PlatformFirewallTestCaseControllerNonDc_Setup01(PlatformFirewallTestCaseMi
             constants.NETWORK_TYPE_PXEBOOT)
         self.test_interfaces.update({constants.NETWORK_TYPE_PXEBOOT: iface})
 
+        self._create_service_parameter_test_set()
+
     def test_generate_firewall_config(self):
         hieradata_directory = self._create_hieradata_directory()
         config_filename = self._get_config_filename(hieradata_directory)
@@ -528,9 +569,7 @@ class PlatformFirewallTestCaseControllerNonDc_Setup01(PlatformFirewallTestCaseMi
         with open(config_filename, 'r') as config_file:
             hiera_data = yaml.safe_load(config_file)
 
-        # for now we do NOT handle OAM configuration
-        self.assertFalse('platform::firewall::calico::oam::config' in hiera_data.keys())
-
+        self.assertTrue('platform::firewall::calico::oam::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::admin::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::cluster_host::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::mgmt::config' in hiera_data.keys())
@@ -543,12 +582,12 @@ class PlatformFirewallTestCaseControllerNonDc_Setup01(PlatformFirewallTestCaseMi
         self.assertFalse(hiera_data['platform::firewall::calico::storage::config'])
 
         # these GNPs are filled
-        self.assertTrue(hiera_data['platform::firewall::calico::cluster_host::config'])
+        self.assertTrue(hiera_data['platform::firewall::calico::mgmt::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::mgmt::config'],
                                constants.NETWORK_TYPE_MGMT, self.dbapi,
                                egress_size=4, ingress_size=5)
 
-        self.assertTrue(hiera_data['platform::firewall::calico::mgmt::config'])
+        self.assertTrue(hiera_data['platform::firewall::calico::cluster_host::config'])
         self._check_gnp_values(hiera_data['platform::firewall::calico::cluster_host::config'],
                                constants.NETWORK_TYPE_CLUSTER_HOST, self.dbapi,
                                egress_size=5, ingress_size=6)
@@ -558,9 +597,16 @@ class PlatformFirewallTestCaseControllerNonDc_Setup01(PlatformFirewallTestCaseMi
                                constants.NETWORK_TYPE_PXEBOOT, self.dbapi,
                                egress_size=3, ingress_size=4)
 
+        self.assertTrue(hiera_data['platform::firewall::calico::oam::config'])
+        self._check_gnp_values(hiera_data['platform::firewall::calico::oam::config'],
+                               constants.NETWORK_TYPE_OAM, self.dbapi,
+                               egress_size=3, ingress_size=3)
+        self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
+                             constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT)
+
         # the HE is filled
         self.assertTrue(hiera_data['platform::firewall::calico::hostendpoint::config'])
-        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 3)
+        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 4)
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[constants.NETWORK_TYPE_MGMT],
                               [constants.NETWORK_TYPE_MGMT])
@@ -570,10 +616,11 @@ class PlatformFirewallTestCaseControllerNonDc_Setup01(PlatformFirewallTestCaseMi
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[constants.NETWORK_TYPE_PXEBOOT],
                               [constants.NETWORK_TYPE_PXEBOOT])
-
-        # for now we do NOT handle OAM configuration
-        self.assertFalse(f"{self.host.hostname}-oam0-if-hep" in
-                         hiera_data['platform::firewall::calico::hostendpoint::config'].keys())
+        self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
+                              self.test_interfaces[constants.NETWORK_TYPE_OAM],
+                              [constants.NETWORK_TYPE_OAM])
+        self._check_oam_expected_IPs(self.dbapi,
+                                     hiera_data['platform::firewall::calico::hostendpoint::config'])
 
 
 # Controller, non-DC, IPv4
@@ -624,6 +671,8 @@ class PlatformFirewallTestCaseControllerNonDc_Setup02(PlatformFirewallTestCaseMi
             networktype=[constants.NETWORK_TYPE_STORAGE])
         self.test_interfaces.update({constants.NETWORK_TYPE_STORAGE: iface})
 
+        self._create_service_parameter_test_set()
+
     def test_generate_firewall_config(self):
         hieradata_directory = self._create_hieradata_directory()
         config_filename = self._get_config_filename(hieradata_directory)
@@ -635,9 +684,7 @@ class PlatformFirewallTestCaseControllerNonDc_Setup02(PlatformFirewallTestCaseMi
         with open(config_filename, 'r') as config_file:
             hiera_data = yaml.safe_load(config_file)
 
-        # for now we do NOT handle OAM configuration
-        self.assertFalse('platform::firewall::calico::oam::config' in hiera_data.keys())
-
+        self.assertTrue('platform::firewall::calico::oam::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::admin::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::cluster_host::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::mgmt::config' in hiera_data.keys())
@@ -669,9 +716,14 @@ class PlatformFirewallTestCaseControllerNonDc_Setup02(PlatformFirewallTestCaseMi
                                constants.NETWORK_TYPE_STORAGE, self.dbapi,
                                egress_size=3, ingress_size=4)
 
+        self.assertTrue(hiera_data['platform::firewall::calico::oam::config'])
+        self._check_gnp_values(hiera_data['platform::firewall::calico::oam::config'],
+                               constants.NETWORK_TYPE_OAM, self.dbapi,
+                               egress_size=3, ingress_size=3)
+
         # the HE is filled
         self.assertTrue(hiera_data['platform::firewall::calico::hostendpoint::config'])
-        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 2)
+        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 3)
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[constants.NETWORK_TYPE_MGMT],
                               [constants.NETWORK_TYPE_MGMT,
@@ -682,9 +734,9 @@ class PlatformFirewallTestCaseControllerNonDc_Setup02(PlatformFirewallTestCaseMi
                               self.test_interfaces[constants.NETWORK_TYPE_STORAGE],
                               [constants.NETWORK_TYPE_STORAGE])
 
-        # for now we do NOT handle OAM configuration
-        self.assertFalse(f"{self.host.hostname}-oam0-if-hep" in
-                         hiera_data['platform::firewall::calico::hostendpoint::config'].keys())
+        self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
+                              self.test_interfaces[constants.NETWORK_TYPE_OAM],
+                              [constants.NETWORK_TYPE_OAM])
 
 
 # Controller, non-DC
@@ -728,6 +780,8 @@ class PlatformFirewallTestCaseControllerNonDc_Setup03(PlatformFirewallTestCaseMi
                          constants.NETWORK_TYPE_CLUSTER_HOST])
         self.test_interfaces.update({constants.NETWORK_TYPE_MGMT: iface})
 
+        self._create_service_parameter_test_set()
+
     def test_generate_firewall_config(self):
         hieradata_directory = self._create_hieradata_directory()
         config_filename = self._get_config_filename(hieradata_directory)
@@ -739,9 +793,6 @@ class PlatformFirewallTestCaseControllerNonDc_Setup03(PlatformFirewallTestCaseMi
         with open(config_filename, 'r') as config_file:
             hiera_data = yaml.safe_load(config_file)
 
-        # for now we do NOT handle OAM configuration
-        self.assertFalse('platform::firewall::calico::oam::config' in hiera_data.keys())
-
         self.assertTrue('platform::firewall::calico::admin::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::cluster_host::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::mgmt::config' in hiera_data.keys())
@@ -749,13 +800,26 @@ class PlatformFirewallTestCaseControllerNonDc_Setup03(PlatformFirewallTestCaseMi
         self.assertTrue('platform::firewall::calico::storage::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::hostendpoint::config' in hiera_data.keys())
 
+        self.assertTrue(hiera_data['platform::firewall::calico::oam::config'])
+        self._check_gnp_values(hiera_data['platform::firewall::calico::oam::config'],
+                               constants.NETWORK_TYPE_OAM, self.dbapi,
+                               egress_size=3, ingress_size=3)
+        self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
+                             constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT)
+
         # do not install firewall if the network is assigned to the loopback
         self.assertFalse(hiera_data['platform::firewall::calico::admin::config'])
         self.assertFalse(hiera_data['platform::firewall::calico::cluster_host::config'])
         self.assertFalse(hiera_data['platform::firewall::calico::mgmt::config'])
         self.assertFalse(hiera_data['platform::firewall::calico::pxeboot::config'])
         self.assertFalse(hiera_data['platform::firewall::calico::storage::config'])
-        self.assertFalse(hiera_data['platform::firewall::calico::hostendpoint::config'])
+
+        # the HE is filled
+        self.assertTrue(hiera_data['platform::firewall::calico::hostendpoint::config'])
+        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 1)
+        self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
+                              self.test_interfaces[constants.NETWORK_TYPE_OAM],
+                              [constants.NETWORK_TYPE_OAM])
 
 
 # Controller, non-DC
@@ -811,6 +875,8 @@ class PlatformFirewallTestCaseControllerNonDc_Setup04(PlatformFirewallTestCaseMi
             [constants.NETWORK_TYPE_CLUSTER_HOST, constants.NETWORK_TYPE_STORAGE])
         self.test_interfaces.update({constants.NETWORK_TYPE_CLUSTER_HOST: iface})
 
+        self._create_service_parameter_test_set()
+
     def test_generate_firewall_config(self):
         hieradata_directory = self._create_hieradata_directory()
         config_filename = self._get_config_filename(hieradata_directory)
@@ -821,9 +887,6 @@ class PlatformFirewallTestCaseControllerNonDc_Setup04(PlatformFirewallTestCaseMi
         hiera_data = dict()
         with open(config_filename, 'r') as config_file:
             hiera_data = yaml.safe_load(config_file)
-
-        # for now we do NOT handle OAM configuration
-        self.assertFalse('platform::firewall::calico::oam::config' in hiera_data.keys())
 
         self.assertTrue('platform::firewall::calico::admin::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::cluster_host::config' in hiera_data.keys())
@@ -856,9 +919,16 @@ class PlatformFirewallTestCaseControllerNonDc_Setup04(PlatformFirewallTestCaseMi
                                constants.NETWORK_TYPE_STORAGE, self.dbapi,
                                egress_size=3, ingress_size=4)
 
+        self.assertTrue(hiera_data['platform::firewall::calico::oam::config'])
+        self._check_gnp_values(hiera_data['platform::firewall::calico::oam::config'],
+                               constants.NETWORK_TYPE_OAM, self.dbapi,
+                               egress_size=3, ingress_size=3)
+        self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
+                             constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT)
+
         # the HE is filled
         self.assertTrue(hiera_data['platform::firewall::calico::hostendpoint::config'])
-        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 3)
+        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 4)
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[constants.NETWORK_TYPE_PXEBOOT],
                               [constants.NETWORK_TYPE_PXEBOOT])
@@ -870,6 +940,10 @@ class PlatformFirewallTestCaseControllerNonDc_Setup04(PlatformFirewallTestCaseMi
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[constants.NETWORK_TYPE_CLUSTER_HOST],
                               [constants.NETWORK_TYPE_CLUSTER_HOST, constants.NETWORK_TYPE_STORAGE])
+
+        self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
+                              self.test_interfaces[constants.NETWORK_TYPE_OAM],
+                              [constants.NETWORK_TYPE_OAM])
 
 
 # Controller, non-DC
@@ -889,6 +963,14 @@ class PlatformFirewallTestCaseControllerNonDc_Setup05(PlatformFirewallTestCaseMi
         p = mock.patch('sysinv.puppet.platform_firewall._get_dc_role')
         self.mock_platform_firewall_get_dc_role = p.start()
         self.mock_platform_firewall_get_dc_role.return_value = None
+        self.addCleanup(p.stop)
+        p = mock.patch('sysinv.common.utils.is_aio_simplex_system')
+        self.mock_utils_is_aio_simplex_system = p.start()
+        self.mock_utils_is_aio_simplex_system.return_value = True
+        self.addCleanup(p.stop)
+        p = mock.patch('sysinv.puppet.platform_firewall._is_ceph_enabled')
+        self.mock_platform_firewall_is_ceph_enabled = p.start()
+        self.mock_platform_firewall_is_ceph_enabled.return_value = True
         self.addCleanup(p.stop)
 
     def _update_context(self):
@@ -912,6 +994,8 @@ class PlatformFirewallTestCaseControllerNonDc_Setup05(PlatformFirewallTestCaseMi
             [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_CLUSTER_HOST])
         self.test_interfaces.update({constants.NETWORK_TYPE_MGMT: iface})
 
+        self._create_service_parameter_test_set()
+
     def test_generate_firewall_config(self):
         hieradata_directory = self._create_hieradata_directory()
         config_filename = self._get_config_filename(hieradata_directory)
@@ -922,9 +1006,6 @@ class PlatformFirewallTestCaseControllerNonDc_Setup05(PlatformFirewallTestCaseMi
         hiera_data = dict()
         with open(config_filename, 'r') as config_file:
             hiera_data = yaml.safe_load(config_file)
-
-        # for now we do NOT handle OAM configuration
-        self.assertFalse('platform::firewall::calico::oam::config' in hiera_data.keys())
 
         self.assertTrue('platform::firewall::calico::admin::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::cluster_host::config' in hiera_data.keys())
@@ -952,16 +1033,31 @@ class PlatformFirewallTestCaseControllerNonDc_Setup05(PlatformFirewallTestCaseMi
                                constants.NETWORK_TYPE_PXEBOOT, self.dbapi,
                                egress_size=3, ingress_size=4)
 
+        self.assertTrue(hiera_data['platform::firewall::calico::oam::config'])
+        self._check_gnp_values(hiera_data['platform::firewall::calico::oam::config'],
+                               constants.NETWORK_TYPE_OAM, self.dbapi,
+                               egress_size=3, ingress_size=3)
+        self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
+                             constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT)
+        self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
+                             constants.PLATFORM_CEPH_PARAMS_RGW_PORT)
+
         self.assertFalse(hiera_data['platform::firewall::calico::storage::config'])
 
         # the HE is filled
         self.assertTrue(hiera_data['platform::firewall::calico::hostendpoint::config'])
-        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 1)
+        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 2)
 
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[constants.NETWORK_TYPE_MGMT],
                               [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_CLUSTER_HOST,
                                constants.NETWORK_TYPE_PXEBOOT])
+
+        self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
+                              self.test_interfaces[constants.NETWORK_TYPE_OAM],
+                              [constants.NETWORK_TYPE_OAM])
+        self._check_oam_expected_IPs(self.dbapi,
+                                     hiera_data['platform::firewall::calico::hostendpoint::config'])
 
 
 # Controller, non-DC, IPv6
@@ -1025,6 +1121,8 @@ class PlatformFirewallTestCaseControllerNonDc_Setup06(PlatformFirewallTestCaseMi
             [constants.NETWORK_TYPE_STORAGE])
         self.test_interfaces.update({constants.NETWORK_TYPE_STORAGE: iface})
 
+        self._create_service_parameter_test_set()
+
     def test_generate_firewall_config(self):
         hieradata_directory = self._create_hieradata_directory()
         config_filename = self._get_config_filename(hieradata_directory)
@@ -1036,9 +1134,7 @@ class PlatformFirewallTestCaseControllerNonDc_Setup06(PlatformFirewallTestCaseMi
         with open(config_filename, 'r') as config_file:
             hiera_data = yaml.safe_load(config_file)
 
-        # for now we do NOT handle OAM configuration
-        self.assertFalse('platform::firewall::calico::oam::config' in hiera_data.keys())
-
+        self.assertTrue('platform::firewall::calico::oam::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::admin::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::cluster_host::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::mgmt::config' in hiera_data.keys())
@@ -1070,9 +1166,16 @@ class PlatformFirewallTestCaseControllerNonDc_Setup06(PlatformFirewallTestCaseMi
                                constants.NETWORK_TYPE_STORAGE, self.dbapi,
                                egress_size=3, ingress_size=3)
 
+        self.assertTrue(hiera_data['platform::firewall::calico::oam::config'])
+        self._check_gnp_values(hiera_data['platform::firewall::calico::oam::config'],
+                               constants.NETWORK_TYPE_OAM, self.dbapi,
+                               egress_size=3, ingress_size=3)
+        self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
+                             constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT)
+
         # the HE is filled
         self.assertTrue(hiera_data['platform::firewall::calico::hostendpoint::config'])
-        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 4)
+        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 5)
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[constants.NETWORK_TYPE_PXEBOOT],
                               [constants.NETWORK_TYPE_PXEBOOT])
@@ -1088,6 +1191,10 @@ class PlatformFirewallTestCaseControllerNonDc_Setup06(PlatformFirewallTestCaseMi
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[constants.NETWORK_TYPE_STORAGE],
                               [constants.NETWORK_TYPE_STORAGE])
+
+        self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
+                              self.test_interfaces[constants.NETWORK_TYPE_OAM],
+                              [constants.NETWORK_TYPE_OAM])
 
 
 # Controller, DC, Subcloud
@@ -1168,6 +1275,9 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup01(PlatformFirewallTestC
         nodetype_selector = f"has(nodetype) && nodetype == '{self.host.personality}'"
         iftype_selector = f"has(iftype) && iftype contains '{network.type}'"
         selector = f"{nodetype_selector} && {iftype_selector}"
+        ICMP = "ICMP"
+        if (ip_version == 6):
+            ICMP = "ICMPv6"
 
         self.assertEqual(gnp["apiVersion"], "crd.projectcalico.org/v1")
         self.assertEqual(gnp["kind"], "GlobalNetworkPolicy")
@@ -1182,26 +1292,7 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup01(PlatformFirewallTestC
         self.assertEqual(len(gnp['spec']['ingress']), ingress_size)
 
         # egress rules
-        self.assertEqual(gnp['spec']['egress'][0]['protocol'], "TCP")
-        self.assertEqual(gnp['spec']['egress'][0]['metadata']['annotations']['name'],
-                f"stx-egr-{self.host.personality}-{net_type}-tcp{ip_version}")
-        self.assertEqual(gnp['spec']['egress'][0]['ipVersion'], ip_version)
-        self.assertFalse('destination' in gnp['spec']['egress'][0].keys())
-        self.assertFalse('source' in gnp['spec']['egress'][0].keys())
-
-        self.assertEqual(gnp['spec']['egress'][1]['protocol'], "UDP")
-        self.assertEqual(gnp['spec']['egress'][1]['metadata']['annotations']['name'],
-                f"stx-egr-{self.host.personality}-{net_type}-udp{ip_version}")
-        self.assertEqual(gnp['spec']['egress'][1]['ipVersion'], ip_version)
-        self.assertFalse('destination' in gnp['spec']['egress'][1].keys())
-        self.assertFalse('source' in gnp['spec']['egress'][1].keys())
-
-        self.assertEqual(gnp['spec']['egress'][2]['protocol'], "ICMP")
-        self.assertEqual(gnp['spec']['egress'][2]['metadata']['annotations']['name'],
-                f"stx-egr-{self.host.personality}-{net_type}-icmp{ip_version}")
-        self.assertEqual(gnp['spec']['egress'][2]['ipVersion'], ip_version)
-        self.assertFalse('destination' in gnp['spec']['egress'][2].keys())
-        self.assertFalse('source' in gnp['spec']['egress'][2].keys())
+        self._check_egress_rules(gnp, ip_version, net_type, ICMP)
 
         # ingress rules
         tcp_ports = list(firewall.SUBCLOUD["tcp"].keys())
@@ -1228,7 +1319,7 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup01(PlatformFirewallTestC
         self.assertEqual(gnp['spec']['ingress'][1]['source']['nets'][0], "192.168.3.0/24")
         self.assertEqual(gnp['spec']['ingress'][1]['source']['nets'][1], "192.168.4.0/24")
 
-        self.assertEqual(gnp['spec']['ingress'][2]['protocol'], "ICMP")
+        self.assertEqual(gnp['spec']['ingress'][2]['protocol'], ICMP)
         self.assertEqual(gnp['spec']['ingress'][2]['metadata']['annotations']['name'],
                 f"stx-ingr-{self.host.personality}-subcloud-icmp{ip_version}")
         self.assertEqual(gnp['spec']['ingress'][2]['ipVersion'], ip_version)
@@ -1247,8 +1338,7 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup01(PlatformFirewallTestC
         with open(config_filename, 'r') as config_file:
             hiera_data = yaml.safe_load(config_file)
 
-        self.assertFalse('platform::firewall::calico::oam::config' in hiera_data.keys())
-
+        self.assertTrue('platform::firewall::calico::oam::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::admin::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::cluster_host::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::mgmt::config' in hiera_data.keys())
@@ -1281,9 +1371,16 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup01(PlatformFirewallTestC
         self._check_gnp_admin_values(hiera_data['platform::firewall::calico::admin::config'],
                                constants.NETWORK_TYPE_ADMIN, self.dbapi)
 
+        self.assertTrue(hiera_data['platform::firewall::calico::oam::config'])
+        self._check_gnp_values(hiera_data['platform::firewall::calico::oam::config'],
+                               constants.NETWORK_TYPE_OAM, self.dbapi,
+                               egress_size=3, ingress_size=3)
+        self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
+                             constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT, False)
+
         # the HE is filled
         self.assertTrue(hiera_data['platform::firewall::calico::hostendpoint::config'])
-        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 4)
+        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 5)
 
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[constants.NETWORK_TYPE_MGMT],
@@ -1301,9 +1398,9 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup01(PlatformFirewallTestC
                               self.test_interfaces[constants.NETWORK_TYPE_PXEBOOT],
                               [constants.NETWORK_TYPE_PXEBOOT])
 
-        # for now we do NOT handle OAM configuration
-        self.assertFalse(f"{self.host.hostname}-oam0-if-hep" in
-                         hiera_data['platform::firewall::calico::hostendpoint::config'].keys())
+        self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
+                              self.test_interfaces[constants.NETWORK_TYPE_OAM],
+                              [constants.NETWORK_TYPE_OAM])
 
 
 # Controller, DC, SystemController
@@ -1492,8 +1589,7 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup01(PlatformFirewallTestCa
         with open(config_filename, 'r') as config_file:
             hiera_data = yaml.safe_load(config_file)
 
-        self.assertFalse('platform::firewall::calico::oam::config' in hiera_data.keys())
-
+        self.assertTrue('platform::firewall::calico::oam::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::admin::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::cluster_host::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::mgmt::config' in hiera_data.keys())
@@ -1526,9 +1622,23 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup01(PlatformFirewallTestCa
                                constants.NETWORK_TYPE_STORAGE, self.dbapi,
                                egress_size=3, ingress_size=4)
 
+        self.assertTrue(hiera_data['platform::firewall::calico::oam::config'])
+        self._check_gnp_values(hiera_data['platform::firewall::calico::oam::config'],
+                               constants.NETWORK_TYPE_OAM, self.dbapi)
+        self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
+                             constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT)
+        self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
+                             constants.PLATFORM_DCMANAGER_PARAMS_API_PORT)
+        self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
+                             constants.PLATFORM_DCORCH_PARAMS_SYSINV_API_PROXY_PORT)
+        self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
+                             constants.PLATFORM_DCORCH_PARAMS_PATCH_API_PROXY_PORT)
+        self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
+                             constants.PLATFORM_DCORCH_PARAMS_IDENTITY_API_PROXY_PORT)
+
         # the HE is filled
         self.assertTrue(hiera_data['platform::firewall::calico::hostendpoint::config'])
-        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 3)
+        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 4)
 
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[0][constants.NETWORK_TYPE_MGMT],
@@ -1542,9 +1652,9 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup01(PlatformFirewallTestCa
                               self.test_interfaces[0][constants.NETWORK_TYPE_PXEBOOT],
                               [constants.NETWORK_TYPE_PXEBOOT])
 
-        # for now we do NOT handle OAM configuration
-        self.assertFalse(f"{self.host.hostname}-oam0-if-hep" in
-                         hiera_data['platform::firewall::calico::hostendpoint::config'].keys())
+        self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
+                              self.test_interfaces[0][constants.NETWORK_TYPE_OAM],
+                              [constants.NETWORK_TYPE_OAM])
 
 
 # AIO-DX, Controller, DC, Subcloud
@@ -1656,8 +1766,7 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup02(PlatformFirewallTestC
         with open(config_filename, 'r') as config_file:
             hiera_data = yaml.safe_load(config_file)
 
-        self.assertFalse('platform::firewall::calico::oam::config' in hiera_data.keys())
-
+        self.assertTrue('platform::firewall::calico::oam::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::admin::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::cluster_host::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::mgmt::config' in hiera_data.keys())
@@ -1689,9 +1798,15 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup02(PlatformFirewallTestC
 
         self.assertFalse(hiera_data['platform::firewall::calico::admin::config'])
 
+        self.assertTrue(hiera_data['platform::firewall::calico::oam::config'])
+        self._check_gnp_values(hiera_data['platform::firewall::calico::oam::config'],
+                               constants.NETWORK_TYPE_OAM, self.dbapi)
+        self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
+                             constants.SERVICE_PARAM_HTTP_PORT_HTTP_DEFAULT, False)
+
         # the HE is filled
         self.assertTrue(hiera_data['platform::firewall::calico::hostendpoint::config'])
-        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 3)
+        self.assertEqual(len(hiera_data['platform::firewall::calico::hostendpoint::config']), 4)
 
         self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
                               self.test_interfaces[constants.NETWORK_TYPE_MGMT],
@@ -1705,9 +1820,9 @@ class PlatformFirewallTestCaseControllerDcSubcloud_Setup02(PlatformFirewallTestC
                               self.test_interfaces[constants.NETWORK_TYPE_PXEBOOT],
                               [constants.NETWORK_TYPE_PXEBOOT])
 
-        # for now we do NOT handle OAM configuration
-        self.assertFalse(f"{self.host.hostname}-oam0-if-hep" in
-                         hiera_data['platform::firewall::calico::hostendpoint::config'].keys())
+        self._check_he_values(hiera_data['platform::firewall::calico::hostendpoint::config'],
+                              self.test_interfaces[constants.NETWORK_TYPE_OAM],
+                              [constants.NETWORK_TYPE_OAM])
 
 
 # Worker, non-DC
@@ -1764,9 +1879,7 @@ class PlatformFirewallTestCaseWorkerNonDc_Setup01(PlatformFirewallTestCaseMixin,
         with open(config_filename, 'r') as config_file:
             hiera_data = yaml.safe_load(config_file)
 
-        # for now we do NOT handle OAM configuration
-        self.assertFalse('platform::firewall::calico::oam::config' in hiera_data.keys())
-
+        self.assertTrue('platform::firewall::calico::oam::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::admin::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::cluster_host::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::mgmt::config' in hiera_data.keys())
@@ -1777,6 +1890,7 @@ class PlatformFirewallTestCaseWorkerNonDc_Setup01(PlatformFirewallTestCaseMixin,
         # these GNPs are empty (not used in the current test database)
         self.assertFalse(hiera_data['platform::firewall::calico::admin::config'])
         self.assertFalse(hiera_data['platform::firewall::calico::storage::config'])
+        self.assertFalse(hiera_data['platform::firewall::calico::oam::config'])
 
         # these GNPs are filled
         self.assertTrue(hiera_data['platform::firewall::calico::mgmt::config'])
@@ -1867,8 +1981,7 @@ class PlatformFirewallTestCaseStorageNonDc_Setup01(PlatformFirewallTestCaseMixin
             hiera_data = yaml.safe_load(config_file)
 
         # for now we do NOT handle OAM configuration
-        self.assertFalse('platform::firewall::calico::oam::config' in hiera_data.keys())
-
+        self.assertTrue('platform::firewall::calico::oam::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::admin::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::cluster_host::config' in hiera_data.keys())
         self.assertTrue('platform::firewall::calico::mgmt::config' in hiera_data.keys())
@@ -1878,6 +1991,7 @@ class PlatformFirewallTestCaseStorageNonDc_Setup01(PlatformFirewallTestCaseMixin
 
         # these GNPs are empty (not used in the current test database)
         # storage nodes do not run kubernetes
+        self.assertFalse(hiera_data['platform::firewall::calico::oam::config'])
         self.assertFalse(hiera_data['platform::firewall::calico::admin::config'])
         self.assertFalse(hiera_data['platform::firewall::calico::cluster_host::config'])
         self.assertFalse(hiera_data['platform::firewall::calico::mgmt::config'])
