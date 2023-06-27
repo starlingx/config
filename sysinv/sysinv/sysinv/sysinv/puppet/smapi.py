@@ -14,7 +14,7 @@ class SmPuppet(openstack.OpenstackBasePuppet):
     """Class to encapsulate puppet operations for sm configuration"""
 
     SERVICE_NAME = 'smapi'
-    SERVICE_PORT = 7777
+    SERVICE_PORT = constants.PLATFORM_SMAPI_PARAMS_PORT
 
     def get_static_config(self):
         config = {
