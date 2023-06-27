@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2021 Wind River Systems, Inc.
+# Copyright (c) 2018-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -13,12 +13,24 @@ from sysinv.puppet import interface
 
 LOG = log.getLogger(__name__)
 
+OVS_DPDK_ELF = '/usr/sbin/ovs-vswitchd'
+
 
 class OVSPuppet(base.BasePuppet):
     """Class to encapsulate puppet operations for vswitch configuration"""
 
     def __init__(self, *args, **kwargs):
         super(OVSPuppet, self).__init__(*args, **kwargs)
+
+    def get_system_config(self):
+        config = {}
+
+        if self._vswitch_type() == constants.VSWITCH_TYPE_OVS_DPDK:
+            config.update({
+                'sysinv::agent::dpdk_elf_file': OVS_DPDK_ELF,
+            })
+
+        return config
 
     def get_host_config(self, host):
         config = {}
