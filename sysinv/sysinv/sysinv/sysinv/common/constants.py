@@ -2244,6 +2244,10 @@ OPENLDAP_CERT_SECRET_NAME = "system-openldap-local-certificate"
 # The k8s secret that holds openldap CA certificate
 OPENLDAP_CA_CERT_SECRET_NAME = "system-local-ca"
 
+# Used types for the secret that holds openldap CA certificate
+K8S_SECRET_TYPE_OPAQUE = 'Opaque'
+K8S_SECRET_TYPE_TLS = 'kubernetes.io/tls'
+
 CERT_NAMESPACE_PLATFORM_CERTS = 'deployment'
 CERT_NAMESPACE_PLATFORM_CA_CERTS = 'cert-manager'
 

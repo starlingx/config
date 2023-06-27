@@ -13375,6 +13375,7 @@ class ConductorManager(service.PeriodicService):
                     constants.CERT_MODE_DOCKER_REGISTRY,
                     constants.CERT_MODE_OPENSTACK,
                     constants.CERT_MODE_OPENLDAP,
+                    constants.CERT_MODE_OPENLDAP_CA,
                     ]:
             private_mode = True
 
@@ -13607,23 +13608,60 @@ class ConductorManager(service.PeriodicService):
                                                 force=True)
         # Special mode for openldap CA certificate.
         # This CA certificate will be stored in k8s as an opaque secret
+        # if the secret doesn't already exist. If secret already exists,
+        # we will overwrite it with current type (opaque or tls)
         elif mode == constants.CERT_MODE_OPENLDAP_CA:
             kube_operator = kubernetes.KubeOperator()
             public_bytes = self._get_public_bytes(cert_list)
             cert_secret = base64.encode_as_text(public_bytes)
 
-            body = {
+            try:
+                cert_type = cutils.get_secret_type(
+                        constants.OPENLDAP_CA_CERT_SECRET_NAME,
+                        constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
+            except Exception as e:
+                msg = "Failed to retrieve 'system-local-ca' secret type: %s" % str(e)
+                LOG.error(msg)
+                raise exception.SysinvException(_(msg))
+
+            secret_main_body = {
                 'apiVersion': 'v1',
-                'type': 'Opaque',
                 'kind': 'Secret',
                 'metadata': {
                     'name': constants.OPENLDAP_CA_CERT_SECRET_NAME,
                     'namespace': constants.CERT_NAMESPACE_PLATFORM_CA_CERTS
-                },
-                'data': {
-                    'ca.crt': cert_secret,
                 }
             }
+
+            if cert_type is None or cert_type == constants.K8S_SECRET_TYPE_OPAQUE.lower():
+                secret_type_params = {
+                    'type': constants.K8S_SECRET_TYPE_OPAQUE,
+                    'data': {
+                        'ca.crt': cert_secret,
+                    }
+                }
+            elif cert_type == constants.K8S_SECRET_TYPE_TLS.lower():
+                try:
+                    private_bytes = self._get_private_bytes_one(private_key)
+                    cert_key = base64.encode_as_text(private_bytes)
+                except Exception as e:
+                    msg = "Failed to retrieve private key: %s" % str(e)
+                    LOG.error(msg)
+                    raise exception.SysinvException(_(msg))
+
+                secret_type_params = {
+                    'type': constants.K8S_SECRET_TYPE_TLS,
+                    'data': {
+                        'tls.crt': cert_secret,
+                        'tls.key': cert_key,
+                    }
+                }
+            else:
+                msg = "Openldap secret of unexpected type (%s)." % cert_type
+                LOG.error(msg)
+                raise exception.SysinvException(_(msg))
+
+            secret_main_body.update(secret_type_params)
 
             try:
                 secret = kube_operator.kube_get_secret(
@@ -13634,16 +13672,16 @@ class ConductorManager(service.PeriodicService):
                             constants.OPENLDAP_CA_CERT_SECRET_NAME,
                             constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
                 kube_operator.kube_create_secret(
-                        constants.CERT_NAMESPACE_PLATFORM_CA_CERTS, body)
+                        constants.CERT_NAMESPACE_PLATFORM_CA_CERTS, secret_main_body)
             except Exception as e:
                 msg = "Failed to store openldap CA in k8s secret: %s" % str(e)
                 LOG.error(msg)
-                return msg
+                raise exception.SysinvException(_(msg))
 
         elif mode == constants.CERT_MODE_DOCKER_REGISTRY:
             LOG.info("Docker registry certificate install")
             # docker registry requires a PKCS1 key for the token server
-            _, private_key_pkcs1 = \
+            unused, private_key_pkcs1 = \
                 self._extract_keys_from_pem(mode, pem_contents,
                                             serialization.PrivateFormat
                                             .TraditionalOpenSSL, passphrase)
