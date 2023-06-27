@@ -10387,6 +10387,14 @@ class ConductorManager(service.PeriodicService):
                 }
 
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict, force=True)
+        elif service == constants.SERVICE_TYPE_IDENTITY:
+            remote_ldap_domains = [constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN1,
+                                    constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN2,
+                                    constants.SERVICE_PARAM_SECTION_IDENTITY_LDAP_DOMAIN3]
+            if section in remote_ldap_domains:
+                personalities = [constants.CONTROLLER,
+                                    constants.WORKER,
+                                    constants.STORAGE]
         # we should not set the reboot flag on operations that are not
         # reboot required. An apply of a service parameter is not reboot
         # required. If we set the flag, we could accidentally clear
