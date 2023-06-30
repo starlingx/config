@@ -37,35 +37,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
         super(PlatformFirewallPuppet, self).__init__(*args, **kwargs)
 
     def get_system_config(self):
-        config = {
-            "platform::nfv::params::api_port":
-                constants.PLATFORM_NFV_PARAMS_API_PORT,
-            "platform::patching::params::public_port":
-                constants.PLATFORM_PATCHING_PARAMS_PUBLIC_PORT,
-            "platform::sysinv::params::api_port":
-                constants.PLATFORM_SYSINV_PARAMS_API_PORT,
-            "platform::docker::params::registry_port":
-                constants.PLATFORM_DOCKER_PARAMS_REGISTRY_PORT,
-            "platform::docker::params::token_port":
-                constants.PLATFORM_DOCKER_PARAMS_TOKEN_PORT,
-            "platform::ceph::params::rgw_port":
-                constants.PLATFORM_CEPH_PARAMS_RGW_PORT,
-            "openstack::barbican::params::api_port":
-                constants.OPENSTACK_BARBICAN_PARAMS_API_PORT,
-            "openstack::keystone::params::api_port":
-                constants.OPENSTACK_KEYSTONE_PARAMS_API_PORT,
-            "platform::fm::params::api_port":
-                constants.PLATFORM_FM_PARAMS_API_PORT,
-            "platform::dcmanager::params::api_port":
-                constants.PLATFORM_DCMANAGER_PARAMS_API_PORT,
-            "platform::dcorch::params::sysinv_api_proxy_port":
-                constants.PLATFORM_DCORCH_PARAMS_SYSINV_API_PROXY_PORT,
-            "platform::dcorch::params::patch_api_proxy_port":
-                constants.PLATFORM_DCORCH_PARAMS_PATCH_API_PROXY_PORT,
-            "platform::dcorch::params::identity_api_proxy_port":
-                constants.PLATFORM_DCORCH_PARAMS_IDENTITY_API_PROXY_PORT
-        }
-        return config
+        return firewall.SYSTEM_CONFIG
 
     def get_host_config(self, host):
         """ Plugin public method
