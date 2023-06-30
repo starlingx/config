@@ -269,3 +269,18 @@ def compress_helm_release_data(release_data):
     release_data = release_data.decode('utf-8')
 
     return release_data
+
+
+def build_overrides_filename(chart_name, namespace=None):
+    """ Build a standardized overrides filename
+
+    :param chart_name: Name of the Helm chart
+    :param namespace: Chart base namespace
+    :return: string
+             Standardized overrides filename
+    """
+    filename = chart_name + ".yaml"
+    if namespace:
+        filename = namespace + "-" + filename
+
+    return filename

@@ -679,6 +679,7 @@ class HelmOperator(object):
             system overrides
         """
 
+        generated_files = []
         app, plugin_name = self._find_kube_app_and_app_plugin_name(app_name)
 
         # Get a kustomize operator to provide a single point of
@@ -735,7 +736,9 @@ class HelmOperator(object):
                             Loader=yaml.FullLoader
                         )
 
-                self._write_chart_overrides(path, chart_name, cnamespace, overrides)
+                override_file = self._write_chart_overrides(
+                    path, chart_name, cnamespace, overrides)
+                generated_files.append(override_file)
 
                 # Update manifest docs based on the plugin directives. If the
                 # application does not provide a manifest operator, the
@@ -783,12 +786,15 @@ class HelmOperator(object):
                         Loader=yaml.FullLoader
                     )
 
-                self._write_chart_overrides(path, chart.name,
-                                            cnamespace, user_overrides)
+                override_file = self._write_chart_overrides(
+                    path, chart.name, cnamespace, user_overrides)
+                generated_files.append(override_file)
 
         # Write the kustomization doc overrides and a unified manifest for deletion.
         kustomize_op.save_kustomization_updates()
         kustomize_op.save_release_cleanup_data()
+
+        return generated_files
 
     def _find_kube_app_and_app_plugin_name(self, app_name):
         return utils.find_kube_app(self.dbapi, app_name), \
@@ -821,17 +827,26 @@ class HelmOperator(object):
         """Write a one or more overrides files for a chart. """
 
         def _write_file(filename, values):
+            filepath = ""
             try:
-                self._write_overrides(path, filename, values)
+                filepath = self._write_overrides(path, filename, values)
             except Exception as e:
                 LOG.exception("failed to write %s overrides: %s: %s" % (
                     chart_name, filename, e))
 
-        if cnamespace:
-            _write_file("%s-%s.yaml" % (cnamespace, chart_name), overrides)
+            return filepath
+
+        filename = helm_utils.build_overrides_filename(chart_name, cnamespace)
+
+        # If the chart has just one namespace there is no need to add
+        # the top level reference to it.
+        if len(overrides) == 1:
+            filepath = _write_file(filename,
+                                   overrides[next(iter(overrides))])
         else:
-            for ns in overrides.keys():
-                _write_file("%s-%s.yaml" % (ns, chart_name), overrides[ns])
+            filepath = _write_file(filename, overrides)
+
+        return filepath
 
     def _write_overrides(self, path, filename, overrides):
         """Write a single overrides file. """
@@ -853,6 +868,8 @@ class HelmOperator(object):
         except Exception:
             LOG.exception("failed to write overrides file: %s" % filepath)
             raise
+
+        return filepath
 
     def _remove_overrides(self, path, filename):
         """Remove a single overrides file. """
