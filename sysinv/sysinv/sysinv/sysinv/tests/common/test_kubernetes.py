@@ -825,7 +825,7 @@ class TestKubeOperator(base.TestCase):
             mock_read_namespaced_service_account)
         self.mocked_read_namespaced_service_account.start()
 
-        def mock_read_namespaced_secret(obj, name, namespace):
+        def mock_read_namespaced_secret(obj, name, namespace, _request_timeout=(30, 30)):
             return self.read_namespaced_secret_result
         self.mocked_read_namespaced_secret = mock.patch(
             'kubernetes.client.CoreV1Api.read_namespaced_secret',
