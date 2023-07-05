@@ -1145,6 +1145,16 @@ class KubeOperator(object):
 
         return final_versions
 
+    def kube_get_lower_equal_versions(self, target_version):
+        """This function returns list with versions
+           less than or equal to the target_version"""
+        kube_versions = get_kube_versions()
+        version_list = []
+        for version in kube_versions:
+            if LooseVersion(version['version']) <= LooseVersion(target_version):
+                version_list.append(version['version'])
+        return version_list
+
     def kube_get_version_states(self):
         """Returns the state of each known kubernetes version."""
 

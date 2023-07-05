@@ -15834,6 +15834,85 @@ class ConductorManager(service.PeriodicService):
         except OSError as oe:
             LOG.error("Failed to remove k8s control-plane backup: %s" % oe)
 
+    @retry(retry_on_exception=lambda x: isinstance(x, (
+        exception.DockerRegistrySSLException, exception.DockerRegistryAPIException)),
+        stop_max_attempt_number=2, wait_fixed=30 * 1000)
+    def kube_delete_container_images(self, context, target_version):
+        """
+        Remove unused container images as last step in K8s upgrade complete.
+        This function tries to fetch images from two categories given below for
+        k8s versions lower than and including target_version, then removes the
+        images that are common between target and lower versions and
+        deletes whatever images are left.
+
+        1. Images specified by '/usr/local/kubernetes/<version>/stage1/usr/bin/kubeadm
+           config images list --kubernetes-version <version>'.
+        2. Images specified in Ansible playbooks under playbooks/roles/common/
+           load-images-information/vars/<version>/system-images.yml
+        """
+
+        # Get a list of k8s versions lower than and including target version
+        try:
+            kube_versions = self._kube.kube_get_lower_equal_versions(target_version)
+        except Exception as ex:
+            LOG.error("error in getting kubernetes version %s" % ex)
+            return
+
+        container_images = set()
+        target_version_images = set()
+
+        for version in kube_versions:
+            # Get the images from kubeadm config
+            kubeadm_version = version.lstrip('v')
+            kubeadm_path = constants.KUBEADM_PATH_FORMAT_STR.format(kubeadm_ver=kubeadm_version)
+            try:
+                cmd = [kubeadm_path, 'config', 'images', 'list', '--kubernetes-version', version]
+                output = subprocess.run(cmd,  # pylint: disable=not-callable
+                                  stderr=subprocess.STDOUT,
+                                  stdout=subprocess.PIPE,
+                                  universal_newlines=True)
+                if output.returncode == 0:
+                    # Get kubeadm images for target version.
+                    if version == target_version:
+                        target_version_images.update([j for j in output.stdout.splitlines()])
+                    else:
+                        # Get kubeadm images for lower version.
+                        container_images.update([j for j in output.stdout.splitlines()])
+            except Exception as e:
+                LOG.error("Failed to exec cmd. %s" % e)
+
+            # Get the images from file system-images.yml
+            file_name = os.path.join(constants.ANSIBLE_KUBE_SYSTEM_IMAGES_PLAYBOOK_ROOT,
+                                    "vars", "k8s-" + version, "system-images.yml")
+            try:
+                if os.path.exists(file_name):
+                    with open(file_name, "r") as stream:
+                        system_images = yaml.safe_load(stream)
+
+                        # Get images for target versions and lower versions in separate sets
+                        if version == target_version:
+                            target_version_images.update(system_images.values())
+                        else:
+                            container_images.update(system_images.values())
+            except IOError:
+                LOG.error("Failed to read file: %s", file_name)
+
+        # remove the images that are common in both sets
+        container_images.difference_update(target_version_images)
+
+        # Delete images from local registry. Image names have the format 'image:tag'.
+        for image_name_tag in container_images:
+            try:
+                image_name_and_tag = image_name_tag.split(":")
+                digest_resp = docker_registry.docker_registry_get("%s/manifests/%s"
+                    % (image_name_and_tag[0], image_name_and_tag[1]))
+                if digest_resp.status_code == 200:
+                    self.docker_registry_image_delete(context, image_name_tag)
+            except Exception as e:
+                LOG.error('Could not delete docker registry image: %s' % e)
+
+        return
+
     def store_bitstream_file(self, context, filename):
         """Store FPGA bitstream file """
         image_file_path = os.path.join(dconstants.DEVICE_IMAGE_PATH, filename)
