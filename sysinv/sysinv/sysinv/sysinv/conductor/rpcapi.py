@@ -2217,6 +2217,31 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        ihost_uuid=ihost_uuid,
                                        kernel_running=kernel_running))
 
+    def configure_power_manager(self, context):
+        """Synchronously, execute application reapply to update host
+        power profiles and c-states for Kubernetes Power Manager.
+
+        :param context: request context.
+
+        """
+        return self.call(context,
+                         self.make_msg('configure_power_manager'))
+
+    def cstates_and_frequency_update_by_ihost(self, context,
+                                              ihost_uuid, freq_dict):
+        """Synchronously, execute update of min, and max frequency, and cstates
+        available on host.
+
+        :param context: request context.
+        :param host_uuid: the uuid of the host
+        :param freq_dict: dict with params to update
+
+        """
+        return self.call(context,
+                         self.make_msg('cstates_and_frequency_update_by_ihost',
+                                       ihost_uuid=ihost_uuid,
+                                       freq_dict=freq_dict))
+
     def request_firewall_runtime_update(self, context, host_uuid):
         """ Sent from sysinv-agent, request the firewall update via runtime manifest
 

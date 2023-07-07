@@ -12713,6 +12713,20 @@ class ConductorManager(service.PeriodicService):
         """
         self._update_pxe_config(host, load)
 
+    def cstates_and_frequency_update_by_ihost(self, context,
+                                              ihost_uuid, freq_dict):
+        if ihost_uuid is None or freq_dict is None:
+            return
+
+        if len(freq_dict) > 0:
+            try:
+                self.dbapi.ihost_update(ihost_uuid, freq_dict)
+                self.evaluate_apps_reapply(context, trigger={
+                    'type': constants.APP_EVALUATE_REAPPLY_TYPE_HOST_MODIFY})
+            except (RuntimeError, Exception):
+                LOG.warning("An error occurred during the cstates and frequency update. "
+                            f"{traceback.format_exc()}")
+
     def load_update_by_host(self, context, ihost_id, sw_version):
         """Update the host_upgrade table with the running SW_VERSION
 
@@ -14206,19 +14220,26 @@ class ConductorManager(service.PeriodicService):
             raise exception.SysinvException(_(msg))
 
     def update_host_max_cpu_mhz_configured(self, context, host):
-        personalities = [constants.WORKER]
+        labels = self.dbapi.label_get_by_host(host['uuid'])
 
-        config_uuid = self._config_update_hosts(context,
-                                                personalities,
-                                                [host['uuid']])
-        config_dict = {
-            "personalities": personalities,
-            "host_uuids": [host['uuid']],
-            "classes": ['platform::compute::config::runtime']
-        }
-        self._config_apply_runtime_manifest(context,
-                                            config_uuid,
-                                            config_dict)
+        if not cutils.has_power_management_enabled(labels):
+            personalities = [constants.WORKER]
+
+            config_uuid = self._config_update_hosts(context,
+                                                    personalities,
+                                                    [host['uuid']])
+            config_dict = {
+                "personalities": personalities,
+                "host_uuids": [host['uuid']],
+                "classes": ['platform::compute::config::runtime']
+            }
+            self._config_apply_runtime_manifest(context,
+                                                config_uuid,
+                                                config_dict)
+
+    def configure_power_manager(self, context):
+        self.evaluate_apps_reapply(context, trigger={
+            'type': constants.APP_EVALUATE_REAPPLY_TYPE_HOST_ADD_LABEL})
 
     def update_admin_ep_certificate(self, context):
         """

@@ -154,6 +154,18 @@ def restructure_host_cpu_data(host):
         host.cpu_lists[cpu.numa_node].append(int(cpu.cpu))
 
 
+def check_power_manager(host):
+    """Check if power manager is present. If so, CPU MHZ
+    cannot be configured."""
+
+    labels = pecan.request.dbapi.label_get_by_host(host)
+
+    if cutils.has_power_management_enabled(labels):
+        raise wsme.exc.ClientSideError(
+            "Host CPU MHz cannot be configured "
+            "if Power Manager is enabled.")
+
+
 def check_core_allocations(host, cpu_counts, cpu_lists=None):
     """Check that minimum and maximum core values are respected."""
 

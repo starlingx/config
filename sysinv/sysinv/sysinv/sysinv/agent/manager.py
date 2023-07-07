@@ -334,6 +334,22 @@ class AgentManager(service.PeriodicService):
                 return constants.CONFIGURABLE
         return constants.NOT_CONFIGURABLE
 
+    def _get_min_cpu_mhz_allowed(self):
+        """Get minimum CPU frequency from lscpu
+
+        Returns:
+            int: minimum CPU frequency in MHz
+        """
+        output = utils.execute(
+            "lscpu | grep 'CPU min MHz' | awk '{ print $4 }' | cut -d ',' -f 1",
+            shell=True)
+
+        if isinstance(output, tuple):
+            default_min = output[0]
+            if default_min:
+                LOG.info("Default CPU min frequency: {}".format(default_min))
+                return int(default_min.split('.')[0])
+
     def _get_max_cpu_mhz_allowed(self):
         output = utils.execute(
             "lscpu | grep 'CPU max MHz' | awk '{ print $4 }' | cut -d ',' -f 1",
@@ -344,6 +360,24 @@ class AgentManager(service.PeriodicService):
             if default_max:
                 LOG.info("Default CPU max frequency: {}".format(default_max))
                 return int(default_max.split('.')[0])
+
+    def _get_cstates_names(self):
+        """Get the names of available c-state on the system.
+
+        Returns:
+            list(string,..): A list of c-state names
+        """
+        states = os.listdir(constants.CSTATE_PATH)
+        cstates = []
+
+        for state in states:
+            with open(os.path.join(constants.CSTATE_PATH, state + "/name"),
+                      'r') as file:
+                c_name = file.readline()
+                cstates.append(c_name.split('\n')[0])
+
+        cstates.sort()
+        return cstates
 
     def _force_grub_update(self):
         """ Force update the grub on the first AIO controller after the initial
@@ -742,6 +776,61 @@ class AgentManager(service.PeriodicService):
             kernel_running = constants.KERNEL_STANDARD
         return kernel_running
 
+    def _report_cstates_and_frequency_update(self, context,
+                                             ihost, rpcapi=None):
+        """Evaluate if minimum frequency, maximum frequency or cstates
+        are changed. If yes, report to conductor.
+        """
+        if ihost is None:
+            return
+
+        freq_dict = {}
+        try:
+            min_freq = self._get_min_cpu_mhz_allowed()
+            max_freq = self._get_max_cpu_mhz_allowed()
+
+            if min_freq != ihost.min_cpu_mhz_allowed:
+                ihost.min_cpu_mhz_allowed = min_freq
+                freq_dict.update({
+                    constants.IHOST_MIN_CPU_MHZ_ALLOWED:
+                    min_freq
+                })
+
+            if max_freq != ihost.max_cpu_mhz_allowed:
+                ihost.max_cpu_mhz_allowed = max_freq
+                freq_dict.update({
+                    constants.IHOST_MAX_CPU_MHZ_ALLOWED:
+                    max_freq
+                })
+
+            if os.path.isfile(os.path.join(constants.CSTATE_PATH,
+                                           "state0/name")):
+                cstates_names = self._get_cstates_names()
+                if utils.cstates_need_update(ihost.cstates_available,
+                                             cstates_names):
+                    ihost.cstates_available = ','.join(cstates_names)
+                    freq_dict.update({
+                        constants.IHOST_CSTATES_AVAILABLE:
+                        ','.join(cstates_names)
+                    })
+        except OSError as ex:
+            LOG.warning("Something wrong occurs during the cpu frequency"
+                        f" search. {ex}")
+            return
+
+        if len(freq_dict) == 0:
+            return
+
+        if rpcapi is None:
+            rpcapi = conductor_rpcapi.ConductorAPI(
+                topic=conductor_rpcapi.MANAGER_TOPIC)
+
+        LOG.info(f"Reporting CStates or Frequency changes {ihost['uuid']}"
+                 f" -> {freq_dict}")
+        rpcapi.cstates_and_frequency_update_by_ihost(context,
+                                                     ihost['uuid'],
+                                                     freq_dict)
+
     def ihost_inv_get_and_report(self, icontext):
         """Collect data for an ihost.
 
@@ -854,6 +943,13 @@ class AgentManager(service.PeriodicService):
         except exception.SysinvException:
             LOG.exception("Sysinv Agent exception updating subfunctions "
                           "conductor.")
+            pass
+
+        try:
+            self._report_cstates_and_frequency_update(icontext, ihost, rpcapi)
+        except exception.SysinvException as ex:
+            LOG.exception("Something wrong occurs during the cpu frequency"
+                          f" search. {ex}")
             pass
 
         self._report_port_inventory(icontext, rpcapi,

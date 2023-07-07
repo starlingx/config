@@ -2632,6 +2632,19 @@ def has_sriovdp_enabled(labels):
     return False
 
 
+def has_power_management_enabled(labels):
+    """Returns true if the power-management=enabled label is set """
+    if not labels:
+        return False
+
+    for label in labels:
+        if label.label_key == constants.KUBE_POWER_MANAGER_LABEL and label.label_value:
+            return constants.KUBE_POWER_MANAGER_VALUE == label.label_value.lower()
+
+    # We haven't found the power-management node key. Return False
+    return False
+
+
 def has_disable_nohz_full_enabled(labels):
     """Returns true if the disable-nohz-full=enabled label is set """
     if not labels:
@@ -3877,3 +3890,33 @@ def checkout_ostree(ostree_repo, commit, target_dir, subpath):
         raise exception.SysinvException(
             "Error checkout ostree commit: %s" % (error),
         )
+
+
+def cstates_need_update(old_cstates, new_cstates):
+    if old_cstates is None:
+        return True
+    if new_cstates is None:
+        return False
+
+    old_cstates_list = []
+    if isinstance(old_cstates, str):
+        if old_cstates.strip() == '':
+            return True
+        old_cstates_list = old_cstates.split(',')
+    else:
+        old_cstates_list = old_cstates
+
+    new_cstates_list = []
+    if isinstance(new_cstates, str):
+        if new_cstates.strip() == '':
+            return False
+        new_cstates_list = new_cstates.split(',')
+    else:
+        new_cstates_list = new_cstates
+
+    if len(old_cstates_list) != len(new_cstates_list):
+        return True
+    diff = [v for v in old_cstates_list if v not in new_cstates_list]
+    if len(diff) > 0:
+        return True
+    return False

@@ -106,8 +106,10 @@ class Host(base.SysinvObject):
             'device_image_update': utils.str_or_none,
             'reboot_needed': utils.bool_or_none,
             'max_cpu_mhz_configured': utils.str_or_none,
-            'max_cpu_mhz_allowed': utils.str_or_none
-        }
+            'min_cpu_mhz_allowed': utils.str_or_none,
+            'max_cpu_mhz_allowed': utils.str_or_none,
+            'cstates_available': utils.str_or_none
+             }
 
     _foreign_fields = {
         'isystem_uuid': 'system:uuid',
