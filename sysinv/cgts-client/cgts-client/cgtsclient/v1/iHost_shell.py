@@ -343,11 +343,17 @@ def do_host_update(cc, args):
            action='store_true',
            default=False,
            help="Force a lock operation ")
+@utils.arg('-u', '--unsafe',
+           action='store_true',
+           default=False,
+           help="Force an unsafe operation ")
 def do_host_lock(cc, args):
     """Lock a host."""
     attributes = []
-
-    if args.force is True:
+    if args.unsafe is True and args.force is True:
+        # Unsafe forced lock operation
+        attributes.append('action=force-unsafe-lock')
+    elif args.force is True:
         # Forced lock operation
         attributes.append('action=force-lock')
     else:

@@ -902,6 +902,7 @@ class HostUpdate(object):
         (constants.FORCE_UNLOCK_ACTION, _("Force Unlocking")),
         (constants.LOCK_ACTION, _("Locking")),
         (constants.FORCE_LOCK_ACTION, _("Force Locking")),
+        (constants.FORCE_UNSAFE_LOCK_ACTION, _("Unsafely Force Locking")),
         (constants.RESET_ACTION, _("Resetting")),
         (constants.REBOOT_ACTION, _("Rebooting")),
         (constants.REINSTALL_ACTION, _("Reinstalling")),
@@ -926,6 +927,7 @@ class HostUpdate(object):
         self._notify_vim_add_host = False
         self._notify_action_lock = False
         self._notify_action_lock_force = False
+        self._notify_action_lock_force_unsafe = False
         self._skip_notify_mtce = False
         self._bm_type_changed_to_none = False
         self._nextstep = self.CONTINUE
@@ -1005,6 +1007,14 @@ class HostUpdate(object):
     @notify_action_lock_force.setter
     def notify_action_lock_force(self, val):
         self._notify_action_lock_force = val
+
+    @property
+    def notify_action_lock_force_unsafe(self):
+        return self._notify_action_lock_force_unsafe
+
+    @notify_action_lock_force_unsafe.setter
+    def notify_action_lock_force_unsafe(self, val):
+        self._notify_action_lock_force_unsafe = val
 
     @property
     def ihost_val_prenotify(self):
@@ -2153,7 +2163,8 @@ class HostController(rest.RestController):
                 LOG.warn(_("No response vim_api %s on action=%s e=%s" %
                          (ihost_obj['hostname'], action, e)))
                 self._api_token = None
-                if action == constants.FORCE_LOCK_ACTION:
+                if (action == constants.FORCE_LOCK_ACTION or
+                   action == constants.FORCE_UNSAFE_LOCK_ACTION):
                     pass
                 else:
                     # reject continuation if VIM rejects action
@@ -2182,7 +2193,7 @@ class HostController(rest.RestController):
         # Evaluate app reapply on lock/unlock/swact/reinstall
         if (not os.path.isfile(tsc.RESTORE_IN_PROGRESS_FLAG) and
                 patched_ihost.get('action') in
-                [constants.LOCK_ACTION, constants.FORCE_LOCK_ACTION,
+                [constants.LOCK_ACTION, constants.FORCE_LOCK_ACTION, constants.FORCE_UNSAFE_LOCK_ACTION,
                  constants.UNLOCK_ACTION, constants.FORCE_UNLOCK_ACTION,
                  constants.SWACT_ACTION, constants.FORCE_SWACT_ACTION,
                  constants.REINSTALL_ACTION]):
@@ -2220,6 +2231,8 @@ class HostController(rest.RestController):
                     new_ihost_mtc['action'] = constants.LOCK_ACTION
                 elif hostupdate.notify_action_lock_force:
                     new_ihost_mtc['action'] = constants.FORCE_LOCK_ACTION
+                elif hostupdate.notify_action_lock_force_unsafe:
+                    new_ihost_mtc['action'] = constants.FORCE_UNSAFE_LOCK_ACTION
                 elif myaction == constants.FORCE_UNLOCK_ACTION:
                     new_ihost_mtc['action'] = constants.UNLOCK_ACTION
 
@@ -2485,7 +2498,7 @@ class HostController(rest.RestController):
         if (personality is not None and
                 personality.find(constants.STORAGE_HOSTNAME) != -1 and
                 not skip_ceph_checks):
-            utils.check_node_lock_ceph_mon(ihost, force=True, ceph_helper=self._ceph)
+            utils.check_node_lock_ceph_mon(ihost, unsafe=True, ceph_helper=self._ceph)
 
             # If it is the last storage node to delete, we need to delete
             # ceph osd pools and update additional tier status to "defined"
@@ -4756,6 +4769,7 @@ class HostController(rest.RestController):
                          constants.FORCE_UNLOCK_ACTION,
                          constants.LOCK_ACTION,
                          constants.FORCE_LOCK_ACTION,
+                         constants.FORCE_UNSAFE_LOCK_ACTION,
                          constants.SWACT_ACTION,
                          constants.FORCE_SWACT_ACTION,
                          constants.RESET_ACTION,
@@ -4824,6 +4838,9 @@ class HostController(rest.RestController):
                 rc = self.update_ihost_action(action, hostupdate)
         elif action == constants.FORCE_LOCK_ACTION:
             if self.check_force_lock(hostupdate):
+                rc = self.update_ihost_action(action, hostupdate)
+        elif action == constants.FORCE_UNSAFE_LOCK_ACTION:
+            if self.check_force_unsafe_lock(hostupdate):
                 rc = self.update_ihost_action(action, hostupdate)
         elif action == constants.SWACT_ACTION:
             self.check_swact(hostupdate)
@@ -5188,6 +5205,8 @@ class HostController(rest.RestController):
             preval = {'ihost_action': ''}
         elif action == constants.FORCE_LOCK_ACTION:
             preval = {'ihost_action': constants.FORCE_LOCK_ACTION}
+        elif action == constants.FORCE_UNSAFE_LOCK_ACTION:
+            preval = {'ihost_action': constants.FORCE_UNSAFE_LOCK_ACTION}
         elif action == constants.LOCK_ACTION:
             preval = {'ihost_action': constants.LOCK_ACTION}
         elif (action == constants.UNLOCK_ACTION or
@@ -5468,7 +5487,8 @@ class HostController(rest.RestController):
         if hostupdate.ihost_orig['administrative'] == constants.ADMIN_UNLOCKED:
             host_action = hostupdate.ihost_orig['ihost_action'] or ""
             if (host_action.startswith(constants.LOCK_ACTION) or
-                    host_action.startswith(constants.FORCE_LOCK_ACTION)):
+                    host_action.startswith(constants.FORCE_LOCK_ACTION) or
+                        host_action.startswith(constants.FORCE_UNSAFE_LOCK_ACTION)):
                 raise exception.HostLocking(
                     host=hostupdate.ihost_orig['hostname'],
                     action=host_action.strip('-'))
@@ -5663,6 +5683,16 @@ class HostController(rest.RestController):
 
         return True
 
+    def check_force_unsafe_lock(self, hostupdate):
+        # personality specific lock checks
+        personality = hostupdate.ihost_patch.get('personality')
+        if personality == constants.CONTROLLER:
+            self.check_lock_controller(hostupdate, force=True, unsafe=True)
+
+        elif personality == constants.STORAGE:
+            self.check_lock_storage(hostupdate, force=True, unsafe=True)
+        return True
+
     def check_force_lock(self, hostupdate):
         # personality specific lock checks
         personality = hostupdate.ihost_patch.get('personality')
@@ -5673,7 +5703,7 @@ class HostController(rest.RestController):
             self.check_lock_storage(hostupdate, force=True)
         return True
 
-    def check_lock_controller(self, hostupdate, force=False):
+    def check_lock_controller(self, hostupdate, force=False, unsafe=False):
         """Pre lock semantic checks for controller"""
 
         LOG.info("%s ihost check_lock_controller" % hostupdate.displayid)
@@ -5726,13 +5756,18 @@ class HostController(rest.RestController):
                 # never happen.
                 return
 
-            # TODO(oponcea) remove once SM supports in-service config reload
-            # Allow locking controllers when all storage nodes are locked.
+            # Do not allow locking controllers when all storage nodes are locked.
+            # Allow lock if unsafe=True
             if stor_model == constants.CEPH_STORAGE_MODEL:
                 for node in st_nodes:
                     if (node['administrative'] == constants.ADMIN_UNLOCKED):
                         break
                 else:
+                    if not unsafe:
+                        raise wsme.exc.ClientSideError(
+                            _("Rejected: Can not lock host %s when storage nodes are locked "
+                            "Use --force_unsafe if you wish to lock anyway."
+                            % hostupdate.displayid))
                     return
 
             if (hostupdate.ihost_orig['administrative'] ==
@@ -5742,7 +5777,7 @@ class HostController(rest.RestController):
                 # If the node is unlocked and enabled we need to check that we
                 # have enough storage monitors.
                 utils.check_node_lock_ceph_mon(
-                    hostupdate.ihost_orig, force=force, ceph_helper=self._ceph)
+                    hostupdate.ihost_orig, unsafe=unsafe, ceph_helper=self._ceph)
 
         if not force:
             # sm-lock-pre-check
@@ -6352,7 +6387,7 @@ class HostController(rest.RestController):
                     raise wsme.exc.ClientSideError(
                         _("Swact action not allowed. %s apply is in progress." % _app.name))
 
-    def check_lock_storage(self, hostupdate, force=False):
+    def check_lock_storage(self, hostupdate, force=False, unsafe=False):
         """Pre lock semantic checks for storage"""
         LOG.info("%s ihost check_lock_storage" % hostupdate.displayid)
 
@@ -6375,7 +6410,7 @@ class HostController(rest.RestController):
                 hostupdate.ihost_orig['operational'] ==
                 constants.OPERATIONAL_ENABLED):
             utils.check_node_lock_ceph_mon(
-                hostupdate.ihost_orig, force=force, ceph_helper=self._ceph)
+                hostupdate.ihost_orig, unsafe=unsafe, ceph_helper=self._ceph)
 
             storage_nodes = pecan.request.dbapi.ihost_get_by_personality(
                 constants.STORAGE)
@@ -6389,7 +6424,8 @@ class HostController(rest.RestController):
                     ihost_action_locking = False
                     ihost_action = node['ihost_action'] or ""
 
-                    if (ihost_action.startswith(constants.FORCE_LOCK_ACTION) or
+                    if (ihost_action.startswith(constants.FORCE_UNSAFE_LOCK_ACTION) or
+                       ihost_action.startswith(constants.FORCE_LOCK_ACTION) or
                        ihost_action.startswith(constants.LOCK_ACTION)):
                         ihost_action_locking = True
 
@@ -6447,7 +6483,7 @@ class HostController(rest.RestController):
                                 "and replication is lost. This may result in data loss. ")
                         raise wsme.exc.ClientSideError(msg)
 
-    def check_lock_worker(self, hostupdate, force=False):
+    def check_lock_worker(self, hostupdate, force=False, unsafe=False):
         """Pre lock semantic checks for worker"""
 
         hostname = hostupdate.ihost_patch.get('hostname')
@@ -6520,7 +6556,7 @@ class HostController(rest.RestController):
                     hostupdate.ihost_orig['operational'] ==
                     constants.OPERATIONAL_ENABLED):
                 utils.check_node_lock_ceph_mon(
-                    hostupdate.ihost_orig, force=force, ceph_helper=self._ceph)
+                    hostupdate.ihost_orig, unsafe=unsafe, ceph_helper=self._ceph)
 
     def check_unlock_interfaces(self, hostupdate):
         """Semantic check for interfaces on host-unlock."""
@@ -6690,6 +6726,8 @@ class HostController(rest.RestController):
             self._handle_lock_action(hostupdate)
         elif action == constants.FORCE_LOCK_ACTION:
             self._handle_force_lock_action(hostupdate)
+        elif action == constants.FORCE_UNSAFE_LOCK_ACTION:
+            self._handle_force_unsafe_lock_action(hostupdate)
         elif action == constants.SWACT_ACTION:
             self._stage_swact(hostupdate)
         elif action == constants.FORCE_SWACT_ACTION:
@@ -6861,7 +6899,8 @@ class HostController(rest.RestController):
 
         ihost_task_string = ihost['ihost_action'] or ""
         if ((ihost_task_string.startswith(constants.LOCK_ACTION) or
-           ihost_task_string.startswith(constants.FORCE_LOCK_ACTION)) and
+           ihost_task_string.startswith(constants.FORCE_LOCK_ACTION) or
+           ihost_task_string.startswith(constants.FORCE_UNSAFE_LOCK_ACTION)) and
            ihost['administrative'] != constants.ADMIN_LOCKED):
             # passed - skip reset for force-lock
             # iHost['ihost_action'] = constants.LOCK_ACTION
@@ -6929,6 +6968,10 @@ class HostController(rest.RestController):
             # allow mtce to reset the host
             hostupdate.notify_mtce = True
             hostupdate.notify_action_lock_force = True
+        elif ihost_task_string.startswith(constants.FORCE_UNSAFE_LOCK_ACTION):
+            # allow mtce to reset the host
+            hostupdate.notify_mtce = True
+            hostupdate.notify_action_lock_force_unsafe = True
         else:
             hostupdate.skip_notify_mtce = True
             LOG.warn("%s Skipping vim services disable notification task=%s" %
@@ -7026,6 +7069,17 @@ class HostController(rest.RestController):
         hostupdate.notify_vim_action = True
         hostupdate.skip_notify_mtce = True
         val = {'ihost_action': constants.FORCE_LOCK_ACTION}
+        hostupdate.ihost_val_prenotify_update(val)
+        hostupdate.ihost_val.update(val)
+
+    @staticmethod
+    def _handle_force_unsafe_lock_action(hostupdate):
+        """Handle host-force-unsafe-lock action."""
+        LOG.info("%s _handle_force_unsafe_lock_action" % hostupdate.displayid)
+
+        hostupdate.notify_vim_action = True
+        hostupdate.skip_notify_mtce = True
+        val = {'ihost_action': constants.FORCE_UNSAFE_LOCK_ACTION}
         hostupdate.ihost_val_prenotify_update(val)
         hostupdate.ihost_val.update(val)
 

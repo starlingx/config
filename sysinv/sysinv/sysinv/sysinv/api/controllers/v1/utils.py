@@ -583,7 +583,7 @@ def check_all_ceph_mon_growth(ceph_mon_gib, host=None):
             cgtsvg_max_free_gib)
 
 
-def check_node_lock_ceph_mon(ihost, force=False, ceph_helper=None):
+def check_node_lock_ceph_mon(ihost, unsafe=False, ceph_helper=None):
     if not ceph_helper:
         ceph_helper = ceph.CephApiOperator()
 
@@ -594,13 +594,14 @@ def check_node_lock_ceph_mon(ihost, force=False, ceph_helper=None):
 
     if (num_monitors <= required_monitors
             and is_in_active_monitors
-            and not force):
+            and not unsafe):
         raise wsme.exc.ClientSideError(_(
                 "Only %d storage "
                 "monitor available. At least %d unlocked and "
                 "enabled hosts with monitors are required. Please"
                 " ensure hosts with monitors are unlocked and "
-                "enabled.") %
+                "enabled."
+                "Use --force --unsafe if you wish to lock anyway.") %
                 (num_monitors, required_monitors))
 
 

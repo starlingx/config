@@ -830,7 +830,8 @@ class CephApiOperator(object):
             ihost = db_api.ihost_get(mon['forihostid'])
             host_action = ihost['ihost_action'] or ""
             locking = (host_action.startswith(constants.LOCK_ACTION) or
-                       host_action.startswith(constants.FORCE_LOCK_ACTION))
+                       host_action.startswith(constants.FORCE_LOCK_ACTION) or
+                       host_action.startswith(constants.FORCE_UNSAFE_LOCK_ACTION))
             if (ihost['administrative'] == constants.ADMIN_UNLOCKED and
                ihost['operational'] == constants.OPERATIONAL_ENABLED and
                not locking):

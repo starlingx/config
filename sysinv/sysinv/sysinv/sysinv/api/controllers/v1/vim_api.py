@@ -101,7 +101,8 @@ def vim_host_action(token, uuid, hostname, action, timeout):
     response = None
     _valid_actions = [constants.UNLOCK_ACTION,
                       constants.LOCK_ACTION,
-                      constants.FORCE_LOCK_ACTION]
+                      constants.FORCE_LOCK_ACTION,
+                      constants.FORCE_UNSAFE_LOCK_ACTION]
 
     if action not in _valid_actions:
         LOG.error("Unrecognized vim_host_action=%s" % action)
