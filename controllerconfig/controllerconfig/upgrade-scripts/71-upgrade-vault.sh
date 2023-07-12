@@ -6,18 +6,21 @@
 #
 # This migration script is used for replacing an app during the
 # activate stage of a platform upgrade. The app is not otherwise
-# handled by 65-k8s-app-upgrade.sh.  The code will:
+# handled by 65-k8s-app-upgrade.sh. The code will:
 # - remove the old app version
 # - run app specific code inserted into this script
 # - apply the new app version
 #
-# The script is based on 64-upgrade-cert-manager.sh.  Logic for
+# The script is based on 64-upgrade-cert-manager.sh. Logic for
 # determining application versions is copied from 65-k8s-app-upgrade.sh
 # application upgrade script in order to keep things consistent.
 #
 # This script is intended initially as a generic template.
 #
-# The current copy is written for vault
+# The current copy is written for vault. Vault server has a specific
+# procedure required for upgrading. This procedure can be omitted during
+# platform upgrade by deleting the application and uploading the new
+# version.
 
 # The migration scripts are passed these parameters:
 NAME=$(basename $0)
@@ -29,8 +32,7 @@ STATE_APPLIED="applied"
 STATE_UPLOADED="uploaded"
 
 ACCEPTED_ACTION="activate"
-ACCEPTED_FROM="21.12"
-ACCEPTED_TO="22.12"
+ACCEPTED_FROM="22.12"
 
 EXISTING_APP_NAME='vault'
 
@@ -60,27 +62,10 @@ if [ "${ACTION}" != "${ACCEPTED_ACTION}" ]; then
     exit 0
 fi
 
-# only run if from 21.12 release
+# only run if from 22.12 release
 if [ "${FROM_RELEASE}" != "${ACCEPTED_FROM}" ]; then
     log "$NAME: omit action for from release $FROM_RELEASE"
     exit 0
-fi
-
-# only run if to 22.12 release
-if [ "${TO_RELEASE}" != "${ACCEPTED_TO}" ]; then
-    log "$NAME: omit action for to release $TO_RELEASE"
-    exit 0
-fi
-
-KUBE_CMD="kubectl --kubeconfig=/etc/kubernetes/admin.conf"
-
-# kubectl sanity
-# if kube is configured correctly this should return 0
-$KUBE_CMD get ns
-if [ $? -ne 0 ]; then
-    # this is a sanity condition, do not try to continue
-    log "$NAME: sanity: kubectl command failed; abort app upgrade"
-    exit 1
 fi
 
 EXISTING_APP_INFO=$(
@@ -104,32 +89,6 @@ EXISTING_APP_STATUS=$(
 )
 ORIGINAL_APP_STATUS=$EXISTING_APP_STATUS
 
-# vault has cert-manager.io resources that are not compatible
-# between 21.12 and 22.12.  vault will work normally when those
-# resources are deleteed - albiet after recreating the CA and server
-# certificates
-JPATH='{range .items[*]}{.metadata.name}{" "}{.metadata.ownerReferences[?(@.name=="vault-server-tls")].name}{"\n"}{end}'
-
-function vault_specific_handling {
-    $KUBE_CMD delete certificate --ignore-not-found=true --wait=true \
-        -n vault vault-server-tls
-    $KUBE_CMD delete issuer --ignore-not-found=true --wait=true \
-        -n vault ca-issuer
-    $KUBE_CMD delete secret --ignore-not-found=true --wait=true \
-        -n vault vault-server-tls
-
-    CERT_REQ="$(
-        $KUBE_CMD get certificaterequests --ignore-not-found=true \
-            -n vault \
-            -o jsonpath="$JPATH" \
-        | grep " vault-server-tls$" \
-        | gawk '{print $1}'
-    )"
-    if [ -n "$CERT_REQ" ]; then
-        $KUBE_CMD delete certificaterequests --wait=true -n vault $CERT_REQ
-    fi
-}
-
 # Extract the app name and version from the tarball name: app_name-version.tgz
 UPGRADE_TARBALL="$(
     find $PLATFORM_APPLICATION_PATH -name "${EXISTING_APP_NAME}*.tgz"
@@ -138,7 +97,7 @@ filecount="$( echo "$UPGRADE_TARBALL" | wc -w )"
 if [ -z "$UPGRADE_TARBALL" -o "$filecount" -ne 1 ]; then
     # this is a sanity condition, unexpected, do not try to continue
     log "$NAME: ${EXISTING_APP_NAME}, version ${EXISTING_APP_VERSION}," \
-        "upgrade tarball not found (${filecount}).  Exiting for manual" \
+        "upgrade tarball not found (${filecount}). Exiting for manual" \
         "intervention..."
     exit 1
 fi
@@ -220,9 +179,6 @@ if [ $tries == $DELETE_RESULT_ATTEMPTS ]; then
         "intervention..."
     exit 1
 fi
-
-# delete the cert-manager.io resources
-vault_specific_handling
 
 # upload new app version
 log "$NAME: Uploading ${UPGRADE_APP_NAME}, version ${UPGRADE_APP_VERSION}" \
