@@ -16727,6 +16727,9 @@ class ConductorManager(service.PeriodicService):
                 'commonName': 'kube-apiserver-kubelet-client',
                 'duration': str(duration) + 'h',
                 'renewBefore': renew_before,
+                'subject': {
+                    'organizations': ['system:masters']
+                },
                 'usages': usages,
                 'issuerRef': issuer_reference
             }
