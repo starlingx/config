@@ -9,7 +9,10 @@ import copy
 from netaddr import IPAddress
 from oslo_log import log
 from sysinv.common import constants
+from sysinv.common import exception
 from sysinv.common import platform_firewall as firewall
+from sysinv.common.storage_backend_conf import StorageBackendConfig
+from sysinv.common import utils as cutils
 from sysinv.puppet import base
 from sysinv.puppet import interface as puppet_intf
 
@@ -21,12 +24,14 @@ FIREWALL_GNP_PXEBOOT_CFG = 'platform::firewall::calico::pxeboot::config'
 FIREWALL_GNP_STORAGE_CFG = 'platform::firewall::calico::storage::config'
 FIREWALL_GNP_ADMIN_CFG = 'platform::firewall::calico::admin::config'
 FIREWALL_HE_INTERFACE_CFG = 'platform::firewall::calico::hostendpoint::config'
+FIREWALL_GNP_OAM_CFG = 'platform::firewall::calico::oam::config'
 
 PLATFORM_FIREWALL_CLASSES = {constants.NETWORK_TYPE_PXEBOOT: FIREWALL_GNP_PXEBOOT_CFG,
                              constants.NETWORK_TYPE_MGMT: FIREWALL_GNP_MGMT_CFG,
                              constants.NETWORK_TYPE_CLUSTER_HOST: FIREWALL_GNP_CLUSTER_HOST_CFG,
                              constants.NETWORK_TYPE_STORAGE: FIREWALL_GNP_STORAGE_CFG,
-                             constants.NETWORK_TYPE_ADMIN: FIREWALL_GNP_ADMIN_CFG}
+                             constants.NETWORK_TYPE_ADMIN: FIREWALL_GNP_ADMIN_CFG,
+                             constants.NETWORK_TYPE_OAM: FIREWALL_GNP_OAM_CFG}
 
 
 class PlatformFirewallPuppet(base.BasePuppet):
@@ -53,7 +58,8 @@ class PlatformFirewallPuppet(base.BasePuppet):
             FIREWALL_GNP_PXEBOOT_CFG: {},
             FIREWALL_GNP_CLUSTER_HOST_CFG: {},
             FIREWALL_GNP_STORAGE_CFG: {},
-            FIREWALL_GNP_ADMIN_CFG: {}
+            FIREWALL_GNP_ADMIN_CFG: {},
+            FIREWALL_GNP_OAM_CFG: {}
         }
 
         dc_role = _get_dc_role(self.dbapi)
@@ -73,9 +79,12 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 iftype_lbl = list()
                 for intf_network in intf_networks:
                     network = self.dbapi.network_get(intf_network.network_uuid)
-                    if (network.type == constants.NETWORK_TYPE_OAM):
-                        continue
-                    if network.pool_uuid:
+                    if (network.type == constants.NETWORK_TYPE_OAM and network.pool_uuid
+                            and host.personality == constants.CONTROLLER):
+                        iftype_lbl.append(network.type)
+                        firewall_networks.add(network)
+                        intf_ep[intf.uuid] = [intf, ""]
+                    elif network.pool_uuid:
                         iftype_lbl.append(network.type)
                         firewall_networks.add(network)
                         intf_ep[intf.uuid] = [intf, ""]
@@ -107,6 +116,10 @@ class PlatformFirewallPuppet(base.BasePuppet):
 
             self._get_basic_firewall_gnp(host, firewall_networks, config)
             networks = {network.type: network for network in firewall_networks}
+
+            if (config[FIREWALL_GNP_OAM_CFG]):
+                self._set_rules_oam(config[FIREWALL_GNP_OAM_CFG],
+                                    networks[constants.NETWORK_TYPE_OAM], host, dc_role)
 
             if (config[FIREWALL_GNP_MGMT_CFG]):
                 self._set_rules_mgmt(config[FIREWALL_GNP_MGMT_CFG],
@@ -172,9 +185,15 @@ class PlatformFirewallPuppet(base.BasePuppet):
 
             host_endpoints.update({"spec": dict()})
             host_endpoints["spec"].update({"node": host.hostname})
-            # host_endpoints["spec"].update({"expectedIPs": list()})
             interfaceName = puppet_intf.get_interface_os_ifname(self.context, intf)
             host_endpoints["spec"].update({"interfaceName": interfaceName})
+
+            # adding only for OAM for compatibility with old implementation
+            if constants.NETWORK_TYPE_OAM in iftype:
+                hep_name = host.hostname + "-oam-if-hep"
+                host_endpoints["metadata"]["name"] = hep_name
+                self._add_hep_expected_ip(host, constants.NETWORK_TYPE_OAM, host_endpoints)
+
             config[hep_name] = copy.copy(host_endpoints)
 
     def _get_basic_firewall_gnp(self, host, firewall_networks, config):
@@ -187,8 +206,6 @@ class PlatformFirewallPuppet(base.BasePuppet):
         """
 
         for network in firewall_networks:
-            if (network.type == constants.NETWORK_TYPE_OAM):
-                continue
 
             gnp_name = host.personality + "-" + network.type + "-if-gnp"
             addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
@@ -233,6 +250,36 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 rule.update({"action": "Allow"})
                 firewall_gnp["spec"]["ingress"].append(rule)
             config[PLATFORM_FIREWALL_CLASSES[network.type]] = copy.copy(firewall_gnp)
+
+    def _set_rules_oam(self, gnp_config, network, host, dc_role):
+        """ Fill the OAM network specific filtering data
+
+        :param gnp_config: the dict containing the hiera data to be filled
+        :param network: the sysinv.object.network object for this network
+        """
+
+        tcp_ports = self._get_oam_common_tcp_ports()
+
+        if (dc_role != constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+            http_service_port = self._get_http_service_port()
+            if (http_service_port):
+                tcp_ports.append(http_service_port)
+
+        if (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
+            tcp_ports.extend(self._get_oam_dc_tcp_ports())
+
+        if (_is_ceph_enabled(self.dbapi)):
+            tcp_ports.append(constants.PLATFORM_CEPH_PARAMS_RGW_PORT)
+
+        udp_ports = self._get_oam_common_udp_ports()
+
+        tcp_ports.sort()
+        udp_ports.sort()
+        for rule in gnp_config["spec"]["ingress"]:
+            if rule["protocol"] == "TCP":
+                rule.update({"destination": {"ports": tcp_ports}})
+            elif rule["protocol"] == "UDP":
+                rule.update({"destination": {"ports": udp_ports}})
 
     def _set_rules_mgmt(self, gnp_config, network, host):
         """ Fill the management network specific filtering data
@@ -501,7 +548,9 @@ class PlatformFirewallPuppet(base.BasePuppet):
         """ Get the TCP L4 ports for subclouds
         """
         port_list = list(firewall.SUBCLOUD["tcp"].keys())
-        port_list.append(self._get_http_service_port())
+        http_service_port = self._get_http_service_port()
+        if (http_service_port):
+            port_list.append(http_service_port)
         port_list.sort()
         return port_list
 
@@ -516,7 +565,9 @@ class PlatformFirewallPuppet(base.BasePuppet):
         """ Get the TCP L4 ports for systemcontroller
         """
         port_list = list(firewall.SYSTEMCONTROLLER["tcp"].keys())
-        port_list.append(self._get_http_service_port())
+        http_service_port = self._get_http_service_port()
+        if (http_service_port):
+            port_list.append(http_service_port)
         port_list.sort()
         return port_list
 
@@ -527,20 +578,43 @@ class PlatformFirewallPuppet(base.BasePuppet):
         port_list.sort()
         return port_list
 
+    def _get_oam_common_tcp_ports(self):
+        """ Get the TCP L4 ports for OAM networks
+        """
+        port_list = list(firewall.OAM_COMMON["tcp"])
+        port_list.sort()
+        return port_list
+
+    def _get_oam_common_udp_ports(self):
+        """ Get the TCP L4 ports for OAM networks
+        """
+        port_list = list(firewall.OAM_COMMON["udp"])
+        port_list.sort()
+        return port_list
+
+    def _get_oam_dc_tcp_ports(self):
+        """ Get the TCP L4 ports for subclouds
+        """
+        port_list = list(firewall.OAM_DC["tcp"])
+        port_list.sort()
+        return port_list
+
     def _get_http_service_port(self):
         """ Get the HTTP port from the service-parameter database
         """
         tcp_port = 0
+        service_name = "http_port"
         if _is_https_enabled(self.dbapi):
-            https_port = self.dbapi.service_parameter_get_one(service="http",
-                                                              section="config",
-                                                              name="https_port")
-            tcp_port = int(https_port.value)
-        else:
-            http_port = self.dbapi.service_parameter_get_one(service="http",
-                                                             section="config",
-                                                             name="http_port")
-            tcp_port = int(http_port.value)
+            service_name = "https_port"
+
+        try:
+            web_port = self.dbapi.service_parameter_get_one(service="http",
+                                                            section="config",
+                                                            name=service_name)
+            tcp_port = int(web_port.value)
+        except exception.NotFound:
+            LOG.info("cannot retrieve web service port")
+
         return tcp_port
 
     def _get_dhcp_rule(self, personality, proto, ip_version):
@@ -553,6 +627,28 @@ class PlatformFirewallPuppet(base.BasePuppet):
         rule.update({"action": "Allow"})
         rule.update({"destination": {"ports": [67]}})
         return rule
+
+    def _add_hep_expected_ip(self, host, net_type, host_endpoints):
+        address_name = str()
+        if cutils.is_aio_simplex_system(self.dbapi):
+            address_name = cutils.format_address_name(constants.CONTROLLER_HOSTNAME, net_type)
+        else:
+            if host.hostname == constants.CONTROLLER_0_HOSTNAME:
+                address_name = cutils.format_address_name(constants.CONTROLLER_0_HOSTNAME, net_type)
+            elif host.hostname == constants.CONTROLLER_1_HOSTNAME:
+                address_name = cutils.format_address_name(constants.CONTROLLER_1_HOSTNAME, net_type)
+
+        address = None
+        try:
+            address = self.dbapi.address_get_by_name(address_name)
+        except exception.AddressNotFoundByName:
+            LOG.info(f"cannot find address:{address_name} for net_type:{net_type} expectedIPs")
+
+        if (address):
+            if ("expectedIPs" in host_endpoints["spec"].keys()):
+                host_endpoints["spec"]["expectedIPs"].append(str(address.address))
+            else:
+                host_endpoints["spec"].update({"expectedIPs": [str(address.address)]})
 
 
 def _get_dc_role(dbapi):
@@ -572,3 +668,17 @@ def _is_https_enabled(dbapi):
         return False
     system = dbapi.isystem_get_one()
     return system.capabilities.get('https_enabled', False)
+
+
+def _is_ceph_enabled(dbapi):
+    ceph_backend = StorageBackendConfig.get_backend_conf(
+        dbapi, constants.CINDER_BACKEND_CEPH)
+    if not ceph_backend:
+        return False  # ceph is not configured
+
+    ceph_mon_ips = StorageBackendConfig.get_ceph_mon_ip_addresses(
+        dbapi)
+
+    if not ceph_mon_ips:
+        return False  # system configuration is not yet ready
+    return True

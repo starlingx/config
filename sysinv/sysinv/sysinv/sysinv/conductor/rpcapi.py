@@ -2216,3 +2216,11 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          self.make_msg('report_kernel_running',
                                        ihost_uuid=ihost_uuid,
                                        kernel_running=kernel_running))
+
+    def request_firewall_runtime_update(self, context, host_uuid):
+        """ Sent from sysinv-agent, request the firewall update via runtime manifest
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('request_firewall_runtime_update',
+                                                host_uuid=host_uuid))

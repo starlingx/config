@@ -1605,6 +1605,14 @@ class AgentManager(service.PeriodicService):
                     LOG.exception("Exception updating fpga devices.")
                     pass
 
+            # if the platform firewall failed to be applied (by not having kube-api available
+            # during AIO manifest execution) in the stand-by controller ask for conductor to
+            # reapply
+            if os.path.isfile(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED) \
+                    and (not os.path.exists(tsc.CONFIG_PATH)):
+                LOG.info("platform firewall config requested")
+                rpcapi.request_firewall_runtime_update(icontext, self._ihost_uuid)
+
             # Notify conductor of inventory completion after necessary
             # inventory reports have been sent to conductor.
             # This is as defined by _conditions_for_inventory_complete_met().

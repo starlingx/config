@@ -6138,7 +6138,18 @@ class ConductorManager(service.PeriodicService):
 
             if (os.path.isfile(oam_config_runtime_apply_file) or
                os.path.isfile(constants.HTTPS_CONFIG_REQUIRED) or
-               os.path.isfile(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED)):
+               os.path.isfile(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED) or
+               os.path.isfile(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED)):
+
+                manifest = ['openstack::keystone::endpoint::runtime',
+                            'platform::firewall::runtime',
+                            'platform::nfv::runtime']
+
+                # if the only change is the firewall, run only that.
+                if (os.path.isfile(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED)
+                    and not (os.path.isfile(constants.HTTPS_CONFIG_REQUIRED)
+                             or os.path.isfile(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED))):
+                    manifest = ['platform::firewall::runtime']
 
                 if cutils.is_initial_config_complete():
                     # apply keystone changes to current active controller
@@ -6148,9 +6159,7 @@ class ConductorManager(service.PeriodicService):
                     config_dict = {
                         "personalities": personalities,
                         "host_uuids": [active_host.uuid],
-                        "classes": ['openstack::keystone::endpoint::runtime',
-                                    'platform::firewall::runtime',
-                                    'platform::nfv::runtime']
+                        "classes": manifest
                     }
                     self._config_apply_runtime_manifest(
                         context, config_uuid, config_dict)
@@ -6164,6 +6173,9 @@ class ConductorManager(service.PeriodicService):
                     if os.path.isfile(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED):
                         LOG.info("admin endpoint config applied %s" % config_dict)
                         os.remove(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED)
+                    if os.path.isfile(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED):
+                        LOG.info("platform firewall config applied %s" % config_dict)
+                        os.remove(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED)
 
             # apply filesystem config changes if all controllers at target
             standby_config_target_flipped = None
@@ -8281,6 +8293,26 @@ class ConductorManager(service.PeriodicService):
             "classes": ['platform::kubernetes::worker::pci::runtime'],
             puppet_common.REPORT_INVENTORY_UPDATE:
                 puppet_common.REPORT_PCI_SRIOV_CONFIG,
+        }
+
+        self._config_apply_runtime_manifest(
+            context, config_uuid, config_dict, force=True)
+
+    def request_firewall_runtime_update(self, context, host_uuid):
+        """Update the system firewall configuration.
+
+        :param context: an admin context.
+        :param host_uuid: the requesting host uuid.
+        """
+        # update manifest files and notify agent to apply them
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities,
+                                                host_uuids=[host_uuid])
+
+        config_dict = {
+            "personalities": personalities,
+            'host_uuids': [host_uuid],
+            "classes": ['platform::firewall::runtime']
         }
 
         self._config_apply_runtime_manifest(
