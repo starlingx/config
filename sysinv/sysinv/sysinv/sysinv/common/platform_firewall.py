@@ -13,6 +13,7 @@ OAM_COMMON = {
             constants.PLATFORM_FIREWALL_KUBE_APISERVER_PORT,
             constants.PLATFORM_NFV_PARAMS_API_PORT,
             constants.PLATFORM_PATCHING_PARAMS_PUBLIC_PORT,
+            constants.PLATFORM_USM_PARAMS_PUBLIC_PORT,
             constants.PLATFORM_SYSINV_PARAMS_API_PORT,
             constants.PLATFORM_SMAPI_PARAMS_PORT,
             constants.PLATFORM_DOCKER_PARAMS_REGISTRY_PORT,
@@ -37,6 +38,7 @@ OAM_DC = {
             constants.PLATFORM_DCMANAGER_PARAMS_API_PORT,
             constants.PLATFORM_DCORCH_PARAMS_SYSINV_API_PROXY_PORT,
             constants.PLATFORM_DCORCH_PARAMS_PATCH_API_PROXY_PORT,
+            constants.PLATFORM_DCORCH_PARAMS_USM_API_PROXY_PORT,
             constants.PLATFORM_DCORCH_PARAMS_IDENTITY_API_PROXY_PORT
         }
 }
@@ -52,6 +54,7 @@ SYSTEMCONTROLLER = \
             4546: "stx-nfv",
             5001: "keystone-api",
             5492: "patching-api",
+            5498: "usm-api",
             6386: "sysinv-api",
             constants.PLATFORM_FIREWALL_KUBE_APISERVER_PORT: "K8s API server",
             8220: "dcdbsync-api",
@@ -84,6 +87,7 @@ SUBCLOUD = \
             4546: "stx-nfv",
             5001: "keystone-api",
             5492: "patching-api",
+            5498: "usm-api",
             6386: "sysinv-api",
             8220: "dcdbsync-api",
             constants.PLATFORM_DOCKER_PARAMS_REGISTRY_PORT: "Docker registry",
@@ -104,6 +108,8 @@ SYSTEM_CONFIG = {
         constants.PLATFORM_NFV_PARAMS_API_PORT,
     "platform::patching::params::public_port":
         constants.PLATFORM_PATCHING_PARAMS_PUBLIC_PORT,
+    "platform::usm::params::public_port":
+        constants.PLATFORM_USM_PARAMS_PUBLIC_PORT,
     "platform::sysinv::params::api_port":
         constants.PLATFORM_SYSINV_PARAMS_API_PORT,
     "platform::docker::params::registry_port":
@@ -124,6 +130,8 @@ SYSTEM_CONFIG = {
         constants.PLATFORM_DCORCH_PARAMS_SYSINV_API_PROXY_PORT,
     "platform::dcorch::params::patch_api_proxy_port":
         constants.PLATFORM_DCORCH_PARAMS_PATCH_API_PROXY_PORT,
+    "platform::dcorch::params::usm_api_proxy_port":
+        constants.PLATFORM_DCORCH_PARAMS_USM_API_PROXY_PORT,
     "platform::dcorch::params::identity_api_proxy_port":
         constants.PLATFORM_DCORCH_PARAMS_IDENTITY_API_PROXY_PORT
 }

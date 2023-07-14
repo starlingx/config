@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2022 Wind River Systems, Inc.
+# Copyright (c) 2018-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -33,6 +33,9 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
     CINDER_SERVICE_PORT = 28776
     PATCHING_SERVICE_PORT = 25491
     PATCHING_SERVICE_PATH = ''
+    # why are these not using the values defined in the constants file
+    USM_SERVICE_PORT = 25497
+    USM_SERVICE_PATH = ''
     NFV_SERVICE_PORT = 4545
     NFV_SERVICE_PATH = ''
     IDENTITY_SERVICE_PORT = 25000
@@ -95,6 +98,9 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
             'dcorch::keystone::auth::patching_proxy_internal_url':
                 self.get_proxy_internal_url(self.PATCHING_SERVICE_PORT,
                                             self.PATCHING_SERVICE_PATH),
+            'dcorch::keystone::auth::usm_proxy_internal_url':
+                self.get_proxy_internal_url(self.USM_SERVICE_PORT,
+                                            self.USM_SERVICE_PATH),
             'dcorch::keystone::auth::identity_proxy_internal_url':
                 self.get_proxy_internal_url(self.IDENTITY_SERVICE_PORT,
                                             self.IDENTITY_SERVICE_PATH),
@@ -120,6 +126,9 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
             'dcorch::keystone::auth::patching_proxy_public_url':
                 self.get_proxy_public_url(self.PATCHING_SERVICE_PORT,
                                           self.PATCHING_SERVICE_PATH),
+            'dcorch::keystone::auth::usm_proxy_public_url':
+                self.get_proxy_public_url(self.USM_SERVICE_PORT,
+                                          self.USM_SERVICE_PATH),
             'dcorch::keystone::auth::nfv_proxy_public_url':
                 self.get_proxy_public_url(self.NFV_SERVICE_PORT,
                                           self.NFV_SERVICE_PATH),
@@ -136,6 +145,9 @@ class DCOrchPuppet(openstack.OpenstackBasePuppet):
             'dcorch::keystone::auth::patching_proxy_admin_url':
                 self.get_proxy_admin_url(self.PATCHING_SERVICE_PORT,
                                          self.PATCHING_SERVICE_PATH),
+            'dcorch::keystone::auth::usm_proxy_admin_url':
+                self.get_proxy_admin_url(self.USM_SERVICE_PORT,
+                                         self.USM_SERVICE_PATH),
             'dcorch::keystone::auth::nfv_proxy_admin_url':
                 self.get_proxy_admin_url(self.NFV_SERVICE_PORT,
                                          self.NFV_SERVICE_PATH),
