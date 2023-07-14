@@ -510,7 +510,7 @@ class TestDelete(NetworkTestCase):
         self._test_delete_allowed(constants.NETWORK_TYPE_ADMIN)
 
     def test_delete_admin_subnet_after_initial_config(self):
-        self._test_delete_after_initial_config_not_allowed(
+        self._test_delete_after_initial_config_allowed(
             constants.NETWORK_TYPE_ADMIN)
 
     def test_delete_data(self):
