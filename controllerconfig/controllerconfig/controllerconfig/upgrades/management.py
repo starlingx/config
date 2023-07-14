@@ -235,8 +235,8 @@ def create_simplex_backup(software_upgrade):
         software_upgrade)
     backup_vars = [
         "platform_backup_file=%s.tgz" % upgrade_data,
-        "docker_local_registry_backup_file=%s.tgz" % upgrade_images_data,
-        "backup_user_local_registry=true",
+        "user_images_backup_file=%s.tgz" % upgrade_images_data,
+        "backup_user_images=true",
         "backup_dir=%s" % tsc.PLATFORM_BACKUP_PATH]
     args = [
         'ansible-playbook',
