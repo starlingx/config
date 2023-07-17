@@ -33,6 +33,8 @@ PLATFORM_FIREWALL_CLASSES = {constants.NETWORK_TYPE_PXEBOOT: FIREWALL_GNP_PXEBOO
                              constants.NETWORK_TYPE_ADMIN: FIREWALL_GNP_ADMIN_CFG,
                              constants.NETWORK_TYPE_OAM: FIREWALL_GNP_OAM_CFG}
 
+LINK_LOCAL = "fe80::/64"
+
 
 class PlatformFirewallPuppet(base.BasePuppet):
     """ This class handles the platform firewall hiera data generation for puppet
@@ -292,7 +294,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
         self._add_source_net_filter(gnp_config["spec"]["ingress"],
                                     f"{addr_pool.network}/{addr_pool.prefix}")
         if (ip_version == 6):
-            self._add_source_net_filter(gnp_config["spec"]["ingress"], "fe80::/64")
+            self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL)
         if (ip_version == 4):
             # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
             # worker/storage nodes request IP dynamically
@@ -350,7 +352,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
 
         if (ip_version == 6):
             # add link-local network too
-            self._add_source_net_filter(gnp_config["spec"]["ingress"], "fe80::/64")
+            self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL)
 
         if (ip_version == 4):
             # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
@@ -382,7 +384,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
         self._add_source_net_filter(gnp_config["spec"]["ingress"],
                                     f"{addr_pool.network}/{addr_pool.prefix}")
         if (ip_version == 6):
-            self._add_source_net_filter(gnp_config["spec"]["ingress"], "fe80::/64")
+            self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL)
         if (ip_version == 4):
             # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
             rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
@@ -400,7 +402,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
         self._add_source_net_filter(gnp_config["spec"]["ingress"],
                                     f"{addr_pool.network}/{addr_pool.prefix}")
         if (ip_version == 6):
-            self._add_source_net_filter(gnp_config["spec"]["ingress"], "fe80::/64")
+            self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL)
         if (ip_version == 4):
             # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
             rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
@@ -430,15 +432,22 @@ class PlatformFirewallPuppet(base.BasePuppet):
         :param host_personality: the node personality (controller, storage, or worker)
         """
 
-        # the admin network is a special case that is not needed for internal cluster communication,
-        # only for communication with the System Controller
-        gnp_config["spec"]["ingress"].clear()
-
         addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
         ip_version = IPAddress(f"{addr_pool.network}").version
         ICMP = "ICMP"
         if ip_version == 6:
             ICMP = "ICMPv6"
+
+        # the admin network is a special case that is not needed for internal cluster communication,
+        # only for communication with the System Controller. But ICMP requires to be allowed to
+        # exchange neighbor info with the gateway and help troubleshooting
+        icmp_rule = list(filter(lambda rule: rule['protocol'] == ICMP,
+                                gnp_config["spec"]["ingress"]))
+        self._add_source_net_filter(icmp_rule, f"{addr_pool.network}/{addr_pool.prefix}")
+        if (ip_version == 6):
+            self._add_source_net_filter(icmp_rule, LINK_LOCAL)
+
+        gnp_config["spec"]["ingress"].clear()
 
         rules = list()
         for proto in ["TCP", "UDP", ICMP]:
@@ -453,12 +462,14 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 rule.update({"destination": {"ports": self._get_subcloud_tcp_ports()}})
             elif (proto == "UDP"):
                 rule.update({"destination": {"ports": self._get_subcloud_udp_ports()}})
-            gnp_config["spec"]["ingress"].append(rule)
             rules.append(rule)
 
         networks = self._get_routes_networks(network.type)
         for network in networks:
             self._add_source_net_filter(rules, network)
+
+        for rule in (icmp_rule + rules):
+            gnp_config["spec"]["ingress"].append(rule)
 
     def _set_rules_subcloud_mgmt(self, gnp_config, network, host_personality):
         """ Add filtering rules for mgmt network in a subcloud installation
