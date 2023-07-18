@@ -767,15 +767,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('update_oam_config'))
 
-    def update_user_config(self, context, hosts_uuid=None):
+    def update_user_config(self, context, host_uuids=None):
         """Synchronously, have the conductor update the user configuration.
 
         :param context: request context.
-        :param hosts_uuid: list of host_uuids to run user puppet manifest
+        :param host_uuids: list of host_uuids to run user puppet manifest
         """
         return self.call(
             context,
-            self.make_msg('update_user_config', hosts_uuid=hosts_uuid)
+            self.make_msg('update_user_config', host_uuids=host_uuids)
         )
 
     def update_controller_rollback_flag(self, context):
