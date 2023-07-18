@@ -125,6 +125,7 @@ from sysinv.puppet import interface as pinterface
 from sysinv.helm import helm
 from sysinv.helm.lifecycle_constants import LifecycleConstants
 from sysinv.helm.lifecycle_hook import LifecycleHookInfo
+from sysinv.helm import common
 from sysinv.zmq_rpc.zmq_rpc import ZmqRpcServer
 from sysinv.zmq_rpc.zmq_rpc import is_rpc_hybrid_mode_active
 
@@ -13016,6 +13017,21 @@ class ConductorManager(service.PeriodicService):
                 raise exception.SysinvException(
                     _("Unable to complete upgrade: Upgrade not in %s state.")
                     % constants.UPGRADE_COMPLETING)
+
+            # Mark "kube-system" namespace with platform label
+            body = {
+                "metadata": {
+                    "labels": {
+                        common.COMPONENT_LABEL_KEY: common.COMPONENT_LABEL_VALUE_PLATFORM
+                    }
+                }
+            }
+
+            try:
+                self._kube.kube_patch_namespace('kube-system', body)
+            except Exception as e:
+                LOG.error(e)
+                raise
 
             # Complete the restore procedure
             if tsc.system_mode == constants.SYSTEM_MODE_SIMPLEX:

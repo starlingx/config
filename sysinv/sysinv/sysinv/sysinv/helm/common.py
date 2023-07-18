@@ -73,3 +73,9 @@ LABEL_SRIOVDP = 'sriovdp'
 # Label values
 LABEL_VALUE_ENABLED = 'enabled'
 LABEL_VALUE_DISABLED = 'disabled'
+
+# Namespace Labels
+COMPONENT_LABEL_KEY = 'app.starlingx.io/component'
+
+# Namespace Label values
+COMPONENT_LABEL_VALUE_PLATFORM = 'platform'
