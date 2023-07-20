@@ -206,7 +206,8 @@ class TestDeletePartition(TestPartition):
             forihostid=self.ihost.id,
             idisk_id=self.disk.id,
             idisk_uuid=self.disk.uuid,
-            size_mib=128)
+            size_mib=128,
+            device_path=self.partition_device_path)
 
     def test_delete_partition(self):
         # Delete the partition

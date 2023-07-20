@@ -438,6 +438,16 @@ def _enough_avail_space_on_disk(partition_size_mib, idisk):
     return idisk.available_mib >= partition_size_mib
 
 
+def _last_partition_is_ok(dbapi, partition):
+    """Checks that the last partition is not in error status.
+    """
+    idisk_uuid = partition.get('idisk_uuid')
+    partitions = dbapi.partition_get_by_idisk(idisk_uuid, sort_key='device_node')
+    is_ok = True if not partitions else partitions[-1].status not in \
+            constants.PARTITION_STATUS_NOT_OK_TO_CREATE
+    return is_ok
+
+
 def _check_partition_type(partition):
     """Checks that a partition is a user created partition and raises Client
     Error if not.
@@ -458,7 +468,7 @@ def _check_for_outstanding_requests(partition, idisk):
 
 
 def _are_partition_operations_simultaneous(ihost, partition, operation):
-    """Check that Create and Delete requests are serialized per host.
+    """Check that create, modify and delete requests are serialized per host.
     :param ihost       the ihost object
     :param partition   dict partition request
     :param operation   Delete/Create
@@ -469,17 +479,15 @@ def _are_partition_operations_simultaneous(ihost, partition, operation):
 
     if (ihost.invprovision in
             [constants.UPGRADING, constants.PROVISIONED, constants.PROVISIONING]):
-        if not (all(host_partition.get('status') in
-                [constants.PARTITION_READY_STATUS,
-                constants.PARTITION_IN_USE_STATUS,
-                constants.PARTITION_CREATE_ON_UNLOCK_STATUS,
-                constants.PARTITION_ERROR_STATUS,
-                constants.PARTITION_ERROR_STATUS_INTERNAL]
-                for host_partition in host_partitions)):
-            raise wsme.exc.ClientSideError(
-                "Cannot %s a partition while another partition "
-                "is being %sd. Wait for all other partitions to "
-                "finish %sing." % (operation, operation, operation[:-1]))
+        states = [constants.PARTITION_CREATE_IN_SVC_STATUS,
+                  constants.PARTITION_DELETING_STATUS,
+                  constants.PARTITION_MODIFYING_STATUS]
+        for host_partition in host_partitions:
+            if host_partition.get('status') in states:
+                raise wsme.exc.ClientSideError(
+                    "Cannot %s a partition while the current status of another "
+                    "partition is '%s'. Wait for the operation to finish." %
+                    (operation, constants.PARTITION_STATUS_MSG[host_partition.get('status')]))
 
 
 def _semantic_checks(operation, partition):
@@ -509,6 +517,13 @@ def _semantic_checks(operation, partition):
         ############
         # CREATING #
         ############
+
+        if not _last_partition_is_ok(pecan.request.dbapi,
+                                        partition):
+            raise wsme.exc.ClientSideError(
+                _("Cannot create partition on a disk where the last partition has an error status. "
+                  "Delete it before creating a new partition."))
+
         if int(partition['size_mib']) <= 0:
             raise wsme.exc.ClientSideError(
                 _("Partition size must be greater than 0."))
@@ -619,14 +634,14 @@ def _semantic_checks(operation, partition):
                                                constants.PARTITION_CMD_DELETE)
 
         status = partition.get('status')
-        if status == constants.PARTITION_READY_STATUS:
+        if status in constants.PARTITION_STATUS_OK_TO_DELETE:
             # Check that the partition to delete is the last partition.
             if not cutils.is_partition_the_last(pecan.request.dbapi,
                                                 partition):
                 raise wsme.exc.ClientSideError(
                     _("Can not delete partition. Only the last partition on "
                       "disk can be deleted."))
-        elif status not in constants.PARTITION_STATUS_OK_TO_DELETE:
+        else:
             raise wsme.exc.ClientSideError(
                 _("Can not delete partition. Only partitions in one of these "
                   "states can be deleted: %s") % ", ".join(

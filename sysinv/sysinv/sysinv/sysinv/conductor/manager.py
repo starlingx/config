@@ -4904,7 +4904,7 @@ class ConductorManager(service.PeriodicService):
         config_dict = {
             "host_uuids": [host_uuid],
             'personalities': personalities,
-            "classes": ['platform::partitions::runtime'],
+            "classes": [self.PUPPET_RUNTIME_CLASS_PARTITIONS],
             "idisk_uuid": partition.get('idisk_uuid'),
             "partition_uuid": partition.get('uuid'),
             puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_DISK_PARTITON_CONFIG
@@ -4918,10 +4918,11 @@ class ConductorManager(service.PeriodicService):
         self._config_apply_runtime_manifest(context,
                                             config_uuid,
                                             config_dict,
-                                            force=force_apply)
+                                            force=force_apply,
+                                            filter_classes=[self.PUPPET_RUNTIME_CLASS_PARTITIONS])
 
     def ipartition_update_by_ihost(self, context,
-                                   ihost_uuid, ipart_dict_array):
+                                   ihost_uuid, ipart_dict_array, first_report):
         """Update existing partition information based on information received
            from the agent."""
         LOG.debug("PART ipartition_update_by_ihost %s ihost_uuid "
@@ -4953,6 +4954,11 @@ class ConductorManager(service.PeriodicService):
                          db_host.hostname)
                 return
 
+        if first_report and self._check_runtime_class_apply_in_progress([self.PUPPET_RUNTIME_CLASS_PARTITIONS],
+                                                                        host_uuids=ihost_uuid):
+            self._clear_runtime_class_apply_in_progress(classes_list=[self.PUPPET_RUNTIME_CLASS_PARTITIONS],
+                                                        host_uuids=ihost_uuid)
+
         # Get the id of the host.
         forihostid = db_host['id']
 
@@ -4960,6 +4966,9 @@ class ConductorManager(service.PeriodicService):
         # present in the DB.
         db_parts = self.dbapi.partition_get_by_ihost(ihost_uuid)
         db_disks = self.dbapi.idisk_get_by_ihost(ihost_uuid)
+
+        # Get the partitions device paths and UUIDs received from the agent
+        ipart_dps_uuids_dict = dict([(ipart['device_path'], ipart['uuid']) for ipart in ipart_dict_array])
 
         # Check that the DB partitions are in sync with the DB disks and PVs.
         for db_part in db_parts:
@@ -4996,21 +5005,45 @@ class ConductorManager(service.PeriodicService):
             partition_dict = {'forihostid': forihostid}
             partition_update_needed = False
 
-            if part_disk.uuid != db_part['idisk_uuid']:
+            # Handle database to fix partitions with the status 'stuck'
+            # in creating/deleting/modifying.
+            if not self._check_runtime_class_apply_in_progress([self.PUPPET_RUNTIME_CLASS_PARTITIONS]):
+                # Check and update the partition uuid if different than reported by agent
+                if db_part.uuid not in ipart_dps_uuids_dict.values():
+                    if db_part.device_path in ipart_dps_uuids_dict.keys():
+                        partition_dict['uuid'] = ipart_dps_uuids_dict[db_part.device_path]
+                        partition_update_needed = True
+                        LOG.info("Update DB partition UUID according to agent report: %s to %s" %
+                                (db_part.uuid, partition_dict['uuid']))
+                    else:
+                        self.dbapi.partition_destroy(db_part.uuid)
+                        LOG.info("Delete DB partition stuck")
+                elif db_part.status == constants.PARTITION_MODIFYING_STATUS:
+                    partition_dict['status'] = constants.PARTITION_READY_STATUS
+                    partition_update_needed = True
+                    LOG.info("Update DB partition stuck in %s" %
+                                constants.PARTITION_STATUS_MSG[db_part.status].lower())
+                elif db_part.status == constants.PARTITION_DELETING_STATUS:
+                    self.update_partition_config(context, db_part)
+                    LOG.info("Delete partition stuck")
+
+            if part_disk.uuid != db_part.idisk_uuid:
                 # TO DO: What happens when a disk is replaced
                 partition_update_needed = True
-                partition_dict.update({'idisk_uuid': part_disk.uuid})
+                partition_dict['idisk_uuid'] = part_disk.uuid
                 LOG.info("Disk for partition %s has changed." %
-                         db_part['uuid'])
+                         db_part.uuid)
 
             if partition_update_needed:
-                self.dbapi.partition_update(db_part['uuid'],
-                                            partition_dict)
-                LOG.debug("PART conductor - partition needs to be "
-                          "updated.")
+                try:
+                    self.dbapi.partition_update(db_part.uuid, partition_dict)
+                except TypeError:
+                    pass
+                LOG.debug("PART conductor - partition needs to be updated.")
 
         # Go through the partitions reported by the agent and make needed
         # modifications.
+        db_parts = self.dbapi.partition_get_by_ihost(ihost_uuid)
         for ipart in ipart_dict_array:
             # Not to add ceph osd related partitions
             if (ipart['type_guid'] in constants.CEPH_PARTITIONS):
@@ -5030,27 +5063,27 @@ class ConductorManager(service.PeriodicService):
                 if ipart['device_path'] == db_part.device_path:
                     found = True
 
+                    part_update_dict = {}
                     # On CentOS to Debian upgrade partitions may differ
                     # ipart 'start_mib' and 'end_mib' values are strings
                     # whereas db_part are integers.
-                    if (str(ipart['start_mib']) != str(db_part['start_mib']) or
-                            str(ipart['end_mib']) != str(db_part['end_mib']) or
-                            ipart['type_guid'] != db_part['type_guid']):
-                        LOG.info("PART update part start/end/size/type/name")
-                        self.dbapi.partition_update(
-                            db_part.uuid,
-                            {'start_mib': ipart['start_mib'],
-                             'end_mib': ipart['end_mib'],
-                             'size_mib': ipart['size_mib'],
-                             'type_guid': ipart['type_guid'],
-                             'type_name': ipart['type_name']}
-                        )
+                    if (ipart['start_mib'] != str(db_part.start_mib)):
+                        part_update_dict['start_mib'] = ipart['start_mib']
+                    if (ipart['end_mib'] != str(db_part.end_mib)):
+                        part_update_dict['end_mib'] = ipart['end_mib']
+                    if (ipart['size_mib'] != str(db_part.size_mib)):
+                        part_update_dict['size_mib'] = ipart['size_mib']
+                    if (ipart['type_guid'] != db_part.type_guid):
+                        part_update_dict['type_guid'] = ipart['type_guid']
+                    if (ipart['type_name'] != db_part.type_name):
+                        part_update_dict['type_name'] = ipart['type_name']
+                    if (ipart['device_node'] != db_part.device_node):
+                        part_update_dict['device_node'] = ipart['device_node']
 
-                    if ipart['device_node'] != db_part.device_node:
-                        LOG.info("PART update part device node")
-                        self.dbapi.partition_update(
-                            db_part.uuid,
-                            {'device_node': ipart['device_node']})
+                    if part_update_dict:
+                        LOG.info("PART update part: %s" % str(list(part_update_dict.keys())))
+                        self.dbapi.partition_update(db_part.uuid, part_update_dict)
+
                     LOG.debug("PART conductor - found partition: %s" %
                               db_part.device_path)
 
@@ -6524,7 +6557,9 @@ class ConductorManager(service.PeriodicService):
                                         {'install_state': host.install_state,
                                          'install_state_info':
                                              host.install_state_info})
+
     PUPPET_RUNTIME_CLASS_ROUTES = 'platform::network::routes::runtime'
+    PUPPET_RUNTIME_CLASS_PARTITIONS = 'platform::partitions::runtime'
     PUPPET_RUNTIME_CLASS_DOCKERDISTRIBUTION = 'platform::dockerdistribution::runtime'
     PUPPET_RUNTIME_CLASS_USERS = 'platform::users::runtime'
     PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_KEY_FILE = constants.DOCKER_REGISTRY_KEY_FILE
@@ -6584,7 +6619,6 @@ class ConductorManager(service.PeriodicService):
             check_required = True
         if host_uuids and self.host_uuid not in host_uuids:
             check_required = False
-
         if not check_required and not filter_classes:
             return True
 
@@ -8338,7 +8372,7 @@ class ConductorManager(service.PeriodicService):
         config_dict = {
             "personalities": personalities,
             'host_uuids': [host.uuid],
-            "classes": 'platform::network::routes::runtime',
+            "classes": ['platform::network::routes::runtime'],
             puppet_common.REPORT_STATUS_CFG:
                 puppet_common.REPORT_ROUTE_CONFIG,
         }
@@ -8814,7 +8848,7 @@ class ConductorManager(service.PeriodicService):
         # Update service table
         self.update_service_table_for_cinder()
 
-        classes = ['platform::partitions::runtime',
+        classes = [self.PUPPET_RUNTIME_CLASS_PARTITIONS,
                    'platform::lvm::controller::runtime',
                    'platform::haproxy::runtime',
                    'platform::drbd::runtime',
@@ -8922,7 +8956,7 @@ class ConductorManager(service.PeriodicService):
                        ctrl.administrative == constants.ADMIN_UNLOCKED and
                        ctrl.availability in [constants.AVAILABILITY_AVAILABLE,
                                              constants.AVAILABILITY_DEGRADED]]
-        classes = ['platform::partitions::runtime',
+        classes = [self.PUPPET_RUNTIME_CLASS_PARTITIONS,
                    'platform::lvm::controller::runtime',
                    'platform::haproxy::runtime',
                    'openstack::keystone::endpoint::runtime',
@@ -9021,7 +9055,7 @@ class ConductorManager(service.PeriodicService):
                            (ctrl.administrative == constants.ADMIN_UNLOCKED and
                             ctrl.operational == constants.OPERATIONAL_ENABLED)]
 
-            classes = ['platform::partitions::runtime',
+            classes = [self.PUPPET_RUNTIME_CLASS_PARTITIONS,
                        'platform::lvm::controller::runtime',
                        'platform::haproxy::runtime',
                        'openstack::keystone::endpoint::runtime',
@@ -9200,7 +9234,7 @@ class ConductorManager(service.PeriodicService):
         # Apply the runtime manifest to revert the k8s upgrade process
         config_dict = {
             "personalities": personalities,
-            "classes": 'platform::kubernetes::upgrade_abort',
+            "classes": ['platform::kubernetes::upgrade_abort'],
             puppet_common.REPORT_STATUS_CFG:
                 puppet_common.REPORT_UPGRADE_ABORT
         }
@@ -9227,7 +9261,7 @@ class ConductorManager(service.PeriodicService):
         # Apply the runtime manifest to revert the k8s upgrade process
         config_dict = {
             "personalities": personalities,
-            "classes": 'platform::kubernetes::upgrade_abort_recovery',
+            "classes": ['platform::kubernetes::upgrade_abort_recovery'],
         }
         self._config_apply_runtime_manifest(
             context, config_uuid=active_controller.config_target,
@@ -12084,10 +12118,9 @@ class ConductorManager(service.PeriodicService):
 
         for c, h in self._runtime_class_apply_in_progress:
             if c in classes_list:
-                if host_uuids and host_uuids in h:
-                    LOG.info("config runtime  host_uuids=%s from %s" %
-                             (host_uuids, h))
-                return True
+                if not host_uuids or next((host for host in host_uuids if host in h)):
+                    LOG.info("config runtime in progress (%s, %s)" % (c, h))
+                    return True
         return False
 
     @cutils.synchronized(LOCK_RUNTIME_CONFIG_CHECK)
@@ -12262,11 +12295,12 @@ class ConductorManager(service.PeriodicService):
         if config_uuid not in self._host_runtime_config_history:
             self._host_runtime_config_history[config_uuid] = config_dict
 
-        if filter_classes and config_dict['classes'] in filter_classes:
-            LOG.info("config runtime filter_classes add %s %s" %
-                     (filter_classes, config_dict))
-            self._add_runtime_class_apply_in_progress(filter_classes,
-                                                      host_uuids=config_dict.get('host_uuids', None))
+        if filter_classes:
+            classes = [config_class for config_class in config_dict['classes'] if config_class in filter_classes]
+            if classes:
+                LOG.info("config runtime filter_classes add %s" % (classes))
+                self._add_runtime_class_apply_in_progress(classes,
+                                                          host_uuids=config_dict.get('host_uuids', None))
 
     def _update_ipv_device_path(self, idisk, ipv):
         if not idisk.device_path:
@@ -15616,7 +15650,7 @@ class ConductorManager(service.PeriodicService):
             # each controller.
             config_dict = {
                 "personalities": personalities,
-                "classes": 'platform::kubernetes::pre_pull_control_plane_images'
+                "classes": ['platform::kubernetes::pre_pull_control_plane_images']
             }
             self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
@@ -16048,7 +16082,7 @@ class ConductorManager(service.PeriodicService):
 
                 config_dict = {
                     "personalities": personalities,
-                    "classes": 'platform::kubernetes::upgrade_abort',
+                    "classes": ['platform::kubernetes::upgrade_abort'],
                     puppet_common.REPORT_STATUS_CFG:
                         puppet_common.REPORT_UPGRADE_ABORT
                 }

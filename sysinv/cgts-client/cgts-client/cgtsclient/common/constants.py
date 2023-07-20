@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -97,8 +97,9 @@ PARTITION_STATUS_MSG = {
     PARTITION_READY_STATUS: "Ready",
     PARTITION_DELETED_STATUS: "Deleted",
     PARTITION_ERROR_STATUS: "Error",
-    PARTITION_ERROR_STATUS_INTERNAL: "Error: Internal script error.",
-    PARTITION_ERROR_STATUS_GPT: "Error:Missing GPT Table."}
+    PARTITION_ERROR_STATUS_INTERNAL: "Error: Internal script error",
+    PARTITION_ERROR_STATUS_GPT: "Error: Missing GPT Table"
+}
 
 # Partition table types.
 PARTITION_TABLE_GPT = "gpt"

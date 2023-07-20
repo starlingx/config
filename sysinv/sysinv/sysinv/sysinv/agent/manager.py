@@ -1011,7 +1011,7 @@ class AgentManager(service.PeriodicService):
             pass
 
         self._update_disk_partitions(rpcapi, icontext,
-                                     ihost['uuid'], force_update=True)
+                                     ihost['uuid'], force_update=True, first_report=True)
 
         ipv = self._ipv_operator.ipv_get()
         try:
@@ -1432,7 +1432,7 @@ class AgentManager(service.PeriodicService):
 
     @utils.synchronized(constants.PARTITION_MANAGE_LOCK)
     def _update_disk_partitions(self, rpcapi, icontext,
-                                host_uuid, force_update=False):
+                                host_uuid, force_update=False, first_report=False):
         ipartition = self._ipartition_operator.ipartition_get()
         if not force_update:
             if self._prev_partition == ipartition:
@@ -1440,7 +1440,7 @@ class AgentManager(service.PeriodicService):
             self._prev_partition = ipartition
         try:
             rpcapi.ipartition_update_by_ihost(
-                icontext, host_uuid, ipartition)
+                icontext, host_uuid, ipartition, first_report)
         except AttributeError:
             # safe to ignore during upgrades
             LOG.warn("Skip updating ipartition conductor. "

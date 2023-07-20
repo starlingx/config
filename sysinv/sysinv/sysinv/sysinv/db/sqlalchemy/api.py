@@ -2937,7 +2937,7 @@ class Connection(api.Connection):
             count = query.update(values, synchronize_session='fetch')
             if count != 1:
                 raise exception.DiskPartitionNotFound(partition_id=partition_id)
-            return query.one()
+            return query.first()
 
     def partition_destroy(self, partition_id):
         with _session_for_write():

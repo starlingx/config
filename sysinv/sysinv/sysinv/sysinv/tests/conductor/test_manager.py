@@ -2299,7 +2299,7 @@ class ManagerTestCase(base.DbTestCase):
         personalities = [constants.CONTROLLER]
         config_dict = {
             "personalities": personalities,
-            "classes": 'platform::kubernetes::upgrade_abort',
+            "classes": ['platform::kubernetes::upgrade_abort'],
             puppet_common.REPORT_STATUS_CFG:
                 puppet_common.REPORT_UPGRADE_ABORT
         }
@@ -2338,7 +2338,7 @@ class ManagerTestCase(base.DbTestCase):
         personalities = [constants.CONTROLLER]
         config_dict = {
             "personalities": personalities,
-            "classes": 'platform::kubernetes::upgrade_abort',
+            "classes": ['platform::kubernetes::upgrade_abort'],
             puppet_common.REPORT_STATUS_CFG:
                 puppet_common.REPORT_UPGRADE_ABORT
         }
@@ -2359,7 +2359,7 @@ class ManagerTestCase(base.DbTestCase):
         personalities = [constants.CONTROLLER]
         config_dict = {
             "personalities": personalities,
-            "classes": 'platform::kubernetes::upgrade_abort_recovery',
+            "classes": ['platform::kubernetes::upgrade_abort_recovery'],
         }
         mock_config_apply_runtime_manifest.assert_called_with(mock.ANY,
                                                               config_uuid='4e93a1c4-44c0-4cb8-839b-e50d166514d0',

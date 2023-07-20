@@ -436,7 +436,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                          version='1.1')
 
     def ipartition_update_by_ihost(self, context,
-                                   ihost_uuid, ipart_dict_array):
+                                   ihost_uuid, ipart_dict_array, first_report=False):
 
         """Create or update partitions for an ihost with the supplied data.
 
@@ -446,13 +446,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param context: an admin context
         :param ihost_uuid: ihost uuid unique id
         :param ipart_dict_array: initial values for partition objects
+        :param first_report: first report from agent
         :returns: pass or fail
         """
 
         return self.call(context,
                          self.make_msg('ipartition_update_by_ihost',
                                        ihost_uuid=ihost_uuid,
-                                       ipart_dict_array=ipart_dict_array))
+                                       ipart_dict_array=ipart_dict_array,
+                                       first_report=first_report))
 
     def update_partition_config(self, context, partition):
         """Asynchronously, have a conductor configure the physical volume
