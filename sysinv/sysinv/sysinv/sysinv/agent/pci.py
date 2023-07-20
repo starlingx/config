@@ -32,23 +32,23 @@ LOG = logging.getLogger(__name__)
 ETHERNET_PCI_CLASSES = ['ethernet controller', 'network controller']
 
 # Look for other devices we may want to inventory.
-KNOWN_PCI_DEVICES = [{"vendor_id": constants.NOVA_PCI_ALIAS_QAT_PF_VENDOR,
-                      "device_id": constants.NOVA_PCI_ALIAS_QAT_DH895XCC_PF_DEVICE,
-                      "class_id": constants.NOVA_PCI_ALIAS_QAT_CLASS},
-                      {"vendor_id": constants.NOVA_PCI_ALIAS_QAT_PF_VENDOR,
-                      "device_id": constants.NOVA_PCI_ALIAS_QAT_C62X_PF_DEVICE,
-                      "class_id": constants.NOVA_PCI_ALIAS_QAT_CLASS},
-                     {"class_id": constants.NOVA_PCI_ALIAS_GPU_CLASS},
+KNOWN_PCI_DEVICES = [{"vendor_id": constants.PCI_ALIAS_QAT_PF_VENDOR,
+                      "device_id": constants.PCI_ALIAS_QAT_DH895XCC_PF_DEVICE,
+                      "class_id": constants.PCI_ALIAS_QAT_CLASS},
+                      {"vendor_id": constants.PCI_ALIAS_QAT_PF_VENDOR,
+                      "device_id": constants.PCI_ALIAS_QAT_C62X_PF_DEVICE,
+                      "class_id": constants.PCI_ALIAS_QAT_CLASS},
+                     {"class_id": constants.PCI_ALIAS_GPU_CLASS},
                      {"class_id": dconstants.PCI_DEVICE_CLASS_FPGA}]
 
 # Look for QAT PF and VF devices for k8s device plugin enabling.
 QAT_PF_VF_DEVICES_PCI_DEVICE_ID = [
-    constants.NOVA_PCI_ALIAS_QAT_DH895XCC_VF_DEVICE,
-    constants.NOVA_PCI_ALIAS_QAT_C62X_VF_DEVICE,
-    constants.NOVA_PCI_ALIAS_QAT_C3XXX_VF_DEVICE,
-    constants.NOVA_PCI_ALIAS_QAT_D15XX_VF_DEVICE,
-    constants.NOVA_PCI_ALIAS_QAT_CO_PROC_4940_PF_DEVICE,
-    constants.NOVA_PCI_ALIAS_QAT_CO_PROC_4942_PF_DEVICE]
+    constants.PCI_ALIAS_QAT_DH895XCC_VF_DEVICE,
+    constants.PCI_ALIAS_QAT_C62X_VF_DEVICE,
+    constants.PCI_ALIAS_QAT_C3XXX_VF_DEVICE,
+    constants.PCI_ALIAS_QAT_D15XX_VF_DEVICE,
+    constants.PCI_ALIAS_QAT_CO_PROC_4940_PF_DEVICE,
+    constants.PCI_ALIAS_QAT_CO_PROC_4942_PF_DEVICE]
 
 # PCI-SIG 0x06 bridge devices to not inventory.
 IGNORE_BRIDGE_PCI_CLASSES = ['bridge', 'isa bridge', 'host bridge']
@@ -217,7 +217,7 @@ class IntelQATDp(DevicePlugin):
     def get_plugin(self, pci_device_list):
         # look for qat pf and vf devices
         for qat_device_id in QAT_PF_VF_DEVICES_PCI_DEVICE_ID:
-            qat_vendor_device_id = constants.NOVA_PCI_ALIAS_QAT_VENDOR + ":" + \
+            qat_vendor_device_id = constants.PCI_ALIAS_QAT_VENDOR + ":" + \
                     qat_device_id
             p = subprocess.Popen(["lspci", "-d", qat_vendor_device_id],
                                  stdout=subprocess.PIPE, universal_newlines=True)
