@@ -8441,21 +8441,22 @@ class ConductorManager(service.PeriodicService):
             cutils.touch(
                 self._get_oam_runtime_apply_file(standby_controller=True))
 
-    def update_user_config(self, context, hosts_uuid=None):
+    def update_user_config(self, context, host_uuids=None):
         """Update the user configuration"""
         LOG.info("update_user_config")
 
         personalities = [constants.CONTROLLER,
                          constants.WORKER,
                          constants.STORAGE]
-        config_uuid = self._config_update_hosts(context, personalities)
+        config_uuid = self._config_update_hosts(context, personalities,
+                                                host_uuids=host_uuids)
 
         config_dict = {
             "personalities": personalities,
             "classes": ['platform::users::runtime']
         }
-        if hosts_uuid:
-            config_dict.update({"hosts_uuid": hosts_uuid})
+        if host_uuids:
+            config_dict.update({"host_uuids": host_uuids})
 
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
