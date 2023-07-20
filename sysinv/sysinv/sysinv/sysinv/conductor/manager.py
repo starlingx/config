@@ -13984,75 +13984,90 @@ class ConductorManager(service.PeriodicService):
                                                 config_uuid,
                                                 config_dict,
                                                 force=True)
+
         # Special mode for openldap CA certificate.
-        # This CA certificate will be stored in k8s as an opaque secret
-        # if the secret doesn't already exist. If secret already exists,
-        # we will overwrite it with current type (opaque or tls)
+        # This CA certificate will be stored in k8s as an TLS secret,
+        # and this secret will be used to create a local ClusterIssuer.
+        # If either the secret or the ClusterIssuer already exist, they
+        # will be overwritten.
+        # This ClusterIssuer will also be used to issue the other platform
+        # certificates once they are migrated to cert-manager.
         elif mode == constants.CERT_MODE_OPENLDAP_CA:
             kube_operator = kubernetes.KubeOperator()
             public_bytes = self._get_public_bytes(cert_list)
             cert_secret = base64.encode_as_text(public_bytes)
 
             try:
-                cert_type = cutils.get_secret_type(
-                        constants.OPENLDAP_CA_CERT_SECRET_NAME,
-                        constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
+                private_bytes = self._get_private_bytes_one(private_key)
+                cert_key = base64.encode_as_text(private_bytes)
             except Exception as e:
-                msg = "Failed to retrieve 'system-local-ca' secret type: %s" % str(e)
+                msg = "Failed to retrieve private key: %s" % str(e)
                 LOG.error(msg)
                 raise exception.SysinvException(_(msg))
 
-            secret_main_body = {
+            secret_body = {
                 'apiVersion': 'v1',
                 'kind': 'Secret',
                 'metadata': {
-                    'name': constants.OPENLDAP_CA_CERT_SECRET_NAME,
+                    'name': constants.LOCAL_CA_SECRET_NAME,
                     'namespace': constants.CERT_NAMESPACE_PLATFORM_CA_CERTS
+                },
+                'type': constants.K8S_SECRET_TYPE_TLS,
+                'data': {
+                    'tls.crt': cert_secret,
+                    'tls.key': cert_key,
                 }
             }
 
-            if cert_type is None or cert_type == constants.K8S_SECRET_TYPE_OPAQUE.lower():
-                secret_type_params = {
-                    'type': constants.K8S_SECRET_TYPE_OPAQUE,
-                    'data': {
-                        'ca.crt': cert_secret,
-                    }
-                }
-            elif cert_type == constants.K8S_SECRET_TYPE_TLS.lower():
-                try:
-                    private_bytes = self._get_private_bytes_one(private_key)
-                    cert_key = base64.encode_as_text(private_bytes)
-                except Exception as e:
-                    msg = "Failed to retrieve private key: %s" % str(e)
-                    LOG.error(msg)
-                    raise exception.SysinvException(_(msg))
-
-                secret_type_params = {
-                    'type': constants.K8S_SECRET_TYPE_TLS,
-                    'data': {
-                        'tls.crt': cert_secret,
-                        'tls.key': cert_key,
-                    }
-                }
-            else:
-                msg = "Openldap secret of unexpected type (%s)." % cert_type
-                LOG.error(msg)
-                raise exception.SysinvException(_(msg))
-
-            secret_main_body.update(secret_type_params)
-
             try:
                 secret = kube_operator.kube_get_secret(
-                        constants.OPENLDAP_CA_CERT_SECRET_NAME,
+                        constants.LOCAL_CA_SECRET_NAME,
                         constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
                 if secret is not None:
                     kube_operator.kube_delete_secret(
-                            constants.OPENLDAP_CA_CERT_SECRET_NAME,
+                            constants.LOCAL_CA_SECRET_NAME,
                             constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
                 kube_operator.kube_create_secret(
-                        constants.CERT_NAMESPACE_PLATFORM_CA_CERTS, secret_main_body)
+                        constants.CERT_NAMESPACE_PLATFORM_CA_CERTS, secret_body)
             except Exception as e:
-                msg = "Failed to store openldap CA in k8s secret: %s" % str(e)
+                msg = "Failed to store local CA in k8s secret: %s" % str(e)
+                LOG.error(msg)
+                raise exception.SysinvException(_(msg))
+
+            clusterissuer_body = {
+                'apiVersion': '%s/%s' % (kubernetes.CERT_MANAGER_GROUP, kubernetes.CERT_MANAGER_VERSION),
+                'kind': 'ClusterIssuer',
+                'metadata': {
+                    'name': constants.LOCAL_CA_SECRET_NAME
+                },
+                'spec': {
+                    'ca': {
+                        'secretName': constants.LOCAL_CA_SECRET_NAME
+                    }
+                },
+                'status': {}
+            }
+
+            try:
+                clusterissuer = kube_operator.get_clusterwide_custom_resource(
+                        kubernetes.CERT_MANAGER_GROUP,
+                        kubernetes.CERT_MANAGER_VERSION,
+                        'clusterissuers',
+                        constants.LOCAL_CA_SECRET_NAME)
+                if clusterissuer is not None:
+                    kube_operator.delete_clusterwide_custom_resource(
+                            kubernetes.CERT_MANAGER_GROUP,
+                            kubernetes.CERT_MANAGER_VERSION,
+                            'clusterissuers',
+                            constants.LOCAL_CA_SECRET_NAME)
+                kube_operator.apply_clusterwide_custom_resource(
+                        kubernetes.CERT_MANAGER_GROUP,
+                        kubernetes.CERT_MANAGER_VERSION,
+                        'clusterissuers',
+                        constants.LOCAL_CA_SECRET_NAME,
+                        clusterissuer_body)
+            except Exception as e:
+                msg = "Failed to create local ClusterIssuer: %s" % str(e)
                 LOG.error(msg)
                 raise exception.SysinvException(_(msg))
 
