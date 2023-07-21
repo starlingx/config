@@ -198,6 +198,16 @@ sysinv_conductor_monitor () {
 sysinv_conductor_start () {
     local rc
 
+    # Everytime the conductor starts, we should update the
+    # timestamp of the plugins, to ensure stevedore cache
+    # is regenerated and can detect new python entrypoints
+    # under ~/.cache/python-entrypoints
+    PLUGINS_DIR="/var/stx_app/plugins"
+    if [ -d ${PLUGINS_DIR} ]; then
+        # the directory exists, so update its timestamp
+        touch ${PLUGINS_DIR}
+    fi
+
     proc="${binname}:start"
     if [ ${OCF_RESKEY_dbg} = "true" ] ; then
         ocf_log info "${proc}"
