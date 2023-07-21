@@ -1606,12 +1606,15 @@ class AgentManager(service.PeriodicService):
                     pass
 
             # if the platform firewall failed to be applied (by not having kube-api available
-            # during AIO manifest execution) in the stand-by controller ask for conductor to
-            # reapply
-            if os.path.isfile(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED) \
-                    and (not os.path.exists(tsc.CONFIG_PATH)):
-                LOG.info("platform firewall config requested")
-                rpcapi.request_firewall_runtime_update(icontext, self._ihost_uuid)
+            # during AIO manifest execution or lack of config in the host yaml file) ask for
+            # conductor to reapply
+            if os.path.isfile(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED):
+                try:
+                    LOG.info("platform firewall config requested")
+                    rpcapi.request_firewall_runtime_update(icontext, self._ihost_uuid)
+                except Exception:
+                    LOG.exception("Exception when requesting platform firewall config")
+                    pass
 
             # Notify conductor of inventory completion after necessary
             # inventory reports have been sent to conductor.
