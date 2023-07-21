@@ -141,16 +141,17 @@ class PlatformFirewallPuppet(base.BasePuppet):
 
             if (host.personality == constants.CONTROLLER):
                 if (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
-                    if (config[FIREWALL_GNP_ADMIN_CFG]):
+                    if config[FIREWALL_GNP_ADMIN_CFG]:
                         self._set_rules_subcloud_admin(config[FIREWALL_GNP_ADMIN_CFG],
                                                     networks[constants.NETWORK_TYPE_ADMIN],
                                                     host.personality)
-                    else:
+                    elif config[FIREWALL_GNP_MGMT_CFG]:
                         self._set_rules_subcloud_mgmt(config[FIREWALL_GNP_MGMT_CFG],
                                                     networks[constants.NETWORK_TYPE_MGMT],
                                                     host.personality)
 
-                elif (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
+                elif (dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER and
+                        config[FIREWALL_GNP_MGMT_CFG]):
                     self._set_rules_systemcontroller(config[FIREWALL_GNP_MGMT_CFG],
                                                     networks[constants.NETWORK_TYPE_MGMT],
                                                     host.personality)
