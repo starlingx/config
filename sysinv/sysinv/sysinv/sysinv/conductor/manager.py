@@ -220,6 +220,7 @@ KEYSTONE_USER_PASSWORD_UPDATE = {
     "fm": "openstack::keystone::fm::password::runtime",
     "mtce": "platform::mtce::runtime",
     "patching": "openstack::keystone::patching::password::runtime",
+    "usm": "openstack::keystone::usm::password::runtime",
     "vim": "openstack::keystone::nfv::password::runtime"
 }
 
@@ -10718,7 +10719,8 @@ class ConductorManager(service.PeriodicService):
                 personalities = [constants.WORKER, constants.STORAGE]
                 config_dict = {
                     "personalities": personalities,
-                    "classes": ['platform::patching::runtime']}
+                    "classes": ['platform::patching::runtime', 'platform::usm::runtime']
+                }
                 self._config_apply_runtime_manifest(context, config_uuid,
                                                     config_dict)
 
@@ -10729,7 +10731,8 @@ class ConductorManager(service.PeriodicService):
                     "classes": ['openstack::lighttpd::runtime',
                                 'platform::helm::runtime',
                                 'platform::firewall::runtime',
-                                'platform::patching::runtime'],
+                                'platform::patching::runtime',
+                                'platform::usm::runtime'],
                     puppet_common.REPORT_STATUS_CFG:
                         puppet_common.REPORT_HTTP_CONFIG
                 }

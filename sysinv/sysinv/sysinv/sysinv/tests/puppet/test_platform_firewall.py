@@ -1679,6 +1679,8 @@ class PlatformFirewallTestCaseControllerDcSysCtrl_Setup01(PlatformFirewallTestCa
         self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
                              constants.PLATFORM_DCORCH_PARAMS_PATCH_API_PROXY_PORT)
         self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
+                             constants.PLATFORM_DCORCH_PARAMS_USM_API_PROXY_PORT)
+        self._check_tcp_port(hiera_data['platform::firewall::calico::oam::config'],
                              constants.PLATFORM_DCORCH_PARAMS_IDENTITY_API_PROXY_PORT)
 
         # the HE is filled
@@ -2600,7 +2602,7 @@ class PlatformFirewallTestCaseSystemConfig(PlatformFirewallTestCaseMixin,
         with open(config_filename, 'r') as config_file:
             hiera_data = yaml.safe_load(config_file)
 
-        self.assertEqual(len(hiera_data), 13)
+        self.assertEqual(len(hiera_data), 15)
         self.assertEqual(hiera_data["openstack::barbican::params::api_port"],
                          constants.OPENSTACK_BARBICAN_PARAMS_API_PORT)
         self.assertEqual(hiera_data["openstack::keystone::params::api_port"],
@@ -2613,6 +2615,8 @@ class PlatformFirewallTestCaseSystemConfig(PlatformFirewallTestCaseMixin,
                          constants.PLATFORM_DCORCH_PARAMS_IDENTITY_API_PROXY_PORT)
         self.assertEqual(hiera_data["platform::dcorch::params::patch_api_proxy_port"],
                          constants.PLATFORM_DCORCH_PARAMS_PATCH_API_PROXY_PORT)
+        self.assertEqual(hiera_data["platform::dcorch::params::usm_api_proxy_port"],
+                         constants.PLATFORM_DCORCH_PARAMS_USM_API_PROXY_PORT)
         self.assertEqual(hiera_data["platform::dcorch::params::sysinv_api_proxy_port"],
                          constants.PLATFORM_DCORCH_PARAMS_SYSINV_API_PROXY_PORT)
         self.assertEqual(hiera_data["platform::docker::params::registry_port"],
@@ -2627,3 +2631,5 @@ class PlatformFirewallTestCaseSystemConfig(PlatformFirewallTestCaseMixin,
                          constants.PLATFORM_PATCHING_PARAMS_PUBLIC_PORT)
         self.assertEqual(hiera_data["platform::sysinv::params::api_port"],
                          constants.PLATFORM_SYSINV_PARAMS_API_PORT)
+        self.assertEqual(hiera_data["platform::usm::params::public_port"],
+                         constants.PLATFORM_USM_PARAMS_PUBLIC_PORT)
