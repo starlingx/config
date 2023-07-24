@@ -17,7 +17,7 @@ SYSTEM_CERT_PATH = cutils.get_system_ca_file()
 KEYRING_SERVICE = 'CGCS'
 REGISTRY_USERNAME = 'admin'
 REGISTRY_BASEURL = 'https://%s/v2/' % constants.DOCKER_REGISTRY_SERVER
-MAX_IMAGES_COUNT = 100000  # override default of 100 & allow downloading entire catalog
+MAX_IMAGES_COUNT = 1000  # override default of 100 & allow downloading entire catalog
 
 
 def get_registry_password():
