@@ -16,6 +16,7 @@ etc/update-motd.d/10-system
 usr/bin/cert-alarm
 usr/bin/cert-mon
 usr/bin/kube-cert-rotation.sh
+usr/bin/kube-expired-kubelet-cert-recovery.sh
 usr/bin/sysinv-agent
 usr/bin/sysinv-api
 usr/bin/sysinv-conductor

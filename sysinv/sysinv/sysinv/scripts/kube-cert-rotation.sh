@@ -29,18 +29,29 @@ else
     CERT_CMD='alpha certs'
 fi
 
-CERT_EXP_DATES=$(kubeadm $CERT_CMD check-expiration)
+CERT_EXP_DATES=$(kubeadm $CERT_CMD check-expiration --config /etc/kubernetes/kubeadm.yaml)
+# After a long period offline all k8s certs may expire and kubeadm command will fail completely
+# Here we save the return code so that it can be used later in the time_left_s function
+RC_CERT_EXP_DATES=$?
+if [ $RC_CERT_EXP_DATES -ne 0 ]; then
+    echo "Failed to read certificates with 'kubeadm $CERT_CMD check-expiration. Will assume certs are expired."
+fi
 # Time left in seconds for a cert
 time_left_s() {
-    local time_left_s=""
-    local exp_date=""
-    exp_date=$(echo "${CERT_EXP_DATES}" | grep "$1" | grep -oE '[a-zA-Z]{3} [0-3][0-9], [0-9]{4} ([0-1][0-9]|2[0-3]):[0-5][0-9] UTC')
-    if [ "x${exp_date}" != "x" ]; then
-        exp_date_s=$(date -d "${exp_date}" +%s)
-        current_date_s=$(date +%s)
-        time_left_s=$((${exp_date_s}-${current_date_s}))
+    # A bad return code from kubeadm means we can safely assume all k8s certs have expired
+    if [ $RC_CERT_EXP_DATES -ne 0 ]; then
+        echo 0
+    else
+        local time_left_s=""
+        local exp_date=""
+        exp_date=$(echo "${CERT_EXP_DATES}" | grep "$1" | grep -oE '[a-zA-Z]{3} [0-3][0-9], [0-9]{4} ([0-1][0-9]|2[0-3]):[0-5][0-9] UTC')
+        if [ "x${exp_date}" != "x" ]; then
+            exp_date_s=$(date -d "${exp_date}" +%s)
+            current_date_s=$(date +%s)
+            time_left_s=$((${exp_date_s}-${current_date_s}))
+        fi
+        echo ${time_left_s}
     fi
-    echo ${time_left_s}
 }
 
 # Retrieve a certiticate's valid time by openssl
@@ -67,7 +78,7 @@ renew_cert() {
     time_left_s=$(time_left_s "$1")
     if [ "x${time_left_s}" != "x" ]; then
         if [ ${time_left_s} -lt ${CUTOFF_DAYS_S} ]; then
-            kubeadm $CERT_CMD renew $1
+            kubeadm $CERT_CMD renew $1 --config "/etc/kubernetes/kubeadm.yaml"
 
             if [ $? -ne 0 ]; then
                 ret=1
@@ -151,6 +162,12 @@ get_cluster_host_floating_ip() {
     floating_ip=$(cat /etc/kubernetes/admin.conf | grep "server:" | awk -F"//" '{print $2}' | tr -d "[]" | sed -e s/:6443//)
     echo ${floating_ip}
 }
+
+# Stops execution when sourced from other scripts. Only proceeds when called directly.
+(return 0 2>/dev/null) && sourced=1 || sourced=0
+if [[ "$sourced" -eq "1" ]]; then
+    return 0
+fi
 
 ERR=0
 RESTART_APISERVER=0
