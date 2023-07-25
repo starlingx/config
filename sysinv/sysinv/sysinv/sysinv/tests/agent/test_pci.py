@@ -173,30 +173,45 @@ class TestPciOperator(base.TestCase):
                     'name': 'pci_0000_00_01_1',
                     'pclass_id': '01018a',
                     'pclass': 'IDE interface',
-                    'driver': 'ata_piix',
+                    'pvendor_id': '8086',
+                    'pdevice_id': '1e20',
+                    'sriov_vfs_pci_address': '',
+                    'driver': 'ata_piix'
                 },
                 {
                     'name': 'pci_0000_00_02_0',
                     'pclass_id': '030000',
                     'pclass': 'VGA compatible controller',
+                    'pvendor_id': '8086',
+                    'pdevice_id': '1e20',
+                    'sriov_vfs_pci_address': '',
                     'driver': 'i915'
                 },
                 {
                     'name': 'pci_0000_00_05_0',
                     'pclass_id': '040100',
                     'pclass': 'Multimedia audio controller',
+                    'pvendor_id': '8086',
+                    'pdevice_id': '1e20',
+                    'sriov_vfs_pci_address': '',
                     'driver': None
                 },
                 {
                     'name': 'pci_0000_00_0d_0',
                     'pclass_id': '010601',
                     'pclass': 'VGA compatible controller',
+                    'pvendor_id': '8086',
+                    'pdevice_id': '1e20',
+                    'sriov_vfs_pci_address': '',
                     'driver': 'ahci'
                 },
                 {
                     'name': 'pci_0000_00_01_2',
                     'pclass_id': '01018b',
                     'pclass': 'VGA compatible controller',
+                    'pvendor_id': '8086',
+                    'pdevice_id': '1e20',
+                    'sriov_vfs_pci_address': '',
                     'driver': None
                 }]
         # Mock the subprocess.Popen call
@@ -219,13 +234,39 @@ class TestPciOperator(base.TestCase):
                     'name': 'pci_0000_00_01_1',
                     'pclass_id': '01018a',
                     'pclass': 'IDE interface',
-                    'driver': 'ata_piix',
+                    'pvendor_id': '8086',
+                    'pdevice_id': '2710',
+                    'sriov_vfs_pci_address': '',
+                    'driver': 'ata_piix'
                 },
                 {
                     'name': 'pci_0000_00_05_0',
                     'pclass_id': '040100',
                     'pclass': 'Multimedia audio controller',
+                    'pvendor_id': '8086',
+                    'pdevice_id': '37c9',
+                    'sriov_vfs_pci_address': '',
                     'driver': None
+                },
+                {
+                    "name": "pci_0000_f7_00_0",
+                    "pciaddr": "0000:f7:00.0",
+                    "pclass_id": "0b4000",
+                    "pvendor_id": "8086",
+                    'pdevice_id': '4942',
+                    "pclass": "Co-processor",
+                    "pvendor": "Intel Corporation",
+                    "pdevice": "Device 4942",
+                    "prevision": "-r40",
+                    "psvendor": "Intel Corporation",
+                    "psdevice": "Device 0000",
+                    "numa_node": "0",
+                    "sriov_totalvfs": "16",
+                    "sriov_numvfs": "16",
+                    "sriov_vfs_pci_address": '''0000:f7:00.1,0000:f7:00.2,0000:f7:00.3,0000:f7:00.4,0000:f7:00.5,
+                    0000:f7:00.6,0000:f7:00.7,0000:f7:01.0,0000:f7:01.1,0000:f7:01.2,0000:f7:01.3,0000:f7:01.4,
+                    0000:f7:01.5,0000:f7:01.6,0000:f7:01.7,0000:f7:02.0''',
+                    "driver": "4xxx"
                 }]
         expected_label = ['intelqat']
         actual_label = self.pci_operator.get_supported_device_plugins(self.fake_pci_device_list)
@@ -239,17 +280,42 @@ class TestPciOperator(base.TestCase):
                     'name': 'pci_0000_00_01_1',
                     'pclass_id': '01018a',
                     'pclass': 'IDE interface',
-                    'driver': 'ata_piix',
+                    'pvendor_id': '8086',
+                    'pdevice_id': '1e20',
+                    'sriov_vfs_pci_address': '',
+                    'driver': 'ata_piix'
                 },
                 {
                     'name': 'pci_0000_00_02_0',
                     'pclass_id': '030000',
                     'pclass': 'VGA compatible controller',
+                    'pvendor_id': '8086',
+                    'pdevice_id': '2710',
+                    'sriov_vfs_pci_address': '',
                     'driver': 'i915'
+                },
+                {
+                    "name": "pci_0000_f7_00_0",
+                    "pciaddr": "0000:f7:00.0",
+                    "pclass_id": "0b4000",
+                    "pvendor_id": "8086",
+                    'pdevice_id': '4942',
+                    "pclass": "Co-processor",
+                    "pvendor": "Intel Corporation",
+                    "pdevice": "Device 4942",
+                    "prevision": "-r40",
+                    "psvendor": "Intel Corporation",
+                    "psdevice": "Device 0000",
+                    "numa_node": "0",
+                    "sriov_totalvfs": "16",
+                    "sriov_numvfs": "16",
+                    "sriov_vfs_pci_address": '''0000:f7:00.1,0000:f7:00.2,0000:f7:00.3,0000:f7:00.4,0000:f7:00.5,
+                    0000:f7:00.6,0000:f7:00.7,0000:f7:01.0,0000:f7:01.1,0000:f7:01.2,0000:f7:01.3,0000:f7:01.4,
+                    0000:f7:01.5,0000:f7:01.6,0000:f7:01.7,0000:f7:02.0''',
+                    "driver": "4xxx"
                 }]
         expected_label = ['intelgpu', 'intelqat']
         actual_label = self.pci_operator.get_supported_device_plugins(self.fake_pci_device_list)
-        print(actual_label)
         self.assertEqual(expected_label, actual_label)
 
 

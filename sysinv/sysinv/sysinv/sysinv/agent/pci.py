@@ -216,13 +216,10 @@ class IntelQATDp(DevicePlugin):
 
     def get_plugin(self, pci_device_list):
         # look for qat pf and vf devices
-        for qat_device_id in QAT_PF_VF_DEVICES_PCI_DEVICE_ID:
-            qat_vendor_device_id = constants.PCI_ALIAS_QAT_VENDOR + ":" + \
-                    qat_device_id
-            p = subprocess.Popen(["lspci", "-d", qat_vendor_device_id],
-                                 stdout=subprocess.PIPE, universal_newlines=True)
-            output = p.stdout.read()
-            if output:
+        for device in pci_device_list:
+            if (device['pdevice_id'] in QAT_PF_VF_DEVICES_PCI_DEVICE_ID and
+                    device['pvendor_id'] == constants.PCI_ALIAS_QAT_VENDOR and
+                    device['driver'] is not None):
                 return constants.KUBE_INTEL_QAT_DEVICE_PLUGIN
         return None
 
