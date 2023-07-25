@@ -7507,6 +7507,7 @@ class ConductorManager(service.PeriodicService):
     def _upgrade_downgrade_kube_components(self):
         self._upgrade_downgrade_static_images()
         self._upgrade_downgrade_kube_networking()
+        self._upgrade_downgrade_kube_storage()
 
     @retry(retry_on_result=lambda x: x is False,
            wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
@@ -7541,6 +7542,43 @@ class ConductorManager(service.PeriodicService):
         except Exception as e:
             LOG.error("Failed to upgrade/downgrade kubernetes "
                       "networking images: {}".format(e))
+            return False
+
+        return True
+
+    @retry(retry_on_result=lambda x: x is False,
+           wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
+    @cutils.synchronized(LOCK_IMAGE_PULL)
+    def _upgrade_downgrade_kube_storage(self):
+        try:
+            # Get the kubernetes version from the upgrade table
+            # if an upgrade exists
+            kube_upgrade = self.dbapi.kube_upgrade_get_one()
+            kube_version = \
+                kubernetes.get_kube_storage_upgrade_version(kube_upgrade)
+        except exception.NotFound:
+            # Not upgrading kubernetes, get the kubernetes version
+            # from the kubeadm config map
+            kube_version = self._kube.kube_get_kubernetes_version()
+
+        if not kube_version:
+            LOG.error("Unable to get the current kubernetes version.")
+            return False
+
+        try:
+            LOG.info("_upgrade_downgrade_kube_storage executing"
+                     " playbook: %s for version %s" %
+                     (constants.ANSIBLE_KUBE_STORAGE_PLAYBOOK, kube_version))
+
+            playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
+                            constants.ANSIBLE_KUBE_STORAGE_PLAYBOOK]
+            returncode = cutils.run_playbook(playbook_cmd)
+
+            if returncode:
+                raise Exception("ansible-playbook returned an error: %s" % returncode)
+        except Exception as e:
+            LOG.error("Failed to upgrade/downgrade kubernetes "
+                      "storage images: {}".format(e))
             return False
 
         return True
@@ -15269,6 +15307,8 @@ class ConductorManager(service.PeriodicService):
             fail_state = kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED
         elif kube_upgrade.state == kubernetes.KUBE_UPGRADING_NETWORKING:
             fail_state = kubernetes.KUBE_UPGRADING_NETWORKING_FAILED
+        elif kube_upgrade.state == kubernetes.KUBE_UPGRADING_STORAGE:
+            fail_state = kubernetes.KUBE_UPGRADING_STORAGE_FAILED
         elif kube_upgrade.state == kubernetes.KUBE_UPGRADING_SECOND_MASTER:
             fail_state = kubernetes.KUBE_UPGRADING_SECOND_MASTER_FAILED
 
@@ -15716,6 +15756,30 @@ class ConductorManager(service.PeriodicService):
         kube_upgrade_obj.state = kubernetes.KUBE_UPGRADED_NETWORKING
         kube_upgrade_obj.save()
 
+    def kube_upgrade_storage(self, context, kube_version):
+        """Upgrade kubernetes storage for this kubernetes version"""
+        LOG.info("executing playbook: %s for version %s" %
+                 (constants.ANSIBLE_KUBE_STORAGE_PLAYBOOK, kube_version))
+
+        playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % kube_version,
+                        constants.ANSIBLE_KUBE_STORAGE_PLAYBOOK]
+        returncode = cutils.run_playbook(playbook_cmd)
+
+        if returncode:
+            LOG.warning("ansible-playbook returned an error: %s" %
+                        returncode)
+            # Update the upgrade state
+            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+            kube_upgrade_obj.state = \
+                kubernetes.KUBE_UPGRADING_STORAGE_FAILED
+            kube_upgrade_obj.save()
+            return
+
+        # Indicate that storage upgrade is complete
+        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        kube_upgrade_obj.state = kubernetes.KUBE_UPGRADED_STORAGE
+        kube_upgrade_obj.save()
+
     def kube_upgrade_abort(self, context, kube_state):
         """
         This is an abort procedure we call via 'system kube-upgrade-abort'
@@ -15755,7 +15819,9 @@ class ConductorManager(service.PeriodicService):
                     not os.path.exists(kubernetes.KUBE_CONTROL_PLANE_STATIC_PODS_BACKUP_PATH):
                 LOG.info("Kubernetes control plane backup path doesn't exists.")
                 if kube_state in [kubernetes.KUBE_UPGRADING_NETWORKING,
-                                          kubernetes.KUBE_UPGRADING_NETWORKING_FAILED]:
+                                          kubernetes.KUBE_UPGRADING_NETWORKING_FAILED,
+                                          kubernetes.KUBE_UPGRADING_STORAGE,
+                                          kubernetes.KUBE_UPGRADING_STORAGE_FAILED]:
                     # Indicate that kubernetes upgrade is aborted
                     for host_obj in controller_hosts:
                         kube_host_upgrade_obj = objects.kube_host_upgrade.get_by_host_id(

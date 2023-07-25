@@ -336,6 +336,7 @@ class KubeUpgradeController(rest.RestController):
                     kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
                     kubernetes.KUBE_UPGRADING_FIRST_MASTER,
                     kubernetes.KUBE_UPGRADING_SECOND_MASTER,
+                    kubernetes.KUBE_UPGRADING_STORAGE,
                     kubernetes.KUBE_UPGRADING_NETWORKING]:
                 kube_upgrade_obj.state = updates['state']
                 kube_upgrade_obj.save()
@@ -385,8 +386,8 @@ class KubeUpgradeController(rest.RestController):
                     kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
                     kubernetes.KUBE_UPGRADING_NETWORKING_FAILED]:
                 raise wsme.exc.ClientSideError(_(
-                    "Kubernetes upgrade must be in %s or %s state to upgrade "
-                    "networking" %
+                    "Kubernetes upgrade must be in %s or %s state to "
+                    "upgrade networking" %
                     (kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
                      kubernetes.KUBE_UPGRADING_NETWORKING_FAILED)))
 
@@ -399,6 +400,30 @@ class KubeUpgradeController(rest.RestController):
                 pecan.request.context, kube_upgrade_obj.to_version)
 
             LOG.info("Upgrading kubernetes networking to version: %s" %
+                kube_upgrade_obj.to_version)
+            return KubeUpgrade.convert_with_links(kube_upgrade_obj)
+
+        elif updates['state'] == kubernetes.KUBE_UPGRADING_STORAGE:
+
+            # Make sure upgrade is in the correct state to upgrade storage
+            if kube_upgrade_obj.state not in [
+                    kubernetes.KUBE_UPGRADED_NETWORKING,
+                    kubernetes.KUBE_UPGRADING_STORAGE_FAILED]:
+                raise wsme.exc.ClientSideError(_(
+                    "Kubernetes upgrade must be in %s or %s state to "
+                    "upgrade storage" %
+                    (kubernetes.KUBE_UPGRADED_NETWORKING,
+                     kubernetes.KUBE_UPGRADING_STORAGE_FAILED)))
+
+            # Update the upgrade state
+            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADING_STORAGE
+            kube_upgrade_obj.save()
+
+            # Tell the conductor to upgrade storage
+            pecan.request.rpcapi.kube_upgrade_storage(
+                pecan.request.context, kube_upgrade_obj.to_version)
+
+            LOG.info("Upgrading kubernetes storage to version: %s" %
                 kube_upgrade_obj.to_version)
             return KubeUpgrade.convert_with_links(kube_upgrade_obj)
 
@@ -460,11 +485,13 @@ class KubeUpgradeController(rest.RestController):
             # Make sure upgrade is in the correct state to cordon
             if kube_upgrade_obj.state not in [
                     kubernetes.KUBE_UPGRADED_NETWORKING,
+                    kubernetes.KUBE_UPGRADED_STORAGE,
                     kubernetes.KUBE_UPGRADE_CORDON_FAILED]:
                 raise wsme.exc.ClientSideError(_(
-                    "Kubernetes upgrade must be in %s or %s state to "
-                    "cordon" %
+                    "Kubernetes upgrade must be in %s, %s or %s state "
+                    "to cordon" %
                     (kubernetes.KUBE_UPGRADED_NETWORKING,
+                     kubernetes.KUBE_UPGRADED_STORAGE,
                      kubernetes.KUBE_UPGRADE_CORDON_FAILED)))
 
             # Update the upgrade state
