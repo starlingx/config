@@ -55,11 +55,13 @@ ADDRPOOL_CONTROLLER1_ADDRESS_ID = 'controller1_address_id'
 ADDRPOOL_FLOATING_ADDRESS_ID = 'floating_address_id'
 ADDRPOOL_GATEWAY_ADDRESS_ID = 'gateway_address_id'
 
-# Address pool for the admin network and system controller in the subcloud
-# are allowed to be deleted/modified post install
+# Address pools for the admin and system controller networks in the subcloud
+# are allowed to be deleted/modified post install.
 SUBCLOUD_WRITABLE_ADDRPOOLS = ['system-controller-subnet',
-                               'system-controller-oam-subnet',
-                               'admin']
+                               'system-controller-oam-subnet']
+# Note that a user can add an admin network after initial config is completed,
+# so we can't depend on the address pool having a static name.
+SUBCLOUD_WRITABLE_NETWORK_TYPES = ['admin']
 
 
 class AddressPoolPatchType(types.JsonPatchType):
@@ -349,10 +351,14 @@ class AddressPoolController(rest.RestController):
         # subcloud are expected for re-home a subcloud to new system controllers.
         if addrpool.name not in SUBCLOUD_WRITABLE_ADDRPOOLS:
             networks = pecan.request.dbapi.networks_get_by_pool(addrpool.id)
-            # An addresspool except the system controller's pools, is considered
-            # readonly after the initial configuration is complete. During bootstrap
-            # it should be modifiable even though it is allocated to a network.
+            # An addresspool except the admin and system controller's pools
+            # are considered read-only after the initial configuration is
+            # complete. During bootstrap it should be modifiable even though
+            # it is allocated to a network.
             if networks and cutils.is_initial_config_complete():
+                if any(network.type in SUBCLOUD_WRITABLE_NETWORK_TYPES
+                       for network in networks):
+                    return
                 # network managed address pool, no changes permitted
                 raise exception.AddressPoolReadonly()
 
@@ -587,13 +593,31 @@ class AddressPoolController(rest.RestController):
             # except the admin and system controller address pools on the
             # subcloud. These can be deleted/re-added during re-homing
             # a subcloud to new system controllers
+            networks = pecan.request.dbapi.networks_get_by_pool(addrpool.id)
             if cutils.is_initial_config_complete() and \
-               (addrpool.name not in SUBCLOUD_WRITABLE_ADDRPOOLS):
+               (addrpool.name not in SUBCLOUD_WRITABLE_ADDRPOOLS) and \
+                not any(network.type == constants.NETWORK_TYPE_ADMIN
+                       for network in networks):
                 raise exception.AddressPoolInUseByAddresses()
             else:
                 # Must be a request as a result of network reconfiguration
-                # during bootstrap. Delete the addresses in the pool
-                # before deleting the pool
+                # during bootstrap or subcloud network reconfig.
+                # Delete the addresses in the pool before deleting the pool
                 for addr in addresses:
                     pecan.request.dbapi.address_destroy(addr.uuid)
+
         pecan.request.dbapi.address_pool_destroy(address_pool_uuid)
+
+        if (utils.get_distributed_cloud_role() ==
+                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+            if networks and cutils.is_initial_config_complete():
+                if any(network.type == constants.NETWORK_TYPE_ADMIN
+                       for network in networks):
+                    # If the admin address pool is deleted, this allows the
+                    # subcloud to automatically revert to using the management
+                    # network
+                    chosts = pecan.request.dbapi.ihost_get_by_personality(
+                        constants.CONTROLLER)
+                    for host in chosts:
+                        pecan.request.rpcapi.update_admin_config(
+                            pecan.request.context, host, disable=True)

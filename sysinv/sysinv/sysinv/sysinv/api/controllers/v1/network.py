@@ -438,8 +438,7 @@ class NetworkController(rest.RestController):
                                 constants.NETWORK_TYPE_PXEBOOT,
                                 constants.NETWORK_TYPE_CLUSTER_POD,
                                 constants.NETWORK_TYPE_CLUSTER_SERVICE,
-                                constants.NETWORK_TYPE_STORAGE,
-                                constants.NETWORK_TYPE_ADMIN]:
+                                constants.NETWORK_TYPE_STORAGE]:
             msg = _("Cannot delete type {} network {} after initial "
                     "configuration completion"
                     .format(network['type'], network_uuid))

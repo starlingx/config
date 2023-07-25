@@ -8529,24 +8529,37 @@ class ConductorManager(service.PeriodicService):
                                                     config_uuid,
                                                     config_dict)
 
-    def update_admin_config(self, context, host):
+    def update_admin_config(self, context, host, disable=False):
         """Update the admin network configuration"""
 
         personalities = [constants.CONTROLLER]
         config_uuid = self._config_update_hosts(context,
                                                 personalities,
                                                 host_uuids=[host.uuid])
-        config_dict = {
-            "personalities": personalities,
-            "host_uuids": [host['uuid']],
-            "classes": ['platform::sm::disable_admin_config::runtime',
-                        'platform::sm::update_admin_config::runtime',
-                        'platform::network::runtime',
-                        'platform::sm::enable_admin_config::runtime',
-                        'platform::haproxy::runtime',
-                        'openstack::keystone::endpoint::runtime',
-                        'platform::firewall::runtime']
-        }
+
+        if disable:
+            config_dict = {
+                "personalities": personalities,
+                "host_uuids": [host['uuid']],
+                "classes": ['platform::sm::disable_admin_config::runtime',
+                            'platform::network::runtime',
+                            'platform::haproxy::runtime',
+                            'openstack::keystone::endpoint::runtime',
+                            'platform::firewall::runtime']
+            }
+        else:
+            config_dict = {
+                "personalities": personalities,
+                "host_uuids": [host['uuid']],
+                "classes": ['platform::sm::disable_admin_config::runtime',
+                            'platform::sm::update_admin_config::runtime',
+                            'platform::network::runtime',
+                            'platform::sm::enable_admin_config::runtime',
+                            'platform::haproxy::runtime',
+                            'openstack::keystone::endpoint::runtime',
+                            'platform::firewall::runtime']
+            }
+
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
     def update_host_filesystem_config(self, context,
