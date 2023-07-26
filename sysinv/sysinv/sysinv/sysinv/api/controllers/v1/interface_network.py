@@ -160,6 +160,14 @@ class InterfaceNetworkController(rest.RestController):
 
         result = pecan.request.dbapi.interface_network_create(interface_network_dict)
 
+        # Management Network reconfiguration after initial config complete
+        # is just supported by AIO-SX, set the flag
+        if (network_type == constants.NETWORK_TYPE_MGMT and
+                utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and
+                cutils.is_initial_config_complete() and
+                host.hostname == constants.CONTROLLER_0_HOSTNAME):
+            pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
+
         # Update address mode based on network type
         if network_type in [constants.NETWORK_TYPE_MGMT,
                             constants.NETWORK_TYPE_OAM,
@@ -180,6 +188,7 @@ class InterfaceNetworkController(rest.RestController):
 
         # Assign an address to the interface
         _update_host_address(host, interface_obj, network_type)
+
         if network_type == constants.NETWORK_TYPE_MGMT:
             ethernet_port_mac = None
             if not interface_obj.uses:

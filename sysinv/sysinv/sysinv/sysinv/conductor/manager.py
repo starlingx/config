@@ -1205,15 +1205,6 @@ class ConductorManager(service.PeriodicService):
                                                           mac_address)
                 f_out.write(line)
 
-        # Update host files atomically and reload dnsmasq
-        if (not os.path.isfile(dnsmasq_hosts_file) or
-                not filecmp.cmp(temp_dnsmasq_hosts_file, dnsmasq_hosts_file)):
-            os.rename(temp_dnsmasq_hosts_file, dnsmasq_hosts_file)
-        if (not os.path.isfile(dnsmasq_addn_hosts_file) or
-                not filecmp.cmp(temp_dnsmasq_addn_hosts_file,
-                                dnsmasq_addn_hosts_file)):
-            os.rename(temp_dnsmasq_addn_hosts_file, dnsmasq_addn_hosts_file)
-
         # If there is no distributed cloud addn_hosts file, create an empty one
         # so dnsmasq will not complain.
         dnsmasq_addn_hosts_dc_file = os.path.join(tsc.CONFIG_PATH, 'dnsmasq.addn_hosts_dc')
@@ -1223,6 +1214,38 @@ class ConductorManager(service.PeriodicService):
             with open(temp_dnsmasq_addn_hosts_dc_file, 'w') as f_out_addn_dc:
                 f_out_addn_dc.write(' ')
             os.rename(temp_dnsmasq_addn_hosts_dc_file, dnsmasq_addn_hosts_dc_file)
+
+        # The controller IP will be in the dnsmasq.addn_hosts
+        # since the /opt/platform is not mounted during the startup it is necessary to copy
+        # DNSMASQ files to /etc/platform/
+        if cutils.is_aio_simplex_system(self.dbapi):
+            ETC_PLAT = tsc.PLATFORM_CONF_PATH + '/'
+
+            if os.path.isfile(dnsmasq_hosts_file):
+                shutil.copy2(dnsmasq_hosts_file, ETC_PLAT)
+            if os.path.isfile(dnsmasq_addn_hosts_file):
+                shutil.copy2(dnsmasq_addn_hosts_file, ETC_PLAT)
+            if os.path.isfile(temp_dnsmasq_hosts_file):
+                shutil.copy2(temp_dnsmasq_hosts_file, ETC_PLAT)
+            if os.path.isfile(temp_dnsmasq_addn_hosts_file):
+                shutil.copy2(temp_dnsmasq_addn_hosts_file, ETC_PLAT)
+
+        # Ignore the dnsmasq restart when an management network reconfiguration is in process.
+        # This is necessary, otherwise the DNSMASQ will answer DNS requests with the new MGMT IP
+        # but the new mgmt IP range was not configured in the system yet.
+        # The new Management Network IP range will be applied after the host-unlock
+        if os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_ONGOING):
+            LOG.info("Ignoring DNSMASQ changes in runtime due to Management Network reconfiguration.")
+            return
+
+        # Update host files atomically and reload dnsmasq
+        if (not os.path.isfile(dnsmasq_hosts_file) or
+                not filecmp.cmp(temp_dnsmasq_hosts_file, dnsmasq_hosts_file)):
+            os.rename(temp_dnsmasq_hosts_file, dnsmasq_hosts_file)
+        if (not os.path.isfile(dnsmasq_addn_hosts_file) or
+                not filecmp.cmp(temp_dnsmasq_addn_hosts_file,
+                                dnsmasq_addn_hosts_file)):
+            os.rename(temp_dnsmasq_addn_hosts_file, dnsmasq_addn_hosts_file)
 
         os.system("pkill -HUP dnsmasq")
 
@@ -2028,6 +2051,33 @@ class ConductorManager(service.PeriodicService):
                 }
                 self._config_apply_runtime_manifest(
                     context, config_uuid, config_dict, force=True)
+
+            # Regenerate config target uuid, node is going for reboot!
+            config_uuid = self._config_update_hosts(context, personalities)
+            if utils.config_is_reboot_required(host.config_target):
+                config_uuid = self._config_set_reboot_required(config_uuid)
+            self._puppet.update_host_config(host, config_uuid)
+        elif os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_ONGOING):
+            # Remove unlock ready flag to prevent maintenance rebooting the
+            # node until the runtime manifest is finished.
+            try:
+                if os.path.isfile(constants.UNLOCK_READY_FLAG):
+                    os.remove(constants.UNLOCK_READY_FLAG)
+            except OSError:
+                LOG.exception("Failed to remove unlock ready flag: %s" %
+                              constants.UNLOCK_READY_FLAG)
+
+            personalities = [constants.CONTROLLER]
+            # Update sysinv and keystone endpoints before the reboot
+            config_uuid = self._config_update_hosts(context, personalities,
+                                                    host_uuids=[host.uuid])
+            config_dict = {
+                "personalities": personalities,
+                "host_uuids": [host.uuid],
+                "classes": ['openstack::keystone::endpoint::reconfig']
+            }
+            self._config_apply_runtime_manifest(
+                context, config_uuid, config_dict, force=True)
 
             # Regenerate config target uuid, node is going for reboot!
             config_uuid = self._config_update_hosts(context, personalities)
@@ -12515,6 +12565,15 @@ class ConductorManager(service.PeriodicService):
                               nettype in i.networktypelist]
 
         return iinterfaces
+
+    def set_mgmt_network_reconfig_flag(self, context):
+        """set the management network reconfiguration
+        flag to ignore the DNSMASQ changes in runtime.
+        """
+
+        if not os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_ONGOING):
+            LOG.info("Management Network reconfiguration detected.")
+            open(tsc.MGMT_NETWORK_RECONFIGURATION_ONGOING, 'w').close()
 
     def mgmt_ip_set_by_ihost(self,
                              context,

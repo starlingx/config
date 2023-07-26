@@ -13,9 +13,11 @@ import io
 import os
 import tempfile
 import yaml
+import tsconfig.tsconfig as tsc
 
 from stevedore import extension
 from tsconfig import tsconfig
+from sysinv.common import constants
 
 from oslo_log import log as logging
 from sysinv.puppet import common
@@ -193,6 +195,16 @@ class PuppetOperator(object):
             config.update(puppet_plugin.obj.get_host_config(host))
 
         self._write_host_config(host, config)
+
+        # Hiera file updated. Check if Management Network reconfiguration is ongoing
+        if (os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_ONGOING) and
+            (host.action == constants.FORCE_UNLOCK_ACTION or
+             host.action == constants.UNLOCK_ACTION)):
+
+            if not os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_UNLOCK):
+                LOG.info("Management Network reconfiguration will be applied during "
+                         "the startup. Hiera files updated and host-unlock detected")
+                open(tsc.MGMT_NETWORK_RECONFIGURATION_UNLOCK, 'w').close()
 
     def read_host_config(self, host, version=None):
         """"""

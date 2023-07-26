@@ -837,6 +837,13 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg(
             'remove_admin_firewall_config'))
 
+    def set_mgmt_network_reconfig_flag(self, context):
+        """Synchronously, have the conductor update the mgmt network reconfig flag.
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg(
+            'set_mgmt_network_reconfig_flag'))
+
     def update_host_filesystem_config(self, context,
                                       host=None,
                                       filesystem_list=None):

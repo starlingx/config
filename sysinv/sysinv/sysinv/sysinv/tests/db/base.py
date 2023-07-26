@@ -558,7 +558,7 @@ class StorageHostTestCase(BaseHostTestCase):
 
 class AIOHostTestCase(BaseHostTestCase):
 
-    system_mode = constants.TIS_AIO_BUILD
+    system_type = constants.TIS_AIO_BUILD
 
     def setUp(self):
         super(AIOHostTestCase, self).setUp()
@@ -568,7 +568,7 @@ class AIOHostTestCase(BaseHostTestCase):
 
 class ProvisionedAIOHostTestCase(BaseHostTestCase):
 
-    system_mode = constants.TIS_AIO_BUILD
+    system_type = constants.TIS_AIO_BUILD
 
     def setUp(self):
         super(ProvisionedAIOHostTestCase, self).setUp()
