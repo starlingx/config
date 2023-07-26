@@ -215,7 +215,7 @@ class DiskOperator(object):
         LOG.debug("[DiskEnum] get_device_id_wwn: devlinks= %s" %
                   device['DEVLINKS'])
         devlinks = device['DEVLINKS'].split()
-        for devlink in devlinks:
+        for devlink in sorted(devlinks):
             if "by-id" in devlink:
                 if "wwn" not in devlink:
                     device_id = devlink.split('/')[-1]
