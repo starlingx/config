@@ -969,7 +969,7 @@ class DockerRegistryCredentialNotFound(NotFound):
 
 class DockerRegistrySSLException(SysinvException):
     message = _("Registry certificate signed by an unknown CA. "
-                "Install a trusted CA with 'system certificate-install -m ssl_ca'")
+                "Install a trusted CA with 'system ca-certificate-install'")
 
 
 class DockerRegistryAPIException(SysinvException):
