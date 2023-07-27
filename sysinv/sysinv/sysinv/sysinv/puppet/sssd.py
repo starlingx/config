@@ -208,6 +208,11 @@ class SssdPuppet(base.BasePuppet):
             'enumerate': 'true',
             'ldap_sudo_smart_refresh_interval': '300',
             'access_provider': 'ldap',
+            'auth_provider': 'ldap',
+            'ldap_pwd_policy': 'shadow',
+            'pwd_expiration_warning': '7',
+            'ldap_access_order': 'pwd_expire_policy_renew',
+            'ldap_chpass_update_last_change': 'true',
             'ldap_access_filter': '(& (objectclass=posixAccount))',
             'ldap_search_base': 'dc=cgcs,dc=local',
             'ldap_sudo_search_base': 'ou=SUDOers,dc=cgcs,dc=local',
@@ -333,6 +338,7 @@ class SssdPuppet(base.BasePuppet):
         pam_parameters = {
             'reconnection_retries': '3',
             'debug_level': '0x0070',
+            'pam_pwd_expiration_warning': '7',
         }
 
         return pam_parameters
