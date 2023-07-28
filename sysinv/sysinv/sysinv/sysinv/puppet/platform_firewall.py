@@ -127,6 +127,10 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 self._set_rules_mgmt(config[FIREWALL_GNP_MGMT_CFG],
                                     networks[constants.NETWORK_TYPE_MGMT], host)
 
+            if (config[FIREWALL_GNP_ADMIN_CFG]):
+                self._set_rules_admin(config[FIREWALL_GNP_ADMIN_CFG],
+                                      networks[constants.NETWORK_TYPE_ADMIN], host)
+
             if (config[FIREWALL_GNP_CLUSTER_HOST_CFG]):
                 self._set_rules_cluster_host(config[FIREWALL_GNP_CLUSTER_HOST_CFG],
                                     networks[constants.NETWORK_TYPE_CLUSTER_HOST], host)
@@ -315,6 +319,32 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 f"stx-ingr-{host.personality}-{network.type}-igmp{ip_version}"
             gnp_config["spec"]["ingress"].append(igmp_ingr_rule)
 
+    def _set_rules_admin(self, gnp_config, network, host):
+        """ Fill the admin network specific filtering data
+
+        :param gnp_config: the dict containing the hiera data to be filled
+        :param network: the sysinv.object.network object for this network
+        """
+        addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
+        ip_version = IPAddress(f"{addr_pool.network}").version
+        self._add_source_net_filter(gnp_config["spec"]["ingress"],
+                                    f"{addr_pool.network}/{addr_pool.prefix}")
+        if (ip_version == 6):
+            self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL)
+        if (ip_version == 4):
+            # copy the TCP rule and do the same for IGMP
+            igmp_proto = 2
+            igmp_egr_rule = copy.deepcopy(gnp_config["spec"]["egress"][0])
+            igmp_egr_rule["protocol"] = igmp_proto
+            igmp_egr_rule["metadata"]["annotations"]["name"] = \
+                f"stx-egr-{host.personality}-{network.type}-igmp{ip_version}"
+            gnp_config["spec"]["egress"].append(igmp_egr_rule)
+            igmp_ingr_rule = copy.deepcopy(gnp_config["spec"]["ingress"][0])
+            igmp_ingr_rule["protocol"] = igmp_proto
+            igmp_ingr_rule["metadata"]["annotations"]["name"] = \
+                f"stx-ingr-{host.personality}-{network.type}-igmp{ip_version}"
+            gnp_config["spec"]["ingress"].append(igmp_ingr_rule)
+
     def _set_rules_cluster_host(self, gnp_config, network, host):
         """ Fill the cluster-host network specific filtering data
 
@@ -439,17 +469,6 @@ class PlatformFirewallPuppet(base.BasePuppet):
         if ip_version == 6:
             ICMP = "ICMPv6"
 
-        # the admin network is a special case that is not needed for internal cluster communication,
-        # only for communication with the System Controller. But ICMP requires to be allowed to
-        # exchange neighbor info with the gateway and help troubleshooting
-        icmp_rule = list(filter(lambda rule: rule['protocol'] == ICMP,
-                                gnp_config["spec"]["ingress"]))
-        self._add_source_net_filter(icmp_rule, f"{addr_pool.network}/{addr_pool.prefix}")
-        if (ip_version == 6):
-            self._add_source_net_filter(icmp_rule, LINK_LOCAL)
-
-        gnp_config["spec"]["ingress"].clear()
-
         rules = list()
         for proto in ["TCP", "UDP", ICMP]:
             rule = {"metadata": dict()}
@@ -469,7 +488,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
         for network in networks:
             self._add_source_net_filter(rules, network)
 
-        for rule in (icmp_rule + rules):
+        for rule in rules:
             gnp_config["spec"]["ingress"].append(rule)
 
     def _set_rules_subcloud_mgmt(self, gnp_config, network, host_personality):
