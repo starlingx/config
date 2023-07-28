@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2022 Wind River Systems, Inc.
+# Copyright (c) 2022-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -41,6 +41,7 @@ if [ "$TO_RELEASE" != "22.12" ]; then
 fi
 
 PLATFORM_APPLICATION_PATH='/usr/local/share/applications/helm'
+UPGRADE_IN_PROGRESS_APPS_FILE='/etc/platform/.upgrade_in_progress_apps'
 PATH=$PATH:/usr/local/sbin
 
 # conversion script; this script will convert the helm overrides
@@ -117,6 +118,11 @@ if [ "x${UPGRADE_APP_VERSION}" == "x${EXISTING_APP_VERSION}" ]; then
     log "$NAME: $UPGRADE_APP_NAME, version $UPGRADE_APP_VERSION, is the same."
     exit 0
 else
+    # Include app in upgrade in progress file
+    if ! grep -q "${EXISTING_APP_NAME},${EXISTING_APP_VERSION},${UPGRADE_APP_VERSION}" $UPGRADE_IN_PROGRESS_APPS_FILE; then
+        echo "${EXISTING_APP_NAME},${EXISTING_APP_VERSION},${UPGRADE_APP_VERSION}" >> $UPGRADE_IN_PROGRESS_APPS_FILE
+    fi
+
     # The 50-validate-oidc-auth-apps.py is used to convert helm
     # overrides.  Run it here on the active controller during
     # uprade-activate
@@ -213,21 +219,6 @@ else
     # apply new app version
     log "$NAME: Applying ${UPGRADE_APP_NAME}, version ${UPGRADE_APP_VERSION}"
     system application-apply ${UPGRADE_APP_NAME}
-
-    # Wait on the apply
-    for tries in $(seq 1 $APPLY_RESULT_ATTEMPTS); do
-        UPGRADE_APP_STATUS=$(system application-show $UPGRADE_APP_NAME --column status --format value)
-        if [ "${UPGRADE_APP_STATUS}" == 'applied' ]; then
-            log "$NAME: ${UPGRADE_APP_NAME} has been applied."
-            break
-        fi
-        sleep $APPLY_RESULT_SLEEP
-    done
-
-    if [ $tries == $APPLY_RESULT_ATTEMPTS ]; then
-        log "$NAME: ${UPGRADE_APP_NAME}, version ${UPGRADE_APP_VERSION}, was not applied in the allocated time. Exiting for manual intervention..."
-        exit 1
-    fi
 fi
 
 exit 0
