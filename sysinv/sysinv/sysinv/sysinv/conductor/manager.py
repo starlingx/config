@@ -31,6 +31,7 @@ collection of inventory data for each host.
 
 import errno
 import filecmp
+import glob
 import hashlib
 import json
 import io
@@ -12334,60 +12335,45 @@ class ConductorManager(service.PeriodicService):
 
         for upgrade in upgrades:
             version = upgrade.findtext("version")
-            required_patch = upgrade.findtext("required_patch")
+            required_patches = []
+            required_patch_elements = upgrade.findall("required_patches")
+            if required_patch_elements:
+                for patch_element in required_patch_elements:
+                    required_patches.append(patch_element.text)
             supported_versions.append(
                 {
                     "version": version.strip(),
-                    "required_patch": required_patch.strip(),
+                    "required_patch": required_patches,
                 },
             )
 
         return supported_versions
 
-    def _modify_import_script(self, import_script):
+    def _get_patch_id(self, filename):
+        tree = ElementTree.parse(filename)
+        root = tree.getroot()
+        patch_id = root.findtext("id")
+        return patch_id
+
+    def _get_committed_patches_from_iso(self, iso_release, mntdir):
         """
-        Copy and modify the import.sh script to change shell variables
-        to always set the path under /var directory.
+        mntdir is where iso is mounted.
+        for debian iso, the committed patches are under mntdir/patches,
+        for centos iso, the committed patches are under mntdir/patches/metadata/committed
+        committed patches come with metadata file named as <patch_name>-metadata.xml under
+        above locations
         """
-        try:
-            with open(import_script, "r") as file:
-                file_data = file.read()
-        except Exception:
-            msg = "Unable to copy the import.sh script"
-            raise exception.SysinvException(msg)
+        metadata_dir = os.path.join(mntdir, "patches")
+        patches = []
+        if LooseVersion(iso_release) < "22.12":
+            # centos
+            metadata_dir = os.path.join(mntdir, "patches/metadata/committed")
 
-        # Change FEED_DIR variable.
-        feed_dir = "FEED_DIR=/www/pages/feed/rel-"
-        new_feed_dir = "FEED_DIR=/var/www/pages/feed/rel-"
-        file_data = file_data.replace(feed_dir, new_feed_dir, 1)
-
-        # Change CURRENT_FEED_DIR variable.
-        current_feed_dir = "CURRENT_FEED_DIR=/www/pages/feed/rel-"
-        new_current_feed_dir = "CURRENT_FEED_DIR=/var/www/pages/feed/rel-"
-        file_data = file_data.replace(current_feed_dir, new_current_feed_dir, 1)
-
-        # Change SCRIPT_DIR variable.
-        script_dir = "SCRIPT_DIR=$(dirname $0)"
-        new_script_dir = "SCRIPT_DIR=" + os.path.dirname(import_script)
-        file_data = file_data.replace(script_dir, new_script_dir, 1)
-
-        # Change patch path destination.
-        updates_dir = " /www/pages/updates/rel-"
-        new_updates_dir = " /var/www/pages/updates/rel-"
-        file_data = file_data.replace(updates_dir, new_updates_dir, 3)
-
-        tmp_import_script = "/tmp/import.sh"
-
-        try:
-            with open(tmp_import_script, "w") as file:
-                file.write(file_data)
-        except Exception:
-            msg = "Unable to save the import.sh script"
-            raise exception.SysinvException(msg)
-
-        os.chmod(tmp_import_script, 0o100)
-
-        return tmp_import_script
+        for filename in glob.glob("%s/*.xml" % metadata_dir):
+            patch_id = self._get_patch_id(filename)
+            if patch_id:
+                patches.append(patch_id)
+        return patches
 
     def _import_load_error(self, new_load):
         """
@@ -12467,21 +12453,13 @@ class ConductorManager(service.PeriodicService):
             raise exception.SysinvException(_(
                 "Unable to read metadata file"))
 
-        # Read comps file
-        # TODO (gdossant): comps file only exists on CentOS ISO.
-        # For Debian, we have to implement a way to get the patches
-        # the ISO has.
-        comps_content = ""
-        comps_file_path = mntdir + "/patches/comps.xml"
-
-        if os.path.exists(comps_file_path):
-            with open(comps_file_path) as file:
-                comps_content = file.read()
+        new_version = root.findtext('version')
+        committed_patches = []
+        if import_type == constants.INACTIVE_LOAD_IMPORT:
+            committed_patches = self._get_committed_patches_from_iso(new_version, mntdir)
 
         # unmount iso
         self._unmount_iso(mounted_iso, mntdir)
-
-        new_version = root.findtext('version')
 
         if import_type == constants.ACTIVE_LOAD_IMPORT:
             if new_version != current_version:
@@ -12501,72 +12479,91 @@ class ConductorManager(service.PeriodicService):
 
             return load
 
-        if import_type == constants.INACTIVE_LOAD_IMPORT:
+        elif import_type == constants.INACTIVE_LOAD_IMPORT:
+            if LooseVersion(new_version) >= LooseVersion(current_version):
+                raise exception.SysinvException(
+                    _("Inactive load (%s) must be an older load than the current active (%s).")
+                    % (new_version, current_version))
+
             supported_versions = self._get_current_supported_upgrade_versions()
             is_version_upgradable = False
 
-            for supported_version in supported_versions:
-                if new_version != supported_version["version"]:
-                    continue
-
-                if not supported_version["required_patch"] or \
-                        supported_version["required_patch"] in comps_content:
+            for upgrade_path in supported_versions:
+                if new_version == upgrade_path["version"]:
                     is_version_upgradable = True
+                    patches = upgrade_path['required_patch']
+                    for patch in patches:
+                        if patch not in committed_patches:
+                            is_version_upgradable = False
+                            break
 
             if not is_version_upgradable:
                 msg = """
                     Inactive version must be upgradable to the
                     current version (%s), please check the version
-                    and the necessary patches.
+                    and patches.
                 """ % current_version
                 raise exception.SysinvException(_(msg))
 
-        if new_version == current_version:
-            raise exception.SysinvException(
-                _("Active version and import version match (%s)")
-                % current_version)
+            self.dbapi.load_update(active_load['id'], {'compatible_version': new_version,
+                                                       'required_patches': '\n'.join(patches)})
 
-        supported_upgrades_elm = root.find('supported_upgrades')
-        if not supported_upgrades_elm:
-            raise exception.SysinvException(
-                _("Invalid Metadata XML"))
+            patch = dict()
+            patch['state'] = constants.IMPORTING_LOAD_STATE
 
-        path_found = False
-        upgrade_path = None
-        upgrade_paths = supported_upgrades_elm.findall('upgrade')
+            patch['software_version'] = new_version
+            patch['compatible_version'] = ""
+            patch['required_patches'] = ""
+            new_load = self.dbapi.load_create(patch)
+            return new_load
 
-        for upgrade_element in upgrade_paths:
-            valid_from_version = upgrade_element.findtext('version')
-            valid_from_versions = valid_from_version.split(",")
-            if current_version in valid_from_versions:
-                path_found = True
-                upgrade_path = upgrade_element
-                break
+        else:
+            if new_version == current_version:
+                raise exception.SysinvException(
+                    _("Active version and import version match (%s)")
+                    % current_version)
 
-        if not path_found and import_type != constants.INACTIVE_LOAD_IMPORT:
-            raise exception.SysinvException(
-                _("No valid upgrade path found"))
+            supported_upgrades_elm = root.find('supported_upgrades')
+            if not supported_upgrades_elm:
+                raise exception.SysinvException(
+                    _("Invalid Metadata XML"))
 
-        # Create a patch with the values from the metadata
-        patch = dict()
+            path_found = False
+            upgrade_path = None
+            upgrade_paths = supported_upgrades_elm.findall('upgrade')
 
-        patch['state'] = constants.IMPORTING_LOAD_STATE
-        patch['software_version'] = new_version
-        patch['compatible_version'] = current_version
+            for upgrade_element in upgrade_paths:
+                valid_from_version = upgrade_element.findtext('version')
+                valid_from_versions = valid_from_version.split(",")
+                if current_version in valid_from_versions:
+                    path_found = True
+                    upgrade_path = upgrade_element
+                    break
 
-        required_patches = []
+            if not path_found:
+                raise exception.SysinvException(
+                    _("No valid upgrade path found"))
 
-        if upgrade_path:
-            patch_elements = upgrade_path.findall('required_patch')
-            for patch_element in patch_elements:
-                required_patches.append(patch_element.text)
+            # Create a patch with the values from the metadata
+            patch = dict()
 
-        patch['required_patches'] = "\n".join(required_patches)
+            patch['state'] = constants.IMPORTING_LOAD_STATE
+            patch['software_version'] = new_version
+            patch['compatible_version'] = current_version
 
-        # create the new imported load in the database
-        new_load = self.dbapi.load_create(patch)
+            required_patches = []
 
-        return new_load
+            if upgrade_path:
+                patch_elements = upgrade_path.findall('required_patch')
+                for patch_element in patch_elements:
+                    required_patches.append(patch_element.text)
+
+            patch['required_patches'] = "\n".join(required_patches)
+
+            # create the new imported load in the database
+            new_load = self.dbapi.load_create(patch)
+
+            return new_load
 
     def import_load(self, context, path_to_iso, new_load,
                     import_type=None):
@@ -12601,13 +12598,7 @@ class ConductorManager(service.PeriodicService):
         import_script = mntdir + "/upgrades/import.sh"
 
         if import_type == constants.INACTIVE_LOAD_IMPORT:
-            try:
-                import_script = self._modify_import_script(import_script)
-            except exception.SysinvException as error:
-                self._import_load_error(new_load)
-                raise exception.SysinvException(
-                    "Failure to modify import script: %s" % (error)
-                )
+            import_script = ["/opt/upgrades/import.sh", mntdir]
 
         # Run the upgrade script
         with open(os.devnull, "w") as fnull:
