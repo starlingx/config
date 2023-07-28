@@ -602,7 +602,7 @@ class KubeOperator(object):
     def kube_get_secret(self, name, namespace):
         c = self._get_kubernetesclient_core()
         try:
-            return c.read_namespaced_secret(name, namespace)
+            return c.read_namespaced_secret(name, namespace, _request_timeout=(30, 30))
         except ApiException as e:
             if e.status == httplib.NOT_FOUND:
                 return None
