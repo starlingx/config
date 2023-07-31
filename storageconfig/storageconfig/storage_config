@@ -165,10 +165,10 @@ start()
     fi
 
     # Apply the puppet manifest
-    HOST_HIERA=${PUPPET_PATH}/hieradata/${IPADDR}.yaml
+    HOST_HIERA=${PUPPET_PATH}/hieradata/${HOST}.yaml
     if [ -f ${HOST_HIERA} ]; then
         echo "$0: Running puppet manifest apply"
-        puppet-manifest-apply.sh ${PUPPET_PATH}/hieradata ${IPADDR} storage
+        puppet-manifest-apply.sh ${PUPPET_PATH}/hieradata ${HOST} storage
         RC=$?
         if [ $RC -ne 0 ];
         then
@@ -177,7 +177,7 @@ start()
         fi
     else
         umount $PLATFORM_DIR
-        fatal_error "Host configuration not yet available for this node ($(hostname)=${IPADDR}); aborting configuration."
+        fatal_error "Host configuration not yet available for this node ($(hostname)=${HOST}); aborting configuration."
     fi
 
     # Unmount

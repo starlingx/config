@@ -452,12 +452,12 @@ class BaseHostTestCase(BaseSystemTestCase):
                                 allocated_function=function))
                     cpu = cpu + 1
 
-    def _create_test_host_addresses(self, host):
+    def _create_test_host_addresses(self, hostname):
         self._create_test_addresses(
-            [host.hostname], self.mgmt_subnet,
+            [hostname], self.mgmt_subnet,
             constants.NETWORK_TYPE_MGMT, start=10)
         self._create_test_addresses(
-            [host.hostname], self.cluster_host_subnet,
+            [hostname], self.cluster_host_subnet,
             constants.NETWORK_TYPE_CLUSTER_HOST, start=10)
 
     def _create_test_host_platform_interface(self, host):
@@ -544,7 +544,7 @@ class WorkerHostTestCase(BaseHostTestCase):
         super(WorkerHostTestCase, self).setUp()
         self.host = self._create_test_host(constants.WORKER)
         self._create_test_host_cpus(self.host, platform=1, vswitch=2, application=12)
-        self._create_test_host_addresses(self.host)
+        self._create_test_host_addresses(self.host.hostname)
 
 
 class StorageHostTestCase(BaseHostTestCase):
@@ -553,7 +553,7 @@ class StorageHostTestCase(BaseHostTestCase):
         super(StorageHostTestCase, self).setUp()
         self.host = self._create_test_host(constants.STORAGE)
         self._create_test_host_cpus(self.host, platform=8)
-        self._create_test_host_addresses(self.host)
+        self._create_test_host_addresses(self.host.hostname)
 
 
 class AIOHostTestCase(BaseHostTestCase):

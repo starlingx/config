@@ -1003,7 +1003,6 @@ class ConductorManager(service.PeriodicService):
                 "Invalid method call: create_ihost requires mgmt_mac."))
 
         try:
-            mgmt_update_required = False
             mac = values['mgmt_mac']
             mac = mac.rstrip()
             mac = cutils.validate_and_normalize_mac(mac)
@@ -1011,34 +1010,6 @@ class ConductorManager(service.PeriodicService):
             LOG.info("Not creating ihost for mac: %s because it "
                       "already exists with uuid: %s" % (values['mgmt_mac'],
                                                         ihost['uuid']))
-            mgmt_ip = values.get('mgmt_ip') or ""
-
-            if mgmt_ip and not ihost.mgmt_ip:
-                LOG.info("%s create_ihost setting mgmt_ip to %s" %
-                         (ihost.uuid, mgmt_ip))
-                mgmt_update_required = True
-            elif mgmt_ip and ihost.mgmt_ip and \
-               (ihost.mgmt_ip.strip() != mgmt_ip.strip()):
-                # Changing the management IP on an already configured
-                # host should not occur nor be allowed.
-                LOG.error("DANGER %s create_ihost mgmt_ip dnsmasq change "
-                          "detected from %s to %s." %
-                          (ihost.uuid, ihost.mgmt_ip, mgmt_ip))
-
-            if mgmt_update_required:
-                ihost = self.dbapi.ihost_update(ihost.uuid, values)
-
-                if ihost.personality and ihost.hostname:
-                    ihost_mtc = ihost.as_dict()
-                    ihost_mtc['operation'] = 'modify'
-                    ihost_mtc = cutils.removekeys_nonmtce(ihost_mtc)
-                    LOG.info("%s create_ihost update mtce %s " %
-                             (ihost.hostname, ihost_mtc))
-                    mtce_api.host_modify(
-                             self._api_token, self._mtc_address, self._mtc_port,
-                             ihost_mtc,
-                             constants.MTC_DEFAULT_TIMEOUT_IN_SECS)
-
             return ihost
         except exception.NodeNotFound:
             # If host is not found, check if this is cloning scenario.
@@ -1749,13 +1720,12 @@ class ConductorManager(service.PeriodicService):
         Does the following tasks:
         - Check if addresses exist for host
         - Allocate addresses for host from pools
-        - Update ihost with mgmt address
         - Regenerate the dnsmasq hosts file
 
         :param context: request context
         :param host: host object
         """
-        mgmt_ip = host.mgmt_ip
+
         mgmt_interfaces = self.iinterfaces_get_by_ihost_nettype(
             context, host.uuid, constants.NETWORK_TYPE_MGMT
         )
@@ -1763,32 +1733,27 @@ class ConductorManager(service.PeriodicService):
         if mgmt_interfaces:
             mgmt_interface_id = mgmt_interfaces[0]['id']
         hostname = host.hostname
-        address_name = cutils.format_address_name(hostname,
-                                                  constants.NETWORK_TYPE_MGMT)
-        # if ihost has mgmt_ip, make sure address in address table
+
+        # check for static mgmt IP
+        mgmt_ip = self._lookup_static_ip_address(
+            hostname, constants.NETWORK_TYPE_MGMT
+        )
+        # make sure address in address table and update dnsmasq host file
         if mgmt_ip:
+            LOG.info("Static mgmt ip {} for host{}".format(mgmt_ip, hostname))
             self._create_or_update_address(context, hostname, mgmt_ip,
                                            constants.NETWORK_TYPE_MGMT,
                                            mgmt_interface_id)
-        # if ihost has no management IP, check for static mgmt IP
-        if not mgmt_ip:
-            mgmt_ip = self._lookup_static_ip_address(
-                hostname, constants.NETWORK_TYPE_MGMT
-            )
-            if mgmt_ip:
-                host.mgmt_ip = mgmt_ip
-                self.update_ihost(context, host)
         # if no static address, then allocate one
         if not mgmt_ip:
             mgmt_pool = self.dbapi.network_get_by_type(
                 constants.NETWORK_TYPE_MGMT
             ).pool_uuid
-
+            address_name = cutils.format_address_name(hostname,
+                                                      constants.NETWORK_TYPE_MGMT)
             mgmt_ip = self._allocate_pool_address(mgmt_interface_id, mgmt_pool,
                                                   address_name).address
-            if mgmt_ip:
-                host.mgmt_ip = mgmt_ip
-                self.update_ihost(context, host)
+            LOG.info("Allocated mgmt ip {} for host{}".format(mgmt_ip, hostname))
 
         self._generate_dnsmasq_hosts_file(existing_host=host)
         self._allocate_cluster_host_address_for_host(host)
@@ -2519,9 +2484,9 @@ class ConductorManager(service.PeriodicService):
 
         if do_worker_apply:
             # Apply the manifests immediately
-            puppet_common.puppet_apply_manifest(host.mgmt_ip,
-                                                       constants.WORKER,
-                                                       do_reboot=True)
+            puppet_common.puppet_apply_manifest(host.hostname,
+                                                constants.WORKER,
+                                                do_reboot=True)
         return host
 
     def unconfigure_ihost(self, context, ihost_obj):
@@ -6135,7 +6100,7 @@ class ConductorManager(service.PeriodicService):
 
         :param context: an admin context
         :param ihost_macs: list of mac addresses
-        :returns: ihost object, including all fields.
+        :returns: ihost object, including all fields and mgmt address.
         """
 
         ihosts = self.dbapi.ihost_get_list()
@@ -6152,7 +6117,11 @@ class ConductorManager(service.PeriodicService):
             for host in ihosts:
                 if host.mgmt_mac == mac:
                     LOG.info("Host found ihost db for macs: %s" % host.hostname)
-                    return host
+                    mgmt_addr = None
+                    mgmt_addr = self.get_address_by_host_networktype(
+                        context, host.hostname,
+                        constants.NETWORK_TYPE_MGMT)
+                    return host, mgmt_addr
         LOG.debug("RPC get_ihost_by_macs called but found no ihost.")
 
     def get_ihost_by_hostname(self, context, ihost_hostname):
@@ -6175,6 +6144,24 @@ class ConductorManager(service.PeriodicService):
             pass
 
         LOG.debug("RPC ihost_get_by_hostname called but found no ihost.")
+
+    def get_address_by_host_networktype(self, context, name, networktype):
+        """Finds configured address based on name and network type.
+
+        This method returns an address of the network type for the host.
+
+        :param context: an admin context
+        :param ihost_hostname: ihost hostname
+        :returns: ihost object, including all fields.
+        """
+
+        try:
+            name = cutils.format_address_name(name, networktype)
+            address = self.dbapi.address_get_by_name(name)
+            return address.address
+        except exception.AddressNotFoundByName:
+            pass
+        LOG.info("RPC get_address_by_host_networktype called but found no address.")
 
     @staticmethod
     def _controller_config_active_check():
@@ -15516,12 +15503,6 @@ class ConductorManager(service.PeriodicService):
                 inventory_completed = False
 
             if inventory_completed:
-                controller_0_address = self.dbapi.address_get_by_name(
-                    constants.CONTROLLER_0_MGMT)
-                if controller_0_address.address != host.mgmt_ip:
-                    self.dbapi.ihost_update(
-                        host.uuid, {'mgmt_ip': controller_0_address.address})
-
                 personalities = [constants.CONTROLLER]
                 config_uuid = self._config_update_hosts(context, personalities)
                 config_dict = {

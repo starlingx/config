@@ -2987,8 +2987,14 @@ class ManagerTestCase(base.DbTestCase):
 
     def test_get_ihost_by_macs(self):
         self._create_test_ihosts()
+        mgmt_net, pxeboot_net = self._create_test_networks(0)
+        address = {'name': 'controller-1-mgmt',
+                   'family': 4,
+                   'prefix': 24,
+                   'address': '192.168.204.3'}
+        utils.create_test_address(**address)
         ihost_macs = ['22:44:33:55:11:66', '22:44:33:88:11:66']
-        ihost = self.service.get_ihost_by_macs(self.context, ihost_macs)
+        ihost, mgmt_addr = self.service.get_ihost_by_macs(self.context, ihost_macs)
         self.assertEqual(ihost.mgmt_mac, '22:44:33:55:11:66')
 
     def test_get_ihost_by_macs_no_match(self):

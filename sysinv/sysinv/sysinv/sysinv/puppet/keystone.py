@@ -164,12 +164,13 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
             # The valid format for IPv6 addresses is: inet6:[<ip_v6>]:port
             # Although, for IPv4, the "inet" part is not mandatory, we
             # specify if anyway, for consistency purposes.
-            if self._get_address_by_name(
-                    constants.CONTROLLER_HOSTNAME,
-                    constants.NETWORK_TYPE_MGMT).family == constants.IPV6_FAMILY:
-                backend_endpoint = "[%s]:11211" % host.mgmt_ip
+            address = self._get_address_by_name(
+                host.hostname,
+                constants.NETWORK_TYPE_MGMT)
+            if address.family == constants.IPV6_FAMILY:
+                backend_endpoint = "[%s]:11211" % address.address
             else:
-                backend_endpoint = "%s:11211" % host.mgmt_ip
+                backend_endpoint = "%s:11211" % address.address
 
             config.update({
                 'keystone::cache::enabled': True,

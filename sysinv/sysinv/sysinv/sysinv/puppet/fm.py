@@ -113,7 +113,10 @@ class FmPuppet(openstack.OpenstackBasePuppet):
             if host.hostname == constants.CONTROLLER_1_HOSTNAME:
                 host_ip = constants.CONTROLLER_1_FQDN
         else:
-            host_ip = host.mgmt_ip
+            address = self._get_address_by_name(
+                host.hostname,
+                constants.NETWORK_TYPE_MGMT)
+            host_ip = address.address
         config = {
             'platform::fm::params::api_host': host_ip
         }

@@ -214,6 +214,7 @@ class AgentManager(service.PeriodicService):
         self._ihost_rootfs_device = ""
         self._agent_throttle = 0
         self._mgmt_ip = None
+        self._hostname = None
         self._prev_disk = None
         self._prev_partition = None
         self._prev_lvg = None
@@ -833,6 +834,7 @@ class AgentManager(service.PeriodicService):
         """
 
         ihost = None
+        mgmt_addr = None
         rpcapi = conductor_rpcapi.ConductorAPI(
             topic=conductor_rpcapi.MANAGER_TOPIC)
 
@@ -848,7 +850,21 @@ class AgentManager(service.PeriodicService):
         while (timeutils.utcnow() - wait_time).total_seconds() < MAXSLEEP:
             # wait for controller to come up first may be a DOR
             try:
-                ihost = rpcapi.get_ihost_by_macs(icontext, host_macs)
+                ihost, mgmt_addr = rpcapi.get_ihost_by_macs(icontext, host_macs)
+            except ValueError:
+                # Retry because the N-1 host does not support the mgmt_addr
+                # parameter during upgrade
+                try:
+                    ihost = rpcapi.get_ihost_by_macs(icontext, host_macs)
+                except Timeout:
+                    if not rpc_timeout:
+                        rpc_timeout = True
+                        LOG.info("get_ihost_by_macs rpc Timeout.")
+                        time.sleep(5)  # avoid calling timedout RPC in sequence
+                        continue
+                except Exception:
+                    LOG.warn("Conductor RPC get_ihost_by_macs exception "
+                             "response")
             except Timeout:
                 if not rpc_timeout:
                     rpc_timeout = True
@@ -877,11 +893,25 @@ class AgentManager(service.PeriodicService):
 
             if ihost:
                 ipersonality = ihost.get('personality') or ""
+                if not mgmt_addr:
+                    try:
+                        mgmt_addr = rpcapi.get_address_by_host_networktype(
+                            icontext, ihost.get('hostname'), constants.NETWORK_TYPE_MGMT)
+                    except Timeout:
+                        if not rpc_timeout:
+                            rpc_timeout = True
+                            LOG.info("get_address_by_host_networktype rpc Timeout.")
+                        time.sleep(5)  # avoid calling timedout RPC in sequence
+                        continue
+                    except Exception as ex:
+                        LOG.warn("Conductor RPC get_address_by_host_networktype "
+                                 "exception response %s" % ex)
 
             if ihost and ipersonality:
                 self._ihost_uuid = ihost['uuid']
                 self._ihost_personality = ihost['personality']
-                self._mgmt_ip = ihost['mgmt_ip']
+                self._mgmt_ip = mgmt_addr
+                self._hostname = ihost['hostname']
                 self._ihost_rootfs_device = ihost['rootfs_device']
                 # new fields in ihost: cstates_available and min_cpu_mhz_allowed
                 # TODO: These checks are only required for upgrade from version stx8.0.
@@ -2010,7 +2040,7 @@ class AgentManager(service.PeriodicService):
             with open(tmpfile, 'w') as f:
                 yaml.dump(config, f, default_flow_style=False)
 
-            puppet.puppet_apply_manifest(self._mgmt_ip,
+            puppet.puppet_apply_manifest(self._hostname,
                                          personality,
                                          'runtime', tmpfile,
                                          hieradata_path=hieradata_path)
