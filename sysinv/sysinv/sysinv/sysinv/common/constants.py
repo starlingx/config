@@ -2069,6 +2069,13 @@ ANSIBLE_PLATFORM_BACKUP_PLAYBOOK = \
 ANSIBLE_KUBE_STATIC_IMAGES_PLAYBOOK = \
     '/usr/share/ansible/stx-ansible/playbooks/upgrade-static-images.yml'
 
+# Playbooks path to versioned system-images.yml
+ANSIBLE_KUBE_SYSTEM_IMAGES_PLAYBOOK_ROOT = \
+    "/usr/share/ansible/stx-ansible/playbooks/roles/common/load-images-information"
+
+# Kubeadm path
+KUBEADM_PATH_FORMAT_STR = "/usr/local/kubernetes/{kubeadm_ver}/stage1/usr/bin/kubeadm"
+
 # Clock synchronization types
 NTP = 'ntp'
 PTP = 'ptp'

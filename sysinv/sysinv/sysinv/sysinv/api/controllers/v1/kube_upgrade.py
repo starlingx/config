@@ -580,6 +580,8 @@ class KubeUpgradeController(rest.RestController):
             # All is well, mark the upgrade as complete
             kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_COMPLETE
             kube_upgrade_obj.save()
+            pecan.request.rpcapi.kube_delete_container_images(
+                pecan.request.context, kube_upgrade_obj.to_version)
 
             LOG.info("Completed kubernetes upgrade to version: %s" %
                 kube_upgrade_obj.to_version)

@@ -77,6 +77,7 @@ class FakeConductorAPI(object):
         self.kube_upgrade_abort = mock.MagicMock()
         self.evaluate_apps_reapply = mock.MagicMock()
         self.remove_kube_control_plane_backup = mock.MagicMock()
+        self.kube_delete_container_images = mock.MagicMock()
         self.service = ConductorManager('test-host', 'test-topic')
 
     def get_system_health(self, context, force=False, upgrade=False,
@@ -884,6 +885,9 @@ class TestPatch(TestKubeUpgrade,
         self.assertEqual(response.json['from_version'], 'v1.43.1')
         self.assertEqual(response.json['to_version'], 'v1.43.2')
         self.assertEqual(response.json['state'], new_state)
+
+        self.fake_conductor_api.kube_delete_container_images.\
+            assert_called_with(mock.ANY, 'v1.43.2')
 
         # see if kubelet_version was changed in DB
         kube_cmd_version = self.dbapi.kube_cmd_version_get()

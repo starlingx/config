@@ -2384,6 +2384,87 @@ class ManagerTestCase(base.DbTestCase):
         self.assertEqual(updated_upgrade.state,
                             kubernetes.KUBE_UPGRADE_ABORTING_FAILED)
 
+    def test_kube_delete_container_images(self):
+        # Create controller-0
+        config_uuid = str(uuid.uuid4())
+        self._create_test_ihost(
+            personality=constants.CONTROLLER,
+            hostname='controller-0',
+            uuid=str(uuid.uuid4()),
+            config_status=None,
+            config_applied=config_uuid,
+            config_target=config_uuid,
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+        )
+        # Create an upgrade
+        utils.create_test_kube_upgrade(
+            from_version='v1.41.1',
+            to_version='v1.43.1',
+            state=kubernetes.KUBE_UPGRADE_COMPLETE,
+        )
+
+        mock_kube_get_lower_equal_versions = mock.MagicMock()
+        p = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_get_lower_equal_versions',
+            mock_kube_get_lower_equal_versions)
+        p.start().return_value = ['v1.41.1', 'v1.42.1', 'v1.42.2', 'v1.43.1']
+        self.addCleanup(p.stop)
+
+        mock_os_path_exists = mock.MagicMock()
+        p = mock.patch('os.path.exists', mock_os_path_exists)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        mock_kube_docker_registry_image_delete = mock.Mock()
+        p = mock.patch(
+            'sysinv.conductor.manager.ConductorManager.docker_registry_image_delete',
+            mock_kube_docker_registry_image_delete)
+        p.start().return_value = None
+        self.addCleanup(p.stop)
+
+        # get k8s versions lesser than and equal to target version
+        next_versions = kubernetes.KubeOperator().kube_get_lower_equal_versions('v1.43.1')
+
+        mock_subprocess = mock.MagicMock()
+        p1 = mock.patch('subprocess.run', mock_subprocess)
+        p1.start().returncode = 0
+        self.addCleanup(p1.stop)
+
+        mock_os_path_exists = mock.MagicMock()
+        p = mock.patch('os.path.exists', mock_os_path_exists)
+        p.start().return_value = True
+        self.addCleanup(p.stop)
+
+        self.service.start()
+        self.service.kube_delete_container_images(self.context, 'v1.43.1')
+
+        img_calls = []
+        for version in next_versions:
+            # verify that the command is run for each version
+            kubeadm_version = version.lstrip('v')
+            kubeadm_path = '/usr/local/kubernetes/{}/stage1/usr/bin/kubeadm'.format(kubeadm_version)
+            cmd = [kubeadm_path, 'config', 'images', 'list', '--kubernetes-version', version]
+            mock_subprocess(cmd)
+            img_calls.append(mock.call(cmd))
+        mock_subprocess.assert_has_calls(img_calls)
+
+        fake_images = {'k8s.gcr.io/kube-apiserver:v1.23.1', 'k8s.gcr.io/pause:3.4.1',
+                      'docker.io/intel/intel-gpu-initcontainer:0.26.0', 'k8s.gcr.io/kube-controller-manager:v1.23.1',
+                      'k8s.gcr.io/etcd:3.4.13-0', 'k8s.gcr.io/kube-scheduler:v1.21.8',
+                      'k8s.gcr.io/coredns/coredns:v1.8.4', 'k8s.gcr.io/kube-proxy:v1.22.5',
+                      'k8s.gcr.io/kube-proxy:v1.23.1', 'k8s.gcr.io/pause:3.5', 'k8s.gcr.io/coredns/coredns:v1.8.6'}
+
+        mk_calls = []
+        for images in fake_images:
+            # verify that docker_registry_images_delete function is called for all images in given set of fake images.
+            mock_kube_docker_registry_image_delete(self.context, images)
+            mk_calls.append(mock.call(self.context, images))
+
+        mock_kube_docker_registry_image_delete.assert_has_calls(mk_calls, any_order=True)
+
     def test_sanitize_feature_gates_kubeadm_configmap(self):
         """
         This unit test covers the following use cases:

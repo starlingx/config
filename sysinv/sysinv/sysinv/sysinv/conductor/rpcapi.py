@@ -1975,6 +1975,16 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.cast(context, self.make_msg('remove_kube_control_plane_backup'))
 
+    def kube_delete_container_images(self, context, kube_version):
+        """Asynchronously, have the conductor remove container images
+        for the kubernetes versions below target version.
+
+        :param context: request context
+        :param kube_version: k8s target version to get the lower version than this
+        """
+        return self.cast(context, self.make_msg('kube_delete_container_images',
+                                                target_version=kube_version))
+
     def store_bitstream_file(self, context, filename):
         """Asynchronously, have the conductor store the device image
         on this host.
