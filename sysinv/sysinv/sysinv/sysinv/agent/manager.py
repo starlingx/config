@@ -1383,6 +1383,11 @@ class AgentManager(service.PeriodicService):
         if not self._ihost_uuid:
             return
 
+        # only allow audit if host is inventoried and ready
+        # to receive puppet runtime configuration requests
+        if not self._inventoried_initial:
+            return
+
         LOG.debug("Sysinv Agent Security Audit running.")
 
         # get sysadmin password locally
