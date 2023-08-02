@@ -230,7 +230,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
             firewall_gnp["metadata"] = {"name": gnp_name}
 
             firewall_gnp["spec"] = dict()
-            firewall_gnp["spec"].update({"applyOnForward": True})
+            firewall_gnp["spec"].update({"applyOnForward": False})
             firewall_gnp["spec"].update({"order": 100})
             firewall_gnp["spec"].update({"selector": selector})
             firewall_gnp["spec"].update({"types": ["Ingress", "Egress"]})

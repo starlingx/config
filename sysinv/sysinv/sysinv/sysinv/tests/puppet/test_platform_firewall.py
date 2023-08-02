@@ -302,7 +302,7 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
         self.assertEqual(gnp["kind"], "GlobalNetworkPolicy")
         self.assertEqual(gnp['metadata']['name'],
                          f"{self.host.personality}-{net_type}-if-gnp")
-        self.assertEqual(gnp['spec']['applyOnForward'], True)
+        self.assertEqual(gnp['spec']['applyOnForward'], False)
         self.assertEqual(gnp['spec']['order'], 100)
 
         self.assertEqual(gnp['spec']['selector'], selector)
@@ -525,7 +525,7 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
         self.assertEqual(gnp["kind"], "GlobalNetworkPolicy")
         self.assertEqual(gnp['metadata']['name'],
                          f"{self.host.personality}-{net_type}-if-gnp")
-        self.assertEqual(gnp['spec']['applyOnForward'], True)
+        self.assertEqual(gnp['spec']['applyOnForward'], False)
         self.assertEqual(gnp['spec']['order'], 100)
 
         self.assertEqual(gnp['spec']['selector'], selector)
