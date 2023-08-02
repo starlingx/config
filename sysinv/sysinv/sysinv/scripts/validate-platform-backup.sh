@@ -8,16 +8,19 @@
 NAME=$(basename $0)
 rootfs_part=$(findmnt -n -o SOURCE / | sed 's/\[[^]]*\]//g')
 device_path=$(lsblk -pno pkname ${rootfs_part})
-if [ -z $device_path ] ; then
+if [ -z "$device_path" ] ; then
     base_device=$(dmsetup deps -o devname ${rootfs_part%} | grep -wo "(.*.)")
     device_path=$(find /dev -name "${base_device:1:-1}")
     check_parent_path_1=$(lsblk -pno pkname ${device_path} | head -n 1)
-    if [ ! -z $check_parent_path_1 ] ; then
+    if [ -n "$check_parent_path_1" ] ; then
         device_path=${check_parent_path_1}
     fi
     check_parent_path_2=$(dmsetup deps -o devname ${device_path} | grep -wo "(.*.)")
-    if [ ! -z $check_parent_path_2 ] ; then
-        device_path=$(find /dev -name "${check_parent_path_2:1:-1}")
+    if [ -n "$check_parent_path_2" ] ; then
+        parent_path=$(find /dev -name "${check_parent_path_2:1:-1}" | sed 's/p[0-9]$//')
+        if [ -n "$parent_path" ] ; then
+            device_path="$parent_path"
+        fi
     fi
 fi
 
