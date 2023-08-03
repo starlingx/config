@@ -1,13 +1,17 @@
 #!/bin/bash
 #
-# Copyright (c) 2022 Wind River Systems, Inc.
+# Copyright (c) 2022-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
 # This script is used to recreate vim/nfv endpoints in
 # SystemController public interface when upgrading
-# - Part of a bugfix on keystone_endpoint module
+# - Part of a bugfix related to keystone_endpoint module
+# - If new upgrade paths are added from versions before
+#   22.12, this script must be updated to account for it.
+#   I.e. add another clause in: 
+#   if .. && [[ "${FROM_RELEASE}" == "XX.XX" ]]
 
 NAME=$(basename $0)
 
@@ -35,7 +39,7 @@ function log {
 # Script start
 log "$NAME: Starting to recreate vim's keystone endpoints in SystemController from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 
-if [[ "${ACTION}" == "activate" ]] && [[ "${TO_RELEASE}" == "22.12" ]] && [[ ${IS_DEBIAN} != 0 ]] && [[ $distributed_cloud_role == "systemcontroller" ]]; then
+if [[ "${ACTION}" == "activate" ]] && [[ "${FROM_RELEASE}" == "22.12" ]] && [[ ${IS_DEBIAN} != 0 ]] && [[ $distributed_cloud_role == "systemcontroller" ]]; then
 
     source /etc/platform/openrc
 
