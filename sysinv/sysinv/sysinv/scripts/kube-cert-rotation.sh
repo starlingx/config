@@ -29,7 +29,7 @@ else
     CERT_CMD='alpha certs'
 fi
 
-CERT_EXP_DATES=$(kubeadm $CERT_CMD check-expiration --config /etc/kubernetes/kubeadm.yaml)
+CERT_EXP_DATES=$(kubeadm $CERT_CMD check-expiration)
 # After a long period offline all k8s certs may expire and kubeadm command will fail completely
 # Here we save the return code so that it can be used later in the time_left_s function
 RC_CERT_EXP_DATES=$?
