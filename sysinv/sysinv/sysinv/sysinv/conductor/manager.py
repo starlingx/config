@@ -1241,6 +1241,32 @@ class ConductorManager(service.PeriodicService):
 
         os.system("pkill -HUP dnsmasq")
 
+    def _generate_dnsmasq_conf_file(self):
+        """Regenerates the dnsmasq addn_conf file from database."""
+
+        if (self.topic == 'test-topic'):
+            dnsmasq_addn_conf_file = '/tmp/dnsmasq.addn_conf'
+        else:
+            dnsmasq_addn_conf_file = tsc.CONFIG_PATH + 'dnsmasq.addn_conf'
+
+        temp_dnsmasq_addn_conf_file = dnsmasq_addn_conf_file + '.temp'
+
+        with open(temp_dnsmasq_addn_conf_file, 'w') as f_out_addn:
+
+            for host_record in self.dbapi.service_parameter_get_all(
+                    service=constants.SERVICE_TYPE_DNS,
+                    section=constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD):
+
+                f_out_addn.write("host-record=%s\n" % host_record['value'])
+
+        # Update conf files atomically and reload dnsmasq
+        if (not os.path.isfile(dnsmasq_addn_conf_file) or
+                not filecmp.cmp(temp_dnsmasq_addn_conf_file,
+                                dnsmasq_addn_conf_file)):
+            os.rename(temp_dnsmasq_addn_conf_file, dnsmasq_addn_conf_file)
+
+        os.system("sm-restart-safe service dnsmasq")
+
     def update_apparmor_config(self, context, ihost_uuid):
         """Update the GRUB CMDLINE to enable/disable apparmor"""
         host = self.dbapi.ihost_get(ihost_uuid)
@@ -10723,6 +10749,9 @@ class ConductorManager(service.PeriodicService):
             personalities = None
         elif service == constants.SERVICE_TYPE_PTP:
             self._update_ptp_host_configs(context, do_apply=do_apply)
+            personalities = None
+        elif service == constants.SERVICE_TYPE_DNS:
+            self._generate_dnsmasq_conf_file()
             personalities = None
         elif service == constants.SERVICE_TYPE_DOCKER:
             reboot = True
