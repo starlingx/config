@@ -158,7 +158,14 @@ conductor_opts = [
        cfg.IntOpt('fw_update_small_timeout',
                   default=300,
                   help='Timeout interval in seconds for a small device image'),
-                  ]
+       cfg.IntOpt('config_out_of_date_timeout',
+                  default=600,
+                  help=('Timeout interval in seconds to consider a '
+                       'host is stuck in out-of-date config status.')),
+       cfg.IntOpt('max_runtime_config_history_size',
+                  default=1000,
+                  help='Max number of records allowed on runtime config history')
+                 ]
 
 audit_intervals_opts = [
        cfg.IntOpt('default', default=60),
@@ -288,6 +295,9 @@ class ConductorManager(service.PeriodicService):
 
         # track deferred runtime config which need to be applied
         self._host_deferred_runtime_config = []
+
+        # store the config history to reapply if necessary
+        self._host_runtime_config_history = {}
 
         # track whether runtime class apply may be in progress
         self._runtime_class_apply_in_progress = []
@@ -6648,8 +6658,69 @@ class ConductorManager(service.PeriodicService):
                 LOG.error("Removed unsupported deferred config_type %s" %
                             config_type)
 
+    def _prune_host_runtime_config_history(self):
+        # prune oldest runtime config from history to keep
+        # at most max_runtime_config_history_size records
+        max_history_size = CONF.conductor.max_runtime_config_history_size
+        current_history_size = len(self._host_runtime_config_history)
+        if current_history_size < max_history_size:
+            return
+
+        sorted_history = sorted(self._host_runtime_config_history.items(),
+                                key=lambda x: x[1]["created_at"])
+        for i in range(0, current_history_size - max_history_size):
+            self._host_runtime_config_history.pop(sorted_history[i][0])
+            LOG.info("Pruned config '%s' from runtime config history" %
+                     sorted_history[i][0])
+
+    def _add_stuck_config_out_of_date_to_deferred(self):
+        # call runtime config history pruning
+        self._prune_host_runtime_config_history()
+
+        # get alarms with ID 250.001 and check if any of them
+        # is older than config_out_of_date_timeout seconds
+        config_out_of_date_hosts = []
+        alarms = self.fm_api.get_faults_by_id(
+            fm_constants.FM_ALARM_ID_SYSCONFIG_OUT_OF_DATE)
+        if not alarms:
+            return
+
+        for alarm in alarms:
+            alarm_ts = datetime.strptime(alarm.timestamp, "%Y-%m-%d %H:%M:%S.%f")
+            if (datetime.utcnow() - alarm_ts).total_seconds() > \
+                    CONF.conductor.config_out_of_date_timeout:
+                config_out_of_date_hosts.append(alarm.entity_instance_id.split("=")[1])
+
+        # try to automatically recover out-of-date hosts
+        # by resending the runtime manifest to them
+        for hostname in config_out_of_date_hosts:
+            ihost = self.dbapi.ihost_get_by_hostname(hostname)
+            ihost_uuid = ihost.uuid
+            config_uuid = ihost.config_target
+            try:
+                history_config_dict = deepcopy(
+                    self._host_runtime_config_history[config_uuid])
+                force = history_config_dict["force"] \
+                    if "force" in history_config_dict else False
+                config_type = history_config_dict["config_type"]
+                history_config_dict.update({"host_uuids": [ihost_uuid]})
+
+                LOG.info("Attempting to resend target config '%s' to host %s '%s'" % (
+                    config_uuid, ihost.hostname, ihost_uuid))
+                self._update_host_deferred_runtime_config(
+                    config_type,
+                    config_uuid,
+                    history_config_dict,
+                    force)
+            except Exception as e:
+                LOG.warn("Unable to retrigger '%s' from runtime config history: %s" % (
+                    config_uuid, e))
+
     @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.deferred_runtime_config)
     def _audit_deferred_runtime_config_periodic(self, context):
+        # check for possibly stuck out-of-date config hosts
+        self._add_stuck_config_out_of_date_to_deferred()
+
         # check whether there are deferred runtime manifests to apply
         self._audit_deferred_runtime_config(context)
 
@@ -11823,6 +11894,10 @@ class ConductorManager(service.PeriodicService):
             rpcapi.iconfig_update_file(context,
                                        iconfig_uuid=config_uuid,
                                        iconfig_dict=config_dict)
+            config_dict["config_type"] = CONFIG_UPDATE_FILE
+            config_dict["created_at"] = datetime.utcnow()
+            if config_uuid not in self._host_runtime_config_history:
+                self._host_runtime_config_history[config_uuid] = config_dict
         except Exception as e:
             LOG.info("Error: %s" % str(e))
             return False
@@ -11900,7 +11975,7 @@ class ConductorManager(service.PeriodicService):
                 break
         else:
             self._host_deferred_runtime_config.append(
-                {'config_type': CONFIG_APPLY_RUNTIME_MANIFEST,
+                {'config_type': config_type,
                  'config_uuid': config_uuid,
                  'config_dict': config_dict,
                  'force': force,
@@ -12049,6 +12124,10 @@ class ConductorManager(service.PeriodicService):
         rpcapi.config_apply_runtime_manifest(context,
                                              config_uuid=config_uuid,
                                              config_dict=config_dict)
+        config_dict["config_type"] = CONFIG_APPLY_RUNTIME_MANIFEST
+        config_dict["created_at"] = datetime.utcnow()
+        if config_uuid not in self._host_runtime_config_history:
+            self._host_runtime_config_history[config_uuid] = config_dict
 
         if filter_classes and config_dict['classes'] in filter_classes:
             LOG.info("config runtime filter_classes add %s %s" %
