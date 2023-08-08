@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -55,6 +55,7 @@ from cgtsclient.v1 import network_shell
 from cgtsclient.v1 import partition_shell
 from cgtsclient.v1 import pci_device_shell
 from cgtsclient.v1 import port_shell
+from cgtsclient.v1 import ptp_ha_phc2sys_control
 from cgtsclient.v1 import ptp_instance_shell
 from cgtsclient.v1 import ptp_interface_shell
 from cgtsclient.v1 import ptp_parameter_shell
@@ -79,6 +80,7 @@ COMMAND_MODULES = [
     idns_shell,
     intp_shell,
     ptp_shell,
+    ptp_ha_phc2sys_control,
     ptp_instance_shell,
     ptp_interface_shell,
     ptp_parameter_shell,
