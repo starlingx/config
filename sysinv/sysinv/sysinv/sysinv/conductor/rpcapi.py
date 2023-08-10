@@ -545,7 +545,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                   " configure_system_https to conductor")
         return self.call(context, self.make_msg('configure_system_https'))
 
-    def configure_system_timezone(self, context):
+    def configure_system_timezone(self, context, timeout=None):
         """Synchronously, have a conductor configure the system timezone.
 
         Does the following tasks:
@@ -554,10 +554,12 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         - who each apply the timezone manifest
 
         :param context: request context.
+        :param timeout: rpc call timeout in seconds
         """
         LOG.debug("ConductorApi.configure_system_timezone: sending"
                   " system_timezone to conductor")
-        return self.call(context, self.make_msg('configure_system_timezone'))
+        return self.call(context, self.make_msg('configure_system_timezone'),
+                         timeout=timeout)
 
     def delete_flag_file(self, context, flag_file):
         """Synchronously, have a conductor delete a flag file.
