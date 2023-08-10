@@ -3892,39 +3892,40 @@ class FluxCDHelper(object):
             rc = False
         return rc
 
-    def _apply(self, manifest_dir):
-        cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
-               'apply', '-k', manifest_dir]
-        _, stderr = cutils.trycmd(*cmd)
+    def run_kubectl_kustomize(self, operation_type, manifest_dir):
+        if operation_type == constants.KUBECTL_KUSTOMIZE_VALIDATE:
+            cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
+               constants.KUBECTL_KUSTOMIZE_APPLY, '-k', manifest_dir, '--dry-run=server']
+        elif operation_type == constants.KUBECTL_KUSTOMIZE_DELETE:
+            cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
+                   operation_type, '-k', manifest_dir, '--ignore-not-found=true']
+        else:
+            cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
+                   operation_type, '-k', manifest_dir]
 
-        if stderr:
+        process = subprocess.Popen(cmd,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        universal_newlines=True)
+
+        _, stderr = process.communicate()
+
+        if process.returncode == 0 and stderr:
+            LOG.warning("Command: %s; %s" % (' '.join(cmd), stderr))
+
+        if process.returncode != 0:
             LOG.error("Command: %s; Error: %s" % (' '.join(cmd), stderr))
             return False
 
         return True
+
+    def _apply(self, manifest_dir):
+        return self.run_kubectl_kustomize(constants.KUBECTL_KUSTOMIZE_APPLY, manifest_dir)
 
     def _delete(self, manifest_dir):
-        cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
-               'delete', '-k', manifest_dir, '--ignore-not-found=true']
-
-        _, stderr = cutils.trycmd(*cmd)
-
-        if stderr:
-            LOG.error("Command: %s; Error: %s" % (' '.join(cmd), stderr))
-            return False
-
-        return True
+        return self.run_kubectl_kustomize(constants.KUBECTL_KUSTOMIZE_DELETE, manifest_dir)
 
     def _validate(self, manifest_dir):
-        cmd = ['kubectl', '--kubeconfig', kubernetes.KUBERNETES_ADMIN_CONF,
-               'apply', '-k', manifest_dir, '--dry-run=server']
-        _, stderr = cutils.trycmd(*cmd)
-
-        if stderr:
-            LOG.error("Command: %s; Error: %s" % (' '.join(cmd), stderr))
-            return False
-
-        return True
+        return self.run_kubectl_kustomize(constants.KUBECTL_KUSTOMIZE_VALIDATE, manifest_dir)
 
     def _rollback(self, manifest_dir):
         pass

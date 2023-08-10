@@ -1834,6 +1834,11 @@ APP_UPDATE_IN_PROGRESS = 'updating'
 APP_RECOVER_IN_PROGRESS = 'recovering'
 APP_RESTORE_REQUESTED = 'restore-requested'
 
+# Kubectl kustomize operations
+KUBECTL_KUSTOMIZE_APPLY = 'apply'
+KUBECTL_KUSTOMIZE_DELETE = 'delete'
+KUBECTL_KUSTOMIZE_VALIDATE = 'validate'
+
 # Operation constants
 APP_VALIDATE_OP = 'validate'
 APP_UPLOAD_OP = 'upload'
