@@ -8330,7 +8330,8 @@ class ConductorManager(service.PeriodicService):
         :param host_uuid: the requesting host uuid.
         """
         # update manifest files and notify agent to apply them
-        personalities = [constants.CONTROLLER]
+        personalities = [constants.CONTROLLER,
+                         constants.WORKER]
         config_uuid = self._config_update_hosts(context, personalities,
                                                 host_uuids=[host_uuid])
 
