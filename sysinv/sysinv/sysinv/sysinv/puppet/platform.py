@@ -147,6 +147,10 @@ class PlatformPuppet(base.BasePuppet):
              constants.NETWORK_TYPE_MGMT),
 
             # cluster network hosts
+            (constants.CONTROLLER_HOSTNAME + HOSTNAME_CLUSTER_HOST_SUFFIX,
+             constants.CONTROLLER_HOSTNAME,
+             constants.NETWORK_TYPE_CLUSTER_HOST),
+
             (constants.CONTROLLER_0_HOSTNAME + HOSTNAME_CLUSTER_HOST_SUFFIX,
              constants.CONTROLLER_0_HOSTNAME,
              constants.NETWORK_TYPE_CLUSTER_HOST),
