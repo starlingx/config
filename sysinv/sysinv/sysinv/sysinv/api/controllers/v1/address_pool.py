@@ -586,6 +586,25 @@ class AddressPoolController(rest.RestController):
         """Delete an IP address pool."""
         addrpool = self._get_one(address_pool_uuid)
         self._check_pool_readonly(addrpool)
+
+        networks = pecan.request.dbapi.networks_get_by_pool(addrpool.id)
+
+        admin_network_reconfig = False
+        if (utils.get_distributed_cloud_role() ==
+                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+            if (networks and cutils.is_initial_config_complete()):
+                if any(network.type == constants.NETWORK_TYPE_ADMIN
+                       for network in networks):
+                    # The admin address pool can be deleted at runtime
+                    admin_network_reconfig = True
+
+        if (admin_network_reconfig):
+            # At runtime, remove the NAT rule that enables worker, storage
+            # nodes to communicate with the system controller.  We must do
+            # this before deleting the address pool and addresses to obtain
+            # information about the current admin floating IP and interface.
+            pecan.request.rpcapi.remove_admin_firewall_config(pecan.request.context)
+
         addresses = pecan.request.dbapi.addresses_get_by_pool(
             addrpool.id)
         if addresses:
@@ -593,7 +612,6 @@ class AddressPoolController(rest.RestController):
             # except the admin and system controller address pools on the
             # subcloud. These can be deleted/re-added during re-homing
             # a subcloud to new system controllers
-            networks = pecan.request.dbapi.networks_get_by_pool(addrpool.id)
             if cutils.is_initial_config_complete() and \
                (addrpool.name not in SUBCLOUD_WRITABLE_ADDRPOOLS) and \
                 not any(network.type == constants.NETWORK_TYPE_ADMIN
@@ -606,18 +624,16 @@ class AddressPoolController(rest.RestController):
                 for addr in addresses:
                     pecan.request.dbapi.address_destroy(addr.uuid)
 
+        # Delete the address pool, which will also delete any associated
+        # network and interface association.
         pecan.request.dbapi.address_pool_destroy(address_pool_uuid)
 
-        if (utils.get_distributed_cloud_role() ==
-                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
-            if networks and cutils.is_initial_config_complete():
-                if any(network.type == constants.NETWORK_TYPE_ADMIN
-                       for network in networks):
-                    # If the admin address pool is deleted, this allows the
-                    # subcloud to automatically revert to using the management
-                    # network
-                    chosts = pecan.request.dbapi.ihost_get_by_personality(
-                        constants.CONTROLLER)
-                    for host in chosts:
-                        pecan.request.rpcapi.update_admin_config(
-                            pecan.request.context, host, disable=True)
+        if (admin_network_reconfig):
+            # If the admin address pool is deleted, this allows the
+            # subcloud to automatically revert to using the management
+            # network
+            chosts = pecan.request.dbapi.ihost_get_by_personality(
+                constants.CONTROLLER)
+            for host in chosts:
+                pecan.request.rpcapi.update_admin_config(
+                    pecan.request.context, host, disable=True)
