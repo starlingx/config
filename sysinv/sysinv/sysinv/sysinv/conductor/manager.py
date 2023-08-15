@@ -6821,29 +6821,40 @@ class ConductorManager(service.PeriodicService):
                 if host_fs['name'] == constants.FILESYSTEM_NAME_IMAGE_CONVERSION:
                     conversion_list.append(host_fs['size'])
 
+        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_IMAGE_CONVERSION,
+                            constants.FILESYSTEM_NAME_IMAGE_CONVERSION)
         reason_text = "image-conversion must be added on both controllers"
         if not conversion_list:
             # If no conversion filesystem is present on any host
+            # and related alarm has been raised,
             # any alarm present is cleared
-            self._update_image_conversion_alarm(fm_constants.FM_ALARM_STATE_CLEAR,
+            if (self.fm_api.get_fault(fm_constants.FM_ALARM_ID_IMAGE_CONVERSION,
+                                        entity_instance_id)):
+                self._update_image_conversion_alarm(fm_constants.FM_ALARM_STATE_CLEAR,
                                                constants.FILESYSTEM_NAME_IMAGE_CONVERSION)
+            else:
+                return
         elif (len(conversion_list) == 1):
+            # if conversion filesystem is present but just in one
+            # controller, raise an alarm
             self._update_image_conversion_alarm(fm_constants.FM_ALARM_STATE_SET,
                                                constants.FILESYSTEM_NAME_IMAGE_CONVERSION,
                                                reason_text)
         else:
             # If conversion filesystem is present on both controllers
-            # with different sizes
-            self._update_image_conversion_alarm(fm_constants.FM_ALARM_STATE_CLEAR,
-                                        constants.FILESYSTEM_NAME_IMAGE_CONVERSION)
+            # with different sizes, set alarm.
+            # If conversion filesystems is present and equal in both controllers
+            # and alarm has been raised, clear it
             if (conversion_list[0] != conversion_list[1]):
                 reason_text = "image-conversion size must be the same on both controllers"
                 self._update_image_conversion_alarm(fm_constants.FM_ALARM_STATE_SET,
                                              constants.FILESYSTEM_NAME_IMAGE_CONVERSION,
                                              reason_text)
-            elif conversion_list[0] == conversion_list[1]:
-                self._update_image_conversion_alarm(fm_constants.FM_ALARM_STATE_CLEAR,
-                                             constants.FILESYSTEM_NAME_IMAGE_CONVERSION)
+            elif (conversion_list[0] == conversion_list[1]):
+                if (self.fm_api.get_fault(fm_constants.FM_ALARM_ID_IMAGE_CONVERSION,
+                                        entity_instance_id)):
+                    self._update_image_conversion_alarm(fm_constants.FM_ALARM_STATE_CLEAR,
+                                                constants.FILESYSTEM_NAME_IMAGE_CONVERSION)
 
     def _auto_upload_managed_app(self, context, app_name):
         if self._patching_operation_is_occurring():
