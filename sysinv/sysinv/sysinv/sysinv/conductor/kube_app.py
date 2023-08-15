@@ -671,7 +671,7 @@ class AppOperator(object):
         # Extract the list of images from the charts and overrides where
         # applicable. Save the list to the same location as the fluxcd manifest
         # so it can be sync'ed.
-        app.charts = self._get_list_of_charts(app, all_charts=True)
+        app.charts = self._get_list_of_charts(app)
 
         self._plugins.activate_plugins(app)
         LOG.info("Generating application overrides to discover required images.")
@@ -1106,12 +1106,10 @@ class AppOperator(object):
             LOG.error(e)
             raise
 
-    def _get_list_of_charts(self, app, all_charts=False):
-        return self._get_list_of_charts_fluxcd(app.name,
-                                               app.sync_fluxcd_manifest,
-                                               all_charts=all_charts)
+    def _get_list_of_charts(self, app):
+        return self._get_list_of_charts_fluxcd(app.sync_fluxcd_manifest)
 
-    def _get_list_of_charts_fluxcd(self, app_name, manifest, all_charts=False):
+    def _get_list_of_charts_fluxcd(self, manifest):
         """Get the charts information from the manifest directory
 
         The following chart data for each chart in the manifest file
@@ -1124,28 +1122,16 @@ class AppOperator(object):
          """
 
         helmrepo_path = os.path.join(manifest, "base", "helmrepository.yaml")
-
-        # The FluxCDKustomizeOperator will always preserve the original
-        # top-level kustomization file which has all charts defined regardless
-        # if they are enabled or not. Use this full view as a starting point
-        # generating the chart list to return all or just those that are
-        # enabled
-        root_kustomization_fqpn = os.path.join(
+        root_kustomization_path = os.path.join(
             manifest, constants.APP_ROOT_KUSTOMIZE_FILE)
-
-        original_root_kustomization_fqpn = "%s-orig%s" % os.path.splitext(
-            root_kustomization_fqpn)
-        if os.path.exists(original_root_kustomization_fqpn):
-            root_kustomization_fqpn = original_root_kustomization_fqpn
-
-        for f in (helmrepo_path, root_kustomization_fqpn):
+        for f in (helmrepo_path, root_kustomization_path):
             if not os.path.isfile(f):
                 raise exception.SysinvException(_(
                     "Mandatory FluxCD yaml file doesn't exist "
                     "%s" % helmrepo_path))
 
         # get global namespace
-        with io.open(root_kustomization_fqpn, 'r', encoding='utf-8') as f:
+        with io.open(root_kustomization_path, 'r', encoding='utf-8') as f:
             root_kustomization_yaml = next(yaml.safe_load_all(f))
             global_namespace = root_kustomization_yaml["namespace"]
             charts_groups = root_kustomization_yaml["resources"]
@@ -1158,21 +1144,16 @@ class AppOperator(object):
 
         charts = []
         for chart_group in charts_groups:
-
             if chart_group != "base":
                 chart_path = os.path.join(manifest, chart_group)
                 helmrelease_path = os.path.join(chart_path, "helmrelease.yaml")
                 chart_kustomization_path = os.path.join(chart_path, "kustomization.yaml")
-
                 if not os.path.isfile(chart_kustomization_path) or \
                         not os.path.isfile(helmrelease_path):
                     continue
-
                 with io.open(chart_kustomization_path, 'r', encoding='utf-8') as f:
                     chart_kustomization_yaml = next(yaml.safe_load_all(f))
-
                 namespace = chart_kustomization_yaml.get("namespace", global_namespace)
-
                 with io.open(helmrelease_path, 'r', encoding='utf-8') as f:
                     helmrelease_yaml = next(yaml.safe_load_all(f))
                     metadata_name = helmrelease_yaml["metadata"]["name"]
@@ -1184,25 +1165,19 @@ class AppOperator(object):
                                                ".tgz")
                     release = helmrelease_yaml["spec"]["releaseName"]
 
-                    if (all_charts or
-                        cutils.is_chart_enabled(self._dbapi, app_name,
-                                                metadata_name, namespace)):
-                        # Dunno if we need to return these in order respecting
-                        # dependsOn? dependencies = [dep["name"] for dep in
-                        # helmrelease_yaml["spec"].get(["dependsOn"], [])]
-                        chart_obj = FluxCDChart(
-                            metadata_name=metadata_name,
-                            name=metadata_name,
-                            namespace=namespace,
-                            location=location,
-                            release=release,
-                            chart_os_path=chart_path,
-                            chart_label=chart_name,
-                            helm_repo_name=helm_repo_name
-                        )
-
+                    # Dunno if we need to return these in order respecting dependsOn?
+                    # dependencies = [dep["name"] for dep in helmrelease_yaml["spec"].get(["dependsOn"], [])]
+                    chart_obj = FluxCDChart(
+                        metadata_name=metadata_name,
+                        name=metadata_name,
+                        namespace=namespace,
+                        location=location,
+                        release=release,
+                        chart_os_path=chart_path,
+                        chart_label=chart_name,
+                        helm_repo_name=helm_repo_name
+                    )
                     charts.append(chart_obj)
-
         return charts
 
     def _get_overrides_files(self, app):
