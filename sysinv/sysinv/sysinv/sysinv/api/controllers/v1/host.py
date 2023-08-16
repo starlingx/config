@@ -560,8 +560,14 @@ class Host(base.APIBase):
     max_cpu_mhz_configured = wtypes.text
     "Represent the CPU max frequency"
 
+    min_cpu_mhz_allowed = wtypes.text
+    "Represent the default CPU min frequency"
+
     max_cpu_mhz_allowed = wtypes.text
     "Represent the default CPU max frequency"
+
+    cstates_available = wtypes.text
+    "Represent the CStates available to use"
 
     iscsi_initiator_name = wtypes.text
     "The iscsi initiator name (only used for worker hosts)"
@@ -598,7 +604,8 @@ class Host(base.APIBase):
                           'install_state', 'install_state_info',
                           'iscsi_initiator_name', 'device_image_update',
                           'reboot_needed', 'inv_state', 'clock_synchronization',
-                          'max_cpu_mhz_configured', 'max_cpu_mhz_allowed',
+                          'max_cpu_mhz_configured', 'min_cpu_mhz_allowed',
+                          'max_cpu_mhz_allowed', 'cstates_available',
                           'apparmor']
 
         fields = minimum_fields if not expand else None
@@ -2897,6 +2904,8 @@ class HostController(rest.RestController):
                     % (personality, load.software_version))
 
     def _check_max_cpu_mhz_configured(self, host):
+        cpu_utils.check_power_manager(host.ihost_patch.get('uuid'))
+
         # Max CPU frequency requested by the user and the maximum frequency
         # allowed by the CPU.
         max_cpu_mhz_configured = str(host.ihost_patch.get('max_cpu_mhz_configured', ''))

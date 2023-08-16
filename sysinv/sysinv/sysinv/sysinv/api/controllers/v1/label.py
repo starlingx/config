@@ -1,4 +1,4 @@
-# Copyright (c) 2018-2022 Wind River Systems, Inc.
+# Copyright (c) 2018-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -153,9 +153,14 @@ class LabelController(rest.RestController):
                                                   sort_dir=sort_dir)
 
     def _apply_manifest_after_label_operation(self, uuid, keys):
-        if common.LABEL_DISABLE_NOHZ_FULL in keys:
+        if (common.LABEL_DISABLE_NOHZ_FULL in keys or
+                constants.KUBE_POWER_MANAGER_LABEL in keys):
             pecan.request.rpcapi.update_grub_config(
                 pecan.request.context, uuid)
+
+        if constants.KUBE_POWER_MANAGER_LABEL in keys:
+            pecan.request.rpcapi.configure_power_manager(
+                pecan.request.context)
 
     @wsme_pecan.wsexpose(LabelCollection, types.uuid, types.uuid,
                          int, wtypes.text, wtypes.text)
@@ -362,6 +367,11 @@ def _semantic_check_worker_labels(body):
                 raise wsme.exc.ClientSideError(
                     _(
                         "Invalid value for %s label." % constants.KUBE_CPU_MANAGER_LABEL))
+        elif label_key == constants.KUBE_POWER_MANAGER_LABEL:
+            if label_value != constants.KUBE_POWER_MANAGER_VALUE:
+                raise wsme.exc.ClientSideError(
+                    _(
+                        "Invalid value for %s label." % constants.KUBE_POWER_MANAGER_LABEL))
 
 
 def _get_system_enabled_k8s_plugins():

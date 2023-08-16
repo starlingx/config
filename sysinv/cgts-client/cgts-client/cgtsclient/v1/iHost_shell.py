@@ -37,7 +37,8 @@ def _print_ihost_show(ihost, columns=None, output_format=None):
                   'install_state', 'install_state_info', 'inv_state',
                   'clock_synchronization', 'device_image_update',
                   'reboot_needed', 'max_cpu_mhz_configured',
-                  'max_cpu_mhz_allowed', 'apparmor']
+                  'min_cpu_mhz_allowed', 'max_cpu_mhz_allowed',
+                  'cstates_available', 'apparmor']
         optional_fields = ['vsc_controllers', 'ttys_dcd']
         if ihost.subfunctions != ihost.personality:
             fields.append('subfunctions')

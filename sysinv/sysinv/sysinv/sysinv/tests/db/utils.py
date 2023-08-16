@@ -170,8 +170,10 @@ def get_test_ihost(**kw):
             'inv_state': kw.get('inv_state', 'inventoried'),
             'clock_synchronization': kw.get('clock_synchronization', constants.NTP),
             'max_cpu_mhz_configured': kw.get('max_cpu_mhz_configured', ''),
-            'max_cpu_mhz_allowed': kw.get('max_cpu_mhz_allowed', '')
-        }
+            'min_cpu_mhz_allowed': kw.get('min_cpu_mhz_allowed', ''),
+            'max_cpu_mhz_allowed': kw.get('max_cpu_mhz_allowed', ''),
+            'cstates_available': kw.get('cstates_available', '')
+             }
     return inv
 
 

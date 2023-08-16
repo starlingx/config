@@ -208,7 +208,9 @@ PATCH_DEFAULT_TIMEOUT_IN_SECS = 6
 # ihost field attributes
 IHOST_STOR_FUNCTION = 'stor_function'
 IHOST_IS_MAX_CPU_MHZ_CONFIGURABLE = 'is_max_cpu_configurable'
+IHOST_MIN_CPU_MHZ_ALLOWED = 'min_cpu_mhz_allowed'
 IHOST_MAX_CPU_MHZ_ALLOWED = 'max_cpu_mhz_allowed'
+IHOST_CSTATES_AVAILABLE = 'cstates_available'
 
 # ihost config_status field values
 CONFIG_STATUS_OUT_OF_DATE = "Config out-of-date"
@@ -1960,6 +1962,8 @@ APP_EVALUATE_REAPPLY_HOST_AVAILABILITY = 'host-availability-updated'
 APP_EVALUATE_REAPPLY_TYPE_SYSTEM_MODIFY = 'system-modify'
 APP_EVALUATE_REAPPLY_TYPE_DETECTED_SWACT = 'detected-swact'
 APP_EVALUATE_REAPPLY_TYPE_KUBE_UPGRADE_COMPLETE = 'kube-upgrade-complete'
+APP_EVALUATE_REAPPLY_TYPE_HOST_ADD_LABEL = 'host-label-assign'
+APP_EVALUATE_REAPPLY_TYPE_HOST_MODIFY = 'host-modify'
 
 APP_EVALUATE_REAPPLY_TRIGGER_TO_METADATA_MAP = {
     UNLOCK_ACTION:
@@ -1987,7 +1991,11 @@ APP_EVALUATE_REAPPLY_TRIGGER_TO_METADATA_MAP = {
     APP_EVALUATE_REAPPLY_TYPE_HOST_DELETE:
         APP_EVALUATE_REAPPLY_TYPE_HOST_DELETE,
     APP_EVALUATE_REAPPLY_TYPE_SYSTEM_MODIFY:
-        APP_EVALUATE_REAPPLY_TYPE_SYSTEM_MODIFY
+        APP_EVALUATE_REAPPLY_TYPE_SYSTEM_MODIFY,
+    APP_EVALUATE_REAPPLY_TYPE_HOST_ADD_LABEL:
+        APP_EVALUATE_REAPPLY_TYPE_HOST_ADD_LABEL,
+    APP_EVALUATE_REAPPLY_TYPE_HOST_MODIFY:
+        APP_EVALUATE_REAPPLY_TYPE_HOST_MODIFY
 }
 
 # Progress constants
@@ -2039,6 +2047,7 @@ SRIOVDP_LABEL = 'sriovdp=enabled'
 KUBE_TOPOLOGY_MANAGER_LABEL = 'kube-topology-mgr-policy'
 KUBE_CPU_MANAGER_LABEL = 'kube-cpu-mgr-policy'
 KUBE_IGNORE_ISOL_CPU_LABEL = 'kube-ignore-isol-cpus=enabled'
+KUBE_POWER_MANAGER_LABEL = 'power-management'
 
 # Accepted label values
 KUBE_TOPOLOGY_MANAGER_VALUES = [
@@ -2051,6 +2060,7 @@ KUBE_CPU_MANAGER_VALUES = [
     'none',
     'static'
 ]
+KUBE_POWER_MANAGER_VALUE = 'enabled'
 # Default DNS service domain
 DEFAULT_DNS_SERVICE_DOMAIN = 'cluster.local'
 
@@ -2380,3 +2390,7 @@ PLATFORM_FIREWALL_SM_PORT_2 = 2223
 PLATFORM_FIREWALL_NTP_PORT = 123
 PLATFORM_FIREWALL_PTP_PORT = 319
 PLATFORM_FIREWALL_PTP_PORT = 320
+
+# CState support. Whether the path exists depends on hardware support and driver availability.
+# Validating the existence of the path is important.
+CSTATE_PATH = "/sys/devices/system/cpu/cpu0/cpuidle"
