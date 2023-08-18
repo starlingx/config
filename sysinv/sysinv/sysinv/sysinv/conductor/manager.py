@@ -12690,6 +12690,9 @@ class ConductorManager(service.PeriodicService):
                 raise exception.SysinvException(
                     _("Active load not found (%s)") % current_version)
 
+            if os.path.exists(constants.LOAD_FILES_STAGING_DIR):
+                shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
+
             return load
 
         elif import_type == constants.INACTIVE_LOAD_IMPORT:

@@ -403,6 +403,7 @@ class LoadController(rest.RestController):
 
         LOG.info("Load files: %s saved to disk." % load_files)
 
+        exception_occured = False
         try:
             new_load = pecan.request.rpcapi.start_import_load(
                 pecan.request.context,
@@ -424,10 +425,15 @@ class LoadController(rest.RestController):
                     import_type,
                 )
         except (rpc.common.Timeout, common.RemoteError) as e:
-            if os.path.isdir(constants.LOAD_FILES_STAGING_DIR):
-                shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
+            exception_occured = True
             error = e.value if hasattr(e, 'value') else str(e)
             raise wsme.exc.ClientSideError(error)
+        except Exception:
+            exception_occured = True
+            raise
+        finally:
+            if exception_occured and os.path.isdir(constants.LOAD_FILES_STAGING_DIR):
+                shutil.rmtree(constants.LOAD_FILES_STAGING_DIR)
 
         load_data = new_load.as_dict()
         LOG.info("Load import request validated, returning new load data: %s"
