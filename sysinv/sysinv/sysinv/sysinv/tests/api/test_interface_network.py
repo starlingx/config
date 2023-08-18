@@ -335,6 +335,16 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             network_uuid=self.oam_network.uuid)
         self._post_and_check(worker_interface_network, expect_errors=True)
 
+    # Expected error: The admin network type is only supported on controller nodes
+    def test_invalid_admin_on_worker(self):
+        worker_interface = dbutils.create_test_interface(
+            ifname='enp0s3',
+            forihostid=self.worker.id)
+        worker_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=worker_interface.uuid,
+            network_uuid=self.admin_network.uuid)
+        self._post_and_check(worker_interface_network, expect_errors=True)
+
     # Expected message: An interface with \'oam\' network type is already
     # provisioned on this node
     def test_create_invalid_duplicate_networktype(self):
