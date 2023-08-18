@@ -23,6 +23,7 @@ from sysinv.common.storage_backend_conf import StorageBackendConfig
 
 from keystoneclient.v3 import client as keystone_client
 from keystoneclient.auth.identity import v3
+from keystoneclient import exceptions
 from keystoneclient import session
 from barbicanclient.v1 import client as barbican_client_v1
 
@@ -383,11 +384,28 @@ class OpenStackOperator(object):
         """Get a list of all users in keystone otherwise an empty list."""
 
         user_list = []
+        retry = False
         try:
             self._renew_keystone_and_barbican_clients(service_config)
             user_list = self._get_keystone_client(service_config).users.list()
+        except exceptions.Unauthorized:
+            # Get users may fail after updating the sysinv user password. Update
+            # the cached client and retry.
+            retry = True
+            LOG.warning("Failed to get keystone users due to authentication "
+                        "failure, refreshing the cached keystone client and "
+                        "retry.")
         except Exception as e:
             LOG.error("Failed to get keystone user list:\n%s" % str(e))
+
+        if retry:
+            try:
+                client = self._get_new_keystone_client(service_config)
+                self._set_cached_keystone_client(service_config, client)
+                user_list = client.users.list()
+            except Exception as e:
+                LOG.error("Failed to get keystone user list after renewing the "
+                          "keystone client:\n%s" % str(e))
 
         return user_list
 
