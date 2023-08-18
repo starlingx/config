@@ -336,6 +336,39 @@ def remove_docker_images():
     return True
 
 
+def drop_helm_v2_database():
+    """
+    Drop Helm v2 PostgreSQL database since it is not needed
+    after Armada removal.
+    """
+
+    env = os.environ.copy()
+    drop_database = subprocess.Popen(
+        ['sudo', '-u', 'postgres',
+         'psql', '-c',
+         'DROP DATABASE IF EXISTS helmv2'],
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        universal_newlines=True)
+    timer = threading.Timer(20, kill_process_and_descendants, [drop_database])
+
+    try:
+        timer.start()
+        _, err = drop_database.communicate()
+        if drop_database.returncode != 0 and err:
+            LOG.exception(err)
+            return False
+        elif drop_database.returncode != 0:
+            LOG.error("Unknown error while dropping helmv2 database")
+            return False
+    except Exception as e:
+        LOG.exception("Failed to drop helmv2 database: %s" % e)
+        return False
+    finally:
+        timer.cancel()
+
+    return True
+
+
 def main():
 
     if len(sys.argv) != 4:
@@ -365,6 +398,9 @@ def main():
                 return 1
 
             if not remove_docker_images():
+                return 1
+
+            if not drop_helm_v2_database():
                 return 1
 
             LOG.info("Armada removed.")
