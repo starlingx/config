@@ -823,6 +823,15 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
             host=host,
             disable=disable))
 
+    def remove_admin_firewall_config(self, context):
+        """Synchronously, have the conductor remove the admin firewall
+           configuration.
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg(
+            'remove_admin_firewall_config'))
+
     def update_host_filesystem_config(self, context,
                                       host=None,
                                       filesystem_list=None):

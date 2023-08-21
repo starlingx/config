@@ -8613,6 +8613,17 @@ class ConductorManager(service.PeriodicService):
                                                     config_uuid,
                                                     config_dict)
 
+    def remove_admin_firewall_config(self, context):
+        """ Remove the platform firewall rules associated with the admin network """
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context,
+                                                personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::firewall::nat::admin::remove']
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
     def update_admin_config(self, context, host, disable=False):
         """Update the admin network configuration"""
 
@@ -8622,6 +8633,8 @@ class ConductorManager(service.PeriodicService):
                                                 host_uuids=[host.uuid])
 
         if disable:
+            # Note: The SNAT LDAP rule will be removed before the address
+            # pool deletion.  No need to do it here.
             config_dict = {
                 "personalities": personalities,
                 "host_uuids": [host['uuid']],
@@ -8641,7 +8654,8 @@ class ConductorManager(service.PeriodicService):
                             'platform::sm::enable_admin_config::runtime',
                             'platform::haproxy::runtime',
                             'openstack::keystone::endpoint::runtime',
-                            'platform::firewall::runtime']
+                            'platform::firewall::runtime',
+                            'platform::firewall::nat::admin::runtime']
             }
 
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
