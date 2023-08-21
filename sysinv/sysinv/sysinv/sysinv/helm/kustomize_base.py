@@ -116,7 +116,7 @@ class FluxCDKustomizeOperator(object):
 
         # Grab the global namespace
         self.kustomization_namespace = deepcopy(
-            self.kustomization_content[0]['namespace'])
+            self.kustomization_content[0].get("namespace"))
 
         # For these resources, find the HelmRelease info and build a resource
         # map
@@ -175,9 +175,12 @@ class FluxCDKustomizeOperator(object):
                 elif resource_helmrelease_namespace:
                     LOG.debug("Using namespace defined on the helmrelease.yaml")
                     namespace = resource_helmrelease_namespace
-                else:
+                elif self.kustomization_namespace:
                     LOG.debug("Using namespace defined on the top level kustomization.yaml")
                     namespace = self.kustomization_namespace
+                else:
+                    LOG.debug("Using fallback namespace")
+                    namespace = constants.FLUXCD_K8S_FALLBACK_NAMESPACE
 
                 # Save pertinent data for disabling chart resources and cleaning
                 # up existing helm releases after being disabled

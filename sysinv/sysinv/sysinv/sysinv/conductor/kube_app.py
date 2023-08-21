@@ -536,6 +536,11 @@ class AppOperator(object):
                                                          app.sync_fluxcd_manifest,
                                                          app.sync_overrides_dir)
 
+    @staticmethod
+    def get_global_namespace(root_kustomization_yaml):
+        """ Retrieve the namespace of a top level kustomization """
+        return root_kustomization_yaml.get("namespace", constants.FLUXCD_K8S_FALLBACK_NAMESPACE)
+
     def _get_image_tags_by_charts_fluxcd(self, app_images_file, manifest, overrides_dir):
         app_imgs = []
         images_file = None
@@ -556,7 +561,7 @@ class AppOperator(object):
         # get namespace
         with io.open(root_kustomization_path, 'r', encoding='utf-8') as f:
             root_kustomization_yaml = next(yaml.safe_load_all(f))
-            global_namespace = root_kustomization_yaml["namespace"]
+            global_namespace = AppOperator.get_global_namespace(root_kustomization_yaml)
             charts_groups = root_kustomization_yaml["resources"]
 
         for chart_group in charts_groups:
@@ -1133,7 +1138,7 @@ class AppOperator(object):
         # get global namespace
         with io.open(root_kustomization_path, 'r', encoding='utf-8') as f:
             root_kustomization_yaml = next(yaml.safe_load_all(f))
-            global_namespace = root_kustomization_yaml["namespace"]
+            global_namespace = AppOperator.get_global_namespace(root_kustomization_yaml)
             charts_groups = root_kustomization_yaml["resources"]
 
         # get the helm repo base url
@@ -1188,7 +1193,7 @@ class AppOperator(object):
         available_helm_overrides = []
 
         for chart in charts:
-            overrides = chart.namespace + '-' + chart.name + '.yaml'
+            overrides = helm_utils.build_overrides_filename(chart.name)
             overrides_file = os.path.join(overrides_dir, overrides)
             if not os.path.exists(overrides_file):
                 missing_helm_overrides.append(overrides_file)
@@ -1204,7 +1209,7 @@ class AppOperator(object):
     def _write_fluxcd_overrides(self, charts, helm_files):
 
         for chart in charts:
-            override_file = chart.namespace + '-' + chart.name + '.yaml'
+            override_file = chart.name + '.yaml'
 
             for f in os.listdir(chart.chart_os_path):
                 if f.endswith("system-overrides.yaml"):
@@ -2503,11 +2508,10 @@ class AppOperator(object):
                 raise exception.KubeAppAbort()
 
             LOG.info("Generating application overrides...")
-            self._helm.generate_helm_application_overrides(
-                app.sync_overrides_dir, app.name, mode, cnamespace=None,
-                chart_info=app.charts, combined=True)
+            helm_files = self._helm.generate_helm_application_overrides(
+                    app.sync_overrides_dir, app.name, mode, cnamespace=None,
+                    chart_info=app.charts, combined=True)
 
-            helm_files = self._get_overrides_files(app)
             if helm_files:
                 LOG.info("Application overrides generated.")
                 # put the helm_overrides in the chart's system-overrides.yaml
