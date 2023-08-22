@@ -331,6 +331,11 @@ class InterfaceNetworkController(rest.RestController):
             msg = _("The '%s' network type is only supported on controller nodes." %
                 constants.NETWORK_TYPE_OAM)
             raise wsme.exc.ClientSideError(msg)
+        elif (network_type == constants.NETWORK_TYPE_ADMIN and
+                ihost['personality'] != constants.CONTROLLER):
+            msg = _("The '%s' network type is only supported on controller nodes." %
+                constants.NETWORK_TYPE_ADMIN)
+            raise wsme.exc.ClientSideError(msg)
 
     def _check_network_type_and_interface_type(self, interface, network_type):
         # Make sure network type 'mgmt' or 'admin', with if type 'ae',
