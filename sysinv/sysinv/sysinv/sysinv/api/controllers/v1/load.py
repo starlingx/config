@@ -43,6 +43,7 @@ from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
+from sysinv.cert_mon import utils as cert_utils
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
@@ -571,6 +572,33 @@ class LoadController(rest.RestController):
                     raise wsme.exc.ClientSideError(_(
                         "Unable to delete load, load in use by host (id: %s)")
                         % host.forihostid)
+
+        # make sure there are no subclouds with current load different from central
+        # cloud current load
+        system = pecan.request.dbapi.isystem_get_one()
+        if load.state == constants.IMPORTED_LOAD_STATE and \
+                system.distributed_cloud_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+            subclouds = []
+
+            try:
+                # TODO move the cert_utils to a more common place
+                cert_utils.init_keystone_auth_opts()
+                token_cache = cert_utils.TokenCache(constants.OS_INTERFACE_INTERNAL)
+                all_subclouds = cert_utils.get_subclouds_from_dcmanager(token_cache.get_token())
+                for sc in all_subclouds:
+                    subcloud = cert_utils.get_subcloud(token_cache.get_token(), sc['name'])
+                    if subcloud['management-state'] == cert_utils.MANAGEMENT_MANAGED \
+                            and subcloud['software-version'] == load.software_version:
+                        subclouds.append(sc['name'])
+
+            except Exception as err:
+                LOG.error("Unexpected error to get subclouds software version: %s", err)
+                raise wsme.exc.ClientSideError(_("Failed to detect if the load can be safely deleted."))
+
+            if subclouds:
+                raise wsme.exc.ClientSideError(_(
+                    "Unable to delete load, %i subclouds are not upgraded yet. "
+                    "Some of these include %s") % (len(subclouds), subclouds[:10]))
 
         cutils.validate_load_for_delete(load)
 
