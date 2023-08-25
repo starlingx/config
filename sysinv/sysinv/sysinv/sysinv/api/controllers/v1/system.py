@@ -663,7 +663,7 @@ class SystemController(rest.RestController):
         if timezone:
             LOG.info("update system timezone to %s" % timezone)
             pecan.request.rpcapi.configure_system_timezone(
-                pecan.request.context)
+                pecan.request.context, timeout=constants.EXTENDED_RPCAPI_TIMEOUT_IN_SECS)
         if capabilities:
             if change_sdn:
                 LOG.info("update sdn to %s" % capabilities)
