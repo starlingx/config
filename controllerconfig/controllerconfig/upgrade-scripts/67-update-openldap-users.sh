@@ -9,6 +9,9 @@
 # activate stage of a platform upgrade. It will:
 # - import data from a previous backup
 # - change admin user's primary group from 'root' to 'users'
+# - cleanup the centos openldap folder after the users have been imported
+# and loaded successfully in an upgrade from a centos release to a debian
+# release
 
 # The migration scripts are passed these parameters:
 NAME=$(basename $0)
@@ -38,6 +41,16 @@ if [[ "${ACTION}" == "activate" ]] && [[ "${TO_RELEASE}" == "22.12" ]]; then
         BACKUP_DIR="/opt/platform/config/$FROM_RELEASE/ldap"
         /usr/sbin/slapadd -F /etc/ldap/schema -l $BACKUP_DIR/ldap.db
         log "$NAME: Successfully imported ldap data from $BACKUP_DIR/ldap.db"
+
+        log "$NAME: Remove centos openldap folder"
+        rm -rf /etc/openldap
+
+        RC_RM=$?
+        if [ ${RC_RM} -eq 0 ]; then
+            log "$NAME: Successfully removed centos openldap folder"
+        else
+            log "$NAME: ERROR - failed to remove centos openldap folder. (RETURNED: $RC_RM)"
+        fi
     fi
 
     /usr/sbin/ldapsetprimarygroup admin users
