@@ -78,7 +78,7 @@ renew_cert() {
     time_left_s=$(time_left_s "$1")
     if [ "x${time_left_s}" != "x" ]; then
         if [ ${time_left_s} -lt ${CUTOFF_DAYS_S} ]; then
-            kubeadm $CERT_CMD renew $1 --config "/etc/kubernetes/kubeadm.yaml"
+            kubeadm $CERT_CMD renew $1
 
             if [ $? -ne 0 ]; then
                 ret=1
