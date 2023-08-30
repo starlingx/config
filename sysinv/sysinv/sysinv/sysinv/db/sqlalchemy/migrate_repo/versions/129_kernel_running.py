@@ -14,6 +14,7 @@ def upgrade(migrate_engine):
     migrate_engine.connect()
     i_host = Table('i_host', meta, autoload=True)
     i_host.create_column(Column('kernel_running', String(64)))
+    i_host.create_column(Column('kernel_config_status', String(255)))
 
 
 def downgrade(migrate_engine):

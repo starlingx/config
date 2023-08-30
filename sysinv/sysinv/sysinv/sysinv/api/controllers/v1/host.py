@@ -5561,6 +5561,7 @@ class HostController(rest.RestController):
         self.unlock_update_mgmt_interface(hostupdate.ihost_patch)
         self.check_unlock_partitions(hostupdate)
         self.check_unlock_patching(hostupdate, force_unlock)
+        self.check_unlock_kernel_config_status(hostupdate, force_unlock)
 
         hostupdate.configure_required = True
         if ((os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) or
@@ -5574,6 +5575,26 @@ class HostController(rest.RestController):
             hostupdate.notify_vim = True
 
         return True
+
+    def check_unlock_kernel_config_status(self, hostupdate, force_unlock):
+        """ Check whether kernel configuration is in progress.
+            Force unlock will bypass check
+        """
+
+        if force_unlock:
+            return
+
+        hostname = hostupdate.ihost_patch.get('hostname')
+        subfunctions = hostupdate.ihost_patch.get('subfunctions')
+        kernel_config_status = hostupdate.ihost_patch.get('kernel_config_status')
+
+        if constants.WORKER not in subfunctions:
+            return
+
+        if kernel_config_status == constants.KERNEL_CONFIG_STATUS_PENDING:
+            msg = (f'Can not unlock {hostname} '
+                    'kernel configuration in progress.')
+            raise wsme.exc.ClientSideError(_(msg))
 
     def check_unlock_patching(self, hostupdate, force_unlock):
         """Check whether the host is patch current.

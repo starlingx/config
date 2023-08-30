@@ -112,6 +112,7 @@ def post_get_test_ihost(**kw):
     del inv['recordtype']
     del inv['uuid']
     del inv['kernel_running']
+    del inv['kernel_config_status']
     return inv
 
 
@@ -142,6 +143,7 @@ def get_test_ihost(**kw):
             'task': kw.get('task', None),
             'capabilities': kw.get('capabilities', {}),
             'kernel_running': kw.get('kernel_running', constants.KERNEL_STANDARD),
+            'kernel_config_status': kw.get('kernel_config_status', ''),
             'subfunctions': kw.get('subfunctions', "ihostsubfunctions"),
             'subfunction_oper': kw.get('subfunction_oper', "disabled"),
             'subfunction_avail': kw.get('subfunction_avail', "not-installed"),

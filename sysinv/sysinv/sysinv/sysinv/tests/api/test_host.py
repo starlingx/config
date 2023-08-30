@@ -2830,6 +2830,85 @@ class TestPatch(TestHost):
         self.assertEqual(response.content_type, 'application/json')
         self.assertEqual(response.status_code, http_client.OK)
 
+    def test_worker_unlock_during_kernel_configuration(self):
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create worker-0
+        w0_host = self._create_worker(
+            mgmt_ip='192.168.204.5',
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            kernel_config_status=constants.KERNEL_CONFIG_STATUS_PENDING)
+
+        self._create_test_host_platform_interface(w0_host)
+        self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
+
+        w0_hostname = w0_host['hostname']
+        response = self._patch_host_action(
+            w0_hostname, constants.UNLOCK_ACTION,
+            'sysinv-test', expect_errors=True)
+
+        # Verify that the unlock was not sent to the VIM
+        self.mock_vim_api_host_action.assert_not_called()
+        # Verify that the host was not modified in maintenance
+        self.mock_mtce_api_host_modify.assert_not_called()
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn(f"Can not unlock {w0_hostname} "
+                      "kernel configuration in progress",
+                      response.json['error_message'])
+
+    def test_worker_force_unlock_during_kernel_configuration(self):
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create worker-0
+        w0_host = self._create_worker(
+            mgmt_ip='192.168.204.5',
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE,
+            kernel_config_status=constants.KERNEL_CONFIG_STATUS_PENDING)
+
+        self._create_test_host_platform_interface(w0_host)
+        self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
+
+        w0_hostname = w0_host['hostname']
+        response = self._patch_host_action(
+            w0_hostname, constants.FORCE_UNLOCK_ACTION,
+            'sysinv-test')
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
 
 class TestPatchStdDuplexControllerAction(TestHost):
 

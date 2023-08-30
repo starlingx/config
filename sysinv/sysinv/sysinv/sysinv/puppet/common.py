@@ -54,6 +54,7 @@ REPORT_KUBE_CERT_UPDATE_PODS_TRUSTNEWCA = \
     'pods_' + constants.KUBE_CERT_UPDATE_TRUSTNEWCA
 REPORT_KUBE_UPDATE_KUBELET_PARAMS = 'update_kubelet_params'
 REPORT_HTTP_CONFIG = 'http_config'
+REPORT_KERNEL_CONFIG = 'host_kernel_config'
 REPORT_UPGRADE_ABORT = 'upgrade_abort'
 
 

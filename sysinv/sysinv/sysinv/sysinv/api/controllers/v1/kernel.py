@@ -135,7 +135,8 @@ class Kernel(base.APIBase):
         updated_subfunctions = Kernel._create_subfunctions_str(subfunctions_set)
         updates = \
             {
-                constants.SUBFUNCTIONS: updated_subfunctions
+                constants.SUBFUNCTIONS: updated_subfunctions,
+                'kernel_config_status': constants.KERNEL_CONFIG_STATUS_PENDING
             }
 
         ihost.save_changes(pecan.request.context, updates)

@@ -1310,9 +1310,49 @@ class ConductorManager(service.PeriodicService):
             "classes": [
                 'platform::grub::kernel_image::runtime',
                 'platform::config::file::subfunctions::lowlatency::runtime'
-            ]
+            ],
+            puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_KERNEL_CONFIG
         }
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+        self._config_apply_runtime_manifest(context, config_uuid,
+                                            config_dict, force=True)
+
+    def report_kernel_config_complete(self, context, ihost_uuid, status, error):
+        """ Report kernel config runtime manifest from agent completed run
+            The runtime manifest has completed either in failure or success
+        Args:
+            context: admin context
+            ihost_uuid (uuid): host uuid
+            status: operation status
+            error: err content as a dict of type:
+                error = {
+                        'class': str(ex.__class__.__name__),
+                        'module': str(ex.__class__.__module__),
+                        'message': six.text_type(ex),
+                        'tb': traceback.format_exception(*ex),
+                        'args': ex.args,
+                        'kwargs': ex.kwargs
+                        }
+        """
+        ihost_uuid = ihost_uuid.strip()
+        try:
+            host = self.dbapi.ihost_get(ihost_uuid)
+        except exception.ServerNotFound:
+            LOG.info('Kernel runtime manifest completed report '
+                     f'uuid={ihost_uuid} '
+                     f'status={status} '
+                     f'error={error}')
+            LOG.error(f'Host not found {ihost_uuid}')
+            return None
+
+        hostname = host['hostname']
+        LOG.info('Kernel runtime manifest completed report '
+                 f'{hostname} status={status} error={error}')
+
+        # update db with kernel_config_status update and reload host object
+        host.save_changes(context, {'kernel_config_status': status})
+        host = self.dbapi.ihost_get(ihost_uuid)
+        LOG.info(f"DB updated {hostname} "
+                 f"kernel_config_status={host['kernel_config_status']}")
 
     def report_kernel_running(self, context, ihost_uuid, kernel_running: str):
         """Report from sysinv agent with the running kernel of that host
@@ -9426,6 +9466,11 @@ class ConductorManager(service.PeriodicService):
                 LOG.error("No match for sysinv-agent manifest application reported! "
                           "reported_cfg: %(cfg)s status: %(status)s "
                           "iconfig: %(iconfig)s" % args)
+        elif reported_cfg == puppet_common.REPORT_KERNEL_CONFIG:
+            # The agent is reporting runtime kernel config params have been applied
+            host_uuid = iconfig['host_uuid']
+            self.report_kernel_config_complete(context, host_uuid, status, error)
+            success = (status == puppet_common.REPORT_SUCCESS)
         elif reported_cfg == puppet_common.REPORT_UPGRADE_ABORT:
             kube_upgrade_obj = objects.kube_upgrade.get_one(context)
             # The agent is reporting the runtime kube_upgrade_abort has been applied.

@@ -205,6 +205,7 @@ class ihost(Base):
 
     personality = Column(invPersonalityEnum)
     kernel_running = Column(String(64))
+    kernel_config_status = Column(String(255), default="")
     subfunctions = Column(String(255))
     subfunction_oper = Column(operEnum, default="disabled")
     subfunction_avail = Column(availEnum, default="not-installed")

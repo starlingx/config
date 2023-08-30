@@ -49,6 +49,7 @@ class Host(base.SysinvObject):
             'hostname': utils.str_or_none,
             'personality': utils.str_or_none,
             'kernel_running': utils.str_or_none,
+            'kernel_config_status': utils.str_or_none,
             'subfunctions': utils.str_or_none,
             'subfunction_oper': utils.str_or_none,
             'subfunction_avail': utils.str_or_none,

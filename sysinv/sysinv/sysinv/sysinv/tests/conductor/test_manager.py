@@ -5191,7 +5191,8 @@ class ManagerTestCase(base.DbTestCase):
             "classes": [
                 'platform::grub::kernel_image::runtime',
                 'platform::config::file::subfunctions::lowlatency::runtime'
-            ]
+            ],
+            'report_status': 'host_kernel_config'
         }
         config_uuid = '1234'
         mock_config_update_hosts.return_value = config_uuid
@@ -5201,7 +5202,8 @@ class ManagerTestCase(base.DbTestCase):
         mock_config_update_hosts.assert_called_once()
         mock_config_apply_runtime_manifest.assert_called_once_with(mock.ANY,
                                                                    config_uuid,
-                                                                   config_dict)
+                                                                   config_dict,
+                                                                   force=True)
 
     @mock.patch('sysinv.conductor.manager.'
                 'ConductorManager._config_apply_runtime_manifest')
