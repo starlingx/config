@@ -9348,3 +9348,75 @@ class Connection(api.Connection):
             if count != 1:
                 raise exception.NotFound()
             return query.one()
+
+    @db_objects.objectify(objects.runtime_config)
+    def runtime_config_create(self, values):
+        runtime_config = models.RuntimeConfig()
+        runtime_config.update(values)
+        with _session_for_write() as session:
+            try:
+                session.add(runtime_config)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                LOG.error('Entry for runtime_config (config_uuid=%s, host_id=%s) already exists.' % (
+                    values['config_uuid'], values['forihostid']))
+        return runtime_config
+
+    @db_objects.objectify(objects.runtime_config)
+    def runtime_config_destroy(self, id):
+        with _session_for_write() as session:
+            query = model_query(models.RuntimeConfig, session=session)
+            if utils.is_uuid_like(id):
+                query = query.filter_by(config_uuid=id)
+            else:
+                query = query.filter_by(id=id)
+            query.delete()
+
+    @db_objects.objectify(objects.runtime_config)
+    def runtime_config_prune(self, older_than):
+        with _session_for_write() as session:
+            query = model_query(models.RuntimeConfig, session=session)
+            query = query.filter(models.RuntimeConfig.created_at < older_than)
+            result = query.all()
+            query.delete()
+            return result
+
+    @db_objects.objectify(objects.runtime_config)
+    def runtime_config_update(self, id, values):
+        with _session_for_write() as session:
+            query = model_query(models.RuntimeConfig, session=session)
+            query = query.filter_by(id=id)
+            count = query.update(values)
+            if count != 1:
+                raise exception.NotFound()
+            return query.one()
+
+    @db_objects.objectify(objects.runtime_config)
+    def runtime_config_get(self, id, host_id=None):
+        query = model_query(models.RuntimeConfig)
+
+        if utils.is_uuid_like(id):
+            query = query.filter_by(config_uuid=id)
+            if host_id:
+                query = query.filter_by(forihostid=host_id)
+        else:
+            query = query.filter_by(id=id)
+
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.NotFound()
+        except MultipleResultsFound:
+            raise exception.MultipleResults()
+        return result
+
+    @db_objects.objectify(objects.runtime_config)
+    def runtime_config_get_all(self, config_uuid=None, state=None, older_than=None):
+        query = model_query(models.RuntimeConfig)
+        if config_uuid:
+            query = query.filter_by(config_uuid=config_uuid)
+        if state:
+            query = query.filter_by(state=state)
+        if older_than:
+            query = query.filter(models.RuntimeConfig.created_at < older_than)
+        return query.all()
