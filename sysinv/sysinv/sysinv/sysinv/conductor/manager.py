@@ -6526,6 +6526,7 @@ class ConductorManager(service.PeriodicService):
                                              host.install_state_info})
     PUPPET_RUNTIME_CLASS_ROUTES = 'platform::network::routes::runtime'
     PUPPET_RUNTIME_CLASS_DOCKERDISTRIBUTION = 'platform::dockerdistribution::runtime'
+    PUPPET_RUNTIME_CLASS_USERS = 'platform::users::runtime'
     PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_KEY_FILE = constants.DOCKER_REGISTRY_KEY_FILE
     PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_CERT_FILE = constants.DOCKER_REGISTRY_CERT_FILE
     PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_PKCS1_KEY_FILE = constants.DOCKER_REGISTRY_PKCS1_KEY_FILE
@@ -6533,7 +6534,8 @@ class ConductorManager(service.PeriodicService):
 
     PUPPET_RUNTIME_FILTER_CLASSES = [
         PUPPET_RUNTIME_CLASS_ROUTES,
-        PUPPET_RUNTIME_CLASS_DOCKERDISTRIBUTION
+        PUPPET_RUNTIME_CLASS_DOCKERDISTRIBUTION,
+        PUPPET_RUNTIME_CLASS_USERS
     ]
     PUPPET_RUNTIME_FILTER_FILES = [
         PUPPET_RUNTIME_FILES_DOCKER_REGISTRY_KEY_FILE,
@@ -6551,6 +6553,12 @@ class ConductorManager(service.PeriodicService):
     def _check_ready_route_runtime_config(self):
         if self._check_runtime_class_apply_in_progress(
                 [self.PUPPET_RUNTIME_CLASS_ROUTES]):
+            return False
+        return True
+
+    def _check_ready_users_runtime_config(self):
+        if self._check_runtime_class_apply_in_progress(
+                [self.PUPPET_RUNTIME_CLASS_USERS]):
             return False
         return True
 
@@ -6594,6 +6602,11 @@ class ConductorManager(service.PeriodicService):
                     return False
             if filter_class == self.PUPPET_RUNTIME_CLASS_DOCKERDISTRIBUTION:
                 if self.check_restoring_apps_in_progress():
+                    LOG.info("config type %s filter_mapping %s False (wait)" %
+                             (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
+                    return False
+            if filter_class == self.PUPPET_RUNTIME_CLASS_USERS:
+                if not self._check_ready_users_runtime_config():
                     LOG.info("config type %s filter_mapping %s False (wait)" %
                              (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
                     return False
@@ -8538,12 +8551,16 @@ class ConductorManager(service.PeriodicService):
 
         config_dict = {
             "personalities": personalities,
-            "classes": ['platform::users::runtime']
+            "classes": self.PUPPET_RUNTIME_CLASS_USERS,
+            puppet_common.REPORT_STATUS_CFG:
+                puppet_common.REPORT_USER_CONFIG,
         }
+
         if host_uuids:
             config_dict.update({"host_uuids": host_uuids})
 
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict,
+                                            filter_classes=[self.PUPPET_RUNTIME_CLASS_USERS])
 
     def update_controller_rollback_flag(self, context):
         """Update the controller upgrade rollback flag"""
@@ -9174,7 +9191,7 @@ class ConductorManager(service.PeriodicService):
                         }
 
         The iconfig context is expected to contain a valid REPORT_STATUS_CFG
-        key, so that we can correctly identify the set of pupet clasees executed.
+        key, so that we can correctly identify the set of puppet classes executed.
         """
         reported_cfg = iconfig.get(puppet_common.REPORT_STATUS_CFG)
         if not reported_cfg:
@@ -9208,8 +9225,8 @@ class ConductorManager(service.PeriodicService):
         host_uuid = iconfig.get('host_uuid')
 
         # Identify the set of manifests executed
-        if reported_cfg == puppet_common.REPORT_ROUTE_CONFIG:
-            # The agent is reporting the runtime route config has been applied.  Clear the corresponding
+        if reported_cfg in [puppet_common.REPORT_ROUTE_CONFIG, puppet_common.REPORT_USER_CONFIG]:
+            # The agent is reporting that runtime manifests have been applied. Clear the corresponding
             # runtime class in progress flag and check for outstanding deferred runtime config.
             if status == puppet_common.REPORT_SUCCESS:
                 success = True
@@ -9220,7 +9237,7 @@ class ConductorManager(service.PeriodicService):
                 self._audit_deferred_runtime_config(context)
             else:
                 # Config out of date alarm will be raised
-                LOG.info("Route config manifest failed for host: %s" % host_uuid)
+                LOG.info("Config manifest failed for host: %s" % host_uuid)
         elif reported_cfg == puppet_common.REPORT_UPGRADE_ACTIONS:
             if status == puppet_common.REPORT_SUCCESS:
                 success = True
@@ -11980,9 +11997,7 @@ class ConductorManager(service.PeriodicService):
                 if host_uuids and host_uuids in h:
                     LOG.info("config runtime  host_uuids=%s from %s" %
                              (host_uuids, h))
-                    return True
-                else:
-                    return True
+                return True
         return False
 
     @cutils.synchronized(LOCK_RUNTIME_CONFIG_CHECK)
