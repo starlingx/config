@@ -116,3 +116,19 @@ SB_SUPPORTED_NETWORKS = {
 UPGRADE_NOTIFICATION = 'System platform upgrade is in progress.\n' \
                        'The command may display the target configuration ' \
                        'that has not yet been applied to the host.'
+
+EXPIRED = "--expired"
+SOON_TO_EXPIRY = "--soon_to_expiry"
+VALIDITY = "Validity"
+NOT_BEFORE = "Not Before"
+NOT_AFTER = "Not After"
+RESIDUAL_TIME = "Residual Time"
+NAMESPACE = "Namespace"
+SECRET = "Secret"
+RENEWAL = "Renewal"
+SECRET_TYPE = "Secret Type"
+FILEPATH = "File Path"
+AUTOMATIC = "Automatic"
+MANUAL = "Manual"
+ISSUER = "Issuer"
+SUBJECT = "Subject"

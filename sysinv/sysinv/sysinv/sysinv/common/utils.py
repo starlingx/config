@@ -3837,3 +3837,147 @@ def update_config_file(config_filepath: str, values_to_update: list):
             lines.append(key_value)
     with open(config_filepath, 'w') as file:
         file.writelines(lines)
+
+
+def get_cert_values(cert_obj):
+    data = {}
+    x509v3_extn = "X509v3 extensions"
+    critical = "critical"
+    data[constants.RESIDUAL_TIME] = "{}d".format(
+        (cert_obj.not_valid_after - datetime.datetime.now()).days)
+    data["Version"] = cert_obj.version.name
+    data["Serial Number"] = hex(cert_obj.serial_number)
+    data["Issuer"] = cert_obj.issuer.rfc4514_string()
+    data[constants.VALIDITY] = {}
+    data[constants.VALIDITY][constants.NOT_BEFORE] = cert_obj.not_valid_before.strftime(
+        '%B %d %H:%M:%S %Y')
+    data[constants.VALIDITY][constants.NOT_AFTER] = cert_obj.not_valid_after.strftime(
+        '%B %d %H:%M:%S %Y')
+    data["Subject"] = cert_obj.subject.rfc4514_string()
+    if hasattr(cert_obj.public_key(), 'key_size'):
+        pub_key_info = {}
+        key_size = cert_obj.public_key().key_size
+        pub_key_info['key_size'] = f"({key_size} bit)"
+        data["Subject Public Key Info"] = pub_key_info
+    data[x509v3_extn] = {}
+    for ext in cert_obj.extensions:
+        ext_value = ext.value
+        if isinstance(ext_value, x509.extensions.KeyUsage):
+            ext_name = "X509v3 Key Usage"
+            data[x509v3_extn][ext_name] = {}
+            value = ""
+            if ext_value.digital_signature:
+                value = f"{value}Digital Signature"
+            if ext_value.key_encipherment:
+                value = f"{value}, Key Encipherment"
+            if ext_value.content_commitment:
+                value = f"{value}, Content Commitment"
+            if ext_value.data_encipherment:
+                value = f"{value}, Data Encipherment"
+            if ext_value.key_agreement:
+                value = f"{value}, Key Agreement"
+            if ext_value.crl_sign:
+                value = f"{value}, CRL Sign" if value else f"{value}CRL Sign"
+            if value:
+                data[x509v3_extn][ext_name]["values"] = value
+            if ext.critical:
+                data[x509v3_extn][ext_name][critical] = ext.critical
+        elif isinstance(ext_value, x509.extensions.BasicConstraints):
+            ext_name = "X509v3 Basic Constraints"
+            data[x509v3_extn][ext_name] = {}
+            data[x509v3_extn][ext_name]["CA"] = ext_value.ca
+            if ext.critical:
+                data[x509v3_extn][ext_name][critical] = ext.critical
+        elif isinstance(ext_value, x509.extensions.AuthorityKeyIdentifier):
+            identifier = {}
+            if hasattr(ext_value, 'key_identifier'):
+                identifier["keyid"] = ext_value.key_identifier.hex()
+            if ext.critical:
+                identifier[critical] = ext.critical
+            if identifier:
+                data[x509v3_extn]["X509v3 Authority Key Identifier"] = identifier
+        elif isinstance(ext_value, x509.extensions.SubjectKeyIdentifier):
+            identifier = {}
+            if hasattr(ext_value, 'key_identifier'):
+                identifier["keyid"] = ext_value.key_identifier.hex()
+            if ext.critical:
+                identifier[critical] = ext.critical
+            if identifier:
+                data[x509v3_extn]["X509v3 Subject Key Identifier"] = identifier
+        elif isinstance(ext_value, x509.extensions.SubjectAlternativeName):
+            ext_name = "X509v3 Subject Alternative Name"
+            data[x509v3_extn][ext_name] = {}
+            dns_names = get_cert_DNSNames(cert_obj)
+            ip_addresses = get_cert_IPAddresses(cert_obj)
+            if dns_names:
+                data[x509v3_extn][ext_name]["DNS"] = get_cert_DNSNames(cert_obj)
+            if ip_addresses:
+                data[x509v3_extn][ext_name]["IP Address"] = get_cert_IPAddresses(cert_obj)
+    data["Signature Algorithm"] = getattr(cert_obj.signature_algorithm_oid, '_name')
+    data["Signature"] = cert_obj.signature.hex()
+    return data
+
+
+def get_secrets_info(secrets_list=None):
+    kube_operator = kubernetes.KubeOperator()
+    certificates = kube_operator.list_custom_resources("cert-manager.io", "v1", "certificates")
+    certs_secrets_list = [cert["spec"]["secretName"] for cert in certificates]
+    k8s_secrets = []
+    if secrets_list:
+        if not isinstance(secrets_list, list):
+            secrets_list = [secrets_list, ]
+        for secret, ns in secrets_list:
+            secret_obj = kube_operator.kube_get_secret(secret, ns)
+            if secret_obj:
+                k8s_secrets.append(secret_obj)
+    else:
+        opaque_secrets = kube_operator.kube_list_secret_for_all_namespaces(selector='type=Opaque')
+        tls_secrets = kube_operator.kube_list_secret_for_all_namespaces(
+            selector='type=kubernetes.io/tls')
+        k8s_secrets = opaque_secrets + tls_secrets
+
+    cert_suf = ("cert", "crt", "ca", "pem", "cer")
+    certs_info = {}
+    for secret in k8s_secrets:
+        secret_name = secret.metadata.name
+        if secret_name == "kubeadm-certs":
+            continue
+        ns = secret.metadata.namespace
+        secret_type = secret.type
+        renewal = "Manual"
+        if secret_name in certs_secrets_list:
+            renewal = "Automatic"
+        if secret_type == "Opaque":
+            for key, val in secret.data.items():
+                # exception for cm-cert-manager-webhook-ca opaque secret
+                if secret_name == "cm-cert-manager-webhook-ca":
+                    renewal = "Automatic"
+                # list elastic-services,kibana cert from "mon-elastic-services-secrets" secret
+                if secret_name == "mon-elastic-services-secrets":
+                    if key not in ["ext-elastic-services.crt", "kibana.crt", "ca.crt", "ext-ca.crt"]:
+                        continue
+                if key.endswith(cert_suf) and val:
+                    cert_name = f"{secret_name}/{key}"
+                    crt = base64.decode_as_bytes(val)
+                    cert_obj = extract_certs_from_pem(crt)[0]
+                    certs_info[cert_name] = get_cert_values(cert_obj)
+                    certs_info[cert_name][constants.NAMESPACE] = ns
+                    certs_info[cert_name][constants.SECRET] = secret_name
+                    certs_info[cert_name][constants.RENEWAL] = renewal
+                    certs_info[cert_name][constants.SECRET_TYPE] = secret_type
+        elif secret_type == "kubernetes.io/tls":
+            # exception for sc-adminep-ca-certificate tls secret as there is no
+            # corresponding certificate exist.
+            if secret_name == "sc-adminep-ca-certificate":
+                    renewal = "Automatic"
+            cert_name = secret_name
+            crt = base64.decode_as_bytes(secret.data.get('tls.crt'))
+            cert_obj = extract_certs_from_pem(crt)[0]
+            certs_info[cert_name] = get_cert_values(cert_obj)
+            certs_info[cert_name][constants.NAMESPACE] = ns
+            certs_info[cert_name][constants.SECRET] = secret_name
+            certs_info[cert_name][constants.RENEWAL] = renewal
+            certs_info[cert_name][constants.SECRET_TYPE] = secret_type
+
+    LOG.debug(certs_info)
+    return certs_info

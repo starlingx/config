@@ -9,6 +9,7 @@
 #
 import os
 
+from cgtsclient.common import constants
 from cgtsclient.common import utils
 from cgtsclient import exc
 
@@ -79,28 +80,6 @@ def _install_cert(cc, certificate_file, data):
             except OSError:
                 raise exc.CommandError('Error: Could not remove the '
                                        'certificate %s' % certificate_file)
-
-
-@utils.arg('certificate_uuid', metavar='<certificate_uuid>',
-           help="UUID of certificate")
-def do_certificate_show(cc, args):
-    """Show Certificate details."""
-    certificate = cc.certificate.get(args.certificate_uuid)
-    if certificate:
-        _print_certificate_show(certificate)
-    else:
-        print("No Certificates installed")
-
-
-def do_certificate_list(cc, args):
-    """List certificates."""
-    certificates = cc.certificate.list()
-    fields = ['uuid', 'certtype', 'expiry_date', 'subject']
-    field_labels = fields
-    for certificate in certificates:
-        if certificate.subject and len(certificate.subject) > 20:
-            certificate.subject = certificate.subject[:20] + "..."
-    utils.print_list(certificates, fields, field_labels, sortby=0)
 
 
 @utils.arg('certificate_file',
@@ -225,3 +204,80 @@ def do_ca_certificate_show(cc, args):
     else:
         print('No certificate of type "ssl_ca" is installed with '
               'this uuid: %s' % (args.certificate_uuid))
+
+
+def _print_certificate_list(certs_dict):
+    keys = [constants.RESIDUAL_TIME, constants.VALIDITY, constants.ISSUER,
+            constants.SUBJECT, constants.NAMESPACE, constants.SECRET,
+            constants.RENEWAL, constants.SECRET_TYPE, constants.FILEPATH]
+    for cert in sorted(certs_dict):
+        print("+------------------------------------------------------------+")
+        print(cert)
+        print("+------------------------------------------------------------+")
+        for key in keys:
+            val = certs_dict[cert].get(key)
+            if val:
+                if key == constants.VALIDITY:
+                    issue_date = certs_dict[cert][constants.VALIDITY][constants.NOT_BEFORE]
+                    expiry_date = certs_dict[cert][constants.VALIDITY][constants.NOT_AFTER]
+                    print(f'  Issue Date\t: {issue_date}')
+                    print(f'  Expiry Date\t: {expiry_date}')
+                    continue
+                print(f"  {key}\t: {val}")
+    print("+------------------------------------------------------------+")
+
+
+@utils.arg(constants.EXPIRED, action='store_true',
+           help="to show the expired certificates")
+@utils.arg(constants.SOON_TO_EXPIRY, metavar='<no of days to expiry>',
+           help="to show the certificates expiring in n days")
+def do_certificate_list(cc, args):
+    """List system certificates."""
+    certs = cc.certificate.get_all_certs(expired=args.expired,
+                                         soon_to_expiry=args.soon_to_expiry)
+    _print_certificate_list(certs)
+
+
+@utils.arg(constants.EXPIRED, action='store_true',
+           help="to show the expired certificates")
+@utils.arg(constants.SOON_TO_EXPIRY, metavar='<no of days to expiry>',
+           help="to show the certificates expiring in n days")
+def do_k8s_certificate_list(cc, args):
+    """List k8s certificates."""
+    certs = cc.certificate.get_all_k8s_certs(expired=args.expired,
+                                             soon_to_expiry=args.soon_to_expiry)
+    _print_certificate_list(certs)
+
+
+def _print_certificate_details(cert_info, i=1):
+    s = "   " * i
+    for key, val in cert_info.items():
+        if isinstance(val, dict):
+            print(f"{s}{key}:")
+            _print_certificate_details(val, i=i + 1)
+            continue
+        print(f"{s}{key}: {val}")
+
+
+def _print_certificate(certificate, args):
+    if certificate:
+        print("Certificate:")
+        _print_certificate_details(certificate)
+    else:
+        print(f"No Certificate exist with name {args.certificate_name}")
+
+
+@utils.arg('certificate_name', metavar='<certificate_name>',
+           help="name of certificate")
+def do_certificate_show(cc, args):
+    """Show certificate details."""
+    certificate = cc.certificate.get_all_certs().get(args.certificate_name, None)
+    _print_certificate(certificate, args)
+
+
+@utils.arg('certificate_name', metavar='<certificate_name>',
+           help="name of certificate")
+def do_k8s_certificate_show(cc, args):
+    """Show certificate details."""
+    certificate = cc.certificate.get_all_k8s_certs().get(args.certificate_name, None)
+    _print_certificate(certificate, args)

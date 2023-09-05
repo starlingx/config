@@ -2324,3 +2324,17 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context, self.make_msg('request_firewall_runtime_update',
                                                 host_uuid=host_uuid))
+
+    def get_all_certs(self, context):
+        """Synchronously, have the conductor retrieve the cert information.
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('get_all_certs'))
+
+    def get_all_k8s_certs(self, context):
+        """Synchronously, have the conductor retrieve the k8s certs information.
+
+        :param context: request context.
+        """
+        return self.call(context, self.make_msg('get_all_k8s_certs'))

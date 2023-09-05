@@ -1497,7 +1497,7 @@ class KubeOperator(object):
 
     def get_cert_secret(self, name, namespace, max_retries=60):
         for _ in range(max_retries):
-            secret = self.kube_get_secret(name, NAMESPACE_DEPLOYMENT)
+            secret = self.kube_get_secret(name, namespace)
             if secret is not None and secret.data.get("tls.crt"):
                 LOG.debug("secret = %s" % secret)
                 return secret
