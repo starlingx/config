@@ -472,13 +472,26 @@ class KubernetesPuppet(base.BasePuppet):
         }
 
     def _get_host_label_config(self, host):
-        config = {}
+
         labels = self.dbapi.label_get_by_host(host.uuid)
         host_label_keys = []
+        config = {}
+
         for label in labels:
-            host_label_keys.append(label.label_key + "=" + label.label_value)
-        config.update(
-            {'platform::kubernetes::params::host_labels': host_label_keys})
+            # Guard against NoneType
+            if label.label_key and label.label_value:
+                kv_pair = label.label_key + "=" + label.label_value
+                host_label_keys.append(kv_pair)
+
+        if len(host_label_keys) == 0:
+            LOG.warning(
+                "KubernetesPuppet._get_host_label_config: No host labels found. "
+            )
+
+        # Defaults to an empty list if no labels are found.
+        config = \
+            {'platform::kubernetes::params::host_labels': host_label_keys}
+
         return config
 
     def _get_host_k8s_certificates_config(self, host):
