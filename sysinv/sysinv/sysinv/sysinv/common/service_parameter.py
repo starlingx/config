@@ -485,6 +485,15 @@ def _validate_kernel_audit(name, value):
          constants.SERVICE_PARAM_PLATFORM_AUDITD_ENABLED)))
 
 
+def _validate_human_readable(name, value):
+    pattern = r'^\d+(?:[.,]\d+)?\s*(K|Ki|M|Mi|G|Gi|T|Ti)$'
+
+    if not re.match(pattern, value):
+        raise wsme.exc.ClientSideError(
+            "Parameter '%s' value must be written in human readable format, "
+            "e.g., '100M', '2.5Gi', '500K', etc." % name)
+
+
 def _byte_transform(param_value, param_name):
     format1 = re.search(r"^(-*[0-9]+([\.][0-9]+)*)([B|K|M|G|T|P|E])$", str(param_value))
     format2 = re.search(r"^(0)$", str(param_value))
@@ -1326,6 +1335,32 @@ OPENSTACK_HELM_PARAMETER_RESOURCE = {
         'openstack::helm::params::endpoint_domain',
 }
 
+PLATFORM_CRASHDUMP_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_CRASHDUMP_MAX_SIZE,
+    constants.SERVICE_PARAM_CRASHDUMP_MAX_FILES,
+    constants.SERVICE_PARAM_CRASHDUMP_MAX_USED,
+    constants.SERVICE_PARAM_CRASHDUMP_MIN_AVAILABLE,
+]
+PLATFORM_CRASHDUMP_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_CRASHDUMP_MAX_SIZE:
+        _validate_human_readable,
+    constants.SERVICE_PARAM_CRASHDUMP_MAX_FILES:
+        _validate_positive_integer,
+    constants.SERVICE_PARAM_CRASHDUMP_MAX_USED:
+        _validate_human_readable,
+    constants.SERVICE_PARAM_CRASHDUMP_MIN_AVAILABLE:
+        _validate_human_readable,
+}
+PLATFORM_CRASHDUMP_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_CRASHDUMP_MAX_SIZE:
+        'platform::crashdump::params::max_size',
+    constants.SERVICE_PARAM_CRASHDUMP_MAX_FILES:
+        'platform::crashdump::params::max_files',
+    constants.SERVICE_PARAM_CRASHDUMP_MAX_USED:
+        'platform::crashdump::params::max_used',
+    constants.SERVICE_PARAM_CRASHDUMP_MIN_AVAILABLE:
+        'platform::crashdump::params::min_available',
+}
 
 COLLECTD_NETWORK_SERVERS_PARAMETER_DATA_FORMAT = {
     constants.SERVICE_PARAM_COLLECTD_NETWORK_SERVERS:
@@ -1447,6 +1482,11 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_VALIDATOR: PLATFORM_CRI_PARAMETER_VALIDATOR,
             SERVICE_PARAM_DATA_FORMAT: PLATFORM_CRI_PARAMETER_DATA_FORMAT,
             SERVICE_PARAM_RESOURCE: PLATFORM_CRI_PARAMETER_RESOURCE,
+        },
+        constants.SERVICE_PARAM_SECTION_CRASHDUMP: {
+            SERVICE_PARAM_OPTIONAL: PLATFORM_CRASHDUMP_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: PLATFORM_CRASHDUMP_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: PLATFORM_CRASHDUMP_PARAMETER_RESOURCE,
         },
         constants.SERVICE_PARAM_SECTION_COLLECTD: {
             SERVICE_PARAM_OPTIONAL: COLLECTD_PARAMETER_OPTIONAL,

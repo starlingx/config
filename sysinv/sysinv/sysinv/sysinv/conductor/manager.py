@@ -10655,6 +10655,17 @@ class ConductorManager(service.PeriodicService):
                 personalities = [constants.CONTROLLER,
                                  constants.WORKER,
                                  constants.STORAGE]
+            elif section == constants.SERVICE_PARAM_SECTION_CRASHDUMP:
+                personalities = [constants.CONTROLLER,
+                                 constants.WORKER,
+                                 constants.STORAGE]
+                config_uuid = self._config_update_hosts(context, personalities)
+
+                config_dict = {
+                    'personalities': personalities,
+                    "classes": ['platform::crashdump::runtime']
+                }
+                self._config_apply_runtime_manifest(context, config_uuid, config_dict)
             elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_KERNEL:
                 reboot = True
                 personalities = [constants.CONTROLLER,
