@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-from sqlalchemy import Column, MetaData, Table
+from sqlalchemy import Column, MetaData, Table, text
 from sqlalchemy import Integer
 
 ENGINE = 'InnoDB'
@@ -17,7 +17,8 @@ def upgrade(migrate_engine):
     meta.bind = migrate_engine
     migrate_engine.connect()
     kube_upgrade = Table('kube_upgrade', meta, autoload=True)
-    kube_upgrade.create_column(Column('recovery_attempts', Integer, nullable=False, default=0))
+    kube_upgrade.create_column(Column('recovery_attempts', Integer,
+                                      nullable=False, server_default=text("0")))
 
 
 def downgrade(migrate_engine):
