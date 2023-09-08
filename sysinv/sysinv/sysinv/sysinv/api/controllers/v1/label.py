@@ -212,6 +212,14 @@ class LabelController(rest.RestController):
         LOG.info("patch_data: %s" % body)
         host = objects.host.get_by_uuid(pecan.request.context, uuid)
 
+        # Probably will never happen, but add an extra guard to be absolutely
+        # sure no null values make it into the database.
+        for key, value in body.items():
+            if value is None:
+                raise wsme.exc.ClientSideError(
+                    _("Null input detected for Label %s for host %s. Input invalid." % (
+                        key, host.hostname)))
+
         _check_host_locked(host, body.keys())
 
         _semantic_check_worker_labels(body)
@@ -247,11 +255,13 @@ class LabelController(rest.RestController):
 
         new_records = []
         for key, value in body.items():
+
             values = {
                 'host_id': host.id,
                 'label_key': key,
                 'label_value': value
             }
+
             try:
                 if existing_labels.get(key, None):
                     # Update the value
