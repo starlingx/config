@@ -2268,6 +2268,9 @@ DC_ROOT_CA_CONFIG_PATH = \
     os.path.join(tsc.CONFIG_PATH, DC_ROOT_CA_CERT_FILE)
 ADMIN_EP_CERT_FORMAT = '{tls_key}'
 
+# The k8s secret that holds local CA cert data
+LOCAL_CA_SECRET_NAME = "system-local-ca"
+
 # Platform certificates
 RESTAPI_CERT_SECRET_NAME = "system-restapi-gui-certificate"
 REGISTRY_CERT_SECRET_NAME = "system-registry-local-certificate"

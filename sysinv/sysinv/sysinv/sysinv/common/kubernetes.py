@@ -986,6 +986,55 @@ class KubeOperator(object):
 
         return True
 
+    def get_clusterwide_custom_resource(self, group, version, plural, name):
+        custom_resource_api = self._get_kubernetesclient_custom_objects()
+
+        try:
+            cr_obj = custom_resource_api.get_cluster_custom_object(group,
+                                                                   version,
+                                                                   plural,
+                                                                   name)
+        except ApiException as e:
+            if e.status == httplib.NOT_FOUND:
+                return None
+            else:
+                LOG.error("Fail to access %s. %s" % (name, e))
+                raise
+        else:
+            return cr_obj
+
+    def apply_clusterwide_custom_resource(self, group, version, plural, name, body):
+        custom_resource_api = self._get_kubernetesclient_custom_objects()
+
+        # if resource already exists we apply just a patch
+        cr_obj = self.get_clusterwide_custom_resource(group, version, plural, name)
+        if cr_obj:
+            custom_resource_api.patch_cluster_custom_object(group,
+                                                            version,
+                                                            plural,
+                                                            name,
+                                                            body)
+        else:
+            custom_resource_api.create_cluster_custom_object(group,
+                                                             version,
+                                                             plural,
+                                                             body)
+
+    def delete_clusterwide_custom_resource(self, group, version, plural, name):
+        c = self._get_kubernetesclient_custom_objects()
+        body = {}
+
+        try:
+            c.delete_cluster_custom_object(group, version, plural, name, body=body)
+        except ApiException as ex:
+            if ex.reason == "Not Found":
+                LOG.warn("Failed to delete clusterwide custom resource object. "
+                         "Object doesn't exist. %s" % (str(ex.body).replace('\n', ' ')))
+                pass
+        except Exception as e:
+            LOG.error("Failed to delete clusterwide custom resource object, %s" % (e))
+            raise
+
     def kube_get_service_account(self, name, namespace):
         c = self._get_kubernetesclient_core()
         try:
