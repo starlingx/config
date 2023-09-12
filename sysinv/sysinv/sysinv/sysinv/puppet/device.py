@@ -35,7 +35,7 @@ class DevicePuppet(base.BasePuppet):
         devices (compute) puppet resource.
         """
         device_config = {}
-        qat_c62x_devices = pci_device_list[constants.PCI_ALIAS_QAT_C62X_PF_DEVICE]
+        qat_c62x_devices = pci_device_list[constants.NOVA_PCI_ALIAS_QAT_C62X_PF_DEVICE]
         if len(qat_c62x_devices) != 0:
             for idx, device in enumerate(qat_c62x_devices):
                 name = 'pci-%s' % device.pciaddr
@@ -45,7 +45,7 @@ class DevicePuppet(base.BasePuppet):
                 }
                 device_config.update({name: dev})
 
-        qat_dh895xcc_devices = pci_device_list[constants.PCI_ALIAS_QAT_DH895XCC_PF_DEVICE]
+        qat_dh895xcc_devices = pci_device_list[constants.NOVA_PCI_ALIAS_QAT_DH895XCC_PF_DEVICE]
         if len(qat_dh895xcc_devices) != 0:
             for idx, device in enumerate(qat_dh895xcc_devices):
                 name = 'pci-%s' % device.pciaddr
