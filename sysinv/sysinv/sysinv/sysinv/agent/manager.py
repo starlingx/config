@@ -198,6 +198,7 @@ class AgentManager(service.PeriodicService):
 
         self._report_to_conductor_iplatform_avail_flag = False
         self._report_to_conductor_fpga_info = True
+        self._report_to_conductor_cstate_info = True
         self._ipci_operator = pci.PCIOperator()
         self._inode_operator = node.NodeOperator()
         self._idisk_operator = disk.DiskOperator()
@@ -207,6 +208,9 @@ class AgentManager(service.PeriodicService):
         self._ilvg_operator = lvg.LVGOperator()
         self._lldp_operator = lldp_plugin.SysinvLldpPlugin()
         self._iconfig_read_config_reported = None
+        self._ihost_min_cpu_mhz_allowed = 0
+        self._ihost_max_cpu_mhz_allowed = 0
+        self._ihost_cstates_available = None
         self._ihost_personality = None
         self._ihost_uuid = ""
         self._ihost_rootfs_device = ""
@@ -776,12 +780,11 @@ class AgentManager(service.PeriodicService):
             kernel_running = constants.KERNEL_STANDARD
         return kernel_running
 
-    def _report_cstates_and_frequency_update(self, context,
-                                             ihost, rpcapi=None):
+    def _report_cstates_and_frequency_update(self, context, rpcapi=None):
         """Evaluate if minimum frequency, maximum frequency or cstates
         are changed. If yes, report to conductor.
         """
-        if ihost is None:
+        if not self._ihost_uuid:
             return
 
         freq_dict = {}
@@ -789,15 +792,15 @@ class AgentManager(service.PeriodicService):
             min_freq = self._get_min_cpu_mhz_allowed()
             max_freq = self._get_max_cpu_mhz_allowed()
 
-            if min_freq != ihost.min_cpu_mhz_allowed:
-                ihost.min_cpu_mhz_allowed = min_freq
+            if min_freq != self._ihost_min_cpu_mhz_allowed:
+                self._ihost_min_cpu_mhz_allowed = min_freq
                 freq_dict.update({
                     constants.IHOST_MIN_CPU_MHZ_ALLOWED:
                     min_freq
                 })
 
-            if max_freq != ihost.max_cpu_mhz_allowed:
-                ihost.max_cpu_mhz_allowed = max_freq
+            if max_freq != self._ihost_max_cpu_mhz_allowed:
+                self._ihost_max_cpu_mhz_allowed = max_freq
                 freq_dict.update({
                     constants.IHOST_MAX_CPU_MHZ_ALLOWED:
                     max_freq
@@ -806,9 +809,9 @@ class AgentManager(service.PeriodicService):
             if os.path.isfile(os.path.join(constants.CSTATE_PATH,
                                            "state0/name")):
                 cstates_names = self._get_cstates_names()
-                if utils.cstates_need_update(ihost.cstates_available,
+                if utils.cstates_need_update(self._ihost_cstates_available,
                                              cstates_names):
-                    ihost.cstates_available = ','.join(cstates_names)
+                    self._ihost_cstates_available = ','.join(cstates_names)
                     freq_dict.update({
                         constants.IHOST_CSTATES_AVAILABLE:
                         ','.join(cstates_names)
@@ -825,10 +828,10 @@ class AgentManager(service.PeriodicService):
             rpcapi = conductor_rpcapi.ConductorAPI(
                 topic=conductor_rpcapi.MANAGER_TOPIC)
 
-        LOG.info(f"Reporting CStates or Frequency changes {ihost['uuid']}"
+        LOG.info(f"Reporting CStates or Frequency changes {self._ihost_uuid}"
                  f" -> {freq_dict}")
         rpcapi.cstates_and_frequency_update_by_ihost(context,
-                                                     ihost['uuid'],
+                                                     self._ihost_uuid,
                                                      freq_dict)
 
     def ihost_inv_get_and_report(self, icontext):
@@ -891,6 +894,9 @@ class AgentManager(service.PeriodicService):
                 self._ihost_personality = ihost['personality']
                 self._mgmt_ip = ihost['mgmt_ip']
                 self._ihost_rootfs_device = ihost['rootfs_device']
+                self._ihost_cstates_available = ihost.get('cstates_available') or None
+                self._ihost_min_cpu_mhz_allowed = ihost.get('min_cpu_mhz_allowed') or 0
+                self._ihost_max_cpu_mhz_allowed = ihost.get('max_cpu_mhz_allowed') or 0
 
                 if os.path.isfile(tsc.PLATFORM_CONF_FILE):
                     # read the platform config file and check for UUID
@@ -943,13 +949,6 @@ class AgentManager(service.PeriodicService):
         except exception.SysinvException:
             LOG.exception("Sysinv Agent exception updating subfunctions "
                           "conductor.")
-            pass
-
-        try:
-            self._report_cstates_and_frequency_update(icontext, ihost, rpcapi)
-        except exception.SysinvException as ex:
-            LOG.exception("Something wrong occurs during the cpu frequency"
-                          f" search. {ex}")
             pass
 
         self._report_port_inventory(icontext, rpcapi,
@@ -1705,6 +1704,23 @@ class AgentManager(service.PeriodicService):
                 except exception.SysinvException:
                     LOG.exception("Exception updating fpga devices.")
                     pass
+
+            if self._report_to_conductor_cstate_info:
+                try:
+                    self._report_cstates_and_frequency_update(icontext, rpcapi)
+                    self._report_to_conductor_cstate_info = False
+                except RemoteError as e:
+                    # ignore because active controller is not yet upgraded,
+                    # so it's current load may not implement this RPC call
+                    if "AttributeError" in str(e):
+                        LOG.warn("Skip report cstates and frequency update. "
+                                 "Upgrade in progress.")
+                    else:
+                        LOG.exception(f"Failed to report cstates and frequency update: {e}")
+                except exception.SysinvException as ex:
+                    LOG.exception("Sysinv Agent exception "
+                                  f"reporting cstates and frequency update: "
+                                  f"{ex}")
 
             # if the platform firewall failed to be applied (by not having kube-api available
             # during AIO manifest execution or lack of config in the host yaml file) ask for
