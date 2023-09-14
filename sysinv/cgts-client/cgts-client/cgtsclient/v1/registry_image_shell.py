@@ -9,12 +9,18 @@ from cgtsclient.common import utils
 from cgtsclient import exc
 
 
+@utils.arg('--filter-out-untagged',
+           action='store_true',
+           help="To filter all untagged images from the listing")
 def do_registry_image_list(cc, args):
     """List all images in local docker registry"""
-    images = cc.registry_image.list()
+    images = cc.registry_image.list(int(args.filter_out_untagged))
     labels = ['Image Name']
     fields = ['name']
     utils.print_list(images, fields, labels, sortby=0)
+    if not args.filter_out_untagged:
+        print("Note: Some of these images may no longer have any tags ",
+              "\nrun system registry-image-list --filter-out-untagged to filter them out")
 
 
 @utils.arg('name', metavar='<image name>',

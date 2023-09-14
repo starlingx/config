@@ -2129,7 +2129,7 @@ class ConductorManager(service.PeriodicService):
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-    def docker_registry_image_list(self, context):
+    def docker_registry_image_list(self, context, filter_out_untagged):
         try:
             image_list_response = docker_registry.docker_registry_get("_catalog")
         except requests.exceptions.SSLError:
@@ -2154,9 +2154,17 @@ class ConductorManager(service.PeriodicService):
             return images
 
         image_list_response = image_list_response['repositories']
-        for image in image_list_response:
-            images.append({'name': image})
-
+        if filter_out_untagged:
+            for image in image_list_response:
+                image_tags_response = docker_registry.docker_registry_get(
+                    "%s/tags/list" % image)
+                tags_response = image_tags_response.json()
+                tags = tags_response['tags']
+                if tags:
+                    images.append({'name': image})
+        else:
+            for image in image_list_response:
+                images.append({'name': image})
         return images
 
     def docker_registry_image_tags(self, context, image_name):
@@ -2209,8 +2217,10 @@ class ConductorManager(service.PeriodicService):
             raise exception.DockerRegistryAPIException()
 
         if digest_resp.status_code != 200:
-            LOG.error("Bad response from docker registry: %s"
-                % digest_resp.status_code)
+            LOG.error(f"Bad response from docker registry: "
+                      f"{digest_resp.status_code}")
+            if digest_resp.status_code == 404:
+                raise Exception(f"No tag found for image: {image_name_and_tag[0]}")
             return
 
         image_digest = digest_resp.headers['Docker-Content-Digest']
@@ -2229,8 +2239,10 @@ class ConductorManager(service.PeriodicService):
             raise exception.DockerRegistryAPIException()
 
         if image_delete_response.status_code != 202:
-            LOG.error("Bad response from docker registry: %s"
-                % digest_resp.status_code)
+            LOG.error(f"Bad response from docker registry: "
+                      f"{digest_resp.status_code}")
+            if digest_resp.status_code == 404:
+                raise Exception(f"No tag found for image: {image_name_and_tag[0]}")
             return
 
     def docker_registry_garbage_collect(self, context):

@@ -69,13 +69,13 @@ class RegistryImageCollection(collection.Collection):
 class RegistryImageController(rest.RestController):
     """REST controller for Docker registry image."""
 
-    @wsme_pecan.wsexpose(RegistryImageCollection, wtypes.text)
-    def get_all(self, image_name=None):
+    @wsme_pecan.wsexpose(RegistryImageCollection, int, wtypes.text)
+    def get_all(self, filter_out_untagged=0, image_name=None):
         try:
             # no image_name provided, list images
             if image_name is None:
                 images = pecan.request.rpcapi.docker_registry_image_list(
-                             pecan.request.context)
+                             pecan.request.context, filter_out_untagged)
             # image_name provided, list tags of provided image
             else:
                 images = pecan.request.rpcapi.docker_registry_image_tags(
