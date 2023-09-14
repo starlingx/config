@@ -8362,10 +8362,8 @@ class ConductorManager(service.PeriodicService):
         """
 
         # update manifest files and notifiy agents to apply them
-        personalities = [constants.CONTROLLER,
-                         constants.WORKER,
-                         constants.STORAGE]
         host = self.dbapi.ihost_get(host_id)
+        personalities = [host.personality]
 
         config_uuid = self._config_update_hosts(context, personalities,
                                                 host_uuids=[host.uuid])
@@ -8379,27 +8377,6 @@ class ConductorManager(service.PeriodicService):
 
         self._config_apply_runtime_manifest(context, config_uuid, config_dict,
                                             filter_classes=[self.PUPPET_RUNTIME_CLASS_ROUTES])
-
-        system = self.dbapi.isystem_get_one()
-        system_dc_role = system.get('distributed_cloud_role', None)
-
-        if ((system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER
-                or system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
-                and host.personality == constants.CONTROLLER):
-
-            manifests = []
-            if (system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER):
-                manifests = ['platform::firewall::mgmt::runtime']
-            elif (system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
-                manifests = ['platform::firewall::mgmt::runtime',
-                             'platform::firewall::admin::runtime']
-            config_uuid = self._config_update_hosts(context, [constants.CONTROLLER])
-            config_dict = {
-                "personalities": [constants.CONTROLLER],
-                "classes": manifests,
-            }
-
-            self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
     def update_sriov_config(self, context, host_uuid):
         """update sriov configuration for a host
