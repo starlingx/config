@@ -417,6 +417,8 @@ class ServiceParameterController(rest.RestController):
 
         validators = schema.get(service_parameter.SERVICE_PARAM_VALIDATOR, {})
         validator = validators.get(name)
+        if not validator:
+            validator = validators.get(constants.SERVICE_PARAM_NAME_WILDCARD)
         if callable(validator):
             validator(name, value)
 

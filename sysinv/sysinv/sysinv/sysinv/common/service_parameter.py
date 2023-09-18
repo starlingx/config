@@ -564,6 +564,32 @@ def _validate_auth_id_reclaim_enabled(name, value):
             "Parameter '%s' must be a valid bool string." % name))
 
 
+def _validate_dns_hostname(name, value):
+    hostname = value if '.' in value else value + '.dummy'
+    if not cutils.is_valid_domain_name(hostname):
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' includes an invalid domain name '%s'." %
+            (name, value)))
+
+
+def _validate_dns_host_record(name, value):
+    _validate_not_empty(name, value)
+    no_ip, no_address = True, True
+    for record in map(str.strip, value.split(',')):
+        try:
+            int(record)
+            continue
+        except ValueError:
+            if cutils.is_valid_ip(record):
+                no_ip = False
+            else:
+                _validate_dns_hostname(name, record)
+                no_address = False
+    if no_ip or no_address:
+        raise wsme.exc.ClientSideError(_(
+            "Parameter '%s' must contain valid ip address and host name." % name))
+
+
 def _validate_max_cpu_min_percentage(name, value):
     return _validate_range(name, value, 60, 100)
 
@@ -1382,6 +1408,18 @@ CEPH_MONITOR_PARAMETER_DATA_FORMAT = {
     constants.SERVICE_PARAM_NAME_CEPH_MONITOR_AUTH_ID_RECLAIM: SERVICE_PARAMETER_DATA_FORMAT_BOOLEAN,
 }
 
+DNS_HOST_RECORD_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_WILDCARD
+]
+
+DNS_HOST_RECORD_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_WILDCARD: _validate_dns_host_record,
+}
+
+DNS_HOST_RECORD_PARAMETER_DATA_FORMAT = {
+    constants.SERVICE_PARAM_NAME_DNS_HOST_RECORD_HOSTS: SERVICE_PARAMETER_DATA_FORMAT_ARRAY,
+}
+
 # Service Parameter Schema
 SERVICE_PARAM_MANDATORY = 'mandatory'
 SERVICE_PARAM_OPTIONAL = 'optional'
@@ -1604,6 +1642,13 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_VALIDATOR: CEPH_MONITOR_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: CEPH_MONITOR_PARAMETER_RESOURCE,
             SERVICE_PARAM_DATA_FORMAT: CEPH_MONITOR_PARAMETER_DATA_FORMAT,
+        },
+    },
+    constants.SERVICE_TYPE_DNS: {
+        constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD: {
+            SERVICE_PARAM_OPTIONAL: DNS_HOST_RECORD_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: DNS_HOST_RECORD_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_DATA_FORMAT: DNS_HOST_RECORD_PARAMETER_DATA_FORMAT,
         },
     },
 }

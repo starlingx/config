@@ -1065,6 +1065,7 @@ SERVICE_TYPE_OPENSTACK = 'openstack'
 SERVICE_TYPE_KUBERNETES = 'kubernetes'
 SERVICE_TYPE_PTP = 'ptp'
 SERVICE_TYPE_CEPH = 'ceph'
+SERVICE_TYPE_DNS = 'dns'
 
 # For service parameter sections that include a wildcard, any 'name' field will be
 # allowed by the API. The wildcard card name will only be matched if no other matches
@@ -1351,6 +1352,10 @@ SERVICE_PARAM_NAME_CEPH_MONITOR_AUTH_ID_RECLAIM = 'auth_id_reclaim'
 # Worker Host CPU parameters
 SERVICE_PARAM_NAME_PLATFORM_MAX_CPU_PERCENTAGE = 'cpu_max_freq_min_percentage'
 SERVICE_PARAM_PLATFORM_MAX_CPU_PERCENTAGE_DEFAULT = 80
+
+# DNS host record Service Parameters
+SERVICE_PARAM_SECTION_DNS_HOST_RECORD = 'host-record'
+SERVICE_PARAM_NAME_DNS_HOST_RECORD_HOSTS = 'hosts'
 
 # TIS part number, CPE = combined load, STD = standard load
 TIS_STD_BUILD = 'Standard'
