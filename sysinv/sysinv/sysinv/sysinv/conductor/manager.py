@@ -7679,6 +7679,10 @@ class ConductorManager(service.PeriodicService):
                           app, app.mode, lifecycle_hook_info)
 
     def _upgrade_downgrade_kube_components(self):
+        # Check the restore state before proceeding
+        if self._verify_restore_in_progress():
+            LOG.info("restore in progress, skipping upgrade/downgrade kube components")
+            return
         self._upgrade_downgrade_static_images()
         self._upgrade_downgrade_kube_networking()
 
