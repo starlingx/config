@@ -22,6 +22,13 @@ FROM_RELEASE=$1
 TO_RELEASE=$2
 ACTION=$3
 
+if (( $# != 3 )); then
+    >&2 echo "Error: Missing Arguments!"
+    >&2 echo "Usage: 65-k8s-app-upgrade.sh FROM_RELEASE TO_RELEASE ACTION"
+    >&2 echo "Exiting for manual intervention..."
+    exit 1
+fi
+
 PLATFORM_APPLICATION_PATH='/usr/local/share/applications/helm'
 UPGRADE_IN_PROGRESS_APPS_FILE='/etc/platform/.upgrade_in_progress_apps'
 
@@ -33,6 +40,8 @@ UPLOAD_RESULT_SLEEP=10
 UPLOAD_RESULT_ATTEMPTS=24  # ~4 min to upload app
 UPDATE_RESULT_SLEEP=30
 UPDATE_RESULT_ATTEMPTS=30  # ~15 min to update app
+COMMAND_RETRY_SLEEP=30
+COMMAND_RETRY_ATTEMPTS=10  # ~5 min to wait on a retried command.
 
 # This will log to /var/log/platform.log
 function log {
@@ -59,6 +68,52 @@ function verify_apps_are_not_recovering {
             exit 1
         fi
     done
+    return 0
+}
+
+function retry_command {
+    # This command attempts to retry the command provided and waits to see if it
+    # executed sucessfully or failed.
+
+    COMMAND=$1
+    APPLICATION_NAME=$2
+
+    if (( $# != 2 )); then
+        >&2 echo "Error: Missing Arguments!"
+        >&2 echo "Usage: retry_command COMMAND APPLICATION_NAME"
+        >&2 echo "Exiting for manual intervention..."
+        exit 1
+    fi
+
+    log "$NAME: Retrying command: ${COMMAND}"
+
+    system ${COMMAND} ${APPLICATION_NAME}
+
+    # Do an initial sleep before first status check attempt
+    sleep $COMMAND_RETRY_SLEEP
+
+    for tries in $(seq 1 $COMMAND_RETRY_ATTEMPTS); do
+
+        APP_STATUS=$(system application-show ${APPLICATION_NAME} --column status --format value)
+
+        if [[ "${APP_STATUS}" =~ ^(uploaded|applied|removed)$ ]]; then
+            # This is if the command succeeded, break here.
+            log "$NAME: ${APPLICATION_NAME} status is: ${APP_STATUS}. Done!"
+            break
+        elif [[ "${APP_STATUS}" =~ ^(upload-failed|apply-failed|remove-failed)$ ]]; then
+            # The command was retried, but resulted in another failure.  Nothing more to be done,
+            # so exit.
+            log "$NAME: ${APPLICATION_NAME} status is: ${APP_STATUS}. The retry has failed. Exiting for manual intervention..."
+            exit 1
+        elif [ $tries == $COMMAND_RETRY_ATTEMPTS ]; then
+            log "$NAME: Exceeded maximum application ${COMMAND} time of $(date -u -d @"$((COMMAND_RETRY_ATTEMPTS*COMMAND_RETRY_SLEEP))" +"%Mm%Ss"). Execute upgrade-activate again when all applications are uploaded or applied."
+            exit 1
+        fi
+        log "$NAME: ${APPLICATION_NAME} status is: ${APP_STATUS}. Will check again in ${COMMAND_RETRY_SLEEP} seconds."
+        sleep $COMMAND_RETRY_SLEEP
+    done
+
+    log "$NAME: Retrying command: ${COMMAND} - Succeeded!"
     return 0
 }
 
@@ -169,8 +224,23 @@ if [ "$ACTION" == "activate" ]; then
                 system application-update $fqpn_app
                 ;;
 
+            upload-failed)
+                log "$NAME: ${EXISTING_APP_NAME}, version ${EXISTING_APP_VERSION}, upload failed: ${EXISTING_APP_STATUS}. Retrying command..."
+                retry_command "application-upload" "${EXISTING_APP_NAME}"
+                ;;
+
+            apply-failed)
+                log "$NAME: ${EXISTING_APP_NAME}, version ${EXISTING_APP_VERSION}, apply failed: ${EXISTING_APP_STATUS}. Retrying command..."
+                retry_command "application-apply" "${EXISTING_APP_NAME}"
+                ;;
+
+            remove-failed)
+                log "$NAME: ${EXISTING_APP_NAME}, version ${EXISTING_APP_VERSION}, remove failed: ${EXISTING_APP_STATUS}. Retrying command..."
+                retry_command "application-remove" "${EXISTING_APP_NAME}"
+                ;;
+
             # States that are unexpected
-            uploading | upload-failed | applying | apply-failed | removing | remove-failed | restore-requested | updating | recovering )
+            uploading | applying | removing | restore-requested | updating | recovering)
                 log "$NAME: ${EXISTING_APP_NAME}, version ${EXISTING_APP_VERSION}, is in an unexpected state: ${EXISTING_APP_STATUS}. Exiting for manual intervention..."
                 exit 1
                 ;;
