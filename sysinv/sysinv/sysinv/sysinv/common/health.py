@@ -363,6 +363,12 @@ class Health(object):
     def _check_psp_policies(self):
         """ Checks for any existing PodSecurityPolicies on the system """
         psp_list = []
+        active_kube_version = self._kube_operator.kube_get_kubernetes_version()
+
+        # check for policies only if version is less than v1.25
+        if LooseVersion(active_kube_version) >= LooseVersion('v1.25.0'):
+            return True, psp_list
+
         psp_policies = self._kube_operator.get_psp_resource()
         if psp_policies:
             for item in psp_policies:
