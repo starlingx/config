@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2019-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -276,6 +276,198 @@ class ApiServiceParameterTestCaseMixin(object):
             'name': constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS_PER_GATHER,
             'value': '1'
         },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_FILES,
+            'value': '-1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_FILES,
+            'value': '2a'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_FILES,
+            'value': 'one'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_SIZE,
+            'value': '1GB'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_SIZE,
+            'value': '1,G'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_SIZE,
+            'value': '500m'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_USED,
+            'value': '20GB'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_USED,
+            'value': '10gb'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_USED,
+            'value': '10,5GB'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MIN_AVAILABLE,
+            'value': '20GB'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MIN_AVAILABLE,
+            'value': '10gb'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MIN_AVAILABLE,
+            'value': '10,5GB'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MIN_AVAILABLE,
+            'value': '3.2Gi'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_FILES,
+            'value': '5'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_USED,
+            'value': '6,2G'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_SIZE,
+            'value': '486.5Mi'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MIN_AVAILABLE,
+            'value': '2Gi'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MIN_AVAILABLE,
+            'value': '850M'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MIN_AVAILABLE,
+            'value': '850,5Mi'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MIN_AVAILABLE,
+            'value': '850.5Mi'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_USED,
+            'value': '4Gi'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_USED,
+            'value': '900M'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_USED,
+            'value': '900,5Mi'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_USED,
+            'value': '900.5Mi'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_SIZE,
+            'value': '3G'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_SIZE,
+            'value': '2Gi'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_SIZE,
+            'value': '400M'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_SIZE,
+            'value': '400,5Mi'
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MIN_AVAILABLE,
+            'value': ''
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_FILES,
+            'value': ''
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_USED,
+            'value': ''
+        },
+        {
+            'service': constants.SERVICE_TYPE_PLATFORM,
+            'section': constants.SERVICE_PARAM_SECTION_CRASHDUMP,
+            'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_SIZE,
+            'value': ''
+        },
     ]
 
     service_parameter_wildcard = {
@@ -471,6 +663,39 @@ class ApiServiceParameterPostTestSuiteMixin(ApiServiceParameterTestCaseMixin):
 
         # test valid values
         for param in range(7, 11):
+            post_object = self.service_parameter_data[param]
+            response = self.post(post_object)
+            self.validate_data(post_object, response)
+
+    def test_crashdump_formats(self):
+        # Test invalid max_files format
+        post_object = self.service_parameter_data[37]
+        self.post(post_object, expect_errors=True, error_message="Parameter '" +
+            self.service_parameter_data[37]['name'] +
+            "' must be positive integer.")
+
+        for param in range(38, 40):
+            post_object = self.service_parameter_data[param]
+            self.post(post_object, expect_errors=True, error_message="Parameter '" +
+                self.service_parameter_data[param]['name'] +
+                "' must be an integer value.")
+
+        # Test invalid max_size, max_used and min_available format
+        for param in range(40, 49):
+            post_object = self.service_parameter_data[param]
+            self.post(post_object, expect_errors=True, error_message="Parameter '" +
+                self.service_parameter_data[param]['name'] +
+                "' value must be written in human readable format, " +
+                "e.g., '100M', '2.5Gi', '500K', etc.")
+
+        # test empty value
+        for param in range(65, 69):
+            post_object = self.service_parameter_data[param]
+            self.post(post_object, expect_errors=True,
+                error_message="The service parameter value is mandatory")
+
+        # Test valid max_files, max_size, max_used and min_available format
+        for param in range(49, 53):
             post_object = self.service_parameter_data[param]
             response = self.post(post_object)
             self.validate_data(post_object, response)
