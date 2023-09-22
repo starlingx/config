@@ -147,7 +147,10 @@ def delete_helm_release(release, namespace="default", flags=None):
     try:
         timer.start()
         out, err = process.communicate()
-        if err:
+
+        if process.returncode == 0 and err:
+            LOG.warning("Command: %s; %s" % (' '.join(helm_cmd), err))
+        elif err:
             if "not found" in err:
                 LOG.error("Release %s/%s not found or deleted already" % (namespace, release))
                 return out, err
@@ -157,6 +160,7 @@ def delete_helm_release(release, namespace="default", flags=None):
             err_msg = "Failed to execute helm command. " \
                       "Helm response timeout."
             raise exception.HelmFailure(reason=err_msg)
+
         return out, err
     except Exception as e:
         LOG.error("Failed to execute helm command: %s" % e)
