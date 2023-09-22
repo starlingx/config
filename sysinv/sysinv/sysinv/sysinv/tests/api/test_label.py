@@ -28,7 +28,8 @@ def mock_helm_override_get(dbapi, app_name, chart_name, namespace):
 
 
 def mock_get_system_enabled_k8s_plugins_return_plugins():
-    return ["intelgpu", "intelqat"]
+    return {"intel-gpu-plugin": "intelgpu=enabled",
+            "intel-qat-plugin": "intelqat=enabled"}
 
 
 def mock_get_system_enabled_k8s_plugins_return_none():

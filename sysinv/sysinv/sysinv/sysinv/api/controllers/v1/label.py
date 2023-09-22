@@ -395,8 +395,7 @@ def _get_system_enabled_k8s_plugins():
 def _semantic_check_intel_gpu_plugins_labels(host):
     pci_devices = pecan.request.dbapi.pci_device_get_by_host(host.id)
     for pci_device in pci_devices:
-        if (constants.GPU_DEVICE_PCLASS_VGA in pci_device.pclass and
-                pci_device.driver == constants.GPU_DEVICE_DRIVER_I915):
+        if ("VGA" in pci_device.pclass and pci_device.driver == "i915"):
             return
 
     raise wsme.exc.ClientSideError("Host %s does not support Intel GPU device plugin." % (host.hostname))
@@ -410,7 +409,8 @@ def _semantic_check_k8s_plugins_labels(host, body):
     if plugins is None:
         return
 
-    for label in body.keys():
-        if label in plugins:
-            if label == constants.K8S_INTEL_GPU_DEVICE_PLUGIN:
+    for label_key, label_value in body.items():
+        label = label_key + "=" + label_value
+        if label in plugins.values():
+            if label == constants.KUBE_INTEL_GPU_DEVICE_PLUGIN_LABEL:
                 _semantic_check_intel_gpu_plugins_labels(host)
