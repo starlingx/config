@@ -169,6 +169,18 @@ class TestHealth(dbbase.BaseHostTestCase):
         self.mocked_get_psp_resource.return_value = []
         self.addCleanup(self.mocked_get_psp_resource.stop)
 
+        self.kube_get_kubernetes_version_result = 'v1.24.0'
+
+        def mock_kube_get_kubernetes_version(obj):
+            return self.kube_get_kubernetes_version_result
+        self.mocked_kube_get_kubernetes_version = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.'
+            'kube_get_kubernetes_version',
+            mock_kube_get_kubernetes_version)
+        self.mocked_kube_get_kubernetes_version.start()
+        self.mocked_kube_get_kubernetes_version.return_value = []
+        self.addCleanup(self.mocked_kube_get_kubernetes_version.stop)
+
         # Mock the fm API
         p = mock.patch('sysinv.common.health.fmclient')
         self.mock_fm_client_alarm_list = p.start()
