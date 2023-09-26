@@ -291,9 +291,6 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
         addr_pool = db_api.address_pool_get(network.pool_uuid)
 
         ip_version = IPAddress(f"{addr_pool.network}").version
-        nodetype_selector = f"has(nodetype) && nodetype == '{self.host.personality}'"
-        iftype_selector = f"has(iftype) && iftype contains '{network.type}'"
-        selector = f"{nodetype_selector} && {iftype_selector}"
         ICMP = "ICMP"
         if (ip_version == 6):
             ICMP = "ICMPv6"
@@ -305,10 +302,19 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
         self.assertEqual(gnp['spec']['applyOnForward'], False)
         self.assertEqual(gnp['spec']['order'], 100)
 
-        self.assertEqual(gnp['spec']['selector'], selector)
         self.assertEqual(gnp['spec']['types'], ["Ingress", "Egress"])
         self.assertEqual(len(gnp['spec']['egress']), egress_size)
         self.assertEqual(len(gnp['spec']['ingress']), ingress_size)
+
+        nodetype_selector = f"has(nodetype) && nodetype == '{self.host.personality}'"
+        iftype_selector = f"has(iftype) && iftype contains '{network.type}'"
+        selector = f"{nodetype_selector} && {iftype_selector}"
+        if (constants.NETWORK_TYPE_OAM == net_type):
+            nodetype_selector = f"(has(nodetype) && nodetype == '{self.host.personality}')"
+            notetype_selector = f"(has(notetype) && notetype == '{self.host.personality}')"
+            selector = f"({nodetype_selector} || {notetype_selector}) && {iftype_selector}"
+
+        self.assertEqual(gnp['spec']['selector'], selector)
 
         # egress rules
         self._check_egress_rules(gnp, ip_version, net_type, ICMP)

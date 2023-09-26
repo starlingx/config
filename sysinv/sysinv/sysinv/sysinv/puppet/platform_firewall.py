@@ -265,6 +265,13 @@ class PlatformFirewallPuppet(base.BasePuppet):
         :param network: the sysinv.object.network object for this network
         """
 
+        # OAM exists in previous versions, and it uses noTetype instead of noDetype
+        # for upgrade's sake keep both.
+        label_old = "(has(nodetype) && nodetype == 'controller')"
+        label_current = "(has(notetype) && notetype == 'controller')"
+        iftype_current = "has(iftype) && iftype contains 'oam'"
+        gnp_config["spec"]['selector'] = f"({label_old} || {label_current}) && {iftype_current}"
+
         tcp_ports = self._get_oam_common_tcp_ports()
 
         if (dc_role != constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
