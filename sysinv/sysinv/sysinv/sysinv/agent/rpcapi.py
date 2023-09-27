@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2017 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 
 """
@@ -51,9 +51,8 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
             serializer=objects_base.SysinvObjectSerializer(),
             default_version=self.RPC_API_VERSION)
 
-    def configure_isystemname(self, context, systemname):
-        """Asynchronously, have the agent configure the isystemname
-           into the /etc/motd of the host.
+    def configure_lldp_systemname(self, context, systemname):
+        """Asynchronously, have the agent configure the systemname into the lldp agent
 
         :param context: request context.
         :param systemname: systemname
@@ -61,8 +60,8 @@ class AgentAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         # fanout / broadcast message to all inventory agents
         # to change systemname on all nodes ... standby controller and worker nodes
-        LOG.debug("AgentApi.configure_isystemname: fanout_cast: sending systemname to agent")
-        retval = self.fanout_cast(context, self.make_msg('configure_isystemname',
+        LOG.debug("AgentApi.configure_systemname_into_lldp_agent: fanout_cast: sending systemname to agent")
+        retval = self.fanout_cast(context, self.make_msg('configure_lldp_systemname',
                            systemname=systemname))
 
         return retval

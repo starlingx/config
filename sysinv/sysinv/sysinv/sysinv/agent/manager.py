@@ -1727,29 +1727,6 @@ class AgentManager(service.PeriodicService):
         # Trigger an audit to ensure the db is up to date
         self.host_lldp_get_and_report(context, rpcapi, self._ihost_uuid)
 
-    def configure_isystemname(self, context, systemname):
-        """Configure the systemname into the /etc/sysinv/motd.system with the supplied data.
-
-        :param context: an admin context.
-        :param systemname: the systemname
-        """
-
-        # Update GUI and CLI with new System Name
-        LOG.debug("AgentManager.configure_isystemname: updating systemname in /etc/sysinv/motd.system ")
-        if systemname:
-            # update /etc/sysinv/motd.system for the CLI
-            with open('/etc/sysinv/motd.system', 'w') as fd:
-                fd.write('\n')
-                fd.write('====================================================================\n')
-                fd.write('         SYSTEM: %s\n' % systemname)
-                fd.write('====================================================================\n')
-                fd.write('\n')
-
-            # Update lldp agent with new system name
-            self.configure_lldp_systemname(context, systemname)
-
-        return
-
     def iconfig_update_install_uuid(self, context, host_uuids, install_uuid):
         """Update install_uuid in /etc/platform/platform.conf
 
