@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2022 Wind River Systems, Inc.
+# Copyright (c) 2018-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -313,7 +313,7 @@ class KubernetesPuppet(base.BasePuppet):
                         CERTIFICATE_KEY_USER))
 
                 with open(temp_kubeadm_config_view, "a") as f:
-                    f.write("---\r\napiVersion: kubeadm.k8s.io/v1beta2\r\n"
+                    f.write("---\r\napiVersion: kubeadm.k8s.io/v1beta3\r\n"
                             "kind: InitConfiguration\r\ncertificateKey: "
                             "{}".format(key))
 
@@ -321,8 +321,8 @@ class KubernetesPuppet(base.BasePuppet):
                 # a K8s upgrade we need to use the "new" version of kubeadm in case
                 # changes have been made to the kubeadm-config ConfigMap that are
                 # not understood by the "old" kubeadm.
-                cmd = [f'/usr/local/kubernetes/{kubeadm_version}/stage1/usr/bin/kubeadm',
-                       'init', 'phase', 'upload-certs', '--upload-certs', '--config',
+                kubeadm_path = constants.KUBEADM_PATH_FORMAT_STR.format(kubeadm_ver=kubeadm_version)
+                cmd = [kubeadm_path, 'init', 'phase', 'upload-certs', '--upload-certs', '--config',
                        temp_kubeadm_config_view]
 
                 subprocess.check_call(cmd)  # pylint: disable=not-callable
