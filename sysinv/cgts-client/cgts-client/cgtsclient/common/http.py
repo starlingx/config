@@ -1,4 +1,4 @@
-# Copyright 2013-2022 Wind River, Inc.
+# Copyright 2013-2023 Wind River, Inc.
 # Copyright 2012 Openstack Foundation
 # All Rights Reserved.
 #
@@ -403,7 +403,10 @@ class HTTPClient(httplib2.Http):
             raise exceptions.HTTPUnauthorized(body)
         elif status_code == 403:
             error_json = self._extract_error_json(body_str)
-            raise exceptions.Forbidden(error_json.get('faultstring'))
+            reason = error_json.get('faultstring')
+            if reason is None:
+                reason = error_json.get('description')
+            raise exceptions.Forbidden(reason)
         elif 400 <= status_code < 600:
             _logger.warn("Request returned failure status: %s", status_code)  # pylint: disable=deprecated-method
             error_json = self._extract_error_json(body_str)

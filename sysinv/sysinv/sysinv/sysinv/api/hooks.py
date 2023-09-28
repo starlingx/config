@@ -16,7 +16,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 
 import re
@@ -196,17 +196,20 @@ class AccessPolicyHook(hooks.PecanHook):
                 except Exception:
                     raise exc.HTTPForbidden()
             else:
+                role = ""
                 method = state.request.method
                 if method == 'GET':
+                    role = "reader"
                     has_api_access = policy.authorize(
                         base_policy.READER_IN_SYSTEM_PROJECTS, {},
                         context.to_dict(), do_raise=False)
                 else:
+                    role = "admin"
                     has_api_access = policy.authorize(
                         base_policy.ADMIN_IN_SYSTEM_PROJECTS, {},
                         context.to_dict(), do_raise=False)
                 if not has_api_access:
-                    raise exc.HTTPForbidden()
+                    raise exc.HTTPForbidden("Not allowed/Role " + role + " is needed")
 
 
 class NoExceptionTracebackHook(hooks.PecanHook):
