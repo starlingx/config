@@ -76,6 +76,10 @@ LOCK_NAME_PROCESS_APP_METADATA = 'process_app_metadata'
 
 STX_APP_PLUGIN_PATH = '/var/stx_app/plugins'
 
+CHART_UPLOAD_COPY_ERROR_CODE = 1
+CHART_UPLOAD_FILE_EXISTS_ERROR_CODE = 2
+CHART_UPLOAD_VERSION_EXISTS_ERROR_CODE = 3
+
 
 # Helper functions
 def generate_install_manifest_fqpn(app_name, app_version, manifest_filename):
@@ -119,7 +123,8 @@ def get_app_install_root_path_ownership():
 
 FluxCDChart = namedtuple('FluxCDChart', 'metadata_name name namespace location '
                                         'release chart_os_path chart_label '
-                                        'helm_repo_name')
+                                        'helm_repo_name filesystem_location '
+                                        'chart_version')
 
 
 class AppOperator(object):
@@ -541,6 +546,24 @@ class AppOperator(object):
         """ Retrieve the namespace of a top level kustomization """
         return root_kustomization_yaml.get("namespace", constants.FLUXCD_K8S_FALLBACK_NAMESPACE)
 
+    @staticmethod
+    def remove_app_charts_from_repo(app_charts):
+        """ Remove application charts from Helm repository"""
+
+        repo_set = set()
+        for chart in app_charts:
+            try:
+                os.remove(chart.filesystem_location)
+                repo_set.add(chart.helm_repo_name)
+            except OSError:
+                LOG.error("Error while removing chart {} from repository".
+                          format(chart.filesystem_location))
+
+        # Re-index repositories
+        for repo_name in repo_set:
+            helm_utils.index_repo(os.path.join(common.HELM_REPO_BASE_PATH,
+                                               repo_name))
+
     def _get_image_tags_by_charts_fluxcd(self, app_images_file, manifest, overrides_dir):
         app_imgs = []
         images_file = None
@@ -899,6 +922,27 @@ class AppOperator(object):
             # Make sure any helm repo changes are reflected for the users
             helm_utils.refresh_helm_repo_information()
 
+        except subprocess.CalledProcessError as e:
+            if e.returncode == CHART_UPLOAD_COPY_ERROR_CODE:
+                reason = "Error while copying chart file %s to %s repository" \
+                          % (chart, helm_repo)
+            elif e.returncode == CHART_UPLOAD_FILE_EXISTS_ERROR_CODE:
+                # If the exact same chart already exists then just log a
+                # warning and proceed with the upload process.
+                LOG.warning("Chart %s already exists in the %s repository. "
+                            "Skipping upload." %
+                            (os.path.basename(chart), helm_repo))
+            elif e.returncode == CHART_UPLOAD_VERSION_EXISTS_ERROR_CODE:
+                reason = "The incoming chart %s matches the same version of " \
+                         "an existing chart in the % repository that " \
+                         "has a different implementation." \
+                            % (os.path.basename(chart), helm_repo)
+            else:
+                reason = str(e)
+
+            if e.returncode != CHART_UPLOAD_FILE_EXISTS_ERROR_CODE:
+                raise exception.KubeAppUploadFailure(
+                    name=app.name, version=app.version, reason=reason)
         except Exception as e:
             raise exception.KubeAppUploadFailure(
                 name=app.name, version=app.version, reason=str(e))
@@ -1164,22 +1208,30 @@ class AppOperator(object):
                     metadata_name = helmrelease_yaml["metadata"]["name"]
                     chart_spec = helmrelease_yaml["spec"]["chart"]
                     chart_name = chart_spec["spec"]["chart"]
+                    chart_version = chart_spec["spec"]["version"]
                     location = "%s/%s-%s%s" % (helm_repo_url.rstrip("/"),
                                                chart_name,
                                                chart_spec["spec"]["version"],
                                                ".tgz")
+                    filesystem_location = helm_utils.get_chart_tarball_path(
+                        os.path.join(common.HELM_REPO_BASE_PATH, helm_repo_name),
+                        chart_name,
+                        chart_version)
                     release = helmrelease_yaml["spec"]["releaseName"]
 
                     # Dunno if we need to return these in order respecting dependsOn?
-                    # dependencies = [dep["name"] for dep in helmrelease_yaml["spec"].get(["dependsOn"], [])]
+                    # dependencies = [dep["name"] for dep in helmrelease_yaml["spec"].
+                    # get(["dependsOn"], [])]
                     chart_obj = FluxCDChart(
                         metadata_name=metadata_name,
                         name=metadata_name,
                         namespace=namespace,
                         location=location,
+                        filesystem_location=filesystem_location,
                         release=release,
                         chart_os_path=chart_path,
                         chart_label=chart_name,
+                        chart_version=chart_version,
                         helm_repo_name=helm_repo_name
                     )
                     charts.append(chart_obj)
@@ -2775,6 +2827,7 @@ class AppOperator(object):
             from_app.charts = self._get_list_of_charts(from_app)
             to_app_charts = [c.release for c in to_app.charts]
             deployed_releases = helm_utils.retrieve_helm_releases()
+            charts_to_delete = []
             for from_chart in from_app.charts:
                 # Cleanup the releases in the old application version
                 # but are not in the new application version
@@ -2794,7 +2847,13 @@ class AppOperator(object):
                     LOG.info("Helm release %s for Application %s (%s) deleted"
                              % (from_chart.release, from_app.name,
                                 from_app.version))
+                for to_app_chart in to_app.charts:
+                    if from_chart.chart_label == to_app_chart.chart_label \
+                            and from_chart.chart_version \
+                            != to_app_chart.chart_version:
+                        charts_to_delete.append(from_chart)
 
+            AppOperator.remove_app_charts_from_repo(charts_to_delete)
             self._cleanup(from_app, app_dir=False)
             self._utils._patch_report_app_dependencies(
                 from_app.name + '-' + from_app.version)
@@ -3043,6 +3102,7 @@ class AppOperator(object):
             self._plugins.deactivate_plugins(app)
 
             self._dbapi.kube_app_destroy(app.name)
+            app.charts = self._get_list_of_charts(app)
             self._cleanup(app)
             self._utils._patch_report_app_dependencies(app.name + '-' + app.version)
             # One last check of app alarm, should be no-op unless the
@@ -3052,6 +3112,10 @@ class AppOperator(object):
             # Remove the deleted app from _apps_metadata, since it's
             # not in the system anymore.
             self._remove_from_metadata_dict(app.name)
+
+            # Remove charts from Helm repository
+            AppOperator.remove_app_charts_from_repo(app.charts)
+
             LOG.info("Application (%s) has been purged from the system." %
                      app.name)
             msg = None
