@@ -371,13 +371,13 @@ def drop_helm_v2_database():
 
 def main():
 
-    if len(sys.argv) != 4:
+    if len(sys.argv) not in [4, 5]:
         error_msg = "Invalid arguments: %s" % (sys.argv)
         print(error_msg)
         LOG.error(error_msg)
         return 1
 
-    script_name, from_release, to_release, action = sys.argv
+    script_name, from_release, to_release, action = sys.argv[0:4]
     LOG.info("%s invoked with from_release = %s to_release = %s action = %s"
              % (script_name, from_release, to_release, action))
 

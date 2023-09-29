@@ -80,6 +80,16 @@ def wait_sm_service(service, timeout=180):
     return False
 
 
+def connect_to_postgresql(port):
+    try:
+        import psycopg2
+        conn = psycopg2.connect("dbname=sysinv user=postgres port=%s" % port)
+        return conn
+    except Exception as err:
+        LOG.error("Failed to connect to database: %s", err)
+        raise Exception("Failed to connect to database with port=%s" % port)
+
+
 def get_address_from_hosts_file(hostname):
     """
     Get the IP address of a host from the /etc/hosts file
@@ -190,7 +200,7 @@ def persist_config():
         # move hiera data to puppet directory
         if os.path.isdir(constants.HIERADATA_WORKDIR):
             subprocess.check_call(["mv", constants.HIERADATA_WORKDIR,
-                                  tsconfig.PUPPET_PATH])
+                                   tsconfig.PUPPET_PATH])
     except subprocess.CalledProcessError:
         LOG.error("Failed to persist puppet config files")
         raise Exception("Failed to persist puppet config files")
