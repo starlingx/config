@@ -65,6 +65,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from eventlet import greenthread
 # Make subprocess module greenthread friendly
 from eventlet.green import subprocess
+from eventlet.green import threading
 from fm_api import constants as fm_constants
 from fm_api import fm_api
 from netaddr import IPAddress
@@ -209,7 +210,6 @@ CONFIG_UPDATE_FILE = 'config_update_file'
 
 LOCK_NAME_UPDATE_CONFIG = 'update_config_'
 LOCK_APP_AUTO_MANAGE = 'AppAutoManageLock'
-LOCK_RUNTIME_CONFIG_CHECK = 'runtime_config_check'
 LOCK_IMAGE_PULL = 'image_pull_'
 
 MAX_UPTIME_TO_CLEAR_REBOOT_REQUIRED = 1200
@@ -292,6 +292,7 @@ class ConductorManager(service.PeriodicService):
         # track upgrade activation manifests status
         self._upgrade_manifest_start_time = None
 
+        self.rlock_runtime_config = threading.RLock()
         # track deferred runtime config which need to be applied
         self._host_deferred_runtime_config = []
 
@@ -6574,8 +6575,8 @@ class ConductorManager(service.PeriodicService):
         return True
 
     def _ready_to_apply_runtime_config(
-            self, context, personalities=None, host_uuids=None,
-            filter_classes=None, filter_files=None):
+            self, personalities=None, host_uuids=None,
+            filter_classes=None, filter_files=None, timestamp=None):
         """Determine whether ready to apply runtime config"""
 
         if filter_classes is None:
@@ -6604,24 +6605,42 @@ class ConductorManager(service.PeriodicService):
             return False
 
         # check if needed to wait for filter class
+        check_wait = False
         for filter_class in filter_classes:
             if filter_class == self.PUPPET_RUNTIME_CLASS_ROUTES:
                 if not self._check_ready_route_runtime_config():
-                    LOG.info("config type %s filter_mapping %s False (wait)" %
+                    LOG.info("config type %s filter_mapping %s False (check)" %
                              (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
-                    return False
+                    check_wait = True
             if filter_class == self.PUPPET_RUNTIME_CLASS_DOCKERDISTRIBUTION:
                 if self.check_restoring_apps_in_progress():
                     LOG.info("config type %s filter_mapping %s False (wait)" %
                              (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
+                    # This is not dependent on RPC message, so continue to wait
                     return False
             if filter_class == self.PUPPET_RUNTIME_CLASS_USERS:
                 if not self._check_ready_users_runtime_config():
-                    LOG.info("config type %s filter_mapping %s False (wait)" %
+                    LOG.info("config type %s filter_mapping %s False (check)" %
                              (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
-                    return False
+                    check_wait = True
             LOG.info("config type %s filter_mapping %s True (continue)" %
                      (CONFIG_APPLY_RUNTIME_MANIFEST, filter_class))
+
+        if check_wait:
+            # Limit the wait time for deferred config for robustness, in the
+            # event such as lost RPC route update message from agent.
+            if timestamp:
+                delta = (datetime.utcnow() - timestamp).total_seconds()
+                if delta < CONF.conductor.config_out_of_date_timeout / 2:
+                    LOG.info("_ready_to_apply_runtime_config: wait %s secs" %
+                             delta)
+                    return False
+                else:
+                    LOG.info("_ready_to_apply_runtime_config: wait expiry %s secs" %
+                             delta)
+            else:
+                LOG.info("_ready_to_apply_runtime_config: wait")
+                return False
 
         # check if needed to wait for filter files
         for filter_file in filter_files:
@@ -6635,51 +6654,59 @@ class ConductorManager(service.PeriodicService):
 
         return True
 
-    @cutils.synchronized(LOCK_RUNTIME_CONFIG_CHECK)
     def _audit_deferred_runtime_config(self, context):
-        """Apply deferred config runtime manifests when ready"""
+        """With rlock, apply deferred config runtime manifests when ready"""
 
-        LOG.debug("_audit_deferred_runtime_config %s" %
-                  self._host_deferred_runtime_config)
+        def _cs_audit_deferred_runtime_config(self, context):
+            """Apply deferred config runtime manifests when ready"""
 
-        if not self._host_deferred_runtime_config or \
-                not self._ready_to_apply_runtime_config(context):
-            return
+            LOG.debug("_audit_deferred_runtime_config %s" %
+                    self._host_deferred_runtime_config)
 
-        # apply the deferred runtime manifests
-        for config in list(self._host_deferred_runtime_config):
-            config_type = config.get('config_type')
-            LOG.info("found _audit_deferred_runtime_config request apply %s" %
-                        config)
-            if config_type == CONFIG_APPLY_RUNTIME_MANIFEST:
-                # config runtime manifest system allows for filtering on scoped runtime classes
-                # to allow for more efficient handling while another scoped class apply may
-                # already be in progress
-                config_dict = config.get('config_dict') or {}
-                classes_list = list(config_dict.get('classes') or [])
-                filter_classes = [x for x in self.PUPPET_RUNTIME_FILTER_CLASSES if x in classes_list]
-                LOG.info("config type %s found filter_classes=%s cd= %s" %
-                            (config_type, filter_classes, config_dict))
-                self._config_apply_runtime_manifest(
-                    context,
-                    config['config_uuid'],
-                    config['config_dict'],
-                    force=config.get('force', False),
-                    filter_classes=filter_classes)
-            elif config_type == CONFIG_UPDATE_FILE:
-                config_dict = config.get('config_dict') or {}
-                file_names = list(config_dict.get('file_names') or [])
-                filter_files = [x for x in self.PUPPET_RUNTIME_FILTER_FILES if x in file_names]
-                LOG.info("config type %s found filter_files=%s cd= %s" %
-                         (config_type, filter_files, config_dict))
-                self._config_update_file(
-                    context,
-                    config['config_uuid'],
-                    config['config_dict'],
-                    filter_files=filter_files)
-            else:
-                LOG.error("Removed unsupported deferred config_type %s" %
-                            config_type)
+            if not self._host_deferred_runtime_config or \
+                    not self._ready_to_apply_runtime_config():
+                return
+
+            # apply the deferred runtime manifests
+            for config in list(self._host_deferred_runtime_config):
+                config_type = config.get('config_type')
+                LOG.info("found _audit_deferred_runtime_config request apply %s" %
+                            config)
+                if config_type == CONFIG_APPLY_RUNTIME_MANIFEST:
+                    # config runtime manifest system allows for filtering on scoped runtime classes
+                    # to allow for more efficient handling while another scoped class apply may
+                    # already be in progress
+                    config_dict = config.get('config_dict') or {}
+                    classes_list = list(config_dict.get('classes') or [])
+                    filter_classes = [x for x in self.PUPPET_RUNTIME_FILTER_CLASSES
+                                      if x in classes_list]
+                    LOG.info("config type %s found filter_classes=%s cd= %s" %
+                                (config_type, filter_classes, config_dict))
+                    self._config_apply_runtime_manifest(
+                        context,
+                        config['config_uuid'],
+                        config['config_dict'],
+                        force=config.get('force', False),
+                        filter_classes=filter_classes,
+                        timestamp=config.get('timestamp'))
+                elif config_type == CONFIG_UPDATE_FILE:
+                    config_dict = config.get('config_dict') or {}
+                    file_names = list(config_dict.get('file_names') or [])
+                    filter_files = [x for x in self.PUPPET_RUNTIME_FILTER_FILES if x in file_names]
+                    LOG.info("config type %s found filter_files=%s cd= %s" %
+                            (config_type, filter_files, config_dict))
+                    self._config_update_file(
+                        context,
+                        config['config_uuid'],
+                        config['config_dict'],
+                        filter_files=filter_files,
+                        timestamp=config.get('timestamp'))
+                else:
+                    LOG.error("Removed unsupported deferred config_type %s" %
+                                config_type)
+
+        with self.rlock_runtime_config:
+            _cs_audit_deferred_runtime_config(self, context)
 
     def _prune_host_runtime_config_history(self):
         # prune oldest runtime config from history to keep
@@ -11983,7 +12010,8 @@ class ConductorManager(service.PeriodicService):
                             context,
                             config_uuid,
                             config_dict,
-                            filter_files=None):
+                            filter_files=None,
+                            timestamp=None):
         """Apply the file on all hosts affected by supplied personalities.
 
         :param context: request context.
@@ -12003,11 +12031,14 @@ class ConductorManager(service.PeriodicService):
         # try to get the config from deferred list
         deferred_config = self._get_from_host_deferred_runtime_config(config_uuid)
 
+        if deferred_config:
+            timestamp = deferred_config.get('timestamp')
+
         if not self._ready_to_apply_runtime_config(
-                context,
                 config_dict.get('personalities'),
                 config_dict.get('host_uuids'),
-                filter_files=filter_files):
+                filter_files=filter_files,
+                timestamp=timestamp):
             if deferred_config is None:
                 # append to deferred for audit
                 self._host_deferred_runtime_config.append(
@@ -12038,44 +12069,54 @@ class ConductorManager(service.PeriodicService):
 
         return True
 
-    @cutils.synchronized(LOCK_RUNTIME_CONFIG_CHECK)
     def _clear_runtime_class_apply_in_progress(self, classes_list=None, host_uuids=None):
-        if classes_list is None:
-            classes_list = []
-        if host_uuids is None:
-            host_uuids = []
-        else:
-            host_uuids = [host_uuids] if isinstance(host_uuids, str) else host_uuids
 
-        for c, h in self._runtime_class_apply_in_progress:
-            host_intersection = [i for i in host_uuids if i in h]
-            LOG.info("config runtime c=%s, h=%s host_uuids=%s host_intersection=%s" %
-                     (c, h, host_uuids, host_intersection))
-            if c in classes_list:
-                if host_intersection:
+        def _cs_clear_runtime_class_apply_in_progress(self, classes_list, host_uuids):
+            if classes_list is None:
+                classes_list = []
+            if host_uuids is None:
+                host_uuids = []
+            else:
+                host_uuids = [host_uuids] if isinstance(host_uuids, str) else host_uuids
+
+            for c, h in self._runtime_class_apply_in_progress:
+                host_intersection = [i for i in host_uuids if i in h]
+                LOG.info("config runtime c=%s, h=%s host_uuids=%s host_intersection=%s" %
+                        (c, h, host_uuids, host_intersection))
+                if c in classes_list:
+                    if host_intersection:
+                        LOG.info("config runtime removing host_uuids=%s from %s" %
+                                (host_uuids, self._runtime_class_apply_in_progress))
+                        self._runtime_class_apply_in_progress.remove((c, h))
+                elif not classes_list and host_intersection:
                     LOG.info("config runtime removing host_uuids=%s from %s" %
-                             (host_uuids, self._runtime_class_apply_in_progress))
+                            (host_uuids, self._runtime_class_apply_in_progress))
                     self._runtime_class_apply_in_progress.remove((c, h))
-            elif not classes_list and host_intersection:
-                LOG.info("config runtime removing host_uuids=%s from %s" %
-                         (host_uuids, self._runtime_class_apply_in_progress))
-                self._runtime_class_apply_in_progress.remove((c, h))
-            elif not classes_list and not host_uuids:
-                LOG.info("config runtime in classes_list c=%s, classes_list=%s" % (c, classes_list))
-                self._runtime_class_apply_in_progress = list()
+                elif not classes_list and not host_uuids:
+                    LOG.info("config runtime in classes_list c=%s, classes_list=%s" %
+                             (c, classes_list))
+                    self._runtime_class_apply_in_progress = list()
 
-            LOG.info("config runtime end of _clear_runtime_class_apply_in_progress=%s" %
-                     self._runtime_class_apply_in_progress)
+                LOG.info("config runtime end of _clear_runtime_class_apply_in_progress=%s" %
+                        self._runtime_class_apply_in_progress)
 
-    @cutils.synchronized(LOCK_RUNTIME_CONFIG_CHECK)
+        with self.rlock_runtime_config:
+            _cs_clear_runtime_class_apply_in_progress(self, classes_list, host_uuids)
+
     def _add_runtime_class_apply_in_progress(self, classes_list, host_uuids=None):
-        if host_uuids is None:
-            host_uuids = []
-        else:
-            host_uuids = [host_uuids] if isinstance(host_uuids, str) else host_uuids
 
-        for c in classes_list:
-            self._runtime_class_apply_in_progress.append((c, host_uuids))
+        def _cs_add_runtime_class_apply_in_progress(self, classes_list, host_uuids):
+            if host_uuids is None:
+                host_uuids = []
+            else:
+                host_uuids = [host_uuids] if isinstance(host_uuids, str) else host_uuids
+
+            for c in classes_list:
+                if (c, host_uuids) not in self._runtime_class_apply_in_progress:
+                    self._runtime_class_apply_in_progress.append((c, host_uuids))
+
+        with self.rlock_runtime_config:
+            _cs_add_runtime_class_apply_in_progress(self, classes_list, host_uuids)
 
     def _check_runtime_class_apply_in_progress(self, classes_list, host_uuids=None):
         if host_uuids is None:
@@ -12090,27 +12131,33 @@ class ConductorManager(service.PeriodicService):
                     return True
         return False
 
-    @cutils.synchronized(LOCK_RUNTIME_CONFIG_CHECK)
     def _update_host_deferred_runtime_config(
             self, config_type, config_uuid, config_dict, force=None):
-        # check if already in deferred list, and if so, replace duplicate with latest config
-        for drc in self._host_deferred_runtime_config:
-            if (drc['config_type'] == config_type and
-                    drc['config_dict'].get('classes') == config_dict.get('classes') and
-                    drc['config_dict'].get('personalities') == config_dict.get('personalities') and
-                    drc['config_dict'].get('host_uuids') == config_dict.get('host_uuids') and
-                    drc.get('force') == force):
-                LOG.info("config runtime replacing entry duplicate config %s with config_uuid=%s" %
-                         (drc, config_uuid))
-                drc['config_uuid'] = config_uuid
-                break
-        else:
-            self._host_deferred_runtime_config.append(
-                {'config_type': config_type,
-                 'config_uuid': config_uuid,
-                 'config_dict': config_dict,
-                 'force': force,
-                 })
+
+        def _cs_update_host_deferred_runtime_config(
+                self, config_type, config_uuid, config_dict, force):
+            # check if already in deferred list, and if so, replace duplicate with latest config
+            for drc in self._host_deferred_runtime_config:
+                if (drc['config_type'] == config_type and
+                        drc['config_dict'].get('classes') == config_dict.get('classes') and
+                        drc['config_dict'].get('personalities') == config_dict.get('personalities') and
+                        drc['config_dict'].get('host_uuids') == config_dict.get('host_uuids') and
+                        drc.get('force') == force):
+                    LOG.info("config runtime replacing entry duplicate config %s with config_uuid=%s" %
+                            (drc, config_uuid))
+                    drc['config_uuid'] = config_uuid
+                    break
+            else:
+                self._host_deferred_runtime_config.append(
+                    {'config_type': config_type,
+                     'config_uuid': config_uuid,
+                     'config_dict': config_dict,
+                     'timestamp': datetime.utcnow(),
+                     'force': force})
+
+        with self.rlock_runtime_config:
+            _cs_update_host_deferred_runtime_config(self, config_type, config_uuid, config_dict,
+                                                    force)
 
     def _get_from_host_deferred_runtime_config(self, config_uuid):
         # get the config from the deferred config list
@@ -12163,7 +12210,8 @@ class ConductorManager(service.PeriodicService):
                                        config_dict,
                                        force=False,
                                        filter_classes=None,
-                                       skip_update_config=False):
+                                       skip_update_config=False,
+                                       timestamp=None):
         """Apply manifests on all hosts affected by the supplied personalities.
            If host_uuids is set in config_dict, only update hiera data and apply
            manifests for these hosts.
@@ -12212,11 +12260,14 @@ class ConductorManager(service.PeriodicService):
 
         # only apply runtime manifests to active controller if ready,
         # otherwise will append to the list of outstanding runtime manifests
+        if deferred_config:
+            timestamp = deferred_config.get('timestamp')
+
         if not self._ready_to_apply_runtime_config(
-                context,
                 config_dict.get('personalities'),
                 config_dict.get('host_uuids'),
-                filter_classes=filter_classes):
+                filter_classes=filter_classes,
+                timestamp=timestamp):
             if deferred_config is None:
                 self._update_host_deferred_runtime_config(
                     CONFIG_APPLY_RUNTIME_MANIFEST,
