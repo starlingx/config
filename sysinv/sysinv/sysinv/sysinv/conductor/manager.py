@@ -4947,7 +4947,7 @@ class ConductorManager(service.PeriodicService):
                                             filter_classes=[self.PUPPET_RUNTIME_CLASS_PARTITIONS])
 
     def ipartition_update_by_ihost(self, context,
-                                   ihost_uuid, ipart_dict_array, first_report):
+                                   ihost_uuid, ipart_dict_array, first_report=False):
         """Update existing partition information based on information received
            from the agent."""
         LOG.debug("PART ipartition_update_by_ihost %s ihost_uuid "
@@ -4992,8 +4992,8 @@ class ConductorManager(service.PeriodicService):
         db_parts = self.dbapi.partition_get_by_ihost(ihost_uuid)
         db_disks = self.dbapi.idisk_get_by_ihost(ihost_uuid)
 
-        # Get the partitions device paths and UUIDs received from the agent
-        ipart_dps_uuids_dict = dict([(ipart['device_path'], ipart['uuid']) for ipart in ipart_dict_array])
+        # Get the partitions device paths received from the agent
+        ipart_device_paths = [ipart['device_path'] for ipart in ipart_dict_array]
 
         # Check that the DB partitions are in sync with the DB disks and PVs.
         for db_part in db_parts:
@@ -5033,24 +5033,19 @@ class ConductorManager(service.PeriodicService):
             # Handle database to fix partitions with the status 'stuck'
             # in creating/deleting/modifying.
             if not self._check_runtime_class_apply_in_progress([self.PUPPET_RUNTIME_CLASS_PARTITIONS]):
-                # Check and update the partition uuid if different than reported by agent
-                if db_part.uuid not in ipart_dps_uuids_dict.values():
-                    if db_part.device_path in ipart_dps_uuids_dict.keys():
-                        partition_dict['uuid'] = ipart_dps_uuids_dict[db_part.device_path]
-                        partition_update_needed = True
-                        LOG.info("Update DB partition UUID according to agent report: %s to %s" %
-                                (db_part.uuid, partition_dict['uuid']))
-                    else:
-                        self.dbapi.partition_destroy(db_part.uuid)
-                        LOG.info("Delete DB partition stuck")
+                if db_part.device_path not in ipart_device_paths:
+                    self.dbapi.partition_destroy(db_part.uuid)
+                    LOG.info("Delete DB partition stuck: %s" % str(db_part.items()))
                 elif db_part.status == constants.PARTITION_MODIFYING_STATUS:
                     partition_dict['status'] = constants.PARTITION_READY_STATUS
                     partition_update_needed = True
-                    LOG.info("Update DB partition stuck in %s" %
-                                constants.PARTITION_STATUS_MSG[db_part.status].lower())
+                    LOG.info("Update DB partition %s stuck in %s state to %s" %
+                            (db_part.uuid,
+                            constants.PARTITION_STATUS_MSG[db_part.status].lower(),
+                            constants.PARTITION_STATUS_MSG[constants.PARTITION_READY_STATUS].lower()))
                 elif db_part.status == constants.PARTITION_DELETING_STATUS:
                     self.update_partition_config(context, db_part)
-                    LOG.info("Delete partition stuck")
+                    LOG.info("Delete partition stuck: %s" % str(db_part.items()))
 
             if part_disk.uuid != db_part.idisk_uuid:
                 # TO DO: What happens when a disk is replaced
@@ -5060,10 +5055,7 @@ class ConductorManager(service.PeriodicService):
                          db_part.uuid)
 
             if partition_update_needed:
-                try:
-                    self.dbapi.partition_update(db_part.uuid, partition_dict)
-                except TypeError:
-                    pass
+                self.dbapi.partition_update(db_part.uuid, partition_dict)
                 LOG.debug("PART conductor - partition needs to be updated.")
 
         # Go through the partitions reported by the agent and make needed
