@@ -328,14 +328,23 @@ class NetworkingPuppet(base.BasePuppet):
                         for key in keys_to_remove:
                             del instance['global_parameters'][key]
 
-                # Add pmc parameters so that currentUtcOffsetValid can be set by puppet
-                if 'currentUtcOffsetValid' in instance['global_parameters']:
-                    offset_valid = instance['global_parameters'].pop('currentUtcOffsetValid')
-                    if (offset_valid == constants.PTP_PMC_CURRENT_UTC_OFFSET_VALID and
-                    instance['service'] == 'ptp4l'):
-                        instance['pmc_gm_settings'].update(default_pmc_parameters)
-
             if instance['service'] == constants.PTP_INSTANCE_TYPE_PTP4L:
+                # Add pmc parameters so that they can be set by puppet
+                instance['pmc_gm_settings'].update(default_pmc_parameters)
+                for key in default_pmc_parameters:
+                    if key in instance['global_parameters'].keys():
+                        instance['pmc_gm_settings'][key] = instance['global_parameters'][key]
+                # currentUtcOffsetValid is a special case, it is not a valid parameter to leave
+                # in the global_parameters section of the ptp4l config
+                if 'currentUtcOffsetValid' in instance['global_parameters']:
+                    instance['global_parameters'].pop('currentUtcOffsetValid')
+                # utc_offset is another special case. It has different naming from its pmc
+                # parameter and needs to be renamed to 'currentUtcOffset'
+                # It should still be left in the global section of the ptp4l config
+                if 'utc_offset' in instance['global_parameters']:
+                    instance['pmc_gm_settings']['currentUtcOffset'] = \
+                        instance['global_parameters']['utc_offset']
+
                 if (instance['global_parameters']['time_stamping'] ==
                         constants.PTP_TIME_STAMPING_HARDWARE):
                     instance['global_parameters'][constants.PTP_PARAMETER_BC_JBOD] = (
