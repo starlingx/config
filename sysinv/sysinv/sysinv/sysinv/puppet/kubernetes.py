@@ -5,6 +5,7 @@
 #
 
 from __future__ import absolute_import
+from distutils.version import LooseVersion
 from eventlet.green import subprocess
 import json
 import keyring
@@ -317,6 +318,17 @@ class KubernetesPuppet(base.BasePuppet):
                             "kind: InitConfiguration\r\ncertificateKey: "
                             "{}".format(key))
 
+                # Replace API reference of kubeadm.k8s.io/v1beta3 to
+                # kubeadm.k8s.io/v1beta2 for k8s version less than or
+                # equal to 1.21.8
+                if LooseVersion(kubeadm_version) <= LooseVersion("1.21.8"):
+                    with open(temp_kubeadm_config_view, 'r') as f:
+                        kubeadm_config_content = f.read()
+                        update_kubeadm_config = \
+                            kubeadm_config_content.replace('kubeadm.k8s.io/v1beta3',
+                                                           'kubeadm.k8s.io/v1beta2')
+                    with open(temp_kubeadm_config_view, 'w') as f:
+                        f.write(update_kubeadm_config)
                 # Because we're passing in the entire kubeadm config, if we're doing
                 # a K8s upgrade we need to use the "new" version of kubeadm in case
                 # changes have been made to the kubeadm-config ConfigMap that are
