@@ -7043,6 +7043,66 @@ class ConductorManager(service.PeriodicService):
 
         self._inner_sync_auto_apply(context, app_name)
 
+    @staticmethod
+    def check_app_k8s_auto_update(app_name, tarball):
+        """ Check whether an application should be automatically updated
+            based on its Kubernetes upgrade metadata fields.
+
+        :param tarball: tarball object of the application to be checked
+        """
+
+        minimum_supported_k8s_version = tarball.metadata.get(
+                constants.APP_METADATA_SUPPORTED_K8S_VERSION, {}).get(
+                constants.APP_METADATA_MINIMUM, None)
+
+        if minimum_supported_k8s_version is None:
+            # TODO: Turn this into an error message rather than a warning
+            # when the k8s app upgrade implementation is in place. Also,
+            # return False in this scenario.
+            LOG.warning("Minimum supported Kubernetes version missing from "
+                        "{} metadata".format(app_name))
+        else:
+            LOG.debug("minimum_supported_k8s_version for {}: {}"
+                      .format(app_name, minimum_supported_k8s_version))
+
+        maximum_supported_k8s_version = tarball.metadata.get(
+                constants.APP_METADATA_SUPPORTED_K8S_VERSION, {}).get(
+                constants.APP_METADATA_MAXIMUM, None)
+
+        if maximum_supported_k8s_version:
+            LOG.debug("maximum_supported_k8s_version for {}: {}"
+                      .format(app_name, maximum_supported_k8s_version))
+
+        k8s_upgrades = tarball.metadata.get(
+            constants.APP_METADATA_K8S_UPGRADES, None)
+
+        if k8s_upgrades is None:
+            k8s_auto_update = constants.APP_METADATA_K8S_AUTO_UPDATE_DEFAULT_VALUE
+            k8s_update_timing = constants.APP_METADATA_TIMING_DEFAULT_VALUE
+            LOG.warning("k8s_upgrades section missing from {} metadata"
+                        .format(app_name))
+        else:
+            k8s_auto_update = tarball.metadata.get(
+                constants.APP_METADATA_K8S_UPGRADES).get(
+                constants.APP_METADATA_AUTO_UPDATE,
+                constants.APP_METADATA_K8S_AUTO_UPDATE_DEFAULT_VALUE)
+            k8s_update_timing = tarball.metadata.get(
+                constants.APP_METADATA_K8S_UPGRADES).get(
+                constants.APP_METADATA_TIMING,
+                constants.APP_METADATA_TIMING_DEFAULT_VALUE)
+
+        # TODO: check if the application meets the criteria to be updated
+        # according to the 'supported_k8s_version' and 'k8s_upgrades'
+        # metadata sections. This initial implementation is only intended to
+        # set the default values for each entry.
+
+        LOG.debug("k8s_auto_update value for {}: {}"
+                    .format(app_name, k8s_auto_update))
+        LOG.debug("k8s_update_timing value for {}: {}"
+                    .format(app_name, k8s_update_timing))
+
+        return True
+
     def _auto_update_app(self, context, app_name, managed_app):
         """Auto update applications"""
         try:
@@ -7127,6 +7187,11 @@ class ConductorManager(service.PeriodicService):
             LOG.error("Application %s with version %s was previously "
                       "failed to be updated from version %s by auto-update"
                       % (app.name, tarball.app_version, app.app_version))
+            return
+
+        # Check if the update should proceed based on the application's
+        # Kubernetes metadata
+        if not ConductorManager.check_app_k8s_auto_update(app_name, tarball):
             return
 
         self._inner_sync_auto_update(context, app, tarball)
