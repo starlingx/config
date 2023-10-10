@@ -40,7 +40,7 @@ def local_registry_list(filename, included_apps, include_all_apps=False):
 
     # Save local registry images tags
     image_name_tag_list = []
-    temp_image_name_list = rpcapi.docker_registry_image_list(ctxt)
+    temp_image_name_list = rpcapi.docker_registry_image_list(ctxt, filter_out_untagged=0)
     if not temp_image_name_list:
         raise Exception("Image list could not be retrieved "
                         "from local registry")
@@ -50,7 +50,6 @@ def local_registry_list(filename, included_apps, include_all_apps=False):
         if image_name:
             temp_image_tags = rpcapi.docker_registry_image_tags(ctxt,
                                                                 image_name)
-
             for image_name_tag in temp_image_tags:
                 image_tag = image_name_tag.get('tag', None)
                 if image_tag:

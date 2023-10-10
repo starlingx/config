@@ -894,13 +894,14 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('update_remotelogging_config'), timeout=timeout)
 
-    def docker_registry_image_list(self, context):
+    def docker_registry_image_list(self, context, filter_out_untagged):
         """Synchronously, request a list of images from Docker Registry API
 
         :param context: request context.
         """
         return self.call(context,
-                         self.make_msg('docker_registry_image_list'))
+                         self.make_msg('docker_registry_image_list',
+                                       filter_out_untagged=filter_out_untagged))
 
     def docker_registry_image_tags(self, context, image_name):
         """Synchronously, request a list of tags from Docker Registry API for a given image
