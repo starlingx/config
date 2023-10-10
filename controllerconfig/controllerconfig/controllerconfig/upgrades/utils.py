@@ -87,7 +87,9 @@ def execute_migration_scripts(from_release, to_release, action,
     for f in files:
         migration_script = os.path.join(migration_script_dir, f)
         try:
-            LOG.info("Executing migration script %s" % migration_script)
+            # needed to flag each execution in case of error
+            start_script_exec = "Executing migration script"
+            LOG.info("%s %s" % (start_script_exec, migration_script))
             # TODO(heitormatsui): remove py2 code when
             # CentOS and zuul py2.7 are deprecated
             if six.PY2:
@@ -116,8 +118,11 @@ def execute_migration_scripts(from_release, to_release, action,
                                                 ret.returncode,
                                                 output_script)
                     LOG.error(msg)
-                    msg_temp = search_script_output(PLATFORM_LOG, f)
-                    save_temp_file(msg, msg_temp)
+                    start_script_line = get_exec_start_line(
+                        start_script_exec, PLATFORM_LOG)
+                    error_message = search_script_output(
+                        start_script_line, PLATFORM_LOG, f)
+                    save_temp_file(msg, error_message)
                     raise Exception(msg)
 
         except subprocess.CalledProcessError as e:
@@ -132,23 +137,70 @@ def execute_migration_scripts(from_release, to_release, action,
             raise
 
 
-def search_script_output(file_name, script):
+def get_exec_start_line(start_script_exec, file_name):
+    """ Search the last ocurrence of the start of the script.
+    Get the line number and use it to find the last start
+    of script execution in logs.
+
+    Used to prevent reading an outdated error log.
+    """
     cmd = [
         "awk",
-        "/{script}/ {{last_match = $0}} "
-        "END {{if (last_match) print last_match}}".format(script=script),
+        '/{pattern_to_find}/ {{last_match = $0; start_line = NR}}'
+        'END {{if (last_match) print start_line, last_match}}'
+        .format(pattern_to_find=start_script_exec),
         file_name
     ]
+    start_line = None
+
     try:
         process = subprocess.Popen(cmd,
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE)
         output, error = process.communicate()
-        last_match = output.decode().strip()
+        last_match = output.decode().strip().splitlines()
+        start_line, last_match = last_match[0].split(' ', 1)
+        start_line = int(start_line)
     except Exception:
         LOG.error("Failed to exec cmd. \n %s" % error)
         return None
-    return last_match
+    return start_line
+
+
+def search_script_output(start_script_line, file_name, script):
+    """Search error lines for this script.
+
+    Then, compare the line number and just add the
+    lines after the start of the last execution.
+    """
+    cmd = [
+        "awk",
+        '/{script}/ && /error|ERROR/ {{print NR, $0}}'.format(script=script),
+        file_name
+    ]
+    error_list = []
+    error_string = ""
+
+    try:
+        process = subprocess.Popen(cmd,
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE)
+        output, error = process.communicate()
+        error_lines = output.decode().strip().splitlines()
+        # Compare the line numbers of each occurrence.
+        # If the line number is greater than 'start_script_line', then
+        # add this line to the output string
+        for i, current_line in enumerate(error_lines):
+            if i < (len(error_lines) - 1):
+                current_line, error_line = error_lines[i + 1].split(' ', 1)
+                current_line = int(current_line)
+                if current_line > start_script_line:
+                    error_list.append(error_line)
+        error_string = '\n'.join(error_list)
+    except Exception:
+        LOG.error("Failed to exec cmd. \n %s" % error)
+        return None
+    return error_string
 
 
 def save_temp_file(msg, error=None):
@@ -157,8 +209,8 @@ def save_temp_file(msg, error=None):
 
     MSG_FAILURE = '%s \n\n'\
                   '%s \n\n'\
-                  'Check specific service log or search for' \
-                  'this app in sysinv.log for details'
+                  'Check specific service log or search for ' \
+                  'this app in sysinv.log for details\n'
     msg = MSG_FAILURE % (msg,
                          error)
     try:
