@@ -1863,10 +1863,14 @@ class AgentManager(service.PeriodicService):
         else:
             LOG.error("report_inventory unknown request=%s" % inventory_update)
 
-    def _retry_on_missing_inventory_info(ex):  # pylint: disable=no-self-argument
-        LOG.info('Caught exception _retry_on_missing_inventory_info. '
+    def _retry_on_config_exception(ex):  # pylint: disable=no-self-argument
+        LOG.info('Caught exception _retry_on_config_exception. '
                  'Retrying... Exception: {}'.format(ex))
-        return isinstance(ex, exception.AgentInventoryInfoNotFound)
+        if isinstance(ex, exception.AgentInventoryInfoNotFound):
+            return True
+        elif isinstance(ex, exception.FilesystemNotFound):
+            return True
+        return False
 
     @staticmethod
     def _update_local_puppet_cache(hieradata_path):
@@ -1886,7 +1890,7 @@ class AgentManager(service.PeriodicService):
             raise
 
     @retrying.retry(wait_fixed=15 * 1000, stop_max_delay=300 * 1000,
-                    retry_on_exception=_retry_on_missing_inventory_info)
+                    retry_on_exception=_retry_on_config_exception)
     @utils.synchronized(LOCK_AGENT_ACTION, external=False)
     def config_apply_runtime_manifest(self, context, config_uuid, config_dict):
         """Asynchronously, have the agent apply the runtime manifest with the
@@ -1953,6 +1957,7 @@ class AgentManager(service.PeriodicService):
                 LOG.info("controller-standby or storage, mount /var/run/platform")
                 remote_dir = "controller-platform-nfs:" + tsc.PLATFORM_PATH
                 local_dir = os.path.join(tsc.VOLATILE_PATH, 'platform')
+                # JK - could also consider mkstemp for atomicity
                 if not os.path.exists(local_dir):
                     LOG.info("create local dir '%s'" % local_dir)
                     os.makedirs(local_dir)
@@ -1965,7 +1970,12 @@ class AgentManager(service.PeriodicService):
             else:
                 LOG.info("controller-active")
                 self._apply_runtime_manifest(config_dict)
-
+        except OSError:
+            # race condition on the mount
+            if not os.path.exists(local_dir):
+                LOG.warn("OSError encountered, re-create local dir '%s'" % local_dir)
+                os.makedirs(local_dir)
+                raise exception.FilesystemNotFound(fs_id=local_dir)
         except Exception:
             # We got an error, serialize and return the exception to conductor
             if config_dict.get(puppet.REPORT_STATUS_CFG):
