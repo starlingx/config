@@ -25,7 +25,7 @@ HTTPS_CONFIG_REQUIRED = os.path.join(tsc.CONFIG_PATH, '.https_config_required')
 ADMIN_ENDPOINT_CONFIG_REQUIRED = os.path.join(tsc.CONFIG_PATH, '.admin_endpoint_config_required')
 PLATFORM_FIREWALL_CONFIG_REQUIRED = os.path.join(tsc.PLATFORM_CONF_PATH,
                                     '.platform_firewall_config_required')
-
+RESTORE_IN_PROGRESS_FLAG = tsc.RESTORE_IN_PROGRESS_FLAG
 # Minimum password length
 MINIMUM_PASSWORD_LENGTH = 8
 

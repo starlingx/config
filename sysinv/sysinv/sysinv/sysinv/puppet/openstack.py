@@ -113,8 +113,11 @@ class OpenstackBasePuppet(base.BasePuppet):
                 constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER or
                 self._distributed_cloud_role() ==
                 constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
-
-            cutils.touch(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED)
+            if os.path.isfile(constants.RESTORE_IN_PROGRESS_FLAG):
+                if os.path.isfile(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED):
+                    os.remove(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED)
+            else:
+                cutils.touch(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED)
             return 'https'
 
         return 'http'
