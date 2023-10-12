@@ -216,7 +216,13 @@ class TestLoadDelete(TestLoad):
         super(TestLoadDelete, self).tearDown()
 
     def test_load_delete(self):
+        isystem_get_one = self.dbapi.isystem_get_one
+        self.dbapi.isystem_get_one = MagicMock()
+        self.dbapi.isystem_get_one.return_value.distributed_cloud_role = None
+
         response = self.delete(**self.request_json)
+
+        self.dbapi.isystem_get_one = isystem_get_one
 
         self.assertEqual(response.status_int, 200)
 
