@@ -27,8 +27,8 @@ OAM_COMMON = {
             constants.PLATFORM_FIREWALL_SM_PORT_1,
             constants.PLATFORM_FIREWALL_SM_PORT_2,
             constants.PLATFORM_FIREWALL_NTP_PORT,
-            constants.PLATFORM_FIREWALL_PTP_PORT,
-            constants.PLATFORM_FIREWALL_PTP_PORT,
+            constants.PLATFORM_FIREWALL_PTP_PORT_1,
+            constants.PLATFORM_FIREWALL_PTP_PORT_2,
         }
 }
 
