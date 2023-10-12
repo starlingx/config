@@ -22,6 +22,7 @@ from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import patch_api
 from sysinv.api.controllers.v1 import types
+from sysinv.common import app_metadata
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
@@ -707,7 +708,7 @@ class KubeAppHelper(object):
     def _verify_metadata_file(self, app_path, app_name, app_version,
                               upgrade_from_release=None):
         try:
-            name, version, patches = cutils.find_metadata_file(
+            name, version, patches = app_metadata.validate_metadata_file(
                 app_path, constants.APP_METADATA_FILE,
                 upgrade_from_release=upgrade_from_release)
         except exception.SysinvException as e:

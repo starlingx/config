@@ -43,6 +43,7 @@ from oslo_log import log as logging
 from oslo_serialization import base64
 from sysinv._i18n import _
 from sysinv.api.controllers.v1 import kube_app
+from sysinv.common import app_metadata
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
@@ -511,7 +512,7 @@ class AppOperator(object):
                 # in the next status update
                 app.regenerate_manifest_filename(mname, os.path.basename(manifest))
             else:
-                name, version, patches = cutils.find_metadata_file(
+                name, version, patches = app_metadata.validate_metadata_file(
                     app.inst_path, constants.APP_METADATA_FILE)
                 app.patch_dependencies = patches
 
