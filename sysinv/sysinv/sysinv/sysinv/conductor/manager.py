@@ -6214,16 +6214,16 @@ class ConductorManager(service.PeriodicService):
                         context, config_uuid, config_dict)
 
                     if os.path.isfile(oam_config_runtime_apply_file):
-                        LOG.info("oam config applied %s" % config_dict)
+                        LOG.info(f"remove {oam_config_runtime_apply_file}")
                         os.remove(oam_config_runtime_apply_file)
                     if os.path.isfile(constants.HTTPS_CONFIG_REQUIRED):
-                        LOG.info("https config applied %s" % config_dict)
+                        LOG.info(f"remove {constants.HTTPS_CONFIG_REQUIRED}")
                         os.remove(constants.HTTPS_CONFIG_REQUIRED)
                     if os.path.isfile(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED):
-                        LOG.info("admin endpoint config applied %s" % config_dict)
+                        LOG.info(f"remove {constants.ADMIN_ENDPOINT_CONFIG_REQUIRED}")
                         os.remove(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED)
                     if os.path.isfile(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED):
-                        LOG.info("platform firewall config applied %s" % config_dict)
+                        LOG.info(f"remove {constants.PLATFORM_FIREWALL_CONFIG_REQUIRED}")
                         os.remove(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED)
 
             # apply filesystem config changes if all controllers at target
