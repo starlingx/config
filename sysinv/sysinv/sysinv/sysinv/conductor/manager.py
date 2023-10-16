@@ -764,6 +764,11 @@ class ConductorManager(service.PeriodicService):
             # dnsmasq.addn_hosts to be regenerated.
             self._generate_dnsmasq_hosts_file()
 
+            # Regenerate dnsmasq.addn_conf file.
+            # This ensure that a dnsmasq.addn_conf will be present on controller
+            # with upgraded platform, which is required for new dnsmasq
+            self._generate_dnsmasq_conf_file()
+
     DEFAULT_PARAMETERS = [
         {'service': constants.SERVICE_TYPE_IDENTITY,
          'section': constants.SERVICE_PARAM_SECTION_IDENTITY_CONFIG,
