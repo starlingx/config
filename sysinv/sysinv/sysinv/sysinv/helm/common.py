@@ -18,6 +18,7 @@ LOG = logging.getLogger(__name__)
 HELM_OVERRIDES_PATH = os.path.join(tsconfig.PLATFORM_PATH, 'helm', tsconfig.SW_VERSION)
 
 # Supported chart repositories
+HELM_REPO_BASE_PATH = '/var/www/pages/helm_charts'
 HELM_REPO_FOR_APPS = 'starlingx'
 HELM_REPO_FOR_PLATFORM = 'stx-platform'
 

@@ -13,6 +13,7 @@ import base64
 import os
 import psutil
 import ruamel.yaml as yaml
+import io
 import tempfile
 import random
 import string
@@ -288,3 +289,61 @@ def build_overrides_filename(chart_name, namespace=None):
         filename = namespace + "-" + filename
 
     return filename
+
+
+def get_chart_tarball_path(repo_path, chart_name, chart_version):
+    """ Get the path of a chart tarball available in a Helm repository.
+
+    :param repo_path: Filesystem path to the Helm repository
+    :param chart_name: Name of the Helm chart
+    :param chart_version: Version of the Helm chart
+    :return: string
+             Full path of the chart tarball in the repository if a
+             matching chart/version is found. Otherwise returns None.
+    """
+
+    repo_index_file = os.path.join(repo_path, "index.yaml")
+    with io.open(repo_index_file, "r", encoding="utf-8") as f:
+        root_index_yaml = next(yaml.safe_load_all(f))
+        chart_versions = root_index_yaml["entries"][chart_name]
+
+        for chart in chart_versions:
+            if chart["version"] == chart_version and len(chart["urls"]) > 0:
+                return os.path.join(repo_path, chart["urls"][0])
+
+
+def index_repo(repo_path):
+    """ Index a given Helm repository.
+
+    :param repo_path: Filesystem path to the Helm repository
+    """
+
+    helm_cmd = ['helm', 'repo', 'index', repo_path]
+    env = os.environ.copy()
+    env['KUBECONFIG'] = kubernetes.KUBERNETES_ADMIN_CONF
+
+    process = subprocess.Popen(
+        helm_cmd,
+        env=env,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        universal_newlines=True)
+    timer = threading.Timer(20, kill_process_and_descendants, [process])
+
+    try:
+        timer.start()
+        _, err = process.communicate()
+
+        if process.returncode == 0 and err:
+            LOG.warning("Command: %s; %s" % (' '.join(helm_cmd), err))
+        elif err:
+            LOG.error("Failed to index repository {}".format(repo_path))
+            raise exception.HelmFailure(reason=err)
+        else:
+            err_msg = "Timeout while indexing repository {}".format(repo_path)
+            raise exception.HelmFailure(reason=err_msg)
+    except Exception as e:
+        err_msg = "Failed to execute Helm command: {}".format(e)
+        LOG.error(err_msg)
+        raise exception.HelmFailure(reason=err_msg)
+    finally:
+        timer.cancel()
