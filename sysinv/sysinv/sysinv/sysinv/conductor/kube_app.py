@@ -546,15 +546,43 @@ class AppOperator(object):
         """ Retrieve the namespace of a top level kustomization """
         return root_kustomization_yaml.get("namespace", constants.FLUXCD_K8S_FALLBACK_NAMESPACE)
 
-    @staticmethod
-    def remove_app_charts_from_repo(app_charts):
-        """ Remove application charts from Helm repository"""
+    def _get_charts_in_use_except(self, excluded_apps_id_list=None):
+        """ Get all charts currently in use by applications
 
+        :param excluded_apps_id_list: list of application ids that should not
+                                      have their charts included
+        """
+
+        charts_in_use = []
+        for db_app in self._dbapi.kube_app_get_all():
+            app = AppOperator.Application(db_app)
+            if excluded_apps_id_list is None or \
+                    (excluded_apps_id_list is not None and db_app.id
+                     not in excluded_apps_id_list):
+                charts_in_use = charts_in_use + self._get_list_of_charts(app)
+
+        return charts_in_use
+
+    def _remove_app_charts_from_repo(self, app_id, app_charts):
+        """ Remove application charts from Helm repository
+
+        :param app_id: identifier of the application that is having
+                       its charts removed.
+        :param app_charts: charts to be removed
+        """
+
+        chart_files_in_use = [c.filesystem_location for c in
+                              self._get_charts_in_use_except([app_id])]
         repo_set = set()
         for chart in app_charts:
             try:
-                os.remove(chart.filesystem_location)
-                repo_set.add(chart.helm_repo_name)
+                if not chart.filesystem_location:
+                    LOG.error("Filesystem location not available for "
+                              "chart {}. Unable to delete from repository."
+                              .format(chart.name))
+                elif chart.filesystem_location not in chart_files_in_use:
+                    os.remove(chart.filesystem_location)
+                    repo_set.add(chart.helm_repo_name)
             except OSError:
                 LOG.error("Error while removing chart {} from repository".
                           format(chart.filesystem_location))
@@ -934,7 +962,7 @@ class AppOperator(object):
                             (os.path.basename(chart), helm_repo))
             elif e.returncode == CHART_UPLOAD_VERSION_EXISTS_ERROR_CODE:
                 reason = "The incoming chart %s matches the same version of " \
-                         "an existing chart in the % repository that " \
+                         "an existing chart in the %s repository that " \
                          "has a different implementation." \
                             % (os.path.basename(chart), helm_repo)
             else:
@@ -2853,7 +2881,8 @@ class AppOperator(object):
                             != to_app_chart.chart_version:
                         charts_to_delete.append(from_chart)
 
-            AppOperator.remove_app_charts_from_repo(charts_to_delete)
+            self._remove_app_charts_from_repo(from_app._kube_app.id,
+                                              charts_to_delete)
             self._cleanup(from_app, app_dir=False)
             self._utils._patch_report_app_dependencies(
                 from_app.name + '-' + from_app.version)
@@ -3114,7 +3143,7 @@ class AppOperator(object):
             self._remove_from_metadata_dict(app.name)
 
             # Remove charts from Helm repository
-            AppOperator.remove_app_charts_from_repo(app.charts)
+            self._remove_app_charts_from_repo(app._kube_app.id, app.charts)
 
             LOG.info("Application (%s) has been purged from the system." %
                      app.name)
