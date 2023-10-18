@@ -61,10 +61,10 @@ def _run_phc2sys_command(phc2sys_com_socket, command):
 
 
 @utils.arg('nameoruuid',
-           metavar='<name or UUID',
+           metavar='<name or UUID>',
            help="Name or UUID of HA enabled phc2sys instance")
 @utils.arg('phc2sys_ha_command',
-           metavar='<phc2sys control command>',
+           metavar='<phc2sys-control-command>',
            choices=['clock source', 'forced lock', 'status'])
 def do_phc2sys_ha_query(cc, args):
     phc2sys_com_socket = _get_phc2sys_com_socket(cc, args.nameoruuid)
@@ -74,10 +74,10 @@ def do_phc2sys_ha_query(cc, args):
 
 
 @utils.arg('nameoruuid',
-           metavar='<name or UUID',
+           metavar='<name or UUID>',
            help="Name or UUID of HA enabled phc2sys instance")
 @utils.arg('interface',
-           metavar='<phc2sys interface>',
+           metavar='<phc2sys-interface>',
            help="Name of a phc2sys NIC interface")
 def do_phc2sys_ha_force_lock(cc, args):
     phc2sys_com_socket = _get_phc2sys_com_socket(cc, args.nameoruuid)
@@ -88,7 +88,7 @@ def do_phc2sys_ha_force_lock(cc, args):
 
 
 @utils.arg('nameoruuid',
-           metavar='<name or UUID',
+           metavar='<name or UUID>',
            help="Name or UUID of HA enabled phc2sys instance")
 def do_phc2sys_ha_disable_lock(cc, args):
     phc2sys_com_socket = _get_phc2sys_com_socket(cc, args.nameoruuid)
@@ -98,10 +98,10 @@ def do_phc2sys_ha_disable_lock(cc, args):
 
 
 @utils.arg('nameoruuid',
-           metavar='<name or UUID',
+           metavar='<name or UUID>',
            help="Name or UUID of HA enabled phc2sys instance")
 @utils.arg('interface',
-           metavar='<phc2sys interface>',
+           metavar='<phc2sys-interface>',
            help="Name of a phc2sys NIC interface")
 def do_phc2sys_ha_disable_source(cc, args):
     phc2sys_com_socket = _get_phc2sys_com_socket(cc, args.nameoruuid)
@@ -112,10 +112,10 @@ def do_phc2sys_ha_disable_source(cc, args):
 
 
 @utils.arg('nameoruuid',
-           metavar='<name or UUID',
+           metavar='<name or UUID>',
            help="Name or UUID of HA enabled phc2sys instance")
 @utils.arg('interface',
-           metavar='<phc2sys interface>',
+           metavar='<phc2sys-interface>',
            help="Name of a phc2sys NIC interface")
 def do_phc2sys_ha_enable_source(cc, args):
     phc2sys_com_socket = _get_phc2sys_com_socket(cc, args.nameoruuid)
