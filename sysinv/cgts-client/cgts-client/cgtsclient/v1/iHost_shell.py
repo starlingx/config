@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -38,7 +38,8 @@ def _print_ihost_show(ihost, columns=None, output_format=None):
                   'clock_synchronization', 'device_image_update',
                   'reboot_needed', 'max_cpu_mhz_configured',
                   'min_cpu_mhz_allowed', 'max_cpu_mhz_allowed',
-                  'cstates_available', 'apparmor']
+                  'cstates_available', 'apparmor', 'iscsi_initiator_name',
+                  'nvme_host_id', 'nvme_host_nqn']
         optional_fields = ['vsc_controllers', 'ttys_dcd']
         if ihost.subfunctions != ihost.personality:
             fields.append('subfunctions')

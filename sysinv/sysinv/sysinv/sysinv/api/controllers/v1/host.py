@@ -572,6 +572,12 @@ class Host(base.APIBase):
     iscsi_initiator_name = wtypes.text
     "The iscsi initiator name (only used for worker hosts)"
 
+    nvme_host_id = wtypes.text
+    "The NVMe Host ID"
+
+    nvme_host_nqn = wtypes.text
+    "The NVMe Host NQN"
+
     device_image_update = wtypes.text
     "Represent the status of device image update of this ihost."
 
@@ -606,7 +612,7 @@ class Host(base.APIBase):
                           'reboot_needed', 'inv_state', 'clock_synchronization',
                           'max_cpu_mhz_configured', 'min_cpu_mhz_allowed',
                           'max_cpu_mhz_allowed', 'cstates_available',
-                          'apparmor']
+                          'apparmor', 'nvme_host_id', 'nvme_host_nqn']
 
         fields = minimum_fields if not expand else None
         uhost = Host.from_rpc_object(rpc_ihost, fields)

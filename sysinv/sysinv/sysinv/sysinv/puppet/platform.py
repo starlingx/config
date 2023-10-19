@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2023 Wind River Systems, Inc.
+# Copyright (c) 2017-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -180,8 +180,63 @@ class PlatformPuppet(base.BasePuppet):
             except exception.AddressNotFoundByName:
                 pass
         return {
-            'platform::config::params::hosts': hosts
+            'platform::config::params::hosts': hosts,
+            'platform::config::iscsi::params::initiator_name': self._get_iscsi_initiator_name(host),
+            'platform::config::nvme::params::host_id': self._get_nvme_host_id(host),
+            'platform::config::nvme::params::host_nqn': self._get_nvme_host_nqn(host.hostname)
         }
+
+    def _get_iscsi_initiator_name(self, host):
+        iscsi_initiator_name = None
+        if not host.iscsi_initiator_name:
+            try:
+                stdout, __ = utils.execute('/usr/sbin/iscsi-iname', '-p', 'iqn.2018-05.io.starlingx',
+                                           run_as_root=True)
+                if stdout:
+                    iscsi_initiator_name = stdout.strip()
+                    LOG.info("iscsi initiator name = %s" % iscsi_initiator_name)
+            except Exception:
+                LOG.error("Failed generate a new iscsi initiator name")
+        else:
+            iscsi_initiator_name = host.iscsi_initiator_name
+            LOG.info("Getting iscsi initiator name from database")
+
+        return iscsi_initiator_name
+
+    def _get_nvme_host_id(self, host):
+        nvme_host_id = None
+        if not host.nvme_host_id:
+            try:
+                stdout, __ = utils.execute('/usr/bin/uuidgen',
+                                           run_as_root=True)
+                if stdout:
+                    nvme_host_id = stdout.strip()
+                    LOG.info("nvme host id = %s" % nvme_host_id)
+            except Exception:
+                LOG.error("Failed generate a new nvme host id")
+        else:
+            nvme_host_id = host.nvme_host_id
+            LOG.info("Getting nvme host id from database")
+
+        return nvme_host_id
+
+    def _get_nvme_host_nqn(self, hostname):
+        host = self.dbapi.ihost_get_by_hostname(hostname)
+        nvme_host_nqn = None
+        if not host.nvme_host_nqn:
+            try:
+                stdout, __ = utils.execute('/usr/sbin/nvme', 'gen-hostnqn',
+                                           run_as_root=True)
+                if stdout:
+                    nvme_host_nqn = stdout.strip()
+                    LOG.info("nvme host nqn = %s" % nvme_host_nqn)
+            except Exception:
+                LOG.error("Failed generate a new nvme host nqn")
+        else:
+            nvme_host_nqn = host.nvme_host_nqn
+            LOG.info("Getting nvme host nqn from database")
+
+        return nvme_host_nqn
 
     def _get_amqp_config(self):
         if utils.is_fqdn_ready_to_use():

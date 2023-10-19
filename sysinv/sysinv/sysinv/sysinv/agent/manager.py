@@ -17,7 +17,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 
 
@@ -1089,10 +1089,6 @@ class AgentManager(service.PeriodicService):
                 config_uuid = self.iconfig_read_config_applied()
                 imsg_dict.update({'config_applied': config_uuid})
 
-                iscsi_initiator_name = self.get_host_iscsi_initiator_name()
-                if iscsi_initiator_name is not None:
-                    imsg_dict.update({'iscsi_initiator_name': iscsi_initiator_name})
-
                 self.platform_update_by_host(rpcapi,
                                              icontext,
                                              self._ihost_uuid,
@@ -1542,16 +1538,13 @@ class AgentManager(service.PeriodicService):
 
         if self._ihost_uuid and \
            os.path.isfile(tsc.INITIAL_CONFIG_COMPLETE_FLAG):
+            imsg_dict = {}
             if not self._report_to_conductor_iplatform_avail_flag and \
                not self._wait_for_nova_lvg(icontext, rpcapi, self._ihost_uuid, nova_lvgs):
                 imsg_dict = {'availability': constants.AVAILABILITY_AVAILABLE}
 
                 config_uuid = self.iconfig_read_config_applied()
                 imsg_dict.update({'config_applied': config_uuid})
-
-                iscsi_initiator_name = self.get_host_iscsi_initiator_name()
-                if iscsi_initiator_name is not None:
-                    imsg_dict.update({'iscsi_initiator_name': iscsi_initiator_name})
 
                 if self._ihost_personality == constants.CONTROLLER:
                     idisk = self._idisk_operator.idisk_get()
@@ -1565,13 +1558,24 @@ class AgentManager(service.PeriodicService):
                                       "conductor.")
                         pass
 
-                self.platform_update_by_host(rpcapi,
-                                             icontext,
-                                             self._ihost_uuid,
-                                             imsg_dict)
-
                 self._report_to_conductor_iplatform_avail()
                 self._iconfig_read_config_reported = config_uuid
+
+            iscsi_initiator_name = self.get_host_iscsi_initiator_name()
+            nvme_host_id = self.get_host_nvme_host_id()
+            nvme_host_nqn = self.get_host_nvme_host_nqn()
+
+            if iscsi_initiator_name is not None:
+                imsg_dict.update({'iscsi_initiator_name': iscsi_initiator_name})
+            if nvme_host_id is not None:
+                imsg_dict.update({'nvme_host_id': nvme_host_id})
+            if nvme_host_nqn is not None:
+                imsg_dict.update({'nvme_host_nqn': nvme_host_nqn})
+
+            self.platform_update_by_host(rpcapi,
+                                         icontext,
+                                         self._ihost_uuid,
+                                         imsg_dict)
 
         if self._ihost_uuid:
             LOG.debug("SysInv Agent Inventory Audit running.")
@@ -2198,6 +2202,32 @@ class AgentManager(service.PeriodicService):
             LOG.error("Failed retrieving iscsi initiator name")
 
         return iscsi_initiator_name
+
+    def get_host_nvme_host_id(self):
+        nvme_host_id = None
+        try:
+            stdout, __ = utils.execute('cat', '/etc/nvme/hostid',
+                                       run_as_root=True)
+            if stdout:
+                nvme_host_id = stdout.strip()
+            LOG.info("nvme host id = %s" % nvme_host_id)
+        except Exception:
+            LOG.error("Failed retrieving nvme host id")
+
+        return nvme_host_id
+
+    def get_host_nvme_host_nqn(self):
+        nvme_host_nqn = None
+        try:
+            stdout, __ = utils.execute('cat', '/etc/nvme/hostnqn',
+                                       run_as_root=True)
+            if stdout:
+                nvme_host_nqn = stdout.strip()
+            LOG.info("nvme host nqn = %s" % nvme_host_nqn)
+        except Exception:
+            LOG.error("Failed retrieving nvme host nqn")
+
+        return nvme_host_nqn
 
     def disk_prepare(self, context, host_uuid, idisk_dict,
                      skip_format, is_cinder_device):

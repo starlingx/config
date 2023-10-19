@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -110,7 +110,9 @@ class Host(base.SysinvObject):
             'max_cpu_mhz_configured': utils.str_or_none,
             'min_cpu_mhz_allowed': utils.str_or_none,
             'max_cpu_mhz_allowed': utils.str_or_none,
-            'cstates_available': utils.str_or_none
+            'cstates_available': utils.str_or_none,
+            'nvme_host_id': utils.str_or_none,
+            'nvme_host_nqn': utils.str_or_none
              }
 
     _foreign_fields = {
