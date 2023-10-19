@@ -324,6 +324,9 @@ class PlatformFirewallPuppet(base.BasePuppet):
             igmp_ingr_rule["protocol"] = igmp_proto
             igmp_ingr_rule["metadata"]["annotations"]["name"] = \
                 f"stx-ingr-{host.personality}-{network.type}-igmp{ip_version}"
+            # Allow 0.0.0.0/32 for the case the switch sends IGMP queries from
+            # a VLAN without the IP address configured.
+            igmp_ingr_rule["source"]["nets"].append("0.0.0.0/32")
             gnp_config["spec"]["ingress"].append(igmp_ingr_rule)
 
     def _set_rules_admin(self, gnp_config, network, host):
@@ -350,6 +353,9 @@ class PlatformFirewallPuppet(base.BasePuppet):
             igmp_ingr_rule["protocol"] = igmp_proto
             igmp_ingr_rule["metadata"]["annotations"]["name"] = \
                 f"stx-ingr-{host.personality}-{network.type}-igmp{ip_version}"
+            # Allow 0.0.0.0/32 for the case the switch sends IGMP queries from
+            # a VLAN without the IP address configured.
+            igmp_ingr_rule["source"]["nets"].append("0.0.0.0/32")
             gnp_config["spec"]["ingress"].append(igmp_ingr_rule)
 
     def _set_rules_cluster_host(self, gnp_config, network, host):
@@ -408,6 +414,9 @@ class PlatformFirewallPuppet(base.BasePuppet):
             igmp_ingr_rule["protocol"] = igmp_proto
             igmp_ingr_rule["metadata"]["annotations"]["name"] = \
                 f"stx-ingr-{host.personality}-{network.type}-igmp{ip_version}"
+            # Allow 0.0.0.0/32 for the case the switch sends IGMP queries from
+            # a VLAN without the IP address configured.
+            igmp_ingr_rule["source"]["nets"].append("0.0.0.0/32")
             gnp_config["spec"]["ingress"].append(igmp_ingr_rule)
 
     def _set_rules_pxeboot(self, gnp_config, network, host):
