@@ -494,6 +494,11 @@ def _validate_human_readable(name, value):
             "e.g., '100M', '2.5Gi', '500K', etc." % name)
 
 
+def _validate_human_readable_or_unlimited(name, value):
+    if value != 'unlimited':
+        _validate_human_readable(name, value)
+
+
 def _byte_transform(param_value, param_name):
     format1 = re.search(r"^(-*[0-9]+([\.][0-9]+)*)([B|K|M|G|T|P|E])$", str(param_value))
     format2 = re.search(r"^(0)$", str(param_value))
@@ -1369,11 +1374,11 @@ PLATFORM_CRASHDUMP_PARAMETER_OPTIONAL = [
 ]
 PLATFORM_CRASHDUMP_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_CRASHDUMP_MAX_SIZE:
-        _validate_human_readable,
+        _validate_human_readable_or_unlimited,
     constants.SERVICE_PARAM_CRASHDUMP_MAX_FILES:
         _validate_positive_integer,
     constants.SERVICE_PARAM_CRASHDUMP_MAX_USED:
-        _validate_human_readable,
+        _validate_human_readable_or_unlimited,
     constants.SERVICE_PARAM_CRASHDUMP_MIN_AVAILABLE:
         _validate_human_readable,
 }
