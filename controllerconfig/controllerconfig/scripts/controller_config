@@ -555,6 +555,12 @@ start()
         # delete flags
         rm -f $ETC_PLATFORM_DIR/.mgmt_network_reconfiguration_ongoing
         rm -f $ETC_PLATFORM_DIR/.mgmt_network_reconfiguration_unlock
+
+        # Create a flag to indicate that ceph mon reconfiguration is required if ceph is configured
+        if [ -e $ETC_PLATFORM_DIR/.node_ceph_configured ]
+        then
+            touch $ETC_PLATFORM_DIR/.ceph_mon_reconfig_required
+        fi
     fi
 
     hostname > /etc/hostname
