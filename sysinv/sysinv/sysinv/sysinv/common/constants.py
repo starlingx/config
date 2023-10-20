@@ -2319,6 +2319,10 @@ CERT_MODE_TO_SECRET_NAME = {
     CERT_MODE_OPENLDAP: OPENLDAP_CERT_SECRET_NAME
 }
 
+# Create RestAPI/GUI and Docker Registry certificates from bootstrap
+CREATE_PLATFORM_CERTIFICATES_IN_BOOTSTRAP = os.path.join(tsc.CONFIG_PATH,
+                                                         ".create_platform_certificates")
+
 # Storage associated networks
 SB_SUPPORTED_NETWORKS = {
     SB_TYPE_CEPH: [NETWORK_TYPE_MGMT, NETWORK_TYPE_CLUSTER_HOST]
