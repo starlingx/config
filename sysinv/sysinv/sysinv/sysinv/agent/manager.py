@@ -779,8 +779,8 @@ class AgentManager(service.PeriodicService):
         return kernel_running
 
     def _report_cstates_and_frequency_update(self, context, rpcapi=None):
-        """Evaluate if minimum frequency, maximum frequency or cstates
-        are changed. If yes, report to conductor.
+        """Report to conductor the minimum frequency, maximum frequency and
+        cstates.
         """
         if not self._ihost_uuid:
             return
@@ -788,32 +788,23 @@ class AgentManager(service.PeriodicService):
         freq_dict = {}
         try:
             min_freq = self._get_min_cpu_mhz_allowed()
+            self._ihost_min_cpu_mhz_allowed = min_freq
+
             max_freq = self._get_max_cpu_mhz_allowed()
+            self._ihost_max_cpu_mhz_allowed = max_freq
 
-            if min_freq != self._ihost_min_cpu_mhz_allowed:
-                self._ihost_min_cpu_mhz_allowed = min_freq
-                freq_dict.update({
-                    constants.IHOST_MIN_CPU_MHZ_ALLOWED:
-                    min_freq
-                })
+            freq_dict.update({
+                constants.IHOST_MIN_CPU_MHZ_ALLOWED: min_freq,
+                constants.IHOST_MAX_CPU_MHZ_ALLOWED: max_freq
+            })
 
-            if max_freq != self._ihost_max_cpu_mhz_allowed:
-                self._ihost_max_cpu_mhz_allowed = max_freq
-                freq_dict.update({
-                    constants.IHOST_MAX_CPU_MHZ_ALLOWED:
-                    max_freq
-                })
-
-            if os.path.isfile(os.path.join(constants.CSTATE_PATH,
-                                           "state0/name")):
+            if os.path.isfile(os.path.join(constants.CSTATE_PATH, "state0/name")):
                 cstates_names = self._get_cstates_names()
-                if utils.cstates_need_update(self._ihost_cstates_available,
-                                             cstates_names):
-                    self._ihost_cstates_available = ','.join(cstates_names)
-                    freq_dict.update({
-                        constants.IHOST_CSTATES_AVAILABLE:
-                        ','.join(cstates_names)
-                    })
+                self._ihost_cstates_available = ','.join(cstates_names)
+                freq_dict.update({
+                    constants.IHOST_CSTATES_AVAILABLE: ','.join(cstates_names)
+                })
+
         except OSError as ex:
             LOG.warning("Something wrong occurs during the cpu frequency"
                         f" search. {ex}")
