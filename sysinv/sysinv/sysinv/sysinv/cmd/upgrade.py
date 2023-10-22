@@ -25,7 +25,9 @@ CONF = cfg.CONF
 LOG = log.getLogger(__name__)
 
 
-def update_controller_state():
+# TODO(bqian): remove code below updating host_update, and software_upgrade table
+# after USM transition completes.
+def update_controller_state(skip_load_update):
     mydbapi = dbapi.get_instance()
 
     LOG.info("Updating upgrades data in sysinv database")
@@ -39,6 +41,9 @@ def update_controller_state():
                      'operational': constants.OPERATIONAL_ENABLED,
                      'availability': constants.AVAILABILITY_AVAILABLE}
     mydbapi.ihost_update(host.uuid, update_values)
+
+    if skip_load_update:
+        return
 
     # Update the from and to load for controller-1
     loads = mydbapi.load_get_list()
@@ -68,14 +73,21 @@ CONF.register_cli_opt(
 
 
 def main():
+    argv = sys.argv[:]
+    skip_load_update = False
+    for arg in sys.argv:
+        if arg == '--skip_load_update':
+            argv.remove(arg)
+            skip_load_update = True
+
     # Parse config file and command line options, then start logging
-    service.prepare_service(sys.argv)
+    service.prepare_service(argv)
 
     if CONF.action.name in ['update_controller_state']:
         msg = (_("Called '%(action)s'") %
                {"action": CONF.action.name})
         LOG.info(msg)
-        CONF.action.func()
+        CONF.action.func(skip_load_update)
     else:
         LOG.error(_("Unknown action: %(action)") % {"action":
                                                     CONF.action.name})
