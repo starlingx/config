@@ -886,6 +886,8 @@ class TestPatch(TestKubeUpgrade,
         self.assertEqual(response.json['to_version'], 'v1.43.2')
         self.assertEqual(response.json['state'], new_state)
 
+        # Not for a system controller, expect to clean up old
+        # container images.
         self.fake_conductor_api.kube_delete_container_images.\
             assert_called_with(mock.ANY, 'v1.43.2')
 

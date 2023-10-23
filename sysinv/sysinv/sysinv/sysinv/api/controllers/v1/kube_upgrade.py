@@ -516,6 +516,7 @@ class KubeUpgradeController(rest.RestController):
         elif updates['state'] == kubernetes.KUBE_UPGRADE_COMPLETE:
             # Make sure upgrade is in the correct state to complete
             system = pecan.request.dbapi.isystem_get_one()
+
             if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
                 # If the node is unschedulable=True then the cordon command
                 # executed already and some of the pods are in pending status.
@@ -580,15 +581,17 @@ class KubeUpgradeController(rest.RestController):
             # All is well, mark the upgrade as complete
             kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_COMPLETE
             kube_upgrade_obj.save()
-            pecan.request.rpcapi.kube_delete_container_images(
-                pecan.request.context, kube_upgrade_obj.to_version)
+
+            role = system.get('distributed_cloud_role')
+            # Clean up container images for the system other than systemcontroller
+            if role != constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+                pecan.request.rpcapi.kube_delete_container_images(
+                    pecan.request.context, kube_upgrade_obj.to_version)
 
             LOG.info("Completed kubernetes upgrade to version: %s" %
                 kube_upgrade_obj.to_version)
 
             # If applicable, notify dcmanager upgrade is complete
-            system = pecan.request.dbapi.isystem_get_one()
-            role = system.get('distributed_cloud_role')
             if role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
                 dc_api.notify_dcmanager_kubernetes_upgrade_completed()
 
