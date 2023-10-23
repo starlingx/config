@@ -7823,12 +7823,19 @@ class ConductorManager(service.PeriodicService):
         :param context: an admin context.
         :param systemname: the systemname
         """
+        personalities = [constants.CONTROLLER,
+                         constants.WORKER,
+                         constants.STORAGE]
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::config::system_name']
+        }
+        config_uuid = self._config_update_hosts(context, personalities)
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
-        LOG.debug("configure_isystemname: sending systemname to agent(s)")
+        # Update lldp agent with new system name
         rpcapi = agent_rpcapi.AgentAPI()
-        rpcapi.configure_isystemname(context, systemname=systemname)
-
-        return
+        rpcapi.configure_lldp_systemname(context, systemname)
 
     def get_ceph_tier_size(self, context, tier_name):
         """Get the usage information for a specific ceph tier."""
