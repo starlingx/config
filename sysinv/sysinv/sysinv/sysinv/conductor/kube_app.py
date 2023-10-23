@@ -1746,7 +1746,6 @@ class AppOperator(object):
         self._update_app_status(new_app, constants.APP_INACTIVE_STATE)
 
         try:
-            self._cleanup(new_app, app_dir=False)
             self._utils._patch_report_app_dependencies(
                 new_app.name + '-' + new_app.version)
             self._dbapi.kube_app_destroy(new_app.name,
@@ -1784,6 +1783,11 @@ class AppOperator(object):
                         # but are not in the old application version
                         if (new_chart.release not in old_app_charts and
                                 new_chart.release in deployed_releases):
+
+                            # Deletes secrets that are not in the version N of the app
+                            self._fluxcd.run_kubectl_kustomize(constants.KUBECTL_KUSTOMIZE_DELETE,
+                                                               new_chart.chart_os_path)
+
                             # Send delete request in FluxCD so it doesn't
                             # recreate the helm release
                             self._kube.delete_custom_resource(
@@ -1797,6 +1801,8 @@ class AppOperator(object):
                                                            new_chart.namespace)
                 else:
                     rc = False
+
+            self._cleanup(new_app, app_dir=False)
 
         except exception.ApplicationApplyFailure:
             rc = False
@@ -2780,6 +2786,11 @@ class AppOperator(object):
                 # but are not in the new application version
                 if (from_chart.release not in to_app_charts and
                         from_chart.release in deployed_releases):
+
+                    # Deletes secrets that are not in the n+1 app
+                    self._fluxcd.run_kubectl_kustomize(constants.KUBECTL_KUSTOMIZE_DELETE,
+                                                       from_chart.chart_os_path)
+
                     # Send delete request in FluxCD so it doesn't
                     # recreate the helm release
                     self._kube.delete_custom_resource(
