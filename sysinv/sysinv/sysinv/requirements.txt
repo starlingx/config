@@ -41,7 +41,7 @@ pyghmi
 PyYAML>=3.10
 psutil
 simplejson>=2.2.0 # MIT
-ruamel.yaml>=0.13.14 # MIT
+ruamel.yaml>=0.13.14,<0.18.0 # MIT
 docker  # Apache-2.0
 kubernetes  # Apache-2.0
 pyudev
