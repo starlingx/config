@@ -883,8 +883,13 @@ class AgentManager(service.PeriodicService):
                 self._ihost_personality = ihost['personality']
                 self._mgmt_ip = ihost['mgmt_ip']
                 self._ihost_rootfs_device = ihost['rootfs_device']
-                self._ihost_cstates_available = ihost.get('cstates_available') or None
-                self._ihost_min_cpu_mhz_allowed = ihost.get('min_cpu_mhz_allowed') or 0
+                # new fields in ihost: cstates_available and min_cpu_mhz_allowed
+                # TODO: These checks are only required for upgrade from version stx8.0.
+                #       They can be removed in future releases.
+                self._ihost_cstates_available = \
+                    ihost.get('cstates_available') if 'cstates_available' in ihost else None
+                self._ihost_min_cpu_mhz_allowed = \
+                    ihost.get('min_cpu_mhz_allowed') if 'min_cpu_mhz_allowed' in ihost else 0
                 self._ihost_max_cpu_mhz_allowed = ihost.get('max_cpu_mhz_allowed') or 0
 
                 if os.path.isfile(tsc.PLATFORM_CONF_FILE):
