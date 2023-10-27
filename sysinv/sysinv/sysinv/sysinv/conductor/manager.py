@@ -399,6 +399,8 @@ class ConductorManager(service.PeriodicService):
 
         self._sx_to_dx_post_migration_actions(system)
 
+        self._clear_partition_config_flags()
+
         LOG.info("sysinv-conductor start committed system=%s" %
                  system.as_dict())
 
@@ -675,6 +677,11 @@ class ConductorManager(service.PeriodicService):
                     self.dbapi,
                     constants.CINDER_BACKEND_CEPH,
                     task=constants.SB_TASK_RESTORE)
+
+    def _clear_partition_config_flags(self):
+        files = constants.PARTITION_CONFIG_FLAG % ("*")
+        for fname in glob.glob(files):
+            cutils.remove(fname)
 
     def _clear_stuck_loads(self):
         load_stuck_states = [constants.IMPORTING_LOAD_STATE]
@@ -4968,6 +4975,7 @@ class ConductorManager(service.PeriodicService):
         LOG.debug("PART conductor-manager partition: %s" % str(partition))
         # Get host.
         host_uuid = partition.get('ihost_uuid')
+        forihostid = partition.get('forihostid')
         try:
             db_host = self.dbapi.ihost_get(host_uuid)
         except exception.ServerNotFound:
@@ -4998,6 +5006,10 @@ class ConductorManager(service.PeriodicService):
                                             config_dict,
                                             force=force_apply,
                                             filter_classes=[self.PUPPET_RUNTIME_CLASS_PARTITIONS])
+        # The flag is cleared because the manifest class has already been added
+        # using the _add_runtime_class_apply_in_progress() method
+        # within _config_apply_runtime_manifest().
+        cutils.remove(constants.PARTITION_CONFIG_FLAG % (forihostid))
 
     def ipartition_update_by_ihost(self, context,
                                    ihost_uuid, ipart_dict_array, first_report=False):
@@ -5014,8 +5026,10 @@ class ConductorManager(service.PeriodicService):
             LOG.exception("Invalid ihost_uuid %s" % ihost_uuid)
             return
 
+        upgrade_in_progress = False
         try:
             self.dbapi.software_upgrade_get_one()
+            upgrade_in_progress = True
         except exception.NotFound:
             # No upgrade in progress
             pass
@@ -5032,13 +5046,19 @@ class ConductorManager(service.PeriodicService):
                          db_host.hostname)
                 return
 
-        if first_report and self._check_runtime_class_apply_in_progress([self.PUPPET_RUNTIME_CLASS_PARTITIONS],
-                                                                        host_uuids=ihost_uuid):
-            self._clear_runtime_class_apply_in_progress(classes_list=[self.PUPPET_RUNTIME_CLASS_PARTITIONS],
-                                                        host_uuids=ihost_uuid)
-
         # Get the id of the host.
         forihostid = db_host['id']
+
+        partition_config_flag = constants.PARTITION_CONFIG_FLAG % (forihostid)
+
+        # Receiving first_report=True means the sysinv-agent on that host has just started..
+        # This means that if there were any puppet manifests running, they have been
+        # terminated, so we need to clear the list of runtime manifests in progress
+        # below and also remove the partition config flag from that host, to avoid a false positive.
+        if first_report:
+            self._clear_runtime_class_apply_in_progress(classes_list=[self.PUPPET_RUNTIME_CLASS_PARTITIONS],
+                                                        host_uuids=ihost_uuid)
+            cutils.remove(partition_config_flag)
 
         # Obtain the partitions, disks and physical volumes that are currently
         # present in the DB.
@@ -5085,8 +5105,13 @@ class ConductorManager(service.PeriodicService):
 
             # Handle database to fix partitions with the status 'stuck'
             # in creating/deleting/modifying.
-            if not self._check_runtime_class_apply_in_progress([self.PUPPET_RUNTIME_CLASS_PARTITIONS]):
-                if db_part.device_path not in ipart_device_paths:
+            if not os.path.exists(partition_config_flag) and \
+                not self._check_runtime_class_apply_in_progress([self.PUPPET_RUNTIME_CLASS_PARTITIONS],
+                                                                host_uuids=ihost_uuid):
+                if db_part.device_path not in ipart_device_paths and \
+                        not upgrade_in_progress and \
+                        not os.path.exists(tsc.RESTORE_IN_PROGRESS_FLAG) and \
+                        db_part.status != constants.PARTITION_CREATE_ON_UNLOCK_STATUS:
                     self.dbapi.partition_destroy(db_part.uuid)
                     LOG.info("Delete DB partition stuck: %s" % str(db_part.items()))
                 elif db_part.status == constants.PARTITION_MODIFYING_STATUS:

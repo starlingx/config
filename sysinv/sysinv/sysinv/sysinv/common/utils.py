@@ -928,6 +928,11 @@ def touch(fname):
         os.utime(fname, None)
 
 
+def remove(fname):
+    if os.path.exists(fname):
+        os.remove(fname)
+
+
 def symlink_force(source, link_name):
     """ Force creation of a symlink
         Params:
