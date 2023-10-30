@@ -33,6 +33,13 @@ from sysinv.common import utils as cutils
 LOG = log.getLogger(__name__)
 TASK_NAME_PAUSE_AUDIT = 'pause'
 
+INVALID_SUBCLOUD_AUDIT_DEPLOY_STATES = [
+    # Secondary subclouds should not be audited as they are expected
+    # to be managed by a peer system controller (geo-redundancy feat.)
+    'secondary',
+    'secondary-failed'
+]
+
 cert_mon_opts = [
     cfg.IntOpt('audit_interval',
                default=86400,  # 24 hours
@@ -211,6 +218,13 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         def my_dc_token():
             """Ensure we always have a valid token"""
             return self.dc_token_cache.get_token()
+
+        # Abort audit if subcloud is in a valid deploy status
+        subcloud = utils.get_subcloud(my_dc_token(), subcloud_name)
+        if subcloud['deploy-status'] in INVALID_SUBCLOUD_AUDIT_DEPLOY_STATES:
+            LOG.info(f"Subcloud {subcloud_name} is in an invalid deploy status:"
+                     f" {subcloud['deploy-status']}, aborting audit")
+            return
 
         subcloud_sysinv_url = None
         try:
