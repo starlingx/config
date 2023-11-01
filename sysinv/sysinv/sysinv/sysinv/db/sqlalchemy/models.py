@@ -2170,3 +2170,24 @@ class KubeCmdVersions(Base):
     kubelet_version = Column(String(255), nullable=False)
     UniqueConstraint('kubeadm_version', 'kubelet_version',
                      name='u_kubeadm_version_kubelet_version')
+
+
+class RuntimeConfig(Base):
+    runtimeConfigStateEnum = Enum(
+        constants.RUNTIME_CONFIG_STATE_PENDING,
+        constants.RUNTIME_CONFIG_STATE_APPLIED,
+        constants.RUNTIME_CONFIG_STATE_FAILED,
+        constants.RUNTIME_CONFIG_STATE_RETRIED,
+        name="runtimeConfigStateEnum"
+    )
+
+    __tablename__ = 'runtime_config'
+
+    id = Column(Integer, primary_key=True)
+    config_uuid = Column(String(UUID_LENGTH), nullable=False)
+    config_dict = Column(String(767), nullable=False)
+    state = Column(runtimeConfigStateEnum, default=constants.RUNTIME_CONFIG_STATE_PENDING)
+    forihostid = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
+    reserved_1 = Column(String(255))
+    UniqueConstraint('config_uuid', 'forihostid',
+                     name='u_config_uuid_forihostid')

@@ -5054,3 +5054,48 @@ class Connection(object):
 
         :param networktype: network type
         """
+
+    @abc.abstractmethod
+    def runtime_config_create(self, values):
+        """Create a runtime_config entry
+
+        :param values: runtime_config entry relevant information
+        """
+    @abc.abstractmethod
+    def runtime_config_destroy(self, id):
+        """Destroy a runtime_config entry
+
+        :param id: runtime_config id or uuid
+        """
+
+    @abc.abstractmethod
+    def runtime_config_prune(self, older_than):
+        """Prune records older than a given date
+
+        :param older_than: date to filter entries older than it
+        """
+
+    @abc.abstractmethod
+    def runtime_config_update(self, id, values):
+        """Update a runtime_config entry
+
+        :param id: runtime_config id or uuid
+        :param values: dictionary containing fields to be updated
+        """
+
+    @abc.abstractmethod
+    def runtime_config_get(self, id, host_id=None):
+        """Returns a list of runtime_config entries for a given uuid
+
+        :param id: runtime config id or uuid
+        :param host_id: host id
+        """
+
+    @abc.abstractmethod
+    def runtime_config_get_all(self, config_uuid=None, state=None, older_than=None):
+        """Returns a list of runtime_config entries with a given filter
+
+        :param config_uuid: runtime_config uuid
+        :param state: runtime_config state
+        :param older_than: date to filter entries older than it
+        """
