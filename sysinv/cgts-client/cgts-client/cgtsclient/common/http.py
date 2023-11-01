@@ -116,6 +116,9 @@ def _extract_error_json_text(body_json):
     error_json = {}
     if 'error_message' in body_json:
         raw_msg = body_json['error_message']
+        if 'error_message' in raw_msg:
+            raw_error = jsonutils.loads(raw_msg)
+            raw_msg = raw_error['error_message']
         error_json = jsonutils.loads(raw_msg)
     elif 'error' in body_json:
         error_body = body_json['error']
@@ -263,7 +266,10 @@ class SessionClient(adapter.LegacyJsonAdapter):
         if kwargs.get('check_exceptions'):
             if response.status_code != 200:
                 err_message = _extract_error_json(response.text, response)
-                fault_text = err_message.get('faultstring') or "Unknown Error"
+                fault_text = (
+                    err_message.get("faultstring")
+                    or "Unknown error in SessionClient while uploading request with multipart"
+                )
                 raise exceptions.HTTPBadRequest(fault_text)
 
         return response.json()
@@ -502,7 +508,10 @@ class HTTPClient(httplib2.Http):
         if kwargs.get('check_exceptions'):
             if response.status_code != 200:
                 err_message = self._extract_error_json(response.text)
-                fault_text = err_message.get('faultstring') or "Unknown Error"
+                fault_text = (
+                    err_message.get("faultstring")
+                    or "Unknown error in HTTPClient while uploading request with multipart"
+                )
                 raise exceptions.HTTPBadRequest(fault_text)
 
         return response.json()

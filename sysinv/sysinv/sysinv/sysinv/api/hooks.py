@@ -75,8 +75,12 @@ class MultiFormDataHook(hooks.PecanHook):
             # 1x from internal webob copy (see before override below)
             # 1x from sysinv temporary copy
             if not utils.is_space_available("/scratch", 2 * content_length):
-                msg = _(NO_SPACE_MSG + " on /scratch for request %s"
-                        % url_path)
+                msg = _(
+                    "%s on /scratch for request %s, "
+                    "/scratch must have at least %d bytes of free space! "
+                    "You can delete unused files from /scratch or increase the size of it "
+                    "with: 'system host-fs-modify <hostname> scratch=<new_size_in_GiB>'"
+                ) % (NO_SPACE_MSG, url_path, 2 * content_length)
                 raise webob.exc.HTTPInternalServerError(explanation=msg)
 
     # Note: webob, for the multipart form-data request, creates 2 internal
