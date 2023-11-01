@@ -301,6 +301,10 @@ class NetworkingPuppet(base.BasePuppet):
                     'message_tag': instance['name']
                 })
                 instance['device_parameters'].update(default_device_parameters)
+            elif instance['service'] == constants.PTP_INSTANCE_TYPE_TS2PHC:
+                instance['global_parameters'].update({
+                    'message_tag': instance['name']
+                })
 
             for global_param in ptp_parameters_instance:
                 # Add the supplied instance parameters to global_parameters
