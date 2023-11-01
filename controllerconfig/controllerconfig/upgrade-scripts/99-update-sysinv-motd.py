@@ -76,9 +76,11 @@ def main():
     parser.add_argument("from_release", type=str)
     parser.add_argument("to_release", type=str)
     parser.add_argument("action", type=str)
+    if len(sys.argv) == 5:
+        parser.add_argument("postgres_port", type=int)
     args = parser.parse_args()
 
-    if len(sys.argv) != 4:
+    if len(sys.argv) not in [4, 5]:
         print("Invalid option {}".format(sys.arg))
         return 1
     if args.action == "activate":

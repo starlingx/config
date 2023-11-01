@@ -8,10 +8,11 @@
 # requests in N+1 release and not due to potential stale configuration
 # from N release.
 
-import psycopg2
 import sys
 
 from psycopg2.extras import RealDictCursor
+from controllerconfig import utils
+from controllerconfig.common import constants
 from controllerconfig.common import log
 
 LOG = log.get_logger(__name__)
@@ -21,6 +22,7 @@ def main():
     action = None
     from_release = None
     to_release = None
+    postgres_port = constants.POSTGRESQL_DEFAULT_PORT
     arg = 1
 
     while arg < len(sys.argv):
@@ -30,6 +32,8 @@ def main():
             to_release = sys.argv[arg]  # noqa
         elif arg == 3:
             action = sys.argv[arg]
+        elif arg == 4:
+            postgres_port = sys.argv[arg]
         else:
             print("Invalid option %s." % sys.argv[arg])
             return 1
@@ -43,15 +47,15 @@ def main():
     # This host table data migration will likely be required for each release
     if action == "migrate":
         try:
-            reset_config_target()
+            reset_config_target(postgres_port)
         except Exception as ex:
             LOG.exception(ex)
             return 1
 
 
-def reset_config_target():
+def reset_config_target(port):
 
-    conn = psycopg2.connect("dbname=sysinv user=postgres")
+    conn = utils.connect_to_postgresql(port)
     with conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("update i_host set config_target=NULL",)

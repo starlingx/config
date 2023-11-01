@@ -27,6 +27,9 @@ def main():
             to_release = sys.argv[arg]
         elif arg == 3:
             action = sys.argv[arg]
+        elif arg == 4:
+            # postgres_port = sys.argv[arg]
+            pass
         else:
             print("Invalid option %s." % sys.argv[arg])
             return 1

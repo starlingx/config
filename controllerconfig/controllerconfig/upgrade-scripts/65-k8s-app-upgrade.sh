@@ -22,7 +22,7 @@ FROM_RELEASE=$1
 TO_RELEASE=$2
 ACTION=$3
 
-if (( $# != 3 )); then
+if (( $# != 3 && $# != 4 )); then
     >&2 echo "Error: Missing Arguments!"
     >&2 echo "Usage: 65-k8s-app-upgrade.sh FROM_RELEASE TO_RELEASE ACTION"
     >&2 echo "Exiting for manual intervention..."
