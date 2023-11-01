@@ -266,8 +266,12 @@ def is_kube_version_supported(kube_version, min_version=None, max_version=None):
 
     :returns bool: True if k8s version is supported
     """
-    if ((min_version is not None and LooseVersion(kube_version) < LooseVersion(min_version)) or
-            (max_version is not None and LooseVersion(kube_version) > LooseVersion(max_version))):
+
+    kube_version = kube_version.strip().lstrip('v')
+    if ((min_version is not None and LooseVersion(kube_version) <
+         LooseVersion(min_version.strip().lstrip('v'))) or
+            (max_version is not None and LooseVersion(kube_version) >
+             LooseVersion(max_version.strip().lstrip('v')))):
         return False
     return True
 

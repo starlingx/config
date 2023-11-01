@@ -2224,6 +2224,9 @@ def find_metadata_file(path, metadata_file, upgrade_from_release=None):
     supported_k8s_version:
       minimum: <version>
       maximum: <version>
+    k8s_upgrades:
+      auto_update: <true/false/yes/no>
+      timing: <pre/post>
     supported_releases:
       <release>:
       - <patch.1>
@@ -2278,6 +2281,42 @@ def find_metadata_file(path, metadata_file, upgrade_from_release=None):
                                        a monitoring task.
                                        Default value is zero (no adjustment)
     """
+
+    def verify_auto_update(parent):
+        """ Validate the auto_update field of a given parent section
+
+        :param parent: parent section that contains the auto_update field
+                       to be verified
+        """
+        try:
+            auto_update = \
+                parent[constants.APP_METADATA_AUTO_UPDATE]
+            if not is_valid_boolstr(auto_update):
+                raise exception.SysinvException(_(
+                    "Invalid {}: {} expected value is either 'true' "
+                    "or 'false'."
+                    "".format(metadata_file,
+                              constants.APP_METADATA_AUTO_UPDATE)))
+        except KeyError:
+            pass
+
+    def verify_timing(parent):
+        """ Validate the timing field of a given parent section
+
+        :param parent: parent section that contains the timing field
+                       to be verified
+        """
+        try:
+            timing = \
+                parent[constants.APP_METADATA_TIMING]
+            if timing != "pre" and timing != "post":
+                raise exception.SysinvException(_(
+                    "Invalid {}: {} expected value is either 'pre' or 'post'."
+                    "".format(metadata_file,
+                              constants.APP_METADATA_TIMING)))
+        except KeyError:
+            pass
+
     app_name = ''
     app_version = ''
     patches = []
@@ -2447,16 +2486,7 @@ def find_metadata_file(path, metadata_file, upgrade_from_release=None):
             except KeyError:
                 pass
 
-            try:
-                auto_update = \
-                    upgrades[constants.APP_METADATA_AUTO_UPDATE]
-                if not is_valid_boolstr(auto_update):
-                    raise exception.SysinvException(_(
-                        "Invalid {}: {} expected value is a boolean string."
-                        "".format(metadata_file,
-                                  constants.APP_METADATA_AUTO_UPDATE)))
-            except KeyError:
-                pass
+            verify_auto_update(upgrades)
 
             try:
                 from_versions = upgrades[constants.APP_METADATA_FROM_VERSIONS]
@@ -2510,6 +2540,22 @@ def find_metadata_file(path, metadata_file, upgrade_from_release=None):
                                   six.string_types)))
             except KeyError:
                 pass
+
+        k8s_upgrades = None
+
+        try:
+            k8s_upgrades = doc[constants.APP_METADATA_K8S_UPGRADES]
+            if not isinstance(k8s_upgrades, dict):
+                raise exception.SysinvException(_(
+                    "Invalid {}: {} should be a dict."
+                    "".format(metadata_file,
+                              constants.APP_METADATA_K8S_UPGRADES)))
+        except KeyError:
+            pass
+
+        if k8s_upgrades:
+            verify_auto_update(k8s_upgrades)
+            verify_timing(k8s_upgrades)
 
         supported_releases = {}
         try:
