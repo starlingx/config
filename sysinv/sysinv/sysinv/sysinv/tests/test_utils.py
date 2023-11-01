@@ -34,6 +34,7 @@ import yaml
 
 from oslo_config import cfg
 
+from sysinv.common import app_metadata
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
@@ -498,18 +499,18 @@ behavior:
           - personality: controller
 """
 
-    def test_find_metadata_file_nofile(self):
-        """Verify results of find_metadata_file
+    def test_validate_metadata_file_nofile(self):
+        """Verify results of validate_metadata_file
 
         when if no file is found, returns:
         app_name =  "", app_version = "", patches = []
         """
         app_name, app_version, patches = \
-            utils.find_metadata_file("invalid_path",
-                                     "invalid_file",
-                                     upgrade_from_release=None)
+            app_metadata.validate_metadata_file("invalid_path",
+                                                "invalid_file",
+                                                upgrade_from_release=None)
         # if the file is not loaded or has invalid contents
-        # find_metadata_file returns two empty strings and
+        # validate_metadata_file returns two empty strings and
         # an empty list  ie:  "","",[]
         self.assertEqual(app_name, "")
         self.assertEqual(app_version, "")
@@ -517,9 +518,9 @@ behavior:
 
     @mock.patch.object(io, 'open')
     @mock.patch.object(os.path, 'isfile')
-    def test_find_metadata_file(self,
-                                _mock_isfile,
-                                _mock_open):
+    def test_validate_metadata_file(self,
+                                    _mock_isfile,
+                                    _mock_open):
         """This test mocks file operations
          and returns static file contents to allow unit
          testing the validation code
@@ -531,17 +532,17 @@ behavior:
         _mock_open.return_value = io.StringIO(self.sample_contents)
 
         app_name, app_version, patches = \
-            utils.find_metadata_file("valid_path",
-                                     "valid_file",
-                                     upgrade_from_release=None)
+            app_metadata.validate_metadata_file("valid_path",
+                                                "valid_file",
+                                                upgrade_from_release=None)
         self.assertEqual(app_name, "sample-app")
         self.assertEqual(app_version, "1.2-3")
 
     @mock.patch.object(io, 'open')
     @mock.patch.object(os.path, 'isfile')
-    def test_find_metadata_file_bad_contents(self,
-                                _mock_isfile,
-                                _mock_open):
+    def test_validate_metadata_file_bad_contents(self,
+                                                 _mock_isfile,
+                                                 _mock_open):
         """This test mocks file operations and verifies
          failure handling in how the yaml is validated
         """
@@ -572,6 +573,6 @@ behavior:
             bad_contents = yaml.dump(contents)
             _mock_open.return_value = io.StringIO(bad_contents)
             self.assertRaises(exception.SysinvException,
-                              utils.find_metadata_file,
+                              app_metadata.validate_metadata_file,
                               "valid_path",
                               "valid_file")
