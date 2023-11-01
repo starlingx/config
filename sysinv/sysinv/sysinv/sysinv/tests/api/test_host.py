@@ -2510,6 +2510,47 @@ class TestPatch(TestHost):
         # Verify that the apps reapply was called
         self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
 
+    def test_unsafe_force_lock_action_controller(self):
+        # Create controller-0
+        self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Create controller-1
+        c1_host = self._create_controller_1(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+
+        # Lock host
+        response = self._patch_host_action(c1_host['hostname'],
+                                           constants.FORCE_UNSAFE_LOCK_ACTION,
+                                           'sysinv-test')
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+        # Verify that the SM lock pre check was not done
+        self.mock_sm_api_lock_pre_check.assert_not_called()
+        # Verify that the force lock was sent to the VIM
+        self.mock_vim_api_host_action.assert_called_with(
+            mock.ANY,
+            c1_host['uuid'],
+            c1_host['hostname'],
+            constants.FORCE_UNSAFE_LOCK_ACTION,
+            mock.ANY)
+        # Verify that the host was not configured
+        self.fake_conductor_api.configure_ihost.assert_not_called()
+        # Verify that the host was not modified in maintenance
+        self.mock_mtce_api_host_modify.assert_not_called()
+        # Verify that the host action was cleared
+        result = self.get_json('/ihosts/%s' % c1_host['hostname'])
+        self.assertEqual(constants.NONE_ACTION, result['action'])
+        # Verify that the apps reapply was called
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
+
     def test_unlock_action_controller_while_upgrading_kubelet(self):
         # Create controller-0
         c0_host = self._create_controller_0(

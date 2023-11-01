@@ -6329,11 +6329,15 @@ class ConductorManager(service.PeriodicService):
                 if ihost.administrative == constants.ADMIN_UNLOCKED:
                     ihost_action_str = ihost.ihost_action or ""
 
-                    if (ihost_action_str.startswith(constants.FORCE_LOCK_ACTION) or
-                            ihost_action_str.startswith(constants.LOCK_ACTION)):
+                    if (ihost_action_str.startswith(constants.FORCE_UNSAFE_LOCK_ACTION) or
+                            ihost_action_str.startswith(constants.FORCE_LOCK_ACTION) or
+                                ihost_action_str.startswith(constants.LOCK_ACTION)):
 
                         task_str = ihost.task or ""
                         if (('--' in ihost_action_str and
+                              ihost_action_str.startswith(
+                                   constants.FORCE_UNSAFE_LOCK_ACTION)) or
+                            ('--' in ihost_action_str and
                               ihost_action_str.startswith(
                                    constants.FORCE_LOCK_ACTION)) or
                               ('----------' in ihost_action_str and
@@ -6355,14 +6359,26 @@ class ConductorManager(service.PeriodicService):
                                     self._api_token, self._mtc_address, self._mtc_port,
                                     ihost_mtc, timeout_in_secs)
 
+                            elif ihost_action_str.startswith(constants.FORCE_UNSAFE_LOCK_ACTION):
+                                timeout_in_secs = 6
+                                ihost_mtc['operation'] = 'modify'
+                                ihost_mtc['action'] = constants.FORCE_LOCK_ACTION
+                                ihost_mtc['task'] = constants.FORCE_LOCKING
+                                LOG.warn("ihost_action override %s" %
+                                        ihost_mtc)
+                                mtce_api.host_modify(
+                                    self._api_token, self._mtc_address, self._mtc_port,
+                                    ihost_mtc, timeout_in_secs)
+
                             # need time for FORCE_LOCK mtce to clear
                             if ('----' in ihost_action_str):
                                 ihost_action_str = ""
                             else:
                                 ihost_action_str += "-"
 
-                            if (task_str.startswith(constants.FORCE_LOCKING) or
-                            task_str.startswith(constants.LOCKING)):
+                            if (task_str.startswith(constants.UNSAFELY_FORCE_LOCKING) or
+                               task_str.startswith(constants.FORCE_LOCKING) or
+                               task_str.startswith(constants.LOCKING)):
                                 val = {'task': "",
                                     'ihost_action': ihost_action_str,
                                     'vim_progress_status': ""}
@@ -6371,8 +6387,9 @@ class ConductorManager(service.PeriodicService):
                                     'vim_progress_status': ""}
                         else:
                             ihost_action_str += "-"
-                            if (task_str.startswith(constants.FORCE_LOCKING) or
-                            task_str.startswith(constants.LOCKING)):
+                            if (task_str.startswith(constants.UNSAFELY_FORCE_LOCKING) or
+                               task_str.startswith(constants.FORCE_LOCKING) or
+                               task_str.startswith(constants.LOCKING)):
                                 task_str += "-"
                                 val = {'task': task_str,
                                     'ihost_action': ihost_action_str}
@@ -6382,8 +6399,9 @@ class ConductorManager(service.PeriodicService):
                         self.dbapi.ihost_update(ihost.uuid, val)
                 else:  # Administrative locked already
                     task_str = ihost.task or ""
-                    if (task_str.startswith(constants.FORCE_LOCKING) or
-                    task_str.startswith(constants.LOCKING)):
+                    if (task_str.startswith(constants.UNSAFELY_FORCE_LOCKING) or
+                       task_str.startswith(constants.FORCE_LOCKING) or
+                       task_str.startswith(constants.LOCKING)):
                         val = {'task': ""}
                         self.dbapi.ihost_update(ihost.uuid, val)
 

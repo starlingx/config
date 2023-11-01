@@ -626,11 +626,11 @@ def _check_host(stor):
         raise wsme.exc.ClientSideError(_(
             "System must have a %s backend" % constants.SB_TYPE_CEPH))
 
-    # semantic check: whether host can be locked or force locked based on
+    # semantic check: whether host can be locked or unsafely force locked based on
     # ceph monitors availability
     if not cutils.is_aio_system(pecan.request.dbapi):
-        force = ihost['action'] == constants.FORCE_LOCK_ACTION
-        utils.check_node_lock_ceph_mon(ihost, force=force)
+        unsafe = ihost['action'] == constants.FORCE_UNSAFE_LOCK_ACTION
+        utils.check_node_lock_ceph_mon(ihost, unsafe=unsafe)
 
 
 def _check_disk(stor):
