@@ -691,6 +691,8 @@ def _create(partition):
             idiskid,
             {'available_mib': new_available_mib})
 
+    partition_config_flag = constants.PARTITION_CONFIG_FLAG % (forihostid)
+    cutils.touch(partition_config_flag)
     try:
         # Update the database
         new_partition = pecan.request.dbapi.partition_create(forihostid,
@@ -707,11 +709,13 @@ def _create(partition):
             # Instruct puppet to implement the change
             pecan.request.rpcapi.update_partition_config(pecan.request.context,
                                                          partition)
-    except exception.HTTPNotFound:
-        msg = _("Creating partition failed for host %s ") % (ihost['hostname'])
-        raise wsme.exc.ClientSideError(msg)
     except exception.PartitionAlreadyExists:
         msg = _("Disk partition %s already exists." % partition.get('device_path'))
+        cutils.remove(partition_config_flag)
+        raise wsme.exc.ClientSideError(msg)
+    except Exception:
+        msg = _("Creating partition failed for host %s ") % (ihost['hostname'])
+        cutils.remove(partition_config_flag)
         raise wsme.exc.ClientSideError(msg)
 
     return new_partition

@@ -1597,6 +1597,9 @@ SYSINV_FIRST_REPORT_FLAG = os.path.join(SYSINV_VOLATILE_PATH,
 SYSINV_REPORTED = os.path.join(SYSINV_VOLATILE_PATH,
                                ".sysinv_reported")
 
+PARTITION_CONFIG_FLAG = os.path.join(
+    SYSINV_VOLATILE_PATH, ".sysinv_partition_config_%s")
+
 NETWORK_CONFIG_LOCK_FILE = os.path.join(
     tsc.VOLATILE_PATH, "apply_network_config.lock")
 
