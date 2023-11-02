@@ -5,6 +5,7 @@ amqplib>=0.6.1
 boto3
 botocore
 cryptography!=2.0  # BSD/Apache-2.0
+dnspython
 eventlet
 greenlet>=0.3.2 # MIT
 keyring

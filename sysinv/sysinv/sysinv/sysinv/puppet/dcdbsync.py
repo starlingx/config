@@ -44,6 +44,7 @@ class DCDBsyncPuppet(openstack.OpenstackBasePuppet):
 
     def get_system_config(self):
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
+        bind_host, host = self._get_bind_host()
 
         config = {
             # The region in which the identity server can be found
@@ -58,10 +59,10 @@ class DCDBsyncPuppet(openstack.OpenstackBasePuppet):
                 self._get_service_user_domain_name(),
             'dcdbsync::keystone::auth::service_name': self.SERVICE_NAME,
             'dcdbsync::keystone::auth::tenant': self._get_service_tenant_name(),
-            'dcdbsync::api::bind_host': self._get_management_address(),
-            'dcdbsync::api::keystone_auth_uri': self._keystone_auth_uri(),
+            'dcdbsync::api::bind_host': bind_host,
+            'dcdbsync::api::keystone_auth_uri': self._keystone_auth_uri(host),
             'dcdbsync::api::keystone_identity_uri':
-                self._keystone_identity_uri(),
+                self._keystone_identity_uri(host),
             'dcdbsync::api::keystone_tenant': self._get_service_project_name(),
             'dcdbsync::api::keystone_user_domain':
                 self._get_service_user_domain_name(),

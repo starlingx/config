@@ -2374,6 +2374,18 @@ def is_inventory_config_complete(dbapi, forihostid):
         return False
 
 
+def is_fqdn_ready_to_use():
+    """
+    Return true if FQDN can be used instead of IP ADDRESS
+    The use of FQDN is limited to management network
+    after the bootstrap.
+    """
+    if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG)):
+        return True
+
+    return False
+
+
 def is_std_system(dbapi):
     system = dbapi.isystem_get_one()
     return system.system_type == constants.TIS_STD_BUILD

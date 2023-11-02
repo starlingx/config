@@ -6,6 +6,7 @@
 
 from sysinv.common import constants
 from sysinv.puppet import openstack
+from sysinv.common import utils
 
 
 class BarbicanPuppet(openstack.OpenstackBasePuppet):
@@ -42,6 +43,10 @@ class BarbicanPuppet(openstack.OpenstackBasePuppet):
     def get_system_config(self):
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
 
+        host = (constants.CONTROLLER_FQDN
+                if utils.is_fqdn_ready_to_use()
+                else None)
+
         config = {
             'barbican::keystone::auth::public_url': self.get_public_url(),
             'barbican::keystone::auth::internal_url': self.get_internal_url(),
@@ -52,9 +57,9 @@ class BarbicanPuppet(openstack.OpenstackBasePuppet):
             'barbican::keystone::auth::configure_user_role': False,
 
             'barbican::keystone::authtoken::auth_url':
-                self._keystone_identity_uri(),
+                self._keystone_identity_uri(host),
             'barbican::keystone::authtoken::auth_uri':
-                self._keystone_auth_uri(),
+                self._keystone_auth_uri(host),
 
             'barbican::keystone::authtoken::user_domain_name':
                 self._get_service_user_domain_name(),

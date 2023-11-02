@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2022 Wind River Systems, Inc.
+# Copyright (c) 2020-2023 Wind River Systems, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -123,5 +123,5 @@ class CertificateMonitorService(service.Service):
 
     def subcloud_sysinv_endpoint_update(self, ctxt, subcloud_name, endpoint):
         """Update sysinv endpoint of dc token cache"""
-        LOG.info("Update subloud: %s sysinv endpoint" % subcloud_name)
+        LOG.info("Update subcloud: %s sysinv endpoint" % subcloud_name)
         self.manager.subcloud_sysinv_endpoint_update(subcloud_name, endpoint)

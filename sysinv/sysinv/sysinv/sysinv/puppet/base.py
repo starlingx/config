@@ -212,6 +212,19 @@ class BasePuppet(object):
         subnet = address.address + '/' + address.prefix
         return subnet
 
+    def _get_bind_host(self):
+        """
+        Retrieve bind host and host
+        The use of FQDN is limited to management network only.
+        """
+        if utils.is_fqdn_ready_to_use():
+            bind_host = constants.CONTROLLER_FQDN
+            host = constants.CONTROLLER_FQDN
+        else:
+            bind_host = self._get_management_address()
+            host = None
+        return bind_host, host
+
     def _get_subcloud_endpoint_address(self):
         try:
             address = self._format_url_address(self._get_admin_address())

@@ -5,7 +5,6 @@
 #
 
 from sysinv.common import constants
-
 from sysinv.puppet import openstack
 
 
@@ -34,9 +33,11 @@ class PatchingPuppet(openstack.OpenstackBasePuppet):
         }
 
     def get_system_config(self):
+        bind_host, host = self._get_bind_host()
+
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
-        patch_keystone_auth_uri = self._keystone_auth_uri()
-        patch_keystone_identity_uri = self._keystone_identity_uri()
+        patch_keystone_auth_uri = self._keystone_auth_uri(host)
+        patch_keystone_identity_uri = self._keystone_identity_uri(host)
         controller_multicast = self._get_address_by_name(
             constants.PATCH_CONTROLLER_MULTICAST_MGMT_IP_NAME,
             constants.NETWORK_TYPE_MULTICAST)
@@ -56,8 +57,7 @@ class PatchingPuppet(openstack.OpenstackBasePuppet):
                 self._get_service_user_domain_name(),
             'patching::api::keystone_project_domain':
                 self._get_service_project_domain_name(),
-            'patching::api::bind_host':
-                self._get_management_address(),
+            'patching::api::bind_host': bind_host,
 
             'patching::keystone::auth::public_url': self.get_public_url(),
             'patching::keystone::auth::internal_url': self.get_internal_url(),
@@ -69,9 +69,9 @@ class PatchingPuppet(openstack.OpenstackBasePuppet):
             'patching::keystone::auth::tenant': self._get_service_tenant_name(),
 
             'patching::keystone::authtoken::auth_url':
-                self._keystone_identity_uri(),
+                self._keystone_identity_uri(host),
             'patching::keystone::authtoken::auth_uri':
-                self._keystone_auth_uri(),
+                self._keystone_auth_uri(host),
 
             'patching::controller_multicast': controller_multicast.address,
             'patching::agent_multicast': agent_multicast.address,

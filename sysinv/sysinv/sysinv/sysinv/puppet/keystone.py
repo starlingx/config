@@ -279,13 +279,17 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
     def get_auth_port(self):
         return self.SERVICE_PORT
 
-    def get_auth_uri(self):
+    def get_auth_uri(self, host=None):
         if self._region_config():
             service_config = self._get_service_config(self.SERVICE_NAME)
             return service_config.capabilities.get('auth_uri')
         else:
-            return "http://%s:5000" % self._format_url_address(
-                self._get_management_address())
+            if(host is not None):
+                # FQDN
+                return "http://%s:%s" % (host, self.SERVICE_PORT)
+            else:
+                return "http://%s:%s" % (self._format_url_address(
+                    self._get_management_address()), self.SERVICE_PORT)
 
     def get_openstack_auth_uri(self):
         location = self._get_service_default_dns_name(
@@ -295,13 +299,21 @@ class KeystonePuppet(openstack.OpenstackBasePuppet):
                               location)
         return url
 
-    def get_identity_uri(self):
+    def get_identity_uri(self, host=None):
         if self._region_config():
             service_config = self._get_service_config(self.SERVICE_NAME)
+            if(host is not None):
+                # FQDN
+                return "http://%s:%s" % (host, self.SERVICE_PORT)
+
             return service_config.capabilities.get('auth_url')
         else:
-            return "http://%s:%s" % (self._format_url_address(
-                self._get_management_address()), self.SERVICE_PORT)
+            if(host is not None):
+                # FQDN
+                return "http://%s:%s" % (host, self.SERVICE_PORT)
+            else:
+                return "http://%s:%s" % (self._format_url_address(
+                    self._get_management_address()), self.SERVICE_PORT)
 
     def get_auth_url(self):
         if self._region_config():

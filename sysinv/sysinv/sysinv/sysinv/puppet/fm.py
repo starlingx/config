@@ -53,6 +53,10 @@ class FmPuppet(openstack.OpenstackBasePuppet):
             snmp_enabled_value = 0    # False
             snmp_trap_server_port = self.TRAP_SERVER_DEFAULT_PORT
 
+        host = (constants.CONTROLLER_FQDN
+                if utils.is_fqdn_ready_to_use()
+                else None)
+
         config = {
             'fm::keystone::auth::public_url': self.get_public_url(),
             'fm::keystone::auth::internal_url': self.get_internal_url(),
@@ -62,9 +66,9 @@ class FmPuppet(openstack.OpenstackBasePuppet):
             'fm::keystone::auth::tenant': self._get_service_tenant_name(),
 
             'fm::keystone::authtoken::auth_url':
-                self._keystone_identity_uri(),
+                self._keystone_identity_uri(host),
             'fm::keystone::authtoken::auth_uri':
-                self._keystone_auth_uri(),
+                self._keystone_auth_uri(host),
 
             'fm::keystone::authtoken::user_domain_name':
                 self._get_service_user_domain_name(),
@@ -77,7 +81,7 @@ class FmPuppet(openstack.OpenstackBasePuppet):
             'fm::keystone::authtoken::username': ksuser,
 
             'fm::auth::auth_url':
-                self._keystone_auth_uri(),
+                self._keystone_auth_uri(host),
             'fm::auth::auth_tenant_name':
                 self._get_service_tenant_name(),
 
@@ -102,8 +106,16 @@ class FmPuppet(openstack.OpenstackBasePuppet):
         return config
 
     def get_host_config(self, host):
+        if (utils.is_fqdn_ready_to_use() and
+                host.personality == constants.CONTROLLER):
+            if host.hostname == constants.CONTROLLER_0_HOSTNAME:
+                host_ip = constants.CONTROLLER_0_FQDN
+            if host.hostname == constants.CONTROLLER_1_HOSTNAME:
+                host_ip = constants.CONTROLLER_1_FQDN
+        else:
+            host_ip = host.mgmt_ip
         config = {
-            'platform::fm::params::api_host': host.mgmt_ip
+            'platform::fm::params::api_host': host_ip
         }
         return config
 

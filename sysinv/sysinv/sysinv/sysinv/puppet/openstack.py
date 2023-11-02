@@ -152,11 +152,11 @@ class OpenstackBasePuppet(base.BasePuppet):
     def _keystone_auth_port(self):
         return self._operator.keystone.get_auth_port()
 
-    def _keystone_auth_uri(self):
-        return self._operator.keystone.get_auth_uri()
+    def _keystone_auth_uri(self, host=None):
+        return self._operator.keystone.get_auth_uri(host)
 
-    def _keystone_identity_uri(self):
-        return self._operator.keystone.get_identity_uri()
+    def _keystone_identity_uri(self, host=None):
+        return self._operator.keystone.get_identity_uri(host)
 
     def _keystone_region_name(self):
         return self._operator.keystone._identity_specific_region_name()
@@ -229,7 +229,10 @@ class OpenstackBasePuppet(base.BasePuppet):
     def _format_database_connection(self, service,
                                     address=None, database=None):
         if not address:
-            address = self._get_management_address()
+            if cutils.is_fqdn_ready_to_use():
+                address = constants.CONTROLLER_FQDN
+            else:
+                address = self._get_management_address()
 
         if not database:
             database = service

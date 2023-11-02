@@ -6,6 +6,7 @@
 
 from sysinv.puppet import openstack
 from sysinv.common import constants
+from sysinv.common import utils
 
 
 class CertMonPuppet(openstack.OpenstackBasePuppet):
@@ -24,11 +25,15 @@ class CertMonPuppet(openstack.OpenstackBasePuppet):
     def get_system_config(self):
         sysinv_user = self._get_service_user_name(self.SYSINV_SERVICE_NAME)
 
+        host = (constants.CONTROLLER_FQDN
+                if utils.is_fqdn_ready_to_use()
+                else None)
+
         config = {}
         config.update({
             # The auth info for local authentication
-            'sysinv::certmon::local_keystone_auth_uri': self._keystone_auth_uri(),
-            'sysinv::certmon::local_keystone_identity_uri': self._keystone_identity_uri(),
+            'sysinv::certmon::local_keystone_auth_uri': self._keystone_auth_uri(host),
+            'sysinv::certmon::local_keystone_identity_uri': self._keystone_identity_uri(host),
             'sysinv::certmon::local_keystone_project_domain': self._get_service_project_domain_name(),
             'sysinv::certmon::local_keystone_tenant': self._get_service_project_name(),
             'sysinv::certmon::local_keystone_user': sysinv_user,
@@ -40,8 +45,8 @@ class CertMonPuppet(openstack.OpenstackBasePuppet):
             dc_user = self._get_service_user_name(self.DC_SERVICE_NAME),
             config.update({
                 # The auth info for DC authentication
-                'sysinv::certmon::dc_keystone_auth_uri': self._keystone_auth_uri(),
-                'sysinv::certmon::dc_keystone_identity_uri': self._keystone_identity_uri(),
+                'sysinv::certmon::dc_keystone_auth_uri': self._keystone_auth_uri(host),
+                'sysinv::certmon::dc_keystone_identity_uri': self._keystone_identity_uri(host),
                 'sysinv::certmon::dc_keystone_project_domain': self._get_service_project_domain_name(),
                 'sysinv::certmon::dc_keystone_tenant': self._get_service_project_name(),
                 'sysinv::certmon::dc_keystone_user': dc_user,
