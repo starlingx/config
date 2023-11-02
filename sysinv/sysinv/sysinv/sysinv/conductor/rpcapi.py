@@ -206,7 +206,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
 
         :param context: an admin context
         :param ihost_macs: list of mac addresses
-        :returns: ihost object, including all fields.
+        :returns: ihost object, including all fields and mgmt address.
         """
 
         return self.call(context,
@@ -227,6 +227,23 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context,
                          self.make_msg('get_ihost_by_hostname',
                                        ihost_hostname=ihost_hostname))
+
+    def get_address_by_host_networktype(self, context, name, networktype):
+        """Finds ihost db entry based upon the ihost hostname
+
+        This method returns an ihost if it matches the
+        hostname.
+
+        :param context: an admin context
+        :param name: ihost hostname
+        :param networktype: network type
+        :returns: ihost object, including all fields.
+        """
+
+        return self.call(context,
+                         self.make_msg('get_address_by_host_networktype',
+                                       name=name,
+                                       networktype=networktype))
 
     def iport_update_by_ihost(self, context,
                               ihost_uuid, inic_dict_array):

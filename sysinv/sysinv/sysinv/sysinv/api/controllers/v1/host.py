@@ -1591,11 +1591,13 @@ class HostController(rest.RestController):
         pecan.request.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
 
         # Configure the new ihost
-        ihost_ret = pecan.request.rpcapi.configure_ihost(pecan.request.context,
-                                                         ihost_obj)
+        pecan.request.rpcapi.configure_ihost(pecan.request.context, ihost_obj)
 
         # Notify maintenance about updated mgmt_ip
-        ihost_obj['mgmt_ip'] = ihost_ret.mgmt_ip
+        address_name = cutils.format_address_name(ihost_obj.hostname,
+                                                  constants.NETWORK_TYPE_MGMT)
+        address = pecan.request.dbapi.address_get_by_name(address_name)
+        ihost_obj['mgmt_ip'] = address.address
 
         # Add ihost to mtc
         new_ihost_mtc = ihost_obj.as_dict()
@@ -2179,14 +2181,16 @@ class HostController(rest.RestController):
                 raise wsme.exc.ClientSideError(
                     _("Please provision 'hostname' and 'personality'."))
 
-            ihost_ret = pecan.request.rpcapi.configure_ihost(
-                pecan.request.context, ihost_obj)
+            pecan.request.rpcapi.configure_ihost(pecan.request.context, ihost_obj)
 
             pecan.request.dbapi.ihost_update(
                 ihost_obj['uuid'], {'capabilities': ihost_obj['capabilities']})
 
             # Notify maintenance about updated mgmt_ip
-            ihost_obj['mgmt_ip'] = ihost_ret.mgmt_ip
+            address_name = cutils.format_address_name(ihost_obj.hostname,
+                                                      constants.NETWORK_TYPE_MGMT)
+            address = pecan.request.dbapi.address_get_by_name(address_name)
+            ihost_obj['mgmt_ip'] = address.address
 
             hostupdate.notify_mtce = True
 
@@ -5525,7 +5529,6 @@ class HostController(rest.RestController):
 
         # To unlock, we need the following additional fields
         if not (hostupdate.ihost_patch['mgmt_mac'] and
-                hostupdate.ihost_patch['mgmt_ip'] and
                 hostupdate.ihost_patch['hostname'] and
                 hostupdate.ihost_patch['personality'] and
                 hostupdate.ihost_patch['subfunctions']):

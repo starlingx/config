@@ -652,11 +652,11 @@ start()
 
     # Apply the puppet manifest
     HIERADATA_PATH=${PUPPET_CACHE}/hieradata
-    HOST_HIERA=${HIERADATA_PATH}/${IPADDR}.yaml
+    HOST_HIERA=${HIERADATA_PATH}/${HOST}.yaml
 
     if [ -f ${HOST_HIERA} ]; then
         echo "$0: Running puppet manifest apply"
-        puppet-manifest-apply.sh ${HIERADATA_PATH} ${IPADDR} ${subfunction}
+        puppet-manifest-apply.sh ${HIERADATA_PATH} ${HOST} ${subfunction}
         RC=$?
         if [ $RC -ne 0 ]
         then

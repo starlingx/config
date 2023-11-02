@@ -340,6 +340,7 @@ class TestPostWorkerMixin(object):
 
     def test_create_host_worker(self):
         # Test creation of worker
+        self._create_test_host_addresses('worker-0')
         ndict = dbutils.post_get_test_ihost(hostname='worker-0',
                                             personality='worker',
                                             subfunctions=None,
@@ -371,6 +372,7 @@ class TestPostEdgeworkerMixin(object):
 
     def test_create_host_worker(self):
         # Test creation of worker
+        self._create_test_host_addresses('edgeworker-0')
         ndict = dbutils.post_get_test_ihost(hostname='edgeworker-0',
                                             personality='edgeworker',
                                             subfunctions=None,
@@ -1850,6 +1852,7 @@ class TestDelete(TestHost):
         # Create controller-0
         self._create_controller_0()
         # Create a worker host
+        self._create_test_host_addresses('worker-0')
         ndict = dbutils.post_get_test_ihost(hostname='worker-0',
                                             personality='worker',
                                             subfunctions=None,
@@ -1925,6 +1928,7 @@ class TestListHosts(TestHost):
         self._create_controller_0()
 
         # Test creation of worker
+        self._create_test_host_addresses('worker-0')
         ndict = dbutils.post_get_test_ihost(hostname='worker-0',
                                             personality='worker',
                                             subfunctions=None,
@@ -2633,6 +2637,7 @@ class TestPatch(TestHost):
             availability=constants.AVAILABILITY_ONLINE)
         self._create_test_host_platform_interface(w0_host)
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
+        self._create_test_host_addresses(w0_host.hostname)
 
         # Unlock worker host
         response = self._patch_host_action(w0_host['hostname'],
@@ -2679,6 +2684,7 @@ class TestPatch(TestHost):
         self._create_test_host_platform_interface(w0_host)
         self._create_test_host_cpus(
             w0_host, platform=1, vswitch=2, application=12)
+        self._create_test_host_addresses(w0_host.hostname)
 
         # Unlock worker host while lock action in progress
         response = self._patch_host_action(w0_host['hostname'],
@@ -2719,6 +2725,7 @@ class TestPatch(TestHost):
         self._create_test_host_platform_interface(w0_host)
         self._create_test_host_cpus(
             w0_host, platform=1, vswitch=2, application=12)
+        self._create_test_host_addresses(w0_host.hostname)
 
         # Unlock worker host while lock action in progress
         response = self._patch_host_action(w0_host['hostname'],
@@ -2897,6 +2904,7 @@ class TestPatch(TestHost):
 
         self._create_test_host_platform_interface(w0_host)
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
+        self._create_test_host_addresses(w0_host.hostname)
 
         w0_hostname = w0_host['hostname']
         response = self._patch_host_action(
@@ -2941,6 +2949,7 @@ class TestPatch(TestHost):
 
         self._create_test_host_platform_interface(w0_host)
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
+        self._create_test_host_addresses(w0_host.hostname)
 
         w0_hostname = w0_host['hostname']
         response = self._patch_host_action(
@@ -3722,6 +3731,7 @@ class TestHostPTPValidation(TestHost):
             availability=constants.AVAILABILITY_ONLINE)
         self._create_test_host_platform_interface(w0_host)
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
+        self._create_test_host_addresses(w0_host.hostname)
 
         # Host with PTP must have at least one ptp interface
         interface = {
@@ -3778,6 +3788,7 @@ class TestHostPTPValidation(TestHost):
             availability=constants.AVAILABILITY_ONLINE)
         self._create_test_host_platform_interface(w0_host)
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
+        self._create_test_host_addresses(w0_host.hostname)
 
         # Host with PTP must have at least one ptp interface
         response = self._patch_host_action(

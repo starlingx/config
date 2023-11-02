@@ -19,6 +19,7 @@ from tsconfig import tsconfig
 
 from oslo_log import log as logging
 from sysinv.puppet import common
+from sysinv.common import utils
 
 
 LOG = logging.getLogger(__name__)
@@ -213,8 +214,16 @@ class PuppetOperator(object):
                  "target_load: %s config: %s" %
                  (host.hostname, config_uuid, target_load, config))
 
+    def _get_address_by_name(self, name, networktype):
+        """
+        Retrieve an address entry by name and scoped by network type
+        """
+        address_name = utils.format_address_name(name, networktype)
+        address = self.dbapi.address_get_by_name(address_name)
+        return address
+
     def _merge_host_config(self, host, target_load, config):
-        filename = host.mgmt_ip + '.yaml'
+        filename = host.hostname + '.yaml'
         path = os.path.join(
             tsconfig.PLATFORM_PATH,
             'puppet',
@@ -232,18 +241,18 @@ class PuppetOperator(object):
     def remove_host_config(self, host):
         """Remove the configuration for the supplied host"""
         try:
-            filename = "%s.yaml" % host.mgmt_ip
+            filename = "%s.yaml" % host.hostname
             self._remove_config(filename)
         except Exception:
             LOG.exception("failed to remove host config: %s" % host.uuid)
 
     def _write_host_config(self, host, config, path=None):
         """Update the configuration for a specific host"""
-        filename = "%s.yaml" % host.mgmt_ip
+        filename = "%s.yaml" % host.hostname
         self._write_config(filename, config, path)
 
     def _read_host_config(self, host, path):
-        filename = "%s.yaml" % host.mgmt_ip
+        filename = "%s.yaml" % host.hostname
         return self._read_config(filename, path)
 
     def _read_config(self, filename, path):

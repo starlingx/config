@@ -28,7 +28,7 @@ def _print_ihost_show(ihost, columns=None, output_format=None):
     else:
         fields = ['id', 'uuid', 'personality', 'hostname', 'invprovision',
                   'administrative', 'operational', 'availability', 'task',
-                  'action', 'mgmt_mac', 'mgmt_ip', 'serialid', 'capabilities',
+                  'action', 'mgmt_mac', 'serialid', 'capabilities',
                   'bm_type', 'bm_username', 'bm_ip', 'config_applied',
                   'config_target', 'config_status', 'location', 'uptime',
                   'reserved', 'created_at', 'updated_at', 'boot_device',
@@ -169,10 +169,6 @@ def do_kube_host_upgrade_list(cc, args):
 @utils.arg('-m', '--mgmt_mac',
            metavar='<mgmt_mac>',
            help='MAC Address of the host mgmt interface [REQUIRED]')
-@utils.arg('-i', '--mgmt_ip',
-           metavar='<mgmt_ip>',
-           help='IP Address of the host mgmt interface (when using static '
-                'address allocation)')
 @utils.arg('-I', '--bm_ip',
            metavar='<bm_ip>',
            help="IP Address of the host board management interface, "
@@ -220,7 +216,7 @@ def do_kube_host_upgrade_list(cc, args):
 def do_host_add(cc, args):
     """Add a new host."""
     field_list = ['hostname', 'personality', 'subfunctions', 'mgmt_mac',
-                  'mgmt_ip', 'bm_ip', 'bm_type', 'bm_username', 'bm_password',
+                  'bm_ip', 'bm_type', 'bm_username', 'bm_password',
                   'boot_device', 'rootfs_device', 'hw_settle',
                   'install_output', 'console', 'vsc_controllers', 'location',
                   'ttys_dcd', 'clock_synchronization']
