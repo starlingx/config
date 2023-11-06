@@ -14093,6 +14093,121 @@ class ConductorManager(service.PeriodicService):
         addr = registry_network_addr_pool.floating_address
         return addr
 
+    def _remove_system_local_ca_resources(self):
+        kube_operator = kubernetes.KubeOperator()
+        try:
+            clusterissuer = kube_operator.get_clusterwide_custom_resource(
+                kubernetes.CERT_MANAGER_GROUP,
+                kubernetes.CERT_MANAGER_VERSION,
+                'clusterissuers',
+                constants.LOCAL_CA_SECRET_NAME)
+            if clusterissuer is not None:
+                kube_operator.delete_clusterwide_custom_resource(
+                    kubernetes.CERT_MANAGER_GROUP,
+                    kubernetes.CERT_MANAGER_VERSION,
+                    'clusterissuers',
+                    constants.LOCAL_CA_SECRET_NAME)
+
+            # Currently we don't support renewing 'system-local-ca' certificate,
+            # so if the secret is owned by a certificate resource managed by
+            # cert-manager, we need to delete it.
+            certificate = kube_operator.get_custom_resource(
+                kubernetes.CERT_MANAGER_GROUP,
+                kubernetes.CERT_MANAGER_VERSION,
+                constants.CERT_NAMESPACE_PLATFORM_CA_CERTS,
+                'certificates',
+                constants.LOCAL_CA_SECRET_NAME)
+            if certificate is not None:
+                kube_operator.delete_custom_resource(
+                    kubernetes.CERT_MANAGER_GROUP,
+                    kubernetes.CERT_MANAGER_VERSION,
+                    constants.CERT_NAMESPACE_PLATFORM_CA_CERTS,
+                    'certificates',
+                    constants.LOCAL_CA_SECRET_NAME)
+
+            secret = kube_operator.kube_get_secret(
+                constants.LOCAL_CA_SECRET_NAME,
+                constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
+            if secret is not None:
+                kube_operator.kube_delete_secret(
+                    constants.LOCAL_CA_SECRET_NAME,
+                    constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
+
+        except Exception as e:
+            msg = "Failed to remove system-local-ca resources: %s" % str(e)
+            LOG.error(msg)
+            raise exception.SysinvException(_(msg))
+
+    def _create_system_local_ca_resources(self, root_ca_cert, ca_cert, ca_key):
+        """Uses an CA certificate to create the platform's 'system-local-ca'
+           secret and ClusterIssuer. This ClusterIssuer will be used to issue
+           other platform certificates and can be use by the end user to issue
+           other required certificates.
+
+        :param root_ca_cert: The RCA that is in the base of the 'ca_cert' chain,
+                             in PEM format (base64 encoded)
+        :param ca_cert: The ICA (or RCA) that will be used to issue the platform
+                        certificates, in PEM format (base64 encoded)
+        :param ca_key: The 'ca_cert' certificate key in PEM format (base64 encoded)
+
+        """
+        secret_body = {
+            'apiVersion': kubernetes.CERT_MANAGER_VERSION,
+            'kind': 'Secret',
+            'metadata': {
+                'name': constants.LOCAL_CA_SECRET_NAME,
+                'namespace': constants.CERT_NAMESPACE_PLATFORM_CA_CERTS
+            },
+            'type': constants.K8S_SECRET_TYPE_TLS,
+            'data': {
+                'ca.crt': root_ca_cert,
+                'tls.crt': ca_cert,
+                'tls.key': ca_key,
+            }
+        }
+
+        clusterissuer_body = {
+            'apiVersion': '%s/%s' % (kubernetes.CERT_MANAGER_GROUP, kubernetes.CERT_MANAGER_VERSION),
+            'kind': 'ClusterIssuer',
+            'metadata': {
+                'name': constants.LOCAL_CA_SECRET_NAME
+            },
+            'spec': {
+                'ca': {
+                    'secretName': constants.LOCAL_CA_SECRET_NAME
+                }
+            },
+            'status': {}
+        }
+
+        kube_operator = kubernetes.KubeOperator()
+        try:
+            kube_operator.kube_create_secret(
+                constants.CERT_NAMESPACE_PLATFORM_CA_CERTS,
+                secret_body)
+
+            kube_operator.apply_clusterwide_custom_resource(
+                kubernetes.CERT_MANAGER_GROUP,
+                kubernetes.CERT_MANAGER_VERSION,
+                'clusterissuers',
+                constants.LOCAL_CA_SECRET_NAME,
+                clusterissuer_body)
+
+        except Exception as e:
+            msg = "Failed to create system-local-ca resources: %s" % str(e)
+            LOG.error(msg)
+            raise exception.SysinvException(_(msg))
+
+    def _extract_rca_from_bundle(self, cert_list):
+        rca = ""
+        if len(cert_list) > 1:
+            last_cert = self._get_public_bytes(cert_list[-1:])
+            if cutils.verify_self_signed_ca_cert(last_cert.decode('utf-8')):
+                rca = base64.encode_as_text(last_cert)
+                cert_list.pop()
+
+        return rca, base64.encode_as_text(self._get_public_bytes(cert_list))
+
     def config_certificate(self, context, pem_contents, config_dict):
         """Configure certificate with the supplied data.
 
@@ -14207,88 +14322,22 @@ class ConductorManager(service.PeriodicService):
         # Special mode for openldap CA certificate.
         # This CA certificate will be stored in k8s as an TLS secret,
         # and this secret will be used to create a local ClusterIssuer.
-        # If either the secret or the ClusterIssuer already exist, they
-        # will be overwritten.
-        # This ClusterIssuer will also be used to issue the other platform
-        # certificates once they are migrated to cert-manager.
+        # Existing secret or ClusterIssuer will be overwritten.
+        # If a Certificate resource owns the secret, it will be deleted.
+        # The ClusterIssuer created will also be used to issue the other
+        # platform certificates once they are migrated to cert-manager.
         elif mode == constants.CERT_MODE_OPENLDAP_CA:
-            kube_operator = kubernetes.KubeOperator()
-            public_bytes = self._get_public_bytes(cert_list)
-            cert_secret = base64.encode_as_text(public_bytes)
-
             try:
                 private_bytes = self._get_private_bytes_one(private_key)
-                cert_key = base64.encode_as_text(private_bytes)
+                cert_tls_key = base64.encode_as_text(private_bytes)
+                cert_ca_secret, cert_tls_secret = self._extract_rca_from_bundle(cert_list)
             except Exception as e:
-                msg = "Failed to retrieve private key: %s" % str(e)
+                msg = "Failed to retrieve system-local-ca certs or key: %s" % str(e)
                 LOG.error(msg)
                 raise exception.SysinvException(_(msg))
 
-            secret_body = {
-                'apiVersion': 'v1',
-                'kind': 'Secret',
-                'metadata': {
-                    'name': constants.LOCAL_CA_SECRET_NAME,
-                    'namespace': constants.CERT_NAMESPACE_PLATFORM_CA_CERTS
-                },
-                'type': constants.K8S_SECRET_TYPE_TLS,
-                'data': {
-                    'tls.crt': cert_secret,
-                    'tls.key': cert_key,
-                }
-            }
-
-            try:
-                secret = kube_operator.kube_get_secret(
-                        constants.LOCAL_CA_SECRET_NAME,
-                        constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
-                if secret is not None:
-                    kube_operator.kube_delete_secret(
-                            constants.LOCAL_CA_SECRET_NAME,
-                            constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
-                kube_operator.kube_create_secret(
-                        constants.CERT_NAMESPACE_PLATFORM_CA_CERTS, secret_body)
-            except Exception as e:
-                msg = "Failed to store local CA in k8s secret: %s" % str(e)
-                LOG.error(msg)
-                raise exception.SysinvException(_(msg))
-
-            clusterissuer_body = {
-                'apiVersion': '%s/%s' % (kubernetes.CERT_MANAGER_GROUP, kubernetes.CERT_MANAGER_VERSION),
-                'kind': 'ClusterIssuer',
-                'metadata': {
-                    'name': constants.LOCAL_CA_SECRET_NAME
-                },
-                'spec': {
-                    'ca': {
-                        'secretName': constants.LOCAL_CA_SECRET_NAME
-                    }
-                },
-                'status': {}
-            }
-
-            try:
-                clusterissuer = kube_operator.get_clusterwide_custom_resource(
-                        kubernetes.CERT_MANAGER_GROUP,
-                        kubernetes.CERT_MANAGER_VERSION,
-                        'clusterissuers',
-                        constants.LOCAL_CA_SECRET_NAME)
-                if clusterissuer is not None:
-                    kube_operator.delete_clusterwide_custom_resource(
-                            kubernetes.CERT_MANAGER_GROUP,
-                            kubernetes.CERT_MANAGER_VERSION,
-                            'clusterissuers',
-                            constants.LOCAL_CA_SECRET_NAME)
-                kube_operator.apply_clusterwide_custom_resource(
-                        kubernetes.CERT_MANAGER_GROUP,
-                        kubernetes.CERT_MANAGER_VERSION,
-                        'clusterissuers',
-                        constants.LOCAL_CA_SECRET_NAME,
-                        clusterissuer_body)
-            except Exception as e:
-                msg = "Failed to create local ClusterIssuer: %s" % str(e)
-                LOG.error(msg)
-                raise exception.SysinvException(_(msg))
+            self._remove_system_local_ca_resources()
+            self._create_system_local_ca_resources(cert_ca_secret, cert_tls_secret, cert_tls_key)
 
         elif mode == constants.CERT_MODE_DOCKER_REGISTRY:
             LOG.info("Docker registry certificate install")

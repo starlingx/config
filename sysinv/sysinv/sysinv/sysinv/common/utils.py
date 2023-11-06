@@ -3425,6 +3425,25 @@ def get_ca_certificate_from_opaque_secret(secret_name, secret_ns):
     return ca_crt
 
 
+def verify_self_signed_ca_cert(crt):
+    with tempfile.NamedTemporaryFile() as tmpfile:
+        tmpfile.write(crt.encode('utf8'))
+        tmpfile.flush()
+        cmd = ['openssl', 'verify', '-no-CApath', '-CAfile', tmpfile.name, tmpfile.name]
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                universal_newlines=True)
+
+        stdout, stderr = proc.communicate(input=crt)
+        proc.wait()
+        if 0 == proc.returncode:
+            return True
+        else:
+            LOG.info('Provided CA cert is not self-signed\n%s\n%s\n%s' %
+                     (crt, stdout, stderr))
+            return False
+
+
 def verify_ca_crt(crt):
     with tempfile.NamedTemporaryFile() as tmpfile:
         tmpfile.write(crt.encode('utf8'))
@@ -3441,7 +3460,6 @@ def verify_ca_crt(crt):
         else:
             LOG.info('Provided CA cert is invalid\n%s\n%s\n%s' %
                      (crt, stdout, stderr))
-
             return False
 
 
@@ -3461,7 +3479,6 @@ def verify_intermediate_ca_cert(ca_crt, tls_crt):
         else:
             LOG.info('Provided intermediate CA cert is invalid\n%s\n%s\n%s' %
                      (tls_crt, stdout, stderr))
-
             return False
 
 
