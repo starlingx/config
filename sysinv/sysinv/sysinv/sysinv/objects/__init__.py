@@ -12,7 +12,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 
 from sysinv.objects import address
@@ -38,6 +38,7 @@ from sysinv.objects import helm_overrides
 from sysinv.objects import host
 from sysinv.objects import host_upgrade
 from sysinv.objects import kube_app
+from sysinv.objects import kube_app_bundle
 from sysinv.objects import kube_app_releases
 from sysinv.objects import kube_host_upgrade
 from sysinv.objects import kube_upgrade
@@ -185,6 +186,7 @@ storage_ceph_rook = storage_ceph_rook.StorageCephRook
 helm_overrides = helm_overrides.HelmOverrides
 label = label.Label
 kube_app = kube_app.KubeApp
+kube_app_bundle = kube_app_bundle.KubeAppBundle
 kube_app_releases = kube_app_releases.KubeAppReleases
 kube_host_upgrade = kube_host_upgrade.KubeHostUpgrade
 kube_upgrade = kube_upgrade.KubeUpgrade
@@ -271,6 +273,7 @@ __all__ = ("system",
            "storage_ceph_external",
            "helm_overrides",
            "kube_app",
+           "kube_app_bundle",
            "kube_app_releases",
            "kube_host_upgrade",
            "kube_upgrade",
