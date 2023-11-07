@@ -15869,7 +15869,8 @@ class ConductorManager(service.PeriodicService):
         if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
             cordon_cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
                           'drain', host_name, '--ignore-daemonsets', '--delete-emptydir-data',
-                          '--delete-local-data', '--force', '--skip-wait-for-delete-timeout=1']
+                          '--delete-local-data', '--force', '--skip-wait-for-delete-timeout=1',
+                          '--timeout=60s']
 
             proc = subprocess.Popen(cordon_cmd, stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE, universal_newlines=True)
@@ -15877,7 +15878,12 @@ class ConductorManager(service.PeriodicService):
             if proc.returncode != 0:
                 LOG.error('Error in executing %s: %s' %
                         (cordon_cmd, stderr))
-                cordon_status = kubernetes.KUBE_UPGRADE_CORDON_FAILED
+                # Allow the cordon to succeed when pod failed to evict due to
+                # pod disruption budget.
+                if "violate the pod's disruption budget" in stderr:
+                    cordon_status = kubernetes.KUBE_UPGRADE_CORDON_COMPLETE
+                else:
+                    cordon_status = kubernetes.KUBE_UPGRADE_CORDON_FAILED
             else:
                 LOG.info('Executed the cordon command %s: %s' %
                         (cordon_cmd, stdout))

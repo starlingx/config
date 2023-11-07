@@ -1319,7 +1319,7 @@ class ManagerTestCase(base.DbTestCase):
         cordon_cmd = ['kubectl', '--kubeconfig=%s' % kubernetes.KUBERNETES_ADMIN_CONF,
                       'drain', constants.CONTROLLER_0_HOSTNAME, '--ignore-daemonsets',
                       '--delete-emptydir-data', '--delete-local-data', '--force',
-                      '--skip-wait-for-delete-timeout=1']
+                      '--skip-wait-for-delete-timeout=1', '--timeout=60s']
         self.mock_subprocess_popen.assert_called_with(cordon_cmd, stdout=-1, stderr=-1,
                                                       universal_newlines=True)
 
