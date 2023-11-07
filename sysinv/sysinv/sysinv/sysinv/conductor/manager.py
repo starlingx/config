@@ -1264,9 +1264,53 @@ class ConductorManager(service.PeriodicService):
             "personalities": personalities,
             "host_uuids": [host['uuid']],
             "classes": ['platform::config::apparmor::runtime'],
+            puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_APPARMOR_CONFIG
         }
 
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+        self._config_apply_runtime_manifest(context, config_uuid,
+                                            config_dict, force=True)
+
+    def report_apparmor_config_complete(self, context, ihost_uuid, status, error):
+        """ Report apparmor config runtime manifest from agent completed run
+            The runtime manifest has completed either in failure or success
+        Args:
+            context: admin context
+            ihost_uuid (uuid): host uuid
+            status: operation status
+            error: err content as a dict of type:
+                error = {
+                        'class': str(ex.__class__.__name__),
+                        'module': str(ex.__class__.__module__),
+                        'message': six.text_type(ex),
+                        'tb': traceback.format_exception(*ex),
+                        'args': ex.args,
+                        'kwargs': ex.kwargs
+                        }
+        """
+        apparmorstatus = constants.APPARMOR_CONFIG_STATUS_FAILURE
+        if status == puppet_common.REPORT_SUCCESS:
+            apparmorstatus = constants.APPARMOR_CONFIG_STATUS_SUCCESS
+
+        ihost_uuid = ihost_uuid.strip()
+        try:
+            host = self.dbapi.ihost_get(ihost_uuid)
+        except exception.ServerNotFound:
+            LOG.info('apparmor runtime manifest completed report '
+                     f'uuid={ihost_uuid} '
+                     f'status={apparmorstatus} '
+                     f'error={error}')
+            LOG.error(f'Host not found {ihost_uuid}')
+            return None
+
+        hostname = host['hostname']
+        LOG.info('apparmor runtime manifest completed report '
+                 f'{hostname} status={apparmorstatus} error={error}')
+
+        # update db with apparmor_config_status update and reload host object
+        host.save_changes(context, {'apparmor_config_status': apparmorstatus})
+        host = self.dbapi.ihost_get(ihost_uuid)
+        LOG.info(f"DB updated {hostname} "
+                 f"apparmor_config_status={host['apparmor_config_status']}")
 
     def kernel_runtime_manifests(self, context, ihost_uuid):
         """Execute kernel runtime manifests
@@ -9579,6 +9623,11 @@ class ConductorManager(service.PeriodicService):
             # The agent is reporting runtime kernel config params have been applied
             host_uuid = iconfig['host_uuid']
             self.report_kernel_config_complete(context, host_uuid, status, error)
+            success = (status == puppet_common.REPORT_SUCCESS)
+        elif reported_cfg == puppet_common.REPORT_APPARMOR_CONFIG:
+            # The agent is reporting apparmor kernel config params have been applied
+            host_uuid = iconfig['host_uuid']
+            self.report_apparmor_config_complete(context, host_uuid, status, error)
             success = (status == puppet_common.REPORT_SUCCESS)
         elif reported_cfg == puppet_common.REPORT_UPGRADE_ABORT:
             kube_upgrade_obj = objects.kube_upgrade.get_one(context)

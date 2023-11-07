@@ -4742,6 +4742,13 @@ class HostController(rest.RestController):
                      ihost['availability'] == constants.AVAILABILITY_ONLINE):
                     LOG.info("Notify conductor apparmor change: (%s) (%s)" %
                              (ihost['uuid'], apparmor))
+                    updates = \
+                        {
+                            'apparmor_config_status': constants.APPARMOR_CONFIG_STATUS_PENDING
+                        }
+                    host_obj = objects.host.get_by_uuid(pecan.request.context,
+                                             ihost['uuid'])
+                    host_obj.save_changes(pecan.request.context, updates)
                     pecan.request.rpcapi.update_apparmor(
                         pecan.request.context, ihost['uuid'])
 
@@ -5585,6 +5592,7 @@ class HostController(rest.RestController):
         self.check_unlock_partitions(hostupdate)
         self.check_unlock_patching(hostupdate, force_unlock)
         self.check_unlock_kernel_config_status(hostupdate, force_unlock)
+        self.check_unlock_apparmor_config_status(hostupdate, force_unlock)
 
         hostupdate.configure_required = True
         if ((os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) or
@@ -5598,6 +5606,22 @@ class HostController(rest.RestController):
             hostupdate.notify_vim = True
 
         return True
+
+    def check_unlock_apparmor_config_status(self, hostupdate, force_unlock):
+        """ Check whether apparmor configuration is in progress.
+            Force unlock will bypass check
+        """
+
+        if force_unlock:
+            return
+
+        hostname = hostupdate.ihost_patch.get('hostname')
+        apparmor_config_status = hostupdate.ihost_patch.get('apparmor_config_status')
+
+        if apparmor_config_status == constants.APPARMOR_CONFIG_STATUS_PENDING:
+            msg = (f'Can not unlock {hostname} '
+                    'apparmor configuration in progress.')
+            raise wsme.exc.ClientSideError(_(msg))
 
     def check_unlock_kernel_config_status(self, hostupdate, force_unlock):
         """ Check whether kernel configuration is in progress.

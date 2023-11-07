@@ -14,6 +14,7 @@ def upgrade(migrate_engine):
     migrate_engine.connect()
     i_host = Table('i_host', meta, autoload=True)
     i_host.create_column(Column('apparmor', String(64), default="disabled"))
+    i_host.create_column(Column('apparmor_config_status', String(255), default="config_pending"))
 
 
 def downgrade(migrate_engine):
