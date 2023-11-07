@@ -37,7 +37,11 @@ INVALID_SUBCLOUD_AUDIT_DEPLOY_STATES = [
     # Secondary subclouds should not be audited as they are expected
     # to be managed by a peer system controller (geo-redundancy feat.)
     'secondary',
-    'secondary-failed'
+    'secondary-failed',
+    'rehome-pending',
+    'pre-rehome',
+    'rehoming',
+    'rehome-failed'
 ]
 
 cert_mon_opts = [
