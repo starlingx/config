@@ -109,6 +109,14 @@ if [ "x${UPGRADE_APP_VERSION}" != "x${EXISTING_APP_VERSION}" ]; then
                 log "$NAME: Failed to dump existing cert manager resources. Exiting for manual intervention..."
                 exit 1
             fi
+
+            # remove the 'resourceVersion' of all cm resources in backup file
+            # to avoid version related errors while updating the resource
+            sed -i '/resourceVersion:/d' $CONFIG_PERMDIR/cert-manager-backup.yaml
+            if [ $? != 0 ]; then
+                log "$NAME: Failed to delete resourceVersion in cert-manager-backup.yaml. Exiting for manual intervention..."
+                exit 1
+            fi
         fi
 
         touch "$CONFIG_PERMDIR/.cm_upgrade_dump"
