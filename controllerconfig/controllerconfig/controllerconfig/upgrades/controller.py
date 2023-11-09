@@ -1239,15 +1239,20 @@ def extract_data_from_archive(archive, staging_dir, from_release, to_release):
         stat.S_IROTH | stat.S_IXOTH
 
     shutil.rmtree(from_puppet_path, ignore_errors=True)
-    shutil.rmtree(from_sysinv_path, ignore_errors=True)
     shutil.rmtree(from_keyring_path, ignore_errors=True)
     shutil.rmtree(
         os.path.join(PLATFORM_PATH, "config", to_release, "pxelinux.cfg"),
         ignore_errors=True)
 
     os.makedirs(from_puppet_path, dir_options)
-    os.makedirs(from_sysinv_path, dir_options)
     os.makedirs(from_keyring_path, dir_options)
+
+    # During legacy upgrade the from_sysinv_path directory should be recreated.
+    # During optimized upgrade, the from_sysinv_path is already prepared.
+    # The only from_release that supports legacy upgrade is 22.06.
+    if from_release == "22.06":
+        shutil.rmtree(from_sysinv_path, ignore_errors=True)
+        os.makedirs(from_sysinv_path, dir_options)
 
     extract_relative_directory(archive, from_puppet_path, from_puppet_path)
     extract_relative_directory(archive, from_keyring_path, from_keyring_path)
