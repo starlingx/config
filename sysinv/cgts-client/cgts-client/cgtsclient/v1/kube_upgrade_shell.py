@@ -177,7 +177,7 @@ def do_kube_upgrade_delete(cc, args):
 
 
 def do_kube_upgrade_failed(cc, args):
-    """Set kubernetes upgrade status to *-failed"""
+    """Set kubernetes upgrade status to failed"""
 
     kube_upgrade_state_map = {
         KUBE_UPGRADE_STATE_DOWNLOADING_IMAGES: "downloading-images-failed",
