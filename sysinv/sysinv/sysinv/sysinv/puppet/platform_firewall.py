@@ -35,6 +35,8 @@ PLATFORM_FIREWALL_CLASSES = {constants.NETWORK_TYPE_PXEBOOT: FIREWALL_GNP_PXEBOO
 
 LINK_LOCAL = "fe80::/64"
 
+IPSEC_NETWORKS = [constants.NETWORK_TYPE_MGMT]
+
 
 class PlatformFirewallPuppet(base.BasePuppet):
     """ This class handles the platform firewall hiera data generation for puppet
@@ -203,6 +205,31 @@ class PlatformFirewallPuppet(base.BasePuppet):
 
             config[hep_name] = copy.copy(host_endpoints)
 
+    def _add_gnp_proto_rules(self, host, network, ip_version, firewall_gnp, proto_name,
+            proto_id=None):
+        """ Add rules for the specified protocol in the GlobalNetworkPolicy hiera data
+
+        :param host: a sysinv.object.host class object
+        :param network: the network to which the rule will be added
+        :param ip_version: the IP version
+        :param firewall_gnp: the dict containing the hiera data of the specified network
+        :param proto_name: the name of the protocol for the label
+        :param proto_id: the number of the protocol
+        """
+
+        if proto_id is None:
+            proto_id = proto_name
+
+        for direction, label in {"egress": "egr", "ingress": "ingr"}.items():
+            rule = {"metadata": dict()}
+            rule["metadata"] = {"annotations": dict()}
+            rule["metadata"]["annotations"] = {"name":
+                f"stx-{label}-{host.personality}-{network.type}-{proto_name.lower()}{ip_version}"}
+            rule.update({"protocol": proto_id})
+            rule.update({"ipVersion": ip_version})
+            rule.update({"action": "Allow"})
+            firewall_gnp["spec"][direction].append(rule)
+
     def _get_basic_firewall_gnp(self, host, firewall_networks, config):
         """ Fill the GlobalNetworkPolicy basic hiera data (no filter rules)
 
@@ -235,27 +262,14 @@ class PlatformFirewallPuppet(base.BasePuppet):
             firewall_gnp["spec"].update({"selector": selector})
             firewall_gnp["spec"].update({"types": ["Ingress", "Egress"]})
             firewall_gnp["spec"].update({"egress": list()})
-
-            for proto in ["TCP", "UDP", ICMP]:
-                rule = {"metadata": dict()}
-                rule["metadata"] = {"annotations": dict()}
-                rule["metadata"]["annotations"] = {"name":
-                    f"stx-egr-{host.personality}-{network.type}-{proto.lower()}{ip_version}"}
-                rule.update({"protocol": proto})
-                rule.update({"ipVersion": ip_version})
-                rule.update({"action": "Allow"})
-                firewall_gnp["spec"]["egress"].append(rule)
-
             firewall_gnp["spec"].update({"ingress": list()})
+
             for proto in ["TCP", "UDP", ICMP]:
-                rule = {"metadata": dict()}
-                rule["metadata"] = {"annotations": dict()}
-                rule["metadata"]["annotations"] = {"name":
-                    f"stx-ingr-{host.personality}-{network.type}-{proto.lower()}{ip_version}"}
-                rule.update({"protocol": proto})
-                rule.update({"ipVersion": ip_version})
-                rule.update({"action": "Allow"})
-                firewall_gnp["spec"]["ingress"].append(rule)
+                self._add_gnp_proto_rules(host, network, ip_version, firewall_gnp, proto)
+
+            if network.type in IPSEC_NETWORKS:
+                self._add_gnp_proto_rules(host, network, ip_version, firewall_gnp, "ESP", 50)
+
             config[PLATFORM_FIREWALL_CLASSES[network.type]] = copy.copy(firewall_gnp)
 
     def _set_rules_oam(self, gnp_config, network, host, dc_role):
