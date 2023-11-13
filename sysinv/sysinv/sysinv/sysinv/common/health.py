@@ -252,6 +252,21 @@ class Health(object):
         success = not fail_pod_list
         return success, fail_pod_list
 
+    def _check_kube_all_pods_are_healthy(self):
+        """Checks that all kubernetes pod are healthy
+
+        A healthy pod is in ready or completed status.
+        """
+        fail_pod_list = []
+        pod_list = self._kube_operator.kube_get_all_pods()
+
+        for pod in pod_list:
+            if pod.status.phase not in ['Pending', 'Running', 'Succeeded']:
+                # Add it to the failed list as it's not ready/completed/pending
+                fail_pod_list.append((pod.metadata.name, pod.metadata.namespace))
+        success = not fail_pod_list
+        return success, fail_pod_list
+
     def _check_kube_applications(self):
         """Checks that each kubernetes application is in a valid state"""
 
@@ -677,7 +692,8 @@ class Health(object):
     def get_system_health_kube_upgrade(self,
                                        context,
                                        force=False,
-                                       alarm_ignore_list=None):
+                                       alarm_ignore_list=None,
+                                       kube_rootca_update=False):
         """
         Ensures the system is in a valid state for a kubernetes upgrade
 
@@ -707,6 +723,18 @@ class Health(object):
             output += _('Kubernetes applications not in a valid state: %s\n') \
                 % ', '.join(apps_not_valid)
 
-        health_ok = health_ok and success
+        if kube_rootca_update:
+            pods_healthy, fail_pod_list = self._check_kube_all_pods_are_healthy()
+            output += _(
+                'All kubernetes pods are in a valid state: [%s]\n') \
+                % (Health.SUCCESS_MSG if pods_healthy else Health.FAIL_MSG)
+            if not pods_healthy:
+                formatted_fail_pod_list = ['{} (namespace: {})'.format(name, namespace)
+                                           for name, namespace in fail_pod_list]
+                output += _('Kubernetes pods not in a valid state: %s\n') \
+                    % ', '.join(formatted_fail_pod_list)
+
+        health_ok = health_ok and success and \
+            (pods_healthy if kube_rootca_update else True)
 
         return health_ok, output

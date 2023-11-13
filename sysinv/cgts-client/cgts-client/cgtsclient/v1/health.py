@@ -1,6 +1,6 @@
 # -*- encoding: utf-8 -*-
 #
-# Copyright (c) 2015-2016 Wind River Systems, Inc.
+# Copyright (c) 2015-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -23,9 +23,12 @@ class HealthManager(base.Manager):
         resp, body = self.api.json_request('GET', path)
         return body
 
-    def get_kube_upgrade(self, relaxed=None):
+    def get_kube_upgrade(self, args: dict, relaxed=None):
         path = '/v1/health/kube-upgrade'
         if relaxed:
             path += '/relaxed'
+        rootca = args.get('rootca')
+        if rootca:
+            path += f'?rootca={rootca}'
         resp, body = self.api.json_request('GET', path)
         return body

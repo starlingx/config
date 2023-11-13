@@ -13679,7 +13679,8 @@ class ConductorManager(service.PeriodicService):
             return health_util.get_system_health_kube_upgrade(
                 context=context,
                 force=force,
-                alarm_ignore_list=alarm_ignore_list)
+                alarm_ignore_list=alarm_ignore_list,
+                kube_rootca_update=kube_rootca_update)
         else:
             return health_util.get_system_health(
                 context=context,
