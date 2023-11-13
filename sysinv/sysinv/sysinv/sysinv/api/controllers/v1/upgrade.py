@@ -186,7 +186,7 @@ class UpgradeController(rest.RestController):
         except Exception:
             LOG.warning("Error opening file %s" % ERROR_FILE)
 
-        return {'error_msg:': output}
+        return output
 
     @wsme_pecan.wsexpose(UpgradeCollection, types.uuid, int, wtypes.text,
                          wtypes.text)
