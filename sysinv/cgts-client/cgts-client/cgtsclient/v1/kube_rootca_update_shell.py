@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2021-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -110,6 +110,18 @@ def do_kube_rootca_update_upload_cert(cc, args):
     else:
         # Show new rootca certificate identifier <issuer_hash>-<serial_number>
         print("Uploaded new rootca certificate: %s" % cert_upload.get("success"))
+
+
+def do_kube_rootca_get_cert_id(cc, args):
+    """Get existing kubernetes rootCA cert ID"""
+
+    certificate = cc.kube_rootca_update.get_cert_id()
+
+    if certificate.error:
+        print(certificate.error)
+    else:
+        # Show new rootca certificate identifier <issuer_hash>-<serial_number>
+        print(f"Existing rootca certificate: {certificate.cert_id}")
 
 
 @utils.arg('--expiry-date',

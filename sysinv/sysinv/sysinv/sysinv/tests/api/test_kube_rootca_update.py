@@ -1,3 +1,9 @@
+#
+# Copyright (c) 2021-2023 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """
 Tests for the API /kube_rootca_update/ methods.
 """
@@ -478,6 +484,23 @@ class TestKubeRootCAUpdateComplete(TestKubeRootCAUpdate,
         # Checks that DB is unmodified
         update_entry = self.dbapi.kube_rootca_update_get_one()
         self.assertNotEqual(update_entry, None)
+
+
+class TestKubeRootCAGetCertID(TestKubeRootCAUpdate,
+                              dbbase.ProvisionedControllerHostTestCase):
+
+    def setUp(self):
+        super(TestKubeRootCAGetCertID, self).setUp()
+
+    def test_get_ID(self):
+        response = self.get_json('/kube_rootca_update/get_cert_id',
+                                  expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+        resp = json.loads(response.body)
+        self.assertTrue(resp.get('cert_id'))
+        self.assertEqual(resp.get('cert_id'), 'current_cert_serial')
+        self.assertFalse(resp.get('error'))
 
 
 class TestKubeRootCAUpload(TestKubeRootCAUpdate,

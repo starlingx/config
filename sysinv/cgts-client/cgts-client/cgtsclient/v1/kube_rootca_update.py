@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2021-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -41,6 +41,14 @@ class KubeRootCAUpdateManager(base.Manager):
         """
         try:
             return self._list(self._path(uuid), 'kube_rootca_updates')
+        except IndexError:
+            return []
+
+    def get_cert_id(self):
+        """Retrieve the existing kube rootca id."""
+
+        try:
+            return self._list(self._path('get_cert_id'))[0]
         except IndexError:
             return []
 

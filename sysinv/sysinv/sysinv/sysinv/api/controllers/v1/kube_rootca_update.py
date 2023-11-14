@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2021-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -376,6 +376,22 @@ class KubeRootCAHostUpdateListController(rest.RestController):
         return KubeRootCAHostUpdateCollection.convert_with_links(rpc_host_update_status_list)
 
 
+class KubeRootCACetCertIDController(rest.RestController):
+
+    @wsme_pecan.wsexpose(wtypes.text)
+    def get(self):
+        """Retrieves existing kubernetes rootca ID"""
+
+        try:
+            rootca_cert = pecan.request.rpcapi.get_current_kube_rootca_cert_id(
+                context=pecan.request.context)
+            return dict(cert_id=rootca_cert, error="")
+        except Exception as e:
+            msg = ("Failed to get the current kubernetes root CA certificate ID "
+                   f"by error: {e.message}.")
+            return dict(cert_id="", error=msg)
+
+
 class KubeRootCAUpdateController(rest.RestController):
     """REST controller for kubernetes rootCA updates."""
 
@@ -388,6 +404,8 @@ class KubeRootCAUpdateController(rest.RestController):
     pods = KubeRootCAPodsUpdateController()
     # Controller for /kube_rootca_update/hosts, list updates by hosts.
     hosts = KubeRootCAHostUpdateListController()
+    # Controller for /kube_rootca_update/get_cert_id, check existing root CA ID
+    get_cert_id = KubeRootCACetCertIDController()
 
     def __init__(self):
         self.fm_api = fm_api.FaultAPIs()
