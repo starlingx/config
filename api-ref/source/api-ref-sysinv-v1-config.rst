@@ -12053,6 +12053,39 @@ unauthorized (401), forbidden (403), badMethod (405), overLimit (413)
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
+   "cert_id", "plain", "xsd:string", "Certificate identifier composed by a combination of  <issuer_hash>-<serial_number>"
+   "error", "plain", "xsd:string", "The error message in case something wrong happen on the API execution"
+
+::
+
+   {
+      "cert_id": "d70efa2daaee06f8-314121337707572303468615715651317888841",
+      "error": ""
+   }
+
+This operation does not accept a request body.
+
+***********************************
+Get existing kubernetes root ca ID
+***********************************
+
+.. rest_method:: Get /v1/kube_rootca_update/get_cert_id
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+serviceUnavailable (503), badRequest (400), unauthorized (401),
+forbidden (403), badMethod (405), overLimit (413)
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
    "success", "plain", "xsd:string", "Certificate identifier composed by a combination of  <issuer_hash>-<serial_number>"
    "error", "plain", "xsd:string", "The error message in case something wrong happen on the API execution"
 
