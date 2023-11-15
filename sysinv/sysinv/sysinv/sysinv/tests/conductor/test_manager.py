@@ -5490,7 +5490,7 @@ class ManagerStartLoadImportTest(base.BaseHostTestCase):
         loading_metadata = open(self.metadata, 'r').read()
         current_metadata = '''
             <build>\n<version>0.2</version>\n<supported_upgrades>
-            \n<upgrade>\n<version>0.1</version>\n<required_patches>PATCH_0001</required_patches>
+            \n<upgrade>\n<version>0.1</version>\n<required_patch>PATCH_0001</required_patch>
             \n</upgrade>\n</supported_upgrades>\n</build>
         '''
 
@@ -5528,7 +5528,7 @@ class ManagerStartLoadImportTest(base.BaseHostTestCase):
 
         current_metadata = b'''
             <build>\n<version>0.3</version>\n<supported_upgrades>
-            \n<upgrade>\n<version>0.2</version>\n<required_patches>PATCH_0001</required_patches>
+            \n<upgrade>\n<version>0.2</version>\n<required_patch>PATCH_0001</required_patch>
             \n</upgrade>\n</supported_upgrades>\n</build>
         '''
 
@@ -5577,7 +5577,7 @@ class ManagerStartLoadImportTest(base.BaseHostTestCase):
         loading_metadata = open(self.metadata, 'r').read()
         current_metadata = b'''
             <build>\n<version>0.2</version>\n<supported_upgrades>
-            \n<upgrade>\n<version>0.1</version>\n<required_patches>PATCH_0002</required_patches>
+            \n<upgrade>\n<version>0.1</version>\n<required_patch>PATCH_0002</required_patch>
             \n</upgrade>\n</supported_upgrades>\n</build>
         '''
 
