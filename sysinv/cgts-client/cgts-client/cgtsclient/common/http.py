@@ -408,10 +408,12 @@ class HTTPClient(httplib2.Http):
         if status_code == 401:
             raise exceptions.HTTPUnauthorized(body)
         elif status_code == 403:
-            error_json = self._extract_error_json(body_str)
-            reason = error_json.get('faultstring')
-            if reason is None:
-                reason = error_json.get('description')
+            reason = "Not allowed/Proper role is needed"
+            if body_str is not None:
+                error_json = self._extract_error_json(body_str)
+                reason = error_json.get('faultstring')
+                if reason is None:
+                    reason = error_json.get('description')
             raise exceptions.Forbidden(reason)
         elif 400 <= status_code < 600:
             _logger.warn("Request returned failure status: %s", status_code)  # pylint: disable=deprecated-method
