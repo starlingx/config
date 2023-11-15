@@ -10,16 +10,18 @@
 import io
 import glob
 import os
+import ruamel.yaml
 import shutil
 import six
+import tarfile
 import tempfile
 import yaml
 
 from oslo_log import log as logging
-
 from sysinv._i18n import _
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import kubernetes
 from sysinv.common import utils
 
 LOG = logging.getLogger(__name__)
@@ -562,3 +564,78 @@ def verify_application(path: str) -> bool:
             "metadata verification failed. {}".format(e)))
 
     return is_verified
+
+
+def extract_bundle_metadata(file_path):
+    """Extract metadata from a given tarball
+
+    :param file_path: Application bundle file path
+    """
+
+    try:
+        tarball = tarfile.open(file_path)
+        metadata_yaml_path = "./{}".format(constants.APP_METADATA_FILE)
+        tarball.getmember(metadata_yaml_path)
+
+        with tarball.extractfile(metadata_yaml_path) as metadata_file:
+            metadata = ruamel.yaml.load(metadata_file,
+                                        Loader=ruamel.yaml.RoundTripLoader,
+                                        preserve_quotes=True)
+
+        minimum_supported_k8s_version = metadata.get(
+            constants.APP_METADATA_SUPPORTED_K8S_VERSION, {}).get(
+                constants.APP_METADATA_MINIMUM, None)
+
+        if minimum_supported_k8s_version is None:
+            # TODO(ipiresso): Turn this into an error message rather than
+            # a warning when the k8s app upgrade implementation is in place
+            # and remove the hardcoded value. Also, do not add the bundle to
+            # the database in this scenario.
+            LOG.warning("Minimum supported Kubernetes version missing from {}"
+                        .format(file_path))
+            minimum_supported_k8s_version = kubernetes.get_kube_versions()[0]['version']
+
+        minimum_supported_k8s_version = minimum_supported_k8s_version.strip().lstrip('v')
+
+        maximum_supported_k8s_version = metadata.get(
+            constants.APP_METADATA_SUPPORTED_K8S_VERSION, {}).get(
+                constants.APP_METADATA_MAXIMUM, None)
+
+        if maximum_supported_k8s_version is not None:
+            maximum_supported_k8s_version = maximum_supported_k8s_version.strip().lstrip('v')
+
+        k8s_upgrades = metadata.get(constants.APP_METADATA_K8S_UPGRADES, None)
+        if k8s_upgrades is None:
+            k8s_auto_update = constants.APP_METADATA_K8S_AUTO_UPDATE_DEFAULT_VALUE
+            k8s_update_timing = constants.APP_METADATA_TIMING_DEFAULT_VALUE
+            LOG.warning("k8s_upgrades section missing from {} metadata"
+                        .format(file_path))
+        else:
+            k8s_auto_update = tarball.metadata.get(
+                constants.APP_METADATA_K8S_UPGRADES).get(
+                constants.APP_METADATA_AUTO_UPDATE,
+                constants.APP_METADATA_K8S_AUTO_UPDATE_DEFAULT_VALUE)
+            k8s_update_timing = tarball.metadata.get(
+                constants.APP_METADATA_K8S_UPGRADES).get(
+                constants.APP_METADATA_TIMING,
+                constants.APP_METADATA_TIMING_DEFAULT_VALUE)
+
+        bundle_data = {
+            'name': metadata.get(constants.APP_METADATA_NAME),
+            'version': metadata.get(constants.APP_METADATA_VERSION),
+            'file_path': file_path,
+            'auto_update':
+                metadata.get(constants.APP_METADATA_UPGRADES, {}).get(
+                    constants.APP_METADATA_AUTO_UPDATE,
+                    constants.APP_METADATA_AUTO_UPDATE_DEFAULT_VALUE),
+            'k8s_auto_update': k8s_auto_update,
+            'k8s_timing': k8s_update_timing,
+            'k8s_minimum_version': minimum_supported_k8s_version,
+            'k8s_maximum_version': maximum_supported_k8s_version
+        }
+
+        return bundle_data
+    except KeyError:
+        LOG.warning("Application bundle {} does not contain a metadata file.".format(file_path))
+    except Exception as e:
+        LOG.exception(e)

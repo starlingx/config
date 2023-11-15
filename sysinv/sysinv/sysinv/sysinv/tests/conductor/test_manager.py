@@ -482,6 +482,8 @@ class ManagerTestCase(base.DbTestCase):
         self.service._update_pxe_config = mock.Mock()
         self.service._ceph_mon_create = mock.Mock()
         self.service._sx_to_dx_post_migration_actions = mock.Mock()
+        self.service._populate_app_bundle_metadata = mock.Mock()
+        self.service._initialize_ostree_inotify = mock.Mock()
         self.alarm_raised = False
         self.kernel_alarms = {}
 

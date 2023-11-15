@@ -29,6 +29,7 @@ collection of inventory data for each host.
 
 """
 
+from enum import Enum
 import errno
 import filecmp
 import glob
@@ -52,7 +53,6 @@ import xml.etree.ElementTree as ElementTree
 from contextlib import contextmanager
 from datetime import datetime
 from datetime import timedelta
-from distutils.util import strtobool
 from distutils.version import LooseVersion
 from copy import deepcopy
 
@@ -93,6 +93,7 @@ from sysinv.api.controllers.v1 import kube_app as kube_api
 from sysinv.api.controllers.v1 import mtce_api
 from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1 import vim_api
+from sysinv.common import app_metadata
 from sysinv.common import fpga_constants
 from sysinv.common import constants
 from sysinv.common import ceph as cceph
@@ -108,6 +109,8 @@ from sysinv.common import kubernetes
 from sysinv.common import retrying
 from sysinv.common import service
 from sysinv.common import utils as cutils
+from sysinv.common.inotify import flags
+from sysinv.common.inotify import INotify
 from sysinv.common.retrying import retry
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 from cephclient import wrapper as ceph
@@ -232,6 +235,63 @@ AppTarBall = namedtuple(
     "tarball_name app_name app_version manifest_name manifest_file metadata")
 
 
+class KubeAppBundleStorageType(Enum):
+    DATABASE = 1
+
+
+class KubeAppBundleStorageFactory(object):
+    """Factory class that aims to abstract calls to storage operations when
+    handling application bundle metadata.
+
+    This allows supporting a database implementation going forward and an
+    in-memory implementation for patchback scenarios if needed.
+    """
+
+    @staticmethod
+    def createKubeAppBundleStorage(storage_type=KubeAppBundleStorageType.DATABASE):
+        """Factory Method
+
+        :param storage_type: Storage type used to house the metadata
+        """
+        if storage_type == KubeAppBundleStorageType.DATABASE:
+            return KubeAppBundleDatabase()
+
+
+class KubeAppBundleDatabase(KubeAppBundleStorageFactory):
+    """Database implementation to store application bundle metadata."""
+
+    def __init__(self):
+        self.dbapi = dbapi.get_instance()
+
+    def create(self, bundle_data):
+        """Add a bundle to the database."""
+        self.dbapi.kube_app_bundle_create(bundle_data)
+
+    def create_all(self, bundle_bulk_data):
+        """Insert a list of bundles to the database."""
+        self.dbapi.kube_app_bundle_create_all(bundle_bulk_data)
+
+    def is_empty(self):
+        """Check if the table is empty."""
+        return self.dbapi.kube_app_bundle_is_empty()
+
+    def get_all(self):
+        """Get a list containing all bundles."""
+        return self.dbapi.kube_app_bundle_get_all()
+
+    def get_by_name(self, app_name):
+        """Get a list of bundles by their name."""
+        return self.dbapi.kube_app_bundle_get_by_name(app_name)
+
+    def destroy_all(self):
+        """Prune all bundle metadata."""
+        self.dbapi.kube_app_bundle_destroy_all()
+
+    def destroy_by_file_path(self, file_path):
+        """Delete bundle with a given file path."""
+        self.dbapi.kube_app_bundle_destroy_by_file_path(file_path)
+
+
 class ConductorManager(service.PeriodicService):
     """Sysinv Conductor service main class."""
 
@@ -272,11 +332,16 @@ class ConductorManager(service.PeriodicService):
             endpoint='http://localhost:{}'.format(constants.CEPH_MGR_PORT))
         self._kube = None
         self._fernet = None
+        self._inotify = None
 
         self._openstack = None
         self._api_token = None
         self._mtc_address = constants.LOCALHOST_HOSTNAME
         self._mtc_port = 2112
+
+        # Store and track available application bundles
+        self._kube_app_bundle_storage = None
+        self._cached_app_bundle_set = set()
 
         # Timeouts for adding & removing operations
         self._pv_op_timeouts = {}
@@ -358,6 +423,7 @@ class ConductorManager(service.PeriodicService):
         self.fm_log = fm.FmCustomerLog()
         self.host_uuid = self._get_active_controller_uuid()
 
+        self._kube_app_bundle_storage = KubeAppBundleStorageFactory.createKubeAppBundleStorage()
         self._openstack = openstack.OpenStackOperator(self.dbapi)
         self._puppet = puppet.PuppetOperator(self.dbapi)
 
@@ -397,11 +463,35 @@ class ConductorManager(service.PeriodicService):
         # Runtime config tasks
         self._prune_runtime_config_table()
 
+        # Populate/update app bundle table as needed
+        if self._kube_app_bundle_storage.is_empty():
+            self._populate_app_bundle_metadata()
+        else:
+            self._update_cached_app_bundles_set()
+            self._update_app_bundles_storage()
+
+        # Initialize inotify and launch thread to monitor
+        # changes to the ostree root folder
+        self._initialize_ostree_inotify()
+        greenthread.spawn(self._monitor_ostree_root_folder)
+
         LOG.info("sysinv-conductor start committed system=%s" %
                  system.as_dict())
 
         # Save our start time for time limited init actions
         self._start_time = timeutils.utcnow()
+
+    def _initialize_ostree_inotify(self):
+        """ Initialize inotify to watch for changes under the ostree root
+        folder.
+
+        Created or removed files under that folder suggest that a patch
+        was applied and a new ostree commit was deployed.
+        """
+
+        self._inotify = INotify()
+        watch_flags = flags.CREATE | flags.DELETE
+        self._inotify.add_watch(constants.OSTREE_ROOT_FOLDER, watch_flags)
 
     def _get_active_controller_uuid(self):
         ahost = utils.HostHelper.get_active_controller(self.dbapi)
@@ -7211,67 +7301,53 @@ class ConductorManager(service.PeriodicService):
 
         self._inner_sync_auto_apply(context, app_name)
 
-    @staticmethod
-    def check_app_k8s_auto_update(app_name, tarball):
-        """ Check whether an application should be automatically updated
-            based on its Kubernetes upgrade metadata fields.
+    def _get_app_bundle_for_update(self, app):
+        """ Retrieve metadata from the most updated application bundle
+        that can be used to update the given app.
 
-        :param tarball: tarball object of the application to be checked
+        :param app: The application to be updated
+        :return The bundle metadata from the new version of the app
         """
 
-        minimum_supported_k8s_version = tarball.metadata.get(
-                constants.APP_METADATA_SUPPORTED_K8S_VERSION, {}).get(
-                constants.APP_METADATA_MINIMUM, None)
+        bundle_metadata_list = self._kube_app_bundle_storage.get_by_name(app.name)
 
-        if minimum_supported_k8s_version is None:
-            # TODO: Turn this into an error message rather than a warning
-            # when the k8s app upgrade implementation is in place. Also,
-            # return False in this scenario.
-            LOG.warning("Minimum supported Kubernetes version missing from "
-                        "{} metadata".format(app_name))
-        else:
-            LOG.debug("minimum_supported_k8s_version for {}: {}"
-                      .format(app_name, minimum_supported_k8s_version))
+        latest_version_bundle = None
+        k8s_version = self._kube.kube_get_kubernetes_version().strip().lstrip('v')
+        for bundle_metadata in bundle_metadata_list:
+            if LooseVersion(bundle_metadata.version) <= LooseVersion(app.app_version):
+                LOG.debug("Bundle {} version {} lower than installed app version ({})"
+                          .format(bundle_metadata.file_path,
+                                  bundle_metadata.version,
+                                  app.app_version))
+            elif not bundle_metadata.auto_update:
+                LOG.debug("Application auto update disabled for bundle {}"
+                          .format(bundle_metadata.file_path))
+            elif not bundle_metadata.k8s_auto_update:
+                LOG.debug("Kubernetes application auto update disabled for bundle {}"
+                          .format(bundle_metadata.file_path))
+            elif LooseVersion(k8s_version) < LooseVersion(bundle_metadata.k8s_minimum_version):
+                LOG.debug("Kubernetes version {} is lower than {} which is "
+                          "the minimum required for bundle {}"
+                          .format(k8s_version,
+                                  bundle_metadata.k8s_minimum_version,
+                                  bundle_metadata.file_path))
+            elif ((bundle_metadata.k8s_maximum_version is not None) and (LooseVersion(k8s_version) >
+                    LooseVersion(bundle_metadata.k8s_maximum_version))):
+                LOG.debug("Kubernetes version {} is higher than {} which is "
+                          "the maximum allowed for bundle {}"
+                          .format(k8s_version,
+                                  bundle_metadata.k8s_maximum_version,
+                                  bundle_metadata.file_path))
+            elif ((latest_version_bundle is None) or
+                  (LooseVersion(bundle_metadata.version) >
+                   LooseVersion(latest_version_bundle.version))):
+                # Only set the chosen bundle if it was not set before or if the version
+                # of the current one is higher than the one previously set.
+                latest_version_bundle = bundle_metadata
 
-        maximum_supported_k8s_version = tarball.metadata.get(
-                constants.APP_METADATA_SUPPORTED_K8S_VERSION, {}).get(
-                constants.APP_METADATA_MAXIMUM, None)
+        return latest_version_bundle
 
-        if maximum_supported_k8s_version:
-            LOG.debug("maximum_supported_k8s_version for {}: {}"
-                      .format(app_name, maximum_supported_k8s_version))
-
-        k8s_upgrades = tarball.metadata.get(
-            constants.APP_METADATA_K8S_UPGRADES, None)
-
-        if k8s_upgrades is None:
-            k8s_auto_update = constants.APP_METADATA_K8S_AUTO_UPDATE_DEFAULT_VALUE
-            k8s_update_timing = constants.APP_METADATA_TIMING_DEFAULT_VALUE
-            LOG.warning("k8s_upgrades section missing from {} metadata"
-                        .format(app_name))
-        else:
-            k8s_auto_update = tarball.metadata.get(
-                constants.APP_METADATA_K8S_UPGRADES).get(
-                constants.APP_METADATA_AUTO_UPDATE,
-                constants.APP_METADATA_K8S_AUTO_UPDATE_DEFAULT_VALUE)
-            k8s_update_timing = tarball.metadata.get(
-                constants.APP_METADATA_K8S_UPGRADES).get(
-                constants.APP_METADATA_TIMING,
-                constants.APP_METADATA_TIMING_DEFAULT_VALUE)
-
-        # TODO: check if the application meets the criteria to be updated
-        # according to the 'supported_k8s_version' and 'k8s_upgrades'
-        # metadata sections. This initial implementation is only intended to
-        # set the default values for each entry.
-
-        LOG.debug("k8s_auto_update value for {}: {}"
-                    .format(app_name, k8s_auto_update))
-        LOG.debug("k8s_update_timing value for {}: {}"
-                    .format(app_name, k8s_update_timing))
-
-        return True
-
-    def _auto_update_app(self, context, app_name, managed_app):
+    def _auto_update_app(self, context, app_name):
         """Auto update applications"""
         try:
             app = kubeapp_obj.get_by_name(context, app_name)
@@ -7314,19 +7390,15 @@ class ConductorManager(service.PeriodicService):
 
         LOG.debug("Application %s: Checking "
                   "for update ..." % app_name)
-        tarfile = self._search_tarfile(app_name, managed_app=managed_app)
-        if tarfile is None:
-            # Skip if no tarball or multiple tarballs found
-            return
-
-        applied_app = '{}-{}'.format(app.name, app.app_version)
-        if applied_app in tarfile:
-            # Skip if the tarfile version is already applied
+        app_bundle = self._get_app_bundle_for_update(app)
+        if app_bundle is None:
+            # Skip if no bundles are found
+            LOG.debug("No bundle found for updating %s" % app_name)
             return
 
         LOG.info("Found new tarfile version for %s: %s"
-                 % (app.name, tarfile))
-        tarball = self._check_tarfile(app_name, tarfile,
+                 % (app.name, app_bundle.file_path))
+        tarball = self._check_tarfile(app_name, app_bundle.file_path,
                                       preserve_metadata=True)
         if ((tarball.app_name is None) or
             (tarball.app_version is None) or
@@ -7335,18 +7407,7 @@ class ConductorManager(service.PeriodicService):
             # Skip if tarball check fails
             return
 
-        if not tarball.metadata:
-            # Skip if app doesn't have metadata
-            return
-
-        auto_update = tarball.metadata.get(
-            constants.APP_METADATA_UPGRADES, {}).get(
-            constants.APP_METADATA_AUTO_UPDATE, False)
-        if not bool(strtobool(str(auto_update))):
-            # Skip if app is not set to auto_update
-            return
-
-        if tarball.app_version in \
+        if app_bundle.version in \
             app.app_metadata.get(
                 constants.APP_METADATA_UPGRADES, {}).get(
                 constants.APP_METADATA_FAILED_VERSIONS, []):
@@ -7355,11 +7416,6 @@ class ConductorManager(service.PeriodicService):
             LOG.error("Application %s with version %s was previously "
                       "failed to be updated from version %s by auto-update"
                       % (app.name, tarball.app_version, app.app_version))
-            return
-
-        # Check if the update should proceed based on the application's
-        # Kubernetes metadata
-        if not ConductorManager.check_app_k8s_auto_update(app_name, tarball):
             return
 
         self._inner_sync_auto_update(context, app, tarball)
@@ -7541,14 +7597,14 @@ class ConductorManager(service.PeriodicService):
         """ Load metadata of apps from the directory containing
         apps bundled with the iso.
         """
-        for tarfile in os.listdir(constants.HELM_APP_ISO_INSTALL_PATH):
+        for app_bundle in os.listdir(constants.HELM_APP_ISO_INSTALL_PATH):
             # Get the app name from the tarball name
             # If the app has the metadata loaded already, by conductor restart,
             # then skip the tarball extraction
             app_name = None
             pattern = re.compile("^(.*)-([0-9]+\.[0-9]+-[0-9]+)")
 
-            match = pattern.search(tarfile)
+            match = pattern.search(app_bundle)
             if match:
                 app_name = match.group(1)
 
@@ -7560,7 +7616,7 @@ class ConductorManager(service.PeriodicService):
 
             # Proceed with extracting the tarball
             tarball_name = '{}/{}'.format(
-                constants.HELM_APP_ISO_INSTALL_PATH, tarfile)
+                constants.HELM_APP_ISO_INSTALL_PATH, app_bundle)
 
             with cutils.TempDirectory() as app_path:
                 if not cutils.extract_tarfile(app_path, tarball_name):
@@ -7733,6 +7789,90 @@ class ConductorManager(service.PeriodicService):
         # No need to detect again until conductor restart
         self._do_detect_swact = False
 
+    def _populate_app_bundle_metadata(self):
+        """Read metadata of all application bundles and store in the database"""
+
+        bundle_list = []
+        for file_path in glob.glob("{}/*.tgz".format(constants.HELM_APP_ISO_INSTALL_PATH)):
+            bundle_data = app_metadata.extract_bundle_metadata(file_path)
+            if bundle_data:
+                bundle_list.append(bundle_data)
+
+        self._kube_app_bundle_storage.create_all(bundle_list)
+        self._update_cached_app_bundles_set()
+
+    def _add_app_bundle(self, full_bundle_path):
+        """Add a new application bundle record"""
+
+        bundle_data = app_metadata.extract_bundle_metadata(full_bundle_path)
+        if bundle_data:
+            LOG.info("New application bundle available: {}".format(full_bundle_path))
+            try:
+                self._kube_app_bundle_storage.create(bundle_data)
+            except exception.KubeAppBundleAlreadyExists as e:
+                LOG.exception(e)
+            except Exception as e:
+                LOG.exception("Error while storing bundle data for {}: {}"
+                              .format(full_bundle_path, e))
+
+    def _remove_app_bundle(self, full_bundle_path):
+        """Remove application bundle record"""
+
+        LOG.info("Application bundle deleted: {}".format(full_bundle_path))
+        try:
+            self._kube_app_bundle_storage.destroy_by_file_path(full_bundle_path)
+        except Exception as e:
+            LOG.error("Error while removing bundle data for {}: {}"
+                      .format(full_bundle_path, e))
+
+    def _update_cached_app_bundles_set(self):
+        """Update internal cache of application bundles"""
+
+        self._cached_app_bundle_set = set(bundle.file_path for bundle in
+                                         self._kube_app_bundle_storage.get_all())
+
+    def _update_app_bundles_storage(self):
+        """Update application bundle storage to account for new and removed files"""
+
+        filesystem_app_bundle_set = set(glob.glob("{}/*.tgz"
+                                                  .format(constants.HELM_APP_ISO_INSTALL_PATH)))
+        if filesystem_app_bundle_set != self._cached_app_bundle_set:
+            new_files = set(file_path for file_path in filesystem_app_bundle_set
+                            if file_path not in self._cached_app_bundle_set)
+
+            # Add new files to the database
+            for file_path in new_files:
+                self._add_app_bundle(file_path)
+
+            # Delete removed files from the database
+            for file_path in self._cached_app_bundle_set:
+                if file_path not in filesystem_app_bundle_set:
+                    self._remove_app_bundle(file_path)
+
+            # Update internal bundle set to reflect the storage
+            self._update_cached_app_bundles_set()
+
+    def _monitor_ostree_root_folder(self):
+        """Update application bundle storage to account for new and removed files"""
+
+        if self._inotify is None:
+            LOG.error("Inotify has not been initialized.")
+            return
+
+        while True:
+            for event in self._inotify.read(timeout=0):
+                event_types = [f.name for f in flags.from_mask(event.mask)]
+                LOG.debug("Event {}. Event types: {}".format(event, event_types))
+
+                # If the "lock" file was deleted inside the ostree root it means
+                # that a new ostree has finished to be deployed. Therefore we may
+                # need to update the list of available application bundles.
+                if constants.INOTIFY_DELETE_EVENT in event_types and \
+                        event.name == constants.OSTREE_LOCK_FILE:
+                    self._update_app_bundles_storage()
+
+            time.sleep(1)
+
     @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.k8s_application,
                                  run_immediately=True)
     def _k8s_application_audit(self, context):
@@ -7839,7 +7979,7 @@ class ConductorManager(service.PeriodicService):
                 self._auto_recover_managed_app(context, app_name)
             elif status == constants.APP_APPLY_SUCCESS:
                 self.check_pending_app_reapply(context)
-                self._auto_update_app(context, app_name, managed_app=True)
+                self._auto_update_app(context, app_name)
 
         # Special case, we want to apply some logic to non-managed applications
         for app_name in self.apps_metadata[constants.APP_METADATA_APPS].keys():
@@ -7859,7 +7999,7 @@ class ConductorManager(service.PeriodicService):
             # Automatically update non-managed applications
             if status == constants.APP_APPLY_SUCCESS:
                 self.check_pending_app_reapply(context)
-                self._auto_update_app(context, app_name, managed_app=False)
+                self._auto_update_app(context, app_name)
 
         LOG.debug("Periodic Task: _k8s_application_audit: Finished")
 

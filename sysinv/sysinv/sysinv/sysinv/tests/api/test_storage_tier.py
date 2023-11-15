@@ -558,6 +558,8 @@ class StorageTierDependentTCs(base.FunctionalTest):
         self.set_is_initial_config_patcher.return_value = True
         self.service = manager.ConductorManager('test-host', 'test-topic')
         self.service.dbapi = dbapi.get_instance()
+        self.service._populate_app_bundle_metadata = mock.Mock()
+        self.service._initialize_ostree_inotify = mock.Mock()
         self.context = context.get_admin_context()
         self.dbapi = dbapi.get_instance()
         self.system = dbutils.create_test_isystem()
