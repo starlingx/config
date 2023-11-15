@@ -12762,7 +12762,7 @@ class ConductorManager(service.PeriodicService):
         for upgrade in upgrades:
             version = upgrade.findtext("version")
             required_patches = []
-            required_patch_elements = upgrade.findall("required_patches")
+            required_patch_elements = upgrade.findall("required_patch")
             if required_patch_elements:
                 for patch_element in required_patch_elements:
                     required_patches.append(patch_element.text)
