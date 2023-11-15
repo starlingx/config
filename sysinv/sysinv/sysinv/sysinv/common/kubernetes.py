@@ -361,7 +361,8 @@ V1ContainerImage.names = V1ContainerImage.names.setter(names)
 
 class KubeOperator(object):
 
-    def __init__(self):
+    def __init__(self, host=None):
+        self.host = host
         self._kube_client_batch = None
         self._kube_client_core = None
         self._kube_client_policy = None
@@ -380,6 +381,8 @@ class KubeOperator(object):
         else:
             c = Configuration().get_default_copy()
         c.verify_ssl = False
+        if self.host is not None:
+            c.host = self.host
         Configuration.set_default(c)
         return c
 
