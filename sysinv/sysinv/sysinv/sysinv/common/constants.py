@@ -2394,6 +2394,9 @@ NOT_CONFIGURABLE = 'not-configurable'
 # apparmor states
 APPARMOR_STATE_ENABLED = 'enabled'
 APPARMOR_STATE_DISABLED = 'disabled'
+APPARMOR_CONFIG_STATUS_PENDING = 'apparmor_config_pending'
+APPARMOR_CONFIG_STATUS_SUCCESS = 'apparmor_config_success'
+APPARMOR_CONFIG_STATUS_FAILURE = 'apparmor_config_failure'
 
 # Method callers
 RECOVER_VIA_REMOVAL = 'recover_via_removal'

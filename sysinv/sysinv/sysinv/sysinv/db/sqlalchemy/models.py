@@ -229,6 +229,7 @@ class ihost(Base):
     config_applied = Column(String(255))
     config_target = Column(String(255))
     apparmor = Column(String(64), default="disabled")
+    apparmor_config_status = Column(String(255), default="")
 
     clock_synchronization = Column(String(32), default=constants.NTP)
 
