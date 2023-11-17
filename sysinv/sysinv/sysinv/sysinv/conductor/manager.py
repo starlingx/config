@@ -11199,7 +11199,8 @@ class ConductorManager(service.PeriodicService):
                 personalities = [constants.CONTROLLER]
                 config_dict = {
                     "personalities": personalities,
-                    "classes": ['platform::docker::runtime']
+                    "classes": ['platform::filesystem::docker',
+                                'platform::docker::runtime']
                 }
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict)
             elif service == constants.SERVICE_TYPE_CEPH:
