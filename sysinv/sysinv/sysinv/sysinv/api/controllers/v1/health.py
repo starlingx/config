@@ -1,4 +1,4 @@
-# Copyright (c) 2016 Wind River Systems, Inc.
+# Copyright (c) 2016-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -33,8 +33,8 @@ class HealthController(rest.RestController):
                 "Unable to perform health query."))
         return output
 
-    @wsme_pecan.wsexpose(wtypes.text, wtypes.text, wtypes.text)
-    def get_one(self, upgrade, relaxed=None):
+    @wsme_pecan.wsexpose(wtypes.text, wtypes.text, wtypes.text, wtypes.text)
+    def get_one(self, upgrade, relaxed=None, rootca=None):
         """Validates the health of the system for an upgrade"""
         force = False
         if relaxed:
@@ -51,7 +51,8 @@ class HealthController(rest.RestController):
         elif upgrade == 'kube-upgrade':
             try:
                 success, output = pecan.request.rpcapi.get_system_health(
-                    pecan.request.context, kube_upgrade=True, force=force)
+                    pecan.request.context, kube_upgrade=True, force=force,
+                    kube_rootca_update=rootca)
             except Exception as e:
                 LOG.exception(e)
                 raise wsme.exc.ClientSideError(_(

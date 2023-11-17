@@ -192,7 +192,9 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
                         dbbase.ProvisionedControllerHostTestCase):
 
     @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
-    def test_create(self):
+    @mock.patch('sysinv.common.health.Health._check_kube_all_pods_are_healthy')
+    def test_create(self, mock_pods_healthy):
+        mock_pods_healthy.return_value = True, []
         # Test creation of kubernetes rootca update
         create_dict = dbutils.get_test_kube_rootca_update()
         result = self.post_json('/kube_rootca_update?force=False', create_dict,
@@ -212,12 +214,15 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
         self.assertEqual(host_updates[0]['effective_rootca_cert'], 'current_cert_serial')
 
     @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
-    def test_create_rootca_update_unhealthy_from_alarms(self):
+    @mock.patch('sysinv.common.health.Health._check_kube_all_pods_are_healthy')
+    def test_create_rootca_update_unhealthy_from_alarms(self, mock_pods_healthy):
         """ Test creation of kube rootca update while there are alarms"""
         # Test creation of kubernetes rootca update when system health check fails
         # 1 alarm will return False
         self.fake_fm_client.alarm.list.return_value = \
             [FAKE_MGMT_ALARM, ]
+
+        mock_pods_healthy.return_value = True, []
 
         # Test creation of kubernetes rootca update
         create_dict = dbutils.get_test_kube_rootca_update()
@@ -228,8 +233,29 @@ class TestPostKubeRootCAUpdate(TestKubeRootCAUpdate,
         # Verify that the rootca update has the expected attributes
         self.assertEqual(result.content_type, 'application/json')
         self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("System is not healthy. Run system health-query for more details.",
-                      result.json['error_message'])
+        self.assertIn("System is not healthy. Run 'system health-query-kube-upgrade "
+                      "--rootca' for more details.", result.json['error_message'])
+
+    @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
+    @mock.patch('sysinv.common.health.Health._check_kube_all_pods_are_healthy')
+    def test_create_rootca_update_unhealthy_from_pods(self, mock_pods_healthy):
+        """ Test creation of kube rootca update while there are unhealthy pods"""
+
+        # Unhealthy pods
+        mock_pods_healthy.return_value = False, \
+            [('Unhealthy-pod-name', 'Unhealthy-pod-namespace')]
+
+        # Test creation of kubernetes rootca update
+        create_dict = dbutils.get_test_kube_rootca_update()
+        result = self.post_json('/kube_rootca_update?force=False', create_dict,
+                                headers=self.headers,
+                                expect_errors=True)
+
+        # Verify that the rootca update has the expected attributes
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertIn("System is not healthy. Run 'system health-query-kube-upgrade "
+                      "--rootca' for more details.", result.json['error_message'])
 
     def test_create_rootca_update_exists(self):
         # Test creation of rootca update when a kubernetes rootca update already exists

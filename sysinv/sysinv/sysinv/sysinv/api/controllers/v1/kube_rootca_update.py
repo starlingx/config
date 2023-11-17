@@ -433,7 +433,8 @@ class KubeRootCAUpdateController(rest.RestController):
                 LOG.info("Running in lab, ignoring health errors.")
             else:
                 raise wsme.exc.ClientSideError(_(
-                    "System is not healthy. Run system health-query for more details."))
+                    "System is not healthy. Run 'system health-query-kube-upgrade "
+                    "--rootca' for more details."))
 
     def _clear_kubernetes_resources(self, hostnames):
         """Clears secrets and issuers created during the update process
