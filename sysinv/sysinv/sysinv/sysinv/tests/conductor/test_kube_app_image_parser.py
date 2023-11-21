@@ -26,10 +26,9 @@ IMAGES_RESOURCE = {
         }
     },
     'Images': {
-        'Tsyncd': 'quay.io/silicom/tsyncd:2.1.2.8',
-        'TsyncExtts': 'quay.io/silicom/tsync_extts:1.0.0',
-        'Phc2Sys': 'quay.io/silicom/phc2sys:3.1.1',
-        'GrpcTsyncd': 'quay.io/silicom/grpc-tsyncd:2.1.2.8',
+        'Tsyncd': 'quay.io/silicom/tsyncd:2.1.3.6',
+        'Phc2Sys': 'quay.io/silicom/phc2sys:3.1-00193-g6bac465',
+        'GrpcTsyncd': 'quay.io/silicom/grpc-tsyncd:2.1.2.18',
         'Gpsd': 'quay.io/silicom/gpsd:3.23.1'
     },
     'controller': {
@@ -131,10 +130,9 @@ class TestKubeAppImageParser(base.TestCase):
                 }
             },
             'Images': {
-                'Tsyncd': 'registry.local:9001/quay.io/silicom/tsyncd:2.1.2.8',
-                'TsyncExtts': 'registry.local:9001/quay.io/silicom/tsync_extts:1.0.0',
-                'Phc2Sys': 'registry.local:9001/quay.io/silicom/phc2sys:3.1.1',
-                'GrpcTsyncd': 'registry.local:9001/quay.io/silicom/grpc-tsyncd:2.1.2.8',
+                'Tsyncd': 'registry.local:9001/quay.io/silicom/tsyncd:2.1.3.6',
+                'Phc2Sys': 'registry.local:9001/quay.io/silicom/phc2sys:3.1-00193-g6bac465',
+                'GrpcTsyncd': 'registry.local:9001/quay.io/silicom/grpc-tsyncd:2.1.2.18',
                 'Gpsd': 'registry.local:9001/quay.io/silicom/gpsd:3.23.1'
             },
             'controller': {
@@ -218,10 +216,9 @@ class TestKubeAppImageParser(base.TestCase):
                 }
             },
             'Images': {
-                'Tsyncd': 'quay.io/silicom/tsyncd:latest',
-                'TsyncExtts': 'quay.io/silicom/tsync_extts:1.0.0',
-                'Phc2Sys': 'quay.io/silicom/phc2sys:3.1.1',
-                'GrpcTsyncd': 'quay.io/silicom/grpc-tsyncd:2.1.2.8',
+                'Tsyncd': 'quay.io/silicom/tsyncd:2.1.3.6',
+                'Phc2Sys': 'quay.io/silicom/phc2sys:3.1-00193-g6bac465',
+                'GrpcTsyncd': 'quay.io/silicom/grpc-tsyncd:2.1.2.18',
                 'Gpsd': 'quay.io/silicom/gpsd:3.23.1'
             },
             'extraInitContainers': {
@@ -253,10 +250,9 @@ class TestKubeAppImageParser(base.TestCase):
                 }
             },
             'Images': {
-                'Tsyncd': 'quay.io/silicom/tsyncd:latest',
-                'TsyncExtts': 'quay.io/silicom/tsync_extts:1.0.0',
-                'Phc2Sys': 'quay.io/silicom/phc2sys:3.1.1',
-                'GrpcTsyncd': 'quay.io/silicom/grpc-tsyncd:2.1.2.8',
+                'Tsyncd': 'quay.io/silicom/tsyncd:2.1.3.6',
+                'Phc2Sys': 'quay.io/silicom/phc2sys:3.1-00193-g6bac465',
+                'GrpcTsyncd': 'quay.io/silicom/grpc-tsyncd:2.1.2.18',
                 'Gpsd': 'quay.io/silicom/gpsd:3.23.1'
             },
             'controller': {
@@ -344,10 +340,9 @@ class TestKubeAppImageParser(base.TestCase):
             'docker.io/openstackhelm/heat:ocata',
             'docker.elastic.co/beats/filebeat-oss:7.4.0',
             'docker.elastic.co/logstash/logstash-oss:7.2.0',
-            'quay.io/silicom/tsyncd:2.1.2.8',
-            'quay.io/silicom/tsync_extts:1.0.0',
-            'quay.io/silicom/phc2sys:3.1.1',
-            'quay.io/silicom/grpc-tsyncd:2.1.2.8',
+            'quay.io/silicom/tsyncd:2.1.3.6',
+            'quay.io/silicom/phc2sys:3.1-00193-g6bac465',
+            'quay.io/silicom/grpc-tsyncd:2.1.2.18',
             'quay.io/silicom/gpsd:3.23.1',
             'docker.io/starlingx/stx-heat:master-centos-stable-latest',
             'k8s.gcr.io/metrics-server/metrics-server:0.6.1'

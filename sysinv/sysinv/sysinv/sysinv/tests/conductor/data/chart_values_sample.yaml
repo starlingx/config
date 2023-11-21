@@ -15,10 +15,9 @@ images:
     image_local_sync: null
 
 Images:
-  Tsyncd: quay.io/silicom/tsyncd:2.1.2.8
-  TsyncExtts: quay.io/silicom/tsync_extts:1.0.0
-  Phc2Sys: quay.io/silicom/phc2sys:3.1.1
-  GrpcTsyncd: quay.io/silicom/grpc-tsyncd:2.1.2.8
+  Tsyncd: quay.io/silicom/tsyncd:2.1.3.6
+  Phc2Sys: quay.io/silicom/phc2sys:3.1-00193-g6bac465
+  GrpcTsyncd: quay.io/silicom/grpc-tsyncd:2.1.2.18
   Gpsd: quay.io/silicom/gpsd:3.23.1
 
 image:
