@@ -522,6 +522,133 @@ class TestDelete(NetworkTestCase):
         )
 
 
+class TestDeleteAIOSimplex(NetworkTestCase):
+    """ Tests AIO Simplex deletion.
+        Typically delete APIs return NO CONTENT.
+        python2 and python3 libraries may return different
+        content_type (None, or empty json) when NO_CONTENT returned.
+    """
+    system_type = constants.TIS_AIO_BUILD
+    system_mode = constants.SYSTEM_MODE_SIMPLEX
+
+    def setUp(self):
+        super(TestDeleteAIOSimplex, self).setUp()
+
+    def _setup_context(self, host_locked=False):
+        if host_locked:
+            admin = constants.ADMIN_LOCKED
+        else:
+            admin = constants.ADMIN_UNLOCKED
+
+        self.host = self._create_test_host(constants.CONTROLLER, constants.WORKER,
+                            administrative=admin,
+                            operational=constants.OPERATIONAL_ENABLED,
+                            availability=constants.AVAILABILITY_AVAILABLE,
+                            invprovision=constants.PROVISIONED,
+                            vim_progress_status=constants.VIM_SERVICES_ENABLED)
+
+        self._create_test_host_cpus(self.host, platform=2, vswitch=2, application=11)
+
+    def _test_delete_allowed(self, network_type):
+        # Delete the API object
+        self.delete_object = self._create_db_object(network_type=network_type)
+        uuid = self.delete_object.uuid
+        response = self.delete(self.get_single_url(uuid),
+                               headers=self.API_HEADERS)
+
+        # Verify the expected API response for the delete
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+
+    def _test_delete_after_initial_config_not_allowed(self, network_type):
+        # Delete the API object
+        self.delete_object = self._create_db_object(network_type=network_type)
+        with mock.patch('sysinv.common.utils.is_initial_config_complete',
+                        lambda: True):
+            uuid = self.delete_object.uuid
+            response = self.delete(self.get_single_url(uuid),
+                                   headers=self.API_HEADERS,
+                                   expect_errors=True)
+
+            # Verify the expected API response for the delete
+            self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+            expected_error = ("Cannot delete type %s network %s after"
+                              " initial configuration completion" %
+                              (network_type, uuid))
+            self.assertIn(expected_error, response.json['error_message'])
+
+    def _test_delete_mgmt_after_initial_config_not_allowed(self, network_type):
+        # Delete the API object
+        self.delete_object = self._create_db_object(network_type=network_type)
+        with mock.patch('sysinv.common.utils.is_initial_config_complete',
+                        lambda: True):
+            uuid = self.delete_object.uuid
+            response = self.delete(self.get_single_url(uuid),
+                                   headers=self.API_HEADERS,
+                                   expect_errors=True)
+
+            # Verify the expected API response for the delete
+            self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+            expected_error = ("Cannot delete type %s network %s because Host "
+                              "controller-0 is in administrative state = unlocked" %
+                              (network_type, uuid))
+            self.assertIn(expected_error, response.json['error_message'])
+
+    def _test_delete_after_initial_config_allowed(self, network_type):
+        # Delete the API object
+        self.delete_object = self._create_db_object(network_type=network_type)
+        with mock.patch('sysinv.common.utils.is_initial_config_complete',
+                        lambda: True):
+            uuid = self.delete_object.uuid
+            response = self.delete(self.get_single_url(uuid),
+                                   headers=self.API_HEADERS)
+
+            # Verify the expected API response for the delete
+            self.assertEqual(response.status_code, http_client.NO_CONTENT)
+
+    def test_delete_management(self):
+
+        self._test_delete_allowed(constants.NETWORK_TYPE_MGMT)
+
+    def test_delete_management_after_initial_config_not_allowed_host_unlocked(self):
+        self._setup_context(host_locked=False)
+
+        self._test_delete_mgmt_after_initial_config_not_allowed(
+            constants.NETWORK_TYPE_MGMT
+        )
+
+    def test_delete_management_after_initial_config_allowed_host_locked(self):
+        self._setup_context(host_locked=True)
+
+        self._test_delete_after_initial_config_allowed(
+            constants.NETWORK_TYPE_MGMT
+        )
+
+    # just to make sure that the other networks can't be deleted
+    def test_delete_oam(self):
+        self._setup_context(host_locked=False)
+
+        self._test_delete_allowed(constants.NETWORK_TYPE_OAM)
+
+    def test_delete_oam_after_initial_config(self):
+        self._setup_context(host_locked=False)
+
+        self._test_delete_after_initial_config_not_allowed(
+            constants.NETWORK_TYPE_OAM
+        )
+
+    def test_delete_data(self):
+        self._setup_context(host_locked=False)
+
+        self._test_delete_allowed(constants.NETWORK_TYPE_DATA)
+
+    def test_delete_data_after_initial_config(self):
+        self._setup_context(host_locked=False)
+
+        self._test_delete_after_initial_config_allowed(
+            constants.NETWORK_TYPE_DATA
+        )
+
+
 class TestList(NetworkTestCase):
     """ Network list operations
     """

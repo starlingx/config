@@ -2187,10 +2187,15 @@ class HostController(rest.RestController):
                 ihost_obj['uuid'], {'capabilities': ihost_obj['capabilities']})
 
             # Notify maintenance about updated mgmt_ip
-            address_name = cutils.format_address_name(ihost_obj.hostname,
-                                                      constants.NETWORK_TYPE_MGMT)
-            address = pecan.request.dbapi.address_get_by_name(address_name)
-            ihost_obj['mgmt_ip'] = address.address
+            # During mgmt network reconfiguration, do not change the mgmt IP
+            # in maintencance as it will be updated after the unlock.
+            if os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_ONGOING):
+                ihost_obj['mgmt_ip'] = cutils.gethostbyname(constants.CONTROLLER_0_FQDN)
+            else:
+                address_name = cutils.format_address_name(ihost_obj.hostname,
+                                                        constants.NETWORK_TYPE_MGMT)
+                address = pecan.request.dbapi.address_get_by_name(address_name)
+                ihost_obj['mgmt_ip'] = address.address
 
             hostupdate.notify_mtce = True
 

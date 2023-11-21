@@ -208,6 +208,16 @@ INITIAL_K8S_CONFIG_COMPLETE = os.path.join(
 VOLATILE_CONTROLLER_CONFIG_COMPLETE = os.path.join(
     VOLATILE_PATH, ".controller_config_complete")
 
+# Set when mgmt network reconfiguration is executed after
+# INITIAL_CONTROLLER_CONFIG_COMPLETE
+MGMT_NETWORK_RECONFIGURATION_ONGOING = os.path.join(
+    PLATFORM_CONF_PATH, ".mgmt_network_reconfiguration_ongoing")
+
+# Set when host-unlock was executed and hieradata was updated
+# with new MGMT IP RANGE.
+MGMT_NETWORK_RECONFIGURATION_UNLOCK = os.path.join(
+    PLATFORM_CONF_PATH, ".mgmt_network_reconfiguration_unlock")
+
 # Worker configuration flags
 
 # Set after initial application of node manifest

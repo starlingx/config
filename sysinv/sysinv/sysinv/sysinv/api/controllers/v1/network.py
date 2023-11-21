@@ -161,7 +161,7 @@ class NetworkController(rest.RestController):
             pecan.request.context, network_uuid)
         return Network.convert_with_links(rpc_network)
 
-    def _check_network_type(self, networktype):
+    def _check_network_type(self, networktype, pool_uuid=None):
         networks = pecan.request.dbapi.networks_get_by_type(networktype)
         if networks:
             raise exception.NetworkAlreadyExists(type=networktype)
@@ -172,6 +172,16 @@ class NetworkController(rest.RestController):
                     "role of {}."
                     .format(networktype, constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD))
             raise wsme.exc.ClientSideError(msg)
+        if (networktype == constants.NETWORK_TYPE_MGMT):
+            # There are ansible rules using the explicit name: 'management' in the addrpool
+            # since the AIO-SX allows mgmt network reconfiguration it is necessary to enforce
+            # the use of addrpool named 'management'.
+            if pool_uuid:
+                pool = pecan.request.dbapi.address_pool_get(pool_uuid)
+                if pool['name'] != "management":
+                    msg = _("Network of type {} must use the addrpool named '{}'."
+                    .format(networktype, address_pool.MANAGEMENT_ADDRESS_POOL))
+                    raise wsme.exc.ClientSideError(msg)
 
     def _check_network_pool(self, pool):
         # ensure address pool exists and is not already inuse
@@ -203,10 +213,25 @@ class NetworkController(rest.RestController):
         self._populate_network_addresses(pool, network, addresses)
 
     def _create_mgmt_network_address(self, pool):
-        addresses = collections.OrderedDict()
-        addresses[constants.CONTROLLER_HOSTNAME] = None
-        addresses[constants.CONTROLLER_0_HOSTNAME] = None
-        addresses[constants.CONTROLLER_1_HOSTNAME] = None
+        addresses = {}
+
+        if pool.floating_address:
+            addresses.update(
+                {constants.CONTROLLER_HOSTNAME: pool.floating_address})
+        else:
+            addresses.update({constants.CONTROLLER_HOSTNAME: None})
+
+        if pool.controller0_address:
+            addresses.update(
+                {constants.CONTROLLER_0_HOSTNAME: pool.controller0_address})
+        else:
+            addresses.update({constants.CONTROLLER_0_HOSTNAME: None})
+
+        if pool.controller1_address:
+            addresses.update(
+                {constants.CONTROLLER_1_HOSTNAME: pool.controller1_address})
+        else:
+            addresses.update({constants.CONTROLLER_1_HOSTNAME: None})
 
         if pool.gateway_address is not None:
             if utils.get_distributed_cloud_role() == \
@@ -362,10 +387,11 @@ class NetworkController(rest.RestController):
         network = network.as_dict()
         network['uuid'] = str(uuid.uuid4())
 
-        # Perform semantic validation
-        self._check_network_type(network['type'])
-
         pool_uuid = network.pop('pool_uuid', None)
+
+        # Perform semantic validation
+        self._check_network_type(network['type'], pool_uuid)
+
         if pool_uuid:
             pool = pecan.request.dbapi.address_pool_get(pool_uuid)
             network.update({'address_pool_id': pool.id})
@@ -431,16 +457,31 @@ class NetworkController(rest.RestController):
     def delete(self, network_uuid):
         """Delete a network."""
         network = pecan.request.dbapi.network_get(network_uuid)
-        if cutils.is_initial_config_complete() and \
-            network['type'] in [constants.NETWORK_TYPE_MGMT,
-                                constants.NETWORK_TYPE_OAM,
+        if cutils.is_initial_config_complete():
+            if (network['type'] in [constants.NETWORK_TYPE_OAM,
                                 constants.NETWORK_TYPE_CLUSTER_HOST,
                                 constants.NETWORK_TYPE_PXEBOOT,
                                 constants.NETWORK_TYPE_CLUSTER_POD,
                                 constants.NETWORK_TYPE_CLUSTER_SERVICE,
-                                constants.NETWORK_TYPE_STORAGE]:
-            msg = _("Cannot delete type {} network {} after initial "
-                    "configuration completion"
-                    .format(network['type'], network_uuid))
-            raise wsme.exc.ClientSideError(msg)
+                                constants.NETWORK_TYPE_STORAGE] or
+                (network['type'] in [constants.NETWORK_TYPE_MGMT] and
+                 utils.get_system_mode() != constants.SYSTEM_MODE_SIMPLEX)):
+                    msg = _("Cannot delete type {} network {} after initial "
+                        "configuration completion"
+                        .format(network['type'], network_uuid))
+                    raise wsme.exc.ClientSideError(msg)
+
+            elif (network['type'] in [constants.NETWORK_TYPE_MGMT] and
+                  utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX):
+
+                # For AIO-SX the mgmt network can be be reconfigured if host is locked
+                chosts = pecan.request.dbapi.ihost_get_by_personality(
+                    constants.CONTROLLER)
+                for host in chosts:
+                    if utils.is_aio_simplex_host_unlocked(host):
+                        msg = _("Cannot delete type {} network {} because Host {} "
+                                "is in administrative state = unlocked"
+                                .format(network['type'], network_uuid, host['hostname']))
+                        raise wsme.exc.ClientSideError(msg)
+
         pecan.request.dbapi.network_destroy(network_uuid)

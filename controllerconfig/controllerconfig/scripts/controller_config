@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -22,6 +22,7 @@
 . /etc/platform/platform.conf
 
 PLATFORM_DIR=/opt/platform
+ETC_PLATFORM_DIR=/etc/platform
 VAULT_DIR=$PLATFORM_DIR/.keyring/${SW_VERSION}/python_keyring
 CONFIG_DIR=$CONFIG_PATH
 VOLATILE_CONFIG_PASS="/var/run/.config_pass"
@@ -98,9 +99,31 @@ EOF
 get_ip()
 {
     local host=$1
+    local ipaddr=""
+
+    # the host IP will be in the DNSMASQ files in /etc/platform/
+    if [ "$system_mode" = "simplex" ] && [ -e $COMPLETED ]; then
+
+        local host_local="${host}.internal"
+        local dnsmasq_file=dnsmasq.addn_hosts
+
+        # Replace the dnsmasq files with new Management Network range
+        if [ -e $ETC_PLATFORM_DIR/.mgmt_network_reconfiguration_unlock ] && \
+           [ -e $ETC_PLATFORM_DIR/.mgmt_network_reconfiguration_ongoing ]; then
+            dnsmasq_file=dnsmasq.addn_hosts.temp
+        fi
+
+        ipaddr=$(cat $ETC_PLATFORM_DIR/${dnsmasq_file} | awk -v host=$host_local '$2 == host {print $1}')
+
+        if [ -n "$ipaddr" ]
+        then
+            echo $ipaddr
+            return
+        fi
+    fi
 
     # Check /etc/hosts for the hostname
-    local ipaddr=$(cat /etc/hosts | awk -v host=$host '$2 == host {print $1}')
+    ipaddr=$(cat /etc/hosts | awk -v host=$host '$2 == host {print $1}')
     if [ -n "$ipaddr" ]
     then
         echo $ipaddr
@@ -249,7 +272,7 @@ start()
         fatal_error "Initial manifest application failed; Host must be re-installed."
     fi
 
-    echo "Configuring controller node..."
+    echo "Configuring controller node... ( IP: ${IPADDR} )"
 
     # Remove the flag if it exists
     rm -f ${ACTIVE_CONTROLLER_NOT_FOUND_FLAG}
@@ -512,6 +535,26 @@ start()
         then
             fatal_error "Unable to copy $CONFIG_DIR/hosts"
         fi
+    fi
+
+    # Replace the dnsmasq files with new Management Network range
+    if [ -e $ETC_PLATFORM_DIR/.mgmt_network_reconfiguration_unlock ] && \
+       [ -e $ETC_PLATFORM_DIR/.mgmt_network_reconfiguration_ongoing ]; then
+        echo "Management networking reconfiguration ongoing, replacing dnsmasq config files."
+        if [ -e $CONFIG_DIR/dnsmasq.addn_hosts.temp ] && \
+           [ -e $CONFIG_DIR/dnsmasq.hosts.temp ]; then
+            mv -f $CONFIG_DIR/dnsmasq.hosts.temp $CONFIG_DIR/dnsmasq.hosts
+            mv -f $CONFIG_DIR/dnsmasq.addn_hosts.temp $CONFIG_DIR/dnsmasq.addn_hosts
+
+            # update the cached files too
+            mv -f $ETC_PLATFORM_DIR/dnsmasq.hosts.temp $ETC_PLATFORM_DIR/dnsmasq.hosts
+            mv -f $ETC_PLATFORM_DIR/dnsmasq.addn_hosts.temp $ETC_PLATFORM_DIR/dnsmasq.addn_hosts
+        else
+            fatal_error "Management networking reconfiguration ongoing and dnsmasq files do not exist."
+        fi
+        # delete flags
+        rm -f $ETC_PLATFORM_DIR/.mgmt_network_reconfiguration_ongoing
+        rm -f $ETC_PLATFORM_DIR/.mgmt_network_reconfiguration_unlock
     fi
 
     hostname > /etc/hostname

@@ -63,6 +63,11 @@ SUBCLOUD_WRITABLE_ADDRPOOLS = ['system-controller-subnet',
 # so we can't depend on the address pool having a static name.
 SUBCLOUD_WRITABLE_NETWORK_TYPES = ['admin']
 
+# Address pool for the management network in an AIO-SX installation
+# is allowed to be deleted/modified post install
+MANAGEMENT_ADDRESS_POOL = 'management'
+AIOSX_WRITABLE_ADDRPOOLS = [MANAGEMENT_ADDRESS_POOL]
+
 
 class AddressPoolPatchType(types.JsonPatchType):
     """A complex type that represents a single json-patch operation."""
@@ -346,15 +351,55 @@ class AddressPoolController(rest.RestController):
         addr = netaddr.IPAddress(address)
         utils.is_valid_address_within_subnet(addr, subnet)
 
+    def _is_aiosx_writable_pool(self, addrpool, check_host_locked):
+        if (utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and
+                addrpool.name in AIOSX_WRITABLE_ADDRPOOLS):
+
+            # The mgmt address pool is just writable when the controller is locked
+            if(check_host_locked):
+                chosts = pecan.request.dbapi.ihost_get_by_personality(
+                    constants.CONTROLLER)
+                for host in chosts:
+                    if utils.is_aio_simplex_host_unlocked(host):
+                        msg = _("Cannot complete the action because Host {} "
+                                "is in administrative state = unlocked"
+                                .format(host['hostname']))
+                        raise wsme.exc.ClientSideError(msg)
+
+            return True
+        return False
+
+    def _validate_aiosx_mgmt_update(self, addrpool, new_name=None):
+        # There are ansible rules using the explicit name: 'management' in the addrpool
+        # since the AIO-SX allows mgmt network reconfiguration it is necessary to enforce
+        # the use of addrpool named 'management'.
+
+        if (utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and
+                addrpool.name in AIOSX_WRITABLE_ADDRPOOLS):
+
+            networks = pecan.request.dbapi.networks_get_by_pool(addrpool.id)
+
+            if networks and cutils.is_initial_config_complete() and \
+               any(network.type == constants.NETWORK_TYPE_MGMT
+                   for network in networks):
+
+                if (new_name != MANAGEMENT_ADDRESS_POOL):
+                    msg = _("Cannot complete the action because the "
+                            "address pool for mgmt network must be named as '{}'."
+                            .format(MANAGEMENT_ADDRESS_POOL))
+                    raise ValueError(msg)
+
     def _check_pool_readonly(self, addrpool):
         # The admin and system controller address pools which exist on the
         # subcloud are expected for re-home a subcloud to new system controllers.
-        if addrpool.name not in SUBCLOUD_WRITABLE_ADDRPOOLS:
+        if (addrpool.name not in SUBCLOUD_WRITABLE_ADDRPOOLS and
+                not self._is_aiosx_writable_pool(addrpool, True)):
             networks = pecan.request.dbapi.networks_get_by_pool(addrpool.id)
             # An addresspool except the admin and system controller's pools
             # are considered read-only after the initial configuration is
             # complete. During bootstrap it should be modifiable even though
             # it is allocated to a network.
+            # The management address pool can be changed just for AIO-SX
             if networks and cutils.is_initial_config_complete():
                 if any(network.type in SUBCLOUD_WRITABLE_NETWORK_TYPES
                        for network in networks):
@@ -461,6 +506,7 @@ class AddressPoolController(rest.RestController):
     def _validate_updates(self, addrpool, updates):
         if 'name' in updates:
             AddressPool._validate_name(updates['name'])
+            self._validate_aiosx_mgmt_update(addrpool, updates['name'])
         if 'order' in updates:
             AddressPool._validate_allocation_order(updates['order'])
         if 'ranges' in updates:
@@ -608,13 +654,25 @@ class AddressPoolController(rest.RestController):
         addresses = pecan.request.dbapi.addresses_get_by_pool(
             addrpool.id)
         if addresses:
+            # check if an address of this pool was assigned to an interface
+            # e.g: address assigned to a data interface
+            addr_assigned_to_interface = False
+            for addr in addresses:
+                if(addr.interface_id):
+                    addr_assigned_to_interface = True
+                    break
+
             # All of the initial configured addresspools are not deleteable,
-            # except the admin and system controller address pools on the
-            # subcloud. These can be deleted/re-added during re-homing
+            # except:
+            # - The admin and system controller address pools on the subcloud.
+            # - The management address pool for AIO-SX
+            # The admin and system controller can be deleted/re-added during re-homing
             # a subcloud to new system controllers
             if cutils.is_initial_config_complete() and \
+               (networks or addr_assigned_to_interface) and \
                (addrpool.name not in SUBCLOUD_WRITABLE_ADDRPOOLS) and \
-                not any(network.type == constants.NETWORK_TYPE_ADMIN
+               not self._is_aiosx_writable_pool(addrpool, True) and \
+               not any(network.type == constants.NETWORK_TYPE_ADMIN
                        for network in networks):
                 raise exception.AddressPoolInUseByAddresses()
             else:
