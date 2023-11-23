@@ -2747,8 +2747,8 @@ def get_cert_issuer_string_hash(cert):
         hashed_attributes = \
             hashlib.md5(issuer_attributes.encode()).hexdigest()[:16]
 
-        LOG.info("hashed issuer attributes %s from certificate "
-                % hashed_attributes)
+        LOG.debug("hashed issuer attributes %s from certificate "
+                 % hashed_attributes)
     except Exception:
         LOG.exception()
         raise exception.SysinvException(_(
@@ -2886,7 +2886,6 @@ def build_cert_identifier(cert):
     hash_subject = get_cert_issuer_string_hash(cert)
     serial_number = get_cert_serial(cert)
     cert_id = '%s-%s' % (hash_subject, serial_number)
-    LOG.info("%s is the identifier for the new root CA certificate" % cert_id)
     return cert_id
 
 

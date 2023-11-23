@@ -12054,14 +12054,7 @@ unauthorized (401), forbidden (403), badMethod (405), overLimit (413)
    :widths: 20, 20, 20, 60
 
    "cert_id", "plain", "xsd:string", "Certificate identifier composed by a combination of  <issuer_hash>-<serial_number>"
-   "error", "plain", "xsd:string", "The error message in case something wrong happen on the API execution"
-
-::
-
-   {
-      "cert_id": "d70efa2daaee06f8-314121337707572303468615715651317888841",
-      "error": ""
-   }
+   "error", "plain", "xsd:string", "The error message in the event of execution failure"
 
 This operation does not accept a request body.
 
@@ -12086,15 +12079,16 @@ forbidden (403), badMethod (405), overLimit (413)
    :header: "Parameter", "Style", "Type", "Description"
    :widths: 20, 20, 20, 60
 
-   "success", "plain", "xsd:string", "Certificate identifier composed by a combination of  <issuer_hash>-<serial_number>"
-   "error", "plain", "xsd:string", "The error message in case something wrong happen on the API execution"
+   "cert_id", "plain", "xsd:string", "Certificate identifier composed by a combination of  <issuer_hash>-<serial_number>"
+   "error", "plain", "xsd:string", "The error message in the event of execution failure"
 
 ::
 
    {
-      "success": "d70efa2daaee06f8-314121337707572303468615715651317888841",
+      "cert_id": "d70efa2daaee06f8-314121337707572303468615715651317888841",
       "error": ""
    }
+
 
 This operation does not accept a request body.
 

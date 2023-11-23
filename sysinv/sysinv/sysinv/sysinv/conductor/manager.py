@@ -17086,6 +17086,8 @@ class ConductorManager(service.PeriodicService):
             LOG.error(msg)
             return dict(success="", error=msg)
 
+        LOG.info(f"{new_cert_id} is the identifier for the new root CA "
+                 "certificate")
         return dict(success=new_cert_id, error="")
 
     def save_kubernetes_rootca_cert(self, context, ca_file):
@@ -17303,15 +17305,17 @@ class ConductorManager(service.PeriodicService):
 
         # extract information regarding the new rootca
         try:
-            new_cert = cutils.build_cert_identifier(certs[0])
+            new_cert_id = cutils.build_cert_identifier(certs[0])
         except Exception:
             msg = "Failed to extract issuer and serial number from new root CA"
             LOG.error(msg)
             return dict(success="", error=msg)
 
+        LOG.info(f"{new_cert_id} is the identifier for the new root CA "
+                 "certificate")
         # update db
         update_obj = {'state': kubernetes.KUBE_ROOTCA_UPDATE_CERT_GENERATED,
-                      'to_rootca_cert': new_cert}
+                      'to_rootca_cert': new_cert_id}
 
         r = self.dbapi.kube_rootca_update_update(update.id, update_obj)
         return dict(success=r.to_rootca_cert, error="")

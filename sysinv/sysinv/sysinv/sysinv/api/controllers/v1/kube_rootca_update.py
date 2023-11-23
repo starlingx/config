@@ -387,8 +387,9 @@ class KubeRootCACetCertIDController(rest.RestController):
                 context=pecan.request.context)
             return dict(cert_id=rootca_cert, error="")
         except Exception as e:
-            msg = ("Failed to get the current kubernetes root CA certificate ID "
-                   f"by error: {e.message}.")
+            msg = ("Failed to find the current Kubernetes root CA certificate "
+                   "from file system")
+            LOG.exception(e)
             return dict(cert_id="", error=msg)
 
 

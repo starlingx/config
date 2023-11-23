@@ -50,7 +50,9 @@ class KubeRootCAUpdateManager(base.Manager):
         try:
             return self._list(self._path('get_cert_id'))[0]
         except IndexError:
-            return []
+            msg = ("Failed to find the current Kubernetes root CA certificate "
+                   "from file system")
+            return dict(cert_id="", error=msg)
 
     def rootCA_upload(self, pem_content):
         """Retrieve the details of a given kubernetes rootca update.
