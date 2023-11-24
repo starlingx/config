@@ -16190,6 +16190,7 @@ class ConductorManager(service.PeriodicService):
 
         # Wait for the manifest to be applied
         elapsed = 0
+        LOG.info("Waiting for config apply on host = %s" % host_name)
         while elapsed < kubernetes.MANIFEST_APPLY_TIMEOUT:
             elapsed += kubernetes.MANIFEST_APPLY_INTERVAL
             greenthread.sleep(kubernetes.MANIFEST_APPLY_INTERVAL)
@@ -16197,13 +16198,15 @@ class ConductorManager(service.PeriodicService):
             if host_obj.config_target == host_obj.config_applied:
                 LOG.info("Config was applied for host %s" % host_name)
                 break
-            LOG.debug("Waiting for config apply on host %s" % host_name)
+            LOG.info("Waiting for config apply on host %s" % host_name)
         else:
             LOG.warning("Manifest apply failed for host %s" % host_name)
             manifest_apply_failed_state(context, fail_state, host_obj)
 
         # Wait for the control plane pods to start with the new version
         elapsed = 0
+        LOG.info("Waiting for control plane update on host %s, "
+                 "target_version = %s" % (host_name, target_version))
         while elapsed < kubernetes.POD_START_TIMEOUT:
             elapsed += kubernetes.POD_START_INTERVAL
             greenthread.sleep(kubernetes.POD_START_INTERVAL)
@@ -16211,7 +16214,9 @@ class ConductorManager(service.PeriodicService):
             if cp_versions.get(host_name, None) == target_version:
                 LOG.info("Control plane was updated for host %s" % host_name)
                 break
-            LOG.debug("Waiting for control plane update on host %s" % host_name)
+            LOG.info("Waiting for control plane update on host %s, "
+                     "cp_versions = %s, target_version = %s" %
+                     (host_name, cp_versions, target_version))
         else:
             LOG.warning("Control plane upgrade failed for host %s" %
                         host_name)
