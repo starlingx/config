@@ -948,9 +948,8 @@ class TestKubeOperator(base.TestCase):
         self.cp_pods_missing_result['kube-controller-manager-test-node-2'].\
             items[0].spec.containers[0].image = "test-image-3:v1.42.3"
 
-        result = self.kube_operator.kube_get_control_plane_versions()
-        assert result == {'test-node-1': 'v1.42.0',
-                          'test-node-2': 'v1.42.1'}
+        self.assertRaises(ValueError,
+                          self.kube_operator.kube_get_control_plane_versions)
 
     def test_kube_get_control_plane_versions_multi_node(self):
 

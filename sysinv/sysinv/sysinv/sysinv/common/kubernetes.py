@@ -1122,6 +1122,10 @@ class KubeOperator(object):
             label_selector="node-role.kubernetes.io/control-plane")
         for node in api_response.items:
             master_nodes.append(node.metadata.name)
+        if not master_nodes:
+            LOG.error("Error getting control-plane nodes in "
+                      "kube_get_control_plane_versions().")
+            raise ValueError('Error with kubernetes client list_node().')
 
         node_versions = dict()
         for node_name in master_nodes:
@@ -1136,13 +1140,17 @@ class KubeOperator(object):
                     pod_name, NAMESPACE_KUBE_SYSTEM, component)
                 if image is not None:
                     versions.append(LooseVersion(image.rsplit(':')[-1]))
+                else:
+                    LOG.error("Error getting image for pod %s in "
+                              "kube_get_control_plane_versions()." % pod_name)
+                    raise ValueError('Error with kube_get_image_by_pod_name().')
 
             # Calculate the lowest version
             try:
                 node_versions[node_name] = str(min(versions))
             except Exception as e:
-                LOG.error("Error trying to get min k8s version in kube_get_control_plane_versions(). "
-                          "%s" % e)
+                LOG.error("Error getting min k8s version in "
+                          "kube_get_control_plane_versions(). %s" % e)
                 raise
 
         return node_versions
