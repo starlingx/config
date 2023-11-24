@@ -25,6 +25,7 @@
 import copy
 import mock
 import os.path
+import subprocess
 import tempfile
 import uuid
 
@@ -1051,6 +1052,13 @@ class ManagerTestCase(base.DbTestCase):
         p.start().return_value = ['v1.42.2', 'v1.43.1']
         self.addCleanup(p.stop)
 
+        # Mock subprocess check_call
+        mock_check_call = mock.MagicMock()
+        p = mock.patch('eventlet.green.subprocess.check_call', mock_check_call)
+        mock_subprocess_check_call = p.start()
+        mock_subprocess_check_call.return_value = 0
+        self.addCleanup(p.stop)
+
         next_versions = kubernetes.KubeOperator().kube_get_higher_patch_version('v1.41.1',
                                                                                 'v1.43.1')
         mock_run_playbook = mock.MagicMock()
@@ -1066,6 +1074,13 @@ class ManagerTestCase(base.DbTestCase):
             playbook_cmd = ['ansible-playbook', '-e', 'kubernetes_version=%s' % k8s_version,
                             constants.ANSIBLE_KUBE_PUSH_IMAGES_PLAYBOOK]
             mock_run_playbook.assert_any_call(playbook_cmd)
+
+        # Verify that we called the script to turn off image garbage collection
+        mock_subprocess_check_call.assert_called_with(
+             ["/bin/bash", "/usr/share/puppet/modules/platform/files/disable_image_gc.sh"],
+             stdout=subprocess.DEVNULL,
+             stderr=subprocess.DEVNULL,
+        )
 
         # Verify that the upgrade state was updated
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
