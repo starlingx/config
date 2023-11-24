@@ -15958,6 +15958,22 @@ class ConductorManager(service.PeriodicService):
         else:
             next_versions = [kube_version]
 
+        # For simplex systems, disable image garbage collection by kubelet
+        # during the K8s upgrade.  For duplex this will be done on each controller
+        # by the puppet manifest called below.  It wants to be done before we
+        # pull the images so that they can't be garbage collected by kubelet
+        # before they're needed.
+        if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+            try:
+                # Call the helper script used by the puppet manifest.
+                subprocess.check_call(  # pylint: disable=not-callable
+                    ["/bin/bash",
+                     "/usr/share/puppet/modules/platform/files/disable_image_gc.sh"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL)
+            except subprocess.CalledProcessError:
+                LOG.error("Failed to call disable_image_gc.sh, continuing anyway.")
+
         for k8s_version in next_versions:
             LOG.info("executing playbook: %s for version %s" %
                 (constants.ANSIBLE_KUBE_PUSH_IMAGES_PLAYBOOK, k8s_version))
