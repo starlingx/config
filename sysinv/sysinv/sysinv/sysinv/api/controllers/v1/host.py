@@ -1175,6 +1175,7 @@ class HostController(rest.RestController):
         'install_progress': ['POST'],
         'wipe_osds': ['GET'],
         'update_inv_state': ['POST'],
+        'mgmt_ip': ['GET'],
         'kube_upgrade_control_plane': ['POST'],
         'kube_upgrade_kubelet': ['POST'],
         'device_image_update': ['POST'],
@@ -1308,6 +1309,80 @@ class HostController(rest.RestController):
         if (os.path.isfile(tsc.SKIP_CEPH_OSD_WIPING)):
             return False
         return True
+
+    @wsme_pecan.wsexpose(wtypes.text, six.text_type)
+    def mgmt_ip(self, mac):
+
+        # validate the mac address format before calling into sysinv
+        if cutils.is_valid_mac(mac) is False:
+            LOG.debug("invalid mac:%s" % mac)
+            return 0
+
+        # get the active controller's floating ip address
+        floating_address = pecan.request.dbapi.address_get_by_name(
+            cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
+                                       constants.NETWORK_TYPE_MGMT)).address
+        try:
+            # get the management IP for the host that matches this mgmt mac
+            ihost_obj = pecan.request.dbapi.ihost_get_by_mgmt_mac(mac)
+            if ihost_obj['hostname']:
+                hostname = ihost_obj['hostname']
+                mgmt_addr = ihost_obj['mgmt_ip']
+                if mgmt_addr is None:
+                    address_name = cutils.format_address_name(hostname,
+                                                      constants.NETWORK_TYPE_MGMT)
+                    address = pecan.request.dbapi.address_get_by_name(address_name)
+                    mgmt_addr = address.address
+
+                if mgmt_addr is not None:
+                    # get the management network netmask
+                    network = pecan.request.dbapi.network_get_by_type(
+                            constants.NETWORK_TYPE_MGMT)
+                    address_names = ['%s-%s' % (
+                        constants.CONTROLLER_0_HOSTNAME,
+                        constants.NETWORK_TYPE_MGMT),
+                                     '%s-%s' % (
+                        constants.CONTROLLER_1_HOSTNAME,
+                        constants.NETWORK_TYPE_MGMT)]
+                    addresses = {
+                            a['name']: a for a in
+                            pecan.request.dbapi.addresses_get_by_pool_uuid(
+                                network.pool_uuid)}
+                    address_pool = pecan.request.dbapi.address_pool_get(network.pool_uuid)
+                    mgmt_subnet = str(address_pool.network) + '/' + str(address_pool.prefix)
+                    mgmt_netmask = None
+                    for name in address_names:
+                        # check for prefix mismatch between controllers
+                        _prefix = addresses[name].prefix
+                        if mgmt_netmask is None and _prefix is not None:
+                            mgmt_netmask = addresses[name].prefix
+                        elif mgmt_netmask != _prefix:
+                            LOG.info("management netmask delta %s:%s" % (
+                                mgmt_netmask, _prefix))
+                        else:
+                            LOG.debug("management netmasks match %s:%s" % (
+                                mgmt_netmask, _prefix))
+
+                    # build the return string
+                    mgmt_ip = {}
+                    mgmt_ip["hostname"] = hostname
+                    mgmt_ip["netmask"] = str(mgmt_netmask)
+                    mgmt_ip["subnet"] = mgmt_subnet
+                    mgmt_ip["address"] = mgmt_addr
+                    mgmt_ip["floating"] = floating_address
+
+                    # avoid logging by default
+                    LOG.debug("mac:%s lookup got '%s'" % (mac, mgmt_ip))
+                    return mgmt_ip
+                else:
+                    raise wsme.exc.ClientSideError(_(
+                        "Failed to get '%s' mgmt_ip from mac '%s'" % (
+                            ihost_obj['hostname'],
+                            ihost_obj['mgmt_mac'])))
+
+        except (exception.NodeNotFound, exception.HostNotFound):
+            LOG.warn(_("Node with mac:%s is not found" % mac))
+            pass
 
     @wsme_pecan.wsexpose(HostCollection, six.text_type, six.text_type, int, six.text_type,
                          six.text_type, six.text_type)
