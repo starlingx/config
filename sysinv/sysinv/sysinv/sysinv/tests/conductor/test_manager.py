@@ -136,7 +136,6 @@ class ManagerTestCase(base.DbTestCase):
                                             'apiVersion: kubeadm.k8s.io/v1beta3\n'
                                             'controllerManager:\n'
                                             '  extraArgs:\n'
-                                            '    pod-eviction-timeout: 30s\n'
                                             '    feature-gates: CSIMigrationPortworx=false\n'
                                             '  extraVolumes:\n'
                                             'kind: ClusterConfiguration\n'
@@ -151,7 +150,7 @@ class ManagerTestCase(base.DbTestCase):
         config_patch += 'extraArgs: {event-ttl: 24h}\n  extraVolumes:\n  - {hostPath: '
         config_patch += '/etc/kubernetes/encryption-provider.yaml}\napiVersion: '
         config_patch += 'kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  extraArgs: '
-        config_patch += '{feature-gates: CSIMigrationPortworx=false, pod-eviction-timeout: 30s}\n'
+        config_patch += '{feature-gates: CSIMigrationPortworx=false}\n'
         config_patch += '  extraVolumes: null\nkind: ClusterConfiguration\nkubernetesVersion: '
         config_patch += 'v1.42.1\nscheduler: {}\n'
         self.kubeadm_config_map_patch = {'data': {'ClusterConfiguration': config_patch}}
@@ -172,7 +171,6 @@ class ManagerTestCase(base.DbTestCase):
                                             'apiVersion: kubeadm.k8s.io/v1beta3\n'
                                             'controllerManager:\n'
                                             '  extraArgs:\n'
-                                            '    pod-eviction-timeout: 30s\n'
                                             '    feature-gates: CSIMigrationPortworx=false,RemoveSelfLink=false\n'
                                             '  extraVolumes:\n'
                                             'kind: ClusterConfiguration\n'
@@ -187,8 +185,8 @@ class ManagerTestCase(base.DbTestCase):
         selflink_patch += 'extraArgs: {event-ttl: 24h}\n  extraVolumes:\n  - {hostPath: '
         selflink_patch += '/etc/kubernetes/encryption-provider.yaml}\napiVersion: '
         selflink_patch += 'kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  extraArgs: '
-        selflink_patch += '{feature-gates: CSIMigrationPortworx=false, '
-        selflink_patch += 'pod-eviction-timeout: 30s}\n  extraVolumes: null\nkind: '
+        selflink_patch += '{feature-gates: CSIMigrationPortworx=false}\n'
+        selflink_patch += '  extraVolumes: null\nkind: '
         selflink_patch += 'ClusterConfiguration\nkubernetesVersion: v1.42.1\nscheduler: {}\n'
         self.kubeadm_config_map_patch_RemoveSelfLink = {'data': {'ClusterConfiguration': selflink_patch}}
 
@@ -208,7 +206,6 @@ class ManagerTestCase(base.DbTestCase):
                                             'apiVersion: kubeadm.k8s.io/v1beta3\n'
                                             'controllerManager:\n'
                                             '  extraArgs:\n'
-                                            '    pod-eviction-timeout: 30s\n'
                                             '    feature-gates: TTLAfterFinished=true,RemoveSelfLink=false\n'
                                             '  extraVolumes:\n'
                                             'kind: ClusterConfiguration\n'
@@ -224,7 +221,7 @@ class ManagerTestCase(base.DbTestCase):
         ttl_patch += 'CSIMigrationPortworx=false}\n  extraVolumes:\n  - '
         ttl_patch += '{hostPath: /etc/kubernetes/encryption-provider.yaml}\n'
         ttl_patch += 'apiVersion: kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  '
-        ttl_patch += 'extraArgs: {pod-eviction-timeout: 30s}\n  extraVolumes: '
+        ttl_patch += 'extraArgs: {}\n  extraVolumes: '
         ttl_patch += 'null\nkind: ClusterConfiguration\nkubernetesVersion: '
         ttl_patch += 'v1.42.1\nscheduler: {}\n'
         self.kubeadm_config_map_patch_ttlafterfinished = {'data': {'ClusterConfiguration': ttl_patch}}
@@ -245,7 +242,6 @@ class ManagerTestCase(base.DbTestCase):
                                             'apiVersion: kubeadm.k8s.io/v1beta3\n'
                                             'controllerManager:\n'
                                             '  extraArgs:\n'
-                                            '    pod-eviction-timeout: 30s\n'
                                             '    feature-gates: HugePageStorageMediumSize=true\n'
                                             '  extraVolumes:\n'
                                             'kind: ClusterConfiguration\n'
@@ -261,7 +257,7 @@ class ManagerTestCase(base.DbTestCase):
         ttl_patch += 'Foo=false}\n  extraVolumes:\n  - '
         ttl_patch += '{hostPath: /etc/kubernetes/encryption-provider.yaml}\n'
         ttl_patch += 'apiVersion: kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  '
-        ttl_patch += 'extraArgs: {pod-eviction-timeout: 30s}\n  extraVolumes: '
+        ttl_patch += 'extraArgs: {}\n  extraVolumes: '
         ttl_patch += 'null\nkind: ClusterConfiguration\nkubernetesVersion: '
         ttl_patch += 'v1.23.1\nscheduler: {}\n'
         self.kubeadm_config_map_patch_HugePageStorageMediumSize = {'data': {'ClusterConfiguration': ttl_patch}}
@@ -282,7 +278,6 @@ class ManagerTestCase(base.DbTestCase):
                                             'controllerManager:\n'
                                             '  extraArgs:\n'
                                             '    feature-gates: CSIMigrationPortworx=false\n'
-                                            '    pod-eviction-timeout: 30s\n'
                                             '  extraVolumes:\n'
                                             'imageRepository: registry.local:9001/k8s.gcr.io\n'
                                             'kind: ClusterConfiguration\n'
@@ -294,7 +289,7 @@ class ManagerTestCase(base.DbTestCase):
                         namespace='kube-system'),
         )
 
-        self.kubeadm_config_map_patch_image_repository = {'data': {'ClusterConfiguration': 'apiServer:\n  certSANs: [192.168.206.1, 127.0.0.1, 10.10.6.3]\n  extraArgs: {event-ttl: 24h}\n  extraVolumes:\n  - {hostPath: /etc/kubernetes/encryption-provider.yaml}\napiVersion: kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  extraArgs: {feature-gates: CSIMigrationPortworx=false, pod-eviction-timeout: 30s}\n  extraVolumes: null\nimageRepository: registry.local:9001/registry.k8s.io\nkind: ClusterConfiguration\nkubernetesVersion: v1.42.1\nscheduler: {}\n'}}  # noqa: E501
+        self.kubeadm_config_map_patch_image_repository = {'data': {'ClusterConfiguration': 'apiServer:\n  certSANs: [192.168.206.1, 127.0.0.1, 10.10.6.3]\n  extraArgs: {event-ttl: 24h}\n  extraVolumes:\n  - {hostPath: /etc/kubernetes/encryption-provider.yaml}\napiVersion: kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  extraArgs: {feature-gates: CSIMigrationPortworx=false}\n  extraVolumes: null\nimageRepository: registry.local:9001/registry.k8s.io\nkind: ClusterConfiguration\nkubernetesVersion: v1.42.1\nscheduler: {}\n'}}  # noqa: E501
 
         self.kubeadm_config_read_SCTPSupport = kubernetes.client.V1ConfigMap(
             api_version='v1',
@@ -312,7 +307,6 @@ class ManagerTestCase(base.DbTestCase):
                                             'apiVersion: kubeadm.k8s.io/v1beta3\n'
                                             'controllerManager:\n'
                                             '  extraArgs:\n'
-                                            '    pod-eviction-timeout: 30s\n'
                                             '    feature-gates: CSIMigrationPortworx=false,SCTPSupport=true\n'
                                             '  extraVolumes:\n'
                                             'kind: ClusterConfiguration\n'
@@ -324,7 +318,7 @@ class ManagerTestCase(base.DbTestCase):
                         namespace='kube-system'),
         )
 
-        self.kubeadm_config_map_patch_SCTPSupport = {'data': {'ClusterConfiguration': 'apiServer:\n  certSANs: [192.168.206.1, 127.0.0.1, 10.10.6.3]\n  extraArgs: {event-ttl: 24h}\n  extraVolumes:\n  - {hostPath: /etc/kubernetes/encryption-provider.yaml}\napiVersion: kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  extraArgs: {feature-gates: CSIMigrationPortworx=false, pod-eviction-timeout: 30s}\n  extraVolumes: null\nkind: ClusterConfiguration\nkubernetesVersion: v1.21.8\nscheduler: {}\n'}}  # noqa: E501
+        self.kubeadm_config_map_patch_SCTPSupport = {'data': {'ClusterConfiguration': 'apiServer:\n  certSANs: [192.168.206.1, 127.0.0.1, 10.10.6.3]\n  extraArgs: {event-ttl: 24h}\n  extraVolumes:\n  - {hostPath: /etc/kubernetes/encryption-provider.yaml}\napiVersion: kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  extraArgs: {feature-gates: CSIMigrationPortworx=false}\n  extraVolumes: null\nkind: ClusterConfiguration\nkubernetesVersion: v1.21.8\nscheduler: {}\n'}}  # noqa: E501
 
         super(ManagerTestCase, self).setUp()
 

@@ -56,7 +56,6 @@ class TestEtcd(base.TestCase):
                                             'apiVersion: kubeadm.k8s.io/v1beta3\n'
                                             'controllerManager:\n'
                                             '  extraArgs:\n'
-                                            '    pod-eviction-timeout: 30s\n'
                                             '    feature-gates: CSIMigrationPortworx=false\n'
                                             '  extraVolumes:\n'
                                             'kind: ClusterConfiguration\n'
