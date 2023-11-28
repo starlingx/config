@@ -330,7 +330,11 @@ class NetworkingPuppet(base.BasePuppet):
                         else:
                             instance['device_parameters'][global_param['name']] = global_param['value']
                 if 'cmdline_opts' in instance['global_parameters']:
-                    instance['cmdline_opts'] = instance['global_parameters'].pop('cmdline_opts')
+                    cmdline = instance['global_parameters'].pop('cmdline_opts')
+                    quotes = {"'", "\\'", '"', '\\"'}
+                    for quote in quotes:
+                        cmdline = cmdline.strip(quote)
+                    instance['cmdline_opts'] = cmdline
 
                 # Prune phc2sys_ha parameters if phc2sys_ha is not enabled
                 if instance['service'] == constants.PTP_INSTANCE_TYPE_PHC2SYS:
