@@ -6,15 +6,9 @@
 # This script creates required platform certificates for DX systems.
 # SX systems leverage the execution ansible upgrade playbook for this.
 #
-# Note: A file is used as temporary feature flag for
-#       https://storyboard.openstack.org/#!/story/2009811
-#       to avoid interfering with current behavior before the feature is
-#       completed (see variable 'feature_flag').
-#
 
 import subprocess
 import sys
-import os.path
 from controllerconfig.common import log
 LOG = log.get_logger(__name__)
 
@@ -30,12 +24,13 @@ def get_system_mode():
     return None
 
 
-def create_platform_certificates():
+def create_platform_certificates(to_release):
     """Run ansible playbook to create platform certificates
     """
     playbooks_root = '/usr/share/ansible/stx-ansible/playbooks'
     upgrade_script = 'create-platform-certificates-in-upgrade.yml'
-    cmd = 'ansible-playbook {}/{}'.format(playbooks_root, upgrade_script)
+    cmd = 'ansible-playbook {}/{} -e "software_version={}"'.format(
+        playbooks_root, upgrade_script, to_release)
     sub = subprocess.Popen(cmd, shell=True,
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = sub.communicate()
@@ -63,13 +58,7 @@ def main():
         arg += 1
     log.configure()
 
-    # Temporary feature flag file
-    config_dir = '/opt/platform/config/' + to_release
-    feature_flag = config_dir + '/.create_platform_certificates'
-
-    if (action == 'activate' and
-            from_release == '22.12' and
-            os.path.exists(feature_flag)):
+    if (action == 'activate' and from_release == '22.12'):
         LOG.info("%s invoked with from_release = %s to_release = %s "
                  "action = %s"
                  % (sys.argv[0], from_release, to_release, action))
@@ -81,7 +70,7 @@ def main():
                      % (sys.argv[0], mode))
             return 0
 
-        create_platform_certificates()
+        create_platform_certificates(to_release)
 
 
 if __name__ == "__main__":
