@@ -218,6 +218,11 @@ MGMT_NETWORK_RECONFIGURATION_ONGOING = os.path.join(
 MGMT_NETWORK_RECONFIGURATION_UNLOCK = os.path.join(
     PLATFORM_CONF_PATH, ".mgmt_network_reconfiguration_unlock")
 
+# Set by controller_config script to inform the sysinv to update
+# /opt/platform/config/<release>/hosts with new mgmt IPs
+MGMT_NETWORK_RECONFIG_UPDATE_HOST_FILES = os.path.join(
+    PLATFORM_CONF_PATH, ".mgmt_reconfig_update_hosts_file")
+
 # Worker configuration flags
 
 # Set after initial application of node manifest
