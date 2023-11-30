@@ -22,7 +22,7 @@ TEMP_WORK_DIR="/tmp/kube_cert_rotation"
 # Expiration date of k8s certs
 
 # Tries ga command version, failing over to alpha command
-kubeadm certs &> /dev/null
+kubeadm certs -h &> /dev/null
 if [ $? -eq 0 ]; then
     CERT_CMD='certs'
 else
