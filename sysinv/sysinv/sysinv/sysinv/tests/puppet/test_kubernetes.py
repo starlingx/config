@@ -105,6 +105,7 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
         self.device['driver'] = config['pf_driver']
         self.device['sriov_vf_driver'] = config['vf_driver']
         self.device['sriov_vf_pdevice_id'] = config['vf_device_id']
+        self.device['extra_info'] = config.get('extra_info', None)
         self._update_context()
 
     def _get_sriovdp_fpga_config(self, vf_vendor, vf_device,
@@ -239,6 +240,71 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
             test_config['pf_vendor_id'],
             test_config['vf_device_id'],
             test_config['vf_driver']
+        )
+        self.assertEqual(expected, actual)
+
+    def test_generate_sriovdp_config_fpga_fec_expected_vf_driver(self):
+
+        self._setup_fpga_configuration()
+        test_config = {
+            'pf_class_id': dconstants.PCI_DEVICE_CLASS_FPGA,
+            'pf_vendor_id': dconstants.PCI_DEVICE_VENDOR_INTEL,
+            'pf_device_id': dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF,
+            'pf_driver': "igb_uio",
+            'vf_device_id': dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_VF,
+            'vf_driver': "igb_uio",
+            'extra_info': "{'expected_driver': u'igb_uio', 'expected_vf_driver': u'igb_uio', 'expected_numvfs': 1}"
+        }
+        self._update_sriov_fpga_config(test_config)
+
+        actual = self._generate_sriovdp_config()
+        expected = self._get_sriovdp_config(
+            test_config['pf_vendor_id'],
+            test_config['vf_device_id'],
+            test_config['vf_driver']
+        )
+        self.assertEqual(expected, actual)
+
+    def test_generate_sriovdp_config_fpga_fec_no_expected_vf_driver(self):
+
+        self._setup_fpga_configuration()
+        test_config = {
+            'pf_class_id': dconstants.PCI_DEVICE_CLASS_FPGA,
+            'pf_vendor_id': dconstants.PCI_DEVICE_VENDOR_INTEL,
+            'pf_device_id': dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF,
+            'pf_driver': "igb_uio",
+            'vf_device_id': dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_VF,
+            'vf_driver': "igb_uio",
+            'extra_info': "{'expected_driver': u'igb_uio', 'expected_numvfs': 1}"
+        }
+        self._update_sriov_fpga_config(test_config)
+
+        actual = self._generate_sriovdp_config()
+        expected = self._get_sriovdp_config(
+            test_config['pf_vendor_id'],
+            test_config['vf_device_id'],
+            test_config['vf_driver']
+        )
+        self.assertEqual(expected, actual)
+
+    def test_generate_sriovdp_config_fpga_fec_vf_driver_vfio(self):
+
+        self._setup_fpga_configuration()
+        test_config = {
+            'pf_class_id': dconstants.PCI_DEVICE_CLASS_FPGA,
+            'pf_vendor_id': dconstants.PCI_DEVICE_VENDOR_INTEL,
+            'pf_device_id': dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_PF,
+            'pf_driver': "igb_uio",
+            'vf_device_id': dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_VF,
+            'vf_driver': "vfio"
+        }
+        self._update_sriov_fpga_config(test_config)
+
+        actual = self._generate_sriovdp_config()
+        expected = self._get_sriovdp_config(
+            test_config['pf_vendor_id'],
+            test_config['vf_device_id'],
+            'vfio-pci'
         )
         self.assertEqual(expected, actual)
 

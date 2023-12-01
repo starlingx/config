@@ -15,6 +15,7 @@ import random
 import re
 import tempfile
 
+from ast import literal_eval
 from oslo_log import log as logging
 from sysinv.common import constants
 from sysinv.common import etcd
@@ -703,13 +704,29 @@ class KubernetesPuppet(base.BasePuppet):
         return driver
 
     def _get_pcidp_fec_driver(self, device):
-        sriov_vf_driver = device.get('sriov_vf_driver', None)
+        extra_info = dict()
+        extra_info_s = device.get('extra_info', None)
+        if extra_info_s:
+            extra_info = literal_eval(extra_info_s)
+
+        if extra_info:
+            # Similar to how the actual FEC device is treated, prefer
+            # the expected VF driver information when generating
+            # the corresponding SR-IOV device plugin configuration.
+            sriov_vf_driver = extra_info.get('expected_vf_driver', '?')
+            if sriov_vf_driver == '?':
+                sriov_vf_driver = device.get('sriov_vf_driver', None)
+        else:
+            # If, for whatever reason the VF driver info is not
+            # present in the extra_info, fallback to using the
+            # system determined VF driver.
+            sriov_vf_driver = device.get('sriov_vf_driver', None)
+
         if (sriov_vf_driver and
                 constants.SRIOV_DRIVER_TYPE_VFIO in sriov_vf_driver):
-            driver = constants.SRIOV_DRIVER_VFIO_PCI
+            return constants.SRIOV_DRIVER_VFIO_PCI
         else:
-            driver = device['sriov_vf_driver']
-        return driver
+            return sriov_vf_driver
 
     def _get_pcidp_network_resources_by_ifclass(self, ifclass):
         resources = {}
