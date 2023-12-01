@@ -34,6 +34,7 @@ import filecmp
 import glob
 import hashlib
 import io
+import json
 import math
 import os
 import re
@@ -50,6 +51,7 @@ import uuid
 import xml.etree.ElementTree as ElementTree
 from contextlib import contextmanager
 from datetime import datetime
+from datetime import timedelta
 from distutils.util import strtobool
 from distutils.version import LooseVersion
 from copy import deepcopy
@@ -158,13 +160,6 @@ conductor_opts = [
        cfg.IntOpt('fw_update_small_timeout',
                   default=300,
                   help='Timeout interval in seconds for a small device image'),
-       cfg.IntOpt('config_out_of_date_timeout',
-                  default=600,
-                  help=('Timeout interval in seconds to consider a '
-                       'host is stuck in out-of-date config status.')),
-       cfg.IntOpt('max_runtime_config_history_size',
-                  default=1000,
-                  help='Max number of records allowed on runtime config history')
                  ]
 
 audit_intervals_opts = [
@@ -182,6 +177,7 @@ audit_intervals_opts = [
        cfg.IntOpt('k8s_application', default=60),
        cfg.IntOpt('device_image_update', default=300),
        cfg.IntOpt('kube_upgrade_states', default=1800),
+       cfg.IntOpt('prune_runtime_config', default=43200),
                   ]
 
 CONF = cfg.CONF
@@ -296,9 +292,6 @@ class ConductorManager(service.PeriodicService):
         # track deferred runtime config which need to be applied
         self._host_deferred_runtime_config = []
 
-        # store the config history to reapply if necessary
-        self._host_runtime_config_history = {}
-
         # track whether runtime class apply may be in progress
         self._runtime_class_apply_in_progress = []
 
@@ -400,6 +393,9 @@ class ConductorManager(service.PeriodicService):
         self._sx_to_dx_post_migration_actions(system)
 
         self._clear_partition_config_flags()
+
+        # Runtime config tasks
+        self._prune_runtime_config_table()
 
         LOG.info("sysinv-conductor start committed system=%s" %
                  system.as_dict())
@@ -6171,6 +6167,7 @@ class ConductorManager(service.PeriodicService):
 
         config_uuid = imsg_dict['config_applied']
         self._update_host_config_applied(context, ihost, config_uuid)
+        self._update_runtime_config_status(ihost, config_uuid, imsg_dict.get('status'))
 
     def initial_inventory_completed(self, context, host_uuid):
         host_uuid.strip()
@@ -6829,6 +6826,85 @@ class ConductorManager(service.PeriodicService):
 
         return True
 
+    def _audit_pending_runtime_config(self):
+        """Query runtime config table for pending requests"""
+        expired_date = datetime.utcnow() - \
+                       timedelta(seconds=constants.RUNTIME_CONFIG_APPLY_TIMEOUT_IN_SECS)
+        pending_runtime_config = self.dbapi.runtime_config_get_all(
+            state=constants.RUNTIME_CONFIG_STATE_PENDING,
+            older_than=expired_date)
+
+        if not pending_runtime_config:
+            return
+
+        LOG.info("Found stale runtime config entries, retrying the requests...")
+        for rc in pending_runtime_config:
+            try:
+                host = self.dbapi.ihost_get(rc.forihostid)
+                config_uuid = rc.config_uuid
+                config_dict = json.loads(rc.config_dict)
+                config_dict.update({"host_uuids": [host.uuid]})
+                config_type = config_dict["config_type"]
+                force = config_dict["force"] if "force" in config_dict else False
+
+                # retry sending the runtime config only to the specific host
+                LOG.info("Attempting to reapply target config %s to host %s." % (
+                    config_uuid, host.hostname))
+                self._update_host_deferred_runtime_config(
+                    config_type,
+                    config_uuid,
+                    config_dict,
+                    force)
+            except exception.ServerNotFound as e:
+                LOG.warn("Skipping request: %s" % e)
+
+            # update the runtime config entry state in the database
+            rc_update_values = {"state": constants.RUNTIME_CONFIG_STATE_RETRIED}
+            self.dbapi.runtime_config_update(rc.id, rc_update_values)
+
+    def _audit_config_out_of_date_hosts(self):
+        """Get alarms with ID 250.001 and check if any of them
+        is older than RUNTIME_CONFIG_APPLY_TIMEOUT_IN_SECS seconds.
+        """
+        config_out_of_date_hosts = []
+        alarms = self.fm_api.get_faults_by_id(
+            fm_constants.FM_ALARM_ID_SYSCONFIG_OUT_OF_DATE)
+        if not alarms:
+            return
+
+        for alarm in alarms:
+            alarm_ts = datetime.strptime(alarm.timestamp, "%Y-%m-%d %H:%M:%S.%f")
+            if (datetime.utcnow() - alarm_ts).total_seconds() > \
+                    constants.RUNTIME_CONFIG_APPLY_TIMEOUT_IN_SECS:
+                config_out_of_date_hosts.append(alarm.entity_instance_id.split("=")[1])
+
+        # try to automatically recover out-of-date hosts
+        # by retrying the runtime manifest apply on them
+        for hostname in config_out_of_date_hosts:
+            try:
+                host = self.dbapi.ihost_get_by_hostname(hostname)
+                config_uuid = host.config_target
+                host_id = host.id
+
+                rc = self.dbapi.runtime_config_get(config_uuid, host_id=host_id)
+                config_dict = json.loads(rc.config_dict)
+                config_dict.update({"host_uuids": [host.uuid]})
+                config_type = config_dict["config_type"]
+                force = config_dict["force"] if "force" in config_dict else False
+
+                LOG.info("Attempting to reapply target config %s to host %s." % (
+                    config_uuid, host.hostname))
+                self._update_host_deferred_runtime_config(
+                    config_type,
+                    config_uuid,
+                    config_dict,
+                    force)
+            except exception.NodeNotFound as e:
+                LOG.warn("Host not found: %s" % e)
+            except Exception as e:
+                LOG.warn("Unable to reapply target config %s to host %s, host may require "
+                         "manual lock/unlock to recover: %s" % (config_uuid, host.hostname, e))
+
     def _audit_deferred_runtime_config(self, context):
         """With rlock, apply deferred config runtime manifests when ready"""
 
@@ -6883,68 +6959,13 @@ class ConductorManager(service.PeriodicService):
         with self.rlock_runtime_config:
             _cs_audit_deferred_runtime_config(self, context)
 
-    def _prune_host_runtime_config_history(self):
-        # prune oldest runtime config from history to keep
-        # at most max_runtime_config_history_size records
-        max_history_size = CONF.conductor.max_runtime_config_history_size
-        current_history_size = len(self._host_runtime_config_history)
-        if current_history_size < max_history_size:
-            return
-
-        sorted_history = sorted(self._host_runtime_config_history.items(),
-                                key=lambda x: x[1]["created_at"])
-        for i in range(0, current_history_size - max_history_size):
-            self._host_runtime_config_history.pop(sorted_history[i][0])
-            LOG.info("Pruned config '%s' from runtime config history" %
-                     sorted_history[i][0])
-
-    def _add_stuck_config_out_of_date_to_deferred(self):
-        # call runtime config history pruning
-        self._prune_host_runtime_config_history()
-
-        # get alarms with ID 250.001 and check if any of them
-        # is older than config_out_of_date_timeout seconds
-        config_out_of_date_hosts = []
-        alarms = self.fm_api.get_faults_by_id(
-            fm_constants.FM_ALARM_ID_SYSCONFIG_OUT_OF_DATE)
-        if not alarms:
-            return
-
-        for alarm in alarms:
-            alarm_ts = datetime.strptime(alarm.timestamp, "%Y-%m-%d %H:%M:%S.%f")
-            if (datetime.utcnow() - alarm_ts).total_seconds() > \
-                    CONF.conductor.config_out_of_date_timeout:
-                config_out_of_date_hosts.append(alarm.entity_instance_id.split("=")[1])
-
-        # try to automatically recover out-of-date hosts
-        # by resending the runtime manifest to them
-        for hostname in config_out_of_date_hosts:
-            ihost = self.dbapi.ihost_get_by_hostname(hostname)
-            ihost_uuid = ihost.uuid
-            config_uuid = ihost.config_target
-            try:
-                history_config_dict = deepcopy(
-                    self._host_runtime_config_history[config_uuid])
-                force = history_config_dict["force"] \
-                    if "force" in history_config_dict else False
-                config_type = history_config_dict["config_type"]
-                history_config_dict.update({"host_uuids": [ihost_uuid]})
-
-                LOG.info("Attempting to resend target config '%s' to host %s '%s'" % (
-                    config_uuid, ihost.hostname, ihost_uuid))
-                self._update_host_deferred_runtime_config(
-                    config_type,
-                    config_uuid,
-                    history_config_dict,
-                    force)
-            except Exception as e:
-                LOG.warn("Unable to retrigger '%s' from runtime config history: %s" % (
-                    config_uuid, e))
-
     @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.deferred_runtime_config)
     def _audit_deferred_runtime_config_periodic(self, context):
         # check for possibly stuck out-of-date config hosts
-        self._add_stuck_config_out_of_date_to_deferred()
+        self._audit_config_out_of_date_hosts()
+
+        # check for runtime config entries in pending status
+        self._audit_pending_runtime_config()
 
         # check whether there are deferred runtime manifests to apply
         self._audit_deferred_runtime_config(context)
@@ -12151,6 +12172,26 @@ class ConductorManager(service.PeriodicService):
 
         _sync_update_host_config_applied(self, context, ihost_obj, config_uuid)
 
+    def _update_runtime_config_status(self, ihost, config_uuid, status=None):
+        """Check report status and update runtime_config entry. Ignore if
+        runtime_config entry is not found, as it should not be a blocking
+        issue for the system to operate.
+
+        :param ihost: host corresponding to the runtime_config entry
+        :param config_uuid: target_config uuid retried on the host
+        :param status: runtime_config apply state returned from puppet
+        """
+        try:
+            runtime_config = self.dbapi.runtime_config_get(config_uuid, host_id=ihost.id)
+            if status == puppet_common.REPORT_FAILURE:
+                runtime_state = constants.RUNTIME_CONFIG_STATE_FAILED
+            else:
+                runtime_state = constants.RUNTIME_CONFIG_STATE_APPLIED
+            self.dbapi.runtime_config_update(runtime_config.id, {"state": runtime_state})
+        except exception.NotFound:
+            LOG.warn("Host %s applied config %s, which does not exist on "
+                     "the database." % (ihost.hostname, config_uuid))
+
     def _config_reinstall_hosts(self, context, personalities):
         """ update the hosts configuration status for all host to be "
             reinstall is required.
@@ -12322,9 +12363,6 @@ class ConductorManager(service.PeriodicService):
                                        iconfig_uuid=config_uuid,
                                        iconfig_dict=config_dict)
             config_dict["config_type"] = CONFIG_UPDATE_FILE
-            config_dict["created_at"] = datetime.utcnow()
-            if config_uuid not in self._host_runtime_config_history:
-                self._host_runtime_config_history[config_uuid] = config_dict
         except Exception as e:
             LOG.info("Error: %s" % str(e))
             return False
@@ -12466,6 +12504,44 @@ class ConductorManager(service.PeriodicService):
 
         return True
 
+    def _prune_runtime_config_table(self):
+        """Prune runtime_config entries older than 24 hours"""
+        cutoff_date = datetime.utcnow() - timedelta(hours=24)
+        LOG.info("Pruning runtime_config entries older than %s." % cutoff_date)
+        self.dbapi.runtime_config_prune(cutoff_date)
+
+    def _create_runtime_config_entries(self, config_uuid, config_dict):
+        """Create runtime config entries in the database"""
+        # it is expected for config_dict to contain the host_uuids
+        # to which the runtime config must be applied, but the
+        # database entry is stored without the 'host_uuids' key
+        # since there should be one entry per host on the table
+        host_uuids = config_dict.get("host_uuids")
+        if not host_uuids:
+            host_uuids = []
+            personalities = config_dict.get("personalities")
+            for personality in personalities:
+                hosts = self.dbapi.ihost_get_by_personality(personality)
+                for host in hosts:
+                    host_uuids.append(host.uuid)
+
+        tmp_config_dict = deepcopy(config_dict)
+        tmp_config_dict.pop("host_uuids", None)
+
+        for host_uuid in host_uuids:
+            host = self.dbapi.ihost_get(host_uuid)
+            runtime_config = {
+                "config_uuid": config_uuid,
+                "config_dict": json.dumps(tmp_config_dict),
+                "forihostid": host.id,
+            }
+            try:
+                self.dbapi.runtime_config_create(runtime_config)
+            except Exception:
+                # can be ignored as runtime_config can
+                # already exists in the retry scenario
+                pass
+
     def _config_apply_runtime_manifest(self,
                                        context,
                                        config_uuid,
@@ -12571,9 +12647,7 @@ class ConductorManager(service.PeriodicService):
                                              config_uuid=config_uuid,
                                              config_dict=config_dict)
         config_dict["config_type"] = CONFIG_APPLY_RUNTIME_MANIFEST
-        config_dict["created_at"] = datetime.utcnow()
-        if config_uuid not in self._host_runtime_config_history:
-            self._host_runtime_config_history[config_uuid] = config_dict
+        self._create_runtime_config_entries(config_uuid, config_dict)
 
         if filter_classes:
             classes = [config_class for config_class in config_dict['classes'] if config_class in filter_classes]
@@ -18233,6 +18307,10 @@ class ConductorManager(service.PeriodicService):
                         kube_upgrade_state_map[current_state])
         except exception.NotFound:
             LOG.debug("A kubernetes upgrade is not in progress")
+
+    @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.prune_runtime_config)
+    def _audit_prune_runtime_config(self):
+        self._prune_runtime_config_table()
 
 
 def device_image_state_sort_key(dev_img_state):
