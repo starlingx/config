@@ -1751,6 +1751,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         options = {'IPV6_AUTOCONF': 'no',
                    'PHYSDEV': self.port['name'],
                    'VLAN': 'yes',
+                   'post_down': 'ip link del vlan#1',
                    'pre_up': '/sbin/modprobe -q 8021q; ip link add link '
                              '{} name vlan#1 type vlan id 1'.format(
                                  self.port['name'])}
@@ -1769,6 +1770,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         mtu = '1500'
         set_mtu = self._get_postup_mtu("vlan#1", mtu)
         options = {'mtu': mtu,
+                   'post-down': 'ip link del vlan#1',
                    'pre-up': '/sbin/modprobe -q 8021q; ip link add link '
                              '{} name vlan#1 type vlan id 1'.format(
                                  self.port['name']),
@@ -1794,6 +1796,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         config = interface.get_interface_network_config(self.context, vlan, network.id)
         options = {'gateway': '192.168.204.1',
                    'mtu': '1500',
+                   'post-down': 'ip link del vlan100',
                    'post-up': '/usr/sbin/ip link set dev vlan100 mtu 1500; echo 0 > '
                               '/proc/sys/net/ipv6/conf/vlan100/autoconf; echo 0 '
                               '> /proc/sys/net/ipv6/conf/vlan100/accept_ra; echo 0 > '
@@ -1821,6 +1824,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         config = interface.get_interface_network_config(self.context, vlan,
             network.id)
         options = {'mtu': '1500',
+                   'post-down': 'ip link del vlan.dot',
                    'post-up': '/usr/sbin/ip link set dev vlan.dot mtu 1500; echo 0 > '
                               '/proc/sys/net/ipv6/conf/vlan.dot/autoconf; echo 0 '
                               '> /proc/sys/net/ipv6/conf/vlan.dot/accept_ra; echo 0 > '
@@ -1850,6 +1854,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         config = interface.get_interface_network_config(self.context, vlan, network.id)
         options = {'gateway': '192.168.204.1',
                    'mtu': '1500',
+                   'post-down': 'ip link del vlan100',
                    'post-up': '/usr/sbin/ip link set dev vlan100 mtu 1500; echo 0 > '
                               '/proc/sys/net/ipv6/conf/vlan100/autoconf; echo 0 '
                               '> /proc/sys/net/ipv6/conf/vlan100/accept_ra; echo 0 > '
@@ -1872,6 +1877,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         options = {'IPV6_AUTOCONF': 'no',
                    'PHYSDEV': bond['ifname'],
                    'VLAN': 'yes',
+                   'post_down': 'ip link del vlan#1',
                    'pre_up': '/sbin/modprobe -q 8021q; ip link add link '
                              '{} name vlan#1 type vlan id 1'.format(
                                  bond['ifname'])}
@@ -1891,6 +1897,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         mtu = '1500'
         set_mtu = self._get_postup_mtu("vlan#1", mtu)
         options = {'mtu': mtu,
+                   'post-down': 'ip link del vlan#1',
                    'pre-up': '/sbin/modprobe -q 8021q; ip link add link '
                              '{} name vlan#1 type vlan id 1'.format(
                                  bond['ifname']),
