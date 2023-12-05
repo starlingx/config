@@ -6803,7 +6803,7 @@ class ConductorManager(service.PeriodicService):
             # event such as lost RPC route update message from agent.
             if timestamp:
                 delta = (datetime.utcnow() - timestamp).total_seconds()
-                if delta < CONF.conductor.config_out_of_date_timeout / 2:
+                if delta < constants.RUNTIME_CONFIG_APPLY_TIMEOUT_IN_SECS / 2:
                     LOG.info("_ready_to_apply_runtime_config: wait %s secs" %
                              delta)
                     return False
