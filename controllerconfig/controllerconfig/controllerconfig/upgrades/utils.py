@@ -269,7 +269,7 @@ def get_upgrade_token(from_release,
                                    "hieradata")
     system_file = os.path.join(from_hiera_path, "system.yaml")
     with open(system_file, 'r') as s_file:
-        system_config = yaml.safe_load(s_file)
+        system_config = yaml.load(s_file, Loader=yaml.FullLoader)
 
     # during a controller-1 upgrade, keystone is running
     # on the controller UNIT IP, however the service catalog
@@ -350,7 +350,7 @@ def get_upgrade_data(from_release,
                                    "hieradata")
     system_file = os.path.join(from_hiera_path, "system.yaml")
     with open(system_file, 'r') as s_file:
-        system_config_from_release = yaml.safe_load(s_file)
+        system_config_from_release = yaml.load(s_file, Loader=yaml.FullLoader)
 
     # Get keystone region
     keystone_region = system_config_from_release.get(
@@ -382,10 +382,10 @@ def add_upgrade_entries_to_hiera_data(from_release):
     # Get the hiera data for this release
     filepath = os.path.join(path, filename)
     with open(filepath, 'r') as c_file:
-        config = yaml.safe_load(c_file)
+        config = yaml.load(c_file, Loader=yaml.FullLoader)
     secure_filepath = os.path.join(path, secure_filename)
     with open(secure_filepath, 'r') as s_file:
-        secure_config = yaml.safe_load(s_file)
+        secure_config = yaml.load(s_file, Loader=yaml.FullLoader)
 
     # File for system.yaml
     # This is needed for adding new service account and endpoints
