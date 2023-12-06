@@ -120,12 +120,6 @@ function retry_command {
 log "$NAME: Starting Kubernetes application updates from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 
 if [ "$ACTION" == "activate" ]; then
-    # TODO: double check the inclusive condition.
-    if [ "$TO_RELEASE" != "22.12" ]; then
-        log "not upgrading to 22.12, skip"
-        exit 0
-    fi
-
     # remove upgrade in progress file
     [[ -f $UPGRADE_IN_PROGRESS_APPS_FILE ]] && rm -f $UPGRADE_IN_PROGRESS_APPS_FILE
 
@@ -155,15 +149,8 @@ if [ "$ACTION" == "activate" ]; then
         # Confirm application is upgradable
         # TODO: move nginx back to the supported platform applications list when
         #       fluxcd application upgrade is supported
-        if [[ "${UPGRADE_APP_NAME}" =~ ^(platform-integ-apps|nginx-ingress-controller|snmp|metrics-server|auditd|ptp-notification|istio)$ ]]; then
+        if [[ "${UPGRADE_APP_NAME}" =~ ^(platform-integ-apps|nginx-ingress-controller|snmp|metrics-server|auditd|ptp-notification|istio|cert-manager|oidc-auth-apps)$ ]]; then
             log "$NAME: ${UPGRADE_APP_NAME} is a supported platform application."
-        elif [[ "${UPGRADE_APP_NAME}" =~ ^(cert-manager)$ && ( "$FROM_RELEASE" == "22.06" || "$FROM_RELEASE" == "21.12" ) ]]; then
-            log "$NAME: ${UPGRADE_APP_NAME} is a supported platform application from $FROM_RELEASE."
-        elif [[ "${UPGRADE_APP_NAME}" =~ ^(oidc-auth-apps)$ && ( "$FROM_RELEASE" == "22.06" ) ]]; then
-            log "$NAME: ${UPGRADE_APP_NAME} is a supported platform application from $FROM_RELEASE."
-        elif [[ "${UPGRADE_APP_NAME}" =~ ^(cert-manager|oidc-auth-apps)$ ]]; then
-            log "$NAME: ${UPGRADE_APP_NAME} is handled by another script."
-            continue
         else
             log "$NAME: ${UPGRADE_APP_NAME} is not a supported platform application. skipping..."
             continue
