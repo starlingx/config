@@ -42,8 +42,6 @@ class UpdateCephCluster(base.DbTestCase):
     #  - test_add_valid_mix_tiers
     #  - test_add_4_mix_bbbb
 
-    upgrade_downgrade_kube_components_patcher = mock.patch.object(
-        manager.ConductorManager, '_upgrade_downgrade_kube_components')
     fix_crushmap_patcher = mock.patch.object(
         cceph, 'fix_crushmap')
 
@@ -57,7 +55,6 @@ class UpdateCephCluster(base.DbTestCase):
         self.load = utils.create_test_load()
         self.host_index = -1
 
-        self.mock_upgrade_downgrade_kube_components = self.upgrade_downgrade_kube_components_patcher.start()
         self.mock_fix_crushmap = self.fix_crushmap_patcher.start()
         self.mock_fix_crushmap.return_value = True
 
@@ -65,7 +62,6 @@ class UpdateCephCluster(base.DbTestCase):
 
     def tearDown(self):
         super(UpdateCephCluster, self).tearDown()
-        self.upgrade_downgrade_kube_components_patcher.stop()
         self.fix_crushmap_patcher.stop()
 
     def _create_storage_ihost(self, hostname):

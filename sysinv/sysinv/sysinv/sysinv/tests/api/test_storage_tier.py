@@ -545,9 +545,6 @@ class StorageTierDependentTCs(base.FunctionalTest):
     set_monitors_status_patcher = mock.patch.object(ceph_utils.CephApiOperator, 'get_monitors_status')
     set_is_initial_config_patcher = mock.patch.object(cutils, 'is_initial_config_complete')
 
-    upgrade_downgrade_kube_components_patcher = mock.patch.object(
-        manager.ConductorManager, '_upgrade_downgrade_kube_components')
-
     def setUp(self):
         super(StorageTierDependentTCs, self).setUp()
         self.mock_set_crushmap = self.set_crushmap_patcher.start()
@@ -565,14 +562,11 @@ class StorageTierDependentTCs(base.FunctionalTest):
         self.host_index = -1
         self.mon_index = -1
 
-        self.mock_upgrade_downgrade_kube_components = self.upgrade_downgrade_kube_components_patcher.start()
-
     def tearDown(self):
         super(StorageTierDependentTCs, self).tearDown()
         self.set_crushmap_patcher.stop()
         self.set_monitors_status_patcher = self.set_monitors_status_patcher.stop()
         self.set_is_initial_config_patcher.stop()
-        self.upgrade_downgrade_kube_components_patcher.stop()
 
     def assertDeleted(self, fullPath):
         self.get_json(fullPath, expect_errors=True)  # Make sure this line raises an error

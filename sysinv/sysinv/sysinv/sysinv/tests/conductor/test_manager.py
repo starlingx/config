@@ -281,13 +281,6 @@ class ManagerTestCase(base.DbTestCase):
         self.addCleanup(p.stop)
         self.service._puppet = self.fakepuppet_operator
 
-        # Mock manager methods
-        self.upgrade_downgrade_kube_components_patcher = mock.patch.object(
-            manager.ConductorManager, '_upgrade_downgrade_kube_components')
-        self.mock_upgrade_downgrade_kube_components = \
-            self.upgrade_downgrade_kube_components_patcher.start()
-        self.addCleanup(self.mock_upgrade_downgrade_kube_components.stop)
-
         self.write_config_patcher = mock.patch.object(
             manager.ConductorManager, '_write_config')
         self.mock_write_config = \
@@ -487,7 +480,6 @@ class ManagerTestCase(base.DbTestCase):
 
     def tearDown(self):
         super(ManagerTestCase, self).tearDown()
-        self.upgrade_downgrade_kube_components_patcher.stop()
 
     def _create_test_ihost(self, **kwargs):
         # ensure the system ID for proper association

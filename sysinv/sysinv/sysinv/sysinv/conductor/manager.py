@@ -336,9 +336,6 @@ class ConductorManager(service.PeriodicService):
         # Move PTP parameters from legacy configuration to multi-instance.
         greenthread.spawn(self._update_ptp_parameters)
 
-        # Upgrade/Downgrade kubernetes components.
-        greenthread.spawn(self._upgrade_downgrade_kube_components)
-
         # monitor keystone user update event to check whether admin password is
         # changed or not. If changed, then sync it to kubernetes's secret info,
         # and restart impacted services.
@@ -7931,15 +7928,6 @@ class ConductorManager(service.PeriodicService):
         lifecycle_hook_info.mode = constants.APP_LIFECYCLE_MODE_AUTO
         greenthread.spawn(self.perform_app_apply, context,
                           app, app.mode, lifecycle_hook_info)
-
-    def _upgrade_downgrade_kube_components(self):
-        # Check the restore state before proceeding
-        if self._verify_restore_in_progress():
-            LOG.info("restore in progress, skipping upgrade/downgrade kube components")
-            return
-        self._upgrade_downgrade_static_images()
-        self._upgrade_downgrade_kube_networking()
-        self._upgrade_downgrade_kube_storage()
 
     @retry(retry_on_result=lambda x: x is False,
            wait_fixed=(CONF.conductor.kube_upgrade_downgrade_retry_interval * 1000))
