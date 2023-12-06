@@ -34,6 +34,7 @@ PLATFORM_FIREWALL_CLASSES = {constants.NETWORK_TYPE_PXEBOOT: FIREWALL_GNP_PXEBOO
                              constants.NETWORK_TYPE_OAM: FIREWALL_GNP_OAM_CFG}
 
 LINK_LOCAL = "fe80::/64"
+LINK_LOCAL_MC = "ff02::/16"
 
 IPSEC_NETWORKS = [constants.NETWORK_TYPE_MGMT]
 
@@ -277,6 +278,8 @@ class PlatformFirewallPuppet(base.BasePuppet):
 
         :param gnp_config: the dict containing the hiera data to be filled
         :param network: the sysinv.object.network object for this network
+        :param host: a sysinv.object.host class object
+        :param dc_role: the DC role (system-controller or subcloud)
         """
 
         # OAM exists in previous versions, and it uses noTetype instead of noDetype
@@ -308,6 +311,16 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 rule.update({"destination": {"ports": tcp_ports}})
             elif rule["protocol"] == "UDP":
                 rule.update({"destination": {"ports": udp_ports}})
+
+        addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
+        ip_version = IPAddress(f"{addr_pool.network}").version
+        self._add_destination_net_filter(gnp_config["spec"]["ingress"],
+                                    f"{addr_pool.network}/{addr_pool.prefix}")
+        if (ip_version == 6):
+            for rule in gnp_config["spec"]["ingress"]:
+                if rule["protocol"] == "ICMPv6":
+                    rule["destination"]["nets"].append(LINK_LOCAL)
+                    rule["destination"]["nets"].append(LINK_LOCAL_MC)
 
     def _set_rules_mgmt(self, gnp_config, network, host):
         """ Fill the management network specific filtering data
@@ -484,6 +497,22 @@ class PlatformFirewallPuppet(base.BasePuppet):
                     rule["source"].update({"nets": [source_net]})
             else:
                 rule.update({"source": {"nets": [source_net]}})
+
+    def _add_destination_net_filter(self, rule_list, destination_net):
+        """ Add destination network in the rule list
+
+        :param rule_list: the list containing the firewall rules that need to receive the
+                          destination network value
+        :param destination_net: the string containing the value
+        """
+        for rule in rule_list:
+            if ("destination" in rule.keys()):
+                if ("nets" in rule["destination"].keys()):
+                    rule["destination"]["nets"].append(destination_net)
+                else:
+                    rule["destination"].update({"nets": [destination_net]})
+            else:
+                rule.update({"destination": {"nets": [destination_net]}})
 
     def _set_rules_subcloud_admin(self, gnp_config, network, host_personality):
         """ Add filtering rules for admin network in a subcloud installation
