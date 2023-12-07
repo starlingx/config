@@ -8,12 +8,14 @@
 Tests for the API / address pool / methods.
 """
 
+import mock
 import netaddr
 from six.moves import http_client
 
 from oslo_utils import uuidutils
 
 from sysinv.tests.api import base
+from sysinv.common import constants
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
 
@@ -312,6 +314,72 @@ class TestPostMixin(AddressPoolTestCase):
 
     def test_address_pool_create_gateway_ip_is_broadcast(self):
         self._test_create_address_pool_invalid_address_broadcast('gateway')
+
+    def test_address_pool_create_fail_address_with_gateway(self):
+        p = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
+        self.mock_utils_get_system_mode = p.start()
+        self.mock_utils_get_system_mode.return_value = \
+            constants.SYSTEM_MODE_SIMPLEX
+        self.addCleanup(p.stop)
+
+        p = mock.patch('sysinv.api.controllers.v1.address_pool.AddressPoolController._check_name_conflict')
+        self.mock_check_name_conflict = p.start()
+        self.mock_check_name_conflict.return_value = True
+        self.addCleanup(p.stop)
+
+        network = str(self.mgmt_subnet.network)
+        prefix = self.mgmt_subnet.prefixlen
+
+        ndict = self.get_post_object('management', network, prefix)
+        ndict['gateway_address'] = str(self.mgmt_subnet[1])
+
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        # Check HTTP response is failed
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("Gateway address for management network must not be "
+                      "specified for standalone AIO-SX",
+                      response.json['error_message'])
+
+    def test_address_pool_create_success_address_with_gateway_subloud(self):
+        p = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
+        self.mock_utils_get_system_mode = p.start()
+        self.mock_utils_get_system_mode.return_value = \
+            constants.SYSTEM_MODE_SIMPLEX
+        self.addCleanup(p.stop)
+
+        p = mock.patch('sysinv.api.controllers.v1.utils.get_distributed_cloud_role')
+        self.mock_utils_get_distributed_cloud_role = p.start()
+        self.mock_utils_get_distributed_cloud_role.return_value = \
+            constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD
+        self.addCleanup(p.stop)
+
+        current_pools = self.get_json(self.API_PREFIX)
+        for addrpool in current_pools[self.RESULT_KEY]:
+            if addrpool['name'] == 'management':
+                uuid = addrpool['uuid']
+                response = self.delete(self.get_single_url(uuid),
+                                       headers=self.API_HEADERS)
+                break
+
+        network = str(self.mgmt_subnet.network)
+        prefix = self.mgmt_subnet.prefixlen
+
+        ndict = self.get_post_object('management', network, prefix)
+        ndict['gateway_address'] = str(self.mgmt_subnet[1])
+
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        # Check HTTP response is successful
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
 
 
 class TestDelete(AddressPoolTestCase):

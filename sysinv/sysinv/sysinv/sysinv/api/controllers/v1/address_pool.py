@@ -389,6 +389,17 @@ class AddressPoolController(rest.RestController):
                             .format(MANAGEMENT_ADDRESS_POOL))
                     raise ValueError(msg)
 
+    def _check_aiosx_mgmt(self, addrpool):
+        if (utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and
+                addrpool['name'] == MANAGEMENT_ADDRESS_POOL):
+            if (utils.get_distributed_cloud_role() !=
+                    constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+                if 'gateway_address' in addrpool and \
+                        addrpool['gateway_address'] is not None:
+                    msg = _("Gateway address for management network must not be "
+                            "specified for standalone AIO-SX")
+                    raise wsme.exc.ClientSideError(msg)
+
     def _check_pool_readonly(self, addrpool):
         # The admin and system controller address pools which exist on the
         # subcloud are expected for re-home a subcloud to new system controllers.
@@ -537,6 +548,7 @@ class AddressPoolController(rest.RestController):
         # Check for semantic conflicts
         self._check_name_conflict(addrpool_dict)
         self._check_valid_ranges(addrpool_dict)
+        self._check_aiosx_mgmt(addrpool_dict)
 
         floating_address = addrpool_dict.pop('floating_address', None)
         controller0_address = addrpool_dict.pop('controller0_address', None)
