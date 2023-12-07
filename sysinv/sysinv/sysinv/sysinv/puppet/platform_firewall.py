@@ -25,6 +25,7 @@ FIREWALL_GNP_STORAGE_CFG = 'platform::firewall::calico::storage::config'
 FIREWALL_GNP_ADMIN_CFG = 'platform::firewall::calico::admin::config'
 FIREWALL_HE_INTERFACE_CFG = 'platform::firewall::calico::hostendpoint::config'
 FIREWALL_GNP_OAM_CFG = 'platform::firewall::calico::oam::config'
+FIREWALL_EXTRA_FILTER_CFG = 'platform::firewall::extra::config'
 
 PLATFORM_FIREWALL_CLASSES = {constants.NETWORK_TYPE_PXEBOOT: FIREWALL_GNP_PXEBOOT_CFG,
                              constants.NETWORK_TYPE_MGMT: FIREWALL_GNP_MGMT_CFG,
@@ -63,7 +64,8 @@ class PlatformFirewallPuppet(base.BasePuppet):
             FIREWALL_GNP_CLUSTER_HOST_CFG: {},
             FIREWALL_GNP_STORAGE_CFG: {},
             FIREWALL_GNP_ADMIN_CFG: {},
-            FIREWALL_GNP_OAM_CFG: {}
+            FIREWALL_GNP_OAM_CFG: {},
+            FIREWALL_EXTRA_FILTER_CFG: {}
         }
 
         dc_role = _get_dc_role(self.dbapi)
@@ -162,6 +164,7 @@ class PlatformFirewallPuppet(base.BasePuppet):
                                                     networks[constants.NETWORK_TYPE_MGMT],
                                                     host.personality)
 
+        self._set_extra_rules(config)
         return config
 
     def _get_hostendpoints(self, host, intf_ep, config):
@@ -604,6 +607,41 @@ class PlatformFirewallPuppet(base.BasePuppet):
         networks = self._get_routes_networks(network.type)
         for network in networks:
             self._add_source_net_filter(rules, network)
+
+    def _set_extra_rules(self, config):
+        self._ingress_ipv6_for_ipv4_install_case(config)
+        return
+
+    def _ingress_ipv6_for_ipv4_install_case(self, full_config):
+
+        intf_ip_version = dict()
+        for hep in full_config[FIREWALL_HE_INTERFACE_CFG].keys():
+            hep_data = full_config[FIREWALL_HE_INTERFACE_CFG][hep]
+            iftype_list = (hep_data['metadata']['labels']['iftype']).split('.')
+            interface = hep_data['spec']['interfaceName']
+            intf_ip_version.update({interface: set()})
+            for iftype in iftype_list:
+                for gnp_config in full_config.keys():
+                    if (gnp_config == FIREWALL_HE_INTERFACE_CFG
+                            or gnp_config == FIREWALL_EXTRA_FILTER_CFG):
+                        continue
+                    if not full_config[gnp_config]:
+                        continue
+                    gnp_data = full_config[gnp_config]
+                    if (iftype in gnp_data['spec']['selector']):
+                        for ingress in gnp_data['spec']['ingress']:
+                            intf_ip_version[interface].add(ingress['ipVersion'])
+
+        is_ipv4_install = True
+        for intf in intf_ip_version.keys():
+            if (6 in intf_ip_version[intf]):
+                is_ipv4_install = False
+                break
+
+        if is_ipv4_install:
+            full_config[FIREWALL_EXTRA_FILTER_CFG].update(
+                {"ingress-ipv6-for-ipv4-install": list(intf_ip_version.keys())})
+        return
 
     def _get_subcloud_tcp_ports(self):
         """ Get the TCP L4 ports for subclouds
