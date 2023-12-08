@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2022 Wind River Systems, Inc.
+# Copyright (c) 2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -13,7 +13,7 @@ def upgrade(migrate_engine):
     meta.bind = migrate_engine
     migrate_engine.connect()
     i_host = Table('i_host', meta, autoload=True)
-    i_host.create_column(Column('apparmor', String(64), default="disabled"))
+    i_host.create_column(Column('apparmor_config_status', String(255), default="config_pending"))
 
 
 def downgrade(migrate_engine):
