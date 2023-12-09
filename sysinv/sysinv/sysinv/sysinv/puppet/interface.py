@@ -701,6 +701,12 @@ def get_interface_gateway_address(context, networktype):
     """
     Determine if the interface has a default gateway.
     """
+    if (networktype == constants.NETWORK_TYPE_MGMT and
+            context['personality'] in [constants.WORKER, constants.STORAGE]):
+        address = context['floatingips'].get(networktype, None)
+        if address is None:
+            return None
+        return address.split('/')[0]
     return context['gateways'].get(networktype, None)
 
 
@@ -748,6 +754,8 @@ def get_interface_address_method(context, iface, network_id=None):
         if is_controller(context):
             # All other interface types that exist on a controller are setup
             # statically since the controller themselves run the DHCP server.
+            return STATIC_METHOD
+        elif networktype == constants.NETWORK_TYPE_MGMT:
             return STATIC_METHOD
         elif networktype == constants.NETWORK_TYPE_CLUSTER_HOST:
             return STATIC_METHOD
