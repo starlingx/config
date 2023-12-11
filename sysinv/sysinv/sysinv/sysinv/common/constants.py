@@ -2070,6 +2070,9 @@ APP_VERSION_PLACEHOLDER = 'app-version-placeholder'
 APP_MANIFEST_NAME_PLACEHOLDER = 'manifest-placeholder'
 APP_TARFILE_NAME_PLACEHOLDER = 'tarfile-placeholder'
 
+# Application constants
+APP_INSTALLATION_TIMEOUT = 3600
+
 # Default node labels
 CONTROL_PLANE_LABEL = 'openstack-control-plane=enabled'
 COMPUTE_NODE_LABEL = 'openstack-compute-node=enabled'
