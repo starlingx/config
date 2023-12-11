@@ -8,8 +8,11 @@
 #
 
 import io
+import glob
 import os
+import shutil
 import six
+import tempfile
 import yaml
 
 from oslo_log import log as logging
@@ -20,6 +23,11 @@ from sysinv.common import exception
 from sysinv.common import utils
 
 LOG = logging.getLogger(__name__)
+
+
+def _locate_metadata_file(directory):
+
+    return glob.glob(directory + '/**/metadata.yaml', recursive=True)
 
 
 def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
@@ -303,6 +311,7 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
     app_version = ''
     patches = []
     metadata_path = os.path.join(path, metadata_file)
+
     if os.path.isfile(metadata_path):
         with io.open(metadata_path, 'r', encoding='utf-8') as f:
             try:
@@ -313,11 +322,15 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                 # metadata file does not have the key(s)
                 pass
 
-            if (app_name is None or
-                    app_version is None):
+            # Have to check for empty string instead of None.
+            if app_name == '' or app_name is None:
                 raise exception.SysinvException(_(
-                    "Invalid %s: app_name or/and app_version "
-                    "is/are None." % metadata_file))
+                    "Invalid %s: app_name is empty or None." % metadata_file)
+                )
+            if app_version == '' or app_version is None:
+                raise exception.SysinvException(_(
+                    "Invalid %s: app_version is empty or None." % metadata_file)
+                )
 
             behavior = validate_dict_field(doc,
                                            constants.APP_METADATA_BEHAVIOR)
@@ -427,3 +440,125 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                                      check_release, release_patches))
 
     return app_name, app_version, patches
+
+
+def verify_application_tarball(path: str) -> None:
+    """Verify metadata withing an application tarball directly.
+
+    Args:
+        path: str: An absolute path to application tarball.
+    """
+    with tempfile.TemporaryDirectory() as temp_dirname:
+
+        # Copy tarball
+        shutil.copy(path, temp_dirname)
+
+        if not utils.extract_tarfile(temp_dirname, path):
+            raise Exception("Unable to extract tarball")
+
+        # If checksum file is included in the tarball, verify its contents.
+        if not utils.verify_checksum(temp_dirname):
+            raise Exception("Unable to verify app tarball checksum")
+
+        try:
+            name, version, _ = validate_metadata_file(
+                temp_dirname, constants.APP_METADATA_FILE)
+
+            if name == '' and version == '':
+                message = "Application Metadata file not found! Failure!"
+                LOG.error(message)
+                raise Exception(message)
+            else:
+                LOG.info(
+                    f"Application Metadata for App: {name}, "
+                    f"Ver: {version} succeeded!"
+                )
+        except exception.SysinvException as e:
+            LOG.info("Application Metadata Verification Failed!")
+            raise exception.SysinvException(_(
+                "metadata verification failed. {}".format(e)))
+
+
+def verify_application_metadata_file(path: str) -> bool:
+    """Verify metadata withing an that is in a repository or not in tarball.
+
+    Args:
+        path: str: An absolute path to application metadata.yaml or an absolute
+                   path to the folder it resides in.
+    """
+    is_verified = False
+
+    with tempfile.TemporaryDirectory() as temp_dirname:
+
+        # The input may be either a file, or a directory.  Depending on which
+        # use the appropriate shutil copy function.
+
+        final_dir_name = temp_dirname
+
+        if os.path.isfile(path):
+            shutil.copy(path, temp_dirname)
+        else:
+            shutil.copytree(path, temp_dirname, dirs_exist_ok=True)
+
+            metadata_path_hits = _locate_metadata_file(temp_dirname)
+
+            if len(metadata_path_hits) == 0:
+                message = \
+                    f"Error: Metadata file not found in directory: {path}"
+                LOG.error(message)
+                raise Exception(message)
+            elif len(metadata_path_hits) > 1:
+                message = \
+                    "Error: Found More than One Application Metadata File! " \
+                    "There should only be one!"
+                LOG.error(message)
+                raise Exception(message)
+            else:
+                final_dir_name = os.path.dirname(metadata_path_hits[-1])
+
+        try:
+            name, version, _ = validate_metadata_file(
+                final_dir_name, constants.APP_METADATA_FILE)
+
+            if name == '' and version == '':
+                message = "Application Metadata file not found! Failure!"
+                LOG.error(message)
+                is_verified = False
+                raise Exception(message)
+            else:
+                LOG.info(
+                    f"Application Metadata for App: {name}, "
+                    f"Ver: {version} succeeded!"
+                )
+                is_verified = True
+        except exception.SysinvException as e:
+            LOG.info("Application Metadata Verification Failed!")
+            raise exception.SysinvException(_(
+                "metadata verification failed. {}".format(e)))
+
+    return is_verified
+
+
+def verify_application(path: str) -> bool:
+    """Wrapper for all possible tests or checks. This is what Tox will use.
+
+    Whenever a new check is needed, that should be added here as another
+    condition.
+
+    Args:
+    path: str: An absolute path to application metadata.yaml or an absolute
+                path to the folder it resides in.
+    """
+    is_verified = False
+
+    # For each check, add a try except so there is granularity.
+    # This test will exit on the first failure detected.
+    try:
+        verify_application_metadata_file(path)
+        is_verified = True
+    except exception.SysinvException as e:
+        LOG.info("Application Metadata Verification Failed!")
+        raise exception.SysinvException(_(
+            "metadata verification failed. {}".format(e)))
+
+    return is_verified

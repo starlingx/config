@@ -18,6 +18,7 @@ usr/bin/cert-mon
 usr/bin/kube-cert-rotation.sh
 usr/bin/sysinv-agent
 usr/bin/sysinv-api
+usr/bin/sysinv-app
 usr/bin/sysinv-conductor
 usr/bin/sysinv-dbsync
 usr/bin/sysinv-dnsmasq-lease-update
