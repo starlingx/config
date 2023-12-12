@@ -1226,26 +1226,32 @@ def extract_relative_file(archive, member_name, dest_dir):
 
 def extract_data_from_archive(archive, staging_dir, from_release, to_release):
     """Extracts the data from the archive to the staging directory"""
-    from_puppet_path = os.path.join(PLATFORM_PATH, "puppet",
-                                    from_release, "hieradata")
     from_sysinv_path = os.path.join(PLATFORM_PATH, "sysinv", from_release)
     from_keyring_path = os.path.join(PLATFORM_PATH, ".keyring",
                                      from_release)
-    from_pxelinux_path = os.path.join(PLATFORM_PATH, "config",
-                                      from_release, "pxelinux.cfg")
 
     # 0755 permissions
     dir_options = stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | \
         stat.S_IROTH | stat.S_IXOTH
 
-    shutil.rmtree(from_puppet_path, ignore_errors=True)
-    shutil.rmtree(from_keyring_path, ignore_errors=True)
-    shutil.rmtree(
-        os.path.join(PLATFORM_PATH, "config", to_release, "pxelinux.cfg"),
-        ignore_errors=True)
+    # On newer release this part is handled in the upgrade playbook
+    if from_release in ["21.12", "22.06"]:
+        from_puppet_path = os.path.join(PLATFORM_PATH, "puppet",
+                                        from_release, "hieradata")
+        from_pxelinux_path = os.path.join(PLATFORM_PATH, "config",
+                                          from_release, "pxelinux.cfg")
 
-    os.makedirs(from_puppet_path, dir_options)
-    os.makedirs(from_keyring_path, dir_options)
+        shutil.rmtree(from_puppet_path, ignore_errors=True)
+        shutil.rmtree(
+            os.path.join(PLATFORM_PATH, "config", to_release, "pxelinux.cfg"),
+            ignore_errors=True)
+
+        os.makedirs(from_puppet_path, dir_options)
+
+        extract_relative_directory(
+            archive, from_puppet_path, from_puppet_path)
+        extract_relative_directory(
+            archive, from_pxelinux_path, from_pxelinux_path)
 
     # During legacy upgrade the from_sysinv_path directory should be recreated.
     # During optimized upgrade, the from_sysinv_path is already prepared.
@@ -1254,9 +1260,11 @@ def extract_data_from_archive(archive, staging_dir, from_release, to_release):
         shutil.rmtree(from_sysinv_path, ignore_errors=True)
         os.makedirs(from_sysinv_path, dir_options)
 
-    extract_relative_directory(archive, from_puppet_path, from_puppet_path)
+    shutil.rmtree(from_keyring_path, ignore_errors=True)
+
+    os.makedirs(from_keyring_path, dir_options)
+
     extract_relative_directory(archive, from_keyring_path, from_keyring_path)
-    extract_relative_directory(archive, from_pxelinux_path, from_pxelinux_path)
 
     os.makedirs(
         os.path.join(PLATFORM_PATH, "config", to_release, "pxelinux.cfg"),
@@ -1433,12 +1441,14 @@ def upgrade_controller_simplex(backup_file):
     migrate_hiera_data(from_release, to_release, role=role)
     db_credentials = get_db_credentials(shared_services, from_release)
 
-    extract_postgres_data(archive)
+    # On newer releases this part is handled in the upgrade playbook
+    if from_release in ["22.06"]:
+        extract_postgres_data(archive)
 
-    # Import databases
-    print_log_info("Importing databases...")
-    import_databases(from_release, to_release, utils.POSTGRES_PATH,
-                     simplex=True)
+        # Import databases
+        print_log_info("Importing databases...")
+        import_databases(from_release, to_release, utils.POSTGRES_PATH,
+                         simplex=True)
 
     # Create any new databases
     print_log_info("Creating new databases...")
