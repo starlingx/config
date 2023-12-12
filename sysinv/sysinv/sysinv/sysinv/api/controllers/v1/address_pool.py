@@ -524,6 +524,43 @@ class AddressPoolController(rest.RestController):
             self._validate_range_updates(addrpool, updates)
         return
 
+    def _remove_mgmt_ips_from_no_proxy_list(self, addresses):
+        if addresses:
+            try:
+                # get no_proxy from service-parameter-list
+                no_proxy_entry = pecan.request.dbapi.service_parameter_get_one(
+                    service=constants.SERVICE_TYPE_DOCKER,
+                    section=constants.SERVICE_PARAM_SECTION_DOCKER_PROXY,
+                    name=constants.SERVICE_PARAM_NAME_DOCKER_NO_PROXY
+                )
+
+            except exception.NotFound:
+                # Proxy is not being used. Nothing to do.
+                return
+
+            no_proxy_list = no_proxy_entry.value.split(',')
+
+            proxy_changed = False
+            for addr in addresses:
+                if (addr.name == constants.CONTROLLER_0_MGMT or
+                   addr.name == constants.CONTROLLER_FLOATING_MGMT):
+
+                    mgmt_address = addr.address
+
+                    # for IPv6 need to add brackets
+                    if cutils.is_valid_ipv6(mgmt_address):
+                        mgmt_address = "[" + mgmt_address + "]"
+
+                    # remove the old mgmt IPs from no_proxy list
+                    no_proxy_list.remove(mgmt_address)
+                    proxy_changed = True
+
+            if proxy_changed:
+                no_proxy_string = ','.join(no_proxy_list)
+                # update the DB with no_proxy list wihtout the mgmt IPs
+                pecan.request.dbapi.service_parameter_update(no_proxy_entry.uuid,
+                    {'value': no_proxy_string})
+
     def _address_create(self, addrpool_dict, address):
         values = {
             'address': str(address),
@@ -693,6 +730,12 @@ class AddressPoolController(rest.RestController):
                 # Delete the addresses in the pool before deleting the pool
                 for addr in addresses:
                     pecan.request.dbapi.address_destroy(addr.uuid)
+
+            # if proxy is being used, remove the old management network IPs
+            # from the no_proxy list
+            if cutils.is_initial_config_complete() and \
+               addrpool.name == MANAGEMENT_ADDRESS_POOL:
+                self._remove_mgmt_ips_from_no_proxy_list(addresses)
 
         # Delete the address pool, which will also delete any associated
         # network and interface association.

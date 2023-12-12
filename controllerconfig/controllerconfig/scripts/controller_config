@@ -108,8 +108,7 @@ get_ip()
         local dnsmasq_file=dnsmasq.addn_hosts
 
         # Replace the dnsmasq files with new Management Network range
-        if [ -e $ETC_PLATFORM_DIR/.mgmt_network_reconfiguration_unlock ] && \
-           [ -e $ETC_PLATFORM_DIR/.mgmt_network_reconfiguration_ongoing ]; then
+        if [ -e $ETC_PLATFORM_DIR/.mgmt_network_reconfiguration_unlock ]; then
             dnsmasq_file=dnsmasq.addn_hosts.temp
         fi
 
@@ -538,8 +537,7 @@ start()
     fi
 
     # Replace the dnsmasq files with new Management Network range
-    if [ -e $ETC_PLATFORM_DIR/.mgmt_network_reconfiguration_unlock ] && \
-       [ -e $ETC_PLATFORM_DIR/.mgmt_network_reconfiguration_ongoing ]; then
+    if [ -e $ETC_PLATFORM_DIR/.mgmt_network_reconfiguration_unlock ]; then
         echo "Management networking reconfiguration ongoing, replacing dnsmasq config files."
         if [ -e $CONFIG_DIR/dnsmasq.addn_hosts.temp ] && \
            [ -e $CONFIG_DIR/dnsmasq.hosts.temp ]; then
@@ -552,6 +550,10 @@ start()
         else
             fatal_error "Management networking reconfiguration ongoing and dnsmasq files do not exist."
         fi
+
+        # Create a flag to update files in /opt/platform/ ( i.e: hosts file )
+        touch $ETC_PLATFORM_DIR/.mgmt_reconfig_update_hosts_file
+
         # delete flags
         rm -f $ETC_PLATFORM_DIR/.mgmt_network_reconfiguration_ongoing
         rm -f $ETC_PLATFORM_DIR/.mgmt_network_reconfiguration_unlock

@@ -6335,20 +6335,29 @@ class ConductorManager(service.PeriodicService):
             # required
             oam_config_runtime_apply_file = self._get_oam_runtime_apply_file()
 
+            manifest = []
+
             if (os.path.isfile(oam_config_runtime_apply_file) or
                os.path.isfile(constants.HTTPS_CONFIG_REQUIRED) or
-               os.path.isfile(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED) or
-               os.path.isfile(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED)):
+               os.path.isfile(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED) or
+               os.path.isfile(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED)):
 
-                manifest = ['openstack::keystone::endpoint::runtime',
-                            'platform::firewall::runtime',
-                            'platform::nfv::runtime']
+                # Firewall will be applied too
+                manifest.extend(['openstack::keystone::endpoint::runtime',
+                                 'platform::firewall::runtime',
+                                 'platform::nfv::runtime'])
 
-                # if the only change is the firewall, run only that.
-                if (os.path.isfile(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED)
-                    and not (os.path.isfile(constants.HTTPS_CONFIG_REQUIRED)
-                             or os.path.isfile(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED))):
-                    manifest = ['platform::firewall::runtime']
+            # if the only change is the firewall, run only that.
+            if (os.path.isfile(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED)
+                and not (os.path.isfile(constants.HTTPS_CONFIG_REQUIRED)
+                         or os.path.isfile(constants.ADMIN_ENDPOINT_CONFIG_REQUIRED))):
+                manifest = ['platform::firewall::runtime']
+
+            # append the mgmt network update if necessary
+            if (os.path.isfile(tsc.MGMT_NETWORK_RECONFIG_UPDATE_HOST_FILES)):
+                manifest.append('platform::config::mgmt_network_reconfig_update_runtime')
+
+            if manifest:
 
                 if cutils.is_initial_config_complete():
                     # apply keystone changes to current active controller
@@ -6375,6 +6384,9 @@ class ConductorManager(service.PeriodicService):
                     if os.path.isfile(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED):
                         LOG.info(f"remove {constants.PLATFORM_FIREWALL_CONFIG_REQUIRED}")
                         os.remove(constants.PLATFORM_FIREWALL_CONFIG_REQUIRED)
+                    if os.path.isfile(tsc.MGMT_NETWORK_RECONFIG_UPDATE_HOST_FILES):
+                        LOG.info(f"remove {tsc.MGMT_NETWORK_RECONFIG_UPDATE_HOST_FILES}")
+                        os.remove(tsc.MGMT_NETWORK_RECONFIG_UPDATE_HOST_FILES)
 
             # apply filesystem config changes if all controllers at target
             standby_config_target_flipped = None
