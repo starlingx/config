@@ -6663,28 +6663,6 @@ class HostController(rest.RestController):
                         % hostupdate.displayid)
                 raise wsme.exc.ClientSideError(msg)
 
-            # Check if the label sriovdp is enabled and there are no
-            # pci-sriov interfaces
-            label = None
-            try:
-                label = pecan.request.dbapi.label_query(
-                        ihost['id'],
-                        constants.SRIOVDP_LABEL.split('=')[0])
-            except exception.HostLabelNotFoundByKey:
-                pass
-
-            if (label and label.label_value ==
-                    constants.SRIOVDP_LABEL.split('=')[1]):
-                for iface in ihost_iinterfaces:
-                    if iface.ifclass == constants.NETWORK_TYPE_PCI_SRIOV:
-                        break
-                else:
-                    msg = _("Cannot unlock host %s if the label '%s' is "
-                            "present and no '%s' interfaces are configured."
-                            % (hostupdate.displayid, constants.SRIOVDP_LABEL,
-                            constants.NETWORK_TYPE_PCI_SRIOV))
-                    raise wsme.exc.ClientSideError(msg)
-
             hostupdate.configure_required = True
 
         host_uuid = ihost['uuid']
