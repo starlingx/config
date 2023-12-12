@@ -588,6 +588,9 @@ def is_system_usable_block_device(pydev_device):
         LOG.error("Invalid id_path. Device %s (%s) is iSCSI!" %
                     (id_path, pydev_device.get('DEVNAME')))
         return False
+    if pydev_device.get("VAULT_TYPE") == constants.LUKS_VAULT_TYPE_NAME:
+        # Skip devices with the VAULT_TYPE for LUKS encryption
+        return False
     return True
 
 
