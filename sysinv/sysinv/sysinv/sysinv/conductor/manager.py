@@ -6847,9 +6847,13 @@ class ConductorManager(service.PeriodicService):
                 config_type = config_dict["config_type"]
                 force = config_dict["force"] if "force" in config_dict else False
 
-                # retry sending the runtime config only to the specific host
+                # update the host target config and then retry
+                # the runtime config only to that specific host
                 LOG.info("Attempting to reapply target config %s to host %s." % (
                     config_uuid, host.hostname))
+                if host.config_target != config_uuid:
+                    self.dbapi.ihost_update(host.uuid,
+                        {"config_target": config_uuid})
                 self._update_host_deferred_runtime_config(
                     config_type,
                     config_uuid,

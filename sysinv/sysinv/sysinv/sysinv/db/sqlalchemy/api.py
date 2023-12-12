@@ -9358,7 +9358,7 @@ class Connection(api.Connection):
                 session.add(runtime_config)
                 session.flush()
             except db_exc.DBDuplicateEntry:
-                LOG.error('Entry for runtime_config (config_uuid=%s, host_id=%s) already exists.' % (
+                LOG.info('Entry for runtime_config (config_uuid=%s, host_id=%s) already exists.' % (
                     values['config_uuid'], values['forihostid']))
         return runtime_config
 
