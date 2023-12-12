@@ -2194,6 +2194,35 @@ def is_valid_domain_name(value):
         return False
 
 
+def is_valid_dns_hostname(value):
+    """ Validate dns hostname with TLD based on RFC specs """
+    p = re.compile(
+        # Doesn't contain underscore
+        r'^(?!.*?_.*?)'
+        # Doesn't contain dash at the beginning of a label
+        r'(?!(?:[\d\w]+?\.)?\-[\w\d\.\-]*?)'
+        # Doesn't contain dash at the end of a label
+        r'(?![\w\d]+?\-\.(?:[\d\w\.\-]+?))'
+        # Starts with a non-limit char
+        r'(?=[\w\d])'
+        # Contains at least 1 dot
+        r'(?=[\w\d\.\-]*?\.+[\w\d\.\-]*?)'
+        # Not longer than 253 chars
+        r'(?![\w\d\.\-]{254})'
+        # Doesn't contain a label longer than 63 char
+        r'(?!(?:\.?[\w\d\-\.]*?[\w\d\-]{64,}\.)+?)'
+        # Allowed chars
+        r'[\w\d\.\-]+?'
+        # TLD is at most 24 characters
+        r'(?<![\w\d\-]{25})$'
+    )
+    m = p.match(value)
+    if m:
+        return True
+    else:
+        return False
+
+
 def verify_checksum(path):
     """ Find and validate the checksum file in a given directory. """
     rc = True

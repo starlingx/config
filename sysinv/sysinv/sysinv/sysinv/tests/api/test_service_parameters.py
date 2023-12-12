@@ -809,7 +809,7 @@ class ApiServiceParameterPostTestSuiteMixin(ApiServiceParameterTestCaseMixin):
             post_object = self.service_parameter_data[param]
             self.post(post_object, expect_errors=True, error_message="Parameter '" +
                 self.service_parameter_data[param]['name'] +
-                "' includes an invalid domain name \'1.1.1.1.1\'.")
+                "' must contain valid ip address and host name.")
 
         # Test invalid domain name in host-record value
         for param in range(dns_index + 4, dns_index + 6):
@@ -851,6 +851,12 @@ class ApiServiceParameterPostTestSuiteMixin(ApiServiceParameterTestCaseMixin):
         self.post(post_object, expect_errors=True, error_message="Parameter '" +
             self.service_parameter_data[dns_index + 10]['name'] +
             "' includes an invalid domain name \'" + msg + "\'.")
+
+        # Test valid dns host record with label length 63 & total length 253
+        for param in range(dns_index + 11, dns_index + 12):
+            post_object = self.service_parameter_data[param]
+            response = self.post(post_object)
+            self.validate_data(post_object, response)
 
 
 class ApiServiceParameterDeleteTestSuiteMixin(ApiServiceParameterTestCaseMixin):

@@ -580,7 +580,7 @@ def _validate_auth_id_reclaim_enabled(name, value):
 
 def _validate_dns_hostname(name, value):
     hostname = value if '.' in value else value + '.dummy'
-    if not cutils.is_valid_domain_name(hostname):
+    if not cutils.is_valid_dns_hostname(hostname):
         raise wsme.exc.ClientSideError(_(
             "Parameter '%s' includes an invalid domain name '%s'." %
             (name, value)))
