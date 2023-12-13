@@ -965,6 +965,8 @@ def add_vlan_interface_creation_command(context, iface, options):
     fill_interface_config_option_operation(options, IFACE_PRE_UP_OP,
         'ip link add link %s name %s type vlan id %d' %
         (lower_os_ifname, os_ifname, iface['vlan_id']))
+    fill_interface_config_option_operation(options, IFACE_POST_DOWN_OP,
+        'ip link del %s' % (os_ifname))
 
 
 def get_bond_interface_options_sysconfig(iface, primary_iface):
