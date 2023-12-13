@@ -18381,6 +18381,7 @@ class ConductorManager(service.PeriodicService):
         configmap_name = 'kubeadm-config'
         OLD_IMAGE_REPOSITORY = "registry.local:9001/k8s.gcr.io"
         NEW_IMAGE_REPOSITORY = "registry.local:9001/registry.k8s.io"
+        NEW_DNS_IMAGE_REPOSITORY = "registry.local:9001/registry.k8s.io/coredns"
 
         try:
             configmap = self._kube.kube_read_config_map(configmap_name, 'kube-system')
@@ -18393,9 +18394,10 @@ class ConductorManager(service.PeriodicService):
                 minor_k8s_version = int(target_version.split('.')[1])
                 if minor_k8s_version >= 25 and image_repository == OLD_IMAGE_REPOSITORY:
                     # Update the imageRepository with the new value
-                    image_repository = NEW_IMAGE_REPOSITORY
-                    kubeadm_config['imageRepository'] = image_repository
-                    LOG.info('Setting imageRepository to %s in kubeadm-config.' % image_repository)
+                    kubeadm_config['imageRepository'] = NEW_IMAGE_REPOSITORY
+                    kubeadm_config['dns']['imageRepository'] = NEW_DNS_IMAGE_REPOSITORY
+                    LOG.info('Setting imageRepository=%s, dns imageRepository=%s \
+                             in kubeadm-config.' % (NEW_IMAGE_REPOSITORY, NEW_DNS_IMAGE_REPOSITORY))
                     outstream = StringIO()
                     yaml.dump(kubeadm_config, outstream)
                     configmap = {'data': {'ClusterConfiguration': outstream.getvalue()}}
