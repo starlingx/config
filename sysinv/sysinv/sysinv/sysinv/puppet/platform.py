@@ -54,6 +54,7 @@ class PlatformPuppet(base.BasePuppet):
         config = {}
         config.update(self._get_user_config())
         config.update(self._get_dc_root_ca_config())
+        config.update(self._get_drbd_secure_config())
         return config
 
     def get_host_config(self, host):
@@ -89,6 +90,20 @@ class PlatformPuppet(base.BasePuppet):
         keyring.set_password('amqp', 'rabbit', password)
         return {
             'platform::amqp::params::auth_password': password,
+        }
+
+    def _get_drbd_secure_config(self):
+
+        conf = utils.get_drbd_secure_config(self.dbapi)
+
+        secure = False
+        if conf['secure'] == 'True':
+            secure = True
+
+        return {
+            'platform::drbd::params::hmac': conf['hmac'],
+            'platform::drbd::params::secret': conf['secret'],
+            'platform::drbd::params::secure': secure,
         }
 
     def _get_system_config(self):

@@ -615,6 +615,20 @@ def _validate_sysinv_api_workers(name, value):
     return _validate_range(name, value, MIN_WORKERS, MAX_WORKERS)
 
 
+def _validate_drbd_net_hmac(name, value):
+    try:
+        if str(value) in [constants.SERVICE_PARAM_PLATFORM_DRBD_HMAC_SHA1,
+                          constants.SERVICE_PARAM_PLATFORM_DRBD_HMAC_SHA256]:
+            return
+    except ValueError:
+        pass
+
+    raise wsme.exc.ClientSideError(_(
+        "Parameter '%s' value must be either '%s' or '%s'" %
+        (name, constants.SERVICE_PARAM_PLATFORM_DRBD_HMAC_SHA1,
+         constants.SERVICE_PARAM_PLATFORM_DRBD_HMAC_SHA256)))
+
+
 def parse_volume_string_to_dict(parameter):
     """
     Parse volume string value from parameter to dictionary.
@@ -1017,6 +1031,12 @@ PLATFORM_POSTGRESQL_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS_PER_GATHER,
 ]
 
+PLATFORM_DRBD_PARAMETER_OPTIONAL = [
+    constants.SERVICE_PARAM_NAME_DRBD_HMAC,
+    constants.SERVICE_PARAM_NAME_DRBD_SECRET,
+    constants.SERVICE_PARAM_NAME_DRBD_SECURE,
+]
+
 PLATFORM_KERNEL_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD: _validate_kernel_audit,
 }
@@ -1052,6 +1072,15 @@ PLATFORM_POSTGRESQL_PARAMETER_VALIDATOR = {
         _validate_zero_or_positive_integer,
     constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS_PER_GATHER:
         _validate_zero_or_positive_integer,
+}
+
+PLATFORM_DRBD_PARAMETER_VALIDATOR = {
+    constants.SERVICE_PARAM_NAME_DRBD_HMAC:
+        _validate_drbd_net_hmac,
+    constants.SERVICE_PARAM_NAME_DRBD_SECRET:
+        _validate_not_empty,
+    constants.SERVICE_PARAM_NAME_DRBD_SECURE:
+        _validate_boolean,
 }
 
 PLATFORM_KERNEL_PARAMETER_RESOURCE = {
@@ -1094,6 +1123,15 @@ PLATFORM_POSTGRESQL_PARAMETER_RESOURCE = {
         'platform::postgresql::custom::params::max_parallel_maintenance_workers',
     constants.SERVICE_PARAM_NAME_POSTGRESQL_MAX_PARALLEL_WORKERS_PER_GATHER:
         'platform::postgresql::custom::params::max_parallel_workers_per_gather',
+}
+
+PLATFORM_DRBD_PARAMETER_RESOURCE = {
+    constants.SERVICE_PARAM_NAME_DRBD_HMAC:
+        'platform::drbd::params::hmac',
+    constants.SERVICE_PARAM_NAME_DRBD_SECRET:
+        'platform::drbd::params::secret',
+    constants.SERVICE_PARAM_NAME_DRBD_SECURE:
+        'platform::drbd::params::secure',
 }
 
 RADOSGW_CONFIG_PARAMETER_MANDATORY = [
@@ -1564,6 +1602,11 @@ SERVICE_PARAMETER_SCHEMA = {
             SERVICE_PARAM_OPTIONAL: PLATFORM_POSTGRESQL_PARAMETER_OPTIONAL,
             SERVICE_PARAM_VALIDATOR: PLATFORM_POSTGRESQL_PARAMETER_VALIDATOR,
             SERVICE_PARAM_RESOURCE: PLATFORM_POSTGRESQL_PARAMETER_RESOURCE,
+        },
+        constants.SERVICE_PARAM_SECTION_PLATFORM_DRBD: {
+            SERVICE_PARAM_OPTIONAL: PLATFORM_DRBD_PARAMETER_OPTIONAL,
+            SERVICE_PARAM_VALIDATOR: PLATFORM_DRBD_PARAMETER_VALIDATOR,
+            SERVICE_PARAM_RESOURCE: PLATFORM_DRBD_PARAMETER_RESOURCE,
         },
     },
     constants.SERVICE_TYPE_RADOSGW: {

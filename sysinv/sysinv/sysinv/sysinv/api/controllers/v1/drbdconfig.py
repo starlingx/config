@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2015-2016 Wind River Systems, Inc.
+# Copyright (c) 2015-2016,2024 Wind River Systems, Inc.
 #
 
 import jsonpatch
@@ -288,6 +288,36 @@ class drbdconfigsController(rest.RestController):
                     action = value
                 break
 
+        # Obtain secure parameter value
+        # secure parameter is not stored in database. key/value need to
+        # be removed from patch.
+        secure = 'False'
+        for p in patch:
+            if '/secure' in p['path']:
+                ts = p['value']
+                if ts.lower() not in ['true', 'false']:
+                    raise wsme.exc.ClientSideError(
+                        "Should be True or False for option --secure")
+                elif ts.lower() == 'true':
+                    secure = 'True'
+                patch.remove(p)
+                break
+
+        LOG.info("drbdconfig secure value: %s", str(secure))
+
+        sec_conf = cutils.get_drbd_secure_config(pecan.request.dbapi)
+        sec_conf_updated = False
+        if secure != sec_conf['secure']:
+            sec_conf_updated = True
+            sec_conf['secure'] = secure
+            if secure:
+                if sec_conf['hmac'] != 'sha256':
+                    sec_conf['hmac'] = 'sha256'
+                if sec_conf['secret'] == '':
+                    sec_conf['secret'] = cutils.generate_random_password()
+            cutils.update_drbd_secure_config(pecan.request.dbapi, sec_conf)
+        LOG.info("drbdconfig secure updated: %s", str(sec_conf_updated))
+
         # replace isystem_uuid and drbdconfig_uuid with corresponding
         patch_obj = jsonpatch.JsonPatch(patch)
         if action == constants.INSTALL_ACTION:
@@ -339,6 +369,12 @@ class drbdconfigsController(rest.RestController):
 
                 if action == constants.APPLY_ACTION:
                     # perform rpc to conductor to perform config apply
+                    pecan.request.rpcapi.update_drbd_config(
+                        pecan.request.context)
+            elif sec_conf_updated:
+                    LOG.info("drbdconfig secure is updated. Call update_drbd_config")
+                    # perform rpc to conductor to perform config apply
+                    # if secure config is updated.
                     pecan.request.rpcapi.update_drbd_config(
                         pecan.request.context)
             else:
