@@ -26,6 +26,11 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
                                              'enp0s19': '08:00:27:ea:93:8e'}
         self.addCleanup(p.stop)
 
+        p = mock.patch('sysinv.common.utils.is_aio_simplex_system')
+        self.mock_utils_is_aio_simplex_system = p.start()
+        self.mock_utils_is_aio_simplex_system.return_value = True
+        self.addCleanup(p.stop)
+
         self.system = dbutils.create_test_isystem()
         self.load = dbutils.create_test_load()
         self.controller = dbutils.create_test_ihost(
@@ -137,6 +142,44 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
             return '/interface_networks/' + path
         else:
             return '/interface_networks'
+
+    def _get_interface_path(self, path=None):
+        if path:
+            return '/iinterfaces/' + path
+        else:
+            return '/iinterfaces'
+
+    def _get_addrpool_path(self, path=None):
+        if path:
+            return '/addrpools/' + path
+        else:
+            return '/addrpools'
+
+    def _delete_interface_and_check(self, iface_uuid, expect_errors=False, error_message=None):
+        response = self.delete('%s' % self._get_interface_path(iface_uuid),
+                                  expect_errors)
+        if expect_errors:
+            self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+            self.assertEqual('application/json', response.content_type)
+            self.assertTrue(response.json['error_message'])
+            if error_message:
+                self.assertIn(error_message, response.json['error_message'])
+        else:
+            self.assertEqual(http_client.NO_CONTENT, response.status_int)
+        return response
+
+    def _delete_address_pool_and_check(self, addrpool_uuid, expect_errors=False, error_message=None):
+        response = self.delete('%s' % self._get_addrpool_path(addrpool_uuid),
+                                  expect_errors)
+        if expect_errors:
+            self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+            self.assertEqual('application/json', response.content_type)
+            self.assertTrue(response.json['error_message'])
+            if error_message:
+                self.assertIn(error_message, response.json['error_message'])
+        else:
+            self.assertEqual(http_client.NO_CONTENT, response.status_int)
+        return response
 
 
 class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
@@ -414,3 +457,60 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             interface_uuid=controller_interface.uuid,
             network_uuid=self.admin_network.uuid)
         self._post_and_check(controller_interface_network, expect_errors=True)
+
+    # In case of aio-simplex, interface bound to admin-network can be deleted without removing admin-address-pool.
+    def test_aiosx_delete_interface_adminnetwork(self):
+        interface = dbutils.create_test_interface(
+                ifname='admin', id=1,
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                forihostid=self.controller.id,
+                ihost_uuid=self.controller.uuid)
+
+        admin_interface = dbutils.create_test_interface(
+            ifname='admin0', id=2,
+            iftype=constants.INTERFACE_TYPE_VLAN,
+            uses=[interface.ifname],
+            forihostid=self.controller.id,
+            ihost_uuid=self.controller.uuid)
+
+        admin_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=admin_interface.uuid,
+            network_uuid=self.admin_network.uuid)
+        self._post_and_check(admin_interface_network, expect_errors=False)
+
+        # system host-if-delete controller-0 admin_interface
+        self._delete_interface_and_check(admin_interface.uuid, expect_errors=False)
+
+    # In case of non aio-simplex, interface bound to admin-network can not be deleted without
+    # removing admin-address-pool.
+    def test_non_aiosx_delete_interface_adminetwork(self):
+        self.mock_utils_is_aio_simplex_system.return_value = False
+
+        interface = dbutils.create_test_interface(
+                ifname='admin', id=1,
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                forihostid=self.controller.id,
+                ihost_uuid=self.controller.uuid)
+
+        admin_interface = dbutils.create_test_interface(
+            ifname='admin0', id=2,
+            iftype=constants.INTERFACE_TYPE_VLAN,
+            vlan_id=100,
+            uses=[interface.ifname],
+            forihostid=self.controller.id,
+            ihost_uuid=self.controller.uuid)
+
+        admin_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=admin_interface.uuid,
+            network_uuid=self.admin_network.uuid)
+        self._post_and_check(admin_interface_network, expect_errors=False)
+
+        # system host-if-delete controller-0 admin_interface
+        self._delete_interface_and_check(admin_interface.uuid, expect_errors=True,
+            error_message="Cannot delete an interface still assigned to a network of")
+
+        # delete address pool and then admin interface, no error expected
+        self._delete_address_pool_and_check(self.address_pool_admin.uuid, expect_errors=False)
+        self._delete_interface_and_check(admin_interface.uuid, expect_errors=False)
+
+        self.mock_utils_is_aio_simplex_system.return_value = True

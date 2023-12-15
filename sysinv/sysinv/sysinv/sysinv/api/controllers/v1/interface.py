@@ -2079,6 +2079,18 @@ def _delete(interface):
                 msg = _("Cannot delete a virtual management interface.")
                 raise wsme.exc.ClientSideError(msg)
 
+    # Request to delete interface that is assigned to admin-network will be rejected,
+    # in case address pool still exist on the admin-network. This condition is relaxed
+    # for the aio-simplex system.
+    if (_is_interface_network_assigned(interface, constants.NETWORK_TYPE_ADMIN) and
+            not cutils.is_aio_simplex_system(pecan.request.dbapi)):
+        network = pecan.request.dbapi.network_get_by_type(constants.NETWORK_TYPE_ADMIN)
+        if (network.pool_uuid is not None):
+            msg = _("Cannot delete an interface still assigned to a network of "
+                    "type '%s'.  Address pool %s still exists."
+                    % (constants.NETWORK_TYPE_ADMIN, network.pool_uuid))
+            raise wsme.exc.ClientSideError(msg)
+
     # Update ports
     ports = pecan.request.dbapi.ethernet_port_get_all(
         hostid=ihost['id'], interfaceid=interface['id'])
@@ -2137,7 +2149,10 @@ def _delete(interface):
 
 
 def _is_interface_network_assigned(interface, network_type):
-    network = pecan.request.dbapi.network_get_by_type(network_type)
+    try:
+        network = pecan.request.dbapi.network_get_by_type(network_type)
+    except exception.NetworkTypeNotFound:
+        return False
     interface_network_dict = {}
     interface_network_dict['interface_id'] = interface['id']
     interface_network_dict['network_id'] = network['id']
