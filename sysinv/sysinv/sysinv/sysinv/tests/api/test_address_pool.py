@@ -55,6 +55,7 @@ class AddressPoolTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
 
     def setUp(self):
         super(AddressPoolTestCase, self).setUp()
+        self._delete_management_pool()
 
     def get_single_url(self, uuid):
         return '%s/%s' % (self.API_PREFIX, uuid)
@@ -83,6 +84,15 @@ class AddressPoolTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
             name=name,
             subnet=self.mgmt_subnet
         )
+
+    def _delete_management_pool(self):
+        current_pools = self.get_json(self.API_PREFIX)
+        for addrpool in current_pools[self.RESULT_KEY]:
+            if addrpool['name'] == 'management':
+                uuid = addrpool['uuid']
+                self.delete(self.get_single_url(uuid),
+                    headers=self.API_HEADERS)
+                break
 
 
 class TestPostMixin(AddressPoolTestCase):
@@ -132,6 +142,40 @@ class TestPostMixin(AddressPoolTestCase):
         self.assertEqual('application/json', response.content_type)
         self.assertEqual(response.status_code, http_client.CONFLICT)
         self.assertIn("Address pool %s already exists" % name,
+                      response.json['error_message'])
+
+    def _test_create_address_pool_fail_overlap(self, name_1, network_1,
+            prefix_1, network_2, prefix_2):
+        # Test there is overlap between network_1/prefix_1 and
+        # network_2/prefix_2 and try to create both address pools.
+        ip_set_1 = netaddr.IPSet([f"{network_1}/{prefix_1}"])
+        ip_set_2 = netaddr.IPSet([f"{network_2}/{prefix_2}"])
+        intersection = ip_set_1 & ip_set_2
+        self.assertIsNot(intersection.size, 0, message=f"{network_1}/"
+                         f"{prefix_1} and {network_2}/{prefix_2} is not "
+                         f"overlapped.")
+
+        ndict_1 = self.get_post_object(name_1, network_1, prefix_1)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict_1,
+                                  headers=self.API_HEADERS)
+
+        # Check HTTP response is successful
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        name_2 = f"{name_1}_2"
+        ndict_2 = self.get_post_object(name_2, network_2, prefix_2)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict_2,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        # Check HTTP response is failed
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.CONFLICT)
+        self.assertIn(f"Address pool {network_2}/{prefix_2} overlaps "
+                      f"with {name_1} address pool.",
                       response.json['error_message'])
 
     def _test_create_address_pool_address_not_in_subnet(self, addr_type):
@@ -226,6 +270,21 @@ class TestPostMixin(AddressPoolTestCase):
     def test_address_pool_create_fail_duplicate(self):
         self._test_create_address_pool_fail_duplicate(
             'test', str(self.mgmt_subnet.network), self.mgmt_subnet.prefixlen)
+
+    def test_create_address_pool_fail_exact_overlap(self):
+        self._test_create_address_pool_fail_overlap(
+            'test', str(self.mgmt_subnet.network), self.mgmt_subnet.prefixlen,
+            str(self.mgmt_subnet.network), self.mgmt_subnet.prefixlen)
+
+    def test_create_address_pool_fail_subset_overlap(self):
+        self._test_create_address_pool_fail_overlap(
+            'test', str(self.mgmt_subnet.network), self.mgmt_subnet.prefixlen,
+            str(self.mgmt_subnet.network), self.mgmt_subnet.prefixlen - 1)
+
+    def test_create_address_pool_fail_superset_overlap(self):
+        self._test_create_address_pool_fail_overlap(
+            'test', str(self.mgmt_subnet.network), self.mgmt_subnet.prefixlen - 1,
+            str(self.mgmt_subnet.network), self.mgmt_subnet.prefixlen)
 
     def test_address_pool_create_reversed_ranges(self):
         start = str(self.mgmt_subnet[-2])

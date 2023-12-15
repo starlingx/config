@@ -774,6 +774,10 @@ class AddressPoolAlreadyExists(Conflict):
     message = _("Address pool %(name)s already exists")
 
 
+class AddressPoolOverlaps(Conflict):
+    message = _("Address pool %(network)s/%(prefix)s overlaps with %(name)s address pool.")
+
+
 class AddressPoolFamilyMismatch(Conflict):
     message = _("Address pool IP family does not match requested family")
 

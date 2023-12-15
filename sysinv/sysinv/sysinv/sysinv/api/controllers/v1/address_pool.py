@@ -314,6 +314,18 @@ class AddressPoolController(rest.RestController):
         except exception.AddressPoolNotFound:
             pass
 
+    def _check_pool_overlap(self, addrpool):
+        current_pool_ip_set = netaddr.IPSet([f"{addrpool['network']}/"
+                                             f"{addrpool['prefix']}"])
+        pools = pecan.request.dbapi.address_pools_get_all()
+        for pool in pools:
+            pool_ip_set = netaddr.IPSet([f"{pool.network}/{pool.prefix}"])
+            intersection = current_pool_ip_set & pool_ip_set
+            if intersection.size:
+                raise exception.AddressPoolOverlaps(network=addrpool['network'],
+                                                    prefix=addrpool['prefix'],
+                                                    name=pool.name)
+
     def _check_valid_range(self, network, start, end, ipset):
         start_address = netaddr.IPAddress(start)
         end_address = netaddr.IPAddress(end)
@@ -585,6 +597,7 @@ class AddressPoolController(rest.RestController):
         # Check for semantic conflicts
         self._check_name_conflict(addrpool_dict)
         self._check_valid_ranges(addrpool_dict)
+        self._check_pool_overlap(addrpool_dict)
         self._check_aiosx_mgmt(addrpool_dict)
 
         floating_address = addrpool_dict.pop('floating_address', None)
