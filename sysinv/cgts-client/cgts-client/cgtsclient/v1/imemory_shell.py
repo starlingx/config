@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2014 Wind River Systems, Inc.
+# Copyright (c) 2013-2014, 2018, 2019, 2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -43,10 +43,10 @@ def _print_imemory_show(imemory):
               'Application  Huge Pages Pending As Percentage',
               'Application  Huge Pages (2M): Total',
               '                Total Pending',
-              '                Available',
+              '                Available (App and vS)',
               'Application  Huge Pages (1G): Total',
               '                Total Pending',
-              '                Available',
+              '                Available (App and vS)',
               'uuid', 'ihost_uuid', 'inode_uuid',
               'created_at', 'updated_at']
 
@@ -136,12 +136,12 @@ def do_host_memory_list(cc, args):
                     'app_total_4K',
                     'app_hp_as_percentage',
                     'app_hp_total_2M',
-                    'app_hp_avail_2M',
+                    'hp_avail_2M',
                     'app_hp_pending_2M',
                     'app_hp_total_1G',
-                    'app_hp_avail_1G',
+                    'hp_avail_1G',
                     'app_hp_pending_1G',
-                    'app_hp_use_1G']
+                    'hp_use_1G']
 
     utils.print_list(imemorys, fields, field_labels, sortby=1)
 
