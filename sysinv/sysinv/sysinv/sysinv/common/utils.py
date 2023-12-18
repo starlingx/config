@@ -2389,6 +2389,12 @@ def is_fqdn_ready_to_use():
     return False
 
 
+def is_platform_certificates_creation_enabled():
+    """Check if RestAPI/GUI and Docker Registry are to be created by bootstrap
+    """
+    return os.path.isfile(constants.CREATE_PLATFORM_CERTIFICATES_IN_BOOTSTRAP)
+
+
 def is_std_system(dbapi):
     system = dbapi.isystem_get_one()
     return system.system_type == constants.TIS_STD_BUILD

@@ -8765,15 +8765,16 @@ class ConductorManager(service.PeriodicService):
         :param context: an admin context.
         """
         personalities = [constants.CONTROLLER]
-        system = self.dbapi.isystem_get_one()
 
-        if system.capabilities.get('https_enabled', False):
-            certificates = self.dbapi.certificate_get_list()
-            for certificate in certificates:
-                if certificate.certtype == constants.CERT_MODE_SSL:
-                    break
-            else:
-                self._config_selfsigned_certificate(context)
+        if not cutils.is_platform_certificates_creation_enabled():
+            system = self.dbapi.isystem_get_one()
+            if system.capabilities.get('https_enabled', False):
+                certificates = self.dbapi.certificate_get_list()
+                for certificate in certificates:
+                    if certificate.certtype == constants.CERT_MODE_SSL:
+                        break
+                else:
+                    self._config_selfsigned_certificate(context)
 
         config_dict = {
             "personalities": personalities,
