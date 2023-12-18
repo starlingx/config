@@ -124,31 +124,36 @@ class FaultApiMgr(object):
             return
 
         try:
+            existing_fault = self.fm_api.get_fault(alrm_id, entity_inst_id)
             if state == fm_constants.FM_ALARM_STATE_SET:
-                # Raise alarm only if alarm does not already exist
-                if not self.fm_api.get_fault(alrm_id, entity_inst_id):
-                    fault = fm_api.Fault(
-                            alarm_id=alrm_id,
-                            alarm_state=state,
-                            entity_type_id=fm_constants.FM_ENTITY_TYPE_CERTIFICATE,
-                            entity_instance_id=entity_inst_id,
-                            severity=self.get_severity(entity_inst_id, alrm_id),
-                            reason_text=self.get_reason_text(entity_inst_id, alrm_id),
-                            alarm_type=fm_constants.FM_ALARM_TYPE_9,
-                            probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_77,
-                            proposed_repair_action="Renew certificate for entity identified",
-                            suppression=False,
-                            service_affecting=False)
+                if existing_fault:
+                    latest_reason_text = self.get_reason_text(entity_inst_id, alrm_id)
+                    # No change to alarm if the reason text is same
+                    if existing_fault.reason_text == latest_reason_text:
+                        return
+                # Raise alarm only if it is not already exist or reason text changed
+                fault = fm_api.Fault(
+                        alarm_id=alrm_id,
+                        alarm_state=state,
+                        entity_type_id=fm_constants.FM_ENTITY_TYPE_CERTIFICATE,
+                        entity_instance_id=entity_inst_id,
+                        severity=self.get_severity(entity_inst_id, alrm_id),
+                        reason_text=self.get_reason_text(entity_inst_id, alrm_id),
+                        alarm_type=fm_constants.FM_ALARM_TYPE_9,
+                        probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_77,
+                        proposed_repair_action="Renew certificate for entity identified",
+                        suppression=False,
+                        service_affecting=False)
 
-                    LOG.info('Setting fault for entity_id=%s, alarm_type=%s, state=%s' %
-                            (entity_inst_id, alrm_id, state))
-                    alarm_uuid = self.fm_api.set_fault(fault)
-                    # Update CERT_SNAPSHOT
-                    utils.update_cert_snapshot_field_with_entity_id(entity_inst_id,
-                                                                    utils.ALARM_UUID,
-                                                                    alarm_uuid)
+                LOG.info('Setting fault for entity_id=%s, alarm_type=%s, state=%s' %
+                        (entity_inst_id, alrm_id, state))
+                alarm_uuid = self.fm_api.set_fault(fault)
+                # Update CERT_SNAPSHOT
+                utils.update_cert_snapshot_field_with_entity_id(entity_inst_id,
+                                                                utils.ALARM_UUID,
+                                                                alarm_uuid)
             else:
-                if self.fm_api.get_fault(alrm_id, entity_inst_id):
+                if existing_fault:
                     LOG.info('Setting fault for entity_id=%s, alarm_type=%s, state=%s' %
                             (entity_inst_id, alrm_id, state))
                     self.fm_api.clear_fault(alrm_id, entity_inst_id)

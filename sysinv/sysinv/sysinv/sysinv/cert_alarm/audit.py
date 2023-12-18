@@ -222,7 +222,6 @@ class CertAlarmAudit(object):
                     self.raise_expired(cert_name, entity_id)
                 else:
                     self.clear_expired(cert_name, entity_id)
-                    self.clear_expiring_soon(cert_name, entity_id)
                     self.raise_expiring_soon(cert_name, entity_id)
         else:
             self.clear_expiring_soon(cert_name, entity_id)
