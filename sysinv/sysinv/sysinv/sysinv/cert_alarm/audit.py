@@ -264,11 +264,15 @@ class CertAlarmAudit(object):
 
     def audit_for_deleted_certificates(self):
         LOG.info('Auditing for deleted certificates')
+        existing_ssl_ca_list = []
+        for entry, _, _, _ in utils.collect_certificate_data_for_ssl_cas():
+            existing_ssl_ca_list.append(entry)
+
         for alarm_instance in self.fm_obj.ALARMS_SNAPSHOT:
             entity_id = self.fm_obj.ALARMS_SNAPSHOT[alarm_instance][fm_mgr.ENTITY_ID]
             cert_name = utils.get_cert_name_with_entity_id(entity_id)
-
             k8_secret_deleted = False
+            ssl_ca_deleted = False
             if cert_name is not None:
                 snapshot = utils.CERT_SNAPSHOT[cert_name]
                 kube_op = sys_kube.KubeOperator()
@@ -285,7 +289,10 @@ class CertAlarmAudit(object):
                     except Exception as e:
                         LOG.error("Failed to retrieve k8s_secret %s" % e)
 
-            if cert_name is None or k8_secret_deleted:
+                if cert_name.startswith('ssl_ca') and (cert_name not in existing_ssl_ca_list):
+                    ssl_ca_deleted = True
+
+            if cert_name is None or k8_secret_deleted or ssl_ca_deleted:
                 LOG.info('Found alarm for entity %s, but no related \
                          certificate resource' % entity_id)
                 alarm_id = self.fm_obj.ALARMS_SNAPSHOT[alarm_instance][fm_mgr.ALARM_ID]
@@ -295,5 +302,5 @@ class CertAlarmAudit(object):
                                       fm_constants.FM_ALARM_STATE_CLEAR)
                 # For certificates stored in tls secrets we need to completely delete their
                 # snapshot information otherwise cert-alarm will attempt to re-create the alarm
-                if k8_secret_deleted:
+                if k8_secret_deleted or ssl_ca_deleted:
                     del utils.CERT_SNAPSHOT[cert_name]
