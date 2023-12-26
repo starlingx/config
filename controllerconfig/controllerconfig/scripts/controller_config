@@ -479,13 +479,15 @@ start()
     fi
 
     # Copy over kube-apiserver encryption provider config, admission control config and
-    # extra files referenced in admission control config
+    # extra files referenced in admission control config.
+    # Encryption provider config is a symbolic link hence using -P option to avoid
+    # copying the source content
     if [ -e $CONFIG_DIR/kubernetes/ ]
     then
         FILES=`ls $CONFIG_DIR/kubernetes/*.yaml`
         for FILE in $FILES
         do
-            cp $FILE /etc/kubernetes/
+            cp -P $FILE /etc/kubernetes/
             if [ $? -ne 0 ]
             then
                 fatal_error "Unable to copy kube-apiserver config file: $FILE"
