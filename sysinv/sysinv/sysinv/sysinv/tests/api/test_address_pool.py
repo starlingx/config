@@ -178,6 +178,35 @@ class TestPostMixin(AddressPoolTestCase):
                       f"with {name_1} address pool.",
                       response.json['error_message'])
 
+    def _test_create_address_pool_pass_overlap_with_oam(self, network,
+            prefix):
+        name = "system-controller-oam-subnet"
+
+        # First test with different name, which should fail
+        name_1 = f"{name}_1"
+        ndict_1 = self.get_post_object(name_1, network, prefix)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict_1,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        # Check HTTP response is failed
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.CONFLICT)
+        self.assertIn(f"Address pool {network}/{prefix} overlaps "
+                      f"with oam address pool.",
+                      response.json['error_message'])
+
+        # Now check with the name: system-controller-oam-subnet
+        ndict_2 = self.get_post_object(name, network, prefix)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict_2,
+                                  headers=self.API_HEADERS)
+
+        # Check HTTP response is successful
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
     def _test_create_address_pool_address_not_in_subnet(self, addr_type):
         address = str(self.oam_subnet[1])
         network = str(self.mgmt_subnet.network)
@@ -285,6 +314,10 @@ class TestPostMixin(AddressPoolTestCase):
         self._test_create_address_pool_fail_overlap(
             'test', str(self.mgmt_subnet.network), self.mgmt_subnet.prefixlen - 1,
             str(self.mgmt_subnet.network), self.mgmt_subnet.prefixlen)
+
+    def test_create_address_pool_pass_exact_overlap_with_oam(self):
+        self._test_create_address_pool_pass_overlap_with_oam(
+            str(self.oam_subnet.network), self.oam_subnet.prefixlen)
 
     def test_address_pool_create_reversed_ranges(self):
         start = str(self.mgmt_subnet[-2])
