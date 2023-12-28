@@ -278,7 +278,8 @@ class NetworkingPuppet(base.BasePuppet):
         }
 
         allowed_instance_fields = ['global_parameters', 'interfaces', 'name', 'service',
-                                   'cmdline_opts', 'id', 'pmc_gm_settings', 'device_parameters']
+                                   'cmdline_opts', 'id', 'pmc_gm_settings', 'device_parameters',
+                                   'gnss_uart_disable']
         ptp_config = {}
 
         for instance in ptp_instances:
@@ -290,6 +291,7 @@ class NetworkingPuppet(base.BasePuppet):
             instance['interfaces'] = []
             instance['pmc_gm_settings'] = {}
             instance['device_parameters'] = {}
+            instance['gnss_uart_disable'] = True
 
             # Additional defaults for ptp4l instances
             if instance['service'] == constants.PTP_INSTANCE_TYPE_PTP4L:
@@ -335,6 +337,12 @@ class NetworkingPuppet(base.BasePuppet):
                     for quote in quotes:
                         cmdline = cmdline.strip(quote)
                     instance['cmdline_opts'] = cmdline
+
+                # Move out special gnss_uart_disable from ts2phc's global_parameters
+                if instance['service'] == constants.PTP_INSTANCE_TYPE_TS2PHC:
+                    if 'gnss_uart_disable' in instance['global_parameters']:
+                        tmp = instance['global_parameters'].pop('gnss_uart_disable')
+                        instance['gnss_uart_disable'] = tmp.lower() == 'true'
 
             if instance['service'] == constants.PTP_INSTANCE_TYPE_PTP4L:
                 # Add pmc parameters so that they can be set by puppet
