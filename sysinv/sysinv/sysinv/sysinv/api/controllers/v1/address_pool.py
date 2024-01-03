@@ -63,6 +63,11 @@ SUBCLOUD_WRITABLE_ADDRPOOLS = ['system-controller-subnet',
 # so we can't depend on the address pool having a static name.
 SUBCLOUD_WRITABLE_NETWORK_TYPES = ['admin']
 
+# Address pool of oam and system controller oam are allowed to be of
+# overlapped prefix in the subcloud.
+OAM_ADDRESS_POOL = 'oam'
+SYSTEM_CONTROLLER_OAM_ADDRESS_POOL = 'system-controller-oam-subnet'
+
 # Address pool for the management network in an AIO-SX installation
 # is allowed to be deleted/modified post install
 MANAGEMENT_ADDRESS_POOL = 'management'
@@ -319,6 +324,11 @@ class AddressPoolController(rest.RestController):
                                              f"{addrpool['prefix']}"])
         pools = pecan.request.dbapi.address_pools_get_all()
         for pool in pools:
+            if pool.name == OAM_ADDRESS_POOL and \
+                    addrpool['name'] == SYSTEM_CONTROLLER_OAM_ADDRESS_POOL:
+                # we are ignoring overlap in this case as subcloud oam and
+                # system-controller oam are sharable.
+                continue
             pool_ip_set = netaddr.IPSet([f"{pool.network}/{pool.prefix}"])
             intersection = current_pool_ip_set & pool_ip_set
             if intersection.size:
