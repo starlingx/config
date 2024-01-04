@@ -385,6 +385,26 @@ class ServiceParameterController(rest.RestController):
             raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
+    def _check_duplicate_value(service, section, name, value):
+        # Check for duplicate value in case of dns host-records
+        if service == constants.SERVICE_TYPE_DNS and \
+                section == constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD:
+
+            host_records = pecan.request.dbapi.service_parameter_get_all(
+                service=constants.SERVICE_TYPE_DNS,
+                section=constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD)
+            value_set = set(x.strip() for x in value.split(','))
+            for host_record in host_records:
+                host_record_set = set(x.strip() for x in host_record.value.split(','))
+                if host_record_set == value_set:
+                    msg = _("Service parameter add failed: "
+                            "Value already exists: "
+                            "service=%s section=%s name=%s "
+                            "value=%s"
+                            % (service, section, name, value))
+                    raise wsme.exc.ClientSideError(msg)
+
+    @staticmethod
     def _check_parameter_syntax(svc_param):
         """Check the attributes of service parameter"""
         service = svc_param['service']
@@ -613,6 +633,8 @@ class ServiceParameterController(rest.RestController):
                             % (service, section, name))
                     raise wsme.exc.ClientSideError(msg)
 
+            self._check_duplicate_value(service, section, name, value)
+
             new_records.append(new_record)
 
         svc_params = []
@@ -723,6 +745,10 @@ class ServiceParameterController(rest.RestController):
 
         self._check_parameter_syntax(parameter)
         self._check_read_only_parameter(parameter)
+        self._check_duplicate_value(parameter['service'],
+                                    parameter['section'],
+                                    parameter['name'],
+                                    parameter['value'])
 
         updated_parameter = pecan.request.dbapi.service_parameter_update(
             uuid, updates)

@@ -468,6 +468,97 @@ class ApiServiceParameterTestCaseMixin(object):
             'name': constants.SERVICE_PARAM_CRASHDUMP_MAX_SIZE,
             'value': ''
         },
+        {
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD,
+            'name': 'name0',
+            'value': ''
+        },
+        {
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD,
+            'name': 'name1',
+            'value': 'value1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD,
+            'name': 'name2',
+            'value': 'value1,1.1.1.1.1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD,
+            'name': 'name3',
+            'value': 'value1,1.1.1.1.1,1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD,
+            'name': 'name4',
+            'value': '_value,1.1.1.1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD,
+            'name': 'name5',
+            'value': '_value,1.1.1.1,1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD,
+            'name': 'name6',
+            'value': 'value1,1.1.1.1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD,
+            'name': 'name7',
+            'value': 'value1,1.1.1.1,1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD,
+            'name': 'name8',
+            'value': 'value1,1.1.1.1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD,
+            'name': 'name9',
+            'value': 'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijkk.com,\
+                1.1.1.1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD,
+            'name': 'name10',
+            'value': (
+                    'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcde.'
+                    'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.'
+                    'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.'
+                    'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.comm'
+            )
+        },
+        {
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD,
+            'name': 'name11',
+            'value': 'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.com,\
+                1.1.1.1'
+        },
+        {
+            'service': constants.SERVICE_TYPE_DNS,
+            'section': constants.SERVICE_PARAM_SECTION_DNS_HOST_RECORD,
+            'name': 'name12',
+            'value': (
+                    'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcde.'
+                    'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.'
+                    'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.'
+                    'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.com'
+                    ',1.1.1.1'
+            )
+        },
     ]
 
     service_parameter_wildcard = {
@@ -699,6 +790,67 @@ class ApiServiceParameterPostTestSuiteMixin(ApiServiceParameterTestCaseMixin):
             post_object = self.service_parameter_data[param]
             response = self.post(post_object)
             self.validate_data(post_object, response)
+
+    def test_dns_host_records(self):
+        dns_index = 69
+        # Test empty value host-record value
+        post_object = self.service_parameter_data[dns_index]
+        self.post(post_object, expect_errors=True,
+            error_message="The service parameter value is mandatory")
+
+        # Test invalid host-record value
+        post_object = self.service_parameter_data[dns_index + 1]
+        self.post(post_object, expect_errors=True, error_message="Parameter '" +
+            self.service_parameter_data[dns_index + 1]['name'] +
+            "' must contain valid ip address and host name.")
+
+        # Test invalid IP address in host-record value
+        for param in range(dns_index + 2, dns_index + 4):
+            post_object = self.service_parameter_data[param]
+            self.post(post_object, expect_errors=True, error_message="Parameter '" +
+                self.service_parameter_data[param]['name'] +
+                "' includes an invalid domain name \'1.1.1.1.1\'.")
+
+        # Test invalid domain name in host-record value
+        for param in range(dns_index + 4, dns_index + 6):
+            post_object = self.service_parameter_data[param]
+            self.post(post_object, expect_errors=True, error_message="Parameter '" +
+                self.service_parameter_data[param]['name'] +
+                "' includes an invalid domain name \'_value\'.")
+
+        # Test valid dns host record
+        for param in range(dns_index + 6, dns_index + 8):
+            post_object = self.service_parameter_data[param]
+            response = self.post(post_object)
+            self.validate_data(post_object, response)
+
+        # test duplicate value
+        post_object = self.service_parameter_data[dns_index + 8]
+        msg = (
+            'Service parameter add failed: Value already exists: service=dns '
+            'section=host-record name=name8 value=value1,1.1.1.1'
+        )
+        self.post(post_object, expect_errors=True,
+            error_message=msg)
+
+        # Test invalid domain name with more than 63 chars for label
+        post_object = self.service_parameter_data[dns_index + 9]
+        self.post(post_object, expect_errors=True, error_message="Parameter '" +
+            self.service_parameter_data[dns_index + 9]['name'] +
+            "' includes an invalid domain name " +
+            "\'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijkk.com\'.")
+
+        # Test invalid domain name with more than 253 chars total length
+        post_object = self.service_parameter_data[dns_index + 10]
+        msg = (
+            'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcde.'
+            'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.'
+            'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.'
+            'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijk.comm'
+        )
+        self.post(post_object, expect_errors=True, error_message="Parameter '" +
+            self.service_parameter_data[dns_index + 10]['name'] +
+            "' includes an invalid domain name \'" + msg + "\'.")
 
 
 class ApiServiceParameterDeleteTestSuiteMixin(ApiServiceParameterTestCaseMixin):
