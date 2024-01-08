@@ -5122,6 +5122,8 @@ class Connection(object):
     @abc.abstractmethod
     def kube_app_bundle_get_all(self,
                                 name=None,
+                                k8s_auto_update=None,
+                                timing=None,
                                 limit=None,
                                 marker=None,
                                 sort_key=None,
@@ -5130,25 +5132,11 @@ class Connection(object):
         given filter.
 
         :param name: Application name.
-        :param limit: Maximum number of entries to return.
-        :param marker: The last item of the previous page; we return the next
-                       result set.
-        :param sort_key: Attribute by which results should be sorted.
-        :param sort_dir: Direction in which results should be sorted.
-                         (asc, desc)
-        :returns: A list of kube_app_bundle entries with the given name.
-        """
-
-    @abc.abstractmethod
-    def kube_app_bundle_get_by_name(self,
-                                    name,
-                                    limit=None,
-                                    marker=None,
-                                    sort_key=None,
-                                    sort_dir=None):
-        """Get kube_app_bundle entries that match a given name
-
-        :param name: Application name.
+        :param k8s_auto_update: Whether automatically updating the application
+                                is enabled when upgrading Kubernetes.
+        :param timing: Application update timing during Kubernetes upgrade
+                       "pre": during kube-upgrade-start.
+                       "post": during kube-upgrade-complete.
         :param limit: Maximum number of entries to return.
         :param marker: The last item of the previous page; we return the next
                        result set.

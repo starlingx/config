@@ -78,6 +78,8 @@ KUBE_CONTROLLER_MANAGER = 'kube-controller-manager'
 KUBE_SCHEDULER = 'kube-scheduler'
 
 # Kubernetes upgrade states
+KUBE_UPGRADE_STARTING = 'upgrade-starting'
+KUBE_UPGRADE_STARTING_FAILED = 'upgrade-starting-failed'
 KUBE_UPGRADE_STARTED = 'upgrade-started'
 KUBE_UPGRADE_DOWNLOADING_IMAGES = 'downloading-images'
 KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED = 'downloading-images-failed'

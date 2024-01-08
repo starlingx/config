@@ -1716,6 +1716,32 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('get_fernet_keys',
                                                 key_id=key_id))
 
+    def kube_upgrade_start(self, context, k8s_version):
+        """Asynchronously, start a Kubernetes upgrade to the given version.
+
+        :param context: Context of the request
+        :param k8s_version: Kubernetes target version
+        :param k8s_upgrade_timing: When applications should be updated
+        """
+
+        return self.cast(context, self.make_msg('kube_upgrade_start',
+                                                k8s_version=k8s_version))
+
+    def update_apps_based_on_k8s_version_async(self,
+                                               context,
+                                               k8s_version,
+                                               k8s_upgrade_timing):
+        """Asynchronously, update all applications based on a given Kubernetes version.
+
+        :param context: Context of the request
+        :param k8s_version: Kubernetes target version
+        :param k8s_upgrade_timing: When applications should be updated
+        """
+
+        return self.cast(context, self.make_msg('update_apps_based_on_k8s_version_async',
+                                                k8s_version=k8s_version,
+                                                k8s_upgrade_timing=k8s_upgrade_timing))
+
     def evaluate_apps_reapply(self, context, trigger):
         """Synchronously, determine whether an application
         re-apply is needed, and if so, raise the re-apply flag.

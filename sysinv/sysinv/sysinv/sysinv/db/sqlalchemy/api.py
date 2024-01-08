@@ -9455,23 +9455,19 @@ class Connection(api.Connection):
         return result is None
 
     @db_objects.objectify(objects.kube_app_bundle)
-    def kube_app_bundle_get_all(self, name=None,
-                                limit=None, marker=None,
+    def kube_app_bundle_get_all(self, name=None, k8s_auto_update=None,
+                                k8s_timing=None, limit=None, marker=None,
                                 sort_key=None, sort_dir=None):
         query = model_query(models.KubeAppBundle)
         if name:
             query = query.filter_by(name=name)
+        if k8s_auto_update:
+            query = query.filter_by(k8s_auto_update=k8s_auto_update)
+        if k8s_timing:
+            query = query.filter_by(k8s_timing=k8s_timing)
 
         return _paginate_query(models.KubeAppBundle, limit, marker,
                                sort_key, sort_dir, query)
-
-    @db_objects.objectify(objects.kube_app_bundle)
-    def kube_app_bundle_get_by_name(self, name,
-                                    limit=None, marker=None,
-                                    sort_key=None, sort_dir=None):
-
-        return self.kube_app_bundle_get_all(name, limit, marker,
-                                            sort_key, sort_dir)
 
     def kube_app_bundle_destroy_all(self, file_path=None):
         with _session_for_write() as session:

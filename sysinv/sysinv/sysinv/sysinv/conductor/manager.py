@@ -64,6 +64,7 @@ from controllerconfig.upgrades import management as upgrades_management
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from eventlet import greenpool
 from eventlet import greenthread
 # Make subprocess module greenthread friendly
 from eventlet.green import subprocess
@@ -275,13 +276,11 @@ class KubeAppBundleDatabase(KubeAppBundleStorageFactory):
         """Check if the table is empty."""
         return self.dbapi.kube_app_bundle_is_empty()
 
-    def get_all(self):
+    def get_all(self, name=None, k8s_auto_update=None, k8s_timing=None):
         """Get a list containing all bundles."""
-        return self.dbapi.kube_app_bundle_get_all()
-
-    def get_by_name(self, app_name):
-        """Get a list of bundles by their name."""
-        return self.dbapi.kube_app_bundle_get_by_name(app_name)
+        return self.dbapi.kube_app_bundle_get_all(name=name,
+                                                  k8s_auto_update=k8s_auto_update,
+                                                  k8s_timing=k8s_timing)
 
     def destroy_all(self):
         """Prune all bundle metadata."""
@@ -7425,18 +7424,117 @@ class ConductorManager(service.PeriodicService):
 
         self._inner_sync_auto_apply(context, app_name)
 
-    def _get_app_bundle_for_update(self, app):
+    def update_apps_based_on_k8s_version_sync(self, context, k8s_version, k8s_upgrade_timing):
+        """ Update applications based on a given Kubernetes version (blocking).
+
+        :param context: Context of the request
+        :param k8s_version: Kubernetes target version.
+        :param k8s_upgrade_timing: When applications should be updated.
+        :return: True if all apps were successfully updated.
+                 False if any apps failed to be updated.
+        """
+
+        LOG.info("Checking available application updates for Kubernetes version {}."
+                 .format(k8s_version))
+
+        update_candidates = [app_name for app_name in
+                             self.apps_metadata[constants.APP_METADATA_APPS].keys()]
+
+        # Launch a thread for each update candidate, then wait for all applications
+        # to finish updating.
+        threadpool = greenpool.GreenPool(len(update_candidates))
+        threads = {}
+        result = True
+        for app_name in update_candidates:
+
+            try:
+                app = kubeapp_obj.get_by_name(context, app_name)
+            except exception.KubeAppNotFound:
+                continue
+
+            # Apps should be either in 'applied' or 'apply-failure' state.
+            # Applied apps are selected to be updated since they are currently in use.
+            # If the app is in 'apply-failure' state we give it a chance to be
+            # successfully applied via the update process.
+            if (app.status == constants.APP_APPLY_SUCCESS or
+                    app.status == constants.APP_APPLY_FAILURE):
+                threads[app.name] = threadpool.spawn(self._auto_update_app,
+                                                     context,
+                                                     app_name,
+                                                     k8s_version,
+                                                     k8s_upgrade_timing,
+                                                     async_update=False)
+
+        # Wait for all updates to finish
+        threadpool.waitall()
+
+        # Check result values
+        for app_name, thread in threads.items():
+            if thread.wait() is False:
+                LOG.error("Failed to update {} to match target Kubernetes version {}"
+                          .format(app_name, k8s_version))
+                result = False
+
+        return result
+
+    def update_apps_based_on_k8s_version_async(self, context, k8s_version, k8s_upgrade_timing):
+        """ Update applications based on a given Kubernetes version (non-blocking).
+
+        :param context: Context of the request
+        :param k8s_version: Kubernetes target version.
+        :param k8s_upgrade_timing: When applications should be updated.
+        """
+        update_candidates = [app_name for app_name in
+                             self.apps_metadata[constants.APP_METADATA_APPS].keys()]
+
+        LOG.info("Checking available application updates for Kubernetes version {}."
+                 .format(k8s_version))
+
+        for app_name in update_candidates:
+            try:
+                app = kubeapp_obj.get_by_name(context, app_name)
+            except exception.KubeAppNotFound:
+                continue
+
+            # Apps should be either in 'applied' or 'apply-failure' state.
+            # Applied apps are selected to be updated since they are currently in use.
+            # If the app is in 'apply-failure' state we give it a chance to be
+            # successfully applied via the update process.
+            if (app.status == constants.APP_APPLY_SUCCESS or
+                    app.status == constants.APP_APPLY_FAILURE):
+                if self._auto_update_app(context,
+                                         app_name,
+                                         k8s_version,
+                                         k8s_upgrade_timing) is False:
+                    LOG.error("Failed to update {} to match Kubernetes version {}"
+                              .format(app_name, k8s_version))
+
+    def _get_app_bundle_for_update(self, app, k8s_version=None, k8s_upgrade_timing=None):
         """ Retrieve metadata from the most updated application bundle
         that can be used to update the given app.
 
         :param app: The application to be updated
+        :param k8s_version: Target Kubernetes version
+        :param k8s_upgrade_timing: When applications should be updated during Kubernetes upgrades
         :return The bundle metadata from the new version of the app
         """
 
-        bundle_metadata_list = self._kube_app_bundle_storage.get_by_name(app.name)
+        if k8s_upgrade_timing is None:
+            bundle_metadata_list = self._kube_app_bundle_storage.get_all(app.name)
+        else:
+            # Filter bundle list by the application name, k8s_auto_update = True and
+            # the given k8s_upgrade_timing.
+            bundle_metadata_list = self._kube_app_bundle_storage.get_all(app.name,
+                                                                         True,
+                                                                         k8s_upgrade_timing)
 
         latest_version_bundle = None
-        k8s_version = self._kube.kube_get_kubernetes_version().strip().lstrip('v')
+
+        if k8s_version is None:
+            k8s_version = self._kube.kube_get_kubernetes_version().strip().lstrip('v')
+        else:
+            k8s_version = k8s_version.strip().lstrip('v')
+
         for bundle_metadata in bundle_metadata_list:
             if LooseVersion(bundle_metadata.version) <= LooseVersion(app.app_version):
                 LOG.debug("Bundle {} version {} lower than installed app version ({})"
@@ -7445,9 +7543,6 @@ class ConductorManager(service.PeriodicService):
                                   app.app_version))
             elif not bundle_metadata.auto_update:
                 LOG.debug("Application auto update disabled for bundle {}"
-                          .format(bundle_metadata.file_path))
-            elif not bundle_metadata.k8s_auto_update:
-                LOG.debug("Kubernetes application auto update disabled for bundle {}"
                           .format(bundle_metadata.file_path))
             elif LooseVersion(k8s_version) < LooseVersion(bundle_metadata.k8s_minimum_version):
                 LOG.debug("Kubernetes version {} is lower than {} which is "
@@ -7471,17 +7566,33 @@ class ConductorManager(service.PeriodicService):
 
         return latest_version_bundle
 
-    def _auto_update_app(self, context, app_name):
-        """Auto update applications"""
+    def _auto_update_app(self,
+                         context,
+                         app_name,
+                         k8s_version=None,
+                         k8s_upgrade_timing=None,
+                         async_update=True):
+        """Auto update applications
+
+        :param context: Context of the request.
+        :param app_name: Name of the application to be updated.
+        :param k8s_version: Kubernetes target version.
+        :param k8s_upgrade_timing: When applications should be updated.
+        :param async_update: Update asynchronously if True. Update synchronously if False.
+        :return: True if the update successfully started when running asynchronously.
+                 True if the app was successfully updated when running synchronously.
+                 False if an error has occurred.
+                 None if there is not an updated version available for the given app.
+        """
         try:
             app = kubeapp_obj.get_by_name(context, app_name)
         except exception.KubeAppNotFound as e:
             LOG.exception(e)
-            return
+            return False
 
         if app.status != constants.APP_APPLY_SUCCESS:
             # In case the previous re-apply fails
-            return
+            return False
 
         try:
             hook_info = LifecycleHookInfo()
@@ -7493,28 +7604,27 @@ class ConductorManager(service.PeriodicService):
             self.app_lifecycle_actions(context, app, hook_info)
         except exception.LifecycleSemanticCheckException as e:
             LOG.info("Auto-update failed prerequisites for {}: {}".format(app.name, e))
-            return
+            return False
         except exception.LifecycleSemanticCheckOperationNotSupported as e:
             LOG.debug(e)
-            return
+            return False
         except exception.SysinvException:
             LOG.exception("Internal sysinv error while checking automatic "
                           "updates for {}"
                           .format(app.name))
-            return
+            return False
         except Exception as e:
             LOG.exception("Automatic operation:{} "
                           "for app {} failed with: {}".format(hook_info,
                                                               app.name,
                                                               e))
-            return
+            return False
 
         if self._patching_operation_is_occurring():
-            return
-
+            return False
         LOG.debug("Application %s: Checking "
                   "for update ..." % app_name)
-        app_bundle = self._get_app_bundle_for_update(app)
+        app_bundle = self._get_app_bundle_for_update(app, k8s_version, k8s_upgrade_timing)
         if app_bundle is None:
             # Skip if no bundles are found
             LOG.debug("No bundle found for updating %s" % app_name)
@@ -7529,23 +7639,30 @@ class ConductorManager(service.PeriodicService):
              (tarball.manifest_name is None) or
               (tarball.manifest_file is None)):
             # Skip if tarball check fails
-            return
+            return False
 
         if app_bundle.version in \
             app.app_metadata.get(
                 constants.APP_METADATA_UPGRADES, {}).get(
-                constants.APP_METADATA_FAILED_VERSIONS, []):
+                constants.APP_METADATA_FAILED_VERSIONS, []) and \
+                    k8s_version is None:
             # Skip if this version was previously failed to
-            # be updated
+            # be updated. Allow retrying only if a Kubernetes version is
+            # defined, meaning that Kubernetes upgrade is in progress.
             LOG.error("Application %s with version %s was previously "
                       "failed to be updated from version %s by auto-update"
                       % (app.name, tarball.app_version, app.app_version))
-            return
+            return False
 
-        self._inner_sync_auto_update(context, app, tarball)
+        return self._inner_sync_auto_update(context, app, tarball, k8s_version, async_update)
 
     @cutils.synchronized(LOCK_APP_AUTO_MANAGE)
-    def _inner_sync_auto_update(self, context, applied_app, tarball):
+    def _inner_sync_auto_update(self,
+                                context,
+                                applied_app,
+                                tarball,
+                                k8s_version=None,
+                                async_update=True):
         # Check no other app is in progress of apply/update/recovery
         for other_app in self.dbapi.kube_app_get_all():
             if other_app.status in [constants.APP_APPLY_IN_PROGRESS,
@@ -7555,7 +7672,7 @@ class ConductorManager(service.PeriodicService):
                          "is in progress of apply/update/recovery. "
                          "Will retry on next audit",
                          applied_app.name, other_app.name)
-                return
+                return False
 
         # Set the status for the current applied app to inactive
         applied_app.status = constants.APP_INACTIVE_STATE
@@ -7590,14 +7707,36 @@ class ConductorManager(service.PeriodicService):
                 applied_app.progress = constants.APP_PROGRESS_COMPLETED
                 applied_app.save()
                 LOG.exception(e)
-                return
+                return False
 
         LOG.info("Platform managed application %s: "
                  "Auto updating..." % target_app.name)
         hook_info = LifecycleHookInfo()
         hook_info.mode = constants.APP_LIFECYCLE_MODE_AUTO
-        greenthread.spawn(self.perform_app_update, context, applied_app,
-                          target_app, tarball.tarball_name, operation, hook_info)
+
+        if async_update:
+            greenthread.spawn(self.perform_app_update,
+                              context,
+                              applied_app,
+                              target_app,
+                              tarball.tarball_name,
+                              operation,
+                              hook_info,
+                              None,
+                              None,
+                              k8s_version)
+        else:
+            return self.perform_app_update(context,
+                                           applied_app,
+                                           target_app,
+                                           tarball.tarball_name,
+                                           operation,
+                                           hook_info,
+                                           None,
+                                           None,
+                                           k8s_version)
+
+        return True
 
     def _search_tarfile(self, app_name, managed_app):
         """Search a specified application tarfile from the directory
@@ -16044,7 +16183,7 @@ class ConductorManager(service.PeriodicService):
 
     def perform_app_update(self, context, from_rpc_app, to_rpc_app, tarfile,
                            operation, lifecycle_hook_info_app_update, reuse_user_overrides=None,
-                           reuse_attributes=None):
+                           reuse_attributes=None, k8s_version=None):
         """Handling of application update request (via AppOperator)
 
         :param context: request context.
@@ -16061,9 +16200,14 @@ class ConductorManager(service.PeriodicService):
         """
         lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
 
-        self._app.perform_app_update(from_rpc_app, to_rpc_app, tarfile,
-                                     operation, lifecycle_hook_info_app_update, reuse_user_overrides,
-                                     reuse_attributes)
+        return self._app.perform_app_update(from_rpc_app,
+                                            to_rpc_app,
+                                            tarfile,
+                                            operation,
+                                            lifecycle_hook_info_app_update,
+                                            reuse_user_overrides,
+                                            reuse_attributes,
+                                            k8s_version)
 
     def perform_app_remove(self, context, rpc_app, lifecycle_hook_info_app_remove, force=False):
         """Handling of application removal request (via AppOperator)
@@ -16331,6 +16475,60 @@ class ConductorManager(service.PeriodicService):
                          etcd.ETCD_SNAPSHOT_FILE_NAME))
 
         LOG.info("Successfully completed k8s control plane backup.")
+
+    def _check_installed_apps_compatibility(self, kube_version):
+        """Checks whether all installed applications are compatible
+           with the new k8s version
+
+        :param kube_version: Target Kubernetes version
+        :return: True if all apps are compatible with the given Kubernetes version
+                 False if any apps are incompatible with the given Kubernetes version
+        """
+
+        # Check that all installed applications support new k8s version
+        apps = self.dbapi.kube_app_get_all()
+
+        success = True
+        for app in apps:
+            if app.status != constants.APP_APPLY_SUCCESS:
+                continue
+
+            kube_min_version, kube_max_version = \
+                cutils.get_app_supported_kube_version(app.name, app.app_version)
+
+            if not kubernetes.is_kube_version_supported(
+                    kube_version, kube_min_version, kube_max_version):
+                LOG.error("The installed Application {} ({}) is incompatible with the "
+                          "new Kubernetes version {}.".format(app.name,
+                                                              app.app_version,
+                                                              kube_version))
+                success = False
+
+        return success
+
+    def kube_upgrade_start(self, context, k8s_version):
+        """ Start a Kubernetes upgrade by updating all required apps.
+
+        :param context: Context of the request.
+        :param k8s_version: Kubernetes target version.
+        :param k8s_upgrade_timing: When apps should be updated.
+        """
+
+        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+
+        if (self.update_apps_based_on_k8s_version_sync(context,
+                                                       k8s_version,
+                                                       constants.APP_METADATA_TIMING_PRE) and
+                self._check_installed_apps_compatibility(k8s_version)):
+            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_STARTED
+            LOG.info("Started kubernetes upgrade from version: %s to version: %s"
+                    % (kube_upgrade_obj.from_version, kube_upgrade_obj.to_version))
+        else:
+            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_STARTING_FAILED
+            LOG.info("Failed to start kubernetes upgrade from version: %s to version: %s"
+                    % (kube_upgrade_obj.from_version, kube_upgrade_obj.to_version))
+
+        kube_upgrade_obj.save()
 
     def kube_download_images(self, context, kube_version):
         """Download the kubernetes images for this version"""

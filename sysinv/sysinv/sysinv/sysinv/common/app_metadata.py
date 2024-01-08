@@ -611,11 +611,11 @@ def extract_bundle_metadata(file_path):
             LOG.warning("k8s_upgrades section missing from {} metadata"
                         .format(file_path))
         else:
-            k8s_auto_update = tarball.metadata.get(
+            k8s_auto_update = metadata.get(
                 constants.APP_METADATA_K8S_UPGRADES).get(
                 constants.APP_METADATA_AUTO_UPDATE,
                 constants.APP_METADATA_K8S_AUTO_UPDATE_DEFAULT_VALUE)
-            k8s_update_timing = tarball.metadata.get(
+            k8s_update_timing = metadata.get(
                 constants.APP_METADATA_K8S_UPGRADES).get(
                 constants.APP_METADATA_TIMING,
                 constants.APP_METADATA_TIMING_DEFAULT_VALUE)
