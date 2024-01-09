@@ -85,6 +85,9 @@ KUBE_UPGRADE_DOWNLOADED_IMAGES = 'downloaded-images'
 KUBE_UPGRADING_NETWORKING = 'upgrading-networking'
 KUBE_UPGRADING_NETWORKING_FAILED = 'upgrading-networking-failed'
 KUBE_UPGRADED_NETWORKING = 'upgraded-networking'
+KUBE_UPGRADING_STORAGE = 'upgrading-storage'
+KUBE_UPGRADING_STORAGE_FAILED = 'upgrading-storage-failed'
+KUBE_UPGRADED_STORAGE = 'upgraded-storage'
 KUBE_UPGRADING_FIRST_MASTER = 'upgrading-first-master'
 KUBE_UPGRADING_FIRST_MASTER_FAILED = 'upgrading-first-master-failed'
 KUBE_UPGRADED_FIRST_MASTER = 'upgraded-first-master'
@@ -272,6 +275,19 @@ def is_kube_version_supported(kube_version, min_version=None, max_version=None):
 
 def get_kube_networking_upgrade_version(kube_upgrade):
     """Determine the version that kubernetes networking
+       should be upgraded to."""
+    if kube_upgrade.state in [
+            KUBE_UPGRADE_STARTED,
+            KUBE_UPGRADE_DOWNLOADING_IMAGES,
+            KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED,
+            KUBE_UPGRADE_DOWNLOADED_IMAGES]:
+        return kube_upgrade.from_version
+    else:
+        return kube_upgrade.to_version
+
+
+def get_kube_storage_upgrade_version(kube_upgrade):
+    """Determine the version that kubernetes storage
        should be upgraded to."""
     if kube_upgrade.state in [
             KUBE_UPGRADE_STARTED,

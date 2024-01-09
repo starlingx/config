@@ -2110,6 +2110,8 @@ ANSIBLE_RESTORE_ROOK_FLAG = os.path.join(tsc.VOLATILE_PATH, ".ansible_restore_ro
 # Ansible playbooks
 ANSIBLE_KUBE_NETWORKING_PLAYBOOK = \
     '/usr/share/ansible/stx-ansible/playbooks/upgrade-k8s-networking.yml'
+ANSIBLE_KUBE_STORAGE_PLAYBOOK = \
+    '/usr/share/ansible/stx-ansible/playbooks/upgrade-k8s-storage.yml'
 ANSIBLE_KUBE_PUSH_IMAGES_PLAYBOOK = \
     '/usr/share/ansible/stx-ansible/playbooks/push_k8s_images.yml'
 ANSIBLE_PLATFORM_BACKUP_PLAYBOOK = \

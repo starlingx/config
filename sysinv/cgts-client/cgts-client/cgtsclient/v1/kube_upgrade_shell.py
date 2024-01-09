@@ -11,6 +11,7 @@ from cgtsclient.v1 import ihost as ihost_utils
 # Kubernetes constants
 KUBE_UPGRADE_STATE_DOWNLOADING_IMAGES = 'downloading-images'
 KUBE_UPGRADE_STATE_UPGRADING_NETWORKING = 'upgrading-networking'
+KUBE_UPGRADE_STATE_UPGRADING_STORAGE = 'upgrading-storage'
 KUBE_UPGRADE_STATE_COMPLETE = 'upgrade-complete'
 KUBE_UPGRADE_STATE_UPGRADING_FIRST_MASTER = 'upgrading-first-master'
 KUBE_UPGRADE_STATE_UPGRADING_SECOND_MASTER = 'upgrading-second-master'
@@ -119,6 +120,23 @@ def do_kube_upgrade_networking(cc, args):
 
     data = dict()
     data['state'] = KUBE_UPGRADE_STATE_UPGRADING_NETWORKING
+
+    patch = []
+    for (k, v) in data.items():
+        patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
+    try:
+        kube_upgrade = cc.kube_upgrade.update(patch)
+    except exc.HTTPNotFound:
+        raise exc.CommandError('Kubernetes upgrade UUID not found')
+
+    _print_kube_upgrade_show(kube_upgrade)
+
+
+def do_kube_upgrade_storage(cc, args):
+    """Upgrade kubernetes storage."""
+
+    data = dict()
+    data['state'] = KUBE_UPGRADE_STATE_UPGRADING_STORAGE
 
     patch = []
     for (k, v) in data.items():

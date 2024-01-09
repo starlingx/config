@@ -7178,12 +7178,12 @@ class HostController(rest.RestController):
 
         if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
             check_upgraded_state = [
-                kubernetes.KUBE_UPGRADED_NETWORKING,
+                kubernetes.KUBE_UPGRADED_STORAGE,
                 kubernetes.KUBE_UPGRADED_FIRST_MASTER,
                 kubernetes.KUBE_UPGRADE_CORDON_COMPLETE]
         else:
             check_upgraded_state = [
-                kubernetes.KUBE_UPGRADED_NETWORKING,
+                kubernetes.KUBE_UPGRADED_STORAGE,
                 kubernetes.KUBE_UPGRADED_FIRST_MASTER]
 
         # Verify the upgrade is in the correct state
@@ -7278,7 +7278,7 @@ class HostController(rest.RestController):
         kube_host_upgrade_obj.save()
 
         if kube_upgrade_obj.state in [
-                kubernetes.KUBE_UPGRADED_NETWORKING,
+                kubernetes.KUBE_UPGRADED_STORAGE,
                 kubernetes.KUBE_UPGRADING_FIRST_MASTER_FAILED,
                 kubernetes.KUBE_UPGRADE_CORDON_COMPLETE]:
             # Update the upgrade state
