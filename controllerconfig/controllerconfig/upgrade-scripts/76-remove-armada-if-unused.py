@@ -312,7 +312,8 @@ def remove_docker_images():
     tiller_image = None
 
     # Get image names
-    image_list = client.sysinv.registry_image.list()
+    filter_out_untagged = False
+    image_list = client.sysinv.registry_image.list(int(filter_out_untagged))
     if not image_list:
         LOG.warning("Failed to remove armada docker image.")
         return False
