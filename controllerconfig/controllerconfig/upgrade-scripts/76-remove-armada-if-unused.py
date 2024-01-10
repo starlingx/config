@@ -308,33 +308,39 @@ def remove_docker_images():
             return False
 
     client = CgtsClient()
-    armada_image = None
-    tiller_image = None
+    armada_images = []
 
     # Get image names
     filter_out_untagged = False
     image_list = client.sysinv.registry_image.list(int(filter_out_untagged))
     if not image_list:
-        LOG.warning("Failed to remove armada docker image.")
+        LOG.warning("No images were returned from the image registry."
+                    "Aborting image cleanup")
         return False
+
     for image in image_list:
-        if "airshipit/armada" in image.name:
-            armada_image = image.name
-        elif "helm/tiller" in image.name:
-            tiller_image = image.name
+        if any(x in image.name for x in (
+            'airshipit/armada',
+            'starlingx/armada-image',
+            'helm/tiller')
+        ):
+            armada_images.append(image.name)
 
-    if not armada_image and not tiller_image:
-        LOG.debug("Could not find armada and tiller images in "
-                  "docker registry.")
-        return True
+    if armada_images:
+        deletion_success = True
+        for image in armada_images:
+            LOG.info("Deleting image: %s" % image)
 
-    # Delete images
-    if delete_images(armada_image) and delete_images(tiller_image):
+            if not delete_images(image):
+                LOG.error("Could not delete image: %s. Continuing..." % image)
+                deletion_success = False
+
+        LOG.info("Running image garbage collect.")
         client.sysinv.registry_image.garbage_collect()
+        return deletion_success
     else:
-        return False
-
-    return True
+        LOG.info("No armada/tiller images are present in the registry.")
+        return True
 
 
 def drop_helm_v2_database():
