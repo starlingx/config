@@ -2071,6 +2071,8 @@ class KubeApp(Base):
     recovery_attempts = Column(Integer, nullable=False, default=0)
     mode = Column(String(255), nullable=True)
     app_metadata = Column(JSONEncodedDict)
+    app_bundle_id = Column(Integer, ForeignKey('kube_app_bundle.id',
+                                               ondelete='SET NULL'))
     UniqueConstraint('name', 'app_version', name='u_app_name_version')
 
 
@@ -2192,3 +2194,28 @@ class RuntimeConfig(Base):
     reserved_1 = Column(String(255))
     UniqueConstraint('config_uuid', 'forihostid',
                      name='u_config_uuid_forihostid')
+
+
+class KubeAppBundle(Base):
+    KubeAppBundleTimingEnum = Enum(
+        constants.APP_METADATA_TIMING_PRE,
+        constants.APP_METADATA_TIMING_POST,
+        name="KubeAppBundleTimingEnum"
+    )
+
+    __tablename__ = 'kube_app_bundle'
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)
+    version = Column(String(255), nullable=False)
+    file_path = Column(String(255), nullable=False)
+    auto_update = Column(Boolean, nullable=False,
+                         default=constants.APP_METADATA_AUTO_UPDATE_DEFAULT_VALUE)
+    k8s_auto_update = Column(Boolean, nullable=False, default=True)
+    k8s_timing = Column(KubeAppBundleTimingEnum,
+                        nullable=False,
+                        default=constants.APP_METADATA_TIMING_DEFAULT_VALUE)
+    k8s_minimum_version = Column(String(16), nullable=False)
+    k8s_maximum_version = Column(String(16), nullable=True)
+    reserved = Column(JSONEncodedDict, nullable=True)
+    UniqueConstraint('name', 'version', name='u_bundle_name_version')
+    UniqueConstraint('file_path', name='u_bundle_file_path')

@@ -27,6 +27,7 @@ from oslo_db import exception as db_exc
 from oslo_db.sqlalchemy import enginefacade
 from oslo_db.sqlalchemy import utils as db_utils
 
+from sqlalchemy import insert
 from sqlalchemy import inspect
 from sqlalchemy import or_
 
@@ -9420,3 +9421,66 @@ class Connection(api.Connection):
         if older_than:
             query = query.filter(models.RuntimeConfig.created_at < older_than)
         return query.all()
+
+    @db_objects.objectify(objects.kube_app_bundle)
+    def kube_app_bundle_create(self, values):
+        kube_app_bundle = models.KubeAppBundle()
+        kube_app_bundle.update(values)
+        with _session_for_write() as session:
+            try:
+                session.add(kube_app_bundle)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                raise exception.KubeAppBundleAlreadyExists(
+                    name=values['name'],
+                    version=values['version'],
+                    file_path=values['file_path'])
+        return kube_app_bundle
+
+    def kube_app_bundle_create_all(self, values_list):
+        try:
+            with _session_for_write() as session:
+                session.execute(
+                    insert(models.KubeAppBundle),
+                    values_list,
+                )
+                session.flush()
+        except db_exc.DBDuplicateEntry as e:
+            columns = ', '.join(e.columns)
+            raise exception.KubeAppBundleAlreadyExistsBulk(columns=columns, values=e.value)
+
+    def kube_app_bundle_is_empty(self):
+        result = model_query(models.KubeAppBundle).first()
+
+        return result is None
+
+    @db_objects.objectify(objects.kube_app_bundle)
+    def kube_app_bundle_get_all(self, name=None,
+                                limit=None, marker=None,
+                                sort_key=None, sort_dir=None):
+        query = model_query(models.KubeAppBundle)
+        if name:
+            query = query.filter_by(name=name)
+
+        return _paginate_query(models.KubeAppBundle, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @db_objects.objectify(objects.kube_app_bundle)
+    def kube_app_bundle_get_by_name(self, name,
+                                    limit=None, marker=None,
+                                    sort_key=None, sort_dir=None):
+
+        return self.kube_app_bundle_get_all(name, limit, marker,
+                                            sort_key, sort_dir)
+
+    def kube_app_bundle_destroy_all(self, file_path=None):
+        with _session_for_write() as session:
+            query = model_query(models.KubeAppBundle, session=session)
+
+            if file_path:
+                query = query.filter_by(file_path=file_path)
+
+            query.delete()
+
+    def kube_app_bundle_destroy_by_file_path(self, file_path):
+        self.kube_app_bundle_destroy_all(file_path)

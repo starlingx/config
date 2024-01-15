@@ -16,7 +16,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 #
 
 
@@ -5099,3 +5099,70 @@ class Connection(object):
         :param state: runtime_config state
         :param older_than: date to filter entries older than it
         """
+
+    @abc.abstractmethod
+    def kube_app_bundle_create(self, values):
+        """Create a kube_app_bundle entry
+
+        :param values: A dictionary with the respective fields and values to be added to the db.
+        """
+
+    @abc.abstractmethod
+    def kube_app_bundle_create_all(self, values_list):
+        """Create kube_app_bundle entries
+
+        :param values_list: a list containing the dictionaries with the respective
+                            fields and values to be added to the db.
+        """
+
+    @abc.abstractmethod
+    def kube_app_bundle_is_empty(self):
+        """Check if kube_app_bundle table is empty"""
+
+    @abc.abstractmethod
+    def kube_app_bundle_get_all(self,
+                                name=None,
+                                limit=None,
+                                marker=None,
+                                sort_key=None,
+                                sort_dir=None):
+        """Return a list of all kube_app_bundle entries or a list based on a
+        given filter.
+
+        :param name: Application name.
+        :param limit: Maximum number of entries to return.
+        :param marker: The last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted.
+        :param sort_dir: Direction in which results should be sorted.
+                         (asc, desc)
+        :returns: A list of kube_app_bundle entries with the given name.
+        """
+
+    @abc.abstractmethod
+    def kube_app_bundle_get_by_name(self,
+                                    name,
+                                    limit=None,
+                                    marker=None,
+                                    sort_key=None,
+                                    sort_dir=None):
+        """Get kube_app_bundle entries that match a given name
+
+        :param name: Application name.
+        :param limit: Maximum number of entries to return.
+        :param marker: The last item of the previous page; we return the next
+                       result set.
+        :param sort_key: Attribute by which results should be sorted.
+        :param sort_dir: Direction in which results should be sorted.
+                         (asc, desc)
+        :returns: A list of kube_app_bundle entries with the given name.
+        """
+
+    @abc.abstractmethod
+    def kube_app_bundle_destroy_all(self, file_path=None):
+        """Delete all records from kube_app_bundle or delete based on a
+        given filter"""
+
+    @abc.abstractmethod
+    def kube_app_bundle_destroy_by_file_path(self, file_path):
+        """Delete records from kube_app_bundle that match a file path"""

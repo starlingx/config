@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2023 Wind River Systems, Inc.
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # All Rights Reserved.
@@ -1570,6 +1570,17 @@ class ApplicationApplyFailure(SysinvException):
 class IncompatibleKubeVersion(SysinvException):
     message = _("The application %(name)s (%(version)s) is incompatible with the current "
                 "Kubernetes version %(kube_version)s.")
+
+
+class KubeAppBundleAlreadyExists(Conflict):
+    message = _("A Kubernetes application bundle with name %(name)s and "
+                "version %(version)s or with file path %(file_path)s already exists.")
+
+
+class KubeAppBundleAlreadyExistsBulk(Conflict):
+    message = _("A Kubernetes application bundle with column(s) '%(columns)s' and value(s) "
+                "'%(values)s' already exists.")
+
 
 #
 # Kubernetes related exceptions
