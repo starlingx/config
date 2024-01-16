@@ -1813,7 +1813,8 @@ APP_PENDING_REAPPLY_FLAG = os.path.join(
 
 # FluxCD
 APP_FLUXCD_MANIFEST_DIR = 'fluxcd-manifests'
-APP_FLUXCD_DATA_PATH = os.path.join(tsc.PLATFORM_PATH, 'fluxcd', tsc.SW_VERSION)
+APP_FLUXCD_BASE_PATH = os.path.join(tsc.PLATFORM_PATH, 'fluxcd')
+APP_FLUXCD_DATA_PATH = os.path.join(APP_FLUXCD_BASE_PATH, tsc.SW_VERSION)
 APP_ROOT_KUSTOMIZE_FILE = 'kustomization.yaml'
 APP_HELMREPOSITORY_FILE = "helmrepository.yaml"
 APP_BASE_HELMREPOSITORY_FILE = os.path.join("base", APP_HELMREPOSITORY_FILE)
@@ -2398,6 +2399,13 @@ OS_CENTOS = 'centos'
 OS_DEBIAN = 'debian'
 SUPPORTED_OS_TYPES = [OS_CENTOS, OS_DEBIAN]
 OS_UPGRADE_FEED_FOLDER = '/var/www/pages/feed/'
+
+# OSTree
+OSTREE_ROOT_FOLDER = '/sysroot/ostree/'
+OSTREE_LOCK_FILE = 'lock'
+
+# INotify
+INOTIFY_DELETE_EVENT = 'DELETE'
 
 # Configuration support placeholders
 CONFIGURABLE = 'configurable'

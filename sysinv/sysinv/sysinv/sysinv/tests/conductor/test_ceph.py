@@ -62,6 +62,8 @@ class UpdateCephCluster(base.DbTestCase):
         self.mock_fix_crushmap.return_value = True
 
         self.service._sx_to_dx_post_migration_actions = mock.Mock()
+        self.service._populate_app_bundle_metadata = mock.Mock()
+        self.service._initialize_ostree_inotify = mock.Mock()
 
     def tearDown(self):
         super(UpdateCephCluster, self).tearDown()

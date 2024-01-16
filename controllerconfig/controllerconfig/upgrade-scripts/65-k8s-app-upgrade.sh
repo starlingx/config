@@ -137,14 +137,30 @@ if [ "$ACTION" == "activate" ]; then
         sleep $RECOVER_RESULT_SLEEP
     done
 
+    # Sort applications by version. Lower versions are attempted first.
+    APPS_SORTED_BY_VERSION=$(find $PLATFORM_APPLICATION_PATH/* | sort -V)
+
+    LAST_APP_CHECKED=""
     # Get the list of applications installed in the new release
-    for fqpn_app in $PLATFORM_APPLICATION_PATH/*; do
+    for fqpn_app in $APPS_SORTED_BY_VERSION; do
         # Extract the app name and version from the tarball name: app_name-version.tgz
         re='^(.*)-([0-9]+\.[0-9]+-[0-9]+).tgz'
         [[ "$(basename $fqpn_app)" =~ $re ]]
         UPGRADE_APP_NAME=${BASH_REMATCH[1]}
         UPGRADE_APP_VERSION=${BASH_REMATCH[2]}
         log "$NAME: Found application ${UPGRADE_APP_NAME}, version ${UPGRADE_APP_VERSION} at $fqpn_app"
+
+        # Confirm application is loaded.
+        EXISTING_APP_NAME=$(system application-show $UPGRADE_APP_NAME --column name --format value)
+        if [ -z "${EXISTING_APP_NAME}" ]; then
+            log "$NAME: ${UPGRADE_APP_NAME} is currently not uploaded in the system. skipping..."
+            continue
+        fi
+
+        # If the last iteration for the same app was sucessful no further updates are necessary
+        if [ "${LAST_APP_CHECKED}" == "${UPGRADE_APP_NAME}" ] && [[ "${EXISTING_APP_STATUS}" =~ ^(uploaded|applied)$ ]]; then
+            continue
+        fi
 
         # Confirm application is upgradable
         # TODO: move nginx back to the supported platform applications list when
@@ -153,13 +169,6 @@ if [ "$ACTION" == "activate" ]; then
             log "$NAME: ${UPGRADE_APP_NAME} is a supported platform application."
         else
             log "$NAME: ${UPGRADE_APP_NAME} is not a supported platform application. skipping..."
-            continue
-        fi
-
-        # Confirm application is loaded.
-        EXISTING_APP_NAME=$(system application-show $UPGRADE_APP_NAME --column name --format value)
-        if [ -z "${EXISTING_APP_NAME}" ]; then
-            log "$NAME: ${UPGRADE_APP_NAME} is currently not uploaded in the system. skipping..."
             continue
         fi
 
@@ -174,7 +183,7 @@ if [ "$ACTION" == "activate" ]; then
             # If the app is in uploaded or applied state, then we continue with next iteration.
             # Else, the code execution proceeds and the script would exit with an unexpected state.
             if [[ "${EXISTING_APP_STATUS}" =~ ^(uploaded|applied)$ ]]; then
-                log "$NAME: ${UPGRADE_APP_NAME}, version ${EXISTING_APP_VERSION}, is already present. skipping..."
+                log "$NAME: ${UPGRADE_APP_NAME}, version ${EXISTING_APP_VERSION}, is already present. Skipping..."
                 continue
             fi
         fi
@@ -242,6 +251,8 @@ if [ "$ACTION" == "activate" ]; then
         if ! grep -q "${EXISTING_APP_NAME},${EXISTING_APP_VERSION},${UPGRADE_APP_VERSION}" $UPGRADE_IN_PROGRESS_APPS_FILE; then
             echo "${EXISTING_APP_NAME},${EXISTING_APP_VERSION},${UPGRADE_APP_VERSION}" >> $UPGRADE_IN_PROGRESS_APPS_FILE
         fi
+
+        LAST_APP_CHECKED=${UPGRADE_APP_NAME}
     done
 
     log "$NAME: Completed Kubernetes application updates for release $FROM_RELEASE to $TO_RELEASE with action $ACTION"

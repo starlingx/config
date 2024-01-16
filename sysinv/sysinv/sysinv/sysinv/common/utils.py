@@ -3612,3 +3612,15 @@ def checkout_ostree(ostree_repo, commit, target_dir, subpath):
         raise exception.SysinvException(
             "Error checkout ostree commit: %s" % (error),
         )
+
+
+def is_bundle_extension_valid(filename):
+    """Check if application bundles have the correct extension
+
+    :param filename: Bundle filename
+    :return: Returns True if the extension is correct.
+             Otherwise returns False.
+    """
+
+    file_extension = pathlib.Path(filename).suffix
+    return file_extension.lower() == ".tgz"
