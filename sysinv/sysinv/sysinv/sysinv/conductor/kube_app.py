@@ -16,6 +16,7 @@ from eventlet.green import subprocess
 import glob
 import grp
 import functools
+import json
 import io
 import os
 import pkg_resources
@@ -65,7 +66,6 @@ APPLY_SEARCH_PATTERN = 'Processing Chart,'
 CONTAINER_ABNORMAL_EXIT_CODE = 137
 DELETE_SEARCH_PATTERN = 'Deleting release|no release to delete'
 ROLLBACK_SEARCH_PATTERN = 'Helm rollback of release'
-INSTALLATION_TIMEOUT = 3600
 MAX_DOWNLOAD_THREAD = 5
 MAX_DOWNLOAD_ATTEMPTS = 3
 DOWNLOAD_WAIT_BEFORE_RETRY = 15
@@ -820,6 +820,8 @@ class AppOperator(object):
 
         total_count = len(images_to_download)
         threads = min(MAX_DOWNLOAD_THREAD, total_count)
+
+        self._docker.set_crictl_image_list([])
 
         start = time.time()
         try:
@@ -1750,7 +1752,7 @@ class AppOperator(object):
         lifecycle_hook_info.lifecycle_type = constants.APP_LIFECYCLE_TYPE_FLUXCD_REQUEST
         self.app_lifecycle_actions(None, None, app._kube_app, lifecycle_hook_info)
         try:
-            with Timeout(INSTALLATION_TIMEOUT,
+            with Timeout(constants.APP_INSTALLATION_TIMEOUT,
                          exception.KubeAppProgressMonitorTimeout()):
 
                 rc = self._fluxcd.make_fluxcd_operation(request, app.sync_fluxcd_manifest)
@@ -3327,6 +3329,27 @@ class DockerHelper(object):
 
     def __init__(self, dbapi):
         self._dbapi = dbapi
+        self._crictl_image_list = []
+
+    def _get_crictl_image_list(self):
+        cmd = ['crictl', 'images', '--output=json']
+        try:
+            output = subprocess.check_output(  # pylint: disable=not-callable
+                cmd, stderr=subprocess.STDOUT)
+            crictl_output = json.loads(output)
+        except json.JSONDecodeError as e:
+            LOG.error('Could not parse json output, error=%s', e)
+        except subprocess.CalledProcessError as e:
+            LOG.error('Could not list images, error=%s', e)
+        else:
+            self._crictl_image_list = []
+            for img in crictl_output['images']:
+                self._crictl_image_list.extend(img['repoTags'])
+
+        return self._crictl_image_list
+
+    def set_crictl_image_list(self, image_list):
+        self._crictl_image_list = image_list
 
     def _parse_barbican_secret(self, secret_ref):
         """Get the registry credentials from the
@@ -3451,6 +3474,9 @@ class DockerHelper(object):
 
         rc = True
 
+        if not self._crictl_image_list:
+            self._get_crictl_image_list()
+
         start = time.time()
         if img_tag.startswith(constants.DOCKER_REGISTRY_HOST):
             try:
@@ -3458,12 +3484,15 @@ class DockerHelper(object):
                     LOG.info("User aborted. Skipping download of image %s " % img_tag)
                     return img_tag, False
 
-                LOG.info("Image %s download started from local registry" % img_tag)
-                client = docker.APIClient(timeout=INSTALLATION_TIMEOUT)
-                local_registry_auth = cutils.get_local_docker_registry_auth()
-                auth = '{0}:{1}'.format(local_registry_auth['username'],
-                                        local_registry_auth['password'])
-                subprocess.check_call(["crictl", "pull", "--creds", auth, img_tag])  # pylint: disable=not-callable
+                if img_tag not in self._crictl_image_list:
+                    LOG.info("Image %s download started from local registry" % img_tag)
+                    local_registry_auth = cutils.get_local_docker_registry_auth()
+                    auth = '{0}:{1}'.format(local_registry_auth['username'],
+                                            local_registry_auth['password'])
+                    subprocess.check_call(  # pylint: disable=not-callable
+                        ["crictl", "pull", "--creds", auth, img_tag])
+                else:
+                    LOG.info("Image %s exists in the local registry" % img_tag)
             except subprocess.CalledProcessError:
                 try:
                     # Pull the image from the public/private registry
@@ -3477,6 +3506,8 @@ class DockerHelper(object):
                     target_img_tag, registry_auth = \
                         self._get_img_tag_with_registry(pub_img_tag, registries_info)
 
+                    client = docker.APIClient(
+                        timeout=constants.APP_INSTALLATION_TIMEOUT)
                     client.pull(target_img_tag, auth_config=registry_auth)
 
                 except Exception as e:
@@ -3515,7 +3546,7 @@ class DockerHelper(object):
         else:
             try:
                 LOG.info("Image %s download started from public/private registry" % img_tag)
-                client = docker.APIClient(timeout=INSTALLATION_TIMEOUT)
+                client = docker.APIClient(timeout=constants.APP_INSTALLATION_TIMEOUT)
                 target_img_tag, registry_auth = \
                     self._get_img_tag_with_registry(img_tag, registries_info)
                 client.pull(target_img_tag, auth_config=registry_auth)
