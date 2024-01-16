@@ -1,0 +1,14 @@
+Source: ipsec-auth
+Section: admin
+Priority: optional
+Maintainer: Starlingx Developers <starlingx-discuss@lists.starlingx.io>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.5.1
+Rules-Requires-Root: no
+
+Package: ipsec-auth
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends},
+Description: Starlingx IPSec Authentication
+ Manages the StarlingX platform's IPSec Authentication service as a HA
+ resource, and the client to access the service.

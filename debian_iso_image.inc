@@ -16,6 +16,9 @@ config-gate
 #controllerconfig
 controllerconfig
 
+#ipsec-auth
+ipsec-auth
+
 #sysinv
 sysinv
 
