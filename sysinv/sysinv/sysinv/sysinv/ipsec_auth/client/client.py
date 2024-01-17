@@ -1,0 +1,238 @@
+#
+# Copyright (c) 2024 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+import base64
+import json
+import os
+import selectors
+import socket
+import subprocess
+
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import serialization
+from cryptography.x509.oid import NameOID
+
+from sysinv.ipsec_auth.client import config
+from sysinv.ipsec_auth.common.constants import State
+from sysinv.ipsec_auth.common import constants
+from sysinv.ipsec_auth.common import utils
+
+
+class Client(object):
+
+    def __init__(self, host, port, opcode):
+        self.host = host
+        self.port = port
+        self.opcode = opcode
+        self.state = State.STAGE_1
+        self.ifname = utils.get_management_interface()
+        self.personality = utils.get_personality()
+        self.mac_addr = utils.get_hw_addr(self.ifname)
+        self.hostname = None
+        self.data = None
+        self.ots_token = None
+        self.local_addr = None
+
+    # Generate message 1 - OP/MAC/HASH
+    def _generate_message_1(self):
+        message = {}
+        message['op'] = str(self.opcode)
+        message['mac_addr'] = self.mac_addr
+        message['hash'] = utils.hash_payload(message)
+
+        return json.dumps(message)
+
+    # Generate IPsec prk2 (RSA - PRK2)
+    def _generate_prk2(self):
+        prk2 = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048,
+            backend=default_backend()
+        )
+
+        prk2_bytes = prk2.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+
+        # TODO: Save PRK2 in LUKS Filesystem
+        prk2_file = constants.CERT_NAME_PREFIX + \
+                        self.hostname[constants.UNIT_HOSTNAME] + '.key'
+        prk2_path = constants.CERT_SYSTEM_LOCAL_PRIVATE_DIR + prk2_file
+        utils.save_data(prk2_path, prk2_bytes)
+
+        return prk2
+
+    # Generate AK1
+    def _generate_ak1(self, puk1_data):
+        ak1 = os.urandom(32)
+
+        # TODO: Save AK1 in LUKS Filesystem
+        utils.save_data(constants.TMP_AK1_FILE, ak1)
+
+        return ak1
+
+    # Generate CSR w/ PRK2
+    def _create_csr(self, prk2):
+        common_name = 'ipsec-' + self.hostname[constants.UNIT_HOSTNAME]
+
+        builder = x509.CertificateSigningRequestBuilder()
+        builder = builder.subject_name(x509.Name([
+            x509.NameAttribute(NameOID.COMMON_NAME, common_name)]))
+        builder = builder.sign(prk2, hashes.SHA256())
+
+        return builder.public_bytes(serialization.Encoding.PEM)
+
+    # Generate message 3 PRK2/AK1/CSR/HASH
+    def _generate_message_3(self):
+        message = {}
+
+        puk1_data = utils.load_data(constants.TMP_PUK1_FILE)
+        puc_data = utils.load_data(constants.TRUSTED_CA_CERT_PATH)
+
+        print("  Generate PRK2.")
+        prk2 = self._generate_prk2()
+
+        print("  Generate AK1.")
+        ak1 = self._generate_ak1(puk1_data)
+
+        print("  Generate CSR.")
+        csr = self._create_csr(prk2)
+
+        print("  Encrypt CSR w/ AK1.")
+        iv, ecsr = utils.symmetric_encrypt_data(csr, ak1)
+
+        print("  Encrypt AK1 and IV w/ PUK1")
+        eak1 = utils.asymmetric_encrypt_data(puk1_data, ak1)
+        eiv = utils.asymmetric_encrypt_data(puk1_data, iv)
+
+        print("  Hash OTS Token, eAK1 and eCSR.")
+        hash_algorithm = hashes.SHA256()
+        hasher = hashes.Hash(hash_algorithm)
+        hasher.update(bytes(self.ots_token, 'utf-8'))
+        hasher.update(eak1)
+        hasher.update(ecsr)
+        hash_value = hasher.finalize()
+
+        ehash_data = utils.asymmetric_encrypt_data(puc_data, hash_value, True)
+
+        message['token'] = self.ots_token
+        message['eiv'] = base64.b64encode(eiv).decode('utf-8')
+        message['eak1'] = base64.b64encode(eak1).decode('utf-8')
+        message['ecsr'] = base64.b64encode(ecsr).decode('utf-8')
+        message['ehash'] = base64.b64encode(ehash_data).decode('utf-8')
+
+        return json.dumps(message)
+
+    def _handle_rcvd_data(self, data):
+
+        print('  received {!r}'.format(data))
+        msg = json.loads(data.decode('utf-8'))
+
+        if self.state == State.STAGE_2:
+            self.ots_token = msg['token']
+            self.hostname = msg['hostname']
+            key = base64.b64decode(msg['pub_key'])
+            ca_cert = base64.b64decode(msg['ca_cert'])
+            digest = base64.b64decode(msg['hash'])
+
+            data = bytes.fromhex(self.ots_token) + msg['pub_key'].encode('utf-8')
+            if not utils.verify_signed_hash(ca_cert, digest, data):
+                msg = "Hash validation failed"
+                raise Exception(msg)
+
+            utils.save_data(constants.TMP_PUK1_FILE, key)
+            utils.save_data(constants.TRUSTED_CA_CERT_PATH, ca_cert)
+
+        if self.state == State.STAGE_4:
+            cert = base64.b64decode(msg['cert'])
+            network = msg['network']
+            digest = base64.b64decode(msg['hash'])
+
+            ca_cert = utils.load_data(constants.TRUSTED_CA_CERT_PATH)
+
+            data = msg['cert'].encode('utf-8') + network.encode('utf-8')
+            if not utils.verify_signed_hash(ca_cert, digest, data):
+                msg = "Hash validation failed"
+                raise Exception(msg)
+
+            cert_file = constants.CERT_NAME_PREFIX + \
+                self.hostname[constants.UNIT_HOSTNAME] + '.crt'
+
+            cert_path = constants.CERT_SYSTEM_LOCAL_DIR + cert_file
+            utils.save_data(cert_path, cert)
+
+            if self.personality == constants.CONTROLLER:
+                self.local_addr = self.hostname[constants.UNIT_HOSTNAME] + ', ' \
+                                  + self.hostname[constants.FLOATING_UNIT_HOSTNAME]
+            else:
+                self.local_addr = utils.get_ip_addr(self.ifname)
+
+            print("  Generating config files and restart ipsec")
+            strong = config.StrongswanPuppet(self.hostname[constants.UNIT_HOSTNAME],
+                                             self.local_addr, network)
+            strong.generate_file()
+            puppet_cf = subprocess.run(['puppet', 'apply', '-e', 'include ::platform::strongswan'],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+
+            if puppet_cf.stderr:
+                err = "Error: %s" % (puppet_cf.stderr.decode("utf-8"))
+                msg = "Failed to create strongswan config files: %s" % err
+                raise Exception(msg)
+
+    def _handle_send_data(self, data):
+        payload = None
+        if self.state == State.STAGE_1:
+            payload = self._generate_message_1()
+            print('  sending {!r}'.format(payload))
+        elif self.state == State.STAGE_3:
+            payload = self._generate_message_3()
+            print('  sending {!r}'.format(payload))
+        return payload
+
+    def run(self):
+        print('connecting to {} port {}'.format(*(self.host, self.port)))
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((self.host, self.port))
+        sock.setblocking(False)
+
+        sel = selectors.DefaultSelector()
+
+        # Set up the selector to watch for when the socket is ready
+        # to send data as well as when there is data to read.
+        sel.register(
+            sock,
+            selectors.EVENT_READ | selectors.EVENT_WRITE,
+        )
+
+        keep_running = True
+        while keep_running:
+            for key, mask in sel.select(timeout=1):
+                connection = key.fileobj
+                print(f'{self.state}')
+
+                if mask & selectors.EVENT_READ:
+                    self.data = connection.recv(8192)
+                    self._handle_rcvd_data(self.data)
+                    sel.modify(sock, selectors.EVENT_WRITE)
+                    self.state = utils.get_next_state(self.state)
+
+                if mask & selectors.EVENT_WRITE:
+                    msg = self._handle_send_data(self.data)
+                    sock.sendall(bytes(msg, 'utf-8'))
+                    sel.modify(sock, selectors.EVENT_READ)
+                    self.state = utils.get_next_state(self.state)
+
+                if self.state == State.STAGE_5:
+                    keep_running = False
+
+        print('shutting down')
+        sel.unregister(connection)
+        connection.close()
+        sel.close()
