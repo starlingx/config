@@ -1115,6 +1115,14 @@ def get_ethernet_network_config(context, iface, config):
                 # make ifup to run the slave's pre-up commands. It will be
                 # adjusted during parsing in apply_network_config.sh
                 options['allow-{}'.format(master)] = osname
+            if interface_class == constants.INTERFACE_CLASS_PCI_SRIOV:
+                if iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
+                    sriovfs_path = ("/sys/class/net/%s/device/sriov_numvfs" %
+                            get_interface_port_name(context, iface))
+                command = "echo 0 > %s; echo %s > %s" % (sriovfs_path, iface['sriov_numvfs'],
+                                                        sriovfs_path)
+                iface_op = get_device_sriov_setup_op(context, iface)
+                fill_interface_config_option_operation(options, iface_op, command)
     elif interface_class == constants.INTERFACE_CLASS_PCI_SRIOV:
         if iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
             sriovfs_path = ("/sys/class/net/%s/device/sriov_numvfs" %

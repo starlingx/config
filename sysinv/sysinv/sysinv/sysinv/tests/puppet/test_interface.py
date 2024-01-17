@@ -1472,6 +1472,74 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         print(expected)
         self.assertEqual(expected, config)
 
+    def test_get_controller_ethernet_config_slave_sriov_bond(self):
+        port1, iface1 = self._create_ethernet_test(
+            ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+            sriov_numvfs=16)
+        port2, iface2 = self._create_ethernet_test(
+            ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+            sriov_numvfs=16)
+        interface_id = len(self.interfaces)
+        ifname = 'bond' + str(interface_id)
+        ifclass = constants.INTERFACE_CLASS_PLATFORM
+        networks = []
+        iface = {'id': interface_id,
+                     'uuid': str(uuid.uuid4()),
+                     'forihostid': self.host.id,
+                     'ifname': ifname,
+                     'iftype': constants.INTERFACE_TYPE_AE,
+                     'imac': '02:11:22:33:44:' + str(10 + interface_id),
+                     'uses': [iface1['ifname'], iface2['ifname']],
+                     'used_by': [],
+                     'ifclass': ifclass,
+                     'networks': networks,
+                     'imtu': 1500,
+                     'txhashpolicy': 'layer2'}
+        iface['aemode'] = 'active_standby'
+        iface['primary_reselect'] = constants.PRIMARY_RESELECT_ALWAYS
+
+        iface1['used_by'].append(iface['ifname'])
+        iface2['used_by'].append(iface['ifname'])
+        bond = dbutils.create_test_interface(**iface)
+        self.interfaces.append(bond)
+        self._setup_address_and_routes(bond)
+        self._update_context()
+
+        iface = self.context['interfaces'][bond['uses'][0]]
+        port = self.context['ports'][iface['id']]
+        config1 = interface.get_interface_network_config(
+            self.context, iface)
+        options1 = {'IPV6_AUTOCONF': 'no',
+                   'SLAVE': 'yes',
+                   'PROMISC': 'yes',
+                   'MASTER': ifname,
+                   'LINKDELAY': '20',
+                   'pre_up':
+                       'echo 0 > /sys/class/net/eth1/device/sriov_numvfs; '
+                       'echo 16 > /sys/class/net/eth1/device/sriov_numvfs'}
+        expected = self._get_network_config(
+            ifname=port['name'], method='manual',
+            mtu=1500, options=options1)
+        print(expected)
+        self.assertEqual(expected, config1)
+        iface = self.context['interfaces'][bond['uses'][1]]
+        port = self.context['ports'][iface['id']]
+        config2 = interface.get_interface_network_config(
+            self.context, iface)
+        options2 = {'IPV6_AUTOCONF': 'no',
+                   'SLAVE': 'yes',
+                   'PROMISC': 'yes',
+                   'MASTER': ifname,
+                   'LINKDELAY': '20',
+                   'pre_up':
+                       'echo 0 > /sys/class/net/eth2/device/sriov_numvfs; '
+                       'echo 16 > /sys/class/net/eth2/device/sriov_numvfs'}
+        expected = self._get_network_config(
+            ifname=port['name'], method='manual',
+            mtu=1500, options=options2)
+        print(expected)
+        self.assertEqual(expected, config2)
+
     def test_get_controller_bond_network_config(self):
         bond = self._create_bond_test("bond0")
         self._update_context()
