@@ -15,6 +15,7 @@ etc/sysinv/upgrades/delete_load.sh
 etc/update-motd.d/10-system
 usr/bin/cert-alarm
 usr/bin/cert-mon
+usr/bin/ipsec-server
 usr/bin/kube-cert-rotation.sh
 usr/bin/sysinv-agent
 usr/bin/sysinv-api

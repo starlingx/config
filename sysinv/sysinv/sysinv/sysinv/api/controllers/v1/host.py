@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -1174,6 +1174,7 @@ class HostController(rest.RestController):
         'downgrade': ['POST'],
         'install_progress': ['POST'],
         'wipe_osds': ['GET'],
+        'update_inv_state': ['POST'],
         'kube_upgrade_control_plane': ['POST'],
         'kube_upgrade_kubelet': ['POST'],
         'device_image_update': ['POST'],
@@ -1189,6 +1190,15 @@ class HostController(rest.RestController):
 
         self._api_token = None
         # self._name = 'api-host'
+
+    @wsme_pecan.wsexpose(six.text_type, wtypes.text, body=six.text_type)
+    def update_inv_state(self, uuid, data):
+        try:
+            pecan.request.dbapi.ihost_update(uuid, {'inv_state': data})
+        except exception.ServerNotFound:
+            LOG.error(_('Failed to retrieve host with specified uuid.'))
+            return False
+        return True
 
     def _ihosts_get(self, isystem_id, marker, limit, personality,
                     sort_key, sort_dir):

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015 Wind River Systems, Inc.
+# Copyright (c) 2015-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -152,7 +152,7 @@ def rest_api_request(token, method, api_cmd, api_cmd_headers=None,
                 token.set_expired()
         LOG.warn("HTTP Error e.code=%s e=%s" % (e.code, e))
         if hasattr(e, 'msg') and e.msg:
-            response = json.loads(e.msg)
+            response = json.loads('"%s"' % e.msg)
         else:
             response = json.loads("{}")
 
