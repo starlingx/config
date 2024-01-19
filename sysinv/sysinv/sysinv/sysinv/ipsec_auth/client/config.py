@@ -178,5 +178,5 @@ class StrongswanPuppet(object):
             with open(filepath, 'w') as f:
                 yaml.dump(config, f, sort_keys=False, default_flow_style=False)
         except Exception:
-            LOG.exception("failed to write config file: %s" % filepath)
+            LOG.exception("Failed to write config file: %s" % filepath)
             raise
