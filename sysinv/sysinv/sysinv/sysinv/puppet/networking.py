@@ -336,17 +336,6 @@ class NetworkingPuppet(base.BasePuppet):
                         cmdline = cmdline.strip(quote)
                     instance['cmdline_opts'] = cmdline
 
-                # Prune phc2sys_ha parameters if phc2sys_ha is not enabled
-                if instance['service'] == constants.PTP_INSTANCE_TYPE_PHC2SYS:
-                    if 'phc2sys_ha' not in instance['global_parameters'] or \
-                            instance['global_parameters']['phc2sys_ha'] != 'enabled':
-                        keys_to_remove = []
-                        for key in instance['global_parameters'].keys():
-                            if key.startswith("phc2sys_ha"):
-                                keys_to_remove.append(key)
-                        for key in keys_to_remove:
-                            del instance['global_parameters'][key]
-
             if instance['service'] == constants.PTP_INSTANCE_TYPE_PTP4L:
                 # Add pmc parameters so that they can be set by puppet
                 instance['pmc_gm_settings'].update(default_pmc_parameters)
@@ -421,6 +410,9 @@ class NetworkingPuppet(base.BasePuppet):
         default_interface_parameters = {
             'ptp4l': {},
             'phc2sys': {},
+            'ha_phc2sys': {
+                'ha_priority': '0'
+            },
             'ts2phc': {
                 'ts2phc.extts_polarity': 'rising'
             },
@@ -432,10 +424,17 @@ class NetworkingPuppet(base.BasePuppet):
         }
 
         for instance in ptp_instances:
-            for iface in ptp_instances[instance]['interfaces']:
+            current_instance = ptp_instances[instance]
+            for iface in current_instance['interfaces']:
                 # Add default interface values
                 iface['parameters'].update(default_interface_parameters
-                                          [ptp_instances[instance]['service']])
+                                          [current_instance['service']])
+                # Handle HA phc2sys
+                if current_instance['service'] == constants.PTP_INSTANCE_TYPE_PHC2SYS:
+                    if 'ha_enabled' in current_instance['global_parameters'] and \
+                            current_instance['global_parameters']['ha_enabled'] == '1':
+                        iface['parameters'].update(default_interface_parameters
+                                                   ['ha_phc2sys'])
                 # Add supplied params to the interface
                 for param in ptp_parameters_interface:
                     if iface['uuid'] in param['owners']:
