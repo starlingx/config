@@ -17,6 +17,7 @@ import socket
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
+import tsconfig.tsconfig as tsc
 
 from oslo_log import log
 from sysinv._i18n import _
@@ -149,6 +150,16 @@ class UpgradeController(rest.RestController):
         return UpgradeCollection.convert_with_links(
             upgrades, limit, url=resource_url, expand=expand,
             sort_key=sort_key, sort_dir=sort_dir)
+
+    @staticmethod
+    def check_restore_in_progress():
+        try:
+            pecan.request.dbapi.restore_get_one(
+                           filters={'state': constants.RESTORE_STATE_IN_PROGRESS})
+        except exception.NotFound:
+            return False
+        else:
+            return True
 
     def _get_updates(self, patch):
         """Retrieve the updated attributes from the patch request."""
@@ -330,6 +341,15 @@ class UpgradeController(rest.RestController):
         # if an activation is requested, make sure we are not already in
         # activating state or have already activated
         elif updates['state'] == constants.UPGRADE_ACTIVATION_REQUESTED:
+
+            # if a restore is in progress, we need to restart the
+            # upgrade process for non simplex systems
+            if tsc.system_mode != constants.SYSTEM_MODE_SIMPLEX:
+                if self.check_restore_in_progress():
+                    raise wsme.exc.ClientSideError(_(
+                        "upgrade-activate rejected: A restore was in progress before"
+                        " upgrade was started. Complete the restore of the"
+                        " previous release before reattempting upgrade."))
 
             if upgrade.state in [constants.UPGRADE_ACTIVATING,
                                  constants.UPGRADE_ACTIVATING_HOSTS,
