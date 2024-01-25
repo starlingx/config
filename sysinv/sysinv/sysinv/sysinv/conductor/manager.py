@@ -1043,9 +1043,9 @@ class ConductorManager(service.PeriodicService):
 
         # Not allow adding a new host to simplex system
         if 'pxeboot' == first_tag and not cutils.is_aio_simplex_system(self.dbapi):
-            mgmt_network = self.dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_MGMT)
-            if not mgmt_network.dynamic:
+            pxeboot_network = self.dbapi.network_get_by_type(
+                constants.NETWORK_TYPE_PXEBOOT)
+            if not pxeboot_network.dynamic:
                 return
 
             # This is a DHCP lease for a node on the pxeboot network
@@ -1186,6 +1186,51 @@ class ConductorManager(service.PeriodicService):
         line = "%s\n" % line
         return line
 
+    def _filter_stale_dnsmasq_leases(self, leases_file):
+
+        # expects 5 field format of each line in the leases file
+        #
+        # 1705616784 08:00:27:9b:d0:95 169.254.202.3 pxeboot-5 00:03:00:01:08:00:27:9b:d0:95
+
+        # Read the dnsmasq.leases file into a list of lines
+        with open(leases_file, 'r') as file:
+            lines = file.readlines()
+
+        # A dictionary to store the latest lease
+        # timestamp for each MAC address.
+        latest_leases = {}
+
+        # A list of valid leases.
+        valid_leases = []
+
+        for line in lines:
+            # ignore strings that don't have the right number of fields
+            if len(line.split()) != 5:
+                continue
+
+            lease_ts_str, mac, ip, hostname, client_id = line.split()
+            lease_ts = int(lease_ts_str)
+
+            # Look for ...
+            # - the MAC address is not in the dictionary or
+            # - has a newer lease timestamp (lease_ts)
+            if mac not in latest_leases or lease_ts > latest_leases[mac]:
+                # Update latest_leases dict with the latest lease timestamp
+                latest_leases[mac] = lease_ts
+
+        # now only include the latest leases
+        for line in lines:
+            # ignore strings that don't have the right number of fields
+            if len(line.split()) != 5:
+                continue
+
+            lease_ts_str, mac, ip, hostname, client_id = line.split()
+            if int(lease_ts_str) in latest_leases.values():
+                # Add the line to the valid leases list
+                valid_leases.append(line)
+
+        return valid_leases
+
     def _generate_dnsmasq_hosts_file(self, existing_host=None,
                                      deleted_host=None):
         """Regenerates the dnsmasq host and addn_hosts files from database.
@@ -1203,6 +1248,11 @@ class ConductorManager(service.PeriodicService):
         else:
             dnsmasq_addn_hosts_file = tsc.CONFIG_PATH + 'dnsmasq.addn_hosts'
 
+        if (self.topic == 'test-topic'):
+            dnsmasq_leases_file = '/tmp/dnsmasq.leases'
+        else:
+            dnsmasq_leases_file = tsc.CONFIG_PATH + 'dnsmasq.leases'
+
         if deleted_host:
             deleted_hostname = deleted_host.hostname
         else:
@@ -1214,6 +1264,7 @@ class ConductorManager(service.PeriodicService):
             constants.NETWORK_TYPE_MGMT
         )
 
+        func = "_generate_dnsmasq_hosts_file"
         with open(temp_dnsmasq_hosts_file, 'w') as f_out,\
                 open(temp_dnsmasq_addn_hosts_file, 'w') as f_out_addn:
 
@@ -1235,6 +1286,9 @@ class ConductorManager(service.PeriodicService):
                 address.address, constants.PXECONTROLLER_HOSTNAME
             )
             f_out_addn.write(addn_line)
+
+            # get the list of hosts for the host id's needed below.
+            ihosts = self.dbapi.ihost_get_list()
 
             # Loop through mgmt addresses to write to file
             for address in self.dbapi._addresses_get_by_pool_uuid(
@@ -1271,22 +1325,95 @@ class ConductorManager(service.PeriodicService):
                                  .format(hostname, mac_address,
                                          existing_host.mgmt_mac))
                         mac_address = existing_host.mgmt_mac
-                # If host is being deleted, don't check ihost
-                elif deleted_hostname and deleted_hostname == hostname:
-                    mac_address = None
-                else:
-                    try:
-                        ihost = self.dbapi.ihost_get_by_hostname(hostname)
-                        mac_address = ihost.mgmt_mac
-                    except exception.NodeNotFound:
-                        if existing_host and existing_host.hostname == hostname:
-                            mac_address = existing_host.mgmt_mac
-                        else:
-                            mac_address = None
-                line = self._dnsmasq_host_entry_to_string(address.address,
-                                                          hostname,
-                                                          mac_address)
-                f_out.write(line)
+
+            # Add pxecontroller to dnsmasq.hosts file
+            pxeboot_network = self.dbapi.network_get_by_type(
+                constants.NETWORK_TYPE_PXEBOOT)
+            address = self.dbapi.address_get_by_name(
+                cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
+                                           constants.NETWORK_TYPE_PXEBOOT)
+            )
+            # This is the gateway address 169.254.202.1
+            LOG.info("%s: pxeboot gateway address: %s" % (
+                func, address.address))
+            line = self._dnsmasq_host_entry_to_string(
+                        address.address,
+                        constants.PXECONTROLLER_HOSTNAME, None)
+            LOG.info("%s: adding '%s' from database to %s" % (
+                     func, line.strip(), dnsmasq_hosts_file))
+            f_out.write(line)
+
+            # Add the statically allocated controller hosts and
+            # their pxeboot network hostname 'pxeboot-N' to the
+            # dnsmasq.hosts file.
+            #
+            # Start by searching through the address pool for
+            # static controller pxeboot addresses.
+            for address in self.dbapi._addresses_get_by_pool_uuid(
+                    pxeboot_network.pool_uuid):
+                pxeboot_hostname = re.sub("-%s$" % constants.NETWORK_TYPE_PXEBOOT, '', str(address.name))
+                LOG.info("%s: hostname: %s from %s:%s" % (func,
+                         pxeboot_hostname, address.name, address.address))
+                id = 0
+                for host in ihosts:
+                    LOG.info("%s: %d - hostname:%s pxeboot_hostname:%s %s" % (
+                        func, host.id, host.hostname, pxeboot_hostname,
+                        host.mgmt_mac))
+                    if deleted_hostname and deleted_hostname == host.hostname:
+                        LOG.info("%s: ... deleted" % func)
+                        continue
+                    if host.hostname == pxeboot_hostname:
+                        # Valid controller host.
+                        # Create the line and add it.
+                        id = host.id
+                        pxeboot_hostname = 'pxeboot-' + str(id)
+                        line = self._dnsmasq_host_entry_to_string(
+                                address.address,
+                                pxeboot_hostname,
+                                host.mgmt_mac)
+                        LOG.info("%s: adding '%s' from database to %s" % (
+                            func, line.strip(), dnsmasq_hosts_file))
+                        f_out.write(line)
+                        break
+
+            # When the leases file exists, parse it looking for
+            # mac addresses for non controller hosts to add then
+            # to the dnsmasq.hosts file.
+            if os.path.exists(dnsmasq_leases_file):
+                # Read in the leases file and get all the valid leases.
+                # Be sure to
+                # 1. filter out stale leases.
+                # 2. exclude any leases for the controllers' mac address
+                #    since they have already been added as static in the
+                #    above block. We don't want to add a duplicate stale
+                #    dhcp pxeboot ip address associated with a mac address
+                #    that was already added above.
+
+                # get only latest valid leases from the dnsmasq.leases file
+                valid_leases = self._filter_stale_dnsmasq_leases(dnsmasq_leases_file)
+                for line in valid_leases:
+                    lease_ts_str, mac, ip, hostname, client_id = line.split()
+                    LOG.debug("%s: candidate lease: %s" % (func, line))
+                    for host in ihosts:
+                        if host.hostname is None:
+                            # just in case
+                            continue
+                        elif "controller" in host.hostname:
+                            # controllers are already added
+                            continue
+                        elif deleted_hostname and deleted_hostname == host.hostname:
+                            # handle the delete case
+                            LOG.info("%s: ... deleted" % func)
+                            continue
+                        elif mac == host.mgmt_mac:
+                            # So then this is a valid lease.
+                            # Create the line and add it.
+                            line = self._dnsmasq_host_entry_to_string(
+                                    ip, 'pxeboot-' + str(host.id),
+                                    host.mgmt_mac)
+                            LOG.info("%s: adding '%s' from leases to %s" % (
+                                func, line.strip(), dnsmasq_hosts_file))
+                            f_out.write(line)
 
         # If there is no distributed cloud addn_hosts file, create an empty one
         # so dnsmasq will not complain.
@@ -1298,9 +1425,9 @@ class ConductorManager(service.PeriodicService):
                 f_out_addn_dc.write(' ')
             os.rename(temp_dnsmasq_addn_hosts_dc_file, dnsmasq_addn_hosts_dc_file)
 
-        # The controller IP will be in the dnsmasq.addn_hosts
-        # since the /opt/platform is not mounted during the startup it is necessary to copy
-        # DNSMASQ files to /etc/platform/
+        # The controller IP will be in the dnsmasq.addn_hosts.
+        # Since the /opt/platform is not mounted during the startup it is
+        # necessary to copy DNSMASQ files to /etc/platform/
         if cutils.is_aio_simplex_system(self.dbapi):
             ETC_PLAT = tsc.PLATFORM_CONF_PATH + '/'
 
