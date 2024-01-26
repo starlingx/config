@@ -1,0 +1,14 @@
+[Unit]
+Description=IPSec Authentication Service
+After=network-online.target syslog-ng.service sysinv-api.service
+
+[Service]
+Type=simple
+RemainAfterExit=yes
+User=root
+ExecStart=/usr/bin/ipsec-server
+PIDFile=/var/run/ipsec-server.pid
+TimeoutStartSec=10s
+
+[Install]
+WantedBy=multi-user.target
