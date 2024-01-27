@@ -1248,6 +1248,15 @@ DEFAULT_REGISTRIES_INFO = {
 SERVICE_PARAM_SECTION_KUBERNETES_CONFIG = 'config'
 SERVICE_PARAM_NAME_KUBERNETES_POD_MAX_PIDS = 'pod_max_pids'
 SERVICE_PARAM_NAME_KUBERNETES_AUTOMATIC_RECOVERY = 'automatic_recovery'
+
+# Kubernetes component endpoints for cluster audit
+APISERVER_READYZ_ENDPOINT = "https://localhost:6443/readyz"
+SCHEDULER_HEALTHZ_ENDPOINT = "https://127.0.0.1:10259/healthz"
+CONTROLLER_MANAGER_HEALTHZ_ENDPOINT = "https://127.0.0.1:10257/healthz"
+KUBELET_HEALTHZ_ENDPOINT = "http://localhost:10248/healthz"
+healthz_endpoints = [APISERVER_READYZ_ENDPOINT, CONTROLLER_MANAGER_HEALTHZ_ENDPOINT,
+                         SCHEDULER_HEALTHZ_ENDPOINT, KUBELET_HEALTHZ_ENDPOINT]
+
 # Platform pods use under 20 in steady state, but allow extra room.
 SERVICE_PARAM_KUBERNETES_POD_MAX_PIDS_MIN = 100
 # Account for uncontrolled changes in applications (e.g. stx-openstack) by

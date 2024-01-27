@@ -166,7 +166,7 @@ KUBE_CONTROL_PLANE_ETCD_BACKUP_PATH = os.path.join(
 
 
 def k8s_health_check(tries=20, try_sleep=5, timeout=5,
-                     healthz_endpoint='https://localhost:6443/readyz'):
+                     healthz_endpoint=constants.APISERVER_READYZ_ENDPOINT):
     """This checks k8s control-plane component health for a specified
     endpoint, and waits for that endpoint to be up and running.
     This checks the endpoint 'tries' times using a API connection
