@@ -15,13 +15,15 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations
 # under the License.
+#
+# Copyright (c) 2018-2024 Wind River Systems, Inc.
 """
 Middleware to replace the plain text message body of an error
 response with one formatted so the client can parse it.
 
 Based on pecan.middleware.errordocument
 """
-
+import html
 import json
 import six
 import webob
@@ -104,6 +106,9 @@ class ParsableErrorMiddleware(object):
                 if fault is None:
                     body = [json.dumps({'error_message': app_data})]
                 else:
+                    # HTML unescape converts HTML entities back into their
+                    # corresponding chars for human-readable text
+                    fault = html.unescape(fault)
                     body = [json.dumps({'error_message':
                                         json.dumps({'faultstring': fault})})]
                 if six.PY3:
