@@ -200,11 +200,14 @@ class PlatformPuppet(base.BasePuppet):
         return amqp_config_dict
 
     def _get_resolv_config(self):
-        servers = [self._get_management_address()]
+        # Servers IP with prefix :: leads error during puppet lookup, lets set
+        # quote for YAML dump
+        servers = [self.quoted_str(self._get_management_address())]
 
         dns = self.dbapi.idns_get_one()
         if dns.nameservers:
-            servers += dns.nameservers.split(',')
+            servers += [self.quoted_str(nameserver) for nameserver in
+                         dns.nameservers.split(',')]
 
         return {
             'platform::dns::resolv::servers': servers
