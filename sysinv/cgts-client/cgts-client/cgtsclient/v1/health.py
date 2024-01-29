@@ -23,11 +23,11 @@ class HealthManager(base.Manager):
         resp, body = self.api.json_request('GET', path)
         return body
 
-    def get_kube_upgrade(self, args: dict, relaxed=None):
+    def get_kube_upgrade(self, args=None, relaxed=None):
         path = '/v1/health/kube-upgrade'
         if relaxed:
             path += '/relaxed'
-        rootca = args.get('rootca')
+        rootca = None if not args else args.get('rootca')
         if rootca:
             path += f'?rootca={rootca}'
         resp, body = self.api.json_request('GET', path)
