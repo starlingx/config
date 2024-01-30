@@ -233,6 +233,16 @@ def create_test_isystem(**kw):
     return dbapi.isystem_create(system)
 
 
+def update_test_isystem(system_dict):
+    """Update test system entry in DB and return System DB object.
+    Function to be used to create test System objects in the database.
+    :param kw: kwargs with overriding values for system's attributes.
+    :returns: Test System DB object.
+    """
+    dbapi = db_api.get_instance()
+    return dbapi.isystem_update(system_dict['uuid'], system_dict)
+
+
 def get_test_load(**kw):
     load = {
         "software_version": kw.get("software_version", SW_VERSION),
@@ -711,6 +721,36 @@ def create_test_address_pool(**kw):
     if 'id' not in kw:
         del address_pool['id']
     dbapi = db_api.get_instance()
+
+    floating_address = address_pool.pop('floating_address', None)
+    controller0_address = address_pool.pop('controller0_address', None)
+    controller1_address = address_pool.pop('controller1_address', None)
+    gateway_address = address_pool.pop('gateway_address', None)
+
+    if floating_address:
+        try:
+            fl_addr = dbapi.address_get_by_address(floating_address)
+            address_pool['floating_address_id'] = fl_addr.id
+        except Exception:
+            pass
+    if controller0_address:
+        try:
+            c0_addr = dbapi.address_get_by_address(controller0_address)
+            address_pool['controller0_address_id'] = c0_addr.id
+        except Exception:
+            pass
+    if controller1_address:
+        try:
+            c1_addr = dbapi.address_get_by_address(controller1_address)
+            address_pool['controller1_address_id'] = c1_addr.id
+        except Exception:
+            pass
+    if gateway_address:
+        try:
+            c1_addr = dbapi.address_get_by_address(gateway_address)
+            address_pool['gateway_address_id'] = c1_addr.id
+        except Exception:
+            pass
     return dbapi.address_pool_create(address_pool)
 
 
