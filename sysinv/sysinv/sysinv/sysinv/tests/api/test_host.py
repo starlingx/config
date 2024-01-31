@@ -227,6 +227,54 @@ class TestPostFirstController(TestHost):
                           self.post_json, '/ihosts', ndict,
                           headers={'User-Agent': 'sysinv-test'})
 
+    def test_create_host_invalid_bm_username_length(self):
+        # Test creation of host with bm_username > 16 characters
+        longusername = "this_is_a_really_long_username"
+        ndict = dbutils.post_get_test_ihost(hostname='controller-0',
+                                            bm_ip='10.10.10.100',
+                                            bm_type=constants.HOST_BM_TYPE_IPMI,
+                                            bm_username=longusername)
+        ndict['bm_password'] = "password"
+        self.assertRaises(webtest.app.AppError,
+                          self.post_json, '/ihosts', ndict,
+                          headers={'User-Agent': 'sysinv-test'})
+
+    def test_create_host_invalid_bm_username_whitespace(self):
+        # Test creation of host with bm_username with whitespace
+        codeinjection = "root; reboot&"
+        ndict = dbutils.post_get_test_ihost(hostname='controller-0',
+                                            bm_ip='10.10.10.100',
+                                            bm_type=constants.HOST_BM_TYPE_IPMI,
+                                            bm_username=codeinjection)
+        ndict['bm_password'] = "password"
+        self.assertRaises(webtest.app.AppError,
+                          self.post_json, '/ihosts', ndict,
+                          headers={'User-Agent': 'sysinv-test'})
+
+    def test_create_host_invalid_bm_password_length(self):
+        # Test creation of host with bm_password > 20 characters
+        longpassword = "this_is_a_really_long_paaaasssword"
+        ndict = dbutils.post_get_test_ihost(hostname='controller-0',
+                                            bm_ip='10.10.10.100',
+                                            bm_type=constants.HOST_BM_TYPE_IPMI,
+                                            bm_username="root")
+        ndict['bm_password'] = longpassword
+        self.assertRaises(webtest.app.AppError,
+                          self.post_json, '/ihosts', ndict,
+                          headers={'User-Agent': 'sysinv-test'})
+
+    def test_create_host_invalid_bm_password_whitespace(self):
+        # Test creation of host with bm_password with whitespace
+        codeinjection = "password; reboot&"
+        ndict = dbutils.post_get_test_ihost(hostname='controller-0',
+                                            bm_ip='10.10.10.100',
+                                            bm_type=constants.HOST_BM_TYPE_IPMI,
+                                            bm_username="root")
+        ndict['bm_password'] = codeinjection
+        self.assertRaises(webtest.app.AppError,
+                          self.post_json, '/ihosts', ndict,
+                          headers={'User-Agent': 'sysinv-test'})
+
 
 class TestPostControllerMixin(object):
 
@@ -2160,7 +2208,7 @@ class TestPatch(TestHost):
             availability=constants.AVAILABILITY_OFFLINE)
         self._create_test_host_platform_interface(c0_host)
 
-        bm_ip = '128.224.141.222'
+        bm_ip = '10.10.10.100'
         bm_username = 'root'
 
         for bm_type in constants.HOST_BM_VALID_PROVISIONED_TYPE_LIST:
@@ -2189,6 +2237,178 @@ class TestPatch(TestHost):
 
             self.fake_conductor_api.create_barbican_secret.assert_called_with(
                 mock.ANY, ihost.uuid, bm_password)
+
+    def test_update_host_invalid_bm_username_length(self):
+        # Test updating a host with bm_username > 16 characters
+
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_DISABLED,
+            availability=constants.AVAILABILITY_OFFLINE)
+        self._create_test_host_platform_interface(c0_host)
+
+        bm_ip = '10.10.10.100'
+        bm_username = 'this_is_a_really_long_username'
+        bm_password = 'password'
+        bm_type = constants.HOST_BM_TYPE_IPMI
+        patch = ([
+            {
+                'path': '/bm_type',
+                'value': bm_type,
+                'op': 'replace'
+            },
+            {
+                'path': '/bm_ip',
+                'value': bm_ip,
+                'op': 'replace'
+            },
+            {
+                'path': '/bm_username',
+                'value': bm_username,
+                'op': 'replace'
+            },
+            {
+                'path': '/bm_password',
+                'value': bm_password,
+                'op': 'replace'
+            }
+        ])
+        # Verify that the action was rejected
+        self.assertRaises(webtest.app.AppError,
+                          self.patch_json,
+                          f"/ihosts/{c0_host['hostname']}",
+                          patch,
+                          headers={'User-Agent': 'sysinv-test'})
+
+    def test_update_host_invalid_bm_username_whitespace(self):
+        # Test updating a host with bm_username with whitespace
+
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_DISABLED,
+            availability=constants.AVAILABILITY_OFFLINE)
+        self._create_test_host_platform_interface(c0_host)
+
+        bm_ip = '10.10.10.100'
+        bm_username = "root; reboot&"
+        bm_password = 'password'
+        bm_type = constants.HOST_BM_TYPE_IPMI
+        patch = ([
+            {
+                'path': '/bm_type',
+                'value': bm_type,
+                'op': 'replace'
+            },
+            {
+                'path': '/bm_ip',
+                'value': bm_ip,
+                'op': 'replace'
+            },
+            {
+                'path': '/bm_username',
+                'value': bm_username,
+                'op': 'replace'
+            },
+            {
+                'path': '/bm_password',
+                'value': bm_password,
+                'op': 'replace'
+            }
+        ])
+        # Verify that the action was rejected
+        self.assertRaises(webtest.app.AppError,
+                          self.patch_json,
+                          f"/ihosts/{c0_host['hostname']}",
+                          patch,
+                          headers={'User-Agent': 'sysinv-test'})
+
+    def test_update_host_invalid_bm_password_length(self):
+        # Test updating a host with bm_password > 20 characters
+
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_DISABLED,
+            availability=constants.AVAILABILITY_OFFLINE)
+        self._create_test_host_platform_interface(c0_host)
+
+        bm_ip = '10.10.10.100'
+        bm_username = "root"
+        bm_password = 'this_is_a_really_long_paaaasssword'
+        bm_type = constants.HOST_BM_TYPE_IPMI
+        patch = ([
+            {
+                'path': '/bm_type',
+                'value': bm_type,
+                'op': 'replace'
+            },
+            {
+                'path': '/bm_ip',
+                'value': bm_ip,
+                'op': 'replace'
+            },
+            {
+                'path': '/bm_username',
+                'value': bm_username,
+                'op': 'replace'
+            },
+            {
+                'path': '/bm_password',
+                'value': bm_password,
+                'op': 'replace'
+            }
+        ])
+        # Verify that the action was rejected
+        self.assertRaises(webtest.app.AppError,
+                          self.patch_json,
+                          f"/ihosts/{c0_host['hostname']}",
+                          patch,
+                          headers={'User-Agent': 'sysinv-test'})
+
+    def test_update_host_invalid_bm_password_whitespace(self):
+        # Test updating a host with bm_password with whitespace
+
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_UNLOCKED,
+            operational=constants.OPERATIONAL_DISABLED,
+            availability=constants.AVAILABILITY_OFFLINE)
+        self._create_test_host_platform_interface(c0_host)
+
+        bm_ip = '10.10.10.100'
+        bm_username = "root"
+        bm_password = "password; reboot&"
+        bm_type = constants.HOST_BM_TYPE_IPMI
+        patch = ([
+            {
+                'path': '/bm_type',
+                'value': bm_type,
+                'op': 'replace'
+            },
+            {
+                'path': '/bm_ip',
+                'value': bm_ip,
+                'op': 'replace'
+            },
+            {
+                'path': '/bm_username',
+                'value': bm_username,
+                'op': 'replace'
+            },
+            {
+                'path': '/bm_password',
+                'value': bm_password,
+                'op': 'replace'
+            }
+        ])
+        # Verify that the action was rejected
+        self.assertRaises(webtest.app.AppError,
+                          self.patch_json,
+                          f"/ihosts/{c0_host['hostname']}",
+                          patch,
+                          headers={'User-Agent': 'sysinv-test'})
 
     def test_update_mgmt_mac_case_insensitive(self):
         # Create controller-0
