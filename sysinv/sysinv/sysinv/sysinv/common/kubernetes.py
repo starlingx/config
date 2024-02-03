@@ -374,6 +374,7 @@ class KubeOperator(object):
         self._kube_client_policy = None
         self._kube_client_custom_objects = None
         self._kube_client_admission_registration = None
+        self._kube_client_rbac_authorization = None
 
     def _load_kube_config(self):
         if not is_k8s_configured():
@@ -421,6 +422,12 @@ class KubeOperator(object):
             self._load_kube_config()
             self._kube_client_admission_registration = client.AdmissionregistrationV1Api()
         return self._kube_client_admission_registration
+
+    def _get_kubernetesclient_rbac_authorization(self):
+        if not self._kube_client_rbac_authorization:
+            self._load_kube_config()
+            self._kube_client_rbac_authorization = client.RbacAuthorizationV1Api()
+        return self._kube_client_rbac_authorization
 
     def _retry_on_urllibs3_MaxRetryError(ex):  # pylint: disable=no-self-argument
         if isinstance(ex, MaxRetryError):
@@ -1553,4 +1560,31 @@ class KubeOperator(object):
             return items if items else False
         except Exception as e:
             LOG.exception("Failed to fetch PodSecurityPolicies: %s" % e)
+            raise
+
+    def kube_read_clusterrolebinding(self, name):
+        """read a clusterrolebinding with data
+
+        """
+        try:
+            rbac_authorization = self._get_kubernetesclient_rbac_authorization()
+            v1_cluster_role_binding_object = rbac_authorization.read_cluster_role_binding(name)
+            LOG.info("Clusterrolebinding %s retrieved successfully." % name)
+            return v1_cluster_role_binding_object
+        except Exception as ex:
+            LOG.exception("Failed to read clusterolebinding %s : %s" % (name, ex))
+            raise
+
+    def kube_patch_clusterrolebinding(self, name, body):
+        """patch a clusterrolebinding with data
+
+        """
+        try:
+            rbac_authorization = self._get_kubernetesclient_rbac_authorization()
+            v1_cluster_role_binding_object = \
+                    rbac_authorization.patch_cluster_role_binding(name, body)
+            LOG.info("Clusterrolebinding %s updated successfully. "
+                     "Updated object: %s" % (name, v1_cluster_role_binding_object))
+        except Exception as ex:
+            LOG.exception("Failed to patch clusterolebinding %s : %s" % (name, ex))
             raise
