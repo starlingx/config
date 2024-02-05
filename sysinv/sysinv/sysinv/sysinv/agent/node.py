@@ -362,10 +362,11 @@ class NodeOperator(object):
 
                     if files:
                         for file in files:
-                            with open(mydir + '/' + file, 'r') as f:
-                                if file.startswith("nr_hugepages"):
+                            if file.startswith("nr_hugepages"):
+                                with open(mydir + '/' + file, 'r') as f:
                                     nr_hugepages = int(f.readline())
-                                if file.startswith("free_hugepages"):
+                            if file.startswith("free_hugepages"):
+                                with open(mydir + '/' + file, 'r') as f:
                                     free_hugepages = int(f.readline())
 
                     total_hp_mb = total_hp_mb + int(nr_hugepages * size)
