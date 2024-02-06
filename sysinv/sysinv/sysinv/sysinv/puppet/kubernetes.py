@@ -753,7 +753,8 @@ class KubernetesPuppet(base.BasePuppet):
                             "vendors": [],
                             "devices": [],
                             "drivers": [],
-                            "pfNames": []
+                            "pfNames": [],
+                            "pciAddresses": []
                         }
                     }
 
@@ -808,9 +809,16 @@ class KubernetesPuppet(base.BasePuppet):
                         # error case, cannot find the vf numbers in sriov case
                         LOG.error("Failed to get vf numbers for pci device %s", port['name'])
                         continue
-                else:
+                elif ifclass != constants.INTERFACE_CLASS_PCI_PASSTHROUGH:
                     if port['name'] not in pf_name_list:
                         pf_name_list.append(port['name'])
+
+                # Since sriov-network-device-plugin v3.5.0 PF was removed from pools
+                # with Pfnames and rootDevices. Need to use pciAddresses selector now.
+                pci_addr_list = resource['selectors']['pciAddresses']
+                if ifclass == constants.INTERFACE_CLASS_PCI_PASSTHROUGH:
+                    if port['pciaddr'] not in pci_addr_list:
+                        pci_addr_list.append(port['pciaddr'])
 
                 if interface.is_a_mellanox_device(self.context, iface):
                     resource['selectors']['isRdma'] = True

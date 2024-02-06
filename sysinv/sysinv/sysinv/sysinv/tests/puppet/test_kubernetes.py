@@ -39,11 +39,17 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
         self.iface = None
         self.device = None
 
-    def _setup_iface_configuration(self):
+    def _setup_iface_configuration(self, is_pci_passthough=False):
         # Setup a single port/SR-IOV interface
+        if is_pci_passthough:
+            ifclass = constants.INTERFACE_CLASS_PCI_PASSTHROUGH
+            numvfs = 0
+        else:
+            ifclass = constants.INTERFACE_CLASS_PCI_SRIOV
+            numvfs = 2
         self.port, self.iface = self._create_ethernet_test(
-            'sriov1', constants.INTERFACE_CLASS_PCI_SRIOV,
-            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=2,
+            'sriov1', ifclass,
+            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=numvfs,
             sriov_vf_driver='ixgbevf',
             sriov_vfs_pci_address="0000:b1:02.0,0000:b1:02.1")
 
@@ -123,16 +129,16 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
 
         return config
 
-    def _get_sriovdp_iface_config(self, vf_vendor, vf_device,
-                                  vf_driver, pfName, datanetwork):
-        datanetwork = datanetwork.replace("-", "_")
+    def _get_sriovdp_iface_config(self, vendor, device, driver, ifclass, pfName, pciAddress,
+                                  datanetwork):
         config = [{
-            "resourceName": 'pci_sriov_net_{}'.format(datanetwork),
+            "resourceName": '{}_net_{}'.format(ifclass, datanetwork).replace("-", "_"),
             "selectors": {
-                "vendors": ["{}".format(vf_vendor)],
-                "devices": ["{}".format(vf_device)],
-                "drivers": ["{}".format(vf_driver)],
-                "pfNames": ["{}".format(pfName)]
+                "vendors": ["{}".format(vendor)],
+                "devices": ["{}".format(device)],
+                "drivers": ["{}".format(driver)],
+                "pfNames": [] if pfName is None else ["{}".format(pfName)],
+                "pciAddresses": [] if pciAddress is None else ["{}".format(pciAddress)]
             }
         }]
         if interface.is_a_mellanox_device(self.context, self.iface):
@@ -142,18 +148,18 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
     def _generate_sriovdp_config(self):
         return self.operator.kubernetes._get_host_pcidp_config(self.host)  # pylint: disable=no-member
 
-    def _get_sriovdp_config(self, vf_vendor, vf_device,
-                            vf_driver, pfName=None, datanetwork=None):
+    def _get_sriovdp_config(self, vendor, device,
+                            driver, ifclass='pci-sriov', pfName=None, pciAddress=None, datanetwork=None):
 
         iface_config = []
         if datanetwork:
             iface_config = self._get_sriovdp_iface_config(
-                vf_vendor, vf_device, vf_driver, pfName, datanetwork)
+                vendor, device, driver, ifclass, pfName, pciAddress, datanetwork)
 
         fpga_config = []
-        if vf_device == dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_VF:
+        if device == dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_VF:
             fpga_config = self._get_sriovdp_fpga_config(
-                vf_vendor, vf_device, vf_driver)
+                vendor, device, driver)
 
         config = {
             "platform::kubernetes::worker::pci::pcidp_resources":
@@ -162,7 +168,7 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
         return config
 
     @mock.patch.object(utils, 'get_sriov_vf_index')
-    def test_generate_sriovdp_config_8086(self, mock_get_sriov_vf_index):
+    def test_generate_sriovdp_config_8086_pci_sriov(self, mock_get_sriov_vf_index):
         mock_get_sriov_vf_index.side_effect = [1, 2]
         self._setup_iface_configuration()
         test_config = {
@@ -183,6 +189,29 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
             datanetwork=self.datanetwork['name']
         )
         mock_get_sriov_vf_index.assert_called()
+        self.assertEqual(expected, actual)
+
+    def test_generate_sriovdp_config_8086_pci_passthrough(self):
+        self._setup_iface_configuration(is_pci_passthough=True)
+        test_config = {
+            'pf_vendor': 'Intel Corporation [8086]',
+            'pf_device': 'Ethernet Controller X710 for 10GbE SFP+ [1572]',
+            'pf_driver': 'ixgbe',
+            'vf_device': '10ed',
+            'vf_driver': 'ixgbevf'
+        }
+        self._update_sriov_port_config(test_config)
+
+        actual = self._generate_sriovdp_config()
+        pf_device = re.search(r'\[([0-9a-fA-F]{1,4})\]$', test_config['pf_device']).group(1)
+        expected = self._get_sriovdp_config(
+            self._get_pcidp_vendor_id(self.port),
+            pf_device,
+            test_config['pf_driver'],
+            ifclass='pci-passthrough',
+            pciAddress="%s" % self.port['pciaddr'],
+            datanetwork=self.datanetwork['name']
+        )
         self.assertEqual(expected, actual)
 
     @mock.patch.object(utils, 'get_sriov_vf_index')
