@@ -243,6 +243,8 @@ class ManagerTestCase(base.DbTestCase):
                                             '  extraArgs:\n'
                                             '    feature-gates: CSIMigrationPortworx=false\n'
                                             '  extraVolumes:\n'
+                                            'dns:\n'
+                                            '  imageRepository: registry.local:9001/k8s.gcr.io/coredns\n'
                                             'imageRepository: registry.local:9001/k8s.gcr.io\n'
                                             'kind: ClusterConfiguration\n'
                                             'kubernetesVersion: v1.42.1\n'
@@ -253,7 +255,22 @@ class ManagerTestCase(base.DbTestCase):
                         namespace='kube-system'),
         )
 
-        self.kubeadm_config_map_patch_image_repository = {'data': {'ClusterConfiguration': 'apiServer:\n  certSANs: [192.168.206.1, 127.0.0.1, 10.10.6.3]\n  extraArgs: {event-ttl: 24h}\n  extraVolumes:\n  - {hostPath: /etc/kubernetes/encryption-provider.yaml}\napiVersion: kubeadm.k8s.io/v1beta3\ncontrollerManager:\n  extraArgs: {feature-gates: CSIMigrationPortworx=false}\n  extraVolumes: null\nimageRepository: registry.local:9001/registry.k8s.io\nkind: ClusterConfiguration\nkubernetesVersion: v1.42.1\nscheduler: {}\n'}}  # noqa: E501
+        self.kubeadm_config_map_patch_image_repository = \
+            {'data':
+             {'ClusterConfiguration': 'apiServer:\n'
+                                        '  certSANs: [192.168.206.1, 127.0.0.1, 10.10.6.3]\n'
+                                        '  extraArgs: {event-ttl: 24h}\n'
+                                        '  extraVolumes:\n'
+                                        '  - {hostPath: /etc/kubernetes/encryption-provider.yaml}\n'
+                                        'apiVersion: kubeadm.k8s.io/v1beta3\n'
+                                        'controllerManager:\n'
+                                        '  extraArgs: {feature-gates: CSIMigrationPortworx=false}\n'
+                                        '  extraVolumes: null\n'
+                                        'dns: {imageRepository: registry.local:9001/registry.k8s.io/coredns}\n'
+                                        'imageRepository: registry.local:9001/registry.k8s.io\n'
+                                        'kind: ClusterConfiguration\n'
+                                        'kubernetesVersion: v1.42.1\n'
+                                        'scheduler: {}\n'}}
 
         super(ManagerTestCase, self).setUp()
 
