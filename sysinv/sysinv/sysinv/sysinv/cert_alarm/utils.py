@@ -97,9 +97,12 @@ def get_tls_secrets_from_all_ns():
         # processing the ICA entry in order to scale the solution
         # The ICA secrets will get processed on the respective subcloud controller instead, and
         # will get picked up in sc-cert ns (only present on subclouds)
-        ICA_substring = "-adminep-ca-certificate"
-        filtered_list = [i for i in secret_list if ICA_substring not in i.metadata.name]
-        return filtered_list
+        dc_role = certmon_utils.get_dc_role()
+        if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+            ICA_substring = "-adminep-ca-certificate"
+            filtered_list = [i for i in secret_list if ICA_substring not in i.metadata.name]
+            return filtered_list
+        return secret_list
     except Exception:
         raise Exception('Failed to access secrets from all namespaces')
 
