@@ -164,9 +164,9 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self._create_test_dns()
         self._create_test_ntp()
         self._create_test_ptp()
+        self._create_test_static_ips()
         self._create_test_networks()
         self._create_test_datanetworks()
-        self._create_test_static_ips()
         self._create_test_oam()
         self._create_test_multicast_ips()
 
@@ -235,12 +235,23 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
     def _create_test_address_pool(self, name, subnet, ranges=None):
         if not ranges:
             ranges = [(str(subnet[2]), str(subnet[-2]))]
+        floating_address = None
+        controller0_address = None
+        controller1_address = None
+        if name in ["pxeboot", "management", "oam", "cluster-host", "storage", "admin"]:
+            floating_address = netaddr.IPAddress(ranges[0][0])
+            controller0_address = floating_address + 1
+            controller1_address = floating_address + 2
+
         pool = dbutils.create_test_address_pool(
             name=name,
             network=str(subnet.network),
             family=subnet.version,
             prefix=subnet.prefixlen,
-            ranges=ranges)
+            ranges=ranges,
+            floating_address=str(floating_address),
+            controller0_address=str(controller0_address),
+            controller1_address=str(controller1_address))
         self.address_pools.append(pool)
         return pool
 
@@ -361,7 +372,7 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         ]
 
         self._create_test_addresses(
-            hostnames, self.pxeboot_subnet,
+            hostnames, self.multicast_subnet,
             constants.NETWORK_TYPE_MULTICAST)
 
 

@@ -112,7 +112,9 @@ class PlatformFirewallPuppet(base.BasePuppet):
                 if constants.NETWORK_TYPE_MGMT in intf_ep[intf_uuid][1]:
                     intf = intf_ep[intf_uuid][0]
                     iftype = intf_ep[intf_uuid][1]
-                    if intf.iftype == constants.INTERFACE_TYPE_ETHERNET:
+                    # add to the untagged interfaces
+                    if (intf.iftype == constants.INTERFACE_TYPE_ETHERNET) \
+                            or (intf.iftype == constants.INTERFACE_TYPE_AE):
                         intf_ep[intf_uuid][1] = iftype + "." + constants.NETWORK_TYPE_PXEBOOT
             # second, add the pxeboot network object to the list of firewalls
             pxe_net = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_PXEBOOT)

@@ -9,9 +9,11 @@ import os
 import uuid
 import yaml
 import mock
+import netaddr
 
 from sysinv.common import utils
 from sysinv.common import constants
+from sysinv.common import exception
 from sysinv.puppet import interface
 from sysinv.puppet import puppet
 from sysinv.objects import base as objbase
@@ -19,6 +21,7 @@ from sysinv.objects import base as objbase
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
 from sysinv.tests.puppet import base
+from sysinv.db import api as db_api
 
 
 NETWORKTYPES_WITH_V4_ADDRESSES = [constants.NETWORK_TYPE_MGMT,
@@ -61,12 +64,14 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
             address = {'interface_id': iface['id'],
                        'family': 4,
                        'prefix': 24,
+                       'name': 'test_addr4',
                        'address': '192.168.1.2'}
             self.addresses.append(dbutils.create_test_address(**address))
         elif iface['ifclass'] == constants.INTERFACE_CLASS_DATA:
             address = {'interface_id': iface['id'],
                        'family': 6,
                        'prefix': 64,
+                       'name': 'test_addr6',
                        'address': '2001:1::2'}
             self.addresses.append(dbutils.create_test_address(**address))
         if iface['ifclass'] == constants.INTERFACE_CLASS_DATA:
@@ -119,7 +124,7 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
             networktypelist = []
         networks = []
         for network_type in networktypelist:
-            network = self._find_network_by_type(networktype)
+            network = self._find_network_by_type(network_type)
             networks.append(str(network['id']))
         return networks
 
@@ -131,7 +136,8 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
             address['pool_uuid'] = pool['uuid']
 
     def _create_ethernet_test(self, ifname=None, ifclass=None,
-                              networktype=None, **kwargs):
+                              networktype=None, hostname=None,
+                              **kwargs):
         interface_id = len(self.interfaces)
         if not ifname:
             ifname = (networktype or 'eth') + str(interface_id)
@@ -156,6 +162,8 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                      'sriov_numvfs': kwargs.get('sriov_numvfs', 0),
                      'sriov_vf_driver': kwargs.get('iface_sriov_vf_driver', None)}
         db_interface = dbutils.create_test_interface(**interface)
+        for network in networks:
+            dbutils.create_test_interface_network_assign(db_interface['id'], network)
         self.interfaces.append(db_interface)
 
         port_id = len(self.ports)
@@ -178,10 +186,12 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
         db_port = dbutils.create_test_ethernet_port(**port)
         self.ports.append(db_port)
         self._setup_address_and_routes(db_interface)
+        if hostname:
+            self._assign_addresses_to_interface(hostname, db_interface, networktype)
         return db_port, db_interface
 
     def _create_vlan_test(self, ifname, ifclass, networktype, vlan_id,
-                          lower_iface=None):
+                          lower_iface=None, hostname=None):
         if not lower_iface:
             lower_port, lower_iface = self._create_ethernet_test()
         if not ifname:
@@ -208,11 +218,15 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                      'imtu': 1500}
         lower_iface['used_by'].append(interface['ifname'])
         db_interface = dbutils.create_test_interface(**interface)
+        for network in networks:
+            dbutils.create_test_interface_network_assign(db_interface['id'], network)
         self.interfaces.append(db_interface)
         self._setup_address_and_routes(db_interface)
+        if hostname:
+            self._assign_addresses_to_interface(hostname, db_interface, networktype)
         return db_interface
 
-    def _create_bond_test(self, ifname, ifclass=None, networktype=None):
+    def _create_bond_test(self, ifname, ifclass=None, networktype=None, hostname=None):
         port1, iface1 = self._create_ethernet_test()
         port2, iface2 = self._create_ethernet_test()
         interface_id = len(self.interfaces)
@@ -248,8 +262,12 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
         iface1['used_by'].append(interface['ifname'])
         iface2['used_by'].append(interface['ifname'])
         db_interface = dbutils.create_test_interface(**interface)
+        for network in networks:
+            dbutils.create_test_interface_network_assign(db_interface['id'], network)
         self.interfaces.append(db_interface)
         self._setup_address_and_routes(db_interface)
+        if hostname:
+            self._assign_addresses_to_interface(hostname, db_interface, networktype)
         return db_interface
 
     def _create_vf_test(self, ifname, num_vfs, vf_driver=None,
@@ -299,6 +317,115 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                 'subfunctions': ",".join(subfunctions)}
 
         return dbutils.create_test_ihost(**host)
+
+    def _assign_addresses_to_pool(self):
+
+        dbapi = db_api.get_instance()
+
+        pool_values = {'name': 'oam'}
+        oam_pool = dbapi.address_pool_query(pool_values)
+        pool_values = {'name': 'management'}
+        mgmt_pool = dbapi.address_pool_query(pool_values)
+        pool_values = {'name': 'cluster-host'}
+        cluster_host_pool = dbapi.address_pool_query(pool_values)
+        pool_values = {'name': 'pxeboot'}
+        pxeboot_pool = dbapi.address_pool_query(pool_values)
+        pool_values = {'name': 'admin'}
+        admin_pool = dbapi.address_pool_query(pool_values)
+
+        addresses = dbapi.addresses_get_all()
+        for addr in addresses:
+            if (addr.name):
+                if (addr.name.lower().endswith("-oam")):
+                    values = {'address_pool_id': oam_pool.id}
+                    dbapi.address_update(addr.uuid, values)
+                elif (addr.name.lower().endswith("-mgmt")):
+                    values = {'address_pool_id': mgmt_pool.id}
+                    dbapi.address_update(addr.uuid, values)
+                elif (addr.name.lower().endswith("-cluster-host")):
+                    values = {'address_pool_id': cluster_host_pool.id}
+                    dbapi.address_update(addr.uuid, values)
+                elif (addr.name.lower().endswith("-pxeboot")):
+                    values = {'address_pool_id': pxeboot_pool.id}
+                    dbapi.address_update(addr.uuid, values)
+                elif (addr.name.lower().endswith("-admin")):
+                    values = {'address_pool_id': admin_pool.id}
+                    dbapi.address_update(addr.uuid, values)
+
+    def _assign_addresses_to_interface(self, hostname, interface, networktypes):
+
+        if isinstance(networktypes, list):
+            networktypelist = networktypes
+        elif networktypes:
+            networktypelist = [networktypes]
+        else:
+            networktypelist = []
+
+        dbapi = db_api.get_instance()
+
+        addresses = dbapi.addresses_get_all()
+
+        for network_type in networktypelist:
+            for addr in addresses:
+                if not (addr.name):
+                    continue
+                try:
+                    if (addr.name == (hostname + "-oam")) and (network_type == constants.NETWORK_TYPE_OAM):
+                        dbapi.address_update(addr.uuid, {'interface_id': interface.id})
+                    elif (addr.name == (hostname + "-mgmt")) and (network_type == constants.NETWORK_TYPE_MGMT):
+                        dbapi.address_update(addr.uuid, {'interface_id': interface.id})
+                    elif (addr.name == (hostname + "-cluster-host")) \
+                            and (network_type == constants.NETWORK_TYPE_CLUSTER_HOST):
+                        dbapi.address_update(addr.uuid, {'interface_id': interface.id})
+                    elif (addr.name == (hostname + "-pxeboot")) and (network_type == constants.NETWORK_TYPE_PXEBOOT):
+                        dbapi.address_update(addr.uuid, {'interface_id': interface.id})
+                    elif (addr.name == (hostname + "-admin")) and (network_type == constants.NETWORK_TYPE_ADMIN):
+                        dbapi.address_update(addr.uuid, {'interface_id': interface.id})
+                    elif (addr.ifname == interface.ifname and addr.interface_id is None):
+                        dbapi.address_update(addr.uuid, {'interface_id': interface.id})
+                except Exception as ex:
+                    print(f"EXCEPTION {addr.name} {ex}")
+
+    def _create_addresses_for_node(self, nodename, network_type):
+
+        dbapi = db_api.get_instance()
+
+        addr_pool = None
+        if (network_type == constants.NETWORK_TYPE_OAM):
+            addr_pool = dbapi.address_pool_query({'name': 'oam'})
+        elif (network_type == constants.NETWORK_TYPE_MGMT):
+            addr_pool = dbapi.address_pool_query({'name': 'management'})
+        elif (network_type == constants.NETWORK_TYPE_CLUSTER_HOST):
+            addr_pool = dbapi.address_pool_query({'name': 'cluster-host'})
+        elif (network_type == constants.NETWORK_TYPE_PXEBOOT):
+            addr_pool = dbapi.address_pool_query({'name': 'pxeboot'})
+        elif (network_type == constants.NETWORK_TYPE_ADMIN):
+            addr_pool = dbapi.address_pool_query({'name': 'admin'})
+
+        if addr_pool:
+            ip_address = netaddr.IPAddress(addr_pool.network)
+            if addr_pool.floating_address_id:
+                ip_address = ip_address + 1
+            if addr_pool.controller0_address_id:
+                ip_address = ip_address + 2
+            if addr_pool.controller1_address_id:
+                ip_address = ip_address + 3
+            if addr_pool.gateway_address_id:
+                ip_address = ip_address + 4
+            for idx in range(4, 30):
+                ip_address = ip_address + idx
+                try:
+                    dbapi.address_get_by_address(str(ip_address))
+                except exception.AddressNotFoundByAddress:
+                    address = {
+                        'family': addr_pool.family,
+                        'prefix': addr_pool.prefix,
+                        'name': f'{nodename}-{network_type}',
+                        'address': str(ip_address),
+                        'address_pool_id': addr_pool.id
+                    }
+                    dbutils.create_test_address(**address)
+                    break
 
     @puppet.puppet_context
     def _update_context(self):
@@ -648,11 +775,11 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             constants.NETWORK_TYPE_PXEBOOT)
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
-        self.assertEqual(method, 'manual')
+        self.assertEqual(method, 'dhcp')
         self.mock_puppet_interface_sysconfig.return_value = False
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
-        self.assertEqual(method, 'manual')
+        self.assertEqual(method, 'dhcp')
 
     def test_get_interface_address_method_for_pxeboot_storage(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
@@ -667,11 +794,11 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             constants.NETWORK_TYPE_PXEBOOT)
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
-        self.assertEqual(method, 'manual')
+        self.assertEqual(method, 'dhcp')
         self.mock_puppet_interface_sysconfig.return_value = False
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
-        self.assertEqual(method, 'manual')
+        self.assertEqual(method, 'dhcp')
 
     def test_get_interface_address_method_for_pxeboot_controller(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
@@ -1324,7 +1451,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         options = {'IPV6_AUTOCONF': 'no',
                    'LINKDELAY': '20'}
         expected = self._get_static_network_config(
-            ifname=self.port['name'], mtu=1500, gateway='10.10.10.1',
+            ifname=f"{self.port['name']}:{network.id}", mtu=1500, gateway='10.10.10.1',
             options=options)
         print(expected)
         self.assertEqual(expected, config)
@@ -1342,11 +1469,12 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         config = interface.get_interface_network_config(
             self.context, self.iface, network.id)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
-        options = {'post-up': '{}'.format(ipv6_autocnf_off),
+        options = {'stx-description': 'ifname:mgmt0,net:oam',
+                   'post-up': '{}'.format(ipv6_autocnf_off),
                    'mtu': '1500',
                    'gateway': '10.10.10.1'}
         expected = self._get_static_network_config_ifupdown(
-            ifname=self.port['name'], options=options)
+            ifname=f"{self.port['name']}:{network.id}", options=options)
         print(expected)
         self.assertEqual(expected, config)
 
@@ -1362,15 +1490,10 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         config = interface.get_interface_network_config(
             self.context, self.iface, network.id)
         options = {'IPV6_AUTOCONF': 'no',
-                   'LINKDELAY': '20',
-                   'post_up':
-                       '%s %s %s %s > /dev/null' %
-                       (constants.TRAFFIC_CONTROL_SCRIPT,
-                        self.port['name'], constants.NETWORK_TYPE_MGMT,
-                        constants.LINK_SPEED_10G)}
+                   'LINKDELAY': '20'}
         expected = self._get_static_network_config(
-            ifname=self.port['name'], mtu=1500, gateway='192.168.204.1',
-            options=options)
+            ifname=f"{self.port['name']}:{network.id}", mtu=1500,
+            gateway='192.168.204.1', options=options)
         print(expected)
         self.assertEqual(expected, config)
 
@@ -1387,13 +1510,12 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         config = interface.get_interface_network_config(
             self.context, self.iface, network.id)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
-        options = {'post-up': '%s %s %s %s > /dev/null; %s' % (constants.TRAFFIC_CONTROL_SCRIPT,
-                        self.port['name'], constants.NETWORK_TYPE_MGMT, constants.LINK_SPEED_10G,
-                        ipv6_autocnf_off),
+        options = {'post-up': '%s' % ipv6_autocnf_off,
                    'mtu': '1500',
+                   'stx-description': 'ifname:mgmt0,net:mgmt',
                    'gateway': '192.168.204.1'}
         expected = self._get_static_network_config_ifupdown(
-            ifname=self.port['name'], options=options)
+            ifname=f"{self.port['name']}:{network.id}", options=options)
         print(expected)
         self.assertEqual(expected, config)
 
@@ -1412,7 +1534,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         options = {'IPV6_AUTOCONF': 'no',
                    'LINKDELAY': '20'}
         expected = self._get_static_network_config(
-            ifname=self.port['name'], mtu=1500,
+            ifname=f"{self.port['name']}:{network.id}", mtu=1500,
             options=options)
         print(expected)
         self.assertEqual(expected, config)
@@ -1431,10 +1553,11 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         config = interface.get_interface_network_config(
             self.context, self.iface, network.id)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
-        options = {'post-up': '{}'.format(ipv6_autocnf_off),
+        options = {'stx-description': 'ifname:mgmt0,net:cluster-host',
+                   'post-up': '{}'.format(ipv6_autocnf_off),
                    'mtu': '1500'}
         expected = self._get_static_network_config_ifupdown(
-            ifname=self.port['name'], options=options)
+            ifname=f"{self.port['name']}:{network.id}", options=options)
         print(expected)
         self.assertEqual(expected, config)
 
@@ -1464,6 +1587,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(port['name'])
         options = {'allow-bond0': port['name'],
                    'bond-master': 'bond0',
+                   'stx-description': 'ifname:eth1,net:None',
                    'pre-up': '/usr/sbin/ip link set dev {} promisc on; {}'.format(port['name'],
                                                                              ipv6_autocnf_off),
                    'mtu': '1500'}
@@ -1570,8 +1694,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'BONDING_OPTS':
                        'mode=802.3ad lacp_rate=fast xmit_hash_policy=layer2 miimon=100'}
         expected = self._get_static_network_config(
-            ifname=bond['ifname'], gateway='192.168.204.1', ipaddress='192.168.1.2',
-            mtu=1500, options=options)
+            ifname=f"{bond['ifname']}:{network.id}", gateway='192.168.204.1',
+            ipaddress='192.168.1.2', mtu=1500, options=options)
         print(expected)
         self.assertEqual(expected, config)
 
@@ -1593,6 +1717,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'bond-mode': '802.3ad',
                    'bond-slaves': 'eth1 eth2 ',
                    'bond-xmit-hash-policy': 'layer2',
+                   'stx-description': 'ifname:bond0,net:mgmt',
                    'gateway': '192.168.204.1',
                    'hwaddress': '02:11:22:33:44:13',
                    'mtu': '1500',
@@ -1601,7 +1726,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                               '/proc/sys/net/ipv6/conf/bond0/accept_redirects',
                    'up': 'sleep 10'}
         expected = self._get_static_network_config_ifupdown(
-            ifname=bond['ifname'], options=options)
+            ifname=f"{bond['ifname']}:{network.id}", options=options)
         print(expected)
         self.assertEqual(expected, config)
 
@@ -1627,7 +1752,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'BONDING_OPTS':
                        'mode=802.3ad lacp_rate=fast xmit_hash_policy=layer2 miimon=100'}
         expected = self._get_static_network_config(
-            ifname=bond['ifname'], gateway='192.168.204.1', ipaddress='192.168.1.2',
+            ifname=f"{bond['ifname']}:{network.id}", gateway='192.168.204.1', ipaddress='192.168.1.2',
             mtu=1500, options=options)
         print(expected)
         self.assertEqual(expected, config)
@@ -1650,6 +1775,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'bond-mode': '802.3ad',
                    'bond-slaves': 'eth1 eth2 ',
                    'bond-xmit-hash-policy': 'layer2',
+                   'stx-description': 'ifname:bond0,net:mgmt',
                    'gateway': '192.168.204.1',
                    'hwaddress': '02:11:22:33:44:13',
                    'mtu': '1500',
@@ -1662,7 +1788,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                              'net.ipv6.conf.bond0.accept_dad=0',
                    'up': 'sleep 10'}
         expected = self._get_static_network_config_ifupdown(
-            ifname=bond['ifname'], options=options)
+            ifname=f"{bond['ifname']}:{network.id}", options=options)
         print(expected)
         self.assertEqual(expected, config)
 
@@ -1690,6 +1816,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                   'bond-slaves': 'eth1 eth2 ',
                   'bond-mode': 'balance-xor',
                   'bond-xmit-hash-policy': 'layer2',
+                  'stx-description': 'ifname:bond0,net:None',
                   'hwaddress': bond['imac'],
                   'mtu': '1500',
                   'post-up': '{}'.format(ipv6_autocnf_off),
@@ -1727,6 +1854,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'bond-mode': '802.3ad',
                    'bond-slaves': 'eth1 eth2 ',
                    'bond-xmit-hash-policy': 'layer2',
+                   'stx-description': 'ifname:bond0,net:None',
                    'hwaddress': bond['imac'],
                    'mtu': '1500',
                    'post-up': '{}'.format(ipv6_autocnf_off),
@@ -1764,6 +1892,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'bond-slaves': 'eth1 eth2 ',
                    'bond-primary': 'eth1',
                    'bond-primary-reselect': 'always',
+                   'stx-description': 'ifname:bond0,net:None',
                    'hwaddress': bond['imac'],
                    'mtu': '1500',
                    'post-up': '{}'.format(ipv6_autocnf_off),
@@ -1803,6 +1932,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'bond-slaves': 'eth1 eth2 ',
                    'bond-primary': 'eth1',
                    'bond-primary-reselect': 'better',
+                   'stx-description': 'ifname:bond0,net:None',
                    'hwaddress': bond['imac'],
                    'mtu': '1500',
                    'post-up': '{}'.format(ipv6_autocnf_off),
@@ -1837,7 +1967,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         ipv6_autocnf_off = self._get_ipv6_autoconf_off("vlan#1")
         mtu = '1500'
         set_mtu = self._get_postup_mtu("vlan#1", mtu)
-        options = {'mtu': mtu,
+        options = {'stx-description': 'ifname:vlan1,net:None',
+                   'mtu': mtu,
                    'post-down': 'ip link del vlan#1',
                    'pre-up': '/sbin/modprobe -q 8021q; ip link add link '
                              '{} name vlan#1 type vlan id 1'.format(
@@ -1862,7 +1993,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             vlan, constants.NETWORK_TYPE_MGMT)
         network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
         config = interface.get_interface_network_config(self.context, vlan, network.id)
-        options = {'gateway': '192.168.204.1',
+        options = {'stx-description': 'ifname:vlan100,net:mgmt',
+                   'gateway': '192.168.204.1',
                    'mtu': '1500',
                    'post-down': 'ip link del vlan100',
                    'post-up': '/usr/sbin/ip link set dev vlan100 mtu 1500; echo 0 > '
@@ -1874,7 +2006,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                                  self.port['name']) +
                              'sysctl -wq net.ipv6.conf.vlan100.accept_dad=0',
                    'vlan-raw-device': '{}'.format(self.port['name'])}
-        expected = self._get_static_network_config(ifname="vlan100",
+        expected = self._get_static_network_config(ifname=f"vlan100:{network.id}",
             ipaddress='192.168.1.2', options=options)
         print(expected)
         self.assertEqual(expected, config)
@@ -1891,8 +2023,9 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
         config = interface.get_interface_network_config(self.context, vlan,
             network.id)
-        options = {'mtu': '1500',
+        options = {'stx-description': 'ifname:vlan.dot,net:mgmt',
                    'post-down': 'ip link del vlan.dot',
+                   'mtu': '1500',
                    'post-up': '/usr/sbin/ip link set dev vlan.dot mtu 1500; echo 0 > '
                               '/proc/sys/net/ipv6/conf/vlan.dot/autoconf; echo 0 '
                               '> /proc/sys/net/ipv6/conf/vlan.dot/accept_ra; echo 0 > '
@@ -1902,8 +2035,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                                  self.port['name']) +
                              'sysctl -wq net.ipv6.conf.vlan/dot.accept_dad=0',
                    'vlan-raw-device': '{}'.format(self.port['name'])}
-        expected = self._get_network_config(ifname="vlan.dot", method='manual',
-            options=options)
+        expected = self._get_network_config(ifname=f"vlan.dot:{network.id}",
+                                            method='manual', options=options)
         print(expected)
         self.assertEqual(expected, config)
 
@@ -1920,7 +2053,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             vlan, constants.NETWORK_TYPE_MGMT)
         network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
         config = interface.get_interface_network_config(self.context, vlan, network.id)
-        options = {'gateway': '192.168.204.1',
+        options = {'stx-description': 'ifname:vlan100,net:mgmt',
+                   'gateway': '192.168.204.1',
                    'mtu': '1500',
                    'post-down': 'ip link del vlan100',
                    'post-up': '/usr/sbin/ip link set dev vlan100 mtu 1500; echo 0 > '
@@ -1933,7 +2067,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                              'sysctl -wq net.ipv6.conf.vlan100.accept_dad=0',
                    'vlan-raw-device': '{}'.format(self.port['name'])}
         expected = self._get_static_network_config_ifupdown(
-            ifname="vlan100", options=options)
+            ifname=f"vlan100:{network.id}", options=options)
         print(expected)
         self.assertEqual(expected, config)
 
@@ -1964,8 +2098,9 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         ipv6_autocnf_off = self._get_ipv6_autoconf_off("vlan#1")
         mtu = '1500'
         set_mtu = self._get_postup_mtu("vlan#1", mtu)
-        options = {'mtu': mtu,
+        options = {'stx-description': 'ifname:vlan1,net:None',
                    'post-down': 'ip link del vlan#1',
+                   'mtu': mtu,
                    'pre-up': '/sbin/modprobe -q 8021q; ip link add link '
                              '{} name vlan#1 type vlan id 1'.format(
                                  bond['ifname']),
@@ -1989,14 +2124,9 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         config = interface.get_interface_network_config(
             self.context, self.iface, network.id)
         options = {'IPV6_AUTOCONF': 'no',
-                   'LINKDELAY': '20',
-                   'post_up':
-                       '%s %s %s %s > /dev/null' %
-                       (constants.TRAFFIC_CONTROL_SCRIPT,
-                        self.port['name'], constants.NETWORK_TYPE_MGMT,
-                        constants.LINK_SPEED_10G)}
+                   'LINKDELAY': '20'}
         expected = self._get_static_network_config(
-            ifname=self.port['name'], mtu=1500, gateway='192.168.204.2', options=options)
+            ifname=f"{self.port['name']}:{network.id}", mtu=1500, gateway='192.168.204.2', options=options)
         print(expected)
         self.assertEqual(expected, config)
 
@@ -2014,12 +2144,12 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         config = interface.get_interface_network_config(
             self.context, self.iface, network.id)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
-        options = {'mtu': '1500',
+        options = {'stx-description': 'ifname:mgmt0,net:mgmt',
+                   'mtu': '1500',
                    'gateway': '192.168.204.2',
-                   'post-up': '/usr/local/bin/tc_setup.sh {} mgmt 10000 > '
-                           '/dev/null; {}'.format(self.port['name'], ipv6_autocnf_off),
-                   }
-        expected = self._get_static_network_config_ifupdown(ifname=self.port['name'], options=options)
+                   'post-up': '{}'.format(ipv6_autocnf_off)}
+        expected = self._get_static_network_config_ifupdown(ifname=f"{self.port['name']}:{network.id}",
+                                                            options=options)
         print(expected)
         self.assertEqual(expected, config)
 
@@ -2039,7 +2169,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         options = {'IPV6_AUTOCONF': 'no',
                    'LINKDELAY': '20'}
         expected = self._get_static_network_config(
-            ifname=self.port['name'], mtu=1500, options=options)
+            ifname=f"{self.port['name']}:{network.id}", mtu=1500, options=options)
         print(expected)
         self.assertEqual(expected, config)
 
@@ -2058,10 +2188,11 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         config = interface.get_interface_network_config(
             self.context, self.iface, network.id)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
-        options = {'mtu': '1500',
+        options = {'stx-description': 'ifname:mgmt0,net:cluster-host',
+                   'mtu': '1500',
                    'post-up': '{}'.format(ipv6_autocnf_off)}
         expected = self._get_static_network_config_ifupdown(
-            ifname=self.port['name'], options=options)
+            ifname=f"{self.port['name']}:{network.id}", options=options)
         print(expected)
         self.assertEqual(expected, config)
 
@@ -2092,7 +2223,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         config = interface.get_interface_network_config(
             self.context, self.iface)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
-        options = {'mtu': '1500',
+        options = {'stx-description': 'ifname:mgmt0,net:None',
+                   'mtu': '1500',
                    'pre-up': 'echo 0 > /sys/class/net/{}/device/sriov_numvfs;'
                              ' echo 0 > /sys/class/net/{}/device/sriov_numvfs'.format(self.port['name'],
                                                                                  self.port['name']),
@@ -2129,7 +2261,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         config = interface.get_interface_network_config(
             self.context, self.iface)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
-        options = {'mtu': '1500',
+        options = {'stx-description': 'ifname:mgmt0,net:None',
+                   'mtu': '1500',
                    'pre-up':
                       'if [ -f  /sys/class/net/{}/device/sriov_numvfs ];'
                         ' then echo 0 > /sys/class/net/{}/device/sriov_numvfs; fi'.format(
@@ -2480,6 +2613,8 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.mock_puppet_interface_sysconfig = p.start()
         self.mock_puppet_interface_sysconfig.return_value = True
         self.addCleanup(p.stop)
+        self._assign_addresses_to_pool()
+        self.exp_yaml_config = {}
 
     def _setup_configuration(self):
         # Personality is set to worker to avoid issues due to missing OAM
@@ -2514,10 +2649,44 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.mock_puppet_interface_sysconfig.return_value = False
         hieradata_directory = self._create_hieradata_directory()
         config_filename = self._get_config_filename(hieradata_directory)
+        # print(config_filename)
         with open(config_filename, 'w') as config_file:
             config = self.operator.interface.get_host_config(self.host)  # pylint: disable=no-member
             self.assertIsNotNone(config)
             yaml.dump(config, config_file, default_flow_style=False)
+
+    def test_interface_config_yaml_data_validation(self):
+        self.mock_puppet_interface_sysconfig.return_value = False
+        hieradata_directory = self._create_hieradata_directory()
+        config_filename = self._get_config_filename(hieradata_directory)
+        print(config_filename)
+        with open(config_filename, 'w') as config_file:
+            config = self.operator.interface.get_host_config(self.host)  # pylint: disable=no-member
+            self.assertIsNotNone(config)
+            yaml.dump(config, config_file, default_flow_style=False)
+
+        hiera_data = dict()
+        with open(config_filename, 'r') as config_file:
+            hiera_data = yaml.safe_load(config_file)
+
+        self.assertTrue('platform::network::interfaces::network_config' in hiera_data.keys())
+
+        if len(self.exp_yaml_config):
+            intf_cfg = hiera_data['platform::network::interfaces::network_config']
+            for exp_intf in self.exp_yaml_config:
+                self.assertTrue(exp_intf in intf_cfg.keys())
+                if exp_intf != 'lo':
+                    self.assertEqual(self.exp_yaml_config[exp_intf]['family'],
+                                    intf_cfg[exp_intf]['family'])
+                    self.assertEqual(self.exp_yaml_config[exp_intf]['method'],
+                                    intf_cfg[exp_intf]['method'])
+                    self.assertEqual(self.exp_yaml_config[exp_intf]['stx-description'],
+                                    intf_cfg[exp_intf]['options']['stx-description'])
+                if self.exp_yaml_config[exp_intf]['tc']:
+                    self.assertTrue('tc_setup.sh' in intf_cfg[exp_intf]['options']['post-up'])
+                else:
+                    if 'post-up' in intf_cfg[exp_intf]['options'].keys():
+                        self.assertFalse('tc_setup.sh' in intf_cfg[exp_intf]['options']['post-up'])
 
     def test_create_interface_context(self):
         context = self.operator.interface._create_interface_context(self.host)  # pylint: disable=no-member
@@ -2531,9 +2700,11 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.assertIn('gateways', context)
 
     def test_is_platform_interface(self):
+        if not self.expected_platform_interfaces:
+            self.assertTrue(True)
+            return
         for iface in self.interfaces:
-            expected = bool(
-                iface['ifname'] in self.expected_platform_interfaces)
+            expected = bool(iface['ifname'] in self.expected_platform_interfaces)
             if interface.is_platform_interface(self.context,
                                                iface) != expected:
                 print("iface %s is %sa kernel interface" % (
@@ -2542,6 +2713,9 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                 self.assertFalse(True)
 
     def test_is_data_interface(self):
+        if not self.expected_data_interfaces:
+            self.assertTrue(True)
+            return
         for iface in self.interfaces:
             expected = bool(iface['ifname'] in self.expected_data_interfaces)
             if interface.is_data_interface(self.context, iface) != expected:
@@ -2550,6 +2724,9 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                 self.assertFalse(True)
 
     def test_is_pci_interface(self):
+        if not self.expected_pci_interfaces:
+            self.assertTrue(True)
+            return
         for iface in self.interfaces:
             expected = bool(iface['ifname'] in self.expected_pci_interfaces)
             if interface.is_pci_interface(iface) != expected:
@@ -2558,6 +2735,9 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                 self.assertFalse(True)
 
     def test_is_a_mellanox_device(self):
+        if not self.expected_mlx_interfaces:
+            self.assertTrue(True)
+            return
         for iface in self.interfaces:
             if (iface['iftype'] not in
                     [constants.INTERFACE_TYPE_ETHERNET, constants.INTERFACE_TYPE_VF]):
@@ -2570,6 +2750,9 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                 self.assertFalse(True)
 
     def test_is_dpdk_compatible_false(self):
+        if not self.expected_slow_interfaces:
+            self.assertTrue(True)
+            return
         for iface in self.interfaces:
             expected = bool(iface['ifname'] in self.expected_slow_interfaces)
             if interface.is_dpdk_compatible(self.context, iface) == expected:
@@ -2578,6 +2761,9 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                 self.assertFalse(True)
 
     def test_is_bridged_interface(self):
+        if not self.expected_bridged_interfaces:
+            self.assertTrue(True)
+            return
         for iface in self.interfaces:
             expected = bool(
                 iface['ifname'] in self.expected_bridged_interfaces)
@@ -2588,6 +2774,9 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                 self.assertFalse(True)
 
     def test_is_slave_interface(self):
+        if not self.expected_slave_interfaces:
+            self.assertTrue(True)
+            return
         for iface in self.interfaces:
             expected = bool(iface['ifname'] in self.expected_slave_interfaces)
             if interface.is_slave_interface(self.context, iface) != expected:
@@ -2602,6 +2791,9 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             expected_configured += (self.expected_pci_interfaces +
                                     self.expected_slow_interfaces +
                                     self.expected_mlx_interfaces)
+        if (expected_configured == [None]):
+            self.assertTrue(True)
+            return
         for iface in self.interfaces:
             expected = bool(iface['ifname'] in expected_configured)
             actual = interface.needs_interface_config(self.context, iface)
@@ -2617,17 +2809,128 @@ class InterfaceControllerEthernet(InterfaceHostTestCase):
         # ethernet interfaces.
         self.host = self._create_test_host(constants.CONTROLLER)
         self._create_ethernet_test('oam', constants.INTERFACE_CLASS_PLATFORM,
-                                   constants.NETWORK_TYPE_OAM)
+                                   constants.NETWORK_TYPE_OAM,
+                                   hostname=self.host.hostname)
         self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
-                                   constants.NETWORK_TYPE_MGMT)
+                                   constants.NETWORK_TYPE_MGMT,
+                                   hostname=self.host.hostname)
         self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
-                                   constants.NETWORK_TYPE_CLUSTER_HOST)
+                                   constants.NETWORK_TYPE_CLUSTER_HOST,
+                                   hostname=self.host.hostname)
         self._create_ethernet_test('none')
 
     def setUp(self):
         super(InterfaceControllerEthernet, self).setUp()
         self.expected_bmc_interface = 'mgmt'
         self.expected_platform_interfaces = ['oam', 'mgmt', 'cluster-host']
+        self.exp_yaml_config = {
+            "eth0": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:oam,net:{constants.NETWORK_TYPE_OAM}',
+                     'tc': False},
+            "eth1": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:mgmt,net:{None}', 'tc': True},
+            "eth1:1": {'family': 'inet', 'method': 'static',
+                       'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
+                       'tc': False},
+            "eth1:2": {'family': 'inet', 'method': 'static',
+                       'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
+                       'tc': False},
+            "eth2": {'family': 'inet', 'method': 'static',
+                     'stx-description': 'ifname:cluster-host,'
+                                   f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
+                     'tc': False},
+            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
+                   'tc': False},
+        }
+
+
+class InterfaceControllerEthernetCfg2(InterfaceHostTestCase):
+    def _setup_configuration(self):
+        # Setup a sample configuration where all platform interfaces are
+        # ethernet interfaces. In this case the management is assigned
+        # to management and cluster-host networks
+
+        self.host = self._create_test_host(constants.CONTROLLER)
+
+        self._create_ethernet_test('oam0', constants.INTERFACE_CLASS_PLATFORM,
+                                    constants.NETWORK_TYPE_OAM,
+                                    hostname=self.host.hostname)
+
+        self._create_ethernet_test('mgmt0', constants.INTERFACE_CLASS_PLATFORM,
+                                    [constants.NETWORK_TYPE_MGMT,
+                                     constants.NETWORK_TYPE_CLUSTER_HOST],
+                                    hostname=self.host.hostname)
+
+        self._create_ethernet_test('none')
+
+    def setUp(self):
+        super(InterfaceControllerEthernetCfg2, self).setUp()
+        self.expected_bmc_interface = 'mgmt0'
+        self.expected_platform_interfaces = ['oam0', 'mgmt0']
+        self.exp_yaml_config = {
+            "eth0": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:oam0,net:{constants.NETWORK_TYPE_OAM}',
+                     'tc': False},
+            "eth1": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:mgmt0,net:{None}', 'tc': True},
+            "eth1:1": {'family': 'inet', 'method': 'static',
+                       'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_PXEBOOT}',
+                       'tc': False},
+            "eth1:2": {'family': 'inet', 'method': 'static',
+                       'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_MGMT}',
+                       'tc': False},
+            "eth1:4": {'family': 'inet', 'method': 'static',
+                       'stx-description': 'ifname:mgmt0,'
+                                     f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
+                       'tc': False},
+            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
+                   'tc': False},
+        }
+
+
+class InterfaceControllerEthernetCfg3(InterfaceHostTestCase):
+    def _setup_configuration(self):
+        # Setup a sample configuration where all platform interfaces are
+        # ethernet interfaces. In this case the management is assigned
+        # to management, pxeboot and cluster-host networks
+
+        self.host = self._create_test_host(constants.CONTROLLER)
+
+        self._create_ethernet_test('oam0', constants.INTERFACE_CLASS_PLATFORM,
+                                    constants.NETWORK_TYPE_OAM,
+                                    hostname=self.host.hostname)
+
+        self._create_ethernet_test('mgmt0', constants.INTERFACE_CLASS_PLATFORM,
+                                    [constants.NETWORK_TYPE_MGMT,
+                                     constants.NETWORK_TYPE_CLUSTER_HOST,
+                                     constants.NETWORK_TYPE_PXEBOOT],
+                                    hostname=self.host.hostname)
+
+        self._create_ethernet_test('none')
+
+    def setUp(self):
+        super(InterfaceControllerEthernetCfg3, self).setUp()
+        self.expected_bmc_interface = 'mgmt0'
+        self.expected_platform_interfaces = ['oam0', 'mgmt0']
+        self.exp_yaml_config = {
+            "eth0": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:oam0,net:{constants.NETWORK_TYPE_OAM}',
+                     'tc': False},
+            "eth1": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:mgmt0,net:{None}', 'tc': True},
+            "eth1:1": {'family': 'inet', 'method': 'static',
+                       'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_PXEBOOT}',
+                       'tc': False},
+            "eth1:2": {'family': 'inet', 'method': 'static',
+                       'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_MGMT}',
+                       'tc': False},
+            "eth1:4": {'family': 'inet', 'method': 'static',
+                       'stx-description': 'ifname:mgmt0,'
+                                     f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
+                       'tc': False},
+            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
+                   'tc': False},
+        }
 
 
 class InterfaceControllerBond(InterfaceHostTestCase):
@@ -2635,22 +2938,63 @@ class InterfaceControllerBond(InterfaceHostTestCase):
         # Setup a sample configuration where all platform interfaces are
         # aggregated ethernet interfaces.
         self.host = self._create_test_host(constants.CONTROLLER)
-        self._create_bond_test('oam', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_OAM)
-        self._create_bond_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_MGMT)
-        self._create_bond_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_CLUSTER_HOST)
+
+        self._create_bond_test('oam0', constants.INTERFACE_CLASS_PLATFORM,
+                                constants.NETWORK_TYPE_OAM,
+                                hostname=self.host.hostname)
+
+        self._create_bond_test('mgmt0', constants.INTERFACE_CLASS_PLATFORM,
+                                constants.NETWORK_TYPE_MGMT,
+                                hostname=self.host.hostname)
+
+        self._create_bond_test('cluster-host0', constants.INTERFACE_CLASS_PLATFORM,
+                                constants.NETWORK_TYPE_CLUSTER_HOST,
+                                hostname=self.host.hostname)
 
     def setUp(self):
         super(InterfaceControllerBond, self).setUp()
         self.expected_bmc_interface = 'mgmt'
-        self.expected_platform_interfaces = ['eth0', 'eth1', 'oam',
-                                             'eth3', 'eth4', 'mgmt',
-                                             'eth6', 'eth7', 'cluster-host']
+        self.expected_platform_interfaces = ['eth0', 'eth1', 'oam0',
+                                             'eth3', 'eth4', 'mgmt0',
+                                             'eth6', 'eth7', 'cluster-host0']
         self.expected_slave_interfaces = ['eth0', 'eth1',
                                           'eth3', 'eth4',
                                           'eth6', 'eth7']
+        # the slave interfaces do not match the linux name created by the test database
+        # port:eth0 => ifname:eth0, port:eth1 => ifname:eth1
+        # port:eth2 => ifname:eth3, port:eth3 => ifname:eth4 (differ)
+        # port:eth4 => ifname:eth6, port:eth5 => ifname:eth7 (differ)
+        self.exp_yaml_config = {
+            "eth0": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:eth0,net:{None}', 'tc': False},
+            "eth1": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:eth1,net:{None}', 'tc': False},
+            "eth2": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:eth3,net:{None}', 'tc': False},
+            "eth3": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:eth4,net:{None}', 'tc': False},
+            "eth4": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:eth6,net:{None}', 'tc': False},
+            "eth5": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:eth7,net:{None}', 'tc': False},
+            "oam0": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:oam0,net:{constants.NETWORK_TYPE_OAM}',
+                     'tc': False},
+            "mgmt0": {'family': 'inet', 'method': 'manual',
+                      'stx-description': f'ifname:mgmt0,net:{None}', 'tc': True},
+            "mgmt0:1": {'family': 'inet', 'method': 'static',
+                      'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_PXEBOOT}',
+                      'tc': False},
+            "mgmt0:2": {'family': 'inet', 'method': 'static',
+                      'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_MGMT}',
+                      'tc': False},
+            "cluster-host0": {'family': 'inet', 'method': 'static',
+                              'stx-description': 'ifname:cluster-host0,'
+                                     f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
+                              'tc': False},
+            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
+                   'tc': False},
+        }
 
 
 class InterfaceControllerVlanOverBond(InterfaceHostTestCase):
@@ -2658,24 +3002,52 @@ class InterfaceControllerVlanOverBond(InterfaceHostTestCase):
         # Setup a sample configuration where all platform interfaces are
         # vlan interfaces over aggregated ethernet interfaces
         self.host = self._create_test_host(constants.CONTROLLER)
-        bond = self._create_bond_test('pxeboot',
-                                      constants.INTERFACE_CLASS_PLATFORM,
-                                      constants.NETWORK_TYPE_PXEBOOT)
-        self._create_vlan_test('oam', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_OAM, 1, bond)
-        self._create_vlan_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_MGMT, 2, bond)
-        self._create_vlan_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_CLUSTER_HOST, 3,
-                               bond)
+        bond = self._create_bond_test('pxeboot0', constants.INTERFACE_CLASS_PLATFORM,
+                                      constants.NETWORK_TYPE_PXEBOOT,
+                                      hostname=self.host.hostname)
+
+        self._create_vlan_test('oam0', constants.INTERFACE_CLASS_PLATFORM,
+                                constants.NETWORK_TYPE_OAM, 1, bond,
+                                hostname=self.host.hostname)
+
+        self._create_vlan_test('mgmt0',
+                                constants.INTERFACE_CLASS_PLATFORM,
+                                constants.NETWORK_TYPE_MGMT, 2, bond,
+                                hostname=self.host.hostname)
+
+        self._create_vlan_test('cluster-host0', constants.INTERFACE_CLASS_PLATFORM,
+                                constants.NETWORK_TYPE_CLUSTER_HOST, 3, bond,
+                                hostname=self.host.hostname)
+
         self._create_ethernet_test('none')
 
     def setUp(self):
         super(InterfaceControllerVlanOverBond, self).setUp()
         self.expected_bmc_interface = 'pxeboot'
-        self.expected_platform_interfaces = ['eth0', 'eth1', 'pxeboot',
-                                             'oam', 'mgmt', 'cluster-host']
+        self.expected_platform_interfaces = ['eth0', 'eth1', 'pxeboot0',
+                                             'oam0', 'mgmt0', 'cluster-host0']
         self.expected_slave_interfaces = ['eth0', 'eth1']
+        self.exp_yaml_config = {
+            "eth0": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:eth0,net:{None}', 'tc': False},
+            "eth1": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:eth1,net:{None}', 'tc': False},
+            "pxeboot0": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:pxeboot0,net:{constants.NETWORK_TYPE_PXEBOOT}',
+                     'tc': False},
+            "vlan1": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:oam0,net:{constants.NETWORK_TYPE_OAM}',
+                     'tc': False},
+            "vlan2": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_MGMT}',
+                     'tc': True},
+            "vlan3": {'family': 'inet', 'method': 'static',
+                              'stx-description': 'ifname:cluster-host0,'
+                                     f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
+                                     'tc': False},
+            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
+                   'tc': False},
+        }
 
 
 class InterfaceControllerVlanOverEthernet(InterfaceHostTestCase):
@@ -2683,15 +3055,23 @@ class InterfaceControllerVlanOverEthernet(InterfaceHostTestCase):
         # Setup a sample configuration where all platform interfaces are
         # vlan interfaces over ethernet interfaces
         self.host = self._create_test_host(constants.CONTROLLER)
+
         port, iface = self._create_ethernet_test(
             'pxeboot', constants.INTERFACE_CLASS_PLATFORM,
-            constants.NETWORK_TYPE_PXEBOOT)
+            constants.NETWORK_TYPE_PXEBOOT, hostname=self.host.hostname)
+
         self._create_vlan_test('oam', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_OAM, 1, iface)
+                               constants.NETWORK_TYPE_OAM, 1, iface,
+                               hostname=self.host.hostname)
+
         self._create_vlan_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_MGMT, 2, iface)
+                               constants.NETWORK_TYPE_MGMT, 2, iface,
+                               hostname=self.host.hostname)
+
         self._create_vlan_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_CLUSTER_HOST, 3, iface)
+                               constants.NETWORK_TYPE_CLUSTER_HOST, 3, iface,
+                               hostname=self.host.hostname)
+
         self._create_ethernet_test('none')
 
     def setUp(self):
@@ -2704,25 +3084,33 @@ class InterfaceControllerVlanOverEthernet(InterfaceHostTestCase):
 class InterfaceComputeEthernet(InterfaceHostTestCase):
     def _setup_configuration(self):
         # Setup a sample configuration where the personality is set to a
-        # worker and all interfaces are ethernet interfaces.
+        # worker and all interfaces are ethernet interfaces. Do not explicit
+        # attach the PXEboot network
         self.host = self._create_test_host(constants.WORKER)
         self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
-                                   constants.NETWORK_TYPE_MGMT)
+                                   constants.NETWORK_TYPE_MGMT,
+                                   hostname=self.host.hostname)
         self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
-                                   constants.NETWORK_TYPE_CLUSTER_HOST)
-        self._create_ethernet_test('data', constants.INTERFACE_CLASS_DATA)
+                                    constants.NETWORK_TYPE_CLUSTER_HOST,
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('data', constants.INTERFACE_CLASS_DATA,
+                                    hostname=self.host.hostname)
         self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
-                                   constants.NETWORK_TYPE_PCI_SRIOV)
+                                    constants.NETWORK_TYPE_PCI_SRIOV,
+                                    hostname=self.host.hostname)
         self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
-                                   constants.NETWORK_TYPE_PCI_PASSTHROUGH)
+                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH,
+                                    hostname=self.host.hostname)
         port, iface = (
             self._create_ethernet_test('slow', constants.INTERFACE_CLASS_DATA,
                                        constants.NETWORK_TYPE_DATA,
-                                       dpdksupport=False))
+                                       dpdksupport=False,
+                                       hostname=self.host.hostname))
         port, iface = (
             self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
                                        constants.NETWORK_TYPE_DATA,
-                                       driver=constants.DRIVER_MLX_CX4))
+                                       driver=constants.DRIVER_MLX_CX4,
+                                       hostname=self.host.hostname))
         self._create_ethernet_test('none')
 
     def setUp(self):
@@ -2735,6 +3123,165 @@ class InterfaceComputeEthernet(InterfaceHostTestCase):
         self.expected_bridged_interfaces = ['slow']
         self.expected_slave_interfaces = []
         self.expected_mlx_interfaces = ['mlx5']
+        self.exp_yaml_config = {
+            "eth0": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:mgmt,net:{None}', 'tc': True},
+            "eth0:1": {'family': 'inet', 'method': 'dhcp',
+                     'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
+                     'tc': False},
+            "eth0:2": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
+                     'tc': False},
+            "eth1": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:cluster-host,'
+                     f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}', 'tc': False},
+            "eth3": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:sriov,net:{None}', 'tc': False},
+            "eth4": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:pthru,net:{None}', 'tc': False},
+            "eth5": {'family': 'inet6', 'method': 'manual',
+                     'stx-description': f'ifname:slow,net:{None}', 'tc': False},
+            "eth6": {'family': 'inet6', 'method': 'manual',
+                     'stx-description': f'ifname:mlx5,net:{None}', 'tc': False},
+            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
+                   'tc': False},
+        }
+
+
+class InterfaceComputeEthernetCfg2(InterfaceHostTestCase):
+    def _setup_configuration(self):
+        # Setup a sample configuration where the personality is set to a
+        # worker and all interfaces are ethernet interfaces.
+        # Explicitly assign PXEboot network with the management network
+        self.host = self._create_test_host(constants.WORKER)
+        self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
+                                    [constants.NETWORK_TYPE_MGMT,
+                                     constants.NETWORK_TYPE_PXEBOOT],
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                                    constants.NETWORK_TYPE_CLUSTER_HOST,
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('data', constants.INTERFACE_CLASS_DATA,
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
+                                    constants.NETWORK_TYPE_PCI_SRIOV,
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH,
+                                    hostname=self.host.hostname)
+        port, iface = (
+            self._create_ethernet_test('slow', constants.INTERFACE_CLASS_DATA,
+                                       constants.NETWORK_TYPE_DATA,
+                                       dpdksupport=False,
+                                       hostname=self.host.hostname))
+        port, iface = (
+            self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
+                                       constants.NETWORK_TYPE_DATA,
+                                       driver=constants.DRIVER_MLX_CX4,
+                                       hostname=self.host.hostname))
+        self._create_ethernet_test('none')
+
+    def setUp(self):
+        super(InterfaceComputeEthernetCfg2, self).setUp()
+        self.expected_bmc_interface = 'mgmt'
+        self.expected_platform_interfaces = ['mgmt', 'cluster-host']
+        self.expected_data_interfaces = ['slow', 'data', 'mlx5']
+        self.expected_pci_interfaces = ['sriov', 'pthru']
+        self.expected_slow_interfaces = ['slow']
+        self.expected_bridged_interfaces = ['slow']
+        self.expected_slave_interfaces = []
+        self.expected_mlx_interfaces = ['mlx5']
+        self.exp_yaml_config = {
+            "eth0": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:mgmt,net:{None}', 'tc': True},
+            "eth0:1": {'family': 'inet', 'method': 'dhcp',
+                     'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
+                     'tc': False},
+            "eth0:2": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
+                     'tc': False},
+            "eth1": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:cluster-host,'
+                     f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}', 'tc': False},
+            "eth3": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:sriov,net:{None}', 'tc': False},
+            "eth4": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:pthru,net:{None}', 'tc': False},
+            "eth5": {'family': 'inet6', 'method': 'manual',
+                     'stx-description': f'ifname:slow,net:{None}', 'tc': False},
+            "eth6": {'family': 'inet6', 'method': 'manual',
+                     'stx-description': f'ifname:mlx5,net:{None}', 'tc': False},
+            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
+                   'tc': False},
+        }
+
+
+class InterfaceComputeEthernetCfg3(InterfaceHostTestCase):
+    def _setup_configuration(self):
+        # Setup a sample configuration where the personality is set to a
+        # worker and all interfaces are ethernet interfaces.
+        # explicitly assign pxeboot network with the cluster-host network
+        self.host = self._create_test_host(constants.WORKER)
+        self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
+                                    [constants.NETWORK_TYPE_MGMT],
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                                    [constants.NETWORK_TYPE_CLUSTER_HOST,
+                                     constants.NETWORK_TYPE_PXEBOOT],
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('data', constants.INTERFACE_CLASS_DATA,
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
+                                    constants.NETWORK_TYPE_PCI_SRIOV,
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH,
+                                    hostname=self.host.hostname)
+        port, iface = (
+            self._create_ethernet_test('slow', constants.INTERFACE_CLASS_DATA,
+                                       constants.NETWORK_TYPE_DATA,
+                                       dpdksupport=False,
+                                       hostname=self.host.hostname))
+        port, iface = (
+            self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
+                                       constants.NETWORK_TYPE_DATA,
+                                       driver=constants.DRIVER_MLX_CX4,
+                                       hostname=self.host.hostname))
+        self._create_ethernet_test('none')
+
+    def setUp(self):
+        super(InterfaceComputeEthernetCfg3, self).setUp()
+        self.expected_bmc_interface = 'mgmt'
+        self.expected_platform_interfaces = ['mgmt', 'cluster-host']
+        self.expected_data_interfaces = ['slow', 'data', 'mlx5']
+        self.expected_pci_interfaces = ['sriov', 'pthru']
+        self.expected_slow_interfaces = ['slow']
+        self.expected_bridged_interfaces = ['slow']
+        self.expected_slave_interfaces = []
+        self.expected_mlx_interfaces = ['mlx5']
+        self.exp_yaml_config = {
+            "eth0": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
+                     'tc': True},
+            "eth1": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:cluster-host,net:{None}', 'tc': False},
+            "eth1:1": {'family': 'inet', 'method': 'dhcp',
+                     'stx-description': f'ifname:cluster-host,net:{constants.NETWORK_TYPE_PXEBOOT}',
+                     'tc': False},
+            "eth1:4": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:cluster-host,'
+                     f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}', 'tc': False},
+            "eth3": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:sriov,net:{None}', 'tc': False},
+            "eth4": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:pthru,net:{None}', 'tc': False},
+            "eth5": {'family': 'inet6', 'method': 'manual',
+                     'stx-description': f'ifname:slow,net:{None}', 'tc': False},
+            "eth6": {'family': 'inet6', 'method': 'manual',
+                     'stx-description': f'ifname:mlx5,net:{None}', 'tc': False},
+            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
+                   'tc': False},
+        }
 
 
 class InterfaceComputeVlanOverEthernet(InterfaceHostTestCase):
@@ -2750,6 +3297,7 @@ class InterfaceComputeVlanOverEthernet(InterfaceHostTestCase):
                                constants.NETWORK_TYPE_MGMT, 2, iface)
         self._create_vlan_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
                                constants.NETWORK_TYPE_CLUSTER_HOST, 3)
+        # since the system vswitch_type is ovs-dpdk, it will not generate config for 'data'
         self._create_vlan_test('data', constants.INTERFACE_CLASS_DATA,
                                constants.NETWORK_TYPE_DATA, 5)
         self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
@@ -2764,6 +3312,79 @@ class InterfaceComputeVlanOverEthernet(InterfaceHostTestCase):
                                              'eth2', 'cluster-host']
         self.expected_data_interfaces = ['eth4', 'data']
         self.expected_pci_interfaces = ['sriov', 'pthru']
+        self.exp_yaml_config = {
+            "eth0": {'family': 'inet', 'method': 'dhcp',
+                     'stx-description': f'ifname:pxeboot,net:{constants.NETWORK_TYPE_PXEBOOT}',
+                     'tc': False},
+            "eth1": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:eth2,net:{None}', 'tc': False},
+            "vlan2": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
+                     'tc': True},
+            "vlan3": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:cluster-host,'
+                                    f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
+                                    'tc': False},
+            "eth3": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:sriov,net:{None}', 'tc': False},
+            "eth4": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:pthru,net:{None}', 'tc': False},
+            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
+                   'tc': False},
+        }
+
+
+class InterfaceComputeVlanOverEthernetCfg2(InterfaceHostTestCase):
+    def _setup_configuration(self):
+        # Setup a sample configuration where the personality is set to a
+        # worker and all interfaces are vlan interfaces over ethernet
+        # interfaces, mgmt interface handles mgmt and cluster-hos networks
+        self.host = self._create_test_host(constants.WORKER)
+
+        system_dict = self.system.as_dict()
+        system_dict['capabilities']['vswitch_type'] = constants.VSWITCH_TYPE_NONE
+        dbutils.update_test_isystem(system_dict)
+
+        port, iface = self._create_ethernet_test(
+            'pxeboot', constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_PXEBOOT)
+        self._create_vlan_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
+                               [constants.NETWORK_TYPE_MGMT,
+                                constants.NETWORK_TYPE_CLUSTER_HOST],
+                               2, iface)
+        self._create_vlan_test('data', constants.INTERFACE_CLASS_DATA,
+                               constants.NETWORK_TYPE_DATA, 5)
+        self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
+                                   constants.NETWORK_TYPE_PCI_SRIOV)
+        self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                                   constants.NETWORK_TYPE_PCI_PASSTHROUGH)
+
+    def setUp(self):
+        super(InterfaceComputeVlanOverEthernetCfg2, self).setUp()
+        self.exp_yaml_config = {
+            "data": {'family': 'inet6', 'method': 'manual',
+                     'stx-description': f'ifname:data,net:{None}', 'tc': False},
+            "eth0": {'family': 'inet', 'method': 'dhcp',
+                     'stx-description': f'ifname:pxeboot,net:{constants.NETWORK_TYPE_PXEBOOT}',
+                     'tc': False},
+            "eth1": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:eth2,net:{None}', 'tc': False},
+            "vlan2": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:mgmt,net:{None}', 'tc': True},
+            "vlan2:2": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
+                     'tc': False},
+            "vlan2:4": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:mgmt,'
+                                    f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
+                     'tc': False},
+            "eth2": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:sriov,net:{None}', 'tc': False},
+            "eth3": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:pthru,net:{None}', 'tc': False},
+            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
+                   'tc': False},
+        }
 
 
 class InterfaceComputeVfOverSriov(InterfaceHostTestCase):
@@ -2834,6 +3455,34 @@ class InterfaceComputeBond(InterfaceHostTestCase):
         self.expected_slave_interfaces = ['eth0', 'eth1', 'eth3', 'eth4',
                                           'eth6', 'eth7', 'eth9', 'eth10',
                                           'eth12', 'eth13']
+        self.exp_yaml_config = {
+            "eth0": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:eth0,net:{None}', 'tc': False},
+            "eth1": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:eth1,net:{None}', 'tc': False},
+            "mgmt": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:mgmt,net:{None}', 'tc': True},
+            "mgmt:1": {'family': 'inet', 'method': 'dhcp',
+                     'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
+                     'tc': False},
+            "mgmt:2": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
+                     'tc': False},
+            "eth2": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:eth3,net:{None}', 'tc': False},
+            "eth3": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:eth4,net:{None}', 'tc': False},
+            "cluster-host": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:cluster-host,'
+                                    f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
+                                    'tc': False},
+            "eth6": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:sriov,net:{None}', 'tc': False},
+            "eth7": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:pthru,net:{None}', 'tc': False},
+            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
+                   'tc': False},
+        }
 
 
 class InterfaceComputeVlanOverBond(InterfaceHostTestCase):
@@ -3144,3 +3793,450 @@ class InterfaceCpeComputeVlanOverBond(InterfaceHostTestCase):
         self.expected_slave_interfaces = ['eth0', 'eth1',
                                           'eth6', 'eth7']
         self.expected_pci_interfaces = ['sriov', 'pthru']
+
+
+class InterfaceHostV6TestCase(InterfaceTestCaseMixin, dbbase.BaseIPv6Mixin,
+                              dbbase.BaseHostTestCase):
+
+    def setUp(self):
+        super(InterfaceHostV6TestCase, self).setUp()
+        self._setup_context()
+        self.expected_platform_interfaces = []
+        self.expected_data_interfaces = []
+        self.expected_pci_interfaces = []
+        self.expected_slow_interfaces = []
+        self.expected_bridged_interfaces = []
+        self.expected_slave_interfaces = []
+        self.expected_mlx_interfaces = []
+        self.expected_bmc_interface = None
+        p = mock.patch('sysinv.puppet.interface.is_syscfg_network')
+        self.mock_puppet_interface_sysconfig = p.start()
+        self.mock_puppet_interface_sysconfig.return_value = True
+        self.addCleanup(p.stop)
+        self._assign_addresses_to_pool()
+        self.exp_yaml_config = {}
+
+    def _setup_configuration(self):
+        # Personality is set to worker to avoid issues due to missing OAM
+        # interface in this empty/dummy configuration
+        self.host = self._create_test_host(constants.WORKER)
+
+    def _update_context(self):
+        # ensure DB entries are updated prior to updating the context which
+        # will re-read the entries from the DB.
+        self.host.save(self.admin_context)
+        super(InterfaceHostV6TestCase, self)._update_context()
+
+    def _create_hieradata_directory(self):
+        hiera_path = os.path.join(os.environ['VIRTUAL_ENV'], 'hieradata')
+        if not os.path.exists(hiera_path):
+            os.mkdir(hiera_path, 0o755)
+        return hiera_path
+
+    def _get_config_filename(self, hiera_directory):
+        class_name = self.__class__.__name__
+        return os.path.join(hiera_directory, class_name) + ".yaml"
+
+    def test_interface_config_yaml_data_validation(self):
+        self.mock_puppet_interface_sysconfig.return_value = False
+        hieradata_directory = self._create_hieradata_directory()
+        config_filename = self._get_config_filename(hieradata_directory)
+        print(config_filename)
+        with open(config_filename, 'w') as config_file:
+            config = self.operator.interface.get_host_config(self.host)  # pylint: disable=no-member
+            self.assertIsNotNone(config)
+            yaml.dump(config, config_file, default_flow_style=False)
+
+        hiera_data = dict()
+        with open(config_filename, 'r') as config_file:
+            hiera_data = yaml.safe_load(config_file)
+
+        self.assertTrue('platform::network::interfaces::network_config' in hiera_data.keys())
+
+        if len(self.exp_yaml_config):
+            intf_cfg = hiera_data['platform::network::interfaces::network_config']
+            for exp_intf in self.exp_yaml_config:
+                self.assertTrue(exp_intf in intf_cfg.keys())
+
+                if exp_intf != 'lo':
+                    self.assertEqual(self.exp_yaml_config[exp_intf]['family'],
+                                    intf_cfg[exp_intf]['family'])
+                    self.assertEqual(self.exp_yaml_config[exp_intf]['method'],
+                                    intf_cfg[exp_intf]['method'])
+                    self.assertEqual(self.exp_yaml_config[exp_intf]['stx-description'],
+                                    intf_cfg[exp_intf]['options']['stx-description'])
+
+                if self.exp_yaml_config[exp_intf]['tc']:
+                    self.assertTrue('tc_setup.sh'
+                                    in intf_cfg[exp_intf]['options']['post-up'])
+                else:
+                    if 'post-up' in intf_cfg[exp_intf]['options'].keys():
+                        self.assertFalse('tc_setup.sh'
+                                         in intf_cfg[exp_intf]['options']['post-up'])
+
+                if self.exp_yaml_config[exp_intf]['undeprecate']:
+                    self.assertTrue('ip -6 addr replace'
+                                    in intf_cfg[exp_intf]['options']['post-up'])
+                else:
+                    if 'post-up' in intf_cfg[exp_intf]['options'].keys():
+                        self.assertFalse('ip -6 addr replace'
+                                          in intf_cfg[exp_intf]['options']['post-up'])
+
+
+class InterfaceControllerEthernetV6(InterfaceHostV6TestCase):
+    def _setup_configuration(self):
+        # Setup a sample configuration where all platform interfaces are
+        # ethernet interfaces.
+        self.host = self._create_test_host(constants.CONTROLLER)
+        self._create_ethernet_test('oam', constants.INTERFACE_CLASS_PLATFORM,
+                                   constants.NETWORK_TYPE_OAM,
+                                   hostname=self.host.hostname)
+        self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
+                                   constants.NETWORK_TYPE_MGMT,
+                                   hostname=self.host.hostname)
+        self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                                   constants.NETWORK_TYPE_CLUSTER_HOST,
+                                   hostname=self.host.hostname)
+        self._create_ethernet_test('none')
+
+    def setUp(self):
+        super(InterfaceControllerEthernetV6, self).setUp()
+        self.exp_yaml_config = {
+            "eth0": {'family': 'inet6', 'method': 'static',
+                     'stx-description': f'ifname:oam,net:{constants.NETWORK_TYPE_OAM}',
+                     'tc': False, 'undeprecate': False},
+            "eth1": {'family': 'inet6', 'method': 'manual',
+                     'stx-description': f'ifname:mgmt,net:{None}',
+                     'tc': True, 'undeprecate': False},
+            "eth1:1": {'family': 'inet', 'method': 'static',
+                       'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
+                       'tc': False, 'undeprecate': False},
+            "eth1:2": {'family': 'inet6', 'method': 'static',
+                       'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
+                       'tc': False, 'undeprecate': True},
+            "eth2": {'family': 'inet6', 'method': 'static',
+                     'stx-description': 'ifname:cluster-host,'
+                                   f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
+                     'tc': False, 'undeprecate': False},
+            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
+                   'tc': False, 'undeprecate': False},
+        }
+
+
+class InterfaceControllerEthernetV6Cfg2(InterfaceHostV6TestCase):
+    def _setup_configuration(self):
+        # Setup a sample configuration where all platform interfaces are
+        # ethernet interfaces. In this case the management is assigned
+        # to management and cluster-host networks
+
+        self.host = self._create_test_host(constants.CONTROLLER)
+
+        self._create_ethernet_test('oam0', constants.INTERFACE_CLASS_PLATFORM,
+                                    constants.NETWORK_TYPE_OAM,
+                                    hostname=self.host.hostname)
+
+        self._create_ethernet_test('mgmt0', constants.INTERFACE_CLASS_PLATFORM,
+                                    [constants.NETWORK_TYPE_MGMT,
+                                     constants.NETWORK_TYPE_CLUSTER_HOST],
+                                    hostname=self.host.hostname)
+
+        self._create_ethernet_test('none')
+
+    def setUp(self):
+        super(InterfaceControllerEthernetV6Cfg2, self).setUp()
+        self.exp_yaml_config = {
+            "eth0": {'family': 'inet6', 'method': 'static',
+                     'stx-description': f'ifname:oam0,net:{constants.NETWORK_TYPE_OAM}',
+                     'tc': False, 'undeprecate': False},
+            "eth1": {'family': 'inet6', 'method': 'manual',
+                     'stx-description': f'ifname:mgmt0,net:{None}',
+                     'tc': True, 'undeprecate': False},
+            "eth1:1": {'family': 'inet', 'method': 'static',
+                       'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_PXEBOOT}',
+                       'tc': False, 'undeprecate': False},
+            "eth1:2": {'family': 'inet6', 'method': 'static',
+                       'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_MGMT}',
+                       'tc': False, 'undeprecate': True},
+            "eth1:4": {'family': 'inet6', 'method': 'static',
+                       'stx-description': 'ifname:mgmt0,'
+                                     f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
+                       'tc': False, 'undeprecate': False},
+            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
+                       'tc': False, 'undeprecate': False},
+        }
+
+
+class InterfaceControllerEthernetV6Cfg3(InterfaceHostV6TestCase):
+    def _setup_configuration(self):
+        # Setup a sample configuration where all platform interfaces are
+        # ethernet interfaces. In this case the management is assigned
+        # to management, pxeboot and cluster-host networks
+
+        self.host = self._create_test_host(constants.CONTROLLER)
+
+        self._create_ethernet_test('oam0', constants.INTERFACE_CLASS_PLATFORM,
+                                    constants.NETWORK_TYPE_OAM,
+                                    hostname=self.host.hostname)
+
+        self._create_ethernet_test('mgmt0', constants.INTERFACE_CLASS_PLATFORM,
+                                    [constants.NETWORK_TYPE_MGMT,
+                                     constants.NETWORK_TYPE_CLUSTER_HOST,
+                                     constants.NETWORK_TYPE_PXEBOOT],
+                                    hostname=self.host.hostname)
+
+        self._create_ethernet_test('none')
+
+    def setUp(self):
+        super(InterfaceControllerEthernetV6Cfg3, self).setUp()
+        self.exp_yaml_config = {
+            "eth0": {'family': 'inet6', 'method': 'static',
+                     'stx-description': f'ifname:oam0,net:{constants.NETWORK_TYPE_OAM}',
+                     'tc': False, 'undeprecate': False},
+            "eth1": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:mgmt0,net:{None}',
+                     'tc': True, 'undeprecate': False},
+            "eth1:1": {'family': 'inet', 'method': 'static',
+                       'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_PXEBOOT}',
+                       'tc': False, 'undeprecate': False},
+            "eth1:2": {'family': 'inet6', 'method': 'static',
+                       'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_MGMT}',
+                       'tc': False, 'undeprecate': True},
+            "eth1:4": {'family': 'inet6', 'method': 'static',
+                       'stx-description': 'ifname:mgmt0,'
+                                     f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
+                       'tc': False, 'undeprecate': False},
+            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
+                   'tc': False, 'undeprecate': False},
+        }
+
+
+class InterfaceComputeEthernetV6(InterfaceHostV6TestCase):
+    def _setup_configuration(self):
+        # Setup a sample configuration where the personality is set to a
+        # worker and all interfaces are ethernet interfaces. Do not explicit
+        # attach the PXEboot network
+        self.host = self._create_test_host(constants.WORKER)
+        self._create_addresses_for_node(self.host.hostname, constants.NETWORK_TYPE_MGMT)
+        self._create_addresses_for_node(self.host.hostname, constants.NETWORK_TYPE_CLUSTER_HOST)
+        self._create_addresses_for_node(self.host.hostname, constants.NETWORK_TYPE_PXEBOOT)
+
+        self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
+                                   constants.NETWORK_TYPE_MGMT,
+                                   hostname=self.host.hostname)
+        self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                                    constants.NETWORK_TYPE_CLUSTER_HOST,
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('data', constants.INTERFACE_CLASS_DATA,
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
+                                    constants.NETWORK_TYPE_PCI_SRIOV,
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH,
+                                    hostname=self.host.hostname)
+        port, iface = (
+            self._create_ethernet_test('slow', constants.INTERFACE_CLASS_DATA,
+                                       constants.NETWORK_TYPE_DATA,
+                                       dpdksupport=False,
+                                       hostname=self.host.hostname))
+        port, iface = (
+            self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
+                                       constants.NETWORK_TYPE_DATA,
+                                       driver=constants.DRIVER_MLX_CX4,
+                                       hostname=self.host.hostname))
+        self._create_ethernet_test('none')
+
+    def setUp(self):
+        super(InterfaceComputeEthernetV6, self).setUp()
+        self.expected_bmc_interface = 'mgmt'
+        self.expected_platform_interfaces = ['mgmt', 'cluster-host']
+        self.expected_data_interfaces = ['slow', 'data', 'mlx5']
+        self.expected_pci_interfaces = ['sriov', 'pthru']
+        self.expected_slow_interfaces = ['slow']
+        self.expected_bridged_interfaces = ['slow']
+        self.expected_slave_interfaces = []
+        self.expected_mlx_interfaces = ['mlx5']
+        self.exp_yaml_config = {
+            "eth0": {'family': 'inet6', 'method': 'manual',
+                     'stx-description': f'ifname:mgmt,net:{None}',
+                     'tc': True, 'undeprecate': False},
+            "eth0:1": {'family': 'inet', 'method': 'dhcp',
+                     'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
+                     'tc': False, 'undeprecate': False},
+            "eth0:2": {'family': 'inet6', 'method': 'static',
+                     'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
+                     'tc': False, 'undeprecate': True},
+            "eth1": {'family': 'inet6', 'method': 'static',
+                     'stx-description': f'ifname:cluster-host,'
+                     f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
+                     'tc': False, 'undeprecate': False},
+            "eth3": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:sriov,net:{None}',
+                     'tc': False, 'undeprecate': False},
+            "eth4": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:pthru,net:{None}',
+                     'tc': False, 'undeprecate': False},
+            "eth5": {'family': 'inet6', 'method': 'manual',
+                     'stx-description': f'ifname:slow,net:{None}',
+                     'tc': False, 'undeprecate': False},
+            "eth6": {'family': 'inet6', 'method': 'manual',
+                     'stx-description': f'ifname:mlx5,net:{None}',
+                     'tc': False, 'undeprecate': False},
+            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
+                   'tc': False, 'undeprecate': False},
+        }
+
+
+class InterfaceComputeEthernetV6Cfg2(InterfaceHostV6TestCase):
+    def _setup_configuration(self):
+        # Setup a sample configuration where the personality is set to a
+        # worker and all interfaces are ethernet interfaces.
+        # Explicitly assign PXEboot network with the management network
+        self.host = self._create_test_host(constants.WORKER)
+        self._create_addresses_for_node(self.host.hostname, constants.NETWORK_TYPE_MGMT)
+        self._create_addresses_for_node(self.host.hostname, constants.NETWORK_TYPE_CLUSTER_HOST)
+        self._create_addresses_for_node(self.host.hostname, constants.NETWORK_TYPE_PXEBOOT)
+        self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
+                                    [constants.NETWORK_TYPE_MGMT,
+                                     constants.NETWORK_TYPE_PXEBOOT],
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                                    constants.NETWORK_TYPE_CLUSTER_HOST,
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('data', constants.INTERFACE_CLASS_DATA,
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
+                                    constants.NETWORK_TYPE_PCI_SRIOV,
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH,
+                                    hostname=self.host.hostname)
+        port, iface = (
+            self._create_ethernet_test('slow', constants.INTERFACE_CLASS_DATA,
+                                       constants.NETWORK_TYPE_DATA,
+                                       dpdksupport=False,
+                                       hostname=self.host.hostname))
+        port, iface = (
+            self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
+                                       constants.NETWORK_TYPE_DATA,
+                                       driver=constants.DRIVER_MLX_CX4,
+                                       hostname=self.host.hostname))
+        self._create_ethernet_test('none')
+
+    def setUp(self):
+        super(InterfaceComputeEthernetV6Cfg2, self).setUp()
+        self.expected_bmc_interface = 'mgmt'
+        self.expected_platform_interfaces = ['mgmt', 'cluster-host']
+        self.expected_data_interfaces = ['slow', 'data', 'mlx5']
+        self.expected_pci_interfaces = ['sriov', 'pthru']
+        self.expected_slow_interfaces = ['slow']
+        self.expected_bridged_interfaces = ['slow']
+        self.expected_slave_interfaces = []
+        self.expected_mlx_interfaces = ['mlx5']
+        self.exp_yaml_config = {
+            "eth0": {'family': 'inet6', 'method': 'manual',
+                     'stx-description': f'ifname:mgmt,net:{None}',
+                     'tc': True, 'undeprecate': False},
+            "eth0:1": {'family': 'inet', 'method': 'dhcp',
+                     'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
+                     'tc': False, 'undeprecate': False},
+            "eth0:2": {'family': 'inet6', 'method': 'static',
+                     'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
+                     'tc': False, 'undeprecate': True},
+            "eth1": {'family': 'inet6', 'method': 'static',
+                     'stx-description': f'ifname:cluster-host,'
+                     f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
+                     'tc': False, 'undeprecate': False},
+            "eth3": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:sriov,net:{None}',
+                     'tc': False, 'undeprecate': False},
+            "eth4": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:pthru,net:{None}',
+                     'tc': False, 'undeprecate': False},
+            "eth5": {'family': 'inet6', 'method': 'manual',
+                     'stx-description': f'ifname:slow,net:{None}',
+                     'tc': False, 'undeprecate': False},
+            "eth6": {'family': 'inet6', 'method': 'manual',
+                     'stx-description': f'ifname:mlx5,net:{None}',
+                     'tc': False, 'undeprecate': False},
+            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
+                   'tc': False, 'undeprecate': False},
+        }
+
+
+class InterfaceComputeEthernetV6Cfg3(InterfaceHostV6TestCase):
+    def _setup_configuration(self):
+        # Setup a sample configuration where the personality is set to a
+        # worker and all interfaces are ethernet interfaces.
+        # explicitly assign pxeboot network with the cluster-host network
+        self.host = self._create_test_host(constants.WORKER)
+        self._create_addresses_for_node(self.host.hostname, constants.NETWORK_TYPE_MGMT)
+        self._create_addresses_for_node(self.host.hostname, constants.NETWORK_TYPE_CLUSTER_HOST)
+        self._create_addresses_for_node(self.host.hostname, constants.NETWORK_TYPE_PXEBOOT)
+
+        self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
+                                    [constants.NETWORK_TYPE_MGMT],
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+                                    [constants.NETWORK_TYPE_CLUSTER_HOST,
+                                     constants.NETWORK_TYPE_PXEBOOT],
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('data', constants.INTERFACE_CLASS_DATA,
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
+                                    constants.NETWORK_TYPE_PCI_SRIOV,
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH,
+                                    hostname=self.host.hostname)
+        port, iface = (
+            self._create_ethernet_test('slow', constants.INTERFACE_CLASS_DATA,
+                                       constants.NETWORK_TYPE_DATA,
+                                       dpdksupport=False,
+                                       hostname=self.host.hostname))
+        port, iface = (
+            self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
+                                       constants.NETWORK_TYPE_DATA,
+                                       driver=constants.DRIVER_MLX_CX4,
+                                       hostname=self.host.hostname))
+        self._create_ethernet_test('none')
+
+    def setUp(self):
+        super(InterfaceComputeEthernetV6Cfg3, self).setUp()
+        self.expected_bmc_interface = 'mgmt'
+        self.expected_platform_interfaces = ['mgmt', 'cluster-host']
+        self.expected_data_interfaces = ['slow', 'data', 'mlx5']
+        self.expected_pci_interfaces = ['sriov', 'pthru']
+        self.expected_slow_interfaces = ['slow']
+        self.expected_bridged_interfaces = ['slow']
+        self.expected_slave_interfaces = []
+        self.expected_mlx_interfaces = ['mlx5']
+        self.exp_yaml_config = {
+            "eth0": {'family': 'inet6', 'method': 'static',
+                     'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
+                     'tc': True, 'undeprecate': False},
+            "eth1": {'family': 'inet6', 'method': 'manual',
+                     'stx-description': f'ifname:cluster-host,net:{None}',
+                     'tc': False, 'undeprecate': False},
+            "eth1:1": {'family': 'inet', 'method': 'dhcp',
+                     'stx-description': f'ifname:cluster-host,net:{constants.NETWORK_TYPE_PXEBOOT}',
+                     'tc': False, 'undeprecate': False},
+            "eth1:4": {'family': 'inet6', 'method': 'static',
+                     'stx-description': f'ifname:cluster-host,'
+                     f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
+                     'tc': False, 'undeprecate': True},
+            "eth3": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:sriov,net:{None}',
+                     'tc': False, 'undeprecate': False},
+            "eth4": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:pthru,net:{None}',
+                     'tc': False, 'undeprecate': False},
+            "eth5": {'family': 'inet6', 'method': 'manual',
+                     'stx-description': f'ifname:slow,net:{None}',
+                     'tc': False, 'undeprecate': False},
+            "eth6": {'family': 'inet6', 'method': 'manual',
+                     'stx-description': f'ifname:mlx5,net:{None}',
+                     'tc': False, 'undeprecate': False},
+            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
+                   'tc': False, 'undeprecate': False},
+        }
