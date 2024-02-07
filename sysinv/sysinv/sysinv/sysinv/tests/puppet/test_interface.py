@@ -703,11 +703,11 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             constants.NETWORK_TYPE_MGMT)
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
-        self.assertEqual(method, 'dhcp')
+        self.assertEqual(method, 'static')
         self.mock_puppet_interface_sysconfig.return_value = False
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
-        self.assertEqual(method, 'dhcp')
+        self.assertEqual(method, 'static')
 
     def test_get_interface_address_method_for_mgmt_storage(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
@@ -720,11 +720,11 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             constants.NETWORK_TYPE_MGMT)
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
-        self.assertEqual(method, 'dhcp')
+        self.assertEqual(method, 'static')
         self.mock_puppet_interface_sysconfig.return_value = False
         method = interface.get_interface_address_method(
             self.context, self.iface, network.id)
-        self.assertEqual(method, 'dhcp')
+        self.assertEqual(method, 'static')
 
     def test_get_interface_address_method_for_mgmt_controller(self):
         self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
@@ -1995,8 +1995,8 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                        (constants.TRAFFIC_CONTROL_SCRIPT,
                         self.port['name'], constants.NETWORK_TYPE_MGMT,
                         constants.LINK_SPEED_10G)}
-        expected = self._get_network_config(
-            ifname=self.port['name'], mtu=1500, options=options)
+        expected = self._get_static_network_config(
+            ifname=self.port['name'], mtu=1500, gateway='192.168.204.2', options=options)
         print(expected)
         self.assertEqual(expected, config)
 
@@ -2015,10 +2015,11 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             self.context, self.iface, network.id)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
         options = {'mtu': '1500',
+                   'gateway': '192.168.204.2',
                    'post-up': '/usr/local/bin/tc_setup.sh {} mgmt 10000 > '
                            '/dev/null; {}'.format(self.port['name'], ipv6_autocnf_off),
                    }
-        expected = self._get_network_config_ifupdown(ifname=self.port['name'], options=options)
+        expected = self._get_static_network_config_ifupdown(ifname=self.port['name'], options=options)
         print(expected)
         self.assertEqual(expected, config)
 

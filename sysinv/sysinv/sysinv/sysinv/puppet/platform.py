@@ -39,7 +39,6 @@ class PlatformPuppet(base.BasePuppet):
         config = {}
         config.update(self._get_system_config())
         config.update(self._get_amqp_config())
-        config.update(self._get_resolv_config())
         config.update(self._get_haproxy_config())
         config.update(self._get_sdn_config())
         config.update(self._get_region_config())
@@ -61,6 +60,7 @@ class PlatformPuppet(base.BasePuppet):
         config = {}
         config.update(self._get_hosts_config(host))
         config.update(self._get_nfs_config(host))
+        config.update(self._get_resolv_config(host))
         config.update(self._get_host_platform_config(host, self.config_uuid))
         config.update(self._get_host_ntp_config(host))
         config.update(self._get_host_sysctl_config(host))
@@ -199,15 +199,16 @@ class PlatformPuppet(base.BasePuppet):
 
         return amqp_config_dict
 
-    def _get_resolv_config(self):
+    def _get_resolv_config(self, host):
         # Servers IP with prefix :: leads error during puppet lookup, lets set
         # quote for YAML dump
         servers = [self.quoted_str(self._get_management_address())]
 
-        dns = self.dbapi.idns_get_one()
-        if dns.nameservers:
-            servers += [self.quoted_str(nameserver) for nameserver in
-                         dns.nameservers.split(',')]
+        if host.personality == constants.CONTROLLER:
+            dns = self.dbapi.idns_get_one()
+            if dns.nameservers:
+                servers += [self.quoted_str(nameserver) for nameserver in
+                            dns.nameservers.split(',')]
 
         return {
             'platform::dns::resolv::servers': servers
