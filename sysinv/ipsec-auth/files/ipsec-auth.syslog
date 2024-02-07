@@ -1,0 +1,12 @@
+template t_auth {
+  template("${R_YEAR}-${R_MONTH}-${R_DAY}T${R_HOUR}:${R_MIN}:${R_SEC}.${R_MSEC} ${MSG}\n");
+  template-escape(no);
+};
+
+filter f_ipsecclient { facility(local6) and program(ipsec-client); };
+filter f_ipsecserver { facility(local6) and program(ipsec-server); };
+
+destination d_ipsecauth { file("/var/log/ipsec-auth.log" template(t_auth));};
+
+log { source(s_src); filter(f_ipsecclient); destination(d_ipsecauth); };
+log { source(s_src); filter(f_ipsecserver); destination(d_ipsecauth); };

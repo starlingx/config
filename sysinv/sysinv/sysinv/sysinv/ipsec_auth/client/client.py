@@ -17,10 +17,14 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 from cryptography.x509.oid import NameOID
 
+from oslo_log import log as logging
+
 from sysinv.ipsec_auth.client import config
 from sysinv.ipsec_auth.common.constants import State
 from sysinv.ipsec_auth.common import constants
 from sysinv.ipsec_auth.common import utils
+
+LOG = logging.getLogger(__name__)
 
 
 class Client(object):
@@ -96,23 +100,23 @@ class Client(object):
         puk1_data = utils.load_data(constants.TMP_PUK1_FILE)
         puc_data = utils.load_data(constants.TRUSTED_CA_CERT_PATH)
 
-        print("  Generate PRK2.")
+        LOG.info("Generate RSA Private Key (PRK2).")
         prk2 = self._generate_prk2()
 
-        print("  Generate AK1.")
+        LOG.info("Generate AES Key (AK1).")
         ak1 = self._generate_ak1(puk1_data)
 
-        print("  Generate CSR.")
+        LOG.info("Generate Certificate Request (CSR).")
         csr = self._create_csr(prk2)
 
-        print("  Encrypt CSR w/ AK1.")
+        LOG.info("Encrypt CSR w/ AK1.")
         iv, ecsr = utils.symmetric_encrypt_data(csr, ak1)
 
-        print("  Encrypt AK1 and IV w/ PUK1")
+        LOG.info("Encrypt AK1 and IV w/ PUK1")
         eak1 = utils.asymmetric_encrypt_data(puk1_data, ak1)
         eiv = utils.asymmetric_encrypt_data(puk1_data, iv)
 
-        print("  Hash OTS Token, eAK1 and eCSR.")
+        LOG.info("Hash OTS Token, eAK1 and eCSR.")
         hash_algorithm = hashes.SHA256()
         hasher = hashes.Hash(hash_algorithm)
         hasher.update(bytes(self.ots_token, 'utf-8'))
@@ -132,10 +136,11 @@ class Client(object):
 
     def _handle_rcvd_data(self, data):
 
-        print('  received {!r}'.format(data))
+        LOG.debug("Received {!r})".format(data))
         msg = json.loads(data.decode('utf-8'))
 
         if self.state == State.STAGE_2:
+            LOG.info("Received IPSec Auth Response")
             self.ots_token = msg['token']
             self.hostname = msg['hostname']
             key = base64.b64decode(msg['pub_key'])
@@ -145,12 +150,14 @@ class Client(object):
             data = bytes.fromhex(self.ots_token) + msg['pub_key'].encode('utf-8')
             if not utils.verify_signed_hash(ca_cert, digest, data):
                 msg = "Hash validation failed"
-                raise Exception(msg)
+                LOG.exception("%s" % msg)
+                return False
 
             utils.save_data(constants.TMP_PUK1_FILE, key)
             utils.save_data(constants.TRUSTED_CA_CERT_PATH, ca_cert)
 
         if self.state == State.STAGE_4:
+            LOG.info("Received IPSec Auth CSR Response")
             cert = base64.b64decode(msg['cert'])
             network = msg['network']
             digest = base64.b64decode(msg['hash'])
@@ -160,7 +167,8 @@ class Client(object):
             data = msg['cert'].encode('utf-8') + network.encode('utf-8')
             if not utils.verify_signed_hash(ca_cert, digest, data):
                 msg = "Hash validation failed"
-                raise Exception(msg)
+                LOG.exception("Hash validation failed")
+                return False
 
             cert_file = constants.CERT_NAME_PREFIX + \
                 self.hostname[constants.UNIT_HOSTNAME] + '.crt'
@@ -174,7 +182,7 @@ class Client(object):
             else:
                 self.local_addr = utils.get_ip_addr(self.ifname)
 
-            print("  Generating config files and restart ipsec")
+            LOG.info("Generating config files and restart ipsec")
             strong = config.StrongswanPuppet(self.hostname[constants.UNIT_HOSTNAME],
                                              self.local_addr, network)
             strong.generate_file()
@@ -183,21 +191,26 @@ class Client(object):
 
             if puppet_cf.stderr:
                 err = "Error: %s" % (puppet_cf.stderr.decode("utf-8"))
-                msg = "Failed to create strongswan config files: %s" % err
-                raise Exception(msg)
+                LOG.exception("Failed to create strongswan config files: %s" % err)
+                return False
+
+        return True
 
     def _handle_send_data(self, data):
         payload = None
         if self.state == State.STAGE_1:
             payload = self._generate_message_1()
-            print('  sending {!r}'.format(payload))
+            LOG.info("Sending IPSec Auth Request")
         elif self.state == State.STAGE_3:
             payload = self._generate_message_3()
-            print('  sending {!r}'.format(payload))
+            LOG.info("Sending IPSec Auth CSR Request")
+
+        LOG.debug("Sending {!r})".format(payload))
+
         return payload
 
     def run(self):
-        print('connecting to {} port {}'.format(*(self.host, self.port)))
+        LOG.info("Connecting to %s port %s" % (self.host, self.port))
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((self.host, self.port))
         sock.setblocking(False)
@@ -215,11 +228,12 @@ class Client(object):
         while keep_running:
             for key, mask in sel.select(timeout=1):
                 connection = key.fileobj
-                print(f'{self.state}')
 
+                LOG.debug("State{}".format(self.state))
                 if mask & selectors.EVENT_READ:
                     self.data = connection.recv(8192)
-                    self._handle_rcvd_data(self.data)
+                    if not self._handle_rcvd_data(self.data):
+                        raise ConnectionAbortedError("Error receiving data from server")
                     sel.modify(sock, selectors.EVENT_WRITE)
                     self.state = utils.get_next_state(self.state)
 
@@ -232,7 +246,7 @@ class Client(object):
                 if self.state == State.STAGE_5:
                     keep_running = False
 
-        print('shutting down')
+        LOG.info("Shutting down")
         sel.unregister(connection)
         connection.close()
         sel.close()

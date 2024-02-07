@@ -31,6 +31,10 @@ from cryptography.hazmat.primitives.ciphers import Cipher
 from cryptography.hazmat.primitives.ciphers import algorithms
 from cryptography.hazmat.primitives.ciphers import modes
 
+from oslo_log import log as logging
+
+LOG = logging.getLogger(__name__)
+
 
 def get_next_state(state):
     '''Get the next IPsec Auth state whenever a Stage is finished.
@@ -98,18 +102,22 @@ def get_management_interface():
 
 def get_ip_addr(ifname):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    ifstruct = struct.pack('256s', bytes(ifname[:15], 'utf-8'))
-    info = fcntl.ioctl(s.fileno(), constants.SIOCGIFADDR, ifstruct)
-
-    return socket.inet_ntoa(info[20:24])
+    try:
+        ifstruct = struct.pack('256s', bytes(ifname[:15], 'utf-8'))
+        info = fcntl.ioctl(s.fileno(), constants.SIOCGIFADDR, ifstruct)
+        return socket.inet_ntoa(info[20:24])
+    except Exception as e:
+        LOG.exception("Error getting ip address: %s" % (e))
 
 
 def get_hw_addr(ifname):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    ifstruct = struct.pack('256s', bytes(ifname[:15], 'utf-8'))
-    info = fcntl.ioctl(s.fileno(), constants.SIOCGIFHWADDR, ifstruct)
-
-    return ':'.join('%02x' % b for b in info[18:24])
+    try:
+        ifstruct = struct.pack('256s', bytes(ifname[:15], 'utf-8'))
+        info = fcntl.ioctl(s.fileno(), constants.SIOCGIFHWADDR, ifstruct)
+        return ':'.join('%02x' % b for b in info[18:24])
+    except Exception as e:
+        LOG.exception("Error getting mac address: %s" % (e))
 
 
 def get_client_hostname_and_mgmt_subnet(mac_addr):
@@ -302,7 +310,7 @@ def kube_apply_certificate_request(body):
 
     # Delete the CertificateRequest if it is already created or check for possible errors
     if name in str(get_cr.stdout):
-        print(f'   deleting previously created {name} CertificateRequest.')
+        LOG.debug('Deleting previously created %s CertificateRequest.' % name)
         cmd_delete = ['kubectl', '--kubeconfig', KUBERNETES_ADMIN_CONF,
                       '-n', constants.NAMESPACE_DEPLOYMENT, 'delete',
                       constants.CERTIFICATE_REQUEST_RESOURCE, name]
@@ -310,8 +318,8 @@ def kube_apply_certificate_request(body):
                        check=False)
     elif get_cr.stderr and 'NotFound' not in str(get_cr.stderr):
         err = "Error: %s" % (get_cr.stderr.decode("utf-8"))
-        msg = "Failed to retrieve CertificateRequest resource info. %s" % (err)
-        raise Exception(msg)
+        LOG.exception("Failed to retrieve CertificateRequest resource info. %s" % (err))
+        return
 
     # Create CertificateRequest resource in kubernetes
     cr_body = yaml.safe_dump(body, default_flow_style=False)
@@ -323,9 +331,9 @@ def kube_apply_certificate_request(body):
 
     if create_cr.stderr:
         err = "Error: %s" % (create_cr.stderr.decode("utf-8"))
-        msg = "Failed to create CertificateRequest %s/%s. %s" \
-            % (constants.NAMESPACE_DEPLOYMENT, name, err)
-        raise Exception(msg)
+        LOG.exception("Failed to create CertificateRequest %s/%s. %s"
+            % (constants.NAMESPACE_DEPLOYMENT, name, err))
+        return
 
     # Get Certificate from recently created resource in kubernetes
     cmd_get_certificate = ['-o', "jsonpath='{.status.certificate}'"]
@@ -336,8 +344,8 @@ def kube_apply_certificate_request(body):
 
     if signed_cert.stderr:
         err = "Error: %s" % (signed_cert.stderr.decode("utf-8"))
-        msg = "Failed to retrieve %s/%s's Certificate. %s" \
-            % (constants.NAMESPACE_DEPLOYMENT, name, err)
-        raise Exception(msg)
+        LOG.exception("Failed to retrieve %s/%s's Certificate. %s"
+            % (constants.NAMESPACE_DEPLOYMENT, name, err))
+        return
 
     return signed_cert.stdout.decode("utf-8").strip("'")
