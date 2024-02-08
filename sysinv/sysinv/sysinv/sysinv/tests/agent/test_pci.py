@@ -27,6 +27,7 @@ from sysinv.agent.pci import PCIOperator
 from sysinv.agent.pci import PCI
 from sysinv.agent.manager import AgentManager
 from sysinv.tests import base
+from sysinv.common import constants
 from sysinv.common import fpga_constants
 import tsconfig.tsconfig as tsc
 
@@ -170,10 +171,11 @@ class TestAgentOperator(base.TestCase):
                     mock.patch.object(PCIOperator, 'pci_get_device_attrs'),
                     mock.patch.object(PCIOperator, 'inics_get'),
                     mock.patch.object(PCIOperator, 'pci_devices_get'),
+                    mock.patch.object(AgentManager, 'subfunctions_list_get'),
                     mock.patch.object(AgentManager, '_acquire_network_config_lock'),
                     mock.patch.object(AgentManager, '_release_network_config_lock')) as (
                         mock_net_attrs, mock_device_attrs, mock_nics, mock_devices,
-                        aquire_lock, release_lock):
+                        mock_subfunctions, aquire_lock, release_lock):
 
             def fake_get_net_attrs(a):
                 return FAKE_PORT_ATTRIBUTES
@@ -187,25 +189,118 @@ class TestAgentOperator(base.TestCase):
             def fake_get_devices():
                 return FAKE_DEVICES
 
+            def fake_subfunctions_list_get():
+                return self.subfunctions_list
+
             mock_net_attrs.side_effect = fake_get_net_attrs
             mock_device_attrs.side_effect = fake_get_device_attrs
             mock_nics.side_effect = fake_get_nics
             mock_devices.side_effect = fake_get_devices
+            mock_subfunctions.side_effect = fake_subfunctions_list_get
 
             ports, devices, macs = self.agent_manager._get_ports_inventory()
             return ports, devices, macs
 
     @mock.patch('os.path.exists')
-    def test_get_pci_inventory_before_worker_initial_config_complete(self, mock_exists):
+    def test_get_pci_inventory_during_network_boot_install(self, mock_exists):
         def file_exists_side_effect(filename):
-            # Neither the initial nor volatile worker config complete flags are set
-            return False
+            if filename == constants.FIRST_BOOT_FLAG:
+                # first boot flag is set.
+                return True
+            else:
+                # ansible bootstrap flag is not set.
+                # Neither the initial nor volatile worker config complete flags are set
+                return False
+
+        self.agent_manager._first_boot_flag = True
         mock_exists.side_effect = file_exists_side_effect
+        self.subfunctions_list = [constants.WORKER]
 
         ports, devices, macs = self._get_ports_inventory()
         assert len(ports) == 1
         assert len(devices) == 1
         assert len(macs) == 1
+
+    @mock.patch('os.path.exists')
+    def test_get_pci_inventory_during_bootstrap_fresh_install(self, mock_exists):
+        def file_exists_side_effect(filename):
+            if filename == constants.ANSIBLE_BOOTSTRAP_FLAG:
+                # ansible bootstrap flag is set.
+                return True
+            else:
+                # Neither the initial nor volatile worker config complete flags are set
+                return False
+
+        mock_exists.side_effect = file_exists_side_effect
+        self.subfunctions_list = [constants.WORKER]
+
+        ports, devices, macs = self._get_ports_inventory()
+        assert len(ports) == 1
+        assert len(devices) == 1
+        assert len(macs) == 1
+
+    @mock.patch('os.path.exists')
+    def test_get_pci_inventory_during_restore(self, mock_exists):
+        def file_exists_side_effect(filename):
+            if filename in [constants.ANSIBLE_BOOTSTRAP_FLAG,
+                            tsc.RESTORE_IN_PROGRESS_FLAG]:
+                # Both ansible bootstrap and restore flag are set.
+                return True
+            else:
+                # Neither the initial nor volatile worker config complete flags are set
+                return False
+
+        mock_exists.side_effect = file_exists_side_effect
+        self.subfunctions_list = [constants.WORKER]
+
+        ports, devices, macs = self._get_ports_inventory()
+        assert len(ports) == 1
+        assert len(devices) == 1
+        assert len(macs) == 1
+
+    @mock.patch('os.path.exists')
+    def test_get_pci_inventory_controller_before_config_complete(self, mock_exists):
+        def file_exists_side_effect(filename):
+            # Neither the initial nor volatile controller config complete flags are set
+            # Neither first boot nor ansible bootstrap flag are not set.
+            return False
+
+        mock_exists.side_effect = file_exists_side_effect
+        self.subfunctions_list = [constants.CONTROLLER]
+
+        ports, devices, macs = self._get_ports_inventory()
+        assert len(ports) == 1
+        assert len(devices) == 1
+        assert len(macs) == 1
+
+    @mock.patch('os.path.exists')
+    def test_get_pci_inventory_storage_before_config_complete(self, mock_exists):
+        def file_exists_side_effect(filename):
+            # Neither the initial nor volatile storage config complete flags are set
+            # Neither first boot nor ansible bootstrap flag are not set.
+            return False
+
+        mock_exists.side_effect = file_exists_side_effect
+        self.subfunctions_list = [constants.STORAGE]
+
+        ports, devices, macs = self._get_ports_inventory()
+        assert len(ports) == 1
+        assert len(devices) == 1
+        assert len(macs) == 1
+
+    @mock.patch('os.path.exists')
+    def test_get_pci_inventory_before_worker_initial_config_complete(self, mock_exists):
+        def file_exists_side_effect(filename):
+            # Neither the initial nor volatile worker config complete flags are set
+            # Neither first boot nor ansible bootstrap flag are not set.
+            return False
+        mock_exists.side_effect = file_exists_side_effect
+        self.subfunctions_list = [constants.WORKER]
+
+        ports, devices, macs = self._get_ports_inventory()
+        assert len(ports) == 0
+        assert len(devices) == 0
+        assert len(macs) == 0
 
     @mock.patch('os.path.exists')
     def test_get_pci_inventory_before_worker_config_complete(self, mock_exists):
@@ -214,8 +309,11 @@ class TestAgentOperator(base.TestCase):
                 # Only the initial worker config complete flag is set
                 return True
             else:
+                # worker config complete is not set.
+                # Neither first boot nor ansible bootstrap flag are set.
                 return False
         mock_exists.side_effect = file_exists_side_effect
+        self.subfunctions_list = [constants.WORKER]
 
         ports, devices, macs = self._get_ports_inventory()
         assert len(ports) == 0
@@ -230,8 +328,10 @@ class TestAgentOperator(base.TestCase):
                 # Both of the initial and volatile worker config complete flags are set
                 return True
             else:
+                # Neither first boot nor ansible bootstrap flag are set.
                 return False
         mock_exists.side_effect = file_exists_side_effect
+        self.subfunctions_list = [constants.WORKER]
 
         ports, devices, macs = self._get_ports_inventory()
         for dev in devices:
@@ -250,6 +350,7 @@ class TestAgentOperator(base.TestCase):
             else:
                 return False
         mock_exists.side_effect = file_exists_side_effect
+        self.subfunctions_list = [constants.WORKER]
 
         ports, devices, macs = self._get_ports_inventory()
         for dev in devices:

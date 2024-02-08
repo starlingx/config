@@ -115,8 +115,7 @@ SYSINV_READY_FLAG = os.path.join(tsc.VOLATILE_PATH, ".sysinv_ready")
 CONFIG_APPLIED_FILE = os.path.join(tsc.PLATFORM_CONF_PATH, ".config_applied")
 CONFIG_APPLIED_DEFAULT = "install"
 
-FIRST_BOOT_FLAG = os.path.join(
-    tsc.PLATFORM_CONF_PATH, ".first_boot")
+FIRST_BOOT_FLAG = constants.FIRST_BOOT_FLAG
 
 PUPPET_HIERADATA_PATH = os.path.join(tsc.PUPPET_PATH, 'hieradata')
 PUPPET_HIERADATA_CACHE_PATH = '/etc/puppet/cache/hieradata'
@@ -225,6 +224,7 @@ class AgentManager(service.PeriodicService):
         self._first_grub_update = False
         self._inventoried_initial = False
         self._inventory_reported = set()
+        self._first_boot_flag = os.path.exists(FIRST_BOOT_FLAG)
 
     def start(self):
         super(AgentManager, self).start()
@@ -611,20 +611,29 @@ class AgentManager(service.PeriodicService):
     def _get_ports_inventory(self):
         """Collect ports inventory for this host"""
 
+        # During bootstrap (fresh install and also restore), and network first-boot
+        #    send report unconditionally
+        # During host configuration (subsequent reboots):
+        #    worker in subfunction : do not send report until worker manifest applied
+        #    otherwise: send report unconditionally
+
         port_list = []
         pci_device_list = []
         host_macs = []
 
-        initial_worker_config_completed = \
-            os.path.exists(tsc.INITIAL_WORKER_CONFIG_COMPLETE)
+        ansible_bootstrap_flag = \
+            os.path.exists(constants.ANSIBLE_BOOTSTRAP_FLAG)
         worker_config_completed = \
             os.path.exists(tsc.VOLATILE_WORKER_CONFIG_COMPLETE)
 
-        # do not send report if the initial worker config is completed and
-        # worker config has not finished, i.e.during subsequent
-        # reboot before the manifest enables and binds any SR-IOV devices
-        if (initial_worker_config_completed and
-                not worker_config_completed):
+        # do not send report if it is neither first boot nor
+        # ansible-bootstrap, and worker config has not finished,
+        # i.e. during subsequent reboot before the worker manifest
+        # enables and binds any SR-IOV devices
+        if (not self._first_boot_flag
+                and not ansible_bootstrap_flag
+                and constants.WORKER in self.subfunctions_list_get()
+                and not worker_config_completed):
             return port_list, pci_device_list, host_macs
 
         # find list of network related inics for this host
