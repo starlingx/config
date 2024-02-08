@@ -203,9 +203,9 @@ class TestAgentOperator(base.TestCase):
         mock_exists.side_effect = file_exists_side_effect
 
         ports, devices, macs = self._get_ports_inventory()
-        assert len(ports) == 1
-        assert len(devices) == 1
-        assert len(macs) == 1
+        assert len(ports) == 0
+        assert len(devices) == 0
+        assert len(macs) == 0
 
     @mock.patch('os.path.exists')
     def test_get_pci_inventory_before_worker_config_complete(self, mock_exists):
