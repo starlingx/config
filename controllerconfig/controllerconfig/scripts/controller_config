@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -487,13 +487,16 @@ start()
         FILES=`ls $CONFIG_DIR/kubernetes/*.yaml`
         for FILE in $FILES
         do
-            cp -P $FILE /etc/kubernetes/
-            if [ $? -ne 0 ]
-            then
-                fatal_error "Unable to copy kube-apiserver config file: $FILE"
-            else
-                FILENAME=`basename $FILE`
-                chmod 600 /etc/kubernetes/$FILENAME
+            # Exclude encryption-provider.yaml
+            if [ "$FILE" != "$CONFIG_DIR/kubernetes/encryption-provider.yaml" ]; then
+                cp -P $FILE /etc/kubernetes/
+                if [ $? -ne 0 ]
+                then
+                    fatal_error "Unable to copy kube-apiserver config file: $FILE"
+                else
+                    FILENAME=`basename $FILE`
+                    chmod 600 /etc/kubernetes/$FILENAME
+                fi
             fi
         done
     fi
