@@ -1180,7 +1180,7 @@ class HostController(rest.RestController):
         'downgrade': ['POST'],
         'install_progress': ['POST'],
         'wipe_osds': ['GET'],
-        'update_inv_state': ['POST'],
+        'update_mgmt_ipsec_state': ['POST'],
         'mgmt_ip': ['GET'],
         'kube_upgrade_control_plane': ['POST'],
         'kube_upgrade_kubelet': ['POST'],
@@ -1199,9 +1199,19 @@ class HostController(rest.RestController):
         # self._name = 'api-host'
 
     @wsme_pecan.wsexpose(six.text_type, wtypes.text, body=six.text_type)
-    def update_inv_state(self, uuid, data):
+    def update_mgmt_ipsec_state(self, uuid, data):
+        # Ensure data has valid value
+        if data not in [constants.MGMT_IPSEC_ENABLING, constants.MGMT_IPSEC_ENABLED]:
+            LOG.error(_("Invalid value for mgmt_ipsec: %s" % data))
+            return False
+
         try:
-            pecan.request.dbapi.ihost_update(uuid, {'inv_state': data})
+            host = objects.host.get_by_uuid(pecan.request.context,
+                                            uuid)
+            if host:
+                capabilities = host.get('capabilities')
+                capabilities.update({'mgmt_ipsec': data})
+                pecan.request.dbapi.ihost_update(uuid, {'capabilities': capabilities})
         except exception.ServerNotFound:
             LOG.error(_('Failed to retrieve host with specified uuid.'))
             return False
