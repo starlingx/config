@@ -55,6 +55,9 @@ class CharonConf(object):
         self.charon = {}
         self.start_scripts = {}
 
+    def add_charon(self, key, value):
+        self.charon[key] = value
+
     def add_start_scripts(self, key, value):
         self.start_scripts[key] = value
 
@@ -139,6 +142,7 @@ class StrongswanPuppet(object):
     def get_charon_config(self):
         charon = CharonConf()
 
+        charon.add_charon('make_before_break', 'yes')
         charon.add_start_scripts('load-all', '/usr/sbin/swanctl --load-all')
 
         return {
@@ -148,7 +152,11 @@ class StrongswanPuppet(object):
     def get_swanctl_config(self):
         swanctl = SwanctlConf()
 
-        swanctl.add_system_nodes('unique', 'replace')
+        # connection reauth_time 14400s (4h)
+        swanctl.add_system_nodes('reauth_time', '14400')
+        # connection rekey_time 3600s (1h)
+        swanctl.add_system_nodes('rekey_time', '3600')
+        swanctl.add_system_nodes('unique', 'never')
         swanctl.add_system_nodes('local_addrs', self.local_addrs)
         swanctl.add_system_nodes('remote_addrs', self.network_addrs)
 
@@ -163,6 +171,7 @@ class StrongswanPuppet(object):
 
         swanctl.add_node('mode', 'transport')
         swanctl.add_node('start_action', 'trap')
+        swanctl.add_node('local_ts', self.network_addrs)
         swanctl.add_node('remote_ts', self.network_addrs)
 
         return {
