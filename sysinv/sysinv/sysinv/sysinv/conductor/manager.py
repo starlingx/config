@@ -5361,9 +5361,9 @@ class ConductorManager(service.PeriodicService):
                     part_disk = d
                     break
                 elif constants.DEVICE_NAME_MPATH in d.device_node:
-                    path_split = d.device_path.split(constants.DEVICE_NAME_MPATH)
-                    if (path_split[0] in db_part.device_path and
-                            path_split[1] in db_part.device_path):
+                    # Expected output: /dev/disk/by-id/wwn-*
+                    split_path = db_part.device_path.split("-part")
+                    if split_path[0] in d.device_path:
                         is_part_of_disk = True
                         part_disk = d
                         break
