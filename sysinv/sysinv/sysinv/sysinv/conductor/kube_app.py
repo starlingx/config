@@ -41,6 +41,7 @@ from eventlet import Timeout
 from fm_api import constants as fm_constants
 from fm_api import fm_api
 from oslo_log import log as logging
+from oslo_config import cfg
 from oslo_serialization import base64
 from sysinv._i18n import _
 from sysinv.api.controllers.v1 import kube_app
@@ -56,6 +57,8 @@ from sysinv.helm import common
 from sysinv.helm import utils as helm_utils
 from sysinv.helm.lifecycle_constants import LifecycleConstants
 from sysinv.helm.lifecycle_hook import LifecycleHookInfo
+
+CONF = cfg.CONF
 
 
 # Log and config
@@ -1632,6 +1635,38 @@ class AppOperator(object):
 
                     raise exception.ApplicationApplyFailure(name=app.name)
 
+        def _apply_delay_to_check_progress(kubectl_apply_time):
+            """ Apply delay before checking the charts installation progress.
+                The purpose of this is to ensure that reconciliation has been
+                initiated before checking the helmrelease status of each chart.
+
+                The variable fluxcd_hr_reconcile_check_delay has been set in
+                sysinv.conf to the default amount of time. This value will be
+                override if this variable is present in the application's
+                metadata.
+
+                :param kubectl_apply_time: date when "kubectl apply -k" was called
+            """
+            fluxcd_hr_reconcile_check_delay = CONF.app_framework.fluxcd_hr_reconcile_check_delay
+
+            # Override default time delay if app metadata have
+            # fluxcd_hr_reconcile_check_delay variable
+            if "fluxcd_hr_reconcile_check_delay" in app.app_metadata:
+                fluxcd_hr_reconcile_check_delay = app.app_metadata[
+                    "fluxcd_hr_reconcile_check_delay"]
+
+            # If fluxcd_hr_reconcile_check_delay is 0, no delay will need to be added
+            # and the _check_progress function must be called normally.
+            if fluxcd_hr_reconcile_check_delay > 0:
+                now = time.time()
+                elapsed_time = now - kubectl_apply_time
+                delay_time = fluxcd_hr_reconcile_check_delay - elapsed_time
+
+                if fluxcd_hr_reconcile_check_delay > elapsed_time:
+                    LOG.info("Waiting {} seconds to make sure "
+                             "the reconciliation was called".format(int(delay_time)))
+                    time.sleep(delay_time)
+
         def _check_progress():
             tadjust = 0
             last_successful_chart = None
@@ -1755,10 +1790,17 @@ class AppOperator(object):
             with Timeout(constants.APP_INSTALLATION_TIMEOUT,
                          exception.KubeAppProgressMonitorTimeout()):
 
-                rc = self._fluxcd.make_fluxcd_operation(request, app.sync_fluxcd_manifest)
+                rc, kubectl_apply_time = self._fluxcd.make_fluxcd_operation(
+                    request,
+                    app.sync_fluxcd_manifest)
 
                 # check progress only for apply for now
                 if rc and request == constants.APP_APPLY_OP:
+                    # Because reconciliation is not called immediately after running the
+                    # "kubectl apply -k" command, a delay is applied before _check_progress
+                    # function so that it does not return old values.
+                    _apply_delay_to_check_progress(kubectl_apply_time)
+
                     rc = _check_progress()
         except (exception.ApplicationApplyFailure):
             raise
@@ -2002,8 +2044,9 @@ class AppOperator(object):
                     manifest_sync_dir_path, constants.APP_METADATA_FILE)
                 shutil.copy(inst_metadata_file, sync_metadata_file)
 
-            if not validate_function(constants.APP_VALIDATE_OP,
-                                     validate_manifest):
+            validation_result, _ = validate_function(constants.APP_VALIDATE_OP,
+                                                     validate_manifest)
+            if not validation_result:
                 raise exception.KubeAppUploadFailure(
                     name=app.name,
                     version=app.version,
@@ -4005,7 +4048,9 @@ class FluxCDHelper(object):
             LOG.error("FluxCD operation %s failed for manifest %s : %s" %
                       (operation, manifest_dir, e))
             rc = False
-        return rc
+
+        kubectl_apply_time = time.time()
+        return rc, kubectl_apply_time
 
     def run_kubectl_kustomize(self, operation_type, manifest_dir):
         if operation_type == constants.KUBECTL_KUSTOMIZE_VALIDATE:

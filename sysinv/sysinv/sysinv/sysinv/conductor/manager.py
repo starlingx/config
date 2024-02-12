@@ -183,9 +183,16 @@ audit_intervals_opts = [
        cfg.IntOpt('prune_runtime_config', default=43200),
                   ]
 
+app_framework_opts = [
+    cfg.IntOpt('fluxcd_hr_reconcile_check_delay',
+        default=60,
+        help='Delay time to check progress of helmrelease'),
+]
+
 CONF = cfg.CONF
 CONF.register_opts(conductor_opts, 'conductor')
 CONF.register_opts(audit_intervals_opts, 'conductor_periodic_task_intervals')
+CONF.register_opts(app_framework_opts, 'app_framework')
 
 # doesn't work otherwise for ceph-manager RPC calls; reply is lost
 #
