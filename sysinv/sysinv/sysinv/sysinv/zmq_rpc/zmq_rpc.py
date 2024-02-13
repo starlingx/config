@@ -1,4 +1,4 @@
-# Copyright (c) 2022 Wind River Systems, Inc.
+# Copyright (c) 2022-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -172,9 +172,10 @@ class ZmqRpcClient(object):
                     host_fqdn = constants.CONTROLLER_1_FQDN
                 endpoint = get_tcp_endpoint(host_fqdn, self.port)
             else:
-                address_name = utils.format_address_name(host.hostname,
-                                              constants.NETWORK_TYPE_MGMT)
-                address = dbapi.address_get_by_name(address_name)
+                address = utils.get_primary_address_by_name(dbapi,
+                                    utils.format_address_name(host.hostname,
+                                                    constants.NETWORK_TYPE_MGMT),
+                                    constants.NETWORK_TYPE_MGMT, True)
                 endpoint = get_tcp_endpoint(address.address, self.port)
             client = client_provider.get_client_for_endpoint(endpoint)
 
@@ -238,9 +239,10 @@ class ZmqRpcClient(object):
                     host_fqdn = constants.CONTROLLER_1_FQDN
                 endpoint = get_tcp_endpoint(host_fqdn, self.port)
             else:
-                address_name = utils.format_address_name(host.hostname,
-                                                         constants.NETWORK_TYPE_MGMT)
-                address = dbapi.address_get_by_name(address_name)
+                address = utils.get_primary_address_by_name(dbapi,
+                                        utils.format_address_name(host.hostname,
+                                                        constants.NETWORK_TYPE_MGMT),
+                                        constants.NETWORK_TYPE_MGMT, True)
                 endpoint = get_tcp_endpoint(address.address, self.port)
 
             endpoints.append(endpoint)

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2023 Wind River Systems, Inc.
+# Copyright (c) 2017-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -1810,11 +1810,8 @@ def generate_unassigned_pxeboot_intf_config(context, config, db_api,
                                                          constants.NETWORK_TYPE_PXEBOOT)
             if address_name:
                 address = None
-                try:
-                    address = db_api.address_get_by_name(address_name)
-                except exception.AddressNotFoundByName:
-                    LOG.info(f"cannot find address:{address_name} ")
-
+                address = utils.get_primary_address_by_name(db_api, address_name,
+                                                            constants.NETWORK_TYPE_PXEBOOT)
                 if (address and net_config['method'] == 'static'):
                     addr_data = _set_address_netmask({'address': address.address,
                                                     'prefix': address.prefix})

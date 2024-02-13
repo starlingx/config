@@ -15,12 +15,11 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2015-2023 Wind River Systems, Inc.
+# Copyright (c) 2015-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import collections
 import pecan
 from pecan import rest
 import uuid
@@ -83,6 +82,9 @@ class Network(base.APIBase):
     pool_uuid = wtypes.text
     "The UUID of the address pool associated with the network"
 
+    primary_pool_family = wtypes.text
+    "The primary pool address family (IPv4 or IPv6)"
+
     def __init__(self, **kwargs):
         self.fields = list(objects.network.fields.keys())
         for k in self.fields:
@@ -95,7 +97,8 @@ class Network(base.APIBase):
         network = Network(**rpc_network.as_dict())
         if not expand:
             network.unset_fields_except(['id', 'uuid', 'type', 'name',
-                                         'dynamic', 'pool_uuid'])
+                                         'dynamic', 'pool_uuid',
+                                         'primary_pool_family'])
         return network
 
     def _validate_network_type(self):
@@ -189,154 +192,6 @@ class NetworkController(rest.RestController):
         if addresses:
             raise exception.NetworkAddressPoolInUse()
 
-    def _create_network_addresses(self, pool, network):
-        if network['type'] == constants.NETWORK_TYPE_MGMT:
-            addresses = self._create_mgmt_network_address(pool)
-        elif network['type'] == constants.NETWORK_TYPE_ADMIN:
-            addresses = self._create_admin_network_address(pool)
-        elif network['type'] == constants.NETWORK_TYPE_PXEBOOT:
-            addresses = self._create_pxeboot_network_address()
-        elif network['type'] == constants.NETWORK_TYPE_CLUSTER_HOST:
-            addresses = self._create_cluster_host_network_address()
-        elif network['type'] == constants.NETWORK_TYPE_OAM:
-            addresses = self._create_oam_network_address(pool)
-        elif network['type'] == constants.NETWORK_TYPE_MULTICAST:
-            addresses = self._create_multicast_network_address()
-        elif network['type'] == constants.NETWORK_TYPE_IRONIC:
-            addresses = self._create_ironic_network_address()
-        elif network['type'] == constants.NETWORK_TYPE_SYSTEM_CONTROLLER:
-            addresses = self._create_system_controller_network_address(pool)
-        elif network['type'] == constants.NETWORK_TYPE_STORAGE:
-            addresses = self._create_storage_network_address()
-        else:
-            return
-        self._populate_network_addresses(pool, network, addresses)
-
-    def _create_mgmt_network_address(self, pool):
-        addresses = {}
-
-        if pool.floating_address:
-            addresses.update(
-                {constants.CONTROLLER_HOSTNAME: pool.floating_address})
-        else:
-            addresses.update({constants.CONTROLLER_HOSTNAME: None})
-
-        if pool.controller0_address:
-            addresses.update(
-                {constants.CONTROLLER_0_HOSTNAME: pool.controller0_address})
-        else:
-            addresses.update({constants.CONTROLLER_0_HOSTNAME: None})
-
-        if pool.controller1_address:
-            addresses.update(
-                {constants.CONTROLLER_1_HOSTNAME: pool.controller1_address})
-        else:
-            addresses.update({constants.CONTROLLER_1_HOSTNAME: None})
-
-        if pool.gateway_address is not None:
-            if utils.get_distributed_cloud_role() == \
-                    constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-                # In subcloud configurations, the management gateway is used
-                # to communicate with the central cloud.
-                addresses[constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME] =\
-                    pool.gateway_address
-            else:
-                addresses[constants.CONTROLLER_GATEWAY] =\
-                    pool.gateway_address
-        return addresses
-
-    def _create_admin_network_address(self, pool):
-        addresses = {}
-        if pool.floating_address:
-            addresses.update(
-                {constants.CONTROLLER_HOSTNAME: pool.floating_address})
-        else:
-            addresses.update({constants.CONTROLLER_HOSTNAME: None})
-
-        if pool.controller0_address:
-            addresses.update(
-                {constants.CONTROLLER_0_HOSTNAME: pool.controller0_address})
-        else:
-            addresses.update({constants.CONTROLLER_0_HOSTNAME: None})
-
-        if pool.controller1_address:
-            addresses.update(
-                {constants.CONTROLLER_1_HOSTNAME: pool.controller1_address})
-        else:
-            addresses.update({constants.CONTROLLER_1_HOSTNAME: None})
-
-        if pool.gateway_address is not None:
-            if utils.get_distributed_cloud_role() == \
-                    constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
-                # In subcloud configurations, the admin gateway is used
-                # to communicate with the central cloud.
-                addresses[constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME] =\
-                    pool.gateway_address
-            else:
-                addresses[constants.CONTROLLER_GATEWAY] =\
-                    pool.gateway_address
-        return addresses
-
-    def _create_pxeboot_network_address(self):
-        addresses = collections.OrderedDict()
-        addresses[constants.CONTROLLER_HOSTNAME] = None
-        addresses[constants.CONTROLLER_0_HOSTNAME] = None
-        addresses[constants.CONTROLLER_1_HOSTNAME] = None
-        return addresses
-
-    def _create_cluster_host_network_address(self):
-        addresses = collections.OrderedDict()
-        addresses[constants.CONTROLLER_HOSTNAME] = None
-        addresses[constants.CONTROLLER_0_HOSTNAME] = None
-        addresses[constants.CONTROLLER_1_HOSTNAME] = None
-        return addresses
-
-    def _create_oam_network_address(self, pool):
-        addresses = {}
-        if pool.floating_address:
-            addresses.update(
-                {constants.CONTROLLER_HOSTNAME: pool.floating_address})
-
-        if utils.get_system_mode() != constants.SYSTEM_MODE_SIMPLEX:
-            if pool.controller0_address:
-                addresses.update(
-                    {constants.CONTROLLER_0_HOSTNAME: pool.controller0_address})
-
-            if pool.controller1_address:
-                addresses.update(
-                    {constants.CONTROLLER_1_HOSTNAME: pool.controller1_address})
-
-        if pool.gateway_address:
-            addresses.update(
-                {constants.CONTROLLER_GATEWAY: pool.gateway_address})
-        return addresses
-
-    def _create_multicast_network_address(self):
-        addresses = collections.OrderedDict()
-        addresses[constants.SM_MULTICAST_MGMT_IP_NAME] = None
-        addresses[constants.MTCE_MULTICAST_MGMT_IP_NAME] = None
-        addresses[constants.PATCH_CONTROLLER_MULTICAST_MGMT_IP_NAME] = None
-        addresses[constants.PATCH_AGENT_MULTICAST_MGMT_IP_NAME] = None
-        return addresses
-
-    def _create_system_controller_network_address(self, pool):
-        addresses = {}
-        return addresses
-
-    def _create_ironic_network_address(self):
-        addresses = collections.OrderedDict()
-        addresses[constants.CONTROLLER_HOSTNAME] = None
-        addresses[constants.CONTROLLER_0_HOSTNAME] = None
-        addresses[constants.CONTROLLER_1_HOSTNAME] = None
-        return addresses
-
-    def _create_storage_network_address(self):
-        addresses = collections.OrderedDict()
-        addresses[constants.CONTROLLER_HOSTNAME] = None
-        addresses[constants.CONTROLLER_0_HOSTNAME] = None
-        addresses[constants.CONTROLLER_1_HOSTNAME] = None
-        return addresses
-
     def _populate_network_addresses(self, pool, network, addresses):
         opt_fields = {}
         for name, address in addresses.items():
@@ -344,6 +199,7 @@ class NetworkController(rest.RestController):
             if not address:
                 address = address_pool.AddressPoolController.allocate_address(
                     pool, order=address_pool.SEQUENTIAL_ALLOCATION)
+
             LOG.debug("address_name={} address={}".format(address_name, address))
             values = {
                 'address_pool_id': pool.id,
@@ -395,11 +251,23 @@ class NetworkController(rest.RestController):
         if pool_uuid:
             pool = pecan.request.dbapi.address_pool_get(pool_uuid)
             network.update({'address_pool_id': pool.id})
+            if self._use_legacy_api():
+                # this value is filled here based on the provided pool, if not provided
+                # it will be executed via network-addrpool API
+                network.update({'primary_pool_family': constants.IP_FAMILIES[pool.family]})
 
         # Attempt to create the new network record
         result = pecan.request.dbapi.network_create(network)
 
-        self._create_network_addresses(pool, network)
+        if pool_uuid and self._use_legacy_api():
+            # create here the network-addrpool object
+            net_pool = pecan.request.dbapi.network_addrpool_create({"address_pool_id": pool.id,
+                                                                    "network_id": result.id})
+            LOG.info(f"added network-addrpool {net_pool.uuid}")
+
+            # the new network-addrpool API will take care of addresses
+            addresses = utils.PopulateAddresses.create_network_addresses(pool, network)
+            self._populate_network_addresses(pool, network, addresses)
 
         # If the host has already been created, make an RPC request
         # reconfigure the service endpoints. As oam network is processed
@@ -421,6 +289,7 @@ class NetworkController(rest.RestController):
             network['type'] in [constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
                                 constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM]:
             self._update_system_controller_network_config(network['type'])
+
         return Network.convert_with_links(result)
 
     def _update_system_controller_network_config(self, type):
@@ -432,6 +301,12 @@ class NetworkController(rest.RestController):
         elif type == constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM:
             pecan.request.rpcapi.update_dnsmasq_config(
                 pecan.request.context)
+
+    def _use_legacy_api(self):
+        """ Using this function to mark the usage of this API in legacy mode
+            when the pool's UUID is provided, otherwise it is using the new
+            network-addrpool API"""
+        return True
 
     @wsme_pecan.wsexpose(NetworkCollection,
                          types.uuid, int, wtypes.text, wtypes.text)
@@ -483,5 +358,16 @@ class NetworkController(rest.RestController):
                                 "is in administrative state = unlocked"
                                 .format(network['type'], network_uuid, host['hostname']))
                         raise wsme.exc.ClientSideError(msg)
+
+        if network.pool_uuid and self._use_legacy_api():
+            try:
+                # remove the network-addrpool object that creates the relationship for both tables
+                pool = pecan.request.dbapi.address_pool_get(network.pool_uuid)
+                values = {'address_pool_id': pool.id, 'network_id': network.id}
+                net_pool = pecan.request.dbapi.network_addrpool_query(values)
+                pecan.request.dbapi.network_addrpool_destroy(net_pool.uuid)
+                LOG.info(f"removed network-addrpool {net_pool.uuid}")
+            except Exception as ex:
+                LOG.exception(f"Exception when removing the network-addrpool[{net_pool.uuid}]: {ex}")
 
         pecan.request.dbapi.network_destroy(network_uuid)

@@ -1329,9 +1329,25 @@ class Networks(Base):
     address_pool_id = Column(Integer,
                              ForeignKey('address_pools.id',
                                         ondelete='CASCADE'),
-                             nullable=False)
+                             nullable=True)
+
+    primary_pool_family = Column(String(4))
 
     address_pool = relationship("AddressPools", lazy="joined")
+
+
+class NetworkAddressPools(Base):
+    __tablename__ = 'network_addresspools'
+    id = Column(Integer, primary_key=True, nullable=False)
+    uuid = Column(String(36), unique=True)
+
+    address_pool_id = Column(Integer, ForeignKey('address_pools.id', ondelete='CASCADE'))
+    network_id = Column(Integer, ForeignKey('networks.id', ondelete='CASCADE'))
+
+    address_pool = relationship("AddressPools", lazy="joined", backref="network_addresspools")
+    network = relationship("Networks", lazy="joined", backref="network_addresspools")
+
+    UniqueConstraint('network_id', 'address_pool_id', name='u_network_id@address_pool_id')
 
 
 class InterfaceNetworks(Base):

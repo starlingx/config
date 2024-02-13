@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020-2023 Wind River Systems, Inc.
+# Copyright (c) 2020-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -9,6 +9,7 @@ Tests for the API / network / methods.
 """
 
 import mock
+
 from six.moves import http_client
 
 from oslo_utils import uuidutils
@@ -41,6 +42,7 @@ class NetworkTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
                            'type',
                            'dynamic',
                            'pool_uuid',
+                           'primary_pool_family'
                            ]
 
     # hidden_api_fields are attributes that should not be populated by
@@ -55,7 +57,7 @@ class NetworkTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
 
     def assert_fields(self, api_object):
         # check the uuid is a uuid
-        assert(uuidutils.is_uuid_like(api_object['uuid']))
+        assert (uuidutils.is_uuid_like(api_object['uuid']))
 
         # Verify that expected attributes are returned
         for field in self.expected_api_fields:

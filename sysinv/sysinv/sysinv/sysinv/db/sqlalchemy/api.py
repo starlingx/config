@@ -14,7 +14,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 
 """SQLAlchemy storage backend."""
@@ -5165,6 +5165,94 @@ class Connection(api.Connection):
             raise exception.NetworkNotFound(network_uuid=network_uuid)
         query.delete()
 
+    def _network_addrpool_get(self, network_addrpool_uuid):
+        query = model_query(models.NetworkAddressPools)
+        query = add_identity_filter(query, network_addrpool_uuid)
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.NetworkAddrpoolNotFound(network_addrpool_uuid=network_addrpool_uuid)
+        return result
+
+    def _network_addrpoool_get_by_network_id(self, network_id, limit=None,
+                                           marker=None, sort_key=None,
+                                           sort_dir=None):
+        query = model_query(models.NetworkAddressPools)
+        query = query.filter_by(network_id=network_id)
+        return _paginate_query(models.NetworkAddressPools, limit, marker,
+                               sort_key, sort_dir, query)
+
+    def _network_addrpoool_get_by_pool_id(self, pool_id, limit=None,
+                                          marker=None, sort_key=None,
+                                          sort_dir=None):
+        query = model_query(models.NetworkAddressPools)
+        query = query.filter_by(address_pool_id=pool_id)
+        return _paginate_query(models.NetworkAddressPools, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @db_objects.objectify(objects.network_addrpool)
+    def network_addrpool_create(self, values):
+        if not values.get('uuid'):
+            values['uuid'] = uuidutils.generate_uuid()
+        network_addrpool = models.NetworkAddressPools(**values)
+        with _session_for_write() as session:
+            try:
+                session.add(network_addrpool)
+                session.flush()
+            except db_exc.DBDuplicateEntry:
+                raise exception.NetworkAddrpoolAlreadyExists(
+                    address_pool_id=values['address_pool_id'],
+                    network_id=values['network_id'])
+            return self._network_addrpool_get(values['uuid'])
+
+    @db_objects.objectify(objects.network_addrpool)
+    def network_addrpool_get_all(self, limit=None, marker=None,
+                                    sort_key=None, sort_dir=None):
+        query = model_query(models.NetworkAddressPools)
+        return _paginate_query(models.NetworkAddressPools, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @db_objects.objectify(objects.network_addrpool)
+    def network_addrpool_get_by_network_id(self, network_id, limit=None,
+                                           marker=None, sort_key=None,
+                                           sort_dir=None):
+        return self._network_addrpoool_get_by_network_id(network_id, limit, marker,
+                                                         sort_key, sort_dir)
+
+    @db_objects.objectify(objects.network_addrpool)
+    def network_addrpool_get_by_pool_id(self, pool_id, limit=None,
+                                           marker=None, sort_key=None,
+                                           sort_dir=None):
+        return self._network_addrpoool_get_by_pool_id(pool_id, limit, marker,
+                                                         sort_key, sort_dir)
+
+    @db_objects.objectify(objects.network_addrpool)
+    def network_addrpool_query(self, values):
+        query = model_query(models.NetworkAddressPools)
+        query = (query.
+                 filter(models.NetworkAddressPools.address_pool_id == values['address_pool_id']).
+                 filter(models.NetworkAddressPools.network_id == values['network_id']))
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.NetworkAddrpoolNetIdAndPoolIdNotFound(
+                address_pool_id=values['address_pool_id'],
+                network_id=values['network_id'])
+        return result
+
+    @db_objects.objectify(objects.network_addrpool)
+    def network_addrpool_get(self, network_addrpool_uuid):
+        return self._network_addrpool_get(network_addrpool_uuid)
+
+    def network_addrpool_destroy(self, network_addrpool_uuid):
+        query = model_query(models.NetworkAddressPools)
+        query = add_identity_filter(query, network_addrpool_uuid)
+        try:
+            query.one()
+        except NoResultFound:
+            raise exception.NetworkAddrpoolNotFound(network_addrpool_uuid=network_addrpool_uuid)
+        query.delete()
+
     def _interface_network_get(self, uuid):
         query = model_query(models.InterfaceNetworks)
         query = add_identity_filter(query, uuid)
@@ -5219,6 +5307,14 @@ class Connection(api.Connection):
                 network_id=values['network_id'])
         return result
 
+    def _interface_network_get_by_network_id(self, network_id, limit=None,
+                                             marker=None, sort_key=None,
+                                             sort_dir=None):
+        query = model_query(models.InterfaceNetworks)
+        query = query.filter_by(network_id=network_id)
+        return _paginate_query(models.InterfaceNetworks, limit, marker,
+                               sort_key, sort_dir, query)
+
     @db_objects.objectify(objects.interface_network)
     def interface_network_create(self, values):
         if not values.get('uuid'):
@@ -5258,6 +5354,13 @@ class Connection(api.Connection):
             sort_key=None, sort_dir=None):
         return self._interface_network_get_by_interface(
             interface_id, limit, marker, sort_key, sort_dir)
+
+    @db_objects.objectify(objects.interface_network)
+    def interface_network_get_by_network_id(self, network_id, limit=None,
+                                            marker=None, sort_key=None,
+                                            sort_dir=None):
+        return self._interface_network_get_by_network_id(network_id, limit, marker,
+                                                         sort_key, sort_dir)
 
     def interface_network_destroy(self, uuid):
         query = model_query(models.InterfaceNetworks)
@@ -5310,13 +5413,23 @@ class Connection(api.Connection):
         return self._address_get(address_uuid)
 
     @db_objects.objectify(objects.address)
-    def address_get_by_name(self, name):
+    def address_get_by_name(self, name, limit=None, marker=None,
+                            sort_key=None, sort_dir=None):
+        # this method can return a list of IPv4 and IPv6 addresses
         query = model_query(models.Addresses)
         query = query.filter_by(name=name)
+        return _paginate_query(models.Addresses, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @db_objects.objectify(objects.address)
+    def address_get_by_name_and_family(self, name, family):
+        query = model_query(models.Addresses)
+        query = query.filter_by(name=name, family=family)
         try:
             result = query.one()
         except NoResultFound:
-            raise exception.AddressNotFoundByName(name=name)
+            raise exception.AddressNotFoundByNameAndFamily(name=name,
+                                                           family=family)
         return result
 
     @db_objects.objectify(objects.address)

@@ -1,10 +1,9 @@
 #
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2021-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
-import pecan
 from pecan import rest
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
@@ -12,6 +11,7 @@ from six.moves.urllib.parse import urlparse
 
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
+from sysinv.api.controllers.v1 import utils as apiutils
 from sysinv.common import constants
 from sysinv.common import kubernetes
 from sysinv.common import utils
@@ -127,5 +127,6 @@ class KubeClusterController(rest.RestController):
     def _get_oam_address(self):
         address_name = utils.format_address_name(
             constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_OAM)
-        address = pecan.request.dbapi.address_get_by_name(address_name)
+        address = apiutils.get_primary_address_by_name(address_name,
+                                                       constants.NETWORK_TYPE_OAM, True)
         return address.address

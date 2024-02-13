@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2015-2022 Wind River Systems, Inc.
+# Copyright (c) 2015-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -383,12 +383,13 @@ class AddressController(rest.RestController):
 
     def _check_name_conflict(self, address):
         name = address.get('name', None)
+        family = address.get('family', 0)
         if name is None:
             return
         try:
-            pecan.request.dbapi.address_get_by_name(name)
+            pecan.request.dbapi.address_get_by_name_and_family(name, family)
             raise exception.AddressNameExists(name=name)
-        except exception.AddressNotFoundByName:
+        except exception.AddressNotFoundByNameAndFamily:
             pass
 
     def _check_subnet_valid(self, pool, address):

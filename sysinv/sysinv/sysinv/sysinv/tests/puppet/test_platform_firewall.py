@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2023 Wind River Systems, Inc.
+# Copyright (c) 2017-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -462,12 +462,18 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
         nodename = self.host.hostname
         hep_name = f'{nodename}-oam-if-hep'
         if cutils.is_aio_simplex_system(db_api):
-            address = db_api.address_get_by_name("controller-oam")
+            addr_name = cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
+                                                   constants.NETWORK_TYPE_OAM)
+            address = dbutils.get_primary_address_by_name(addr_name,
+                                                          constants.NETWORK_TYPE_OAM)
         else:
-            if nodename == "controller-0":
-                address = db_api.address_get_by_name("controller-0-oam")
-            if nodename == "controller-1":
-                address = db_api.address_get_by_name("controller-1-oam")
+            addr_name = cutils.format_address_name(nodename, constants.NETWORK_TYPE_OAM)
+            if nodename == constants.CONTROLLER_0_HOSTNAME:
+                address = dbutils.get_primary_address_by_name(addr_name,
+                                                              constants.NETWORK_TYPE_OAM)
+            if nodename == constants.CONTROLLER_1_HOSTNAME:
+                address = dbutils.get_primary_address_by_name(addr_name,
+                                                              constants.NETWORK_TYPE_OAM)
         self.assertTrue(address)
         self.assertEqual(hep[hep_name]["spec"]["expectedIPs"], [str(address.address)])
 

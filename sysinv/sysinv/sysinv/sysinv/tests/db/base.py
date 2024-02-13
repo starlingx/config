@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -136,6 +136,7 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self.hosts = []
         self.address_pools = []
         self.networks = []
+        self.network_addrpools = []
         self.datanetworks = []
         self._create_test_common()
 
@@ -152,6 +153,7 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self.hosts = []
         self.address_pools = []
         self.networks = []
+        self.network_addrpools = []
         self.datanetworks = []
         self.oam = None
 
@@ -209,11 +211,22 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
     def _create_test_network(self, name, network_type, subnet, ranges=None):
         address_pool_id = self._create_test_address_pool(name, subnet, ranges).id
 
+        primary_pool_family = ""
+        if not isinstance(subnet, netaddr.IPNetwork):
+            subnet = netaddr.IPNetwork(subnet)
+
+        primary_pool_family = constants.IP_FAMILIES[subnet.version]
+
         network = dbutils.create_test_network(
             type=network_type,
-            address_pool_id=address_pool_id)
+            address_pool_id=address_pool_id,
+            primary_pool_family=primary_pool_family)
 
         self.networks.append(network)
+
+        network_addrpool = dbutils.create_test_network_addrpool(address_pool_id=address_pool_id,
+                                                                network_id=network.id)
+        self.network_addrpools.append(network_addrpool)
         return network
 
     def _create_test_route(self, interface, gateway, family=4, network='10.10.10.0', prefix=24):
@@ -232,7 +245,7 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self.datanetworks.append(datanetwork)
         return datanetwork
 
-    def _create_test_address_pool(self, name, subnet, ranges=None):
+    def _create_test_address_pool(self, name, subnet, ranges=None, append=True):
         if not ranges:
             ranges = [(str(subnet[2]), str(subnet[-2]))]
         floating_address = None
@@ -252,7 +265,8 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
             floating_address=str(floating_address),
             controller0_address=str(controller0_address),
             controller1_address=str(controller1_address))
-        self.address_pools.append(pool)
+        if append:
+            self.address_pools.append(pool)
         return pool
 
     def _create_test_networks(self):
@@ -399,8 +413,13 @@ class BaseHostTestCase(BaseSystemTestCase):
         if personality == constants.CONTROLLER:
             hostname = '%s-%s' % (personality, unit)
             name = utils.format_address_name(hostname, constants.NETWORK_TYPE_MGMT)
-            address = self.dbapi.address_get_by_name(name)
-            mgmt_ipaddr = address.address
+            address = dbutils.get_primary_address_by_name(name, constants.NETWORK_TYPE_MGMT)
+            if address:
+                mgmt_ipaddr = address.address
+            else:
+                mgmt_ipaddr = kw.get("mgmt_ip", "0.0.0.0")
+                if 'mgmt_ip' in kw:
+                    del kw['mgmt_ip']
 
             host = dbutils.create_test_ihost(
                 uuid=uuidutils.generate_uuid(),

@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -66,6 +66,20 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
             link_capacity=1000,
             vlan_id=2,
             address_pool_id=self.address_pool_mgmt.id)
+        self.mgmt_c0_address = dbutils.create_test_address(
+                family=constants.IPV4_FAMILY,
+                address='192.168.204.2',
+                prefix=24,
+                name='controller-0-mgmt',
+                address_pool_id=self.address_pool_mgmt.id)
+        self.controller['mgmt_ip'] = self.mgmt_c0_address.address
+        self.mgmt_w0_address = dbutils.create_test_address(
+                family=constants.IPV4_FAMILY,
+                address='192.168.204.3',
+                prefix=24,
+                name='worker-0-mgmt',
+                address_pool_id=self.address_pool_mgmt.id)
+        self.worker['mgmt_ip'] = self.mgmt_w0_address.address
         self.address_pool_cluster_host = dbutils.create_test_address_pool(
             id=2,
             network='192.168.206.0',
@@ -91,7 +105,7 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
             type=constants.NETWORK_TYPE_OAM,
             address_pool_id=self.address_pool_oam.id)
         self.oam_address = dbutils.create_test_address(
-                family=2,
+                family=constants.IPV4_FAMILY,
                 address='10.10.10.3',
                 prefix=24,
                 name='controller-0-oam',
@@ -107,7 +121,7 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
             type=constants.NETWORK_TYPE_PXEBOOT,
             address_pool_id=self.address_pool_pxeboot.id)
         self.pxeboot_address = dbutils.create_test_address(
-                family=2,
+                family=constants.IPV4_FAMILY,
                 address='192.168.202.3',
                 prefix=24,
                 name='controller-0-pxeboot',

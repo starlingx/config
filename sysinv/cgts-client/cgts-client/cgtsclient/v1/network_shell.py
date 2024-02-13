@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015 Wind River Systems, Inc.
+# Copyright (c) 2015-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -23,8 +23,8 @@ def _print_network_show(obj):
            help="UUID of IP network")
 def do_network_show(cc, args):
     """Show IP network details."""
-    labels = ['id', 'uuid', 'name', 'type', 'dynamic', 'pool_uuid']
-    fields = ['id', 'uuid', 'name', 'type', 'dynamic', 'pool_uuid']
+    labels = ['id', 'uuid', 'name', 'type', 'dynamic', 'pool_uuid', 'primary_pool_family']
+    fields = ['id', 'uuid', 'name', 'type', 'dynamic', 'pool_uuid', 'primary_pool_family']
     network = cc.network.get(args.network_uuid)
     data = [(f, getattr(network, f, '')) for f in fields]
     utils.print_tuple_list(data, tuple_labels=labels)
@@ -32,8 +32,8 @@ def do_network_show(cc, args):
 
 def do_network_list(cc, args):
     """List IP networks on host."""
-    labels = ['id', 'uuid', 'name', 'type', 'dynamic', 'pool_uuid']
-    fields = ['id', 'uuid', 'name', 'type', 'dynamic', 'pool_uuid']
+    labels = ['id', 'uuid', 'name', 'type', 'dynamic', 'pool_uuid', 'primary_pool_family']
+    fields = ['id', 'uuid', 'name', 'type', 'dynamic', 'pool_uuid', 'primary_pool_family']
     networks = cc.network.list()
     utils.print_list(networks, fields, labels, sortby=1)
 

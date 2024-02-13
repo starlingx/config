@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 # Copyright 2010 United States Government as represented by the
 # Administrator of the National Aeronautics and Space Administration.
 # All Rights Reserved.
@@ -682,6 +682,20 @@ class NetworkAlreadyExists(Conflict):
     message = _("Network of type %(type)s already exists.")
 
 
+class NetworkAddrpoolNotFound(NotFound):
+    message = _("Network addrpool %(network_addrpool_uuid)s could not be found.")
+
+
+class NetworkAddrpoolAlreadyExists(Conflict):
+    message = _("Network addrpool with address pool ID %(address_pool_id)s "
+                "and network ID %(network_id)s already exists.")
+
+
+class NetworkAddrpoolNetIdAndPoolIdNotFound(NotFound):
+    message = _("Network addrpool with address pool ID %(address_pool_id)s and "
+                "network ID %(network_id)s could not be found.")
+
+
 class InterfaceNetworkNotFound(NotFound):
     message = _("Interface network %(uuid)s could not be found.")
 
@@ -724,6 +738,10 @@ class AddressNotFoundByAddress(NotFound):
 
 class AddressNotFoundByName(NotFound):
     message = _("Address could not be found for %(name)s")
+
+
+class AddressNotFoundByNameAndFamily(NotFound):
+    message = _("Address could not be found for %(name)s and family %(family)s")
 
 
 class AddressNotFoundByInterfacePool(NotFound):

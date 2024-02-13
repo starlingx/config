@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2022 Wind River Systems, Inc.
+# Copyright (c) 2018-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -263,7 +263,9 @@ class BaseHelm(object):
         address_name = utils.format_address_name(name, networktype)
         address = addresses.get(address_name)
         if address is None:
-            address = self.dbapi.address_get_by_name(address_name)
+            address = utils.get_primary_address_by_name(self.dbapi,
+                                                        address_name,
+                                                        networktype)
             addresses[address_name] = address
 
         return address

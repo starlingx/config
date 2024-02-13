@@ -1,5 +1,5 @@
 
-# Copyright (c) 2017-2023 Wind River Systems, Inc.
+# Copyright (c) 2017-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -768,17 +768,14 @@ class PlatformFirewallPuppet(base.BasePuppet):
             elif host.hostname == constants.CONTROLLER_1_HOSTNAME:
                 address_name = cutils.format_address_name(constants.CONTROLLER_1_HOSTNAME, net_type)
 
-        address = None
-        try:
-            address = self.dbapi.address_get_by_name(address_name)
-        except exception.AddressNotFoundByName:
-            LOG.info(f"cannot find address:{address_name} for net_type:{net_type} expectedIPs")
-
+        address = cutils.get_primary_address_by_name(self.dbapi, address_name, net_type)
         if (address):
             if ("expectedIPs" in host_endpoints["spec"].keys()):
                 host_endpoints["spec"]["expectedIPs"].append(str(address.address))
             else:
                 host_endpoints["spec"].update({"expectedIPs": [str(address.address)]})
+        else:
+            LOG.info(f"cannot find address:{address_name} for net_type:{net_type} expectedIPs")
 
 
 def _get_dc_role(dbapi):

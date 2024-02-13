@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015 Wind River Systems, Inc.
+# Copyright (c) 2015-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -25,6 +25,7 @@ class Network(base.SysinvObject):
               'type': utils.str_or_none,
               'dynamic': utils.bool_or_none,
               'pool_uuid': utils.uuid_or_none,
+              'primary_pool_family': utils.str_or_none,
               }
 
     _foreign_fields = {'pool_uuid': 'address_pool:uuid'}

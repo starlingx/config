@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Copyright (C) 2019 Intel Corporation
-# Copyright (c) 2021-2022 Wind River Systems, Inc.
+# Copyright (c) 2021-2024 Wind River Systems, Inc.
 #
 """
 Sysinv Keystone notification listener.
@@ -69,10 +69,10 @@ class NotificationEndpoint(object):
 def get_transport_url():
     try:
         db_api = dbapi.get_instance()
-        network_object = db_api.address_get_by_name(
-            utils.format_address_name(constants.CONTROLLER_HOSTNAME,
+        addr_name = utils.format_address_name(constants.CONTROLLER_HOSTNAME,
                                       constants.NETWORK_TYPE_MGMT)
-        )
+        network_object = utils.get_primary_address_by_name(db_api, addr_name,
+                                                    constants.NETWORK_TYPE_MGMT, True)
 
     except Exception as e:
         LOG.error("Failed to get management IP address: %s" % str(e))

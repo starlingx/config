@@ -1335,9 +1335,10 @@ class HostController(rest.RestController):
             return 0
 
         # get the active controller's floating ip address
-        floating_address = pecan.request.dbapi.address_get_by_name(
+        floating_address = utils.get_primary_address_by_name(
             cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
-                                       constants.NETWORK_TYPE_MGMT)).address
+                                       constants.NETWORK_TYPE_MGMT),
+            constants.NETWORK_TYPE_MGMT).address
         try:
             # get the management IP for the host that matches this mgmt mac
             ihost_obj = pecan.request.dbapi.ihost_get_by_mgmt_mac(mac)
@@ -1346,8 +1347,9 @@ class HostController(rest.RestController):
                 mgmt_addr = ihost_obj['mgmt_ip']
                 if mgmt_addr is None:
                     address_name = cutils.format_address_name(hostname,
-                                                      constants.NETWORK_TYPE_MGMT)
-                    address = pecan.request.dbapi.address_get_by_name(address_name)
+                                                    constants.NETWORK_TYPE_MGMT)
+                    address = utils.get_primary_address_by_name(address_name,
+                                                    constants.NETWORK_TYPE_MGMT, True)
                     mgmt_addr = address.address
 
                 if mgmt_addr is not None:
@@ -1654,7 +1656,8 @@ class HostController(rest.RestController):
         mgmt_address_name = cutils.format_address_name(
             ihost_dict['hostname'], constants.NETWORK_TYPE_MGMT)
         self._validate_address_not_allocated(mgmt_address_name,
-                                             ihost_dict.get('mgmt_ip'))
+                                             ihost_dict.get('mgmt_ip'),
+                                             constants.NETWORK_TYPE_MGMT)
 
         if ihost_dict.get('mgmt_ip'):
             self._validate_ip_in_mgmt_network(ihost_dict['mgmt_ip'])
@@ -1697,7 +1700,8 @@ class HostController(rest.RestController):
         # Notify maintenance about updated mgmt_ip
         address_name = cutils.format_address_name(ihost_obj.hostname,
                                                   constants.NETWORK_TYPE_MGMT)
-        address = pecan.request.dbapi.address_get_by_name(address_name)
+        address = utils.get_primary_address_by_name(address_name,
+                                                    constants.NETWORK_TYPE_MGMT, True)
         ihost_obj['mgmt_ip'] = address.address
 
         # Add ihost to mtc
@@ -2295,7 +2299,8 @@ class HostController(rest.RestController):
             else:
                 address_name = cutils.format_address_name(ihost_obj.hostname,
                                                         constants.NETWORK_TYPE_MGMT)
-                address = pecan.request.dbapi.address_get_by_name(address_name)
+                address = utils.get_primary_address_by_name(address_name,
+                                                            constants.NETWORK_TYPE_MGMT, True)
                 ihost_obj['mgmt_ip'] = address.address
 
             hostupdate.notify_mtce = True
@@ -3170,7 +3175,7 @@ class HostController(rest.RestController):
         utils.validate_address_within_nework(ip, network)
 
     @staticmethod
-    def _validate_address_not_allocated(name, ip_address):
+    def _validate_address_not_allocated(name, ip_address, net_type):
         """Validate that address isn't allocated
 
         :param name: Address name to check isn't allocated.
@@ -3185,7 +3190,7 @@ class HostController(rest.RestController):
             except exception.AddressNotFoundByAddress:
                 pass
             try:
-                address = pecan.request.dbapi.address_get_by_name(name)
+                address = utils.get_primary_address_by_name(name, net_type, True)
                 if address.address != ip_address:
                     raise exception.AddressAlreadyAllocated(address=name)
             except exception.AddressNotFoundByName:
@@ -3574,7 +3579,7 @@ class HostController(rest.RestController):
                     and host['config_status'] == constants.CONFIG_STATUS_OUT_OF_DATE
                     and host['administrative'] == constants.ADMIN_LOCKED):
                 flip = utils.config_flip_reboot_required(host['config_target'])
-                if(utils.config_is_reboot_required(host['config_target'])
+                if (utils.config_is_reboot_required(host['config_target'])
                         and flip == host['config_applied']):
                     check_sriov_port_data = False
 

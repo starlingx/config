@@ -59,6 +59,7 @@ from sysinv.api.controllers.v1 import lvg
 from sysinv.api.controllers.v1 import license
 from sysinv.api.controllers.v1 import memory
 from sysinv.api.controllers.v1 import network
+from sysinv.api.controllers.v1 import network_addrpool
 from sysinv.api.controllers.v1 import network_oam
 from sysinv.api.controllers.v1 import node
 from sysinv.api.controllers.v1 import ntp
@@ -206,6 +207,9 @@ class V1(base.APIBase):
 
     networks = [link.Link]
     "Links to the network resource"
+
+    network_addrpools = [link.Link]
+    "Links to the network address-pool resource"
 
     datanetworks = [link.Link]
     "Links to the datanetwork resource"
@@ -671,6 +675,14 @@ class V1(base.APIBase):
                                            bookmark=True)
                        ]
 
+        v1.network_addrpools = [link.Link.make_link('self', pecan.request.host_url,
+                                           'network_addrpools', ''),
+                                link.Link.make_link('bookmark',
+                                                     pecan.request.host_url,
+                                                    'network_addrpools', '',
+                                                    bookmark=True)
+                                ]
+
         v1.interface_networks = [link.Link.make_link('self', pecan.request.host_url,
                                                      'interface_networks', ''),
                                  link.Link.make_link('bookmark',
@@ -991,6 +1003,7 @@ class Controller(rest.RestController):
     device_image_state = device_image_state.DeviceImageStateController()
     device_labels = device_label.DeviceLabelController()
     restore = restore.RestoreController()
+    network_addresspools = network_addrpool.NetworkAddresspoolController()
 
     @wsme_pecan.wsexpose(V1)
     def get(self):

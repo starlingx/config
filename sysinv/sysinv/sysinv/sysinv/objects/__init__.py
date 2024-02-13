@@ -12,7 +12,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 
 from sysinv.objects import address
@@ -62,6 +62,7 @@ from sysinv.objects import lvg
 from sysinv.objects import memory
 from sysinv.objects import network
 from sysinv.objects import network_oam
+from sysinv.objects import network_addrpool
 from sysinv.objects import node
 from sysinv.objects import ntp
 from sysinv.objects import pci_device
@@ -203,6 +204,7 @@ restore = restore.Restore
 kube_rootca_host_update = kube_rootca_host_update.KubeRootCAHostUpdate
 kube_rootca_update = kube_rootca_update.KubeRootCAUpdate
 runtime_config = runtime_config.RuntimeConfig
+network_addrpool = network_addrpool.NetworkAddrpool
 
 __all__ = ("system",
            "cluster",
@@ -290,6 +292,7 @@ __all__ = ("system",
            "kube_rootca_host_update",
            "kube_rootca_update",
            "runtime_config",
+           "network_addrpool",
            # alias objects for RPC compatibility
            "ihost",
            "ilvg")

@@ -16,10 +16,11 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 
 from eventlet.green import subprocess
+import collections
 import jsonpatch
 import netaddr
 import os
@@ -40,6 +41,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import health
 from sysinv.helm import common as helm_common
+
 
 LOG = log.getLogger(__name__)
 
@@ -349,7 +351,7 @@ def lookup_static_ip_address(name, networktype):
         # address names are refined by network type to ensure they are
         # unique across different address pools
         name = '%s-%s' % (name, networktype)
-        address = pecan.request.dbapi.address_get_by_name(name)
+        address = get_primary_address_by_name(name, networktype, True)
         return address.address
     except exception.AddressNotFoundByName:
         return None
@@ -890,3 +892,217 @@ def is_host_lvg_updated(host_fs_list, host_lvg_list):
             if last_resize < lvg['updated_at']:
                 return True
             return False
+
+
+class PopulateAddresses(object):
+
+    @staticmethod
+    def create_network_addresses(pool, network):
+        addresses = dict()
+        if network['type'] == constants.NETWORK_TYPE_MGMT:
+            addresses = PopulateAddresses._create_mgmt_network_address(pool)
+        elif network['type'] == constants.NETWORK_TYPE_ADMIN:
+            addresses = PopulateAddresses._create_admin_network_address(pool)
+        elif network['type'] == constants.NETWORK_TYPE_PXEBOOT:
+            addresses = PopulateAddresses._create_pxeboot_network_address()
+        elif network['type'] == constants.NETWORK_TYPE_CLUSTER_HOST:
+            addresses = PopulateAddresses._create_cluster_host_network_address()
+        elif network['type'] == constants.NETWORK_TYPE_OAM:
+            addresses = PopulateAddresses._create_oam_network_address(pool)
+        elif network['type'] == constants.NETWORK_TYPE_MULTICAST:
+            addresses = PopulateAddresses._create_multicast_network_address()
+        elif network['type'] == constants.NETWORK_TYPE_IRONIC:
+            addresses = PopulateAddresses._create_ironic_network_address()
+        elif network['type'] == constants.NETWORK_TYPE_SYSTEM_CONTROLLER:
+            addresses = PopulateAddresses._create_system_controller_network_address(pool)
+        elif network['type'] == constants.NETWORK_TYPE_STORAGE:
+            addresses = PopulateAddresses._create_storage_network_address()
+        return addresses
+
+    @staticmethod
+    def _create_mgmt_network_address(pool):
+        addresses = {}
+
+        if pool.floating_address:
+            addresses.update(
+                {constants.CONTROLLER_HOSTNAME: pool.floating_address})
+        else:
+            addresses.update({constants.CONTROLLER_HOSTNAME: None})
+
+        if pool.controller0_address:
+            addresses.update(
+                {constants.CONTROLLER_0_HOSTNAME: pool.controller0_address})
+        else:
+            addresses.update({constants.CONTROLLER_0_HOSTNAME: None})
+
+        if pool.controller1_address:
+            addresses.update(
+                {constants.CONTROLLER_1_HOSTNAME: pool.controller1_address})
+        else:
+            addresses.update({constants.CONTROLLER_1_HOSTNAME: None})
+
+        if pool.gateway_address is not None:
+            if get_distributed_cloud_role() == \
+                    constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+                # In subcloud configurations, the management gateway is used
+                # to communicate with the central cloud.
+                addresses[constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME] =\
+                    pool.gateway_address
+            else:
+                addresses[constants.CONTROLLER_GATEWAY] =\
+                    pool.gateway_address
+        return addresses
+
+    @staticmethod
+    def _create_admin_network_address(pool):
+        addresses = {}
+        if pool.floating_address:
+            addresses.update(
+                {constants.CONTROLLER_HOSTNAME: pool.floating_address})
+        else:
+            addresses.update({constants.CONTROLLER_HOSTNAME: None})
+
+        if pool.controller0_address:
+            addresses.update(
+                {constants.CONTROLLER_0_HOSTNAME: pool.controller0_address})
+        else:
+            addresses.update({constants.CONTROLLER_0_HOSTNAME: None})
+
+        if pool.controller1_address:
+            addresses.update(
+                {constants.CONTROLLER_1_HOSTNAME: pool.controller1_address})
+        else:
+            addresses.update({constants.CONTROLLER_1_HOSTNAME: None})
+
+        if pool.gateway_address is not None:
+            if get_distributed_cloud_role() == \
+                    constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+                # In subcloud configurations, the admin gateway is used
+                # to communicate with the central cloud.
+                addresses[constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME] =\
+                    pool.gateway_address
+            else:
+                addresses[constants.CONTROLLER_GATEWAY] =\
+                    pool.gateway_address
+        return addresses
+
+    @staticmethod
+    def _create_pxeboot_network_address():
+        addresses = collections.OrderedDict()
+        addresses[constants.CONTROLLER_HOSTNAME] = None
+        addresses[constants.CONTROLLER_0_HOSTNAME] = None
+        addresses[constants.CONTROLLER_1_HOSTNAME] = None
+        return addresses
+
+    @staticmethod
+    def _create_cluster_host_network_address():
+        addresses = collections.OrderedDict()
+        addresses[constants.CONTROLLER_HOSTNAME] = None
+        addresses[constants.CONTROLLER_0_HOSTNAME] = None
+        addresses[constants.CONTROLLER_1_HOSTNAME] = None
+        return addresses
+
+    @staticmethod
+    def _create_oam_network_address(pool):
+        addresses = {}
+        if pool.floating_address:
+            addresses.update(
+                {constants.CONTROLLER_HOSTNAME: pool.floating_address})
+
+        if get_system_mode() != constants.SYSTEM_MODE_SIMPLEX:
+            if pool.controller0_address:
+                addresses.update(
+                    {constants.CONTROLLER_0_HOSTNAME: pool.controller0_address})
+
+            if pool.controller1_address:
+                addresses.update(
+                    {constants.CONTROLLER_1_HOSTNAME: pool.controller1_address})
+
+        if pool.gateway_address:
+            addresses.update(
+                {constants.CONTROLLER_GATEWAY: pool.gateway_address})
+        return addresses
+
+    @staticmethod
+    def _create_multicast_network_address():
+        addresses = collections.OrderedDict()
+        addresses[constants.SM_MULTICAST_MGMT_IP_NAME] = None
+        addresses[constants.MTCE_MULTICAST_MGMT_IP_NAME] = None
+        addresses[constants.PATCH_CONTROLLER_MULTICAST_MGMT_IP_NAME] = None
+        addresses[constants.PATCH_AGENT_MULTICAST_MGMT_IP_NAME] = None
+        return addresses
+
+    @staticmethod
+    def _create_system_controller_network_address(pool):
+        addresses = {}
+        return addresses
+
+    @staticmethod
+    def _create_ironic_network_address():
+        addresses = collections.OrderedDict()
+        addresses[constants.CONTROLLER_HOSTNAME] = None
+        addresses[constants.CONTROLLER_0_HOSTNAME] = None
+        addresses[constants.CONTROLLER_1_HOSTNAME] = None
+        return addresses
+
+    @staticmethod
+    def _create_storage_network_address():
+        addresses = collections.OrderedDict()
+        addresses[constants.CONTROLLER_HOSTNAME] = None
+        addresses[constants.CONTROLLER_0_HOSTNAME] = None
+        addresses[constants.CONTROLLER_1_HOSTNAME] = None
+        return addresses
+
+
+def get_primary_address_by_name(db_address_name, networktype, raise_exc=False):
+    """Search address by database name to retrieve the relevant addres from
+       the primary pool, if multipĺe entries for the same name are found, the
+       query will use the network's pool_uuid to get the address family (IPv4 or
+       IPv6) related to the primary.
+
+    :param db_address_name: the address name in the database
+    :param networktype: the network type
+    :param raise_exc: raise AddressNotFoundByName instead of returning None
+
+    :return: the address object if found, None otherwise
+    """
+    address = None
+    # first search directly by name
+    try:
+        address = pecan.request.dbapi.address_get_by_name(db_address_name)
+    except exception.AddressNotFoundByName():
+        # if there is no match by name return here
+        LOG.info(f"address {db_address_name} not found, returning")
+        if raise_exc:
+            raise exception.AddressNotFoundByName(name=db_address_name)
+        return address
+
+    # if there is a single entry, return here
+    if len(address) == 1:
+        return address[0]
+
+    # if there are more than one entry, it is dual-stack, search the primary pool
+    # to return the desired IP based on primary pool address family.
+    if len(address) > 1:
+        address = None
+        try:
+            # there only one network per type
+            networks = pecan.request.dbapi.networks_get_by_type(networktype)
+            if networks:
+                if networks[0].pool_uuid:
+                    pool = pecan.request.dbapi.address_pool_get(networks[0].pool_uuid)
+                    address = pecan.request.dbapi.address_get_by_name_and_family(db_address_name,
+                                                                                 pool.family)
+            else:
+                LOG.info(f"cannot find network for type {networktype}")
+
+        except exception.AddressNotFoundByNameAndFamily:
+            LOG.info(f"cannot find address for name={db_address_name} with"
+                     f" network type={networktype}")
+            pass
+        except Exception as ex:
+            LOG.info(f"get_primary_address_by_name general exception: {ex}")
+
+    if not address and raise_exc:
+        raise exception.AddressNotFoundByName(name=db_address_name)
+    return address

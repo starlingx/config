@@ -24,6 +24,7 @@ import uuid
 from oslo_serialization import jsonutils as json
 from oslo_utils import uuidutils
 from sysinv.common import constants
+from sysinv.common import exception
 from sysinv.db import api as db_api
 
 
@@ -785,6 +786,19 @@ def create_test_address(**kw):
     return dbapi.address_create(address)
 
 
+def cleanup_address_table():
+    dbapi = db_api.get_instance()
+    address_list = dbapi.addresses_get_all()
+    for addr in address_list:
+        dbapi.address_destroy(addr.uuid)
+
+
+def get_address_table():
+    dbapi = db_api.get_instance()
+    address_list = dbapi.addresses_get_all()
+    return address_list
+
+
 def get_test_route(**kw):
     inv = {
         'id': kw.get('id'),
@@ -834,9 +848,64 @@ def get_test_network(**kw):
             'uuid': kw.get('uuid'),
             'type': kw.get('type'),
             'dynamic': kw.get('dynamic', True),
-            'address_pool_id': kw.get('address_pool_id', None)
+            'address_pool_id': kw.get('address_pool_id', None),
+            'primary_pool_family': kw.get('primary_pool_family', None),
+            'name': kw.get('name', None)
            }
     return inv
+
+
+def get_network_table():
+    dbapi = db_api.get_instance()
+    return dbapi.networks_get_all()
+
+
+def get_test_network_addrpool(**kw):
+    inv = {
+        'id': kw.get('id'),
+        'uuid': kw.get('uuid'),
+        'address_pool_id': kw.get('address_pool_id'),
+        'network_id': kw.get('network_id'),
+    }
+    return inv
+
+
+def get_post_network_addrpool(**kw):
+    inv = {
+        'address_pool_uuid': kw.get('address_pool_uuid'),
+        'network_uuid': kw.get('network_uuid'),
+    }
+    return inv
+
+
+def create_test_network_addrpool(**kw):
+    """Create test network-addrpool entry in DB and return NetworkAddresspool DB object.
+    Function to be used to create test NetworkAddresspool objects in the database.
+    :param kw: kwargs with overriding values for network-addrpool's attributes.
+    :returns: Test Network DB object.
+    """
+    network_addrpool = get_test_network_addrpool(**kw)
+    # Let DB generate ID if it isn't specified explicitly
+    if 'id' not in kw:
+        del network_addrpool['id']
+    dbapi = db_api.get_instance()
+    return dbapi.network_addrpool_create(network_addrpool)
+
+
+def cleanup_network_addrpool_table():
+    """ Clean up all existing elements in the network_addrpools table
+    """
+    dbapi = db_api.get_instance()
+    network_addrpool_list = dbapi.network_addrpool_get_all()
+    for net_pool in network_addrpool_list:
+        network_addrpool_list = dbapi.network_addrpool_destroy(net_pool.uuid)
+
+
+def get_address_pool_table():
+    """ Clean up all existing elements in the network_addrpools table
+    """
+    dbapi = db_api.get_instance()
+    return dbapi.address_pools_get_all()
 
 
 def get_test_icpu(**kw):
@@ -1342,6 +1411,20 @@ def create_test_interface_network_assign(interface_id, network_id):
     return dbapi.interface_network_create(values)
 
 
+def create_test_interface_network_type_assign(interface_id, network_type):
+    """Create test interface-network entry in DB and return InterfaceNetwork
+    object. Function to be used to create test InterfaceNetwork objects in the database.
+    :param interface_id: interface object id.
+    :param network_type: network type.
+    :returns: Test Network DB object.
+    """
+    dbapi = db_api.get_instance()
+    net = dbapi.network_get_by_type(network_type)
+    values = {'interface_id': interface_id,
+                'network_id': net.id}
+    return dbapi.interface_network_create(values)
+
+
 def get_test_interface_network(**kw):
     inv = {
         'id': kw.get('id'),
@@ -1729,3 +1812,18 @@ def create_test_kube_app(**kw):
     kube_app = get_test_kube_app(**kw)
     dbapi = db_api.get_instance()
     return dbapi.kube_app_create(kube_app)
+
+
+def get_primary_address_by_name(address_name, networktype):
+    dbapi = db_api.get_instance()
+    address = None
+    try:
+        networks = dbapi.networks_get_by_type(networktype)
+        if networks and networks[0].pool_uuid:
+            pool = dbapi.address_pool_get(networks[0].pool_uuid)
+            address = dbapi.address_get_by_name_and_family(address_name,
+                                                           pool.family)
+    except exception.AddressNotFoundByNameAndFamily:
+        pass
+
+    return address

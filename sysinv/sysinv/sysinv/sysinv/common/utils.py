@@ -1009,7 +1009,7 @@ def is_virtual():
 
 
 def is_virtual_worker(ihost):
-    if not(os.path.isdir("/etc/sysinv/.virtual_worker_nodes")):
+    if not (os.path.isdir("/etc/sysinv/.virtual_worker_nodes")):
         return False
     try:
         ip = ihost['mgmt_ip']
@@ -1803,6 +1803,7 @@ def perform_distributed_cloud_config(dbapi, mgmt_iface_id):
         # for local & reachable gateway etc, as config_subcloud
         # will have already done these checks before allowing
         # the system controller gateway into the database.
+        nettype = None
         try:
             # Prefer admin network
             sc_network = dbapi.network_get_by_type(
@@ -1810,18 +1811,18 @@ def perform_distributed_cloud_config(dbapi, mgmt_iface_id):
             cc_gtwy_addr_name = '%s-%s' % (
                 constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME,
                 constants.NETWORK_TYPE_ADMIN)
+            nettype = constants.NETWORK_TYPE_ADMIN
         except exception.NetworkTypeNotFound:
             sc_network = dbapi.network_get_by_type(
                 constants.NETWORK_TYPE_MGMT)
             cc_gtwy_addr_name = '%s-%s' % (
                 constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME,
                 constants.NETWORK_TYPE_MGMT)
+            nettype = constants.NETWORK_TYPE_MGMT
             pass
 
-        try:
-            cc_gtwy_addr = dbapi.address_get_by_name(
-                cc_gtwy_addr_name)
-        except exception.AddressNotFoundByName:
+        cc_gtwy_addr = get_primary_address_by_name(dbapi, cc_gtwy_addr_name, nettype)
+        if not cc_gtwy_addr:
             LOG.warning("DC Config: Failed to retrieve central "
                         "cloud gateway ip address")
             return
@@ -3697,6 +3698,61 @@ def is_bundle_extension_valid(filename):
 
     file_extension = pathlib.Path(filename).suffix
     return file_extension.lower() == ".tgz"
+
+
+def get_primary_address_by_name(dbapi, db_address_name, networktype, raise_exc=False):
+    """Search address by database name to retrieve the relevant addres from
+       the primary pool, if multipĺe entries for the same name are found, the
+       query will use the network's pool_uuid to get the address family (IPv4 or
+       IPv6) related to the primary.
+
+    :param dbapi: the database api reference
+    :param db_address_name: the address name in the database
+    :param networktype: the network type
+    :param raise_exc: raise AddressNotFoundByName instead of returning None
+
+    :return: the address object if found, None otherwise
+    """
+    address = None
+    # first search directly by name
+    try:
+        address = dbapi.address_get_by_name(db_address_name)
+    except exception.AddressNotFoundByName():
+        # if there is no match by name return here
+        LOG.info(f"address {db_address_name} not found, returning")
+        if raise_exc:
+            raise exception.AddressNotFoundByName(name=db_address_name)
+        return address
+
+    # if there is a single entry, return here
+    if len(address) == 1:
+        return address[0]
+
+    # if there are more than one entry, it is dual-stack, search the primary pool
+    # to return the desired IP based on address family
+    if len(address) > 1:
+        address = None
+        try:
+            # there only one network per type
+            networks = dbapi.networks_get_by_type(networktype)
+            if networks:
+                if networks[0].pool_uuid:
+                    pool = dbapi.address_pool_get(networks[0].pool_uuid)
+                    address = dbapi.address_get_by_name_and_family(db_address_name,
+                                                                   pool.family)
+            else:
+                LOG.info(f"cannot find network for type {networktype}")
+
+        except exception.AddressNotFoundByNameAndFamily:
+            LOG.info(f"cannot find address for name={db_address_name} with"
+                     f" network type={networktype}")
+            pass
+        except Exception as ex:
+            LOG.info(f"get_primary_address_by_name general exception: {str(ex)}")
+
+    if not address and raise_exc:
+        raise exception.AddressNotFoundByName(name=db_address_name)
+    return address
 
 
 def update_config_file(config_filepath: str, values_to_update: list):

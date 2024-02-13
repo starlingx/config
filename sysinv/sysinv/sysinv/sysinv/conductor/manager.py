@@ -663,11 +663,12 @@ class ConductorManager(service.PeriodicService):
             return True
 
         # get the controller-0 and floating management IP address
-        controller_0_address = self.dbapi.address_get_by_name(
-            constants.CONTROLLER_0_MGMT).address
-        floating_address = self.dbapi.address_get_by_name(
-            cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
-                                       constants.NETWORK_TYPE_MGMT)).address
+        controller_0_address = cutils.get_primary_address_by_name(self.dbapi,
+                                                constants.CONTROLLER_0_MGMT,
+                                                constants.NETWORK_TYPE_MGMT, True).address
+        floating_address = cutils.get_primary_address_by_name(self.dbapi,
+                                                constants.CONTROLLER_FLOATING_MGMT,
+                                                constants.NETWORK_TYPE_MGMT, True).address
         try:
             cmd = ["/usr/bin/ceph_k8s_update_monitors.sh",
                 controller_0_address,
@@ -1026,7 +1027,9 @@ class ConductorManager(service.PeriodicService):
             # address names are refined by network type to ensure they are
             # unique across different address pools
             name = cutils.format_address_name(name, networktype)
-            address = self.dbapi.address_get_by_name(name)
+            address = cutils.get_primary_address_by_name(self.dbapi,
+                                                         name, networktype,
+                                                         True)
             return address.address
         except exception.AddressNotFoundByName:
             return None
@@ -1300,15 +1303,15 @@ class ConductorManager(service.PeriodicService):
                 self.dbapi.network_get_by_type(
                     constants.NETWORK_TYPE_PXEBOOT
                 )
-                address = self.dbapi.address_get_by_name(
+                address = cutils.get_primary_address_by_name(self.dbapi,
                     cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
-                                               constants.NETWORK_TYPE_PXEBOOT)
-                )
+                                               constants.NETWORK_TYPE_PXEBOOT),
+                    constants.NETWORK_TYPE_PXEBOOT, True)
             except exception.NetworkTypeNotFound:
-                address = self.dbapi.address_get_by_name(
+                address = cutils.get_primary_address_by_name(self.dbapi,
                     cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
-                                               constants.NETWORK_TYPE_MGMT)
-                )
+                                               constants.NETWORK_TYPE_MGMT),
+                    constants.NETWORK_TYPE_MGMT, True)
             addn_line = self._dnsmasq_addn_host_entry_to_string(
                 address.address, constants.PXECONTROLLER_HOSTNAME
             )
@@ -1356,10 +1359,10 @@ class ConductorManager(service.PeriodicService):
             # Add pxecontroller to dnsmasq.hosts file
             pxeboot_network = self.dbapi.network_get_by_type(
                 constants.NETWORK_TYPE_PXEBOOT)
-            address = self.dbapi.address_get_by_name(
+            address = cutils.get_primary_address_by_name(self.dbapi,
                 cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
-                                           constants.NETWORK_TYPE_PXEBOOT)
-            )
+                                           constants.NETWORK_TYPE_PXEBOOT),
+                constants.NETWORK_TYPE_PXEBOOT, True)
             # This is the gateway address 169.254.202.1
             LOG.info("%s: pxeboot gateway address: %s" % (
                 func, address.address))
@@ -1972,9 +1975,12 @@ class ConductorManager(service.PeriodicService):
             address = self.dbapi.address_get_by_address(ip_address)
             address_uuid = address['uuid']
             # If name is already set, return
-            if (self.dbapi.address_get_by_name(address_name) ==
-                    address_uuid and iface_id is None):
-                return
+            search_addr = cutils.get_primary_address_by_name(self.dbapi,
+                                                             address_name,
+                                                             iface_type, True)
+            if search_addr:
+                if (search_addr.uuid == address_uuid and iface_id is None):
+                    return
         except exception.AddressNotFoundByAddress:
             address_uuid = None
         except exception.AddressNotFoundByName:
@@ -2177,7 +2183,9 @@ class ConductorManager(service.PeriodicService):
             if not interface_name:
                 return
 
-            address = self.dbapi.address_get_by_name(address_name)
+            address = cutils.get_primary_address_by_name(self.dbapi,
+                                                         address_name,
+                                                         network_type, True)
             interface_id = address.interface_id
             ip_address = address.address
 
@@ -2202,7 +2210,9 @@ class ConductorManager(service.PeriodicService):
         if network_type == constants.NETWORK_TYPE_MGMT:
             self._remove_lease_for_address(hostname, network_type)
         try:
-            address_uuid = self.dbapi.address_get_by_name(address_name).uuid
+            address_uuid = cutils.get_primary_address_by_name(self.dbapi,
+                                                              address_name,
+                                                              network_type, True).uuid
             self.dbapi.address_remove_interface(address_uuid)
         except exception.AddressNotFoundByName:
             pass
@@ -2213,7 +2223,9 @@ class ConductorManager(service.PeriodicService):
         if network_type == constants.NETWORK_TYPE_MGMT:
             self._remove_lease_for_address(hostname, network_type)
         try:
-            address_uuid = self.dbapi.address_get_by_name(address_name).uuid
+            address_uuid = cutils.get_primary_address_by_name(self.dbapi,
+                                                              address_name,
+                                                              network_type, True).uuid
             self.dbapi.address_destroy(address_uuid)
         except exception.AddressNotFoundByName:
             pass
@@ -3506,27 +3518,23 @@ class ConductorManager(service.PeriodicService):
             if set_address_interface:
                 if new_interface and 'id' in new_interface:
                     values = {'interface_id': new_interface['id']}
-                    try:
-                        addr_name = cutils.format_address_name(
-                            ihost.hostname, new_interface_networktype)
-                        address = self.dbapi.address_get_by_name(addr_name)
+                    address = cutils.get_primary_address_by_name(self.dbapi,
+                        cutils.format_address_name(ihost.hostname, new_interface_networktype),
+                        new_interface_networktype)
+                    if address:
                         self.dbapi.address_update(address['uuid'], values)
-                    except exception.AddressNotFoundByName:
-                        pass
                     # Do any potential distributed cloud config
                     # We do this here where the interface is created.
                     cutils.perform_distributed_cloud_config(self.dbapi,
                                                             new_interface['id'])
                 if port:
                     values = {'interface_id': port.interface_id}
-                try:
-                    addr_name = cutils.format_address_name(ihost.hostname,
-                                                           networktype)
-                    address = self.dbapi.address_get_by_name(addr_name)
+                address = cutils.get_primary_address_by_name(self.dbapi,
+                    cutils.format_address_name(ihost.hostname, networktype),
+                    networktype)
+                if address:
                     if address['interface_id'] is None:
                         self.dbapi.address_update(address['uuid'], values)
-                except exception.AddressNotFoundByName:
-                    pass
 
         if ihost.invprovision not in [constants.PROVISIONED, constants.PROVISIONING, constants.UPGRADING]:
             LOG.info("Updating %s host invprovision from %s to %s" %
@@ -6532,12 +6540,11 @@ class ConductorManager(service.PeriodicService):
         :returns: ihost object, including all fields.
         """
 
-        try:
-            name = cutils.format_address_name(name, networktype)
-            address = self.dbapi.address_get_by_name(name)
+        address = cutils.get_primary_address_by_name(self.dbapi,
+                            cutils.format_address_name(name, networktype),
+                            networktype)
+        if address:
             return address.address
-        except exception.AddressNotFoundByName:
-            pass
         LOG.info("RPC get_address_by_host_networktype called but found no address.")
 
     @staticmethod
@@ -8780,8 +8787,10 @@ class ConductorManager(service.PeriodicService):
 
         try:
             # remove IP address from DB
-            address_uuid = self.dbapi.address_get_by_name(address_name).uuid
-            self.dbapi.address_destroy(address_uuid)
+            address = cutils.get_primary_address_by_name(self.dbapi,
+                                                         address_name,
+                                                         constants.NETWORK_TYPE_MGMT, True)
+            self.dbapi.address_destroy(address.uuid)
             LOG.info("{} removed from addresses DB".format(address_name))
         except exception.AddressNotFoundByName:
             LOG.info("exception: AddressNotFoundByName: {}".format(address_name))
@@ -14071,10 +14080,10 @@ class ConductorManager(service.PeriodicService):
                 subprocess.check_call(['/usr/sbin/upgrade-start-pkg-extract',  # pylint: disable=not-callable
                                        '-r', to_version])
                 # get the floating management IP
-                mgmt_address = self.dbapi.address_get_by_name(
-                    cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
-                                              constants.NETWORK_TYPE_MGMT)
-                )
+                mgmt_address = cutils.get_primary_address_by_name(self.dbapi,
+                                        cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
+                                                                   constants.NETWORK_TYPE_MGMT),
+                                        constants.NETWORK_TYPE_MGMT, True)
                 i_system = self.dbapi.isystem_get_one()
                 upgrades_management.prepare_upgrade(
                     from_version, to_version, i_system, mgmt_address.address)
@@ -14149,7 +14158,9 @@ class ConductorManager(service.PeriodicService):
         plat_nfs_address_name = cutils.format_address_name("controller-platform-nfs",
                                                 constants.NETWORK_TYPE_MGMT)
         try:
-            self.dbapi.address_get_by_name(plat_nfs_address_name)
+            cutils.get_primary_address_by_name(self.dbapi,
+                                               plat_nfs_address_name,
+                                               constants.NETWORK_TYPE_MGMT, True)
             LOG.info("platform-nfs-ip exists in the DB, updating all references")
             self.update_platform_nfs_ip_references(context)
 
@@ -14468,7 +14479,9 @@ class ConductorManager(service.PeriodicService):
             hostname, constants.NETWORK_TYPE_MGMT)
 
         try:
-            self.dbapi.address_get_by_name(address_name)
+            cutils.get_primary_address_by_name(self.dbapi,
+                            cutils.format_address_name(hostname, constants.NETWORK_TYPE_MGMT),
+                            constants.NETWORK_TYPE_MGMT, True)
             LOG.debug("Address %s already reserved, continuing." % address_name)
         except exception.AddressNotFoundByName:
             LOG.debug("Reserving address for %s." % address_name)
@@ -14494,11 +14507,10 @@ class ConductorManager(service.PeriodicService):
         network_type = constants.NETWORK_TYPE_MGMT
 
         # Reserve new ip address, if not present
-        try:
-            self.dbapi.address_get_by_name(
-                self._get_cinder_address_name(network_type)
-            )
-        except exception.NotFound:
+        address = cutils.get_primary_address_by_name(self.dbapi,
+                                                     self._get_cinder_address_name(network_type),
+                                                     network_type)
+        if not address:
             self._allocate_pool_address(None, network.pool_uuid,
                                         self._get_cinder_address_name(network_type))
 
