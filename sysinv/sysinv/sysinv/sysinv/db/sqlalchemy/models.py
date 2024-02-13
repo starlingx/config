@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -242,6 +242,8 @@ class ihost(Base):
     vsc_controllers = Column(String(255))
     ttys_dcd = Column(Boolean)
     iscsi_initiator_name = Column(String(64))
+    nvme_host_id = Column(String(36))
+    nvme_host_nqn = Column(String(224))
 
     device_image_update = Column(String(64))
     reboot_needed = Column(Boolean, nullable=False, default=False)

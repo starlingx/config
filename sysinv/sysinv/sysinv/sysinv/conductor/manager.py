@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 
 """Conduct all activity related system inventory.
@@ -6275,11 +6275,26 @@ class ConductorManager(service.PeriodicService):
             val[constants.HOST_ACTION_STATE] = action_state
 
         iscsi_initiator_name = imsg_dict.get('iscsi_initiator_name')
+        nvme_host_id = imsg_dict.get('nvme_host_id')
+        nvme_host_nqn = imsg_dict.get('nvme_host_nqn')
+
         if (iscsi_initiator_name and
-                ihost.iscsi_initiator_name is None):
+                iscsi_initiator_name != ihost.iscsi_initiator_name):
             LOG.info("%s updating iscsi initiator=%s" %
                         (ihost.hostname, iscsi_initiator_name))
             val['iscsi_initiator_name'] = iscsi_initiator_name
+
+        if (nvme_host_id and
+                nvme_host_id != ihost.nvme_host_id):
+            LOG.info("%s updating NVMe host_id=%s" %
+                        (ihost.hostname, nvme_host_id))
+            val['nvme_host_id'] = nvme_host_id
+
+        if (nvme_host_nqn and
+                nvme_host_nqn != ihost.nvme_host_nqn):
+            LOG.info("%s updating NVMe host_nqn=%s" %
+                        (ihost.hostname, nvme_host_nqn))
+            val['nvme_host_nqn'] = nvme_host_nqn
 
         if max_cpu_dict:
             ihost.capabilities.update({

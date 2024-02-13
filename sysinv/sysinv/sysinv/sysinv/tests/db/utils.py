@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 
 """Sysinv test utilities."""
@@ -174,7 +174,9 @@ def get_test_ihost(**kw):
             'max_cpu_mhz_configured': kw.get('max_cpu_mhz_configured', ''),
             'min_cpu_mhz_allowed': kw.get('min_cpu_mhz_allowed', ''),
             'max_cpu_mhz_allowed': kw.get('max_cpu_mhz_allowed', ''),
-            'cstates_available': kw.get('cstates_available', '')
+            'cstates_available': kw.get('cstates_available', ''),
+            'nvme_host_id': kw.get('nvme_host_id', None),
+            'nvme_host_nqn': kw.get('nvme_host_nqn', None)
              }
     return inv
 
