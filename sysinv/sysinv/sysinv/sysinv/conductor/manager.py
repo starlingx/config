@@ -8570,9 +8570,7 @@ class ConductorManager(service.PeriodicService):
 
     def update_ntp_config(self, context):
         """Update the NTP configuration"""
-        personalities = [constants.CONTROLLER,
-                         constants.WORKER,
-                         constants.STORAGE]
+        personalities = [constants.CONTROLLER]
         self._config_update_hosts(context, personalities, reboot=True)
 
     def update_ptp_config(self, context, do_apply=False):
