@@ -2087,7 +2087,6 @@ SRIOV_LABEL = 'sriov=enabled'
 SRIOVDP_LABEL = 'sriovdp=enabled'
 KUBE_TOPOLOGY_MANAGER_LABEL = 'kube-topology-mgr-policy'
 KUBE_CPU_MANAGER_LABEL = 'kube-cpu-mgr-policy'
-KUBE_IGNORE_ISOL_CPU_LABEL = 'kube-ignore-isol-cpus=enabled'
 KUBE_POWER_MANAGER_LABEL = 'power-management'
 
 # Accepted label values
