@@ -94,6 +94,7 @@ from sysinv.api.controllers.v1 import mtce_api
 from sysinv.api.controllers.v1 import utils
 from sysinv.api.controllers.v1 import vim_api
 from sysinv.common import app_metadata
+from sysinv.common import barbican_config
 from sysinv.common import fpga_constants
 from sysinv.common import constants
 from sysinv.common import ceph as cceph
@@ -106,6 +107,7 @@ from sysinv.common import fernet
 from sysinv.common import health
 from sysinv.common import interface as cinterface
 from sysinv.common import kubernetes
+from sysinv.common import openstack_config_endpoints
 from sysinv.common import retrying
 from sysinv.common import service
 from sysinv.common import utils as cutils
@@ -16177,16 +16179,9 @@ class ConductorManager(service.PeriodicService):
                 inventory_completed = False
 
             if inventory_completed:
-                personalities = [constants.CONTROLLER]
-                config_uuid = self._config_update_hosts(context, personalities)
-                config_dict = {
-                    "personalities": personalities,
-                    "host_uuids": [host.uuid],
-                    "classes": ['openstack::keystone::endpoint::runtime',
-                                'openstack::barbican::runtime']
-                }
-                self._config_apply_runtime_manifest(
-                    context, config_uuid, config_dict, force=True)
+                openstack_config_endpoints.run_endpoint_config(self._puppet,
+                                                               self._openstack)
+                barbican_config.barbican_bootstrap_config(self._puppet)
             else:
                 LOG.error("Unable to reconfigure service endpoints. Timed out "
                           "waiting for inventory to complete.")

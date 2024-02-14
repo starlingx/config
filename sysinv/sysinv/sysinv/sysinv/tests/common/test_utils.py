@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021-2023 Wind River Systems, Inc.
+# Copyright (c) 2021-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -7,6 +7,8 @@
 """
 Tests for the generic utils.
 """
+
+from tempfile import NamedTemporaryFile
 
 import mock
 import fcntl
@@ -16,6 +18,65 @@ import subprocess
 from sysinv.common import exception
 from sysinv.common import utils
 from sysinv.tests import base
+
+
+BASE_CONF_FILE = """
+# Comment 1 before first section
+# Comment 2 before first section
+
+[First section]
+# Comment line
+# Comment line
+# key1 = example_value1
+key1=value1
+
+# Comment line
+# Comment line
+# Comment line
+# Comment line
+# key2 = example_value2
+
+[Second section]
+# Comment line
+# key3 = example_value3
+key3=value3
+[Third section]
+# Comment line
+# key4 = example_value4
+# key4 = example_value4.1
+key4=value4
+"""
+
+UPDATED_CONF_FILE = """
+# Comment 1 before first section
+# Comment 2 before first section
+
+[First section]
+# Comment line
+# Comment line
+# key1 = example_value1
+key1=correct_value1
+
+# Comment line
+# Comment line
+# Comment line
+# Comment line
+# key2 = example_value2
+key2=correct_value2
+
+[Second section]
+# Comment line
+# key3 = example_value3
+key3=value3
+key5=correct_value5
+[Third section]
+# Comment line
+# key4 = example_value4
+# key4 = example_value4.1
+key4=correct_value4
+[Fourth section]
+key6=correct_value6
+"""
 
 
 class TestCommonUtils(base.TestCase):
@@ -426,3 +487,18 @@ class TestCommonUtils(base.TestCase):
         )
 
         self.assertTrue(mock_subprocess.method_calls)
+
+    def test_update_conf_file(self):
+        with NamedTemporaryFile(mode="w", delete=False) as temp_file:
+            temp_file.write(BASE_CONF_FILE)
+        values_to_update = [
+            {"section": "First section", "key": "key1", "value": "correct_value1"},
+            {"section": "First section", "key": "key2", "value": "correct_value2"},
+            {"section": "Second section", "key": "key5", "value": "correct_value5"},
+            {"section": "Third section", "key": "key4", "value": "correct_value4"},
+            {"section": "Fourth section", "key": "key6", "value": "correct_value6"}
+        ]
+        utils.update_config_file(temp_file.name, values_to_update)
+        with open(temp_file.name, "r") as updated_file:
+            updated_lines = updated_file.read()
+        self.assertEqual(updated_lines, UPDATED_CONF_FILE)
