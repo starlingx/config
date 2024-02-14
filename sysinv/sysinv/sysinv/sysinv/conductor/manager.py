@@ -953,6 +953,21 @@ class ConductorManager(service.PeriodicService):
          'name': constants.SERVICE_PARAM_NAME_PLATFORM_MAX_CPU_PERCENTAGE,
          'value': constants.SERVICE_PARAM_PLATFORM_MAX_CPU_PERCENTAGE_DEFAULT
          },
+        {'service': constants.SERVICE_TYPE_PLATFORM,
+         'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+         'name': constants.SERVICE_PARAM_NAME_PLATFORM_PROCESS_SIZE_MAX,
+         'value': constants.SERVICE_PARAM_PLATFORM_PROCESS_SIZE_MAX_DEFAULT
+         },
+        {'service': constants.SERVICE_TYPE_PLATFORM,
+         'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+         'name': constants.SERVICE_PARAM_NAME_PLATFORM_EXTERNAL_SIZE_MAX,
+         'value': constants.SERVICE_PARAM_PLATFORM_EXTERNAL_SIZE_MAX_DEFAULT
+         },
+        {'service': constants.SERVICE_TYPE_PLATFORM,
+         'section': constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP,
+         'name': constants.SERVICE_PARAM_NAME_PLATFORM_KEEP_FREE,
+         'value': constants.SERVICE_PARAM_PLATFORM_KEEP_FREE_DEFAULT
+         },
     ]
 
     def _create_default_service_parameter(self):
