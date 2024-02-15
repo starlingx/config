@@ -620,11 +620,11 @@ class AgentManager(service.PeriodicService):
         worker_config_completed = \
             os.path.exists(tsc.VOLATILE_WORKER_CONFIG_COMPLETE)
 
-        # do not send report if the initial worker config is completed and
-        # worker config has not finished, i.e.during subsequent
+        # do not send report until both initial worker config and
+        # worker config has not finished, i.e. during subsequent
         # reboot before the manifest enables and binds any SR-IOV devices
-        if (initial_worker_config_completed and
-                not worker_config_completed):
+        if (not (initial_worker_config_completed
+                 and worker_config_completed)):
             return port_list, pci_device_list, host_macs
 
         # find list of network related inics for this host
