@@ -5134,9 +5134,9 @@ class Connection(object):
         :param name: Application name.
         :param k8s_auto_update: Whether automatically updating the application
                                 is enabled when upgrading Kubernetes.
-        :param timing: Application update timing during Kubernetes upgrade
-                       "pre": during kube-upgrade-start.
-                       "post": during kube-upgrade-complete.
+        :param timing: Application update timing during Kubernetes upgrade.
+                       "pre": before upgrading Kubernetes.
+                       "post": after upgrading Kubernetes.
         :param limit: Maximum number of entries to return.
         :param marker: The last item of the previous page; we return the next
                        result set.
@@ -5154,6 +5154,35 @@ class Connection(object):
     @abc.abstractmethod
     def kube_app_bundle_destroy_by_file_path(self, file_path):
         """Delete records from kube_app_bundle that match a file path"""
+
+    @abc.abstractmethod
+    def kube_app_bundle_is_k8s_compatible(self,
+                                          name, k8s_timing,
+                                          target_k8s_version, current_k8s_version=None):
+        """Check if a given application has bundles compatible with current
+        and target Kubernetes versions.
+
+        :param name: Application name.
+        :param timing: Application update timing during Kubernetes upgrade
+                       "pre": before upgrading Kubernetes.
+                       "post": after upgrading Kubernetes.
+        :param target_k8s_version: Kubernetes version that is going to be installed.
+        :param current_k8s_version: Kubernetes version that is currently running (optional).
+        :returns: True if app is compatible. False otherwise.
+        """
+
+    @abc.abstractmethod
+    def kube_app_bundle_max_k8s_compatible_by_name(self,
+                                                   name,
+                                                   current_k8s_version,
+                                                   target_k8s_version):
+        """ Get the maximum compatible Kubernetes version for a given app
+
+        :param name: Application name.
+        :param current_k8s_version: Kubernetes version that is currently running.
+        :param target_k8s_version: Kubernetes version that is going to be installed.
+        :returns: maximum compatible Kubernetes version
+        """
 
     @abc.abstractmethod
     def address_get_by_name_and_family(self, name, family):

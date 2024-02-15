@@ -72,11 +72,11 @@ class FakeFmClient(object):
 class FakeConductorAPI(object):
 
     def __init__(self):
-        self.kube_upgrade_start = mock.MagicMock()
+        self.kube_pre_application_update = mock.MagicMock()
         self.kube_download_images = mock.MagicMock()
         self.kube_upgrade_networking = mock.MagicMock()
+        self.kube_post_application_update = mock.MagicMock()
         self.kube_upgrade_abort = mock.MagicMock()
-        self.update_apps_based_on_k8s_version_async = mock.MagicMock()
         self.evaluate_apps_reapply = mock.MagicMock()
         self.remove_kube_control_plane_backup = mock.MagicMock()
         self.kube_delete_container_images = mock.MagicMock()
@@ -274,15 +274,11 @@ class TestPostKubeUpgradeSimplex(TestKubeUpgrade,
         result = self.post_json('/kube_upgrade', create_dict,
                                 headers={'User-Agent': 'sysinv-test'})
 
-        # Verify that the upgrade was started
-        self.fake_conductor_api.kube_upgrade_start.\
-            assert_called_with(mock.ANY, 'v1.43.3')
-
         # Verify that the upgrade has the expected attributes
         self.assertEqual(result.json['from_version'], 'v1.42.1')
         self.assertEqual(result.json['to_version'], 'v1.43.3')
         self.assertEqual(result.json['state'],
-                         kubernetes.KUBE_UPGRADE_STARTING)
+                         kubernetes.KUBE_UPGRADE_STARTED)
 
         # see if kubeadm_version was changed in DB
         kube_cmd_version = self.dbapi.kube_cmd_version_get()
@@ -380,15 +376,11 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         result = self.post_json('/kube_upgrade', create_dict,
                                 headers={'User-Agent': 'sysinv-test'})
 
-        # Verify that the upgrade was started
-        self.fake_conductor_api.kube_upgrade_start.\
-            assert_called_with(mock.ANY, 'v1.43.2')
-
         # Verify that the upgrade has the expected attributes
         self.assertEqual(result.json['from_version'], 'v1.43.1')
         self.assertEqual(result.json['to_version'], 'v1.43.2')
         self.assertEqual(result.json['state'],
-                         kubernetes.KUBE_UPGRADE_STARTING)
+                         kubernetes.KUBE_UPGRADE_STARTED)
 
         # see if kubeadm_version was changed in DB
         kube_cmd_version = self.dbapi.kube_cmd_version_get()
@@ -512,15 +504,11 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         result = self.post_json('/kube_upgrade', create_dict,
                                 headers={'User-Agent': 'sysinv-test'})
 
-        # Verify that the upgrade was started
-        self.fake_conductor_api.kube_upgrade_start.\
-            assert_called_with(mock.ANY, 'v1.43.2')
-
         # Verify that the upgrade has the expected attributes
         self.assertEqual(result.json['from_version'], 'v1.43.1')
         self.assertEqual(result.json['to_version'], 'v1.43.2')
         self.assertEqual(result.json['state'],
-                         kubernetes.KUBE_UPGRADE_STARTING)
+                         kubernetes.KUBE_UPGRADE_STARTED)
 
     @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
     def test_force_create_system_unhealthy_from_mgmt_affecting_alarms(self):
@@ -557,15 +545,11 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         result = self.post_json('/kube_upgrade', create_dict,
                                 headers={'User-Agent': 'sysinv-test'})
 
-        # Verify that the upgrade was started
-        self.fake_conductor_api.kube_upgrade_start.\
-            assert_called_with(mock.ANY, 'v1.43.2')
-
         # Verify that the upgrade has the expected attributes
         self.assertEqual(result.json['from_version'], 'v1.43.1')
         self.assertEqual(result.json['to_version'], 'v1.43.2')
         self.assertEqual(result.json['state'],
-                         kubernetes.KUBE_UPGRADE_STARTING)
+                         kubernetes.KUBE_UPGRADE_STARTED)
 
     @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
     def test_create_system_unhealthy_from_bad_apps(self):
@@ -607,15 +591,11 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         result = self.post_json('/kube_upgrade', create_dict,
                                 headers={'User-Agent': 'sysinv-test'})
 
-        # Verify that the upgrade was started
-        self.fake_conductor_api.kube_upgrade_start.\
-            assert_called_with(mock.ANY, 'v1.43.3')
-
         # Verify that the upgrade has the expected attributes
         self.assertEqual(result.json['from_version'], 'v1.43.2')
         self.assertEqual(result.json['to_version'], 'v1.43.3')
         self.assertEqual(result.json['state'],
-                         kubernetes.KUBE_UPGRADE_STARTING)
+                         kubernetes.KUBE_UPGRADE_STARTED)
 
     def test_create_applied_patch_missing(self):
         # Test creation of upgrade when applied patch is missing
@@ -648,6 +628,99 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
 
 class TestPatch(TestKubeUpgrade,
                 dbbase.ProvisionedControllerHostTestCase):
+
+    def test_update_state_pre_update_apps(self):
+        # Test updating the state of an upgrade when
+        # pre updating applications
+
+        # Create the upgrade
+        kube_upgrade = dbutils.create_test_kube_upgrade(
+            from_version='v1.43.1',
+            to_version='v1.43.2',
+            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
+        uuid = kube_upgrade.uuid
+
+        # Update state
+        new_state = kubernetes.KUBE_PRE_UPDATING_APPS
+        response = self.patch_json('/kube_upgrade',
+                                   [{'path': '/state',
+                                     'value': new_state,
+                                     'op': 'replace'}],
+                                   headers={'User-Agent': 'sysinv-test'})
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+        self.assertEqual(response.json['from_version'], 'v1.43.1')
+        self.assertEqual(response.json['to_version'], 'v1.43.2')
+        self.assertEqual(response.json['state'], new_state)
+
+        # Verify that the images were downloaded
+        self.fake_conductor_api.kube_pre_application_update.\
+            assert_called_with(mock.ANY)
+
+        # Verify that the upgrade was updated with the new state
+        result = self.get_json('/kube_upgrade/%s' % uuid)
+        self.assertEqual(result['from_version'], 'v1.43.1')
+        self.assertEqual(result['to_version'], 'v1.43.2')
+        self.assertEqual(result['state'], new_state)
+
+    def test_update_state_pre_update_apps_after_failure(self):
+        # Test updating the state of an upgrade when retrying to
+        # pre update applications after a failure
+
+        # Create the upgrade
+        kube_upgrade = dbutils.create_test_kube_upgrade(
+            from_version='v1.43.1',
+            to_version='v1.43.2',
+            state=kubernetes.KUBE_PRE_UPDATING_APPS_FAILED)
+        uuid = kube_upgrade.uuid
+
+        # Update state
+        new_state = kubernetes.KUBE_PRE_UPDATING_APPS
+        response = self.patch_json('/kube_upgrade',
+                                   [{'path': '/state',
+                                     'value': new_state,
+                                     'op': 'replace'}],
+                                   headers={'User-Agent': 'sysinv-test'})
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+        self.assertEqual(response.json['from_version'], 'v1.43.1')
+        self.assertEqual(response.json['to_version'], 'v1.43.2')
+        self.assertEqual(response.json['state'], new_state)
+
+        # Verify that the images were downloaded
+        self.fake_conductor_api.kube_pre_application_update.\
+            assert_called_with(mock.ANY)
+
+        # Verify that the upgrade was updated with the new state
+        result = self.get_json('/kube_upgrade/%s' % uuid)
+        self.assertEqual(result['from_version'], 'v1.43.1')
+        self.assertEqual(result['to_version'], 'v1.43.2')
+        self.assertEqual(result['state'], new_state)
+
+    def test_update_state_pre_update_apps_invalid_state(self):
+        # Test updating the state of an upgrade when attempting to
+        # pre update apps in an invalid state
+
+        # Create the upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.43.1',
+            to_version='v1.43.2',
+            state=kubernetes.KUBE_UPGRADE_STARTED)
+
+        # Update state
+        new_state = kubernetes.KUBE_PRE_UPDATING_APPS
+        result = self.patch_json('/kube_upgrade',
+                                 [{'path': '/state',
+                                   'value': new_state,
+                                   'op': 'replace'}],
+                                 headers={'User-Agent': 'sysinv-test'},
+                                 expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertIn("Kubernetes upgrade must be in",
+                      result.json['error_message'])
 
     def test_update_state_download_images(self):
         # Test updating the state of an upgrade to download images
@@ -748,7 +821,7 @@ class TestPatch(TestKubeUpgrade,
         kube_upgrade = dbutils.create_test_kube_upgrade(
             from_version='v1.43.1',
             to_version='v1.43.2',
-            state=kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES)
+            state=kubernetes.KUBE_PRE_UPDATED_APPS)
         uuid = kube_upgrade.uuid
 
         # Update state
@@ -820,6 +893,99 @@ class TestPatch(TestKubeUpgrade,
 
         # Update state
         new_state = kubernetes.KUBE_UPGRADING_NETWORKING
+        result = self.patch_json('/kube_upgrade',
+                                 [{'path': '/state',
+                                   'value': new_state,
+                                   'op': 'replace'}],
+                                 headers={'User-Agent': 'sysinv-test'},
+                                 expect_errors=True)
+
+        # Verify the failure
+        self.assertEqual(result.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
+        self.assertIn("Kubernetes upgrade must be in",
+                      result.json['error_message'])
+
+    def test_update_state_post_update_apps(self):
+        # Test updating the state of an upgrade when
+        # post updating applications
+
+        # Create the upgrade
+        kube_upgrade = dbutils.create_test_kube_upgrade(
+            from_version='v1.43.1',
+            to_version='v1.43.2',
+            state=kubernetes.KUBE_UPGRADE_COMPLETE)
+        uuid = kube_upgrade.uuid
+
+        # Update state
+        new_state = kubernetes.KUBE_POST_UPDATING_APPS
+        response = self.patch_json('/kube_upgrade',
+                                   [{'path': '/state',
+                                     'value': new_state,
+                                     'op': 'replace'}],
+                                   headers={'User-Agent': 'sysinv-test'})
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+        self.assertEqual(response.json['from_version'], 'v1.43.1')
+        self.assertEqual(response.json['to_version'], 'v1.43.2')
+        self.assertEqual(response.json['state'], new_state)
+
+        # Run post application update
+        self.fake_conductor_api.kube_post_application_update.\
+            assert_called_with(mock.ANY, kube_upgrade.to_version)
+
+        # Verify that the upgrade was updated with the new state
+        result = self.get_json('/kube_upgrade/%s' % uuid)
+        self.assertEqual(result['from_version'], 'v1.43.1')
+        self.assertEqual(result['to_version'], 'v1.43.2')
+        self.assertEqual(result['state'], new_state)
+
+    def test_update_state_post_update_apps_after_failure(self):
+        # Test updating the state of an upgrade when retrying to
+        # post update applications after a failure
+
+        # Create the upgrade
+        kube_upgrade = dbutils.create_test_kube_upgrade(
+            from_version='v1.43.1',
+            to_version='v1.43.2',
+            state=kubernetes.KUBE_POST_UPDATING_APPS_FAILED)
+        uuid = kube_upgrade.uuid
+
+        # Update state
+        new_state = kubernetes.KUBE_POST_UPDATING_APPS
+        response = self.patch_json('/kube_upgrade',
+                                   [{'path': '/state',
+                                     'value': new_state,
+                                     'op': 'replace'}],
+                                   headers={'User-Agent': 'sysinv-test'})
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+        self.assertEqual(response.json['from_version'], 'v1.43.1')
+        self.assertEqual(response.json['to_version'], 'v1.43.2')
+        self.assertEqual(response.json['state'], new_state)
+
+        # Verify that the images were downloaded
+        self.fake_conductor_api.kube_post_application_update.\
+            assert_called_with(mock.ANY, kube_upgrade.to_version)
+
+        # Verify that the upgrade was updated with the new state
+        result = self.get_json('/kube_upgrade/%s' % uuid)
+        self.assertEqual(result['from_version'], 'v1.43.1')
+        self.assertEqual(result['to_version'], 'v1.43.2')
+        self.assertEqual(result['state'], new_state)
+
+    def test_update_state_post_update_apps_invalid_state(self):
+        # Test updating the state of an upgrade to post update apps in an
+        # invalid state
+
+        # Create the upgrade
+        dbutils.create_test_kube_upgrade(
+            from_version='v1.43.1',
+            to_version='v1.43.2',
+            state=kubernetes.KUBE_UPGRADED_NETWORKING)
+
+        # Update state
+        new_state = kubernetes.KUBE_POST_UPDATING_APPS
         result = self.patch_json('/kube_upgrade',
                                  [{'path': '/state',
                                    'value': new_state,

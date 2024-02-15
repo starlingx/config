@@ -9,6 +9,7 @@ from cgtsclient import exc
 from cgtsclient.v1 import ihost as ihost_utils
 
 # Kubernetes constants
+KUBE_UPGRADE_STATE_PRE_UPDATING_APPS = 'pre-updating-apps'
 KUBE_UPGRADE_STATE_DOWNLOADING_IMAGES = 'downloading-images'
 KUBE_UPGRADE_STATE_UPGRADING_NETWORKING = 'upgrading-networking'
 KUBE_UPGRADE_STATE_UPGRADING_STORAGE = 'upgrading-storage'
@@ -18,6 +19,7 @@ KUBE_UPGRADE_STATE_UPGRADING_SECOND_MASTER = 'upgrading-second-master'
 KUBE_UPGRADE_STATE_ABORTING = 'upgrade-aborting'
 KUBE_UPGRADE_STATE_CORDON = 'cordon-started'
 KUBE_UPGRADE_STATE_UNCORDON = 'uncordon-started'
+KUBE_UPGRADE_STATE_POST_UPDATING_APPS = 'post-updating-apps'
 
 
 def _print_kube_upgrade_show(obj):
@@ -56,11 +58,8 @@ def do_kube_upgrade_start(cc, args):
     _print_kube_upgrade_show(kube_upgrade)
 
 
-def do_kube_upgrade_download_images(cc, args):
-    """Download kubernetes images."""
-
-    data = dict()
-    data['state'] = KUBE_UPGRADE_STATE_DOWNLOADING_IMAGES
+def patch_kube_upgrade(cc, data):
+    """" Call patch HTTP method for kube upgrades"""
 
     patch = []
     for (k, v) in data.items():
@@ -71,6 +70,24 @@ def do_kube_upgrade_download_images(cc, args):
         raise exc.CommandError('Kubernetes upgrade UUID not found')
 
     _print_kube_upgrade_show(kube_upgrade)
+
+
+def do_kube_upgrade_download_images(cc, args):
+    """Download kubernetes images."""
+
+    data = dict()
+    data['state'] = KUBE_UPGRADE_STATE_DOWNLOADING_IMAGES
+
+    patch_kube_upgrade(cc, data)
+
+
+def do_kube_pre_application_update(cc, args):
+    """Update applications before Kubernetes is upgraded."""
+
+    data = dict()
+    data['state'] = KUBE_UPGRADE_STATE_PRE_UPDATING_APPS
+
+    patch_kube_upgrade(cc, data)
 
 
 @utils.arg('hostid', metavar='<hostname or id>',
@@ -83,15 +100,7 @@ def do_kube_host_cordon(cc, args):
     data['hostname'] = ihost.hostname
     data['state'] = KUBE_UPGRADE_STATE_CORDON
 
-    patch = []
-    for (k, v) in data.items():
-        patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
-    try:
-        kube_upgrade = cc.kube_upgrade.update(patch)
-    except exc.HTTPNotFound:
-        raise exc.CommandError('Kubernetes upgrade UUID not found')
-
-    _print_kube_upgrade_show(kube_upgrade)
+    patch_kube_upgrade(cc, data)
 
 
 @utils.arg('hostid', metavar='<hostname or id>',
@@ -104,15 +113,7 @@ def do_kube_host_uncordon(cc, args):
     data['hostname'] = ihost.hostname
     data['state'] = KUBE_UPGRADE_STATE_UNCORDON
 
-    patch = []
-    for (k, v) in data.items():
-        patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
-    try:
-        kube_upgrade = cc.kube_upgrade.update(patch)
-    except exc.HTTPNotFound:
-        raise exc.CommandError('Kubernetes upgrade UUID not found')
-
-    _print_kube_upgrade_show(kube_upgrade)
+    patch_kube_upgrade(cc, data)
 
 
 def do_kube_upgrade_networking(cc, args):
@@ -121,15 +122,7 @@ def do_kube_upgrade_networking(cc, args):
     data = dict()
     data['state'] = KUBE_UPGRADE_STATE_UPGRADING_NETWORKING
 
-    patch = []
-    for (k, v) in data.items():
-        patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
-    try:
-        kube_upgrade = cc.kube_upgrade.update(patch)
-    except exc.HTTPNotFound:
-        raise exc.CommandError('Kubernetes upgrade UUID not found')
-
-    _print_kube_upgrade_show(kube_upgrade)
+    patch_kube_upgrade(cc, data)
 
 
 def do_kube_upgrade_storage(cc, args):
@@ -138,15 +131,16 @@ def do_kube_upgrade_storage(cc, args):
     data = dict()
     data['state'] = KUBE_UPGRADE_STATE_UPGRADING_STORAGE
 
-    patch = []
-    for (k, v) in data.items():
-        patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
-    try:
-        kube_upgrade = cc.kube_upgrade.update(patch)
-    except exc.HTTPNotFound:
-        raise exc.CommandError('Kubernetes upgrade UUID not found')
+    patch_kube_upgrade(cc, data)
 
-    _print_kube_upgrade_show(kube_upgrade)
+
+def do_kube_post_application_update(cc, args):
+    """Update applications after Kubernetes is upgraded."""
+
+    data = dict()
+    data['state'] = KUBE_UPGRADE_STATE_POST_UPDATING_APPS
+
+    patch_kube_upgrade(cc, data)
 
 
 def do_kube_upgrade_abort(cc, args):
@@ -155,15 +149,7 @@ def do_kube_upgrade_abort(cc, args):
     data = dict()
     data['state'] = KUBE_UPGRADE_STATE_ABORTING
 
-    patch = []
-    for (k, v) in data.items():
-        patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
-    try:
-        kube_upgrade = cc.kube_upgrade.update(patch)
-    except exc.HTTPNotFound:
-        raise exc.CommandError('Kubernetes upgrade not found')
-
-    _print_kube_upgrade_show(kube_upgrade)
+    patch_kube_upgrade(cc, data)
 
 
 def do_kube_upgrade_complete(cc, args):
@@ -172,15 +158,7 @@ def do_kube_upgrade_complete(cc, args):
     data = dict()
     data['state'] = KUBE_UPGRADE_STATE_COMPLETE
 
-    patch = []
-    for (k, v) in data.items():
-        patch.append({'op': 'replace', 'path': '/' + k, 'value': v})
-    try:
-        kube_upgrade = cc.kube_upgrade.update(patch)
-    except exc.HTTPNotFound:
-        raise exc.CommandError('Kubernetes upgrade UUID not found')
-
-    _print_kube_upgrade_show(kube_upgrade)
+    patch_kube_upgrade(cc, data)
 
 
 def do_kube_upgrade_delete(cc, args):

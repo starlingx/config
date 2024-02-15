@@ -7,6 +7,7 @@
 from fm_api import constants as fm_constants
 from fm_api import fm_api
 
+from distutils.version import LooseVersion
 import pecan
 from pecan import rest
 import os
@@ -152,6 +153,116 @@ class KubeUpgradeController(rest.RestController):
                     "the kubernetes upgrade: %s" %
                     available_patches))
 
+    def _check_applied_apps_compatibility(self, from_version, to_version):
+        """Ensure that applied applications are compatible with
+           Kubernetes versions across the upgrade process
+
+        :param from_version: Initial Kubernetes version
+        :param to_version: Target Kubernetes version
+        """
+
+        system = pecan.request.dbapi.isystem_get_one()
+        if system.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+            next_versions = self._kube_operator.kube_get_higher_patch_version(from_version,
+                                                                              to_version)
+        else:
+            next_versions = [to_version]
+
+        if not next_versions:
+            raise wsme.exc.ClientSideError(_("Error while retrieving Kubernetes intermediate "
+                                             "versions"))
+
+        incompatible_apps = set()
+        lower_k8s_version_from_incompatible_apps = None
+        from_version = from_version.lstrip('v')
+        to_version = to_version.lstrip('v')
+        next_versions = [x.lstrip('v') for x in next_versions]
+        apps = pecan.request.dbapi.kube_app_get_all()
+        for app in apps:
+            if app.status != constants.APP_APPLY_SUCCESS:
+                continue
+
+            # Applications with timing=pre need to be compatible with the current,
+            # intermediate and target k8s versions:
+            pre_update_compatible = pecan.request.dbapi.kube_app_bundle_is_k8s_compatible(
+                name=app.name,
+                k8s_timing=constants.APP_METADATA_TIMING_PRE,
+                current_k8s_version=from_version,
+                target_k8s_version=to_version)
+            if not pre_update_compatible:
+                LOG.debug("Unable to find a version of application {} to be pre updated."
+                          .format(app.name))
+
+            # Applications with timing=post should be compatible with the target k8s version.
+            # Compatibility with current or intermediate versions is not required:
+            post_update_compatible = \
+                pecan.request.dbapi.kube_app_bundle_is_k8s_compatible(
+                    name=app.name,
+                    k8s_timing=constants.APP_METADATA_TIMING_POST,
+                    target_k8s_version=to_version)
+            if not post_update_compatible:
+                LOG.debug("Unable to find a version of application {} to be post updated."
+                          .format(app.name))
+
+            if not pre_update_compatible and not post_update_compatible:
+                # If the app cannot be pre or post updated, check if we can proceed with
+                # the current applied version.
+                applied_app_kube_min_version, applied_app_kube_max_version = \
+                    cutils.get_app_supported_kube_version(app.name, app.app_version)
+                if kubernetes.is_kube_version_supported(
+                        to_version, applied_app_kube_min_version, applied_app_kube_max_version):
+                    LOG.info("No updates found for application {} during Kubernetes upgrade "
+                             "to {} but current applied version {} is supported.".format(
+                                 app.name,
+                                 to_version,
+                                 app.app_version))
+                    continue
+
+                max_compatible_version = \
+                    pecan.request.dbapi.kube_app_bundle_max_k8s_compatible_by_name(
+                        name=app.name,
+                        current_k8s_version=from_version,
+                        target_k8s_version=to_version)
+                if max_compatible_version is None:
+                    max_compatible_version = from_version
+                if (LooseVersion(applied_app_kube_max_version) >
+                        LooseVersion(max_compatible_version)):
+                    max_compatible_version = applied_app_kube_max_version
+
+                incompatible_versions = [x for x in next_versions if LooseVersion(x) >
+                                        LooseVersion(max_compatible_version)]
+                LOG.error("Unable to find a suitable version of application {} "
+                          "compatible with the following Kubernetes versions: {}."
+                          .format(app.name, ', '.join(str(s) for s in incompatible_versions)))
+
+                incompatible_apps.add(app.name)
+                if (lower_k8s_version_from_incompatible_apps is None or
+                        LooseVersion(max_compatible_version) <
+                        LooseVersion(lower_k8s_version_from_incompatible_apps)):
+                    lower_k8s_version_from_incompatible_apps = max_compatible_version
+
+        # If the lowest compatible version found amongst all apps is out of the version range we
+        # support then there is no upgrade path available.
+        # If the lowest compatible version found amongst all apps is within the range we support
+        # then inform the highest supported version.
+        if (lower_k8s_version_from_incompatible_apps and
+                LooseVersion(lower_k8s_version_from_incompatible_apps) <
+                LooseVersion(next_versions[0])):
+            raise wsme.exc.ClientSideError(_(
+                "The following apps are incompatible with intermediate/target Kubernetes "
+                "versions: {}. No upgrade path available to Kubernetes version {}."
+                .format(', '.join(str(s) for s in incompatible_apps), to_version)))
+        elif lower_k8s_version_from_incompatible_apps:
+            highest_supported_version = next(
+                x for x in list(reversed(next_versions))
+                if (LooseVersion(x) <=
+                LooseVersion(lower_k8s_version_from_incompatible_apps)))
+
+            raise wsme.exc.ClientSideError(_(
+                "The following apps are incompatible with intermediate/target Kubernetes "
+                "versions: {}. The system can be upgraded up to Kubernetes {}."
+                .format(', '.join(str(s) for s in incompatible_apps), highest_supported_version)))
+
     @wsme_pecan.wsexpose(KubeUpgradeCollection)
     def get_all(self):
         """Retrieve a list of kubernetes upgrades."""
@@ -175,7 +286,6 @@ class KubeUpgradeController(rest.RestController):
         force = body.get('force', False) is True
         alarm_ignore_list = body.get('alarm_ignore_list')
         system = pecan.request.dbapi.isystem_get_one()
-        retry = False
 
         # There must not be a platform upgrade in progress
         try:
@@ -189,21 +299,12 @@ class KubeUpgradeController(rest.RestController):
 
         # There must not already be a kubernetes upgrade in progress
         try:
-            kube_upgrade_obj = objects.kube_upgrade.get_one(pecan.request.context)
+            pecan.request.dbapi.kube_upgrade_get_one()
         except exception.NotFound:
             pass
         else:
-            # Allow retrying the new Kubernetes upgrade if the current
-            # state is 'upgrade-starting-failed'.
-            if (kube_upgrade_obj.state == kubernetes.KUBE_UPGRADE_STARTING_FAILED and
-                    kube_upgrade_obj.to_version == to_version):
-                retry = True
-                if alarm_ignore_list is None:
-                    alarm_ignore_list = []
-                alarm_ignore_list.append(fm_constants.FM_ALARM_ID_KUBE_UPGRADE_IN_PROGRESS)
-            else:
-                raise wsme.exc.ClientSideError(_(
-                    "A kubernetes upgrade is already in progress"))
+            raise wsme.exc.ClientSideError(_(
+                "A kubernetes upgrade is already in progress"))
 
         # Check whether target version is available or not
         try:
@@ -260,63 +361,51 @@ class KubeUpgradeController(rest.RestController):
                     "System is not in a valid state for kubernetes upgrade. "
                     "Run system health-query-kube-upgrade for more details."))
 
-        if retry:
-            # Update upgrade record
-            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_STARTING
-            kube_upgrade_obj.save()
-        else:
-            # Create upgrade record.
-            create_values = {'from_version': current_kube_version,
-                             'to_version': to_version,
-                             'state': kubernetes.KUBE_UPGRADE_STARTING}
-            kube_upgrade_obj = pecan.request.dbapi.kube_upgrade_create(create_values)
+        # Check app compatibility
+        self._check_applied_apps_compatibility(current_kube_version, to_version)
 
-        try:
-            # Set the target version for each host to the current version
-            update_values = {'target_version': current_kube_version}
-            kube_host_upgrades = pecan.request.dbapi.kube_host_upgrade_get_list()
-            for kube_host_upgrade in kube_host_upgrades:
-                pecan.request.dbapi.kube_host_upgrade_update(kube_host_upgrade.id,
-                                                             update_values)
-            # Raise alarm to show a kubernetes upgrade is in progress
-            entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,
-                                            constants.CONTROLLER_HOSTNAME)
-            fault = fm_api.Fault(
-                alarm_id=fm_constants.FM_ALARM_ID_KUBE_UPGRADE_IN_PROGRESS,
-                alarm_state=fm_constants.FM_ALARM_STATE_SET,
-                entity_type_id=fm_constants.FM_ENTITY_TYPE_HOST,
-                entity_instance_id=entity_instance_id,
-                severity=fm_constants.FM_ALARM_SEVERITY_MINOR,
-                reason_text="Kubernetes upgrade in progress.",
-                # operational
-                alarm_type=fm_constants.FM_ALARM_TYPE_7,
-                # congestion
-                probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_8,
-                proposed_repair_action="No action required.",
-                service_affecting=False)
-            fm_api.FaultAPIs().set_fault(fault)
+        # Create upgrade record.
+        create_values = {'from_version': current_kube_version,
+                         'to_version': to_version,
+                         'state': kubernetes.KUBE_UPGRADE_STARTED}
+        new_upgrade = pecan.request.dbapi.kube_upgrade_create(create_values)
 
-            # Set the new kubeadm version in the DB.
-            # This will not actually change the bind mounts until we apply a
-            # puppet manifest that makes use of it.
-            kube_cmd_versions = objects.kube_cmd_version.get(
-                pecan.request.context)
-            kube_cmd_versions.kubeadm_version = to_version.lstrip('v')
-            kube_cmd_versions.save()
+        # Set the target version for each host to the current version
+        update_values = {'target_version': current_kube_version}
+        kube_host_upgrades = pecan.request.dbapi.kube_host_upgrade_get_list()
+        for kube_host_upgrade in kube_host_upgrades:
+            pecan.request.dbapi.kube_host_upgrade_update(kube_host_upgrade.id,
+                                                         update_values)
+        # Raise alarm to show a kubernetes upgrade is in progress
+        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,
+                                        constants.CONTROLLER_HOSTNAME)
+        fault = fm_api.Fault(
+            alarm_id=fm_constants.FM_ALARM_ID_KUBE_UPGRADE_IN_PROGRESS,
+            alarm_state=fm_constants.FM_ALARM_STATE_SET,
+            entity_type_id=fm_constants.FM_ENTITY_TYPE_HOST,
+            entity_instance_id=entity_instance_id,
+            severity=fm_constants.FM_ALARM_SEVERITY_MINOR,
+            reason_text="Kubernetes upgrade in progress.",
+            # operational
+            alarm_type=fm_constants.FM_ALARM_TYPE_7,
+            # congestion
+            probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_8,
+            proposed_repair_action="No action required.",
+            service_affecting=False)
+        fm_api.FaultAPIs().set_fault(fault)
 
-            LOG.info("Starting kubernetes upgrade from version: %s to version: %s"
-                     % (current_kube_version, to_version))
+        # Set the new kubeadm version in the DB.
+        # This will not actually change the executable version until we apply a
+        # puppet manifest that makes use of it.
+        kube_cmd_versions = objects.kube_cmd_version.get(
+            pecan.request.context)
+        kube_cmd_versions.kubeadm_version = to_version.lstrip('v')
+        kube_cmd_versions.save()
 
-            # Tell the conductor to update the required apps and mark the upgrade as started
-            pecan.request.rpcapi.kube_upgrade_start(
-                    pecan.request.context,
-                    to_version)
-        except Exception as e:
-            LOG.exception("Failed to start Kubernetes upgrade: %s" % e)
-            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_STARTING_FAILED
-            kube_upgrade_obj.save()
+        LOG.info("Started kubernetes upgrade from version: %s to version: %s"
+                 % (current_kube_version, to_version))
 
-        return KubeUpgrade.convert_with_links(kube_upgrade_obj)
+        return KubeUpgrade.convert_with_links(new_upgrade)
 
     @cutils.synchronized(LOCK_NAME)
     @wsme.validate([KubeUpgradePatchType])
@@ -337,10 +426,12 @@ class KubeUpgradeController(rest.RestController):
         if updates['state'] and updates['state'].split('-')[-1] == 'failed':
             if kube_upgrade_obj.state in [
                     kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
+                    kubernetes.KUBE_PRE_UPDATING_APPS,
                     kubernetes.KUBE_UPGRADING_FIRST_MASTER,
                     kubernetes.KUBE_UPGRADING_SECOND_MASTER,
                     kubernetes.KUBE_UPGRADING_STORAGE,
-                    kubernetes.KUBE_UPGRADING_NETWORKING]:
+                    kubernetes.KUBE_UPGRADING_NETWORKING,
+                    kubernetes.KUBE_POST_UPDATING_APPS]:
                 kube_upgrade_obj.state = updates['state']
                 kube_upgrade_obj.save()
                 LOG.info("Kubernetes upgrade state is changed to %s" % updates['state'])
@@ -383,15 +474,37 @@ class KubeUpgradeController(rest.RestController):
                 kube_upgrade_obj.to_version)
             return KubeUpgrade.convert_with_links(kube_upgrade_obj)
 
+        elif updates['state'] == kubernetes.KUBE_PRE_UPDATING_APPS:
+            # Make sure upgrade is in the correct state to update apps
+            if kube_upgrade_obj.state not in [
+                    kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
+                    kubernetes.KUBE_PRE_UPDATING_APPS_FAILED]:
+                raise wsme.exc.ClientSideError(_(
+                    "Kubernetes upgrade must be in %s or %s state to "
+                    "update applications" %
+                    (kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
+                     kubernetes.KUBE_PRE_UPDATING_APPS_FAILED)))
+
+            # Update the upgrade state
+            kube_upgrade_obj.state = kubernetes.KUBE_PRE_UPDATING_APPS
+            kube_upgrade_obj.save()
+
+            # Tell the conductor to update the required apps
+            pecan.request.rpcapi.kube_pre_application_update(pecan.request.context)
+
+            LOG.info("Updating applications to match target Kubernetes version %s" %
+                     kube_upgrade_obj.to_version)
+            return KubeUpgrade.convert_with_links(kube_upgrade_obj)
+
         elif updates['state'] == kubernetes.KUBE_UPGRADING_NETWORKING:
             # Make sure upgrade is in the correct state to upgrade networking
             if kube_upgrade_obj.state not in [
-                    kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
+                    kubernetes.KUBE_PRE_UPDATED_APPS,
                     kubernetes.KUBE_UPGRADING_NETWORKING_FAILED]:
                 raise wsme.exc.ClientSideError(_(
                     "Kubernetes upgrade must be in %s or %s state to "
                     "upgrade networking" %
-                    (kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
+                    (kubernetes.KUBE_PRE_UPDATED_APPS,
                      kubernetes.KUBE_UPGRADING_NETWORKING_FAILED)))
 
             # Update the upgrade state
@@ -438,7 +551,11 @@ class KubeUpgradeController(rest.RestController):
                     "in %s" % system.system_mode))
             if kube_upgrade_obj.state in [kubernetes.KUBE_UPGRADE_ABORTING,
                                           kubernetes.KUBE_UPGRADE_ABORTED,
-                                          kubernetes.KUBE_UPGRADE_COMPLETE]:
+                                          kubernetes.KUBE_UPGRADE_COMPLETE,
+                                          kubernetes.KUBE_POST_UPDATING_APPS,
+                                          kubernetes.KUBE_POST_UPDATING_APPS_FAILED,
+                                          kubernetes.KUBE_POST_UPDATED_APPS
+                                          ]:
                 raise wsme.exc.ClientSideError(_(
                     "Cannot abort the kubernetes upgrade it is in %s state" %
                     (kube_upgrade_obj.state)))
@@ -461,12 +578,13 @@ class KubeUpgradeController(rest.RestController):
 
             # Update the state as aborted for these states since no actual k8s changes done
             # so we don't need to do anything more to complete the abort.
-            if kube_upgrade_obj.state in [kubernetes.KUBE_UPGRADE_STARTING,
-                                          kubernetes.KUBE_UPGRADE_STARTING_FAILED,
-                                          kubernetes.KUBE_UPGRADE_STARTED,
+            if kube_upgrade_obj.state in [kubernetes.KUBE_UPGRADE_STARTED,
                                           kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES,
                                           kubernetes.KUBE_UPGRADE_DOWNLOADING_IMAGES_FAILED,
-                                          kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES]:
+                                          kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES,
+                                          kubernetes.KUBE_PRE_UPDATING_APPS,
+                                          kubernetes.KUBE_PRE_UPDATING_APPS_FAILED,
+                                          kubernetes.KUBE_PRE_UPDATED_APPS]:
                 kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_ABORTED
                 kube_upgrade_obj.save()
             else:
@@ -627,12 +745,6 @@ class KubeUpgradeController(rest.RestController):
             if role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
                 dc_api.notify_dcmanager_kubernetes_upgrade_completed()
 
-            # Update apps that contain 'k8s_upgrade.timing = post' metadata
-            pecan.request.rpcapi.update_apps_based_on_k8s_version_async(
-                pecan.request.context,
-                kube_upgrade_obj.to_version,
-                constants.APP_METADATA_TIMING_POST)
-
             # Check if apps need to be reapplied
             pecan.request.rpcapi.evaluate_apps_reapply(
                 pecan.request.context,
@@ -640,6 +752,27 @@ class KubeUpgradeController(rest.RestController):
 
             return KubeUpgrade.convert_with_links(kube_upgrade_obj)
 
+        elif updates['state'] == kubernetes.KUBE_POST_UPDATING_APPS:
+            # Make sure upgrade is in the correct state to update apps
+            if kube_upgrade_obj.state not in [
+                    kubernetes.KUBE_UPGRADE_COMPLETE,
+                    kubernetes.KUBE_POST_UPDATING_APPS_FAILED]:
+                raise wsme.exc.ClientSideError(_(
+                    "Kubernetes upgrade must be in %s or %s state to update applications" %
+                    (kubernetes.KUBE_UPGRADE_COMPLETE,
+                     kubernetes.KUBE_POST_UPDATING_APPS_FAILED)))
+
+            # Update the upgrade state
+            kube_upgrade_obj.state = kubernetes.KUBE_POST_UPDATING_APPS
+            kube_upgrade_obj.save()
+
+            # Update apps that contain 'k8s_upgrade.timing = post' metadata
+            pecan.request.rpcapi.kube_post_application_update(pecan.request.context,
+                                                              kube_upgrade_obj.to_version)
+
+            LOG.info("Updating applications to match current Kubernetes version %s" %
+                     kube_upgrade_obj.to_version)
+            return KubeUpgrade.convert_with_links(kube_upgrade_obj)
         else:
             raise wsme.exc.ClientSideError(_(
                 "Invalid state %s supplied" % updates['state']))
@@ -656,12 +789,16 @@ class KubeUpgradeController(rest.RestController):
             raise wsme.exc.ClientSideError(_(
                 "A kubernetes upgrade is not in progress"))
         if kube_upgrade_obj.state not in [kubernetes.KUBE_UPGRADE_COMPLETE,
-                                            kubernetes.KUBE_UPGRADE_ABORTED]:
+                                          kubernetes.KUBE_POST_UPDATING_APPS_FAILED,
+                                          kubernetes.KUBE_POST_UPDATED_APPS,
+                                          kubernetes.KUBE_UPGRADE_ABORTED]:
             # The upgrade must be in complete or abort state to delete
             raise wsme.exc.ClientSideError(_(
-                "Kubernetes upgrade must be in %s or %s state to delete" %
+                "Kubernetes upgrade must be in %s, %s, %s or %s state to delete" %
                 (kubernetes.KUBE_UPGRADE_COMPLETE,
-                kubernetes.KUBE_UPGRADE_ABORTED)))
+                 kubernetes.KUBE_POST_UPDATING_APPS_FAILED,
+                 kubernetes.KUBE_POST_UPDATED_APPS,
+                 kubernetes.KUBE_UPGRADE_ABORTED)))
 
         # Clean up k8s control-plane backup
         pecan.request.rpcapi.remove_kube_control_plane_backup(

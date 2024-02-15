@@ -86,6 +86,33 @@ class KubeUpgradeTest(test_shell.ShellTest):
         self.assertIn(fake_kube_upgrade['updated_at'], results)
 
     @mock.patch('cgtsclient.v1.kube_upgrade.KubeUpgradeManager.update')
+    def test_kube_pre_application_update(self, mock_update):
+        fake_kube_upgrade = {'from_version': 'v1.42.1',
+                             'to_version': 'v1.42.2',
+                             'state': 'pre-updating-apps',
+                             'uuid': 'cb737aba-1820-4184-b0dc-9b073822af48',
+                             'created_at': 'fake-created-time',
+                             'updated_at': 'fake-updated-time',
+                             }
+        mock_update.return_value = KubeUpgrade(None, fake_kube_upgrade, True)
+
+        self.make_env()
+        results = self.shell("kube-pre-application-update")
+
+        patch = {'op': 'replace',
+                 'path': '/state',
+                 'value': 'pre-updating-apps'
+                 }
+        mock_update.assert_called_once_with([patch])
+
+        self.assertIn(fake_kube_upgrade['from_version'], results)
+        self.assertIn(fake_kube_upgrade['to_version'], results)
+        self.assertIn(fake_kube_upgrade['state'], results)
+        self.assertIn(fake_kube_upgrade['uuid'], results)
+        self.assertIn(fake_kube_upgrade['created_at'], results)
+        self.assertIn(fake_kube_upgrade['updated_at'], results)
+
+    @mock.patch('cgtsclient.v1.kube_upgrade.KubeUpgradeManager.update')
     def test_kube_upgrade_download_images(self, mock_update):
         fake_kube_upgrade = {'from_version': 'v1.42.1',
                              'to_version': 'v1.42.2',
@@ -118,6 +145,33 @@ class KubeUpgradeTest(test_shell.ShellTest):
 
         self.make_env()
         results = self.shell("kube-upgrade-networking")
+        self.assertIn(fake_kube_upgrade['from_version'], results)
+        self.assertIn(fake_kube_upgrade['to_version'], results)
+        self.assertIn(fake_kube_upgrade['state'], results)
+        self.assertIn(fake_kube_upgrade['uuid'], results)
+        self.assertIn(fake_kube_upgrade['created_at'], results)
+        self.assertIn(fake_kube_upgrade['updated_at'], results)
+
+    @mock.patch('cgtsclient.v1.kube_upgrade.KubeUpgradeManager.update')
+    def test_kube_post_application_update(self, mock_update):
+        fake_kube_upgrade = {'from_version': 'v1.42.1',
+                             'to_version': 'v1.42.2',
+                             'state': 'post-updating-apps',
+                             'uuid': 'cb737aba-1820-4184-b0dc-9b073822af48',
+                             'created_at': 'fake-created-time',
+                             'updated_at': 'fake-updated-time',
+                             }
+        mock_update.return_value = KubeUpgrade(None, fake_kube_upgrade, True)
+
+        self.make_env()
+        results = self.shell("kube-post-application-update")
+
+        patch = {'op': 'replace',
+                 'path': '/state',
+                 'value': 'post-updating-apps'
+                 }
+        mock_update.assert_called_once_with([patch])
+
         self.assertIn(fake_kube_upgrade['from_version'], results)
         self.assertIn(fake_kube_upgrade['to_version'], results)
         self.assertIn(fake_kube_upgrade['state'], results)
