@@ -2704,7 +2704,7 @@ class AppOperator(object):
 
     def perform_app_update(self, from_rpc_app, to_rpc_app, tarfile,
                            operation, lifecycle_hook_info_app_update, reuse_user_overrides=None,
-                           reuse_attributes=None):
+                           reuse_attributes=None, k8s_version=None):
         """Process application update request
 
         This method leverages the existing application upload workflow to
@@ -2733,7 +2733,8 @@ class AppOperator(object):
         :param lifecycle_hook_info_app_update: LifecycleHookInfo object
         :param reuse_user_overrides: (optional) True or False
         :param reuse_attributes: (optional) True or False
-
+        :param k8s_version: (optional) Target Kubernetes version
+        :return: True if the update to the new version was successful. False otherwise.
         """
 
         from_app = AppOperator.Application(from_rpc_app)
@@ -2777,20 +2778,25 @@ class AppOperator(object):
             except exception.LifecycleSemanticCheckException as e:
                 LOG.info("App {} rejected operation {} for reason: {}"
                          "".format(to_app.name, constants.APP_UPDATE_OP, str(e)))
-                return self._perform_app_recover(to_rpc_app, from_app, to_app,
-                                                 lifecycle_hook_info_app_update,
-                                                 fluxcd_process_required=False)
+                self._perform_app_recover(to_rpc_app, from_app, to_app,
+                                          lifecycle_hook_info_app_update,
+                                          fluxcd_process_required=False)
+                return False
             except Exception as e:
                 LOG.error("App {} operation {} semantic check error: {}"
                           "".format(to_app.name, constants.APP_UPDATE_OP, str(e)))
-                return self._perform_app_recover(to_rpc_app, from_app, to_app,
-                                                 lifecycle_hook_info_app_update,
-                                                 fluxcd_process_required=False)
+                self._perform_app_recover(to_rpc_app, from_app, to_app,
+                                          lifecycle_hook_info_app_update,
+                                          fluxcd_process_required=False)
+                return False
 
             self.load_application_metadata_from_file(to_rpc_app)
 
-            # Check whether the new application is compatible with the current k8s version
-            self._utils._check_app_compatibility(to_app.name, to_app.version)
+            # Check whether the new application is compatible with the given k8s version.
+            # If k8s_version is none the check is performed against the active version.
+            self._utils._check_app_compatibility(to_app.name,
+                                                 to_app.version,
+                                                 k8s_version)
 
             self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS)
 
@@ -2853,8 +2859,9 @@ class AppOperator(object):
             if do_recovery:
                 LOG.error("Application %s update from version %s to version "
                           "%s aborted." % (to_app.name, from_app.version, to_app.version))
-                return self._perform_app_recover(to_rpc_app, from_app, to_app,
-                                                 lifecycle_hook_info_app_update)
+                self._perform_app_recover(to_rpc_app, from_app, to_app,
+                                          lifecycle_hook_info_app_update)
+                return False
 
             self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS,
                                     "cleanup application version {}".format(from_app.version))
@@ -2928,9 +2935,10 @@ class AppOperator(object):
             # ie.images download/k8s resource creation failure
             # Start recovering without trigger fluxcd process
             LOG.exception(e)
-            return self._perform_app_recover(to_rpc_app, from_app, to_app,
-                                             lifecycle_hook_info_app_update,
-                                             fluxcd_process_required=False)
+            self._perform_app_recover(to_rpc_app, from_app, to_app,
+                                      lifecycle_hook_info_app_update,
+                                      fluxcd_process_required=False)
+            return False
         except Exception as e:
             # Application update successfully(fluxcd apply/rollback)
             # Error occurs during cleanup old app

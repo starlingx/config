@@ -72,9 +72,11 @@ class FakeFmClient(object):
 class FakeConductorAPI(object):
 
     def __init__(self):
+        self.kube_upgrade_start = mock.MagicMock()
         self.kube_download_images = mock.MagicMock()
         self.kube_upgrade_networking = mock.MagicMock()
         self.kube_upgrade_abort = mock.MagicMock()
+        self.update_apps_based_on_k8s_version_async = mock.MagicMock()
         self.evaluate_apps_reapply = mock.MagicMock()
         self.remove_kube_control_plane_backup = mock.MagicMock()
         self.kube_delete_container_images = mock.MagicMock()
@@ -169,22 +171,6 @@ class TestKubeUpgrade(base.FunctionalTest):
             mock_kube_get_version_states)
         self.mocked_kube_get_version_states.start()
         self.addCleanup(self.mocked_kube_get_version_states.stop)
-
-        # Mock utility function
-        self.kube_min_version_result, self.kube_max_version_result = 'v1.42.1', 'v1.43.1'
-
-        def mock_get_app_supported_kube_version(app_name, app_version):
-            return self.kube_min_version_result, self.kube_max_version_result
-        self.mocked_kube_min_version = mock.patch(
-            'sysinv.common.utils.get_app_supported_kube_version',
-            mock_get_app_supported_kube_version)
-        self.mocked_kube_max_version = mock.patch(
-            'sysinv.common.utils.get_app_supported_kube_version',
-            mock_get_app_supported_kube_version)
-        self.mocked_kube_min_version.start()
-        self.mocked_kube_max_version.start()
-        self.addCleanup(self.mocked_kube_min_version.stop)
-        self.addCleanup(self.mocked_kube_max_version.stop)
 
         self.setup_health_mocked_calls()
 
@@ -288,11 +274,15 @@ class TestPostKubeUpgradeSimplex(TestKubeUpgrade,
         result = self.post_json('/kube_upgrade', create_dict,
                                 headers={'User-Agent': 'sysinv-test'})
 
+        # Verify that the upgrade was started
+        self.fake_conductor_api.kube_upgrade_start.\
+            assert_called_with(mock.ANY, 'v1.43.3')
+
         # Verify that the upgrade has the expected attributes
         self.assertEqual(result.json['from_version'], 'v1.42.1')
         self.assertEqual(result.json['to_version'], 'v1.43.3')
         self.assertEqual(result.json['state'],
-                         kubernetes.KUBE_UPGRADE_STARTED)
+                         kubernetes.KUBE_UPGRADE_STARTING)
 
         # see if kubeadm_version was changed in DB
         kube_cmd_version = self.dbapi.kube_cmd_version_get()
@@ -390,11 +380,15 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         result = self.post_json('/kube_upgrade', create_dict,
                                 headers={'User-Agent': 'sysinv-test'})
 
+        # Verify that the upgrade was started
+        self.fake_conductor_api.kube_upgrade_start.\
+            assert_called_with(mock.ANY, 'v1.43.2')
+
         # Verify that the upgrade has the expected attributes
         self.assertEqual(result.json['from_version'], 'v1.43.1')
         self.assertEqual(result.json['to_version'], 'v1.43.2')
         self.assertEqual(result.json['state'],
-                         kubernetes.KUBE_UPGRADE_STARTED)
+                         kubernetes.KUBE_UPGRADE_STARTING)
 
         # see if kubeadm_version was changed in DB
         kube_cmd_version = self.dbapi.kube_cmd_version_get()
@@ -485,30 +479,6 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         self.assertIn("version v1.43.1 is not active",
                       result.json['error_message'])
 
-    def test_create_installed_app_not_compatible(self):
-        # Test creation of upgrade when the installed application isn't
-        # compatible with the new kubernetes version
-
-        # Create application
-        dbutils.create_test_app(
-            name='stx-openstack',
-            app_version='1.0-19',
-            manifest_name='manifest',
-            manifest_file='stx-openstack.yaml',
-            status='applied',
-            active=True)
-
-        create_dict = dbutils.post_get_test_kube_upgrade(to_version='v1.43.2')
-        result = self.post_json('/kube_upgrade', create_dict,
-                                headers={'User-Agent': 'sysinv-test'},
-                                expect_errors=True)
-
-        # Verify the failure
-        self.assertEqual(result.content_type, 'application/json')
-        self.assertEqual(http_client.BAD_REQUEST, result.status_int)
-        self.assertIn("incompatible with the new Kubernetes version v1.43.2",
-                      result.json['error_message'])
-
     @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
     def test_create_system_unhealthy_from_alarms(self):
         """Test creation of a kube upgrade while there are alarms"""
@@ -542,11 +512,15 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         result = self.post_json('/kube_upgrade', create_dict,
                                 headers={'User-Agent': 'sysinv-test'})
 
+        # Verify that the upgrade was started
+        self.fake_conductor_api.kube_upgrade_start.\
+            assert_called_with(mock.ANY, 'v1.43.2')
+
         # Verify that the upgrade has the expected attributes
         self.assertEqual(result.json['from_version'], 'v1.43.1')
         self.assertEqual(result.json['to_version'], 'v1.43.2')
         self.assertEqual(result.json['state'],
-                         kubernetes.KUBE_UPGRADE_STARTED)
+                         kubernetes.KUBE_UPGRADE_STARTING)
 
     @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
     def test_force_create_system_unhealthy_from_mgmt_affecting_alarms(self):
@@ -583,11 +557,15 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         result = self.post_json('/kube_upgrade', create_dict,
                                 headers={'User-Agent': 'sysinv-test'})
 
+        # Verify that the upgrade was started
+        self.fake_conductor_api.kube_upgrade_start.\
+            assert_called_with(mock.ANY, 'v1.43.2')
+
         # Verify that the upgrade has the expected attributes
         self.assertEqual(result.json['from_version'], 'v1.43.1')
         self.assertEqual(result.json['to_version'], 'v1.43.2')
         self.assertEqual(result.json['state'],
-                         kubernetes.KUBE_UPGRADE_STARTED)
+                         kubernetes.KUBE_UPGRADE_STARTING)
 
     @mock.patch('sysinv.common.health.Health._check_trident_compatibility', lambda x: True)
     def test_create_system_unhealthy_from_bad_apps(self):
@@ -629,11 +607,15 @@ class TestPostKubeUpgrade(TestKubeUpgrade,
         result = self.post_json('/kube_upgrade', create_dict,
                                 headers={'User-Agent': 'sysinv-test'})
 
+        # Verify that the upgrade was started
+        self.fake_conductor_api.kube_upgrade_start.\
+            assert_called_with(mock.ANY, 'v1.43.3')
+
         # Verify that the upgrade has the expected attributes
         self.assertEqual(result.json['from_version'], 'v1.43.2')
         self.assertEqual(result.json['to_version'], 'v1.43.3')
         self.assertEqual(result.json['state'],
-                         kubernetes.KUBE_UPGRADE_STARTED)
+                         kubernetes.KUBE_UPGRADE_STARTING)
 
     def test_create_applied_patch_missing(self):
         # Test creation of upgrade when applied patch is missing

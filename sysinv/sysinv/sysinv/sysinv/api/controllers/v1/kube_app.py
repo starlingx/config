@@ -665,7 +665,7 @@ class KubeAppHelper(object):
                 "Error while reporting the patch dependencies "
                 "to patch-controller.")
 
-    def _check_app_compatibility(self, app_name, app_version):
+    def _check_app_compatibility(self, app_name, app_version, target_kube_version=None):
         """Checks whether the application is compatible
            with the current k8s version"""
 
@@ -675,14 +675,25 @@ class KubeAppHelper(object):
         if not kube_min_version and not kube_max_version:
             return
 
-        version_states = self._kube_operator.kube_get_version_states()
-        for kube_version, state in version_states.items():
-            if state in [kubernetes.KUBE_STATE_ACTIVE,
-                         kubernetes.KUBE_STATE_PARTIAL]:
-                if not kubernetes.is_kube_version_supported(
-                        kube_version, kube_min_version, kube_max_version):
-                    raise exception.IncompatibleKubeVersion(
-                        name=app_name, version=app_version, kube_version=kube_version)
+        if target_kube_version is None:
+            version_states = self._kube_operator.kube_get_version_states()
+            for kube_version, state in version_states.items():
+                if state in [kubernetes.KUBE_STATE_ACTIVE,
+                             kubernetes.KUBE_STATE_PARTIAL]:
+                    if not kubernetes.is_kube_version_supported(
+                            kube_version, kube_min_version, kube_max_version):
+                        LOG.error("Application {} is incompatible with Kubernetes version {}."
+                                  .format(app_name, kube_version))
+                        raise exception.IncompatibleKubeVersion(
+                            name=app_name, version=app_version, kube_version=kube_version)
+        elif not kubernetes.is_kube_version_supported(target_kube_version,
+                                                      kube_min_version,
+                                                      kube_max_version):
+            LOG.error("Application {} is incompatible with target Kubernetes version {}."
+                      .format(app_name, target_kube_version))
+            raise exception.IncompatibleKubeVersion(name=app_name,
+                                                    version=app_version,
+                                                    kube_version=target_kube_version)
 
     def _find_manifest(self, app_path, app_name):
         """ Find the required application manifest elements

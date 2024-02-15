@@ -49,6 +49,7 @@ from sysinv.db import api as dbapi
 from sysinv.loads.loads import LoadImport
 from sysinv.objects.load import Load
 from sysinv.puppet import common as puppet_common
+from sysinv.tests.db import utils as dbutils
 from sysinv import objects
 
 from sysinv.tests.db import base
@@ -497,6 +498,22 @@ class ManagerTestCase(base.DbTestCase):
         self.alarm_raised = False
         self.kernel_alarms = {}
 
+        # Mock utility function
+        self.kube_min_version_result, self.kube_max_version_result = 'v1.42.1', 'v1.43.1'
+
+        def mock_get_app_supported_kube_version(app_name, app_version):
+            return self.kube_min_version_result, self.kube_max_version_result
+        self.mocked_kube_min_version = mock.patch(
+            'sysinv.common.utils.get_app_supported_kube_version',
+            mock_get_app_supported_kube_version)
+        self.mocked_kube_max_version = mock.patch(
+            'sysinv.common.utils.get_app_supported_kube_version',
+            mock_get_app_supported_kube_version)
+        self.mocked_kube_min_version.start()
+        self.mocked_kube_max_version.start()
+        self.addCleanup(self.mocked_kube_min_version.stop)
+        self.addCleanup(self.mocked_kube_max_version.stop)
+
     def tearDown(self):
         super(ManagerTestCase, self).tearDown()
 
@@ -930,6 +947,63 @@ class ManagerTestCase(base.DbTestCase):
 
         ret = self.service.platform_interfaces(self.context, ihost['id'] + 1)
         self.assertEqual(ret, [])
+
+    def test_kube_upgrade_start(self):
+        # Create application
+        dbutils.create_test_app(
+            name='stx-openstack',
+            app_version='1.0-19',
+            manifest_name='manifest',
+            manifest_file='stx-openstack.yaml',
+            status='applied',
+            active=True)
+
+        # Create an upgrade
+        from_version = 'v1.42.1'
+        to_version = 'v1.43.1'
+        utils.create_test_kube_upgrade(
+            from_version=from_version,
+            to_version=to_version,
+            state=kubernetes.KUBE_UPGRADE_STARTING,
+        )
+
+        # Start upgrade
+        self.service.kube_upgrade_start(self.context, to_version)
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_UPGRADE_STARTED)
+
+    def test_kube_upgrade_start_app_not_compatible(self):
+        # Test creation of upgrade when the installed application isn't
+        # compatible with the new kubernetes version
+
+        # Create application
+        dbutils.create_test_app(
+            name='stx-openstack',
+            app_version='1.0-19',
+            manifest_name='manifest',
+            manifest_file='stx-openstack.yaml',
+            status='applied',
+            active=True)
+
+        # Create an upgrade
+        from_version = 'v1.42.1'
+        to_version = 'v1.43.2'
+        utils.create_test_kube_upgrade(
+            from_version=from_version,
+            to_version=to_version,
+            state=kubernetes.KUBE_UPGRADE_STARTING,
+        )
+
+        # Start upgrade
+        self.service.kube_upgrade_start(self.context, to_version)
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_UPGRADE_STARTING_FAILED)
 
     def test_kube_download_images(self):
         # Create controller-0
