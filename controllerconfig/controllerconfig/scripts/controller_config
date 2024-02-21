@@ -709,10 +709,21 @@ start()
     # Apply the puppet manifest
     HIERADATA_PATH=${PUPPET_CACHE}/hieradata
     HOST_HIERA=${HIERADATA_PATH}/${HOST}.yaml
+    IP_HIERA=${HIERADATA_PATH}/${IPADDR}.yaml
+    PUPPET_YML=${HOST}
+
+    # if IP_HIERA exists, it means an upgrade
+    # must use the <mgmt_ip>.yaml because the active controller
+    # running the previous version doesn't update the hostname.yaml
+    if [ -e $ETC_PLATFORM_DIR/.upgrade_do_not_use_fqdn ] && \
+       [ -f ${IP_HIERA} ]; then
+        HOST_HIERA=${IP_HIERA}
+        PUPPET_YML=${IPADDR}
+    fi
 
     if [ -f ${HOST_HIERA} ]; then
-        echo "$0: Running puppet manifest apply"
-        puppet-manifest-apply.sh ${HIERADATA_PATH} ${HOST} ${subfunction}
+        echo "$0: Running puppet manifest apply for: ${PUPPET_YML}"
+        puppet-manifest-apply.sh ${HIERADATA_PATH} ${PUPPET_YML} ${subfunction}
         RC=$?
         if [ $RC -ne 0 ]
         then

@@ -2406,13 +2406,18 @@ def is_inventory_config_complete(dbapi, forihostid):
         return False
 
 
-def is_fqdn_ready_to_use():
+def is_fqdn_ready_to_use(ignore_upgrade=False):
     """
     Return true if FQDN can be used instead of IP ADDRESS
     The use of FQDN is limited to management network
     after the bootstrap.
+    During an duplex/standard upgrade the FQDN can't be used
+    since the old release doesn't support it.
     """
-    if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG)):
+    if (os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG) and
+        (os.path.isfile(tsc.PLATFORM_SIMPLEX_FLAG) or
+         (not os.path.isfile(tsc.UPGRADE_DO_NOT_USE_FQDN) or
+          ignore_upgrade))):
         return True
 
     return False

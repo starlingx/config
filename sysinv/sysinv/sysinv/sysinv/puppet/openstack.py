@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2020 Wind River Systems, Inc.
+# Copyright (c) 2017-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -108,7 +108,17 @@ class OpenstackBasePuppet(base.BasePuppet):
         # (by services' endpoint reconfiguration), the system commands
         # to add networks etc during ansible bootstrap will fail as
         # haproxy has not been configured yet.
-        if os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG) and \
+
+        # TODO<fcorream>: Remove OLD_ANSIBLE_BOOTSTRAP_COMPLETED_FLAG
+        # just needed for upgrade to R9
+        is_upgrading = cutils.is_upgrade_in_progress(self.dbapi)[0]
+
+        bootstrap_completed = \
+            os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG) or \
+            (is_upgrading and
+             os.path.isfile(constants.OLD_ANSIBLE_BOOTSTRAP_COMPLETED_FLAG))
+
+        if bootstrap_completed and \
             (self._distributed_cloud_role() ==
                 constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER or
                 self._distributed_cloud_role() ==

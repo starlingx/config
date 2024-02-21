@@ -45,8 +45,14 @@ class LdapPuppet(base.BasePuppet):
     def _is_openldap_certificate_created(self):
         """ Returns True when it's safe to read the openldap certificate.
         """
+        # TODO<fcorream>: Remove OLD_ANSIBLE_BOOTSTRAP_COMPLETED_FLAG
+        # just needed for upgrade to R9 ( 24.09 )
+        is_upgrading = utils.is_upgrade_in_progress(self.dbapi)[0]
+
         bootstrap_completed = \
-            os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG)
+            os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG) or \
+            (is_upgrading and
+             os.path.isfile(constants.OLD_ANSIBLE_BOOTSTRAP_COMPLETED_FLAG))
 
         return bootstrap_completed
 

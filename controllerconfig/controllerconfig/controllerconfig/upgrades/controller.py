@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2016-2022 Wind River Systems, Inc.
+# Copyright (c) 2016-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -54,8 +54,8 @@ LOG = logging.getLogger(__name__)
 POSTGRES_BIN = utils.get_postgres_bin()
 POSTGRES_MOUNT_PATH = '/mnt/postgresql'
 POSTGRES_DUMP_MOUNT_PATH = '/mnt/db_dump'
-DB_CONNECTION_FORMAT = "connection=postgresql://%s:%s@127.0.0.1/%s\n"
-DB_BARBICAN_CONNECTION_FORMAT = "postgresql://%s:%s@127.0.0.1/%s"
+DB_CONNECTION_CONF_FORMAT = "connection=postgresql://%s:%s@127.0.0.1/%s\n"
+DB_CONNECTION_EXEC_FORMAT = "postgresql://%s:%s@127.0.0.1/%s"
 
 restore_patching_complete = '/etc/platform/.restore_patching_complete'
 restore_compute_ready = '/var/run/.restore_compute_ready'
@@ -159,14 +159,21 @@ def get_shared_services():
     return shared_services
 
 
-def get_connection_string(db_credentials, database):
-    """ Generates a connection string for a given database"""
+def get_connection_string(db_credentials, database, exec_format=False):
+    """ Generates a connection string for a given database
+        exec_format
+            True: the connection string can be used in line command
+                   ( ex: barbican ) or in psycopg2.connect
+            False: the connection string is to be used in .conf files
+    """
     username = db_credentials[database]['username']
     password = db_credentials[database]['password']
-    if database == 'barbican':
-        return DB_BARBICAN_CONNECTION_FORMAT % (username, password, database)
+
+    if exec_format:
+        return DB_CONNECTION_EXEC_FORMAT % (username, password, database)
     else:
-        return DB_CONNECTION_FORMAT % (username, password, database)
+        # use format to be used in .conf files
+        return DB_CONNECTION_CONF_FORMAT % (username, password, database)
 
 
 def create_temp_filesystem(vgname, lvname, mountpoint, size):
@@ -660,7 +667,8 @@ def migrate_databases(from_release, shared_services, db_credentials,
         # Migrate barbican
         ('barbican',
          'barbican-manage db upgrade ' +
-         '--db-url %s' % get_connection_string(db_credentials, 'barbican')),
+         '--db-url %s' % get_connection_string(db_credentials, 'barbican',
+                                               True)),
     ]
 
     # Migrate fm
@@ -833,12 +841,9 @@ def apply_sriov_config(db_credentials, hostname):
     # If controller-1 has any FEC devices or sriov vfs configured, apply the
     # sriov runtime manifest. We can't apply it from controller-0 during the
     # host-unlock process as controller-1 is running the new release.
-    database = 'sysinv'
-    username = db_credentials[database]['username']
-    password = db_credentials[database]['password']
-    # psycopg2 can connect with the barbican string eg postgresql:// ...
-    connection_string = DB_BARBICAN_CONNECTION_FORMAT % (
-        username, password, database)
+
+    connection_string = get_connection_string(db_credentials, 'sysinv', True)
+
     conn = psycopg2.connect(connection_string)
     cur = conn.cursor()
     cur.execute(
@@ -872,6 +877,32 @@ def apply_sriov_config(db_credentials, hostname):
             mgmt_ip, personality, manifest='runtime', runtime=tmpfile)
         os.close(fd)
         os.remove(tmpfile)
+
+
+def get_db_host_mgmt_ip(db_credentials, hostname):
+    """ Get the Hostname management IP from DB"""
+
+    # the postgres server was stopped during the upgrade_controller
+    # need to use db_credentials to acess the DB
+    connection_string = get_connection_string(db_credentials, 'sysinv', True)
+    conn = psycopg2.connect(connection_string)
+
+    db_hostname = hostname + "-mgmt"
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT address FROM addresses WHERE name='{}';".format(
+            db_hostname))
+        row = cur.fetchone()
+
+        if row is None:
+            msg = "MGMT IP not found for: '{}'".format(db_hostname)
+            raise Exception(msg)
+
+        return row[0]
+
+    except Exception as ex:
+        LOG.error("Failed to get MGMT IP for: '%s'" % db_hostname)
+        raise ex
 
 
 def upgrade_controller(from_release, to_release):
@@ -1046,6 +1077,33 @@ def upgrade_controller(from_release, to_release):
         LOG.exception(e)
         LOG.info("Failed to update hiera configuration")
         raise
+
+    # this is just necessary for 22.12
+    # since the old releases uses the hieradata/<mgmt_ip>.yaml
+    # and the new one uses hieradata/<hostname>.yaml
+    # during the AIO-DX upgrade, the controller-0 runs the old
+    # release to upgrade the controller-1
+    # the controller-0 want to still use hieradata/<mgmt_ip>.yaml
+    # but the controller-1 want to use hieradata/<hostname>.yaml
+    # so rename the <hostname>.yaml to <mgmt_ip>.yaml
+    # and creates a symlink: <hostname>.yaml -> <mgmt_ip>.yaml
+    try:
+        ctrl1_mgmt_ip = get_db_host_mgmt_ip(db_credentials,
+                                            utils.CONTROLLER_1_HOSTNAME)
+    except Exception as e:
+        LOG.exception(e)
+        LOG.info("Failed to get MGMT IP for controller-1 during upgrade")
+        raise
+
+    ctrl1_hostname_hieradata = constants.HIERADATA_PERMDIR + "/" \
+        + utils.CONTROLLER_1_HOSTNAME + ".yaml"
+
+    ctrl1_ipaddr_hieradata_file = ctrl1_mgmt_ip + ".yaml"
+    ctrl1_ipaddr_hieradata = constants.HIERADATA_PERMDIR + "/" \
+        + ctrl1_ipaddr_hieradata_file
+
+    os.rename(ctrl1_hostname_hieradata, ctrl1_ipaddr_hieradata)
+    os.symlink(ctrl1_ipaddr_hieradata_file, ctrl1_hostname_hieradata)
 
     apply_sriov_config(db_credentials, utils.CONTROLLER_1_HOSTNAME)
 
