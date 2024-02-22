@@ -838,11 +838,11 @@ class Host(base.APIBase):
                 link.Link.make_link('self',
                                     pecan.request.host_url,
                                     'ihosts',
-                                    uhost.uuid + "/lldp_neighbors"),
+                                    uhost.uuid + "/lldp_neighbours"),
                 link.Link.make_link('bookmark',
                                     pecan.request.host_url,
                                     'ihosts',
-                                    uhost.uuid + "/lldp_neighbors",
+                                    uhost.uuid + "/lldp_neighbours",
                                     bookmark=True)
                                      ]
 
