@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2022 Wind River Systems, Inc.
+# Copyright (c) 2017-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -70,7 +70,7 @@ class LdapPuppet(base.BasePuppet):
                     constants.OPENLDAP_CA_CERT_SECRET_NAME,
                     constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
             else:
-                ldap_ca_cert, _ = utils.get_certificate_from_secret(
+                ldap_ca_cert, _, _ = utils.get_certificate_from_secret(
                     constants.OPENLDAP_CA_CERT_SECRET_NAME,
                     constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
 
@@ -79,7 +79,7 @@ class LdapPuppet(base.BasePuppet):
                     'platform::ldap::params::ca_cert': ldap_ca_cert,
                 })
             else:
-                ldap_cert, ldap_key = utils.get_certificate_from_secret(
+                ldap_cert, ldap_key, _ = utils.get_certificate_from_secret(
                     constants.OPENLDAP_CERT_SECRET_NAME,
                     constants.CERT_NAMESPACE_PLATFORM_CERTS)
 
