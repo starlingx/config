@@ -147,6 +147,23 @@ def get_client_hostname_and_mgmt_subnet(mac_addr):
     return response
 
 
+def update_host_mgmt_ipsec_state(uuid, state):
+    token = rest_api.get_token(constants.REGION_NAME)
+    sysinv_ihost_url = constants.PXECONTROLLER_URL + '/v1/ihosts/'
+
+    api_cmd = sysinv_ihost_url + uuid + '/update_mgmt_ipsec_state'
+    api_cmd_payload = '"{}"'.format(state)
+    api_cmd_headers = dict()
+    api_cmd_headers['Content-type'] = "application/json"
+    api_cmd_headers['User-Agent'] = "sysinv/1.0"
+
+    if not rest_api.rest_api_request(token, "POST", api_cmd,
+                                        api_cmd_headers=api_cmd_headers,
+                                        api_cmd_payload=api_cmd_payload):
+        return False
+    return True
+
+
 def load_data(path):
     data = None
     with open(path, 'rb') as f:

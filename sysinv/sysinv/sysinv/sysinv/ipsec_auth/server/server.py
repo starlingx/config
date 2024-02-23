@@ -227,37 +227,40 @@ class IPsecConnection(object):
             return False
 
         uuid = None
-        inv_state = None
+        mgmt_ipsec = None
         mgmt_mac = None
         personality = None
         for h in hosts_info['ihosts']:
-            if message["mac_addr"] == h['mgmt_mac']:
-                uuid = h['uuid']
-                inv_state = h['inv_state']
-                mgmt_mac = h['mgmt_mac']
-                personality = h['personality']
+            if message["mac_addr"] == h.get('mgmt_mac'):
+                uuid = h.get('uuid')
+                mgmt_mac = h.get('mgmt_mac')
+                personality = h.get('personality')
+                capabilities = h.get('capabilities')
+                mgmt_ipsec = capabilities.get('mgmt_ipsec') if capabilities else None
                 break
 
-        if not uuid or not mgmt_mac or not personality or \
-            op_code == constants.OP_CODE_INITIAL_AUTH and inv_state != '' or \
-            op_code == constants.OP_CODE_CERT_RENEWAL and \
-                inv_state != constants.INV_STATE_INVENTORIED:
-            LOG.error("Invalid host information.")
-            return False
+        LOG.info("Request op:{}, host uuid:{}, mgmt_mac:{}, personality:{}, mgmt_ipsec:{}"
+                .format(op_code, uuid, mgmt_mac, personality, mgmt_ipsec))
 
-        if op_code == constants.OP_CODE_INITIAL_AUTH and inv_state == '':
-            api_cmd = sysinv_ihost_url + uuid + '/update_inv_state'
-
-            api_cmd_payload = '"{}"'.format(constants.INV_STATE_INVENTORYING)
-
-            api_cmd_headers = dict()
-            api_cmd_headers['Content-type'] = "application/json"
-            api_cmd_headers['User-Agent'] = "sysinv/1.0"
-            if not rest_api.rest_api_request(token, "POST", api_cmd,
-                                                api_cmd_headers=api_cmd_headers,
-                                                api_cmd_payload=api_cmd_payload):
-                LOG.error("Failed to update host inventory state.")
+        # Initial auth request
+        if op_code == constants.OP_CODE_INITIAL_AUTH:
+            if uuid and mgmt_mac and mgmt_ipsec is None:
+                if not utils.update_host_mgmt_ipsec_state(uuid,
+                        constants.MGMT_IPSEC_ENABLING):
+                    LOG.error("Failed to update host mgmt IPSec state.")
+                    return False
+            else:
+                LOG.error("Invalid request for operation: %s" % op_code)
                 return False
+        # Certificate renewal request
+        elif op_code == constants.OP_CODE_CERT_RENEWAL:
+            if uuid and mgmt_mac and mgmt_ipsec == constants.MGMT_IPSEC_ENABLED:
+                # Valid so do nothing
+                pass
+            else:
+                LOG.error("Invalid request for operation: %s" % op_code)
+                return False
+
         return True
 
     def _generate_tmp_key_pair(self):
