@@ -20,9 +20,9 @@ from cryptography.x509.oid import NameOID
 from oslo_log import log as logging
 
 from sysinv.ipsec_auth.client import config
-from sysinv.ipsec_auth.common.constants import State
 from sysinv.ipsec_auth.common import constants
 from sysinv.ipsec_auth.common import utils
+from sysinv.ipsec_auth.common.objects import State
 
 LOG = logging.getLogger(__name__)
 
@@ -235,13 +235,13 @@ class Client(object):
                     if not self._handle_rcvd_data(self.data):
                         raise ConnectionAbortedError("Error receiving data from server")
                     sel.modify(sock, selectors.EVENT_WRITE)
-                    self.state = utils.get_next_state(self.state)
+                    self.state = State.get_next_state(self.state)
 
                 if mask & selectors.EVENT_WRITE:
                     msg = self._handle_send_data(self.data)
                     sock.sendall(bytes(msg, 'utf-8'))
                     sel.modify(sock, selectors.EVENT_READ)
-                    self.state = utils.get_next_state(self.state)
+                    self.state = State.get_next_state(self.state)
 
                 if self.state == State.STAGE_5:
                     keep_running = False

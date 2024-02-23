@@ -5,17 +5,14 @@
 #
 from sysinv.common import rest_api
 from sysinv.ipsec_auth.common import constants
-from sysinv.ipsec_auth.common.constants import State
 from sysinv.common.kubernetes import KUBERNETES_ADMIN_CONF
 
 import base64
 import fcntl
 import os
-import secrets
 import socket
 import struct
 import subprocess
-import time
 import yaml
 
 from cryptography import x509
@@ -34,48 +31,6 @@ from cryptography.hazmat.primitives.ciphers import modes
 from oslo_log import log as logging
 
 LOG = logging.getLogger(__name__)
-
-
-def get_next_state(state):
-    '''Get the next IPsec Auth state whenever a Stage is finished.
-
-    The IPsec Auth server-client interaction is separated into 5 work stages.
-    STAGE_1: represents the initial stage where IPsec Auth client send
-             the first message with OP code, mac address and a hash to
-             IPsec Auth server.
-    STAGE_2: represents the stage of validation of the message 1 received
-             from the client and generation of a response message. If the
-             validation is satisfied, the IPsec Auth server will encapsulate
-             an OTS Token, client's hostname, generated public key,
-             system-local-ca's certificate and a signed hash of this payload
-             in the response message to send it to the client.
-    STAGE_3: represents the stage of validation of the message 2 received
-             from the server and generation of a response message. if the
-             validation is satisfied, the IPsec Auth Client will encapsulate
-             an OTS Token, an encrypted Initial Vector (eiv), an encrypted
-             symetric key (eak1), an encrypted certificate request (eCSR)
-             and a signed hash of this payload in the response message to
-             send it to the server.
-    STAGE_4: represents the stage of validation of the message 3 from the
-             client and generation of a final response message. If the
-             validation of the message is satisfied, the IPsec Auth server
-             will create a CertificateRequest resource with a CSR received
-             from client's message and will encapsulate the signed
-             Certificate, network info and a signed hash of this payload in
-             the response message to send it to the client.
-    STAGE_5: represents the final stage of IPsec PKI Auth procedure and demands
-             that IPsec Auth server and client close the connection that
-             finished STAGE_4.
-    '''
-    if state == State.STAGE_1:
-        state = State.STAGE_2
-    elif state == State.STAGE_2:
-        state = State.STAGE_3
-    elif state == State.STAGE_3:
-        state = State.STAGE_4
-    elif state == State.STAGE_4:
-        state = State.STAGE_5
-    return state
 
 
 def get_plataform_conf(param):
@@ -175,15 +130,6 @@ def load_data(path):
 def save_data(path, data):
     with open(path, 'wb') as f:
         f.write(data)
-
-
-def generate_ots_token():
-    format = "=b16sQ"  # Token format: [b an integer][L unsigned long][L unsigned long]
-    version = 1  # version
-    nonce = secrets.token_bytes(16)  # 128-bit nonce
-    utc_time = int(time.time() * 1000)  # 64-bit utc time
-
-    return struct.pack(format, version, nonce, utc_time)
 
 
 def symmetric_encrypt_data(binary_data, key):

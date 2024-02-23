@@ -3,17 +3,6 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-from enum import Enum
-
-
-class State(Enum):
-    STAGE_1 = 1
-    STAGE_2 = 2
-    STAGE_3 = 3
-    STAGE_4 = 4
-    STAGE_5 = 5
-
-
 PROCESS_ID = '/var/run/ipsec-server.pid'
 
 DEFAULT_BIND_ADDR = "0.0.0.0"

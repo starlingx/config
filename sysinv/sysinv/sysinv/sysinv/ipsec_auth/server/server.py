@@ -15,7 +15,8 @@ from sysinv.common import kubernetes
 from sysinv.common import rest_api
 from sysinv.ipsec_auth.common import constants
 from sysinv.ipsec_auth.common import utils
-from sysinv.ipsec_auth.common.constants import State
+from sysinv.ipsec_auth.common.objects import State
+from sysinv.ipsec_auth.common.objects import Token
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
@@ -94,7 +95,7 @@ class IPsecConnection(object):
         self.signed_cert = None
         self.tmp_pub_key = None
         self.tmp_priv_key = None
-        self.ots_token = None
+        self.ots_token = Token()
         self.ca_key = self._get_system_local_ca_secret_info(self.CA_KEY)
         self.ca_crt = self._get_system_local_ca_secret_info(self.CA_CRT)
         self.state = State.STAGE_1
@@ -108,18 +109,21 @@ class IPsecConnection(object):
             if data:
                 # A readable client socket has data
                 LOG.debug("Received {!r}".format(data))
-                self.state = utils.get_next_state(self.state)
+                self.state = State.get_next_state(self.state)
                 LOG.debug("Preparing payload")
                 msg = self._handle_write(data)
                 sock.sendall(msg)
-                self.state = utils.get_next_state(self.state)
+                self.state = State.get_next_state(self.state)
             elif self.state == State.STAGE_5 or not data:
+                self.ots_token.purge()
                 # Interpret empty result as closed connection
                 LOG.info("Closing connection with {}".format(client_address))
                 sock.close()
                 sel.unregister(sock)
         except Exception as e:
             # Interpret empty result as closed connection
+            if self.ots_token:
+                self.ots_token.purge()
             LOG.exception("%s" % (e))
             LOG.error("Closing. {}".format(sock.getpeername()))
             sock.close()
@@ -138,8 +142,8 @@ class IPsecConnection(object):
             if self.state == State.STAGE_2:
                 LOG.info("Received IPSec Auth request")
                 if not self._validate_client_connection(data):
-                    msg = "Connection refused with client due to invalid info " \
-                          "received in payload."
+                    msg = ("Connection refused with client due to invalid info "
+                           "received in payload.")
                     raise ConnectionRefusedError(msg)
 
                 mac_addr = data["mac_addr"]
@@ -149,10 +153,10 @@ class IPsecConnection(object):
                 self.mgmt_subnet = client_data['mgmt_subnet']
 
                 pub_key = self._generate_tmp_key_pair()
-                self.ots_token = utils.generate_ots_token()
-                hash_payload = utils.hash_and_sign_payload(self.ca_key, self.ots_token + pub_key)
+                token = self.ots_token.get_content()
+                hash_payload = utils.hash_and_sign_payload(self.ca_key, token + pub_key)
 
-                payload["token"] = self.ots_token.hex()
+                payload["token"] = repr(self.ots_token)
                 payload["hostname"] = self.hostname
                 payload["pub_key"] = pub_key.decode("utf-8")
                 payload["ca_cert"] = self.ca_crt.decode("utf-8")
@@ -162,21 +166,31 @@ class IPsecConnection(object):
 
             if self.state == State.STAGE_4:
                 LOG.info("Received IPSec Auth CSR request")
+                token = data["token"]
                 eiv = base64.b64decode(data["eiv"])
                 eak1 = base64.b64decode(data['eak1'])
                 ecsr = base64.b64decode(data['ecsr'])
                 ehash = base64.b64decode(data['ehash'])
 
+                if self.ots_token.compare_tokens(token):
+                    if self.ots_token.is_valid():
+                        self.ots_token.set_as_used()
+                    else:
+                        raise ValueError("Token expired or already used.")
+                else:
+                    raise ValueError("Invalid token received.")
+
+                token = self.ots_token.get_content()
+
+                if not utils.verify_encrypted_hash(self.ca_key, ehash,
+                                                   token, eak1, ecsr):
+                    raise ValueError('Hash validation failed.')
+
                 iv = utils.asymmetric_decrypt_data(self.tmp_priv_key, eiv)
                 aes_key = utils.asymmetric_decrypt_data(self.tmp_priv_key, eak1)
                 cert_request = utils.symmetric_decrypt_data(aes_key, iv, ecsr)
 
-                if not utils.verify_encrypted_hash(self.ca_key, ehash,
-                                                    self.ots_token, eak1, ecsr):
-                    raise ValueError('Hash validation failed.')
-
                 self.signed_cert = self._sign_cert_request(cert_request)
-
                 if not self.signed_cert:
                     raise ValueError('Unable to sign certificate request')
 
