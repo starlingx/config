@@ -187,11 +187,11 @@ class Port(base.APIBase):
         port.lldp_neighbours = [link.Link.make_link('self',
                                             pecan.request.host_url,
                                             'ports',
-                                            port.uuid + "/lldp_neighbors"),
+                                            port.uuid + "/lldp_neighbours"),
                                 link.Link.make_link('bookmark',
                                             pecan.request.host_url,
                                             'ports',
-                                            port.uuid + "/lldp_neighbors",
+                                            port.uuid + "/lldp_neighbours",
                                             bookmark=True)
                                 ]
 
