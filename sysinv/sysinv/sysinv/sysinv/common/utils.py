@@ -18,7 +18,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 
 
@@ -3624,3 +3624,83 @@ def is_bundle_extension_valid(filename):
 
     file_extension = pathlib.Path(filename).suffix
     return file_extension.lower() == ".tgz"
+
+
+def update_config_file(config_filepath: str, values_to_update: list):
+    """Update a config file with the desired information
+
+    :param config_filepath: Path of the config file
+    :param values_to_update: List of dicts with the following format
+        values_to_update = [
+            {'section': '<section-name1>', 'key': '<key1>', 'value': 'value1'},
+            {'section': '<section-name2>', 'key': '<key2>', 'value': 'value2'},
+            {'section': '<section-name3>', 'key': '<key3>', 'value': 'value3'},
+        ]
+    Note: It was opted to do it this way because the configparser from std library
+          doesn't preserve comments when writing to a file.
+    """
+    with open(config_filepath, 'r') as file:
+        lines = file.readlines()
+
+    for value_to_update in values_to_update:
+        section = value_to_update['section']
+        key = value_to_update['key']
+        value = value_to_update['value']
+
+        if not (section and key and value):
+            raise Exception('Invalid config to update: Neither section, key or '
+                            'value can be blank. Provided config: '
+                            f'{section=}, {key=}, {value=}')
+
+        key_value = f"{key}={value}\n"
+        current_section = None
+        temp_section = None
+        sections_list = []
+        line_index_to_update = None
+        line_index_to_insert = None
+
+        for list_index, line in enumerate(lines):
+            # Ignore lines until first section definition
+            if not (current_section or line.startswith('[')):
+                continue
+            if line.startswith('['):
+                current_section = line.strip('\n[]')
+                if (temp_section and
+                        current_section != temp_section and
+                        temp_section == section):
+                    # We changed sections, but the previous was the desired one,
+                    # meaning we should add the line to the specified index
+                    # if already defined (after key comment) or at current position
+                    # if it's not (append at the end of section)
+                    if not line_index_to_insert:
+                        line_index_to_insert = list_index
+                    break
+                temp_section = current_section
+                sections_list.append(current_section)
+            if current_section != section:
+                # Current section is not the one we're searching, keep skipping
+                # until we reach the correct one
+                continue
+            if line.startswith('#') and ' = ' in line:
+                # Line is a comment and has an example value
+                current_key = line.lstrip('# ').split(' ')[0]
+                if current_key == key:
+                    # Add 1 to insert at the line right after the comment
+                    line_index_to_insert = list_index + 1
+            elif not line.startswith('#') and line.strip() != "":
+                # Line is not a comment and it's not empty, so it has a config value
+                current_key = line.split('=')[0]
+                if current_key == key:
+                    line_index_to_update = list_index
+                    break
+        if line_index_to_update:
+            lines[line_index_to_update] = key_value
+        elif line_index_to_insert:
+            lines.insert(line_index_to_insert, key_value)
+        else:
+            if section not in sections_list:
+                # Desired section does not exist, create it at the end of the file
+                lines.append(f'[{section}]\n')
+            lines.append(key_value)
+    with open(config_filepath, 'w') as file:
+        file.writelines(lines)
