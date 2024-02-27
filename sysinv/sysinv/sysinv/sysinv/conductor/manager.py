@@ -14966,20 +14966,21 @@ class ConductorManager(service.PeriodicService):
 
             # Currently we don't support renewing 'system-local-ca' certificate,
             # so if the secret is owned by a certificate resource managed by
-            # cert-manager, we need to delete it.
-            certificate = kube_operator.get_custom_resource(
+            # cert-manager we need to delete it as well.
+            certs_list = kube_operator.list_namespaced_custom_resources(
                 kubernetes.CERT_MANAGER_GROUP,
                 kubernetes.CERT_MANAGER_VERSION,
                 constants.CERT_NAMESPACE_PLATFORM_CA_CERTS,
-                'certificates',
-                constants.LOCAL_CA_SECRET_NAME)
-            if certificate is not None:
-                kube_operator.delete_custom_resource(
-                    kubernetes.CERT_MANAGER_GROUP,
-                    kubernetes.CERT_MANAGER_VERSION,
-                    constants.CERT_NAMESPACE_PLATFORM_CA_CERTS,
-                    'certificates',
-                    constants.LOCAL_CA_SECRET_NAME)
+                'certificates')
+            if certs_list:
+                for cert_obj in certs_list:
+                    if cert_obj.get('spec').get('secretName') == constants.LOCAL_CA_SECRET_NAME:
+                        kube_operator.delete_custom_resource(
+                            kubernetes.CERT_MANAGER_GROUP,
+                            kubernetes.CERT_MANAGER_VERSION,
+                            constants.CERT_NAMESPACE_PLATFORM_CA_CERTS,
+                            'certificates',
+                            cert_obj.get('metadata').get('name'))
 
             secret = kube_operator.kube_get_secret(
                 constants.LOCAL_CA_SECRET_NAME,

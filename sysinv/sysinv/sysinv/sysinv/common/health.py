@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2023 Wind River Systems, Inc.
+# Copyright (c) 2018-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -392,6 +392,172 @@ class Health(object):
         else:
             return True, psp_list
 
+    def _check_local_issuer_clusterIssuer(self):
+        err_msg = ''
+        local_ca_issuer = self._kube_operator.get_clusterwide_custom_resource(
+            kubernetes.CERT_MANAGER_GROUP,
+            kubernetes.CERT_MANAGER_VERSION,
+            'clusterissuers',
+            constants.LOCAL_CA_SECRET_NAME)
+
+        if local_ca_issuer:
+            if not utils.check_k8s_resource_ready(local_ca_issuer):
+                err_msg += 'Local ClusterIssuer is not Ready.\n'
+        else:
+            err_msg += 'Local ClusterIssuer could not be found.\n'
+
+        return err_msg
+
+    def _check_local_issuer_secret_data(self):
+        err_msg = ''
+        ca_secret = self._kube_operator.kube_get_secret(constants.LOCAL_CA_SECRET_NAME,
+                                                        constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
+
+        if not ca_secret or not hasattr(ca_secret, 'data') or not hasattr(ca_secret, 'type'):
+            err_msg += 'Platform Issuer (system-local-ca) secret data could not be retrieved.\n'
+        else:
+            if ca_secret.type != constants.K8S_SECRET_TYPE_TLS:
+                err_msg += 'Platform Issuer (system-local-ca) secret data type is invalid.\n'
+            else:
+                data = ca_secret.data
+                if ('ca.crt' not in data or 'tls.crt' not in data or 'tls.key' not in data):
+                    err_msg += 'Missing field in Platform Issuer (system-local-ca) secret data.\n'
+
+        certs_list = self._kube_operator.list_namespaced_custom_resources(
+            kubernetes.CERT_MANAGER_GROUP,
+            kubernetes.CERT_MANAGER_VERSION,
+            constants.CERT_NAMESPACE_PLATFORM_CA_CERTS,
+            'certificates')
+        if certs_list:
+            for cert_obj in certs_list:
+                if cert_obj.get('spec').get('secretName') == constants.LOCAL_CA_SECRET_NAME:
+                    err_msg += 'Platform Issuer (system-local-ca) secret data is in an invalid state.\n'
+                    LOG.error('%s is not expected to be owned by a Certificate.'
+                              % constants.LOCAL_CA_SECRET_NAME)
+
+        return err_msg
+
+    def _check_local_issuer_CA_cert_chain(self):
+        err_msg = tls_crt = tls_key = ca_crt = ''
+        try:
+            tls_crt, tls_key, ca_crt = utils.get_certificate_from_secret(
+                constants.LOCAL_CA_SECRET_NAME,
+                constants.CERT_NAMESPACE_PLATFORM_CA_CERTS)
+        except Exception as e:
+            LOG.exception(e)
+            err_msg += 'Platform Issuer CA data could not be retrieved.\n'
+            return err_msg
+
+        if not bool(tls_crt) or not bool(tls_key):
+            err_msg += 'Platform Issuer CA certificate and/or key data is empty.\n'
+            return err_msg
+
+        # RCA
+        if utils.verify_self_signed_ca_cert(tls_crt):
+            if not utils.verify_cert_chain_trusted(tls_crt):
+                err_msg += 'Platform Issuer Root CA certificate is not trusted by the platform.\n'
+                return err_msg
+            elif bool(ca_crt) and ca_crt != tls_crt:
+                err_msg += 'Platform Issuer CA certificate chain is incorrect.\n'
+                return err_msg
+        # ICA
+        else:
+            if ca_crt != tls_crt:
+                if bool(ca_crt):
+                    if not utils.verify_cert_chain_trusted(ca_crt):
+                        err_msg += 'Platform Issuer Root CA certificate is not trusted by the platform.\n'
+                        return err_msg
+                    if not utils.verify_cert_issuer(tls_crt, ca_crt):
+                        err_msg += 'Platform Issuer Intermediate CA certificate chain is incorrect.\n'
+                        return err_msg
+                else:
+                    if not utils.verify_cert_chain_trusted(tls_crt):
+                        err_msg += 'Platform Issuer Root CA certificate is not trusted by the platform.\n'
+                        return err_msg
+            else:
+                if not utils.verify_cert_chain_trusted(tls_crt):
+                    err_msg += 'Platform Issuer Root CA certificate is not trusted by the platform.\n'
+                    return err_msg
+
+        return err_msg
+
+    def _check_leaf_certificate_chain(self, cert_name, cert_namespace):
+        err_msg = tls_crt = tls_key = ''
+        try:
+            tls_crt, tls_key, _ = utils.get_certificate_from_secret(cert_name, cert_namespace)
+        except Exception as e:
+            LOG.exception(e)
+            err_msg += ('Certificate - %s - data could not be retrieved.\n' % cert_name)
+            return err_msg
+
+        if not bool(tls_crt) or not bool(tls_key):
+            err_msg += ('Certificate - %s - cert and/or key data is empty.\n' % cert_name)
+        elif not utils.verify_cert_chain_trusted(tls_crt):
+            err_msg += ('Certificate - %s - chain cannot be verified as trusted.\n' % cert_name)
+
+        return err_msg
+
+    def _check_expected_platform_certs(self):
+        err_msg = ''
+
+        expected_certs = [constants.RESTAPI_CERT_SECRET_NAME,
+                          constants.REGISTRY_CERT_SECRET_NAME]
+        system = self._dbapi.isystem_get_one()
+        if system.distributed_cloud_role != constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+            expected_certs.append(constants.OPENLDAP_CERT_SECRET_NAME)
+
+        for cert in expected_certs:
+            cert_data = self._kube_operator.get_custom_resource(
+                kubernetes.CERT_MANAGER_GROUP,
+                kubernetes.CERT_MANAGER_VERSION,
+                kubernetes.NAMESPACE_DEPLOYMENT,
+                'certificates',
+                cert)
+            if cert_data:
+                if not utils.check_k8s_resource_ready(cert_data):
+                    err_msg += ('Expected Certificate - %s - is not Ready.\n' % cert)
+                elif cert_data.get('spec').get('issuerRef').get('name') != constants.LOCAL_CA_SECRET_NAME:
+                    err_msg += ('Expected Certificate - %s - was not issued by the Platform Issuer.\n' % cert)
+                elif cert_data.get('spec').get('secretName') != cert:
+                    err_msg += ('Expected Certificate - %s - secret name is different from expected.\n' % cert)
+                else:
+                    err_msg += self._check_leaf_certificate_chain(cert, kubernetes.NAMESPACE_DEPLOYMENT)
+            else:
+                err_msg += ('Expected Certificate - %s - could not be found.\n' % cert)
+
+        return err_msg
+
+    def _check_local_issuer_health(self):
+        err_msg = ''
+        update_ca_warning = (
+            "* \n"
+            "* Warning: User is expected to convert Platform certificates (e.g. System REST API / GUI and \n"
+            "* Local Docker Registry) to use cert-manager and be issued by system-local-ca ClusterIssuer, \n"
+            "* before upgrading.\n"
+            "* If you haven\'t yet, this might be the cause of the issues detected. Please perform the\n"
+            "* \'Update system-local-ca or Migrate Platform Certificates to use Cert Manager\' procedure\n"
+            "* before continuing.\n"
+            "* \n"
+        )
+
+        check_methods = [self._check_local_issuer_secret_data(),
+                         self._check_local_issuer_CA_cert_chain(),
+                         self._check_local_issuer_clusterIssuer(),
+                         self._check_expected_platform_certs()]
+
+        try:
+            for method in check_methods:
+                if err_msg == '':
+                    err_msg += method
+        except Exception as e:
+            LOG.exception(e)
+            err_msg += "Could not finish Platform Issuer (system-local-ca) health verification.\n"
+
+        if bool(err_msg):
+            err_msg += update_ca_warning
+
+        return not bool(err_msg), err_msg
+
     def get_system_health(self, context, force=False, alarm_ignore_list=None):
         """Returns the general health of the system
 
@@ -563,6 +729,7 @@ class Health(object):
                                   a health check
         """
         # Does a general health check then does the following:
+        # The platform issuer (system-local-ca) and certs are healthy
         # A load is imported
         # The load patch requirements are met
         # The license is valid for the N+1 load
@@ -593,6 +760,13 @@ class Health(object):
                             'Also see "system kube-version-list"\n') \
                                 % (latest_version)
 
+        health_ok = health_ok and success
+
+        # Check the platform issuer ('system-local-ca') and platform certificates
+        success, msg = self._check_local_issuer_health()
+        output += _('Platform Issuer and expected certificates are healthy: [%s]\n') \
+                    % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
+        output += msg
         health_ok = health_ok and success
 
         loads = self._dbapi.load_get_list()

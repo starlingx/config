@@ -3050,6 +3050,13 @@ def get_admin_ep_cert(dc_role):
     return secret_data
 
 
+def check_k8s_resource_ready(object_dict):
+    for item in object_dict.get('status', {}).get('conditions', {}):
+        if item.get('type', None) == 'Ready':
+            return True
+    return False
+
+
 def get_secret_type(secret_name, secret_ns):
     """
     Get k8s secret type
@@ -3077,6 +3084,7 @@ def get_certificate_from_secret(secret_name, secret_ns):
     :param secret_ns: the namespace of the secret
     :return: tls_crt: the certificate.
              tls_key: the corresponding private key of the certificate.
+             ca_crt: the CA certificate that issued tls_crt if available.
     raise Exception for kubernetes data errors
     """
     kube = kubernetes.KubeOperator()
@@ -3093,11 +3101,17 @@ def get_certificate_from_secret(secret_name, secret_ns):
     try:
         tls_crt = base64.decode_as_text(data['tls.crt'])
         tls_key = base64.decode_as_text(data['tls.key'])
+        if 'ca.crt' in data:
+            ca_crt = base64.decode_as_text(data['ca.crt'])
+        else:
+            LOG.warning("Secret does't have CA data stored:  %s\\%s" %
+                        (secret_ns, secret_name))
+            ca_crt = ''
     except TypeError:
         raise Exception('Certificate secret data is invalid %s\\%s' %
                 (secret_ns, secret_name))
 
-    return tls_crt, tls_key
+    return tls_crt, tls_key, ca_crt
 
 
 def get_ca_certificate_from_opaque_secret(secret_name, secret_ns):
@@ -3130,6 +3144,8 @@ def get_ca_certificate_from_opaque_secret(secret_name, secret_ns):
     return ca_crt
 
 
+# TODO(mdecastr): verify replacing cert verification methods that
+#                 rely on proc calls w/ lib cryptography
 def verify_self_signed_ca_cert(crt):
     with tempfile.NamedTemporaryFile() as tmpfile:
         tmpfile.write(crt.encode('utf8'))
@@ -3138,14 +3154,71 @@ def verify_self_signed_ca_cert(crt):
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 universal_newlines=True)
-
-        stdout, stderr = proc.communicate(input=crt)
+        stdout, stderr = proc.communicate()
         proc.wait()
         if 0 == proc.returncode:
             return True
         else:
             LOG.info('Provided CA cert is not self-signed\n%s\n%s\n%s' %
                      (crt, stdout, stderr))
+            return False
+
+
+def verify_cert_issuer(cert, issuer):
+    tmpfile_crt = tempfile.NamedTemporaryFile()
+    tmpfile_crt.write(
+        extract_certs_from_pem(cert.encode('utf-8'))[-1].public_bytes(serialization.Encoding.PEM))
+    tmpfile_crt.flush()
+
+    tmpfile_issuer = tempfile.NamedTemporaryFile()
+    tmpfile_issuer.write(
+        extract_certs_from_pem(issuer.encode('utf-8'))[0].public_bytes(serialization.Encoding.PEM))
+    tmpfile_issuer.flush()
+
+    cmd = ['openssl', 'verify', '-partial_chain', '-trusted', tmpfile_issuer.name, tmpfile_crt.name]
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            universal_newlines=True)
+    stdout, stderr = proc.communicate()
+    proc.wait()
+    if 0 == proc.returncode:
+        return True
+    else:
+        LOG.error('Provided issuer does not match cert\n%s\n%s\n%s' %
+                    (cert + issuer, stdout, stderr))
+        return False
+
+
+def verify_cert_chain_trusted(cert_chain):
+    certs = extract_certs_from_pem(cert_chain.encode('utf-8'))
+    certs_number = len(certs)
+
+    for index, cert in enumerate(certs):
+        if index == certs_number - 1:
+            return verify_cert_against_trusted_bundle(
+                cert.public_bytes(serialization.Encoding.PEM).decode('utf-8'))
+
+        if not verify_cert_issuer(cert.public_bytes(serialization.Encoding.PEM).decode('utf-8'),
+                                  certs[index + 1].public_bytes(serialization.Encoding.PEM).decode('utf-8')):
+            LOG.error('Provided cert chain cannot be verified as trusted\n%s\n%s\n%s' % cert_chain)
+            return False
+
+
+def verify_cert_against_trusted_bundle(crt):
+    with tempfile.NamedTemporaryFile() as tmpfile:
+        tmpfile.write(crt.encode('utf8'))
+        tmpfile.flush()
+        cmd = ['openssl', 'verify', '-trusted', constants.SSL_CERT_CA_FILE_SHARED, tmpfile.name]
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                universal_newlines=True)
+        stdout, stderr = proc.communicate()
+        proc.wait()
+        if 0 == proc.returncode:
+            return True
+        else:
+            LOG.info('Provided cert cannot be verified as trusted\n%s\n%s\n%s' %
+                    (crt, stdout, stderr))
             return False
 
 
