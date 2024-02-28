@@ -46,7 +46,7 @@ def main():
                 help="If enabled, the logging level will be set "
                 "to DEBUG instead of the default INFO level.")
     parser.add_argument("-o", "--opcode", metavar='<opcode>',
-                type=int, choices=[1, 2, 3],
+                type=int, choices=[1, 2],
                 help='Operational code (Default: ' + str(opcode) + ')')
     args = parser.parse_args()
 

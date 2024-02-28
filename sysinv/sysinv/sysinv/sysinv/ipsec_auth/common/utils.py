@@ -282,7 +282,7 @@ def kube_apply_certificate_request(body):
     elif get_cr.stderr and 'NotFound' not in str(get_cr.stderr):
         err = "Error: %s" % (get_cr.stderr.decode("utf-8"))
         LOG.exception("Failed to retrieve CertificateRequest resource info. %s" % (err))
-        return
+        return None
 
     # Create CertificateRequest resource in kubernetes
     cr_body = yaml.safe_dump(body, default_flow_style=False)
@@ -292,11 +292,11 @@ def kube_apply_certificate_request(body):
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                check=False)
 
-    if create_cr.stderr:
+    if create_cr.returncode != 0:
         err = "Error: %s" % (create_cr.stderr.decode("utf-8"))
         LOG.exception("Failed to create CertificateRequest %s/%s. %s"
             % (constants.NAMESPACE_DEPLOYMENT, name, err))
-        return
+        return None
 
     # Get Certificate from recently created resource in kubernetes
     cmd_get_certificate = ['-o', "jsonpath='{.status.certificate}'"]
@@ -305,10 +305,10 @@ def kube_apply_certificate_request(body):
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                  check=False)
 
-    if signed_cert.stderr:
+    if signed_cert.returncode != 0:
         err = "Error: %s" % (signed_cert.stderr.decode("utf-8"))
         LOG.exception("Failed to retrieve %s/%s's Certificate. %s"
             % (constants.NAMESPACE_DEPLOYMENT, name, err))
-        return
+        return None
 
     return signed_cert.stdout.decode("utf-8").strip("'")
