@@ -1938,6 +1938,38 @@ class TestPostMixin(object):
         self.assertEqual(http_client.OK, patch_result.status_code)
         self.assertEqual(0, patch_result.json['max_tx_rate'])
 
+    def test_modify_sriov_restricted_port(self):
+        pvendor = constants.PVENDOR_CAVIUM
+        pdevice = constants.PDEVICE_CAVIUM_BA00
+        interface = dbutils.create_test_interface(forihostid=self.worker.id,
+                                                  datanetworks='group0-data0')
+        dbutils.create_test_ethernet_port(
+            id=1, name='enp81s0f0', host_id=self.worker.id,
+            interface_id=interface.id,
+            pciaddr='0000:51:00.0', dev_id=0, sriov_totalvfs=32, sriov_numvfs=0,
+            driver='octeon_ep',
+            pvendor=pvendor,
+            pdevice=pdevice)
+        # ifclass to pci-passthrough is allowed
+        patch_result = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            ifname='sriov0',
+            ifclass=constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+            expect_errors=True)
+        self.assertEqual('application/json', patch_result.content_type)
+        self.assertEqual(http_client.OK, patch_result.status_code)
+        # ifclass to pci-sriov is not allowed
+        patch_result = self.patch_dict_json(
+            '%s' % self._get_path(interface['uuid']),
+            ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
+            sriov_numvfs=8,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, patch_result.status_int)
+        self.assertTrue(patch_result.json['error_message'])
+        self.assertIn(f"Cannot use port. PCI vendor '{pvendor}' and "
+                      f"device '{pdevice}' is not allowed.",
+                      patch_result.json['error_message'])
+
 
 class TestAIOPost(InterfaceTestCase):
     def setUp(self):

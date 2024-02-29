@@ -2256,6 +2256,14 @@ DRIVERS_UP_BEFORE_SRIOV = [DRIVER_BNXT_EN]
 # become operational
 DRIVERS_NOT_IMMEDIATELY_OPERATIONAL = [DRIVER_BNXT_EN]
 
+# SR-IOV restricted network devices (cannot be used to create VFs)
+# Marvell (Cavium) CNF105xx family (CNF10KA and CNF10KB):
+PVENDOR_CAVIUM = 'Cavium, Inc. [177d]'
+PDEVICE_CAVIUM_BA00 = 'Device [ba00]'
+PDEVICE_CAVIUM_BC00 = 'Device [bc00]'
+SRIOV_RESTRICTED_NET_DEVICES = {PVENDOR_CAVIUM: (PDEVICE_CAVIUM_BA00,
+                                                 PDEVICE_CAVIUM_BC00)}
+
 # Traffic control
 TRAFFIC_CONTROL_SCRIPT = '/usr/local/bin/tc_setup.sh'
 

@@ -1455,6 +1455,11 @@ def _check_interface_data(op, interface, ihost, existing_interface,
     return interface
 
 
+def _is_port_sriov_restricted(port):
+    return port.pvendor in constants.SRIOV_RESTRICTED_NET_DEVICES and \
+        port.pdevice in constants.SRIOV_RESTRICTED_NET_DEVICES[port.pvendor]
+
+
 def _check_ports(op, interface, ihost, ports):
     port_list = []
 
@@ -1474,10 +1479,17 @@ def _check_ports(op, interface, ihost, ports):
         raise wsme.exc.ClientSideError(_(
             "For Ethernet, select a single port."))
 
-    # Make sure that no other interface is currently using these ports
+    # Make sure that the port is not in the SR-IOV restricted list and
+    # that no other interface is currently using these ports
     host_ports = pecan.request.dbapi.ethernet_port_get_all(hostid=ihost['id'])
     for p in host_ports:
         if p.name in port_list or p.uuid in port_list:
+            if (interface['ifclass'] == constants.INTERFACE_CLASS_PCI_SRIOV and
+               _is_port_sriov_restricted(p)):
+                pif = pecan.request.dbapi.iinterface_get(p.interface_id)
+                msg = _("Cannot use port. PCI vendor '%s' and device '%s' is not allowed."
+                        % (p.pvendor, p.pdevice))
+                raise wsme.exc.ClientSideError(msg)
             if p.interface_id and p.interface_id != this_interface_id:
                 pif = pecan.request.dbapi.iinterface_get(p.interface_id)
                 msg = _("Another interface %s is already using this port"
