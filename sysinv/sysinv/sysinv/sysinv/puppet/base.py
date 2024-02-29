@@ -183,6 +183,14 @@ class BasePuppet(object):
 
         return address
 
+    def _get_address_by_name_and_family(self, name, family, networktype):
+        """
+        Retrieve an address entry by name and scoped by network type
+        """
+        address_name = utils.format_address_name(name, networktype)
+        return self.dbapi.address_get_by_name_and_family(address_name,
+                                                         family)
+
     def _get_management_address(self):
         address = self._get_address_by_name(
             constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_MGMT)

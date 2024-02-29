@@ -25,6 +25,7 @@
 import copy
 import mock
 import os.path
+import netaddr
 import subprocess
 import tempfile
 import uuid
@@ -5823,6 +5824,34 @@ class ManagerTestCaseInternal(base.BaseHostTestCase):
         self.service = manager.ConductorManager('test-host', 'test-topic')
         self.service.dbapi = dbapi.get_instance()
 
+    def _create_test_ihost(self, **kwargs):
+        # ensure the system ID for proper association
+        kwargs['forisystemid'] = self.system['id']
+        ihost_dict = utils.get_test_ihost(**kwargs)
+        # Let DB generate ID if it isn't specified explicitly
+        if 'id' not in kwargs:
+            del ihost_dict['id']
+        ihost = self.service.dbapi.ihost_create(ihost_dict)
+        return ihost
+
+    def create_ipv6_pools(self):
+        mgmt_subnet6 = netaddr.IPNetwork('fd01::/64')
+        oam_subnet6 = netaddr.IPNetwork('fd00::/64')
+        cluster_host_subnet6 = netaddr.IPNetwork('fd02::/64')
+        cluster_pod_subnet6 = netaddr.IPNetwork('fd03::/64')
+        cluster_service_subnet6 = netaddr.IPNetwork('fd04::/112')
+        multicast_subnet6 = netaddr.IPNetwork('ff08::1:1:0/124')
+        storage_subnet6 = netaddr.IPNetwork('fd05::/64')
+        admin_subnet6 = netaddr.IPNetwork('fd09::/64')
+        self._create_test_address_pool(name="management-ipv6", subnet=mgmt_subnet6)
+        self._create_test_address_pool(name="oam-ipv6", subnet=oam_subnet6)
+        self._create_test_address_pool(name="cluster-host-ipv6", subnet=cluster_host_subnet6)
+        self._create_test_address_pool(name="cluster-pod-ipv6", subnet=cluster_pod_subnet6)
+        self._create_test_address_pool(name="cluster-service-ipv6", subnet=cluster_service_subnet6)
+        self._create_test_address_pool(name="multicast-ipv6", subnet=multicast_subnet6)
+        self._create_test_address_pool(name="storage-ipv6", subnet=storage_subnet6)
+        self._create_test_address_pool(name="admin-ipv6", subnet=admin_subnet6)
+
     def test_remove_lease_for_address(self):
         # create test interface
         ihost = self._create_test_host(
@@ -5868,3 +5897,138 @@ class ManagerTestCaseInternal(base.BaseHostTestCase):
 
         self.service._remove_lease_for_address(ihost.hostname,
             constants.NETWORK_TYPE_MGMT)
+
+    def test_configure_ihost_allocate_addresses_for_host(self):
+        # Test skipped to prevent error message in Jenkins. Error thrown is:
+        # in test_configure_ihost_allocate_addresses_for_host
+        # with open(self.dnsmasq_hosts_file, 'w') as f:
+        # IOError: [Errno 13] Permission denied: '/tmp/dnsmasq.hosts'
+        # self.skipTest("Skipping to prevent failure notification on Jenkins")
+
+        self.context = context.get_admin_context()
+        self.service._generate_dnsmasq_hosts_file = mock.Mock()
+        self.service._puppet = mock.Mock()
+        self.service._update_pxe_config = mock.Mock()
+
+        # create a basic ihost object
+        ihost = self._create_test_ihost()
+
+        self.create_ipv6_pools()
+
+        net_mgmt = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
+        pool_mgmt6 = self.dbapi.address_pool_query({"name": "management-ipv6"})
+        pool_mgmt4 = self.dbapi.address_pool_query({"name": "management"})
+        dbutils.create_test_network_addrpool(address_pool_id=pool_mgmt6.id, network_id=net_mgmt.id)
+
+        net_clhost = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_CLUSTER_HOST)
+        pool_clhost6 = self.dbapi.address_pool_query({"name": "cluster-host-ipv6"})
+        pool_clhost4 = self.dbapi.address_pool_query({"name": "cluster-host"})
+        dbutils.create_test_network_addrpool(address_pool_id=pool_clhost6.id, network_id=net_clhost.id)
+
+        worker_name = 'newhost'
+        ihost['mgmt_mac'] = '00:11:22:33:44:55'
+        ihost['hostname'] = worker_name
+        ihost['invprovision'] = 'unprovisioned'
+        ihost['personality'] = 'worker'
+        ihost['administrative'] = 'locked'
+        ihost['operational'] = 'disabled'
+        ihost['availability'] = 'not-installed'
+        ihost['serialid'] = '1234567890abc'
+        ihost['boot_device'] = 'sda'
+        ihost['rootfs_device'] = 'sda'
+        ihost['hw_settle'] = '0'
+        ihost['install_output'] = 'text'
+        ihost['console'] = 'ttyS0,115200'
+
+        self.service.configure_ihost(self.context, ihost)
+
+        addr_mgmt4 = self.dbapi.address_get_by_name_and_family(
+            f"{worker_name}-{constants.NETWORK_TYPE_MGMT}",
+            constants.IPV4_FAMILY)
+        self.assertEqual(addr_mgmt4.pool_uuid, pool_mgmt4.uuid)
+        self.assertEqual(addr_mgmt4.family, pool_mgmt4.family)
+
+        addr_mgmt6 = self.dbapi.address_get_by_name_and_family(
+            f"{worker_name}-{constants.NETWORK_TYPE_MGMT}",
+            constants.IPV6_FAMILY)
+        self.assertEqual(addr_mgmt6.pool_uuid, pool_mgmt6.uuid)
+        self.assertEqual(addr_mgmt6.family, pool_mgmt6.family)
+
+        addr_clhost4 = self.dbapi.address_get_by_name_and_family(
+            f"{worker_name}-{constants.NETWORK_TYPE_CLUSTER_HOST}",
+            constants.IPV4_FAMILY)
+        self.assertEqual(addr_clhost4.pool_uuid, pool_clhost4.uuid)
+
+        addr_clhost6 = self.dbapi.address_get_by_name_and_family(
+            f"{worker_name}-{constants.NETWORK_TYPE_CLUSTER_HOST}",
+            constants.IPV6_FAMILY)
+        self.assertEqual(addr_clhost6.pool_uuid, pool_clhost6.uuid)
+
+    def test_configure_ihost_allocate_addresses_for_host_no_net_pool_object(self):
+        # the data-migration for upgrade was not implemented yet for the dual-stack feature
+        # this test aims to validate this condition
+        # self.skipTest("Skipping to prevent failure notification on Jenkins")
+
+        self.context = context.get_admin_context()
+        self.service._generate_dnsmasq_hosts_file = mock.Mock()
+        self.service._puppet = mock.Mock()
+        self.service._update_pxe_config = mock.Mock()
+
+        # create a basic ihost object
+        ihost = self._create_test_ihost()
+
+        self.create_ipv6_pools()
+
+        pool_mgmt4 = self.dbapi.address_pool_query({"name": "management"})
+        pool_clhost4 = self.dbapi.address_pool_query({"name": "cluster-host"})
+        net_pools = self.dbapi.network_addrpool_get_all()
+        for net_pool in net_pools:
+            self.dbapi.network_addrpool_destroy(net_pool.uuid)
+
+        worker_name = 'newhost'
+        ihost['mgmt_mac'] = '00:11:22:33:44:55'
+        ihost['hostname'] = worker_name
+        ihost['invprovision'] = 'unprovisioned'
+        ihost['personality'] = 'worker'
+        ihost['administrative'] = 'locked'
+        ihost['operational'] = 'disabled'
+        ihost['availability'] = 'not-installed'
+        ihost['serialid'] = '1234567890abc'
+        ihost['boot_device'] = 'sda'
+        ihost['rootfs_device'] = 'sda'
+        ihost['hw_settle'] = '0'
+        ihost['install_output'] = 'text'
+        ihost['console'] = 'ttyS0,115200'
+
+        self.assertRaises(exception.AddressNotFoundByNameAndFamily,
+                          self.dbapi.address_get_by_name_and_family,
+                          f"{worker_name}-{constants.NETWORK_TYPE_MGMT}",
+                          constants.IPV4_FAMILY)
+
+        self.assertRaises(exception.AddressNotFoundByNameAndFamily,
+                          self.dbapi.address_get_by_name_and_family,
+                          f"{worker_name}-{constants.NETWORK_TYPE_CLUSTER_HOST}",
+                          constants.IPV6_FAMILY)
+
+        self.service.configure_ihost(self.context, ihost)
+
+        addr_mgmt4 = self.dbapi.address_get_by_name_and_family(
+            f"{worker_name}-{constants.NETWORK_TYPE_MGMT}",
+            constants.IPV4_FAMILY)
+        self.assertEqual(addr_mgmt4.pool_uuid, pool_mgmt4.uuid)
+        self.assertEqual(addr_mgmt4.family, pool_mgmt4.family)
+
+        self.assertRaises(exception.AddressNotFoundByNameAndFamily,
+                          self.dbapi.address_get_by_name_and_family,
+                          f"{worker_name}-{constants.NETWORK_TYPE_MGMT}",
+                          constants.IPV6_FAMILY)
+
+        addr_clhost4 = self.dbapi.address_get_by_name_and_family(
+            f"{worker_name}-{constants.NETWORK_TYPE_CLUSTER_HOST}",
+            constants.IPV4_FAMILY)
+        self.assertEqual(addr_clhost4.pool_uuid, pool_clhost4.uuid)
+
+        self.assertRaises(exception.AddressNotFoundByNameAndFamily,
+                          self.dbapi.address_get_by_name_and_family,
+                          f"{worker_name}-{constants.NETWORK_TYPE_CLUSTER_HOST}",
+                          constants.IPV6_FAMILY)

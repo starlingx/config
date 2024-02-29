@@ -1032,6 +1032,20 @@ class ConductorManager(service.PeriodicService):
                                                          True)
             return address.address
         except exception.AddressNotFoundByName:
+            LOG.info(f"cannot find address with name={name}")
+            return None
+
+    def _lookup_static_ip_address_family(self, name, networktype, family):
+        """"Find a statically configured address based on name, network type,
+        and address family."""
+        try:
+            # address names are refined by network type to ensure they are
+            # unique across different address pools
+            name = cutils.format_address_name(name, networktype)
+            address = self.dbapi.address_get_by_name_and_family(name, family)
+            return address.address
+        except exception.AddressNotFoundByNameAndFamily:
+            LOG.info(f"cannot find address with name={name}, family={family}")
             return None
 
     def _using_static_ip(self, ihost, personality=None, hostname=None):
@@ -1295,7 +1309,7 @@ class ConductorManager(service.PeriodicService):
         )
 
         func = "_generate_dnsmasq_hosts_file"
-        with open(temp_dnsmasq_hosts_file, 'w') as f_out,\
+        with open(temp_dnsmasq_hosts_file, 'w') as f_out, \
                 open(temp_dnsmasq_addn_hosts_file, 'w') as f_out_addn:
 
             # Write entry for pxecontroller into addn_hosts file
@@ -1966,7 +1980,19 @@ class ConductorManager(service.PeriodicService):
                 pass
 
     def _create_or_update_address(self, context, hostname, ip_address,
-                                  iface_type, iface_id=None):
+                                  iface_type, iface_id=None, pool_uuid=None):
+        """Searches the address database and create or update accordingly
+
+        Args:
+            hostname (str): The host name
+            ip_address (str): The IP address to be created or updated.
+            iface_type (str): The interface network type.
+            iface_id (int, optional): Interface ID that uses this address. Defaults to None.
+            pool_uuid (str, optional): The address pool uuid. Defaults to None.
+
+        Returns:
+            sysinv.object.address: The updated or created address
+        """
         if hostname is None or ip_address is None:
             return
         address_name = cutils.format_address_name(hostname, iface_type)
@@ -1974,34 +2000,41 @@ class ConductorManager(service.PeriodicService):
         try:
             address = self.dbapi.address_get_by_address(ip_address)
             address_uuid = address['uuid']
+            search_addr = self.dbapi.address_get_by_name_and_family(address_name,
+                                                               address_family)
             # If name is already set, return
-            search_addr = cutils.get_primary_address_by_name(self.dbapi,
-                                                             address_name,
-                                                             iface_type, True)
             if search_addr:
                 if (search_addr.uuid == address_uuid and iface_id is None):
+                    LOG.info(f"returning, address '{address_uuid}' exists and iface_id is None")
                     return
         except exception.AddressNotFoundByAddress:
             address_uuid = None
-        except exception.AddressNotFoundByName:
+        except exception.AddressNotFoundByNameAndFamily:
             pass
-        network = self.dbapi.network_get_by_type(iface_type)
-        address_pool_uuid = network.pool_uuid
-        address_pool = self.dbapi.address_pool_get(address_pool_uuid)
-        values = {
-            'name': address_name,
-            'family': address_family,
-            'prefix': address_pool.prefix,
-            'address': ip_address,
-            'address_pool_id': address_pool.id,
-        }
 
-        if iface_id:
-            values['interface_id'] = iface_id
-        if address_uuid:
-            address = self.dbapi.address_update(address_uuid, values)
+        address_pool = None
+        if pool_uuid:
+            address_pool = self.dbapi.address_pool_get(pool_uuid)
         else:
-            address = self.dbapi.address_create(values)
+            network = self.dbapi.network_get_by_type(iface_type)
+            address_pool = self.dbapi.address_pool_get(network.pool_uuid)
+
+        if address_pool:
+            values = {
+                'name': address_name,
+                'family': address_family,
+                'prefix': address_pool.prefix,
+                'address': ip_address,
+                'address_pool_id': address_pool.id,
+            }
+            if iface_id:
+                values['interface_id'] = iface_id
+
+            if address_uuid:
+                address = self.dbapi.address_update(address_uuid, values)
+            else:
+                address = self.dbapi.address_create(values)
+
         self._generate_dnsmasq_hosts_file()
         return address
 
@@ -2022,19 +2055,32 @@ class ConductorManager(service.PeriodicService):
 
         # controller must have cluster-host address already allocated
         if (host.personality != constants.CONTROLLER):
+            network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_CLUSTER_HOST)
+            net_pools = self.dbapi.network_addrpool_get_by_network_id(network.id)
+            pool_uuid_list = list()
+            if net_pools:
+                for net_pool in net_pools:
+                    pool_uuid_list.append(net_pool.address_pool_uuid)
+            else:
+                # we are coming from an upgrade without data-migration implemented for the
+                # dual stack feature
+                LOG.warning(f"Network {network.name} does not have network to address pool objects")
+                pool_uuid_list.append(network.pool_uuid)
 
-            cluster_host_address = self._lookup_static_ip_address(
-                host.hostname, constants.NETWORK_TYPE_CLUSTER_HOST)
+            hostname = host.hostname
 
-            if cluster_host_address is None:
-                address_name = cutils.format_address_name(
-                    host.hostname, constants.NETWORK_TYPE_CLUSTER_HOST)
-                LOG.info("{} address not found. Allocating address for {}.".format(
-                    address_name, host.hostname))
-                host_network = self.dbapi.network_get_by_type(
-                    constants.NETWORK_TYPE_CLUSTER_HOST)
-                self._allocate_pool_address(None, host_network.pool_uuid,
-                                            address_name)
+            for pool_uuid in pool_uuid_list:
+                pool = self.dbapi.address_pool_get(pool_uuid)
+
+                cluster_host_address = self._lookup_static_ip_address_family(
+                    host.hostname, constants.NETWORK_TYPE_CLUSTER_HOST, pool.family)
+
+                if cluster_host_address is None:
+                    address_name = cutils.format_address_name(
+                        hostname, constants.NETWORK_TYPE_CLUSTER_HOST)
+                    resp_addr = self._allocate_pool_address(None, pool.uuid, address_name)
+                    LOG.info(f"{address_name} address not found."
+                             f" Allocating address {resp_addr.address} for {hostname}.")
 
     def _allocate_addresses_for_host(self, context, host):
         """Allocates addresses for a given host.
@@ -2054,28 +2100,40 @@ class ConductorManager(service.PeriodicService):
         mgmt_interface_id = None
         if mgmt_interfaces:
             mgmt_interface_id = mgmt_interfaces[0]['id']
-        hostname = host.hostname
 
-        # check for static mgmt IP
-        mgmt_ip = self._lookup_static_ip_address(
-            hostname, constants.NETWORK_TYPE_MGMT
-        )
-        # make sure address in address table and update dnsmasq host file
-        if mgmt_ip:
-            LOG.info("Static mgmt ip {} for host{}".format(mgmt_ip, hostname))
-            self._create_or_update_address(context, hostname, mgmt_ip,
-                                           constants.NETWORK_TYPE_MGMT,
-                                           mgmt_interface_id)
-        # if no static address, then allocate one
-        if not mgmt_ip:
-            mgmt_pool = self.dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_MGMT
-            ).pool_uuid
-            address_name = cutils.format_address_name(hostname,
-                                                      constants.NETWORK_TYPE_MGMT)
-            mgmt_ip = self._allocate_pool_address(mgmt_interface_id, mgmt_pool,
-                                                  address_name).address
-            LOG.info("Allocated mgmt ip {} for host{}".format(mgmt_ip, hostname))
+        hostname = host.hostname
+        mgmt_net = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
+        net_pools = self.dbapi.network_addrpool_get_by_network_id(mgmt_net.id)
+        pool_uuid_list = list()
+        if net_pools:
+            for net_pool in net_pools:
+                pool_uuid_list.append(net_pool.address_pool_uuid)
+        else:
+            # we are coming from an upgrade without data-migration implemented for the
+            # dual stack feature
+            LOG.warning(f"Network {mgmt_net.name} does not have network to address pool objects")
+            pool_uuid_list.append(mgmt_net.pool_uuid)
+
+        for pool_uuid in pool_uuid_list:
+            pool = self.dbapi.address_pool_get(pool_uuid)
+
+            # check for static mgmt IP
+            mgmt_ip = self._lookup_static_ip_address_family(
+                hostname, constants.NETWORK_TYPE_MGMT, pool.family)
+
+            # make sure address in address table and update dnsmasq host file
+            if mgmt_ip:
+                LOG.info("Static mgmt ip {} for host{}".format(mgmt_ip, hostname))
+                self._create_or_update_address(context, hostname, mgmt_ip,
+                                               constants.NETWORK_TYPE_MGMT,
+                                               mgmt_interface_id, pool_uuid)
+            # if no static address, then allocate one
+            if not mgmt_ip:
+                address_name = cutils.format_address_name(hostname,
+                                                        constants.NETWORK_TYPE_MGMT)
+                mgmt_ip = self._allocate_pool_address(mgmt_interface_id, pool_uuid,
+                                                      address_name).address
+                LOG.info(f"Allocated mgmt ip {mgmt_ip} for host={hostname}")
 
         self._generate_dnsmasq_hosts_file(existing_host=host)
         self._allocate_cluster_host_address_for_host(host)
@@ -2842,6 +2900,7 @@ class ConductorManager(service.PeriodicService):
             puppet_common.puppet_apply_manifest(host.hostname,
                                                 constants.WORKER,
                                                 do_reboot=True)
+
         return host
 
     def unconfigure_ihost(self, context, ihost_obj):
@@ -3518,23 +3577,29 @@ class ConductorManager(service.PeriodicService):
             if set_address_interface:
                 if new_interface and 'id' in new_interface:
                     values = {'interface_id': new_interface['id']}
-                    address = cutils.get_primary_address_by_name(self.dbapi,
-                        cutils.format_address_name(ihost.hostname, new_interface_networktype),
-                        new_interface_networktype)
-                    if address:
-                        self.dbapi.address_update(address['uuid'], values)
+                    try:
+                        addr_name = cutils.format_address_name(
+                            ihost.hostname, new_interface_networktype)
+                        addresses = self.dbapi.address_get_by_name(addr_name)
+                        for address in addresses:
+                            self.dbapi.address_update(address['uuid'], values)
+                    except exception.AddressNotFoundByName:
+                        pass
                     # Do any potential distributed cloud config
                     # We do this here where the interface is created.
                     cutils.perform_distributed_cloud_config(self.dbapi,
                                                             new_interface['id'])
                 if port:
                     values = {'interface_id': port.interface_id}
-                address = cutils.get_primary_address_by_name(self.dbapi,
-                    cutils.format_address_name(ihost.hostname, networktype),
-                    networktype)
-                if address:
-                    if address['interface_id'] is None:
-                        self.dbapi.address_update(address['uuid'], values)
+                try:
+                    addr_name = cutils.format_address_name(ihost.hostname,
+                                                           networktype)
+                    addresses = self.dbapi.address_get_by_name(addr_name)
+                    for address in addresses:
+                        if address['interface_id'] is None:
+                            self.dbapi.address_update(address['uuid'], values)
+                except exception.AddressNotFoundByName:
+                    pass
 
         if ihost.invprovision not in [constants.PROVISIONED, constants.PROVISIONING, constants.UPGRADING]:
             LOG.info("Updating %s host invprovision from %s to %s" %
@@ -12265,7 +12330,7 @@ class ConductorManager(service.PeriodicService):
                 if not drbd_fs_updated:
                     rc = True
                 else:
-                    while(loop_timeout <= max_loop):
+                    while (loop_timeout <= max_loop):
                         if constants.DRBD_PGSQL in (drbd_fs_updated - drbd_fs_resized):
                             if (not standby_host or (standby_host and
                                  constants.DRBD_PGSQL in self._drbd_fs_sync())):
