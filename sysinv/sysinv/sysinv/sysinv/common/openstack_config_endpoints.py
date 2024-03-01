@@ -7,10 +7,13 @@
 import copy
 import os
 
+from oslo_config import cfg
 from oslo_log import log as logging
 
 from sysinv.common import constants
+from sysinv.common.retrying import retry
 from sysinv.conductor import openstack
+from sysinv.db import api as dbapi
 from sysinv.puppet import puppet
 
 
@@ -135,11 +138,11 @@ SERVICES_WITH_ADITIONAL_SYSTEMCONTROLLER_ENDPOINTS = [
     'patching',
     'usm',
     'vim',
-    'dcmanager',
-    'dcdbsync'
+    'dcmanager'
 ]
 
-SERVICES_WITH_ADITIONAL_SUBCLOUD_ENDPOINTS = [
+# DC services where endpoints will be created in RegionOne
+SERVICES_WITH_ADITIONAL_DC_ENDPOINTS = [
     'dcdbsync'
 ]
 
@@ -155,6 +158,7 @@ SERVICES_PORTS_PATHS_MAP = {
 }
 
 
+@retry(stop_max_attempt_number=3, wait_fixed=1000)
 def create_users(keystone, users_to_create):
     if not users_to_create:
         LOG.info('No users to create')
@@ -177,6 +181,7 @@ def create_users(keystone, users_to_create):
         LOG.info(f"User {username} successfully created")
 
 
+@retry(stop_max_attempt_number=3, wait_fixed=1000)
 def grant_admin_role(keystone, users_to_create, project_name):
     roles_dict = {role.name: role.id for role in keystone.roles.list()}
     users_dict = {user.name: user.id for user in keystone.users.list()}
@@ -206,6 +211,7 @@ def grant_admin_role(keystone, users_to_create, project_name):
         LOG.info(f'Granted admin role for user {username}')
 
 
+@retry(stop_max_attempt_number=3, wait_fixed=1000)
 def create_services(keystone, services_to_create):
     if not services_to_create:
         LOG.info('No services to create')
@@ -226,6 +232,7 @@ def create_services(keystone, services_to_create):
         LOG.info(f"Service {service_name} successfully created")
 
 
+@retry(stop_max_attempt_number=3, wait_fixed=1000)
 def create_endpoints(keystone, endpoints_to_create):
     if not endpoints_to_create:
         LOG.info('No endpoints to create')
@@ -267,14 +274,32 @@ def create_endpoints(keystone, endpoints_to_create):
                      f"{region=} was successfully created with {url}")
 
 
+@retry(stop_max_attempt_number=3, wait_fixed=1000)
 def delete_regionone_endpoints(keystone):
     existing_endpoints = keystone.endpoints.list()
+    existing_services = keystone.services.list()
+    services_dict = {service.name: service.id for service in existing_services}
+    keystone_service_id = services_dict['keystone']
+    keystone_endpoints = []
+
     for endpoint in existing_endpoints:
         if endpoint.region == constants.REGION_ONE_NAME:
+            if endpoint.service_id == keystone_service_id:
+                # Register keystone endpoints to delete them at the end
+                # so previous authentication still works
+                keystone_endpoints.append(endpoint)
+                continue
+            # Deleting non Keystone endpoints
             keystone.endpoints.delete(endpoint)
             LOG.info(f'Deleted endpoint {endpoint}')
 
+    for endpoint in keystone_endpoints:
+        # Deleting Keystone endpoints
+        keystone.endpoints.delete(endpoint)
+        LOG.info(f'Deleted endpoint {endpoint}')
 
+
+@retry(stop_max_attempt_number=3, wait_fixed=1000)
 def update_region_name_on_rc_file(region_name):
     with open(RC_FILE_PATH, 'r') as file:
         lines = file.readlines()
@@ -368,9 +393,9 @@ def run_endpoint_config(puppet_operator: puppet.PuppetOperator,
         services_to_create.extend(ADDITIONAL_SUBCLOUD_SERVICES)
 
     services_with_endpoints = copy.deepcopy(SERVICES_WITH_ENDPOINTS)
-    if is_subcloud:
+    if is_systemcontroller or is_subcloud:
         services_with_endpoints.extend(
-            SERVICES_WITH_ADITIONAL_SUBCLOUD_ENDPOINTS
+            SERVICES_WITH_ADITIONAL_DC_ENDPOINTS
         )
 
     users_to_create = []
@@ -386,6 +411,9 @@ def run_endpoint_config(puppet_operator: puppet.PuppetOperator,
                                               region_name,
                                               puppet_plugins_dict)
     if is_systemcontroller:
+        # This endpoints will be created in a different region,
+        # so they need to be added to the endpoints list after
+        # the RegionOne endpoints list was created
         endpoints_to_create.extend(
             build_endpoint_list(
                 SERVICES_WITH_ADITIONAL_SYSTEMCONTROLLER_ENDPOINTS,
@@ -407,8 +435,27 @@ def run_endpoint_config(puppet_operator: puppet.PuppetOperator,
     create_services(keystone, services_to_create)
     create_endpoints(keystone, endpoints_to_create)
     if is_subcloud:
-        delete_regionone_endpoints(keystone)
+        # Update the rc file with the region name before deleting
+        # the endpoints so it's still possible to source credentials
+        # if the deletion failed after keystone RegionOne endpoints
+        # were deleted
         update_region_name_on_rc_file(region_name)
+        try:
+            delete_regionone_endpoints(keystone)
+        except Exception:
+            LOG.warning("Endpoint deletion failed. Generating new "
+                        "keystone client and trying again")
+            # The keystone service/client is cached in the class object,
+            # so we create a new instance to get a new client with
+            # updated region_name and keystone uri
+            # First we need to set the new region_name and auth_uri in cfg
+            auth_uri = keystone_plugin.get_identity_uri()
+            cfg.CONF.set_override("auth_uri", auth_uri, group=openstack.OPENSTACK_CONFIG)
+            cfg.CONF.set_override("region_name", region_name, group=openstack.OPENSTACK_CONFIG)
+            db_instance = dbapi.get_instance()
+            openstack_operator = openstack.OpenStackOperator(db_instance)
+            keystone = get_keystone_client(openstack_operator)
+            delete_regionone_endpoints(keystone)
 
     # Set new endpoint reconfiguration flag
     with open(ENDPONTS_RECONFIGURED_FLAG_PATH, 'a'):
