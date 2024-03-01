@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2023 Wind River Systems, Inc.
+# Copyright (c) 2023-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -19,7 +19,7 @@ function log {
 }
 
 DEPLOY_PLAYBOOK=$(ls /usr/local/share/applications/playbooks/*deployment-manager.yaml 2> /dev/null)
-DEPLOY_CHART=$(ls /usr/local/share/applications/helm/*deployment-manager*.tgz 2> /dev/null)
+DEPLOY_CHART=$(ls /usr/local/share/applications/helm/*-deployment-manager*.tgz 2> /dev/null)
 DEPLOY_OVERRIDES=$(ls /usr/local/share/applications/overrides/*deployment-manager-overrides.yaml 2> /dev/null)
 REFRESH_DM_IMAGES="false"
 
