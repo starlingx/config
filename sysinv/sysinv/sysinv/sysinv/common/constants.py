@@ -1829,6 +1829,7 @@ APP_FLUXCD_MANIFEST_DIR = 'fluxcd-manifests'
 APP_FLUXCD_BASE_PATH = os.path.join(tsc.PLATFORM_PATH, 'fluxcd')
 APP_FLUXCD_DATA_PATH = os.path.join(APP_FLUXCD_BASE_PATH, tsc.SW_VERSION)
 APP_ROOT_KUSTOMIZE_FILE = 'kustomization.yaml'
+APP_ROOT_KUSTOMIZE_ORIG_FILE = 'kustomization-orig.yaml'
 APP_HELMREPOSITORY_FILE = "helmrepository.yaml"
 APP_BASE_HELMREPOSITORY_FILE = os.path.join("base", APP_HELMREPOSITORY_FILE)
 APP_RELEASE_CLEANUP_FILE = 'helmrelease_cleanup.yaml'

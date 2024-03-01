@@ -297,19 +297,23 @@ def get_chart_tarball_path(repo_path, chart_name, chart_version):
     :param repo_path: Filesystem path to the Helm repository
     :param chart_name: Name of the Helm chart
     :param chart_version: Version of the Helm chart
-    :return: string
-             Full path of the chart tarball in the repository if a
+    :return: String with full path of the chart tarball in the repository if a
              matching chart/version is found. Otherwise returns None.
     """
 
     repo_index_file = os.path.join(repo_path, "index.yaml")
     with io.open(repo_index_file, "r", encoding="utf-8") as f:
         root_index_yaml = next(yaml.safe_load_all(f))
-        chart_versions = root_index_yaml["entries"][chart_name]
+        if chart_name in root_index_yaml["entries"]:
+            chart_versions = root_index_yaml["entries"][chart_name]
 
-        for chart in chart_versions:
-            if chart["version"] == chart_version and len(chart["urls"]) > 0:
-                return os.path.join(repo_path, chart["urls"][0])
+            for chart in chart_versions:
+                if chart["version"] == chart_version and len(chart["urls"]) > 0:
+                    return os.path.join(repo_path, chart["urls"][0])
+        else:
+            LOG.warning("Chart {} not found in {}."
+                        .format(chart_name, repo_index_file))
+            return None
 
 
 def index_repo(repo_path):
