@@ -2482,3 +2482,4 @@ LUKS_VAULT_TYPE_NAME = "luks_encrypted_vault"
 # mgmt. network IPSec state
 MGMT_IPSEC_ENABLING = 'enabling'
 MGMT_IPSEC_ENABLED = 'enabled'
+MGMT_IPSEC_DISABLED = 'disabled'

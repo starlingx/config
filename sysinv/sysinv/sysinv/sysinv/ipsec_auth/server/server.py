@@ -95,6 +95,9 @@ class IPsecConnection(object):
         self.signed_cert = None
         self.tmp_pub_key = None
         self.tmp_priv_key = None
+        self.uuid = None
+        self.op_code = None
+        self.mgmt_ipsec = None
         self.ots_token = Token()
         self.ca_key = self._get_system_local_ca_secret_info(self.CA_KEY)
         self.ca_crt = self._get_system_local_ca_secret_info(self.CA_CRT)
@@ -116,14 +119,14 @@ class IPsecConnection(object):
                 self.state = State.get_next_state(self.state)
             elif self.state == State.STAGE_5 or not data:
                 self.ots_token.purge()
+                self._update_mgmt_ipsec_state(constants.MGMT_IPSEC_ENABLED)
+
                 # Interpret empty result as closed connection
                 LOG.info("Closing connection with {}".format(client_address))
                 sock.close()
                 sel.unregister(sock)
         except Exception as e:
-            # Interpret empty result as closed connection
-            if self.ots_token:
-                self.ots_token.purge()
+            self._cleanup_connection_data()
             LOG.exception("%s" % (e))
             LOG.error("Closing. {}".format(sock.getpeername()))
             sock.close()
@@ -141,12 +144,14 @@ class IPsecConnection(object):
 
             if self.state == State.STAGE_2:
                 LOG.info("Received IPSec Auth request")
+                self.op_code = data["op"]
+                mac_addr = data["mac_addr"]
+
                 if not self._validate_client_connection(data):
                     msg = ("Connection refused with client due to invalid info "
                            "received in payload.")
                     raise ConnectionRefusedError(msg)
 
-                mac_addr = data["mac_addr"]
                 client_data = utils.get_client_hostname_and_mgmt_subnet(mac_addr)
 
                 self.hostname = client_data['hostname']
@@ -228,8 +233,7 @@ class IPsecConnection(object):
             LOG.error("Inconsistent hash of payload.")
             return False
 
-        op_code = int(message["op"])
-        if op_code not in constants.SUPPORTED_OP_CODES:
+        if self.op_code not in constants.SUPPORTED_OP_CODES:
             LOG.error("Operation not supported.")
             return False
 
@@ -240,40 +244,60 @@ class IPsecConnection(object):
             LOG.error("Failed to retrieve hosts list.")
             return False
 
-        uuid = None
-        mgmt_ipsec = None
         mgmt_mac = None
         personality = None
         for h in hosts_info['ihosts']:
             if message["mac_addr"] == h.get('mgmt_mac'):
-                uuid = h.get('uuid')
+                self.uuid = h.get('uuid')
+                capabilities = h.get('capabilities')
+                self.mgmt_ipsec = capabilities.get('mgmt_ipsec') if capabilities else None
                 mgmt_mac = h.get('mgmt_mac')
                 personality = h.get('personality')
-                capabilities = h.get('capabilities')
-                mgmt_ipsec = capabilities.get('mgmt_ipsec') if capabilities else None
                 break
 
-        LOG.info("Request op:{}, host uuid:{}, mgmt_mac:{}, personality:{}, mgmt_ipsec:{}"
-                .format(op_code, uuid, mgmt_mac, personality, mgmt_ipsec))
+        LOG.info("Request op:{}, host uuid:{}, mgmt_ipsec:{}, mgmt_mac:{}, personality:{}"
+                .format(self.op_code, self.uuid, self.mgmt_ipsec, mgmt_mac, personality))
 
         # Initial auth request
-        if op_code == constants.OP_CODE_INITIAL_AUTH:
-            if uuid and mgmt_mac and mgmt_ipsec is None:
-                if not utils.update_host_mgmt_ipsec_state(uuid,
-                        constants.MGMT_IPSEC_ENABLING):
-                    LOG.error("Failed to update host mgmt IPSec state.")
+        if self.op_code == constants.OP_CODE_INITIAL_AUTH:
+            if self.uuid and self.mgmt_ipsec is None and mgmt_mac:
+                if not self._update_mgmt_ipsec_state(constants.MGMT_IPSEC_ENABLING):
                     return False
             else:
-                LOG.error("Invalid request for operation: %s" % op_code)
+                LOG.error("Invalid request for operation: %s" % self.op_code)
                 return False
+
         # Certificate renewal request
-        elif op_code == constants.OP_CODE_CERT_RENEWAL:
-            if uuid and mgmt_mac and mgmt_ipsec == constants.MGMT_IPSEC_ENABLED:
+        elif self.op_code == constants.OP_CODE_CERT_RENEWAL:
+            if self.uuid and self.mgmt_ipsec == constants.MGMT_IPSEC_ENABLED and mgmt_mac:
                 # Valid so do nothing
                 pass
             else:
-                LOG.error("Invalid request for operation: %s" % op_code)
+                LOG.error("Invalid request for operation: %s" % self.op_code)
                 return False
+
+        return True
+
+    def _cleanup_connection_data(self):
+        # Interpret empty result as closed connection
+        if self.ots_token:
+            self.ots_token.purge()
+
+        if (self.op_code == constants.OP_CODE_INITIAL_AUTH and
+             self.mgmt_ipsec != constants.MGMT_IPSEC_ENABLED and not
+             self._update_mgmt_ipsec_state(constants.MGMT_IPSEC_DISABLED)):
+            return False
+
+        return True
+
+    def _update_mgmt_ipsec_state(self, ipsec_state):
+        if not self.uuid:
+            LOG.error("Invalid host uuid")
+            return False
+
+        if not utils.update_host_mgmt_ipsec_state(self.uuid, ipsec_state):
+            LOG.error("Failed to update mgmt IPSec state to : {}".format(ipsec_state))
+            return False
 
         return True
 

@@ -1201,7 +1201,8 @@ class HostController(rest.RestController):
     @wsme_pecan.wsexpose(six.text_type, wtypes.text, body=six.text_type)
     def update_mgmt_ipsec_state(self, uuid, data):
         # Ensure data has valid value
-        if data not in [constants.MGMT_IPSEC_ENABLING, constants.MGMT_IPSEC_ENABLED]:
+        if data not in [constants.MGMT_IPSEC_ENABLING,
+                constants.MGMT_IPSEC_ENABLED, constants.MGMT_IPSEC_DISABLED]:
             LOG.error(_("Invalid value for mgmt_ipsec: %s" % data))
             return False
 
@@ -1210,7 +1211,13 @@ class HostController(rest.RestController):
                                             uuid)
             if host:
                 capabilities = host.get('capabilities')
-                capabilities.update({'mgmt_ipsec': data})
+
+                if (data == constants.MGMT_IPSEC_DISABLED and
+                        capabilities.get('mgmt_ipsec') is not None):
+                    capabilities.pop('mgmt_ipsec')
+                else:
+                    capabilities.update({'mgmt_ipsec': data})
+
                 pecan.request.dbapi.ihost_update(uuid, {'capabilities': capabilities})
         except exception.ServerNotFound:
             LOG.error(_('Failed to retrieve host with specified uuid.'))
