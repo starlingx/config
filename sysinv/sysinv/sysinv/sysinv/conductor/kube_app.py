@@ -2398,6 +2398,15 @@ class AppOperator(object):
                           then overwrite needs to be enabled to do the replacement
 
         """
+
+        # sysinv-helm command execution produces an empty cache. If empty, prime the
+        # cache with expected keys.
+        if not bool(apps_metadata_dict):
+            for k in [constants.APP_METADATA_APPS,
+                      constants.APP_METADATA_PLATFORM_MANAGED_APP,
+                      constants.APP_METADATA_DESIRED_STATES]:
+                apps_metadata_dict[k] = {}
+
         if not overwrite and \
                 app_name in apps_metadata_dict[constants.APP_METADATA_APPS]:
             LOG.info("Updating metadata for app {} skipped because metadata "
