@@ -51,6 +51,7 @@ from cgtsclient.v1 import license_shell
 from cgtsclient.v1 import lldp_agent_shell
 from cgtsclient.v1 import lldp_neighbour_shell
 from cgtsclient.v1 import load_shell
+from cgtsclient.v1 import network_addrpool_shell
 from cgtsclient.v1 import network_shell
 from cgtsclient.v1 import partition_shell
 from cgtsclient.v1 import pci_device_shell
@@ -111,6 +112,7 @@ COMMAND_MODULES = [
     pci_device_shell,
     upgrade_shell,
     network_shell,
+    network_addrpool_shell,
     interface_network_shell,
     datanetwork_shell,
     interface_datanetwork_shell,

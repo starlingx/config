@@ -66,6 +66,7 @@ from cgtsclient.v1 import lldp_agent
 from cgtsclient.v1 import lldp_neighbour
 from cgtsclient.v1 import load
 from cgtsclient.v1 import network
+from cgtsclient.v1 import network_addrpool
 from cgtsclient.v1 import partition
 from cgtsclient.v1 import pci_device
 from cgtsclient.v1 import port
@@ -146,6 +147,7 @@ class Client(object):
         self.load = load.LoadManager(self.http_client)
         self.upgrade = upgrade.UpgradeManager(self.http_client)
         self.network = network.NetworkManager(self.http_client)
+        self.network_addrpool = network_addrpool.NetworkAddrPoolManager(self.http_client)
         self.datanetwork = datanetwork.DataNetworkManager(self.http_client)
         self.interface_datanetwork = \
             interface_datanetwork.InterfaceDataNetworkManager(self.http_client)
