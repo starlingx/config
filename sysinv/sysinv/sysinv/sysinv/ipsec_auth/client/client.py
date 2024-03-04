@@ -171,7 +171,9 @@ class Client(object):
             data = msg['cert'].encode('utf-8')
             if self.op_code == constants.OP_CODE_INITIAL_AUTH:
                 network = msg['network']
-                data = data + network.encode('utf-8')
+                unit_ip = msg['unit_ip']
+                floating_ip = msg['floating_ip']
+                data = data + (network + unit_ip + floating_ip).encode('utf-8')
 
             if not utils.verify_signed_hash(ca_cert, digest, data):
                 msg = "Hash validation failed"
@@ -193,7 +195,8 @@ class Client(object):
 
                 LOG.info("Generating config files and restart ipsec")
                 strong = config.StrongswanPuppet(self.hostname[constants.UNIT_HOSTNAME],
-                                                self.local_addr, network)
+                                                self.local_addr, network,
+                                                unit_ip, floating_ip)
                 strong.generate_file()
                 puppet_cf = subprocess.run(['puppet', 'apply', '-e',
                                             'include ::platform::strongswan'],

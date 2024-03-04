@@ -4,9 +4,12 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import os
+import subprocess
 import yaml
 
 from oslo_log import log as logging
+
+from sysinv.common import utils as cutils
 
 from sysinv.ipsec_auth.common import constants
 
@@ -71,40 +74,23 @@ class SwanctlConf(object):
 
     def __init__(self):
         self.connections = {}
-        self.system_nodes = {}
-        self.local = {}
-        self.remote = {}
-        self.children = {}
-        self.node = {}
 
-    def add_system_nodes(self, key, value):
-        self.system_nodes[key] = value
-
-    def add_local(self, key, value):
-        self.local[key] = value
-
-    def add_remote(self, key, value):
-        self.remote[key] = value
-
-    def add_node(self, key, value):
-        self.node[key] = value
+    def add_connection(self, key, value):
+        self.connections[key] = value
 
     def get_conf(self):
-        self.children[constants.CHILD_SA_NAME] = self.node
-        self.system_nodes['local'] = self.local
-        self.system_nodes['remote'] = self.remote
-        self.system_nodes['children'] = self.children
-        self.connections[constants.IKE_SA_NAME] = self.system_nodes
         return self.connections
 
 
 class StrongswanPuppet(object):
     """ Class to encapsulate puppet operations for ipsec configuration. """
 
-    def __init__(self, hostname, local_addrs, network_addrs):
+    def __init__(self, hostname, local_addrs, network_addrs, unit_ip, floating_ip):
         self.hostname = hostname
         self.local_addrs = local_addrs
         self.network_addrs = network_addrs
+        self.unit_ip = unit_ip
+        self.floating_ip = floating_ip
         self.path = '/tmp/puppet/hieradata'
         self.filename = 'ipsec.yaml'
 
@@ -157,27 +143,81 @@ class StrongswanPuppet(object):
     def get_swanctl_config(self):
         swanctl = SwanctlConf()
 
-        # connection reauth_time 14400s (4h)
-        swanctl.add_system_nodes('reauth_time', '14400')
-        # connection rekey_time 3600s (1h)
-        swanctl.add_system_nodes('rekey_time', '3600')
-        swanctl.add_system_nodes('unique', 'never')
-        swanctl.add_system_nodes('local_addrs', self.local_addrs)
-        swanctl.add_system_nodes('remote_addrs', self.network_addrs)
+        # Add system-nodes connection, this is the connection between nodes.
+        if cutils.is_valid_ipv6_cidr(self.network_addrs):
+            remote_addrs = '%any6'
+        else:
+            remote_addrs = '%any'
+        certs = constants.CERT_NAME_PREFIX + self.hostname + '.crt'
 
-        swanctl.add_local('auth', 'pubkey')
-        cert = constants.CERT_NAME_PREFIX + self.hostname + '.crt'
-        swanctl.add_local('certs', cert)
+        conn = {
+            # connection reauth_time 14400s (4h)
+            'reauth_time': '14400',
+            'rekey_time': '3600',
+            'unique': 'never',
+            'mobike': 'no',
+            'local_addrs': self.local_addrs,
+            'remote_addrs': remote_addrs,
 
-        # swanctl.add_remote('id', 'CN=ipsec-*')
-        swanctl.add_remote('id', 'CN=*')
-        swanctl.add_remote('auth', 'pubkey')
-        swanctl.add_remote('cacerts', constants.TRUSTED_CA_CERT_FILES)
+            'local': {
+                'auth': 'pubkey',
+                'certs': certs,
+            },
+            'remote': {
+                'id': 'CN=*',
+                'auth': 'pubkey',
+                'cacerts': constants.TRUSTED_CA_CERT_FILE,
+            },
+            'children': {
+                constants.CHILD_SA_NAME: {
+                    'mode': 'transport',
+                    'start_action': 'trap',
+                    'local_ts': self.network_addrs,
+                    'remote_ts': self.network_addrs,
+                },
+            },
+        }
+        swanctl.add_connection(constants.IKE_SA_NAME, conn)
 
-        swanctl.add_node('mode', 'transport')
-        swanctl.add_node('start_action', 'trap')
-        swanctl.add_node('local_ts', self.network_addrs)
-        swanctl.add_node('remote_ts', self.network_addrs)
+        # Add local bypass connection to bypass local to local traffic,
+        # eg, traffic from unit IP to floating IP on active controller.
+        # Without this connection, "system host-list" and such will hang,
+        # because it's accessing services on floating IP from unit IP.
+
+        # Check if this node has the floating IP
+        cmd = 'ip addr | grep ' + self.floating_ip + '/'
+        output = subprocess.run(cmd,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                check=False,
+                                shell=True)
+        if output.returncode == 0:
+            conn = {
+                'children': {
+                    'node-bypass': {
+                        'mode': 'pass',
+                        'start_action': 'trap',
+                        'local_ts': self.unit_ip + ", " + self.floating_ip,
+                        'remote_ts': self.unit_ip + ", " + self.floating_ip,
+                    },
+                },
+            }
+            swanctl.add_connection('system-nodes-local', conn)
+
+        # Add ndp bypass connection for IPv6 only.
+        # Reference: https://wiki.strongswan.org/projects/strongswan/wiki/IPv6NDP/1
+        if cutils.is_valid_ipv6_cidr(self.network_addrs):
+            conn = {
+                'children': {
+                    'icmpv6-bypass': {
+                        'mode': 'pass',
+                        'start_action': 'trap',
+                        'local_ts': '\"::/0[ipv6-icmp]\"',
+                        'remote_ts': '\"::/0[ipv6-icmp]\"',
+                    },
+                },
+            }
+            swanctl.add_connection('ndp', conn)
 
         return {
                 'platform::strongswan::params::swanctl': swanctl.get_conf()
