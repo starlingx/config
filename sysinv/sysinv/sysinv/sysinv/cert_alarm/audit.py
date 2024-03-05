@@ -171,7 +171,7 @@ class CertAlarmAudit(object):
 
     @staticmethod
     def parse_time(time_str):
-        regex = re.compile(r'((?P<weeks>\d+?)w)?((?P<days>\d+?)d)?((?P<hours>\d+?)h)?')
+        regex = re.compile(r'((?P<weeks>\d+?)w)?((?P<days>\d+?)d)?((?P<hours>\d+?)h)?((?P<minutes>\d+?)m)?')
         parts = regex.match(time_str).groupdict()
         time_params = {}
         for name, param in parts.items():
@@ -196,27 +196,23 @@ class CertAlarmAudit(object):
         if utils.SNAPSHOT_KEY_RENEW_BEFORE in snapshot:
             renew_before = self.parse_time(snapshot[utils.SNAPSHOT_KEY_RENEW_BEFORE])
         LOG.debug('cert_name=%s, entity_id=%s, expiry=%s, alarm_before=%s, renew_before=%s'
-            % (cert_name, entity_id, expiry.days, alarm_before.days, renew_before.days))
-
-        days_to_expiry = expiry.days
-        alarm_before_days = alarm_before.days
-        renew_before_days = renew_before.days
+            % (cert_name, entity_id, expiry, alarm_before, renew_before))
 
         # set threshold date to raise alarms
-        if renew_before_days:
-            # if renew_before_days valid, take latest (smaller timedelta) of two dates as threshold
-            threshold = renew_before_days if renew_before_days < alarm_before_days else alarm_before_days
+        if renew_before:
+            # if renew_before valid, take latest (smaller timedelta) of two dates as threshold
+            threshold = renew_before if renew_before < alarm_before else alarm_before
         else:
-            threshold = alarm_before_days
+            threshold = alarm_before
 
         is_alarm_enabled = self.alarm_override_check_passed(cert_name)
 
         if is_alarm_enabled:
-            if days_to_expiry > threshold:
+            if expiry > threshold:
                 self.clear_expiring_soon(cert_name, entity_id)
                 self.clear_expired(cert_name, entity_id)
             else:
-                if days_to_expiry < 0:
+                if expiry < timedelta():
                     # Expired. Clear expiring-soon & raise expired
                     self.clear_expiring_soon(cert_name, entity_id)
                     self.raise_expired(cert_name, entity_id)
