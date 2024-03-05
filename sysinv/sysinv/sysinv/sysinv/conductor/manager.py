@@ -191,6 +191,10 @@ app_framework_opts = [
     cfg.IntOpt('fluxcd_hr_reconcile_check_delay',
         default=60,
         help='Delay time to check progress of helmrelease'),
+    cfg.BoolOpt('missing_auto_update',
+        default=False,
+        help='Auto update an application if not specified in the '
+             'application metadata'),
 ]
 
 CONF = cfg.CONF

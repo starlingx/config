@@ -17,12 +17,15 @@ import tarfile
 import tempfile
 import yaml
 
+from oslo_config import cfg
 from oslo_log import log as logging
 from sysinv._i18n import _
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils
+
+CONF = cfg.CONF
 
 LOG = logging.getLogger(__name__)
 
@@ -627,7 +630,7 @@ def extract_bundle_metadata(file_path):
             'auto_update':
                 metadata.get(constants.APP_METADATA_UPGRADES, {}).get(
                     constants.APP_METADATA_AUTO_UPDATE,
-                    constants.APP_METADATA_AUTO_UPDATE_DEFAULT_VALUE),
+                    CONF.app_framework.missing_auto_update),
             'k8s_auto_update': k8s_auto_update,
             'k8s_timing': k8s_update_timing,
             'k8s_minimum_version': minimum_supported_k8s_version,
