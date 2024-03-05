@@ -2484,6 +2484,9 @@ CSTATE_PATH = "/sys/devices/system/cpu/cpu0/cpuidle"
 # Auto-recovery limits for kube upgrade abort
 AUTO_RECOVERY_COUNT = 3
 
+# Auto-recovery limits for kube upgrade control-plane
+CONTROL_PLANE_RETRY_COUNT = 2
+
 # Puppet Runtime Manifest constants
 RUNTIME_CONFIG_APPLY_TIMEOUT_IN_SECS = 600
 RUNTIME_CONFIG_STATE_PENDING = "pending"
