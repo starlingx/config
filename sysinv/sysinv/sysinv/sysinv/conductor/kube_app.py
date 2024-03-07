@@ -1189,10 +1189,7 @@ class AppOperator(object):
             LOG.error(e)
             raise
 
-    def _get_list_of_charts(self, app):
-        return self._get_list_of_charts_fluxcd(app.sync_fluxcd_manifest)
-
-    def _get_list_of_charts_fluxcd(self, manifest):
+    def _get_list_of_charts(self, app, include_disabled=False):
         """Get the charts information from the manifest directory
 
         The following chart data for each chart in the manifest file
@@ -1202,11 +1199,23 @@ class AppOperator(object):
          - namespace
          - location
          - release
+
+         :param app: application
+         :param include_disabled: boolean value to add disabled charts on function return
+
+         :return: Array with chart object for each chart present in the application
          """
 
+        manifest = app.sync_fluxcd_manifest
         helmrepo_path = os.path.join(manifest, "base", "helmrepository.yaml")
+
+        if include_disabled:
+            app_root_kustomize_file = constants.APP_ROOT_KUSTOMIZE_ORIG_FILE
+        else:
+            app_root_kustomize_file = constants.APP_ROOT_KUSTOMIZE_FILE
+
         root_kustomization_path = os.path.join(
-            manifest, constants.APP_ROOT_KUSTOMIZE_FILE)
+            manifest, app_root_kustomize_file)
         for f in (helmrepo_path, root_kustomization_path):
             if not os.path.isfile(f):
                 raise exception.SysinvException(_(
@@ -3205,7 +3214,7 @@ class AppOperator(object):
             self._plugins.deactivate_plugins(app)
 
             self._dbapi.kube_app_destroy(app.name)
-            app.charts = self._get_list_of_charts(app)
+            app.charts = self._get_list_of_charts(app, include_disabled=True)
             self._cleanup(app)
             self._utils._patch_report_app_dependencies(app.name + '-' + app.version)
             # One last check of app alarm, should be no-op unless the
