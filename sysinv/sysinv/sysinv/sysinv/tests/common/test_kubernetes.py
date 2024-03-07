@@ -767,6 +767,24 @@ class TestKubeOperator(base.TestCase):
             'items': []
         }
 
+        self.read_clusterrolebinding_result = kubernetes.client.V1ClusterRoleBinding(
+            api_version="rbac.authorization.k8s.io/v1",
+            kind="ClusterRoleBinding",
+            metadata=kubernetes.client.V1ObjectMeta(
+                name="test_system:test_node",
+            ),
+            role_ref=kubernetes.client.V1RoleRef(
+                api_group='rbac.authorization.k8s.io',
+                kind='ClusterRole',
+                name='test_system:test_node'
+            ),
+            subjects=[kubernetes.client.V1Subject(
+                kind='User',
+                name='test_system:test_node:test_hostname',
+                api_group='rbac.authorization.k8s.io',
+            )],
+        )
+
     def setUp(self):
         super(TestKubeOperator, self).setUp()
 
@@ -841,6 +859,13 @@ class TestKubeOperator(base.TestCase):
             mock_list_pod_security_policy)
         self.mocked_list_pod_security_policy.start()
 
+        def mock_read_clusterrolebinding(obj, name):
+            return self.read_clusterrolebinding_result
+        self.mocked_read_clusterrolebinding = mock.patch(
+            'kubernetes.client.RbacAuthorizationV1Api.read_cluster_role_binding',
+            mock_read_clusterrolebinding)
+        self.mocked_read_clusterrolebinding.start()
+
         self.kube_operator = kube.KubeOperator()
 
     def tearDown(self):
@@ -853,6 +878,7 @@ class TestKubeOperator(base.TestCase):
         self.mocked_read_namespaced_service_account.stop()
         self.mocked_read_namespaced_secret.stop()
         self.mocked_list_pod_security_policy.stop()
+        self.mocked_read_clusterrolebinding.stop()
 
     def test_kube_get_image_by_pod_name(self):
 
@@ -1334,6 +1360,58 @@ class TestKubeOperator(base.TestCase):
                     'apiServer:\n  certSANs:\n  - ::1\n  - 127.0.0.1\n'}}
         mock_kube_patch_config_map.assert_called_with(
                 'kubeadm-config', 'kube-system', patch_config_map_arg)
+
+    def test_read_clusterrolebinding_success(self):
+        mock_read_clusterrolebinding = mock.MagicMock()
+        mocked_read_clusterrolebinding = mock.patch(
+            'kubernetes.client.RbacAuthorizationV1Api.read_cluster_role_binding',
+            mock_read_clusterrolebinding
+        )
+        mocked_read_clusterrolebinding.start().return_value = self.read_clusterrolebinding_result
+        self.addCleanup(mocked_read_clusterrolebinding.stop)
+
+        fake_clusterrole_binding_name = "test_system:test_node"
+        result = self.kube_operator.kube_read_clusterrolebinding(fake_clusterrole_binding_name)
+        mock_read_clusterrolebinding.assert_called_with(fake_clusterrole_binding_name)
+        self.assertEqual(result, self.read_clusterrolebinding_result)
+
+    def test_read_clusterrolebinding_exception(self):
+        mock_read_clusterrolebinding = mock.MagicMock()
+        mocked_read_clusterrolebinding = mock.patch(
+            'kubernetes.client.RbacAuthorizationV1Api.read_cluster_role_binding',
+            mock_read_clusterrolebinding
+        )
+        mocked_read_clusterrolebinding.start().side_effect = Exception("Fake Error")
+        self.addCleanup(mocked_read_clusterrolebinding.stop)
+        self.assertRaises(  # noqa: H202
+            Exception,
+            self.kube_operator.kube_read_clusterrolebinding,
+        )
+
+    def test_patch_clusterrolebinding_success(self):
+        mock_patch_clusterrolebinding = mock.MagicMock()
+        mocked_patch_clusterrolebinding = mock.patch(
+            'kubernetes.client.RbacAuthorizationV1Api.patch_cluster_role_binding',
+            mock_patch_clusterrolebinding
+        )
+        mocked_patch_clusterrolebinding.start().return_value = self.read_clusterrolebinding_result
+        self.addCleanup(mocked_patch_clusterrolebinding.stop)
+        fake_clusterrole_binding_name = "test_system:test_node"
+        self.kube_operator.kube_patch_clusterrolebinding(fake_clusterrole_binding_name, {})
+        mock_patch_clusterrolebinding.assert_called_with(fake_clusterrole_binding_name, {})
+
+    def test_patch_clusterrolebinding_exception(self):
+        mock_patch_clusterrolebinding = mock.MagicMock()
+        mocked_patch_clusterrolebinding = mock.patch(
+            'kubernetes.client.RbacAuthorizationV1Api.patch_cluster_role_binding',
+            mock_patch_clusterrolebinding
+        )
+        mocked_patch_clusterrolebinding.start().side_effect = Exception("Fake Error")
+        self.addCleanup(mocked_patch_clusterrolebinding.stop)
+        self.assertRaises(     # noqa: H202
+            Exception,
+            self.kube_operator.kube_patch_clusterrolebinding,
+        )
 
 
 class TestKubernetesUtilities(base.TestCase):

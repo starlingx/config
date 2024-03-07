@@ -55,6 +55,7 @@ from datetime import datetime
 from datetime import timedelta
 from distutils.version import LooseVersion
 from copy import deepcopy
+from urllib3.exceptions import MaxRetryError
 
 import tsconfig.tsconfig as tsc
 from collections import namedtuple
@@ -1113,6 +1114,70 @@ class ConductorManager(service.PeriodicService):
                 return host
         return None
 
+    def _retry_on_patch_system_node_clusterrolebinding(ex):  # pylint: disable=no-self-argument
+        if isinstance(ex, MaxRetryError):
+            LOG.warning("system:node clusterrolebinding patch unsuccessful. Retrying...")
+            return True
+        else:
+            return False
+
+    @retry(stop_max_attempt_number=4,
+           wait_fixed=15 * 1000,
+           retry_on_exception=_retry_on_patch_system_node_clusterrolebinding)
+    def _system_node_clusterrolebinding_add_host(self, hostname):
+        """Adds new host to the system:node clusterrolebinding
+
+        This method adds an entry of the new host as a subject to the
+        system:node clusterrolebinding.
+
+        :param hostname: name of the host to be added
+        """
+        try:
+            subject = {
+                'api_group': 'rbac.authorization.k8s.io',
+                'kind': 'User',
+                'name': 'system:node:%s' % hostname,
+                'namespace': None
+            }
+            v1_cluster_role_binding_object = self._kube.kube_read_clusterrolebinding("system:node")
+            # As this code is also run during upgrade-activate operation,
+            # we must ensure that it does not create multiple entries for the same host
+            # if the upgrade-activate operation is re-run.
+            if not any(subject.name == ["system:node:%s" % hostname]
+                       for subject in v1_cluster_role_binding_object.subjects):
+                v1_cluster_role_binding_object.subjects.append(subject)
+            self._kube.kube_patch_clusterrolebinding("system:node", v1_cluster_role_binding_object)
+            LOG.info("Host system:node:%s was added as a subject to the 'system:node' "
+                     "clusterrolebinding" % hostname)
+        except Exception as ex:
+            LOG.error("Failed to add host system:node:%s as a subject to the 'system:node' "
+                      "clusterrolebinding with error: %s" % (hostname, ex))
+            raise
+
+    @retry(stop_max_attempt_number=4,
+           wait_fixed=15 * 1000,
+           retry_on_exception=_retry_on_patch_system_node_clusterrolebinding)
+    def _system_node_clusterrolebinding_remove_host(self, hostname):
+        """Remove host from the system:node clusterrolebinding
+
+        This method removes host entry from the subjects list in the
+        system:node clusterrolebinding.
+
+        :param hostname: name of the host to be removed
+        """
+        try:
+            v1_cluster_role_binding_object = self._kube.kube_read_clusterrolebinding("system:node")
+            subjects = v1_cluster_role_binding_object.subjects
+            subjects[:] = [subject for subject in subjects
+                            if subject.name != 'system:node:%s' % hostname]
+            self._kube.kube_patch_clusterrolebinding("system:node", v1_cluster_role_binding_object)
+            LOG.info("Host system:node:%s was removed from subjects in the 'system:node' "
+                    "clusterrolebinding" % hostname)
+        except Exception as ex:
+            LOG.error("Failed to remove host system:node:%s from subjects in the 'system:node' "
+                    "clusterrolebinding with error: %s" % (hostname, ex))
+            raise
+
     def create_ihost(self, context, values, reason=None):
         """Create an ihost with the supplied data.
 
@@ -1164,6 +1229,20 @@ class ConductorManager(service.PeriodicService):
             LOG.info("create_ihost software_load=%s" % software_load)
 
         ihost = self.dbapi.ihost_create(values, software_load=software_load)
+
+        try:
+            hostname = values.get("hostname")
+            # As storage hosts don't run kubelet, we do not add them to the
+            # clusterrolebinding. Also, as kubernetes is not up while
+            # adding controller-0 during ansible bootstrap, we skip calling
+            # this method for controller-0 which is handled in the ansible
+            # code.
+            if hostname and \
+                    not os.path.isfile(constants.ANSIBLE_BOOTSTRAP_FLAG) and \
+                        values.get('personality') != constants.STORAGE:
+                self._system_node_clusterrolebinding_add_host(hostname)
+        except Exception as ex:
+            LOG.error("Error adding host to the system:node clusterrolebinding: %s" % ex)
 
         # A host is being created, generate discovery log.
         self._log_host_create(ihost, reason)
@@ -2872,6 +2951,16 @@ class ConductorManager(service.PeriodicService):
             else:
                 # allow a host with no personality to be unconfigured
                 pass
+
+        try:
+            # Storage hosts don't run kubelet and are not added to the
+            # clusterrolebinding.
+            if ihost_obj.personality != constants.STORAGE:
+                self._system_node_clusterrolebinding_remove_host(ihost_obj.hostname)
+        except Exception as ex:
+            # As this is just a cleanup operation we do nothing than just
+            # logging the error.
+            LOG.error("Error removing host from the clusterrolebinding: %s" % ex)
 
     def _update_dependent_interfaces(self, interface, ihost,
                                      phy_intf, oldmac, newmac, depth=1):

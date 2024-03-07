@@ -488,6 +488,40 @@ class ManagerTestCase(base.DbTestCase):
         self.mocked_get_kube_versions.start()
         self.addCleanup(self.mocked_get_kube_versions.stop)
 
+        self.kube_read_clusterrolebinding_result = kubernetes.client.V1ClusterRoleBinding(
+            api_version="rbac.authorization.k8s.io/v1",
+            kind="ClusterRoleBinding",
+            metadata=kubernetes.client.V1ObjectMeta(
+                name="test_system:test_node",
+            ),
+            role_ref=kubernetes.client.V1RoleRef(
+                api_group='rbac.authorization.k8s.io',
+                kind='ClusterRole',
+                name='test_system:test_node'
+            ),
+            subjects=[kubernetes.client.V1Subject(
+                kind='User',
+                name='test_system:test_node:test_hostname',
+                api_group='rbac.authorization.k8s.io',
+            )],
+        )
+
+        mock_kube_read_clusterrolebinding = mock.MagicMock()
+        self.mocked_kube_read_clusterrolebinding = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_read_clusterrolebinding',
+            mock_kube_read_clusterrolebinding)
+        self.mocked_kube_read_clusterrolebinding.start().return_value = self.kube_read_clusterrolebinding_result
+        self.addCleanup(self.mocked_kube_read_clusterrolebinding.stop)
+        self.mock_kube_read_clusterrolebinding = mock_kube_read_clusterrolebinding
+
+        mock_kube_patch_clusterrolebinding = mock.MagicMock()
+        self.mocked_kube_patch_clusterrolebinding = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_patch_clusterrolebinding',
+            mock_kube_patch_clusterrolebinding)
+        self.mocked_kube_patch_clusterrolebinding.start().return_value = self.kube_read_clusterrolebinding_result
+        self.addCleanup(self.mocked_kube_patch_clusterrolebinding.stop)
+        self.mock_kube_patch_clusterrolebinding = mock_kube_patch_clusterrolebinding
+
         self.service._puppet = mock.Mock()
         self.service._allocate_addresses_for_host = mock.Mock()
         self.service._update_pxe_config = mock.Mock()
@@ -610,6 +644,73 @@ class ManagerTestCase(base.DbTestCase):
 
         for k, v in ihost_dict.items():
             self.assertEqual(res[k], v)
+
+    def test_system_node_clusterrolebinding_add_host_success(self):
+        self.service.start()
+        self.service._system_node_clusterrolebinding_add_host(
+                "test_system:test_node:test_hostname-1")
+        self.mock_kube_read_clusterrolebinding.assert_called()
+        self.mock_kube_patch_clusterrolebinding.assert_called()
+
+    def test_system_node_clusterrolebinding_add_host_already_exists(self):
+        mock_kube_read_clusterrolebinding = mock.MagicMock()
+        mocked_kube_read_clusterrolebinding = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_read_clusterrolebinding',
+            mock_kube_read_clusterrolebinding
+        )
+        mocked_kube_read_clusterrolebinding.start().return_value = \
+            self.kube_read_clusterrolebinding_result
+        self.addCleanup(mocked_kube_read_clusterrolebinding.stop)
+
+        mock_kube_patch_clusterrolebinding = mock.MagicMock()
+        mocked_kube_patch_clusterrolebinding = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_patch_clusterrolebinding',
+            mock_kube_patch_clusterrolebinding
+        )
+        mocked_kube_patch_clusterrolebinding.start()
+        self.addCleanup(mocked_kube_patch_clusterrolebinding.stop)
+
+        self.service.start()
+        self.service._system_node_clusterrolebinding_add_host(
+            "test_system:test_node:test_hostname")
+        mock_kube_read_clusterrolebinding.assert_called()
+        mock_kube_patch_clusterrolebinding.assert_called_with(
+            "system:node", self.kube_read_clusterrolebinding_result)
+
+    def test_system_node_clusterrolebinding_remove_host_success(self):
+        self.service.start()
+        self.service._system_node_clusterrolebinding_remove_host(
+                "test_system:test_node:test:hostname")
+        self.mock_kube_read_clusterrolebinding.assert_called()
+        self.mock_kube_patch_clusterrolebinding.assert_called()
+
+    def test_system_node_clusterrolebinding_add_host_exception(self):
+        mock_kube_read_clusterrolebinding = mock.MagicMock()
+        mocked_kube_read_clusterrolebinding = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_read_clusterrolebinding',
+            mock_kube_read_clusterrolebinding
+        )
+        mocked_kube_read_clusterrolebinding.start().side_effect = Exception("Fake Error")
+        self.addCleanup(mocked_kube_read_clusterrolebinding.stop)
+        self.service.start()
+        self.assertRaises(     # noqa: H202
+            Exception,
+            self.service._system_node_clusterrolebinding_add_host,
+        )
+
+    def test_system_node_clusterrolebinding_remove_host_exception(self):
+        mock_kube_patch_clusterrolebinding = mock.MagicMock()
+        mocked_kube_patch_clusterrolebinding = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_patch_clusterrolebinding',
+            mock_kube_patch_clusterrolebinding
+        )
+        mocked_kube_patch_clusterrolebinding.start().side_effect = Exception("Fake Error")
+        self.addCleanup(mocked_kube_patch_clusterrolebinding.stop)
+        self.service.start()
+        self.assertRaises(     # noqa: H202
+            Exception,
+            self.service._system_node_clusterrolebinding_remove_host,
+        )
 
     def test_update_ihost(self):
         ihost = self._create_test_ihost()
