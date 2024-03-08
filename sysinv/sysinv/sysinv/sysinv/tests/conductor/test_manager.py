@@ -5020,7 +5020,9 @@ class ManagerTestCase(base.DbTestCase):
         p2.start()
         self.addCleanup(p2.stop)
         self.service.update_ldap_client_config(self.context)
-        personalities = [constants.CONTROLLER]
+        personalities = [constants.CONTROLLER,
+                         constants.WORKER,
+                         constants.STORAGE]
         config_dict = {
             "personalities": personalities,
             "classes": ['platform::ldap::client::runtime',

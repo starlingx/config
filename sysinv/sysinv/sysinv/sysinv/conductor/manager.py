@@ -3516,7 +3516,8 @@ class ConductorManager(service.PeriodicService):
                     # Do any potential distributed cloud config
                     # We do this here where the interface is created.
                     cutils.perform_distributed_cloud_config(self.dbapi,
-                                                            new_interface['id'])
+                                                            new_interface['id'],
+                                                            ihost)
                 if port:
                     values = {'interface_id': port.interface_id}
                 try:
@@ -9471,17 +9472,6 @@ class ConductorManager(service.PeriodicService):
                                                     config_uuid,
                                                     config_dict)
 
-    def remove_admin_firewall_config(self, context):
-        """ Remove the platform firewall rules associated with the admin network """
-        personalities = [constants.CONTROLLER]
-        config_uuid = self._config_update_hosts(context,
-                                                personalities)
-        config_dict = {
-            "personalities": personalities,
-            "classes": ['platform::firewall::nat::admin::remove']
-        }
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
-
     def update_admin_config(self, context, host, disable=False):
         """Update the admin network configuration"""
 
@@ -9512,8 +9502,7 @@ class ConductorManager(service.PeriodicService):
                             'platform::sm::enable_admin_config::runtime',
                             'platform::haproxy::runtime',
                             'openstack::keystone::endpoint::runtime',
-                            'platform::firewall::runtime',
-                            'platform::firewall::nat::admin::runtime']
+                            'platform::firewall::runtime']
             }
 
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
@@ -14554,12 +14543,24 @@ class ConductorManager(service.PeriodicService):
 
     def update_ldap_client_config(self, context):
         """Update the LDAP client configuration"""
-        personalities = [constants.CONTROLLER]
+        personalities = [constants.CONTROLLER,
+                         constants.WORKER,
+                         constants.STORAGE]
         config_uuid = self._config_update_hosts(context, personalities)
         config_dict = {
             "personalities": personalities,
             "classes": ['platform::ldap::client::runtime',
                         'platform::sssd::domain::runtime']
+        }
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+    def update_ldap_nat_config(self, context):
+        """Update the LDAP NAT configuration"""
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities)
+        config_dict = {
+            "personalities": personalities,
+            "classes": ['platform::firewall::dc::nat::ldap::runtime']
         }
         self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 

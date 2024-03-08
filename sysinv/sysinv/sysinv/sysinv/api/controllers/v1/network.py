@@ -429,6 +429,8 @@ class NetworkController(rest.RestController):
         if type == constants.NETWORK_TYPE_SYSTEM_CONTROLLER:
             pecan.request.rpcapi.update_ldap_client_config(
                 pecan.request.context)
+            pecan.request.rpcapi.update_ldap_nat_config(
+                pecan.request.context)
         elif type == constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM:
             pecan.request.rpcapi.update_dnsmasq_config(
                 pecan.request.context)

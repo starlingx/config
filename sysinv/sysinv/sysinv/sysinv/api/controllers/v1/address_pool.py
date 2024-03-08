@@ -716,13 +716,6 @@ class AddressPoolController(rest.RestController):
                     # The admin address pool can be deleted at runtime
                     admin_network_reconfig = True
 
-        if (admin_network_reconfig):
-            # At runtime, remove the NAT rule that enables worker, storage
-            # nodes to communicate with the system controller.  We must do
-            # this before deleting the address pool and addresses to obtain
-            # information about the current admin floating IP and interface.
-            pecan.request.rpcapi.remove_admin_firewall_config(pecan.request.context)
-
         addresses = pecan.request.dbapi.addresses_get_by_pool(
             addrpool.id)
         if addresses:

@@ -828,15 +828,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
             host=host,
             disable=disable))
 
-    def remove_admin_firewall_config(self, context):
-        """Synchronously, have the conductor remove the admin firewall
-           configuration.
-
-        :param context: request context.
-        """
-        return self.call(context, self.make_msg(
-            'remove_admin_firewall_config'))
-
     def set_mgmt_network_reconfig_flag(self, context):
         """Synchronously, have the conductor update the mgmt network reconfig flag.
         :param context: request context.
@@ -2169,6 +2160,17 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context,
                          self.make_msg('update_ldap_client_config'))
+
+    def update_ldap_nat_config(self, context):
+        """Synchronously, have a conductor configure LDAP NAT configureation
+
+        Does the following tasks:
+        - Update puppet hiera configuration file and apply run time manifest.
+
+        :param context: request context.
+        """
+        return self.call(context,
+                         self.make_msg('update_ldap_nat_config'))
 
     def update_dnsmasq_config(self, context):
         """Synchronously, have a conductor configure the DNS configuration

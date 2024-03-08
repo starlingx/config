@@ -100,6 +100,9 @@ class RPCAPITestCase(base.DbTestCase):
     def test_update_ldap_client_config(self):
         self._test_rpcapi('update_ldap_client_config', 'call')
 
+    def test_update_ldap_nat_config(self):
+        self._test_rpcapi('update_ldap_nat_config', 'call')
+
     def test_update_dnsmasq_config(self):
         self._test_rpcapi('update_dnsmasq_config', 'call')
 

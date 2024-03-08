@@ -1739,7 +1739,7 @@ def is_partition_the_last(dbapi, partition):
     return True
 
 
-def perform_distributed_cloud_config(dbapi, mgmt_iface_id):
+def perform_distributed_cloud_config(dbapi, mgmt_iface_id, host):
     """
     Check if we are running in distributed cloud mode and perform any
     necessary configuration.
@@ -1796,8 +1796,9 @@ def perform_distributed_cloud_config(dbapi, mgmt_iface_id):
                      (new_route['network'], new_route['prefix'],
                       new_route['gateway'], mgmt_iface_id))
 
-    elif system.distributed_cloud_role == \
-            constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+    elif (system.distributed_cloud_role ==
+            constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD and
+            host['personality'] == constants.CONTROLLER):
         # Add the route back to the system controller.
         # Assumption is we do not have to do any error checking
         # for local & reachable gateway etc, as config_subcloud
