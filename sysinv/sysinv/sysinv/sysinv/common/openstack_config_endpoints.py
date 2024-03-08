@@ -30,7 +30,8 @@ BASE_USERS = [
     'usm',
     'vim',
     'smapi',
-    'barbican'
+    'barbican',
+    'mtce'
 ]
 
 ADDITIONAL_SYSTEMCONTROLLER_USERS = [
