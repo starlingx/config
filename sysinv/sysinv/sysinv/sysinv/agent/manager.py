@@ -850,21 +850,7 @@ class AgentManager(service.PeriodicService):
         while (timeutils.utcnow() - wait_time).total_seconds() < MAXSLEEP:
             # wait for controller to come up first may be a DOR
             try:
-                ihost, mgmt_addr = rpcapi.get_ihost_by_macs(icontext, host_macs)
-            except ValueError:
-                # Retry because the N-1 host does not support the mgmt_addr
-                # parameter during upgrade
-                try:
-                    ihost = rpcapi.get_ihost_by_macs(icontext, host_macs)
-                except Timeout:
-                    if not rpc_timeout:
-                        rpc_timeout = True
-                        LOG.info("get_ihost_by_macs rpc Timeout.")
-                        time.sleep(5)  # avoid calling timedout RPC in sequence
-                        continue
-                except Exception:
-                    LOG.warn("Conductor RPC get_ihost_by_macs exception "
-                             "response")
+                ihost = rpcapi.get_ihost_by_macs(icontext, host_macs)
             except Timeout:
                 if not rpc_timeout:
                     rpc_timeout = True
@@ -903,6 +889,17 @@ class AgentManager(service.PeriodicService):
                             LOG.info("get_address_by_host_networktype rpc Timeout.")
                         time.sleep(5)  # avoid calling timedout RPC in sequence
                         continue
+                    except RemoteError:
+                        try:
+                            # active controller is running an old release
+                            # without get_address_by_host_networktype RPC
+                            mgmt_addr = ihost['mgmt_ip']
+                            LOG.info("get_address_by_host_networktype rpc RemoteError."
+                                     "using mgmt_ip from ihost: {}".format(mgmt_addr))
+                        except Exception:
+                            LOG.warn("ihost_inv_get_and_report: ihost does not have "
+                                     "mgmt_ip")
+
                     except Exception as ex:
                         LOG.warn("Conductor RPC get_address_by_host_networktype "
                                  "exception response %s" % ex)

@@ -956,7 +956,16 @@ class PlatformPuppet(base.BasePuppet):
     def _get_dc_root_ca_config(self):
         config = {}
         system = self._get_system()
-        if os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG):
+        # TODO<fcorream>: Remove OLD_ANSIBLE_BOOTSTRAP_COMPLETED_FLAG
+        # just needed for upgrade to R9
+        is_upgrading = utils.is_upgrade_in_progress(self.dbapi)[0]
+
+        bootstrap_completed = \
+            os.path.isfile(constants.ANSIBLE_BOOTSTRAP_COMPLETED_FLAG) or \
+            (is_upgrading and
+             os.path.isfile(constants.OLD_ANSIBLE_BOOTSTRAP_COMPLETED_FLAG))
+
+        if bootstrap_completed:
             cert_data = utils.get_admin_ep_cert(
                 system.distributed_cloud_role)
 

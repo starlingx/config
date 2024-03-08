@@ -61,7 +61,7 @@ class NetworkingPuppet(base.BasePuppet):
         })
 
         # create flag for the mate controller to use FQDN or not
-        if utils.is_fqdn_ready_to_use():
+        if utils.is_fqdn_ready_to_use(True):
             fqdn_ready = True
         else:
             fqdn_ready = False

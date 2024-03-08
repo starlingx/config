@@ -1,5 +1,5 @@
 """
-Copyright (c) 2014-2023 Wind River Systems, Inc.
+Copyright (c) 2014-2024 Wind River Systems, Inc.
 
 SPDX-License-Identifier: Apache-2.0
 
@@ -222,6 +222,11 @@ MGMT_NETWORK_RECONFIGURATION_UNLOCK = os.path.join(
 # /opt/platform/config/<release>/hosts with new mgmt IPs
 MGMT_NETWORK_RECONFIG_UPDATE_HOST_FILES = os.path.join(
     PLATFORM_CONF_PATH, ".mgmt_reconfig_update_hosts_file")
+
+# Set in the upgrade script to not use FQDN during SW upgrade
+# must be deleted after upgrade complete /abort
+UPGRADE_DO_NOT_USE_FQDN = os.path.join(
+    PLATFORM_CONF_PATH, ".upgrade_do_not_use_fqdn")
 
 # Worker configuration flags
 

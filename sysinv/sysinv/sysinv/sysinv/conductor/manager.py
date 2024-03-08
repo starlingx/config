@@ -1406,6 +1406,11 @@ class ConductorManager(service.PeriodicService):
                 hostname = re.sub("-%s$" % constants.NETWORK_TYPE_MGMT,
                                   '', str(address.name))
 
+                # during an upgrade the DB can have the unused
+                # controller-platform-nfs entry that must be ignored
+                if (hostname == 'controller-platform-nfs'):
+                    continue
+
                 if (hostname != constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME):
                     controller_alias = [constants.CONTROLLER_HOSTNAME,
                                         constants.DOCKER_REGISTRY_HOST,
@@ -6574,7 +6579,7 @@ class ConductorManager(service.PeriodicService):
 
         :param context: an admin context
         :param ihost_macs: list of mac addresses
-        :returns: ihost object, including all fields and mgmt address.
+        :returns: ihost object, including all fields.
         """
 
         ihosts = self.dbapi.ihost_get_list()
@@ -6591,11 +6596,7 @@ class ConductorManager(service.PeriodicService):
             for host in ihosts:
                 if host.mgmt_mac == mac:
                     LOG.info("Host found ihost db for macs: %s" % host.hostname)
-                    mgmt_addr = None
-                    mgmt_addr = self.get_address_by_host_networktype(
-                        context, host.hostname,
-                        constants.NETWORK_TYPE_MGMT)
-                    return host, mgmt_addr
+                    return host
         LOG.debug("RPC get_ihost_by_macs called but found no ihost.")
 
     def get_ihost_by_hostname(self, context, ihost_hostname):
@@ -14380,6 +14381,18 @@ class ConductorManager(service.PeriodicService):
                 constants.CONTROLLER_1_HOSTNAME)
             LOG.info("Deleting Sysinv Hybrid state")
             rpcapi.delete_sysinv_hybrid_state(context, controller_1['uuid'])
+
+        # TODO(fcorream): This is just needed for upgrade from R7 to R8
+        # need to remove the flag that disables the use of FQDN during the
+        # upgrade
+        if (tsc.system_mode != constants.SYSTEM_MODE_SIMPLEX):
+            personalities = [constants.CONTROLLER]
+            config_uuid = self._config_update_hosts(context, personalities)
+            config_dict = {
+                "personalities": personalities,
+                "classes": ['platform::network::upgrade_fqdn_cleanup::runtime'],
+            }
+            self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
         # Clear upgrades alarm
         entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,

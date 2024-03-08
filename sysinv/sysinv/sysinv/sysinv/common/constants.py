@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -2122,6 +2122,10 @@ DEFAULT_DNS_SERVICE_DOMAIN = 'cluster.local'
 ANSIBLE_BOOTSTRAP_FLAG = os.path.join(tsc.VOLATILE_PATH, ".ansible_bootstrap")
 ANSIBLE_BOOTSTRAP_COMPLETED_FLAG = os.path.join(tsc.PLATFORM_CONF_PATH,
                                                 ".bootstrap_completed")
+# just used for upgrade purposes
+OLD_ANSIBLE_BOOTSTRAP_COMPLETED_FLAG = os.path.join(tsc.CONFIG_PATH,
+                                                    ".bootstrap_completed")
+
 UNLOCK_READY_FLAG = os.path.join(tsc.PLATFORM_CONF_PATH, ".unlock_ready")
 INVENTORY_WAIT_TIMEOUT_IN_SECS = 120
 DEFAULT_RPCAPI_TIMEOUT_IN_SECS = 60
