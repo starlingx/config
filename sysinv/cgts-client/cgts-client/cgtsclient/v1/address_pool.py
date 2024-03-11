@@ -8,6 +8,7 @@
 #
 
 from cgtsclient.common import base
+from cgtsclient.common import utils
 from cgtsclient import exc
 
 
@@ -52,3 +53,20 @@ class AddressPoolManager(base.Manager):
     def update(self, pool_id, patch):
         path = '/v1/addrpools/%s' % pool_id
         return self._update(path, patch)
+
+
+def _find_addrpool(cc, addrpool):
+    if utils.is_uuid_like(addrpool):
+        try:
+            a = cc.address_pool.get(addrpool)
+        except exc.HTTPNotFound:
+            raise exc.CommandError('address pool not found: %s' % addrpool)
+        else:
+            return a
+    else:
+        addrpool_list = cc.address_pool.list()
+        for a in addrpool_list:
+            if a.name == addrpool:
+                return a
+        else:
+            raise exc.CommandError('address pool not found: %s' % addrpool)

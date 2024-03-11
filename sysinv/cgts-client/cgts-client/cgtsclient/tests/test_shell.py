@@ -120,3 +120,9 @@ class ShellTest(utils.BaseTestCase):
         host_results = self.shell("host-list")
         self.assertIn('controller-0', host_results)
         self.assertNotIn('controller-1', host_results)
+
+    def test_help_on_network_addrpool_subcommand(self):
+        self.shell("help network-addrpool-list")
+        self.shell("help network-addrpool-show")
+        self.shell("help network-addrpool-assign")
+        self.shell("help network-addrpool-remove")
