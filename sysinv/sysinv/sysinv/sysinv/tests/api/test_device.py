@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2020-2022 Wind River Systems, Inc.
+# Copyright (c) 2020-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -606,3 +606,26 @@ class TestPatchDevice(TestDevice):
         self.assertIn('The value for number of SR-IOV VFs must be > 0 when the '
                       'VF driver is igb_uio',
                       response.json['error_message'])
+
+    def test_device_modify_sriov_qat_reset_all(self):
+        self.pci_device = dbutils.create_test_pci_device(
+            host_id=self.worker.id,
+            pclass_id=self.pclass_id,
+            pdevice_id=constants.PCI_ALIAS_QAT_401XX_PF_DEVICE,
+            driver='4xxx',
+            sriov_vf_driver='vfio',
+            sriov_totalvfs=16,
+            sriov_numvfs=16)
+        response = self.patch_dict_json(
+            '%s' % self._get_path(self.pci_device['uuid']),
+            driver='none',
+            sriov_vf_driver='none',
+            sriov_numvfs=0,
+            expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn('QAT device is already initialized, further modification '
+                      'not allowed. Details:- devicename: pci_0000_00_02_0 , '
+                      'enabled status: True, driver: 4xxx, VF driver: vfio, '
+                      'sriov numvfs: 16', response.json['error_message'])
