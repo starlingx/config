@@ -11,6 +11,10 @@ import string
 import time
 import threading
 
+from oslo_log import log as logging
+
+LOG = logging.getLogger(__name__)
+
 
 class State(enum.Enum):
     STAGE_1 = 1
@@ -64,16 +68,17 @@ class State(enum.Enum):
 
 class Token(object):
     VERSION = int(1).to_bytes(1, 'little')
-    EXPIRY_TIME = 5000
+    EXPIRY_TIME = 7000
 
     def __init__(self):
         self.__nonce = secrets.token_bytes(16)  # 128-bit nonce
-        self.__start_time = int(time.time() * 1000)  # 64-bit utc time
+        self.__creation_time = int(time.time() * 1000)  # 64-bit utc time
         self.__content = bytearray(self.VERSION + self.__nonce
-                                   + self.__start_time.to_bytes(8, 'little'))
+                                   + self.__creation_time.to_bytes(8, 'little'))
         self.__used = False
         self.__expired = False
-        self.__timer = self.__set_timer()
+        self.__start_time = 0
+        self.__timer = None
 
         random.shuffle(self.__content)
 
@@ -88,18 +93,32 @@ class Token(object):
 
     def __expire_token(self):
         self.__expired = True
-        self.__timer.cancel()
+        if self.__timer and self.__timer.is_alive():
+            self.__timer.cancel()
+            LOG.info("OTS Token set as expired")
+        else:
+            LOG.info("OTS Token expired")
+        return None
+
+    def activate(self):
+        '''Activate OTS Token timer.'''
+        self.__start_time = int(time.time() * 1000)
+        self.__timer = self.__set_timer()
+        LOG.info("OTS Token activated")
         return None
 
     def purge(self):
         '''Purge the token.'''
         self.__used = True
-        self.__expired = True
         self.__content = bytearray()
+        self.__expire_token()
+        LOG.info("OTS Token purged")
+        return None
 
     def set_as_used(self):
         '''Set token as used.'''
         self.__used = True
+        LOG.info("OTS Token set as used")
         return None
 
     def get_content(self):
@@ -111,7 +130,7 @@ class Token(object):
         time and its usage flag.'''
         period = int(time.time() * 1000) - self.__start_time
         if period >= self.EXPIRY_TIME and not self.__expired:
-            self.__expired = True
+            self.__expire_token()
 
         return not (self.__expired or self.__used)
 

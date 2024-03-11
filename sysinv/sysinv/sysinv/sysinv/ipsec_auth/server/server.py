@@ -114,9 +114,13 @@ class IPsecConnection(object):
                 # A readable client socket has data
                 LOG.debug("Received {!r}".format(data))
                 self.state = State.get_next_state(self.state)
+
                 LOG.debug("Preparing payload")
                 msg = self._handle_write(data)
                 sock.sendall(msg)
+
+                if self.state == State.STAGE_2:
+                    self.ots_token.activate()
                 self.state = State.get_next_state(self.state)
             elif self.state == State.STAGE_5 or not data:
                 self.ots_token.purge()
