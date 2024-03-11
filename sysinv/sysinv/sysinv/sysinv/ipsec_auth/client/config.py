@@ -90,11 +90,11 @@ class SwanctlConf(object):
         self.node[key] = value
 
     def get_conf(self):
-        self.children['node'] = self.node
+        self.children[constants.CHILD_SA_NAME] = self.node
         self.system_nodes['local'] = self.local
         self.system_nodes['remote'] = self.remote
         self.system_nodes['children'] = self.children
-        self.connections['system-nodes'] = self.system_nodes
+        self.connections[constants.IKE_SA_NAME] = self.system_nodes
         return self.connections
 
 

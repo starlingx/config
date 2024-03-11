@@ -49,10 +49,12 @@ PXECONTROLLER_URL = 'http://pxecontroller:6385'
 
 OP_CODE_INITIAL_AUTH = "1"
 OP_CODE_CERT_RENEWAL = "2"
-
 SUPPORTED_OP_CODES = [OP_CODE_INITIAL_AUTH,
                       OP_CODE_CERT_RENEWAL]
 
 MGMT_IPSEC_ENABLING = 'enabling'
 MGMT_IPSEC_ENABLED = 'enabled'
 MGMT_IPSEC_DISABLED = 'disabled'
+
+CHILD_SA_NAME = 'node'
+IKE_SA_NAME = 'system-nodes'

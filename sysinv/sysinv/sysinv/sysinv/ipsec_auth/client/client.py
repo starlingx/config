@@ -29,10 +29,10 @@ LOG = logging.getLogger(__name__)
 
 class Client(object):
 
-    def __init__(self, host, port, opcode):
+    def __init__(self, host, port, op_code):
         self.host = host
         self.port = port
-        self.opcode = opcode
+        self.op_code = str(op_code)
         self.state = State.STAGE_1
         self.ifname = utils.get_management_interface()
         self.personality = utils.get_personality()
@@ -45,7 +45,7 @@ class Client(object):
     # Generate message 1 - OP/MAC/HASH
     def _generate_message_1(self):
         message = {}
-        message['op'] = str(self.opcode)
+        message['op'] = self.op_code
         message['mac_addr'] = self.mac_addr
         message['hash'] = utils.hash_payload(message)
 
@@ -159,12 +159,15 @@ class Client(object):
         if self.state == State.STAGE_4:
             LOG.info("Received IPSec Auth CSR Response")
             cert = base64.b64decode(msg['cert'])
-            network = msg['network']
             digest = base64.b64decode(msg['hash'])
 
             ca_cert = utils.load_data(constants.TRUSTED_CA_CERT_PATH)
 
-            data = msg['cert'].encode('utf-8') + network.encode('utf-8')
+            data = msg['cert'].encode('utf-8')
+            if self.op_code == constants.OP_CODE_INITIAL_AUTH:
+                network = msg['network']
+                data = data + network.encode('utf-8')
+
             if not utils.verify_signed_hash(ca_cert, digest, data):
                 msg = "Hash validation failed"
                 LOG.exception("Hash validation failed")
@@ -176,23 +179,46 @@ class Client(object):
             cert_path = constants.CERT_SYSTEM_LOCAL_DIR + cert_file
             utils.save_data(cert_path, cert)
 
-            if self.personality == constants.CONTROLLER:
-                self.local_addr = self.hostname[constants.UNIT_HOSTNAME] + ', ' \
-                                  + self.hostname[constants.FLOATING_UNIT_HOSTNAME]
-            else:
-                self.local_addr = utils.get_ip_addr(self.ifname)
+            if self.op_code == constants.OP_CODE_INITIAL_AUTH:
+                if self.personality == constants.CONTROLLER:
+                    self.local_addr = self.hostname[constants.UNIT_HOSTNAME] + ', ' \
+                                    + self.hostname[constants.FLOATING_UNIT_HOSTNAME]
+                else:
+                    self.local_addr = utils.get_ip_addr(self.ifname)
 
-            LOG.info("Generating config files and restart ipsec")
-            strong = config.StrongswanPuppet(self.hostname[constants.UNIT_HOSTNAME],
-                                             self.local_addr, network)
-            strong.generate_file()
-            puppet_cf = subprocess.run(['puppet', 'apply', '-e', 'include ::platform::strongswan'],
-                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+                LOG.info("Generating config files and restart ipsec")
+                strong = config.StrongswanPuppet(self.hostname[constants.UNIT_HOSTNAME],
+                                                self.local_addr, network)
+                strong.generate_file()
+                puppet_cf = subprocess.run(['puppet', 'apply', '-e',
+                                            'include ::platform::strongswan'],
+                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                            check=False)
 
-            if puppet_cf.stderr:
-                err = "Error: %s" % (puppet_cf.stderr.decode("utf-8"))
-                LOG.exception("Failed to create strongswan config files: %s" % err)
-                return False
+                if puppet_cf.returncode != 0:
+                    err = "Error: %s" % (puppet_cf.stderr.decode("utf-8"))
+                    LOG.exception("Failed to create StrongSwan config files: %s" % err)
+                    return False
+
+            elif self.op_code == constants.OP_CODE_CERT_RENEWAL:
+                load_creds = subprocess.run(['swanctl', '--load-creds'], stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, check=False)
+
+                if load_creds.returncode != 0:
+                    err = "Error: %s" % (load_creds.stderr.decode("utf-8"))
+                    LOG.exception("Failed to load StrongSwan credentials: %s" % err)
+                    return False
+
+                rekey = subprocess.run(['swanctl', '--rekey', '--ike', constants.IKE_SA_NAME,
+                                        '--reauth'], stdout=subprocess.PIPE,
+                                        stderr=subprocess.PIPE, check=False)
+
+                if rekey.returncode != 0:
+                    err = "Error: %s" % (rekey.stderr.decode("utf-8"))
+                    LOG.exception("Failed to rekey IKE SA with StrongSwan: %s" % err)
+                    return False
+
+                LOG.info('IPsec certificate renewed successfully')
 
         return True
 

@@ -90,6 +90,7 @@ class IPsecConnection(object):
     CA_CRT = 'tls.crt'
 
     def __init__(self):
+        self.op_code = None
         self.hostname = None
         self.mgmt_subnet = None
         self.signed_cert = None
@@ -153,7 +154,6 @@ class IPsecConnection(object):
                     raise ConnectionRefusedError(msg)
 
                 client_data = utils.get_client_hostname_and_mgmt_subnet(mac_addr)
-
                 self.hostname = client_data['hostname']
                 self.mgmt_subnet = client_data['mgmt_subnet']
 
@@ -199,12 +199,14 @@ class IPsecConnection(object):
                 if not self.signed_cert:
                     raise ValueError('Unable to sign certificate request')
 
-                cert = bytes(self.signed_cert, 'utf-8')
-                network = bytes(self.mgmt_subnet, 'utf-8')
-                hash_payload = utils.hash_and_sign_payload(self.ca_key, cert + network)
+                data = bytes(self.signed_cert, 'utf-8')
+                if self.op_code == constants.OP_CODE_INITIAL_AUTH:
+                    payload["network"] = self.mgmt_subnet
+                    data = data + bytes(self.mgmt_subnet, 'utf-8')
+
+                hash_payload = utils.hash_and_sign_payload(self.ca_key, data)
 
                 payload["cert"] = self.signed_cert
-                payload["network"] = self.mgmt_subnet
                 payload["hash"] = hash_payload.decode("utf-8")
 
                 LOG.info("Sending IPSec Auth CSR Response")
