@@ -25,6 +25,7 @@ override_dh_install:
 	install -p -D -m 700 $(CURDIR)/etc/sysinv/delete_load.sh $(CURDIR)/debian/tmp/etc/sysinv/upgrades/delete_load.sh
 	install -p -D -m 644 debian/tmpfiles.conf $(CURDIR)/debian/tmp/usr/lib/tmpfiles.d/sysinv.conf
 	install -p -D -m 700 $(CURDIR)/scripts/kube-cert-rotation.sh $(CURDIR)/debian/tmp/usr/bin/kube-cert-rotation.sh
+	install -p -D -m 700 $(CURDIR)/scripts/ipsec-cert-renew.sh $(CURDIR)/debian/tmp/usr/bin/ipsec-cert-renew.sh
 	dh_install
 
 override_dh_python3:
@@ -36,3 +37,4 @@ override_dh_installsystemd:
 
 override_dh_fixperms:
 	dh_fixperms -Xkube-cert-rotation.sh
+	dh_fixperms -Xipsec-cert-renew.sh
