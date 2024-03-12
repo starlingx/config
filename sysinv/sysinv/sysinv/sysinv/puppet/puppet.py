@@ -183,6 +183,25 @@ class PuppetOperator(object):
             LOG.exception("failed to read secure_system config")
             raise
 
+    def _is_controller0_downgrade(self, host, hiera_file):
+        """
+        check if controller-0 will execute a downgrade for a version
+         using mgmt_ip.yaml.
+         for AIO-SX it is not relevant
+        """
+        if (tsc.system_mode != constants.SYSTEM_MODE_SIMPLEX and
+            host.hostname == constants.CONTROLLER_0_HOSTNAME and
+                not os.path.exists(hiera_file)):
+            try:
+                upgrade = self.dbapi.software_upgrade_get_one()
+                if (upgrade.state == constants.UPGRADE_ABORTING_ROLLBACK):
+                    LOG.info("controller-0 downgrade for a version using <ip>.yaml")
+                    return True
+            except Exception:
+                # upgrade not in progress
+                pass
+        return False
+
     @puppet_context
     def update_host_config(self, host, config_uuid=None):
         """Update the host hiera configuration files for the supplied host"""
@@ -243,13 +262,21 @@ class PuppetOperator(object):
             target_load,
             'hieradata')
 
+        # for downgrade ( upgrade-abort ) to STX.8 the hieradata is
+        # still using <mgmt_ip>.yaml
+        hiera_file = os.path.join(path, filename)
+        if self._is_controller0_downgrade(host, hiera_file):
+            mgmt_address = self._get_address_by_name(
+                constants.CONTROLLER_0_HOSTNAME, constants.NETWORK_TYPE_MGMT)
+            filename = mgmt_address + ".yaml"
+
         with io.open(os.path.join(path, filename), 'r',
                      encoding='utf-8') as yaml_file:
             host_config = yaml.load(yaml_file, Loader=yaml.FullLoader)
 
         host_config.update(config)
 
-        self._write_host_config(host, host_config, path)
+        self._write_host_config(host, host_config, path, filename)
 
     def remove_host_config(self, host):
         """Remove the configuration for the supplied host"""
@@ -259,9 +286,10 @@ class PuppetOperator(object):
         except Exception:
             LOG.exception("failed to remove host config: %s" % host.uuid)
 
-    def _write_host_config(self, host, config, path=None):
+    def _write_host_config(self, host, config, path=None, filename=None):
         """Update the configuration for a specific host"""
-        filename = "%s.yaml" % host.hostname
+        if filename is None:
+            filename = "%s.yaml" % host.hostname
         self._write_config(filename, config, path)
 
     def _read_host_config(self, host, path):
