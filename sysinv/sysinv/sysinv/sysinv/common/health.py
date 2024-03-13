@@ -264,6 +264,13 @@ class Health(object):
             if pod.status.phase not in ['Pending', 'Running', 'Succeeded']:
                 # Add it to the failed list as it's not ready/completed/pending
                 fail_pod_list.append((pod.metadata.name, pod.metadata.namespace))
+            elif pod.status.phase == 'Running':
+                for container_status in pod.status.container_statuses:
+                    if container_status.ready is not True:
+                        # Pod has running status but it's not ready
+                        fail_pod_list.append((pod.metadata.name,
+                                              pod.metadata.namespace))
+                        break
         success = not fail_pod_list
         return success, fail_pod_list
 
