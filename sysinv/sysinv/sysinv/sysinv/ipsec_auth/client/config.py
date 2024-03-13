@@ -128,8 +128,13 @@ class StrongswanPuppet(object):
     def get_charon_logging_config(self):
         charon_logging = CharonLoggingConf()
 
-        charon_logging.add_main_log('append', 'yes')
         charon_logging.add_main_log('default', 2)
+        charon_logging.add_main_log('net', 1)
+        charon_logging.add_main_log('enc', 1)
+        charon_logging.add_main_log('asn', 1)
+        charon_logging.add_main_log('job', 1)
+        charon_logging.add_main_log('ike_name', 'yes')
+        charon_logging.add_main_log('append', 'yes')
         charon_logging.add_main_log('flush_line', 'yes')
         charon_logging.add_main_log('path', '/var/log/charon.log')
         charon_logging.add_main_log('time_add_ms', 'yes')
