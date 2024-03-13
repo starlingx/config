@@ -6,12 +6,19 @@
 
 import netaddr
 
+from oslo_log import log
+
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils
 
 from sysinv.puppet import base
 from sysinv.puppet import interface
+
+LOG = log.getLogger(__name__)
+
+IPv4 = constants.IP_FAMILIES[constants.IPV4_FAMILY].lower()
+IPv6 = constants.IP_FAMILIES[constants.IPV6_FAMILY].lower()
 
 
 class NetworkingPuppet(base.BasePuppet):
@@ -49,16 +56,7 @@ class NetworkingPuppet(base.BasePuppet):
 
         config = self._get_network_config(networktype)
 
-        try:
-            gateway_address = self._get_address_by_name(
-                constants.CONTROLLER_GATEWAY, networktype).address
-        except exception.AddressNotFoundByName:
-            gateway_address = None
-
-        config.update({
-            'platform::network::%s::params::gateway_address' % networktype:
-                gateway_address,
-        })
+        config = self._get_network_gateway_config(networktype, config)
 
         # create flag for the mate controller to use FQDN or not
         if utils.is_fqdn_ready_to_use(True):
@@ -100,16 +98,7 @@ class NetworkingPuppet(base.BasePuppet):
 
         config = self._get_network_config(networktype)
 
-        try:
-            gateway_address = self._get_address_by_name(
-                constants.CONTROLLER_GATEWAY, networktype).address
-        except exception.AddressNotFoundByName:
-            gateway_address = None
-
-        config.update({
-            'platform::network::%s::params::gateway_address' % networktype:
-                gateway_address,
-        })
+        config = self._get_network_gateway_config(networktype, config)
 
         return config
 
@@ -132,71 +121,125 @@ class NetworkingPuppet(base.BasePuppet):
         try:
             network = self.dbapi.network_get_by_type(networktype)
         except exception.NetworkTypeNotFound:
-            # network not configured
+            LOG.debug(f"Network type {networktype} not found")
             return {}
 
-        address_pool = self.dbapi.address_pool_get(network.pool_uuid)
+        net_pools = self.dbapi.network_addrpool_get_by_network_id(network.id)
+        pool_uuid_list = list()
+        if net_pools:
+            for net_pool in net_pools:
+                pool_uuid_list.append(net_pool.address_pool_uuid)
+        else:
+            # we are coming from an upgrade without data-migration implemented for the
+            # dual stack feature
+            LOG.warning(f"Network {network.name} does not have network to address pool objects")
+            pool_uuid_list.append(network.pool_uuid)
 
-        subnet = netaddr.IPNetwork(
-            str(address_pool.network) + '/' + str(address_pool.prefix))
+        configdata = dict()
+        config = dict()
 
-        subnet_version = address_pool.family
-        subnet_network = str(subnet.network)
-        subnet_netmask = str(subnet.netmask)
-        subnet_prefixlen = subnet.prefixlen
+        for pool_uuid in pool_uuid_list:
 
-        subnet_start = str(address_pool.ranges[0][0])
-        subnet_end = str(address_pool.ranges[0][-1])
+            address_pool = self.dbapi.address_pool_get(pool_uuid)
 
-        try:
-            controller_address = self._get_address_by_name(
-                constants.CONTROLLER_HOSTNAME, networktype).address
-        except exception.AddressNotFoundByName:
-            controller_address = None
+            family_name = IPv4 if address_pool.family == constants.IPV4_FAMILY else IPv6
+            configdata.update({family_name: {}})
 
-        try:
-            controller0_address = self._get_address_by_name(
-                constants.CONTROLLER_0_HOSTNAME, networktype).address
-        except exception.AddressNotFoundByName:
-            controller0_address = None
+            subnet = netaddr.IPNetwork(
+                str(address_pool.network) + '/' + str(address_pool.prefix))
+            configdata[family_name].update({'subnet': subnet})
 
-        try:
-            controller1_address = self._get_address_by_name(
-                constants.CONTROLLER_1_HOSTNAME, networktype).address
-        except exception.AddressNotFoundByName:
-            controller1_address = None
+            configdata[family_name].update({'subnet_version': address_pool.family})
+            configdata[family_name].update({'subnet_network': str(subnet.network)})
+            configdata[family_name].update({'subnet_netmask': str(subnet.netmask)})
+            configdata[family_name].update({'subnet_prefixlen': subnet.prefixlen})
+            configdata[family_name].update({'subnet_start': str(address_pool.ranges[0][0])})
+            configdata[family_name].update({'subnet_end': str(address_pool.ranges[0][-1])})
 
-        controller_address_url = self._format_url_address(controller_address)
-        subnet_network_url = self._format_url_address(subnet_network)
+            try:
+                controller_address = self._get_address_by_name_and_family(
+                    constants.CONTROLLER_HOSTNAME, address_pool.family, networktype).address
+            except exception.AddressNotFoundByNameAndFamily:
+                controller_address = None
+            configdata[family_name].update({'controller_address': controller_address})
+
+            try:
+                controller0_address = self._get_address_by_name_and_family(
+                    constants.CONTROLLER_0_HOSTNAME, address_pool.family, networktype).address
+            except exception.AddressNotFoundByNameAndFamily:
+                controller0_address = None
+            configdata[family_name].update({'controller0_address': controller0_address})
+
+            try:
+                controller1_address = self._get_address_by_name_and_family(
+                    constants.CONTROLLER_1_HOSTNAME, address_pool.family, networktype).address
+            except exception.AddressNotFoundByNameAndFamily:
+                controller1_address = None
+            configdata[family_name].update({'controller1_address': controller1_address})
+
+            configdata[family_name].update({'controller_address_url':
+                                            self._format_url_address(controller_address)})
+            configdata[family_name].update({'subnet_network_url':
+                                            self._format_url_address(str(subnet.network))})
 
         # Convert the dash to underscore because puppet parameters cannot have
         # dashes
         networktype = networktype.replace('-', '_')
 
-        return {
-            'platform::network::%s::params::subnet_version' % networktype:
-                subnet_version,
-            'platform::network::%s::params::subnet_network' % networktype:
-                subnet_network,
-            'platform::network::%s::params::subnet_network_url' % networktype:
-                subnet_network_url,
-            'platform::network::%s::params::subnet_prefixlen' % networktype:
-                subnet_prefixlen,
-            'platform::network::%s::params::subnet_netmask' % networktype:
-                subnet_netmask,
-            'platform::network::%s::params::subnet_start' % networktype:
-                subnet_start,
-            'platform::network::%s::params::subnet_end' % networktype:
-                subnet_end,
-            'platform::network::%s::params::controller_address' % networktype:
-                controller_address,
-            'platform::network::%s::params::controller_address_url' % networktype:
-                controller_address_url,
-            'platform::network::%s::params::controller0_address' % networktype:
-                controller0_address,
-            'platform::network::%s::params::controller1_address' % networktype:
-                controller1_address,
-        }
+        for family in configdata:
+            config[f'platform::network::{networktype}::{family}::params::subnet_version'] = \
+                configdata[family]['subnet_version']
+            config[f'platform::network::{networktype}::{family}::params::subnet_network'] = \
+                configdata[family]['subnet_network']
+            config[f'platform::network::{networktype}::{family}::params::subnet_network_url'] = \
+                configdata[family]['subnet_network_url']
+            config[f'platform::network::{networktype}::{family}::params::subnet_prefixlen'] = \
+                configdata[family]['subnet_prefixlen']
+            config[f'platform::network::{networktype}::{family}::params::subnet_netmask'] = \
+                configdata[family]['subnet_netmask']
+            config[f'platform::network::{networktype}::{family}::params::subnet_start'] = \
+                configdata[family]['subnet_start']
+            config[f'platform::network::{networktype}::{family}::params::subnet_end'] = \
+                configdata[family]['subnet_end']
+            config[f'platform::network::{networktype}::{family}::params::controller_address'] = \
+                configdata[family]['controller_address']
+            config[f'platform::network::{networktype}::{family}::params::controller_address_url'] = \
+                configdata[family]['controller_address_url']
+            config[f'platform::network::{networktype}::{family}::params::controller0_address'] = \
+                configdata[family]['controller0_address']
+            config[f'platform::network::{networktype}::{family}::params::controller1_address'] = \
+                configdata[family]['controller1_address']
+
+        if network.primary_pool_family \
+                and (network.primary_pool_family).lower() in configdata.keys():
+            family = network.primary_pool_family.lower()
+            config[f'platform::network::{networktype}::params::subnet_version'] = \
+                configdata[family]['subnet_version']
+            config[f'platform::network::{networktype}::params::subnet_network'] = \
+                configdata[family]['subnet_network']
+            config[f'platform::network::{networktype}::params::subnet_network_url'] = \
+                configdata[family]['subnet_network_url']
+            config[f'platform::network::{networktype}::params::subnet_prefixlen'] = \
+                configdata[family]['subnet_prefixlen']
+            config[f'platform::network::{networktype}::params::subnet_netmask'] = \
+                configdata[family]['subnet_netmask']
+            config[f'platform::network::{networktype}::params::subnet_start'] = \
+                configdata[family]['subnet_start']
+            config[f'platform::network::{networktype}::params::subnet_end'] = \
+                configdata[family]['subnet_end']
+            config[f'platform::network::{networktype}::params::controller_address'] = \
+                configdata[family]['controller_address']
+            config[f'platform::network::{networktype}::params::controller_address_url'] = \
+                configdata[family]['controller_address_url']
+            config[f'platform::network::{networktype}::params::controller0_address'] = \
+                configdata[family]['controller0_address']
+            config[f'platform::network::{networktype}::params::controller1_address'] = \
+                configdata[family]['controller1_address']
+        else:
+            LOG.error(f"Network {network.name}, type {network.type} does not have a valid"
+                      f" primary pool address family: {network.primary_pool_family}.")
+
+        return config
 
     def _get_pxeboot_interface_config(self):
         return self._get_interface_config(constants.NETWORK_TYPE_PXEBOOT)
@@ -218,6 +261,53 @@ class NetworkingPuppet(base.BasePuppet):
 
     def _get_admin_interface_config(self):
         return self._get_interface_config(constants.NETWORK_TYPE_ADMIN)
+
+    def _get_network_gateway_config(self, networktype, config):
+        try:
+            network = self.dbapi.network_get_by_type(networktype)
+        except exception.NetworkTypeNotFound:
+            LOG.debug(f"Network type {networktype} not found")
+            return {}
+
+        net_pools = self.dbapi.network_addrpool_get_by_network_id(network.id)
+        pool_uuid_list = list()
+        if net_pools:
+            for net_pool in net_pools:
+                pool_uuid_list.append(net_pool.address_pool_uuid)
+        else:
+            # we are coming from an upgrade without data-migration implemented for the
+            # dual stack feature
+            LOG.warning(f"Network {network.name} does not have network to address pool objects")
+            pool_uuid_list.append(network.pool_uuid)
+
+        configdata = dict()
+        for pool_uuid in pool_uuid_list:
+            address_pool = self.dbapi.address_pool_get(pool_uuid)
+
+            family = IPv4 if address_pool.family == constants.IPV4_FAMILY else IPv6
+            configdata.update({family: {}})
+
+            try:
+                gateway_address = self._get_address_by_name_and_family(
+                    constants.CONTROLLER_GATEWAY, address_pool.family, networktype).address
+            except exception.AddressNotFoundByNameAndFamily:
+                gateway_address = None
+            configdata[family].update({'gateway_address': gateway_address})
+
+        for family in configdata:
+            config.update({f'platform::network::{networktype}::{family}::params::gateway_address':
+                                configdata[family]['gateway_address']})
+
+        if network.primary_pool_family \
+                and (network.primary_pool_family).lower() in configdata.keys():
+            family = network.primary_pool_family.lower()
+            config.update({f'platform::network::{networktype}::params::gateway_address':
+                                configdata[family]['gateway_address']})
+        else:
+            LOG.error(f"Network {network.name}, type {network.type} does not have a valid"
+                      f" primary pool address family: {network.primary_pool_family}.")
+
+        return config
 
     def _set_ptp_instance_global_parameters(self, ptp_instances, ptp_parameters_instance):
 
@@ -546,10 +636,9 @@ class NetworkingPuppet(base.BasePuppet):
                 self.context, network_interface)
             interface_devices = interface.get_interface_devices(
                 self.context, network_interface)
-            network_id = interface.find_network_id_by_networktype(
-                self.context, networktype)
             # Convert the dash to underscore because puppet parameters cannot
             # have dashes
+            network = self.context['networks'].get(networktype, None)
             networktype = networktype.replace('-', '_')
             config.update({
                 'platform::network::%s::params::interface_name' % networktype:
@@ -560,13 +649,23 @@ class NetworkingPuppet(base.BasePuppet):
                     network_interface.imtu
             })
 
-            interface_address = interface.get_interface_primary_address(
-                self.context, network_interface, network_id)
-            if interface_address:
+            addresses = self.context['addresses'].get(network_interface['ifname'], [])
+            for address in addresses:
+                family = "ipv4" if address.family == constants.IPV4_FAMILY else "ipv6"
                 config.update({
-                    'platform::network::%s::params::interface_address' %
-                    networktype:
-                        interface_address['address']
+                    f'platform::network::{networktype}::{family}::params::interface_address':
+                        address.address
                 })
+
+            if network:
+                for address in addresses:
+                    family = "ipv4" if address.family == constants.IPV4_FAMILY else "ipv6"
+                    prim_family = network.primary_pool_family.lower()
+                    if prim_family == family:
+                        config.update({
+                            f'platform::network::{networktype}::params::interface_address':
+                                address.address
+                        })
+                    break
 
         return config

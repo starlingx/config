@@ -5154,3 +5154,11 @@ class Connection(object):
     @abc.abstractmethod
     def kube_app_bundle_destroy_by_file_path(self, file_path):
         """Delete records from kube_app_bundle that match a file path"""
+
+    @abc.abstractmethod
+    def address_get_by_name_and_family(self, name, family):
+        """ Search database address using name and family
+
+        :param name: address name.
+        :param family: address family (4 or 6).
+        """
