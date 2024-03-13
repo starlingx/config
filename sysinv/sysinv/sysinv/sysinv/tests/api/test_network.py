@@ -223,15 +223,21 @@ class TestPostMixin(NetworkTestCase):
         update_ldap_client_config = "sysinv.conductor.rpcapi." \
                                         "ConductorAPI." \
                                         "update_ldap_client_config"
+        update_ldap_nat_config = "sysinv.conductor.rpcapi." \
+                                        "ConductorAPI." \
+                                        "update_ldap_nat_config"
         with mock.patch('sysinv.common.utils.is_initial_config_complete',
                         lambda: True), \
             mock.patch(update_ldap_client_config,
-                       m.update_ldap_client_config):
+                       m.update_ldap_client_config), \
+            mock.patch(update_ldap_nat_config,
+                       m.update_ldap_nat_config):
             self._test_create_network_success(
                 'system-controller',
                 constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
                 self.system_controller_subnet)
         m.update_ldap_client_config.assert_called_once()
+        m.update_ldap_nat_config.assert_called_once()
 
     def test_create_success_pxeboot(self):
         self._test_create_network_success(

@@ -206,11 +206,11 @@ class InterfaceNetworkController(rest.RestController):
                 ethernet_port_mac = tmp_interface['imac']
             _update_host_mgmt_mac(host, ethernet_port_mac)
             cutils.perform_distributed_cloud_config(pecan.request.dbapi,
-                                                    interface_id)
+                                                    interface_id, host)
         elif network_type == constants.NETWORK_TYPE_ADMIN:
             pecan.request.rpcapi.update_admin_config(pecan.request.context, host)
             cutils.perform_distributed_cloud_config(pecan.request.dbapi,
-                                                    interface_id)
+                                                    interface_id, host)
         elif network_type == constants.NETWORK_TYPE_OAM:
             pecan.request.rpcapi.initialize_oam_config(pecan.request.context, host)
 
