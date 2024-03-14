@@ -26,6 +26,7 @@ RC_FILE_PATH = '/etc/platform/openrc'
 # NOTE: Not the full user list, only the ones necessary for endpoint
 # reconfiguration are listed here
 BASE_USERS = [
+    'fm',
     'patching',
     'usm',
     'vim',
