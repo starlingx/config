@@ -9648,6 +9648,11 @@ class ConductorManager(service.PeriodicService):
                                                 personalities,
                                                 host_uuids=[host.uuid])
 
+        if os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_ONGOING):
+            LOG.info("Admin network changes will be applied after the next "
+                     "host-unlock due to Management Network reconfiguration.")
+            return
+
         if disable:
             # Note: The SNAT LDAP rule will be removed before the address
             # pool deletion.  No need to do it here.
