@@ -29,7 +29,8 @@ BASE_USERS = [
     'patching',
     'usm',
     'vim',
-    'smapi'
+    'smapi',
+    'barbican'
 ]
 
 ADDITIONAL_SYSTEMCONTROLLER_USERS = [
