@@ -57,6 +57,7 @@ REPORT_HTTP_CONFIG = 'http_config'
 REPORT_KERNEL_CONFIG = 'host_kernel_config'
 REPORT_UPGRADE_ABORT = 'upgrade_abort'
 REPORT_APPARMOR_CONFIG = 'host_apparmor_config'
+REPORT_UPGRADE_CONTROL_PLANE = 'upgrade_control_plane'
 
 
 def puppet_apply_manifest(ip_address, personality,
