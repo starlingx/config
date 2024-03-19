@@ -381,6 +381,7 @@ class KubeOperator(object):
         self._kube_client_custom_objects = None
         self._kube_client_admission_registration = None
         self._kube_client_rbac_authorization = None
+        self._kube_client_extensions = None
 
     def _load_kube_config(self):
         if not is_k8s_configured():
@@ -434,6 +435,12 @@ class KubeOperator(object):
             self._load_kube_config()
             self._kube_client_rbac_authorization = client.RbacAuthorizationV1Api()
         return self._kube_client_rbac_authorization
+
+    def _get_kubernetesclient_extensions(self):
+        if not self._kube_client_extensions:
+            self._load_kube_config()
+            self._kube_client_extensions = client.ApiextensionsV1Api()
+        return self._kube_client_extensions
 
     def _retry_on_urllibs3_MaxRetryError(ex):  # pylint: disable=no-self-argument
         if isinstance(ex, MaxRetryError):
