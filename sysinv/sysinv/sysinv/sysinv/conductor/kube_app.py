@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2018-2023 Wind River Systems, Inc.
+# Copyright (c) 2018-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -948,8 +948,32 @@ class AppOperator(object):
             os.chown(constants.APP_INSTALL_ROOT_PATH, orig_uid,
                      grp.getgrnam(constants.SYSINV_SYSADMIN_GRPNAME).gr_gid)
             with open(os.devnull, "w") as fnull:
+
+                # Check if all charts are good to be uploaded
+                charts_to_upload = set()
                 for chart in charts:
-                    subprocess.check_call(['helm-upload', helm_repo, chart],  # pylint: disable=not-callable
+                    try:
+                        subprocess.check_call(['helm-upload',  # pylint: disable=not-callable
+                                               'check-only',
+                                               helm_repo, chart],
+                                              env=env, stdout=fnull, stderr=fnull)
+                        charts_to_upload.add(chart)
+                        LOG.debug("Helm chart %s ready to be uploaded" % os.path.basename(chart))
+                    except subprocess.CalledProcessError as e:
+                        if e.returncode == CHART_UPLOAD_FILE_EXISTS_ERROR_CODE:
+                            # If the exact same chart already exists then just log a
+                            # warning and proceed with the upload process.
+                            LOG.warning("Chart %s already exists in the %s repository. "
+                                        "Skipping upload." % (os.path.basename(chart), helm_repo))
+                            continue
+                        else:
+                            raise
+
+                # All charts checked. They can be uploaded now.
+                for chart in charts_to_upload:
+                    subprocess.check_call(['helm-upload',  # pylint: disable=not-callable
+                                           'upload-only',
+                                           helm_repo, chart],
                                           env=env, stdout=fnull, stderr=fnull)
                     LOG.info("Helm chart %s uploaded" % os.path.basename(chart))
 
@@ -960,12 +984,6 @@ class AppOperator(object):
             if e.returncode == CHART_UPLOAD_COPY_ERROR_CODE:
                 reason = "Error while copying chart file %s to %s repository" \
                           % (chart, helm_repo)
-            elif e.returncode == CHART_UPLOAD_FILE_EXISTS_ERROR_CODE:
-                # If the exact same chart already exists then just log a
-                # warning and proceed with the upload process.
-                LOG.warning("Chart %s already exists in the %s repository. "
-                            "Skipping upload." %
-                            (os.path.basename(chart), helm_repo))
             elif e.returncode == CHART_UPLOAD_VERSION_EXISTS_ERROR_CODE:
                 reason = "The incoming chart %s matches the same version of " \
                          "an existing chart in the %s repository that " \
@@ -974,9 +992,8 @@ class AppOperator(object):
             else:
                 reason = str(e)
 
-            if e.returncode != CHART_UPLOAD_FILE_EXISTS_ERROR_CODE:
-                raise exception.KubeAppUploadFailure(
-                    name=app.name, version=app.version, reason=reason)
+            raise exception.KubeAppUploadFailure(
+                name=app.name, version=app.version, reason=reason)
         except Exception as e:
             raise exception.KubeAppUploadFailure(
                 name=app.name, version=app.version, reason=str(e))
