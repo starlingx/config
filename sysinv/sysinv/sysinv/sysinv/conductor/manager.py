@@ -15789,7 +15789,11 @@ class ConductorManager(service.PeriodicService):
         labels = self.dbapi.label_get_by_host(host['uuid'])
 
         if not cutils.has_power_management_enabled(labels):
-            personalities = [constants.WORKER]
+            if cutils.is_aio_system(self.dbapi):
+                personalities = [constants.WORKER,
+                                 constants.CONTROLLER]
+            else:
+                personalities = [constants.WORKER]
 
             config_uuid = self._config_update_hosts(context,
                                                     personalities,
