@@ -172,7 +172,7 @@ class StrongswanPuppet(object):
         # swanctl.add_remote('id', 'CN=ipsec-*')
         swanctl.add_remote('id', 'CN=*')
         swanctl.add_remote('auth', 'pubkey')
-        swanctl.add_remote('cacerts', constants.TRUSTED_CA_CERT_FILE)
+        swanctl.add_remote('cacerts', constants.TRUSTED_CA_CERT_FILES)
 
         swanctl.add_node('mode', 'transport')
         swanctl.add_node('start_action', 'trap')

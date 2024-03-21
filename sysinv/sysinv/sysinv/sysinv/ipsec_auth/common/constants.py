@@ -24,9 +24,17 @@ NAMESPACE_DEPLOYMENT = 'deployment'
 CLUSTER_ISSUER_SYSTEM_LOCAL_CA = 'system-local-ca'
 SECRET_SYSTEM_LOCAL_CA = 'system-local-ca'
 
-TRUSTED_CA_CERT_FILE = 'system-local-ca.crt'
+# The system-local-ca certificates are stored by IPsec client
+# named w/ 0 or 1 in their names. The system-local-ca-0.crt file represents
+# the last tls certificate associated with system-local-ca,
+# while system-local-ca-1.crt file is the current certificate
+# associated with system-local-ca.
+TRUSTED_CA_CERT_FILE_0 = 'system-local-ca-0.crt'
+TRUSTED_CA_CERT_FILE_1 = 'system-local-ca-1.crt'
+TRUSTED_CA_CERT_FILES = TRUSTED_CA_CERT_FILE_0 + ',' + TRUSTED_CA_CERT_FILE_1
 TRUSTED_CA_CERT_DIR = '/etc/swanctl/x509ca/'
-TRUSTED_CA_CERT_PATH = TRUSTED_CA_CERT_DIR + TRUSTED_CA_CERT_FILE
+TRUSTED_CA_CERT_0_PATH = TRUSTED_CA_CERT_DIR + TRUSTED_CA_CERT_FILE_0
+TRUSTED_CA_CERT_1_PATH = TRUSTED_CA_CERT_DIR + TRUSTED_CA_CERT_FILE_1
 
 CERT_SYSTEM_LOCAL_DIR = '/etc/swanctl/x509/'
 CERT_SYSTEM_LOCAL_PRIVATE_DIR = '/etc/swanctl/private/'
