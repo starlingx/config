@@ -186,6 +186,7 @@ audit_intervals_opts = [
        cfg.IntOpt('kube_upgrade_states', default=1800),
        cfg.IntOpt('prune_runtime_config', default=43200),
        cfg.IntOpt('k8s_cluster_health', default=180),
+       cfg.IntOpt('alarm_audit_interval', default=1800),
                   ]
 
 app_framework_opts = [
@@ -19139,6 +19140,25 @@ class ConductorManager(service.PeriodicService):
     @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.prune_runtime_config)
     def _audit_prune_runtime_config(self):
         self._prune_runtime_config_table()
+
+    def _prune_stale_backup_alarms(self, context):
+        """Prune stale backup alarms older than 1 Hour"""
+        backup_alarms = self.fm_api.get_faults_by_id(
+            fm_constants.FM_ALARM_ID_BACKUP_IN_PROGRESS)
+        if backup_alarms:
+            for alarm in backup_alarms:
+                alarm_ts = datetime.strptime(alarm.timestamp, "%Y-%m-%d %H:%M:%S.%f")
+                if (datetime.utcnow() - alarm_ts).total_seconds() > \
+                        2 * CONF.conductor_periodic_task_intervals.alarm_audit_interval:
+                    LOG.info("Pruning stale backup alarm alarm_id = %s" % alarm.alarm_id)
+                    self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_BACKUP_IN_PROGRESS,
+                            alarm.entity_instance_id)
+
+    @periodic_task.periodic_task(
+        spacing=CONF.conductor_periodic_task_intervals.alarm_audit_interval
+    )
+    def _audit_prune_stale_backup_alarms(self, context):
+        self._prune_stale_backup_alarms(context)
 
 
 def device_image_state_sort_key(dev_img_state):
