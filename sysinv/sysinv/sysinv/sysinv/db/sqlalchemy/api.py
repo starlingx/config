@@ -9509,12 +9509,12 @@ class Connection(api.Connection):
     def runtime_config_get(self, id, host_id=None):
         query = model_query(models.RuntimeConfig)
 
-        if utils.is_uuid_like(id):
+        if isinstance(id, int):
+            query = query.filter_by(id=id)
+        else:
             query = query.filter_by(config_uuid=id)
             if host_id:
                 query = query.filter_by(forihostid=host_id)
-        else:
-            query = query.filter_by(id=id)
 
         try:
             result = query.one()
