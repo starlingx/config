@@ -1711,7 +1711,7 @@ class ManagerTestCase(base.DbTestCase):
         }
 
         mock_config_apply_runtime_manifest.assert_called_with(mock.ANY, '273cfafd-886d-43ec-9478-8328727b34cc',
-                                                                config_dict, skip_update_config=True)
+                                                                config_dict)
 
     def test_handle_k8s_upgrade_control_plane_success_first_master(self):
         # Create controller-0
@@ -1813,7 +1813,7 @@ class ManagerTestCase(base.DbTestCase):
         }
 
         mock_config_apply_runtime_manifest.assert_called_with(mock.ANY, '273cfafd-886d-43ec-9478-8328727b34cc',
-                                                                config_dict, skip_update_config=True)
+                                                                config_dict)
 
     def test_handle_k8s_upgrade_control_plane_success_second_master(self):
         # Create controller-0
