@@ -18,6 +18,7 @@ usr/bin/cert-mon
 usr/bin/ipsec-server
 usr/bin/ipsec-client
 usr/bin/kube-cert-rotation.sh
+usr/bin/ipsec-cert-renew.sh
 usr/bin/sysinv-agent
 usr/bin/sysinv-api
 usr/bin/sysinv-app
