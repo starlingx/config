@@ -2120,6 +2120,7 @@ DEFAULT_DNS_SERVICE_DOMAIN = 'cluster.local'
 
 # First boot
 FIRST_BOOT_FLAG = os.path.join(tsc.PLATFORM_CONF_PATH, ".first_boot")
+VOLATILE_FIRST_BOOT_FLAG = os.path.join(tsc.VOLATILE_PATH, ".first_boot")
 
 # Ansible bootstrap
 ANSIBLE_BOOTSTRAP_FLAG = os.path.join(tsc.VOLATILE_PATH, ".ansible_bootstrap")
