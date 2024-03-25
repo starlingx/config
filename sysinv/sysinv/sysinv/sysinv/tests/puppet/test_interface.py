@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2021 Wind River Systems, Inc.
+# Copyright (c) 2017-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -10,10 +10,10 @@ import uuid
 import yaml
 import mock
 import netaddr
+import json
 
 from sysinv.common import utils
 from sysinv.common import constants
-from sysinv.common import exception
 from sysinv.puppet import interface
 from sysinv.puppet import puppet
 from sysinv.objects import base as objbase
@@ -22,6 +22,7 @@ from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
 from sysinv.tests.puppet import base
 from sysinv.db import api as db_api
+from collections import defaultdict
 
 
 NETWORKTYPES_WITH_V4_ADDRESSES = [constants.NETWORK_TYPE_MGMT,
@@ -57,83 +58,23 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
             observed = observed.id
         super(InterfaceTestCaseMixin, self).assertEqual(expected, observed, message)
 
-    def _setup_address_and_routes(self, iface):
-        if not iface['ifclass'] or iface['ifclass'] == constants.INTERFACE_CLASS_NONE:
-            return None
-        if iface['ifclass'] == constants.INTERFACE_CLASS_PLATFORM:
-            address = {'interface_id': iface['id'],
-                       'family': 4,
-                       'prefix': 24,
-                       'name': 'test_addr4',
-                       'address': '192.168.1.2'}
-            self.addresses.append(dbutils.create_test_address(**address))
-        elif iface['ifclass'] == constants.INTERFACE_CLASS_DATA:
-            address = {'interface_id': iface['id'],
-                       'family': 6,
-                       'prefix': 64,
-                       'name': 'test_addr6',
-                       'address': '2001:1::2'}
-            self.addresses.append(dbutils.create_test_address(**address))
-        if iface['ifclass'] == constants.INTERFACE_CLASS_DATA:
-            route = {'interface_id': iface['id'],
-                     'family': 4,
-                     'prefix': 24,
-                     'network': '192.168.1.0',
-                     'gateway': '192.168.1.1',
-                     'metric': '1'}
-            self.routes.append(dbutils.create_test_route(**route))
-            route = {'interface_id': iface['id'],
-                     'family': 4,
-                     'prefix': 0,
-                     'network': '0.0.0.0',
-                     'gateway': '192.168.1.1',
-                     'metric': '1'}
-            self.routes.append(dbutils.create_test_route(**route))
-        if iface['ifclass'] == constants.INTERFACE_CLASS_DATA:
-            route = {'interface_id': iface['id'],
-                     'family': 6,
-                     'prefix': 64,
-                     'network': '2001:1::',
-                     'gateway': '2001:1::1',
-                     'metric': '1'}
-            self.routes.append(dbutils.create_test_route(**route))
-            route = {'interface_id': iface['id'],
-                     'family': 6,
-                     'prefix': 0,
-                     'network': '::',
-                     'gateway': '2001:1::1',
-                     'metric': '1'}
-            self.routes.append(dbutils.create_test_route(**route))
-
-    def _find_network_by_type(self, networktype):
-        for network in self.networks:
-            if network['type'] == networktype:
-                return network
-
-    def _find_address_pool_by_uuid(self, pool_uuid):
-        for pool in self.address_pools:
-            if pool['uuid'] == pool_uuid:
-                return pool
-
-    def _get_network_ids_by_type(self, networktype):
+    def _get_network_type_list(self, networktype):
         if isinstance(networktype, list):
             networktypelist = networktype
         elif networktype:
             networktypelist = [networktype]
         else:
             networktypelist = []
+        return networktypelist
+
+    def _get_network_ids_by_type(self, networktype):
+        networktypelist = self._get_network_type_list(networktype)
         networks = []
         for network_type in networktypelist:
             network = self._find_network_by_type(network_type)
-            networks.append(str(network['id']))
+            if network:
+                networks.append(str(network['id']))
         return networks
-
-    def _update_interface_address_pool(self, iface, networktype):
-        network = self._find_network_by_type(networktype)
-        pool = self._find_address_pool_by_uuid(network['pool_uuid'])
-        addresses = self.context['addresses'].get(iface['ifname'], [])
-        for address in addresses:
-            address['pool_uuid'] = pool['uuid']
 
     def _create_ethernet_test(self, ifname=None, ifclass=None,
                               networktype=None, hostname=None,
@@ -160,7 +101,10 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                      'networktype': networktype,
                      'imtu': 1500,
                      'sriov_numvfs': kwargs.get('sriov_numvfs', 0),
-                     'sriov_vf_driver': kwargs.get('iface_sriov_vf_driver', None)}
+                     'sriov_vf_driver': kwargs.get('iface_sriov_vf_driver', None),
+                     'max_tx_rate': kwargs.get('max_tx_rate', None),
+                     'ipv4_mode': kwargs.get('ipv4_mode', None),
+                     'ipv6_mode': kwargs.get('ipv6_mode', None)}
         db_interface = dbutils.create_test_interface(**interface)
         for network in networks:
             dbutils.create_test_interface_network_assign(db_interface['id'], network)
@@ -185,13 +129,13 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                 'sriov_vfs_pci_address': kwargs.get('sriov_vfs_pci_address', '')}
         db_port = dbutils.create_test_ethernet_port(**port)
         self.ports.append(db_port)
-        self._setup_address_and_routes(db_interface)
         if hostname:
             self._assign_addresses_to_interface(hostname, db_interface, networktype)
+        db_interface.networktypelist = self._get_network_type_list(networktype)
         return db_port, db_interface
 
     def _create_vlan_test(self, ifname, ifclass, networktype, vlan_id,
-                          lower_iface=None, hostname=None):
+                          lower_iface=None, hostname=None, **kwargs):
         if not lower_iface:
             lower_port, lower_iface = self._create_ethernet_test()
         if not ifname:
@@ -215,20 +159,26 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                      'ifclass': ifclass,
                      'networks': networks,
                      'networktype': networktype,
-                     'imtu': 1500}
+                     'imtu': 1500,
+                     'ipv4_mode': kwargs.get('ipv4_mode', None),
+                     'ipv6_mode': kwargs.get('ipv6_mode', None)}
         lower_iface['used_by'].append(interface['ifname'])
         db_interface = dbutils.create_test_interface(**interface)
         for network in networks:
             dbutils.create_test_interface_network_assign(db_interface['id'], network)
         self.interfaces.append(db_interface)
-        self._setup_address_and_routes(db_interface)
         if hostname:
             self._assign_addresses_to_interface(hostname, db_interface, networktype)
+        db_interface.networktypelist = self._get_network_type_list(networktype)
         return db_interface
 
-    def _create_bond_test(self, ifname, ifclass=None, networktype=None, hostname=None):
-        port1, iface1 = self._create_ethernet_test()
-        port2, iface2 = self._create_ethernet_test()
+    def _create_bond_test(self, ifname, ifclass=None, networktype=None, hostname=None, **kwargs):
+        iface1 = kwargs.get('iface1', None)
+        if not iface1:
+            port1, iface1 = self._create_ethernet_test()
+        iface2 = kwargs.get('iface2', None)
+        if not iface2:
+            port2, iface2 = self._create_ethernet_test()
         interface_id = len(self.interfaces)
         if not ifname:
             ifname = 'bond' + str(interface_id)
@@ -250,14 +200,21 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                      'networks': networks,
                      'networktype': networktype,
                      'imtu': 1500,
-                     'txhashpolicy': 'layer2'}
+                     'txhashpolicy': 'layer2',
+                     'primary_reselect': kwargs.get('primary_reselect', None),
+                     'ipv4_mode': kwargs.get('ipv4_mode', None),
+                     'ipv6_mode': kwargs.get('ipv6_mode', None)}
 
-        lacp_types = [constants.NETWORK_TYPE_MGMT,
-                      constants.NETWORK_TYPE_PXEBOOT]
-        if networktype in lacp_types:
-            interface['aemode'] = '802.3ad'
+        aemode = kwargs.get('aemode', None)
+        if aemode:
+            interface['aemode'] = aemode
         else:
-            interface['aemode'] = 'balanced'
+            lacp_types = [constants.NETWORK_TYPE_MGMT,
+                        constants.NETWORK_TYPE_PXEBOOT]
+            if networktype in lacp_types:
+                interface['aemode'] = '802.3ad'
+            else:
+                interface['aemode'] = 'balanced'
 
         iface1['used_by'].append(interface['ifname'])
         iface2['used_by'].append(interface['ifname'])
@@ -265,9 +222,9 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
         for network in networks:
             dbutils.create_test_interface_network_assign(db_interface['id'], network)
         self.interfaces.append(db_interface)
-        self._setup_address_and_routes(db_interface)
         if hostname:
             self._assign_addresses_to_interface(hostname, db_interface, networktype)
+        db_interface.networktypelist = self._get_network_type_list(networktype)
         return db_interface
 
     def _create_vf_test(self, ifname, num_vfs, vf_driver=None,
@@ -303,7 +260,6 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
         lower_iface['used_by'].append(interface['ifname'])
         db_interface = dbutils.create_test_interface(**interface)
         self.interfaces.append(db_interface)
-        self._setup_address_and_routes(db_interface)
         return db_interface
 
     def _create_test_host(self, personality, subfunction=None):
@@ -318,42 +274,88 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
 
         return dbutils.create_test_ihost(**host)
 
+    def _create_address_for_interface(self, iface, networktype=None, family=None):
+
+        if not networktype:
+            if len(iface.networktypelist) > 0:
+                networktype = iface.networktypelist[0]
+
+        network = None
+        if networktype:
+            network = self._find_network_by_type(networktype)
+
+        addrpool = None
+        if network:
+            addrpools = self._find_network_address_pools(network.id)
+            if family:
+                for pool in addrpools:
+                    if pool.family == family:
+                        addrpool = pool
+                        break
+            elif len(addrpools) > 0:
+                addrpool = addrpools[0]
+
+        if addrpool:
+            next_address = netaddr.IPAddress(addrpool.network) + 10
+            address_fields = {'interface_id': iface['id'],
+                              'address_pool_id': addrpool.id,
+                              'family': addrpool.family,
+                              'prefix': addrpool.prefix,
+                              'address': str(next_address)}
+        else:
+            if family == constants.IPV6_FAMILY:
+                address_fields = {'family': constants.IPV6_FAMILY,
+                                  'prefix': 64,
+                                  'address': 'fd08::a'}
+            else:
+                address_fields = {'family': constants.IPV4_FAMILY,
+                                  'prefix': 24,
+                                  'address': '192.168.1.10'}
+            address_fields['interface_id'] = iface['id']
+
+        address = dbutils.create_test_address(**address_fields)
+        self.addresses.append(address)
+
+        return network, address
+
     def _assign_addresses_to_pool(self):
 
         dbapi = db_api.get_instance()
 
-        pool_values = {'name': 'oam'}
-        oam_pool = dbapi.address_pool_query(pool_values)
-        pool_values = {'name': 'management'}
-        mgmt_pool = dbapi.address_pool_query(pool_values)
-        pool_values = {'name': 'cluster-host'}
-        cluster_host_pool = dbapi.address_pool_query(pool_values)
-        pool_values = {'name': 'pxeboot'}
-        pxeboot_pool = dbapi.address_pool_query(pool_values)
-        pool_values = {'name': 'admin'}
-        admin_pool = dbapi.address_pool_query(pool_values)
+        network_names = {
+            'oam': 'oam',
+            'mgmt': 'management',
+            'cluster-host': 'cluster-host',
+            'pxeboot': 'pxeboot',
+            'admin': 'admin'
+        }
+
+        addrpool_index = {}
+        addrpools = dbapi.address_pools_get_all()
+        for addrpool in addrpools:
+            if addrpool.name:
+                addrpool_index[addrpool.name] = (
+                    addrpool,
+                    netaddr.IPNetwork(str(addrpool.network) + '/' + str(addrpool.prefix))
+                )
 
         addresses = dbapi.addresses_get_all()
         for addr in addresses:
-            if (addr.name):
-                if (addr.name.lower().endswith("-oam")):
-                    values = {'address_pool_id': oam_pool.id}
-                    dbapi.address_update(addr.uuid, values)
-                elif (addr.name.lower().endswith("-mgmt")):
-                    values = {'address_pool_id': mgmt_pool.id}
-                    dbapi.address_update(addr.uuid, values)
-                elif (addr.name.lower().endswith("-cluster-host")):
-                    values = {'address_pool_id': cluster_host_pool.id}
-                    dbapi.address_update(addr.uuid, values)
-                elif (addr.name.lower().endswith("-pxeboot")):
-                    values = {'address_pool_id': pxeboot_pool.id}
-                    dbapi.address_update(addr.uuid, values)
-                elif (addr.name.lower().endswith("-admin")):
-                    values = {'address_pool_id': admin_pool.id}
-                    dbapi.address_update(addr.uuid, values)
+            if not addr.name:
+                continue
+            for network_type, network_name in network_names.items():
+                if addr.name.endswith("-" + network_type):
+                    pool_name = f"{network_name}-ipv{addr.family}"
+                    addrpool = addrpool_index.get(pool_name, None)
+                    if not addrpool:
+                        break
+                    ipaddr = netaddr.IPAddress(addr.address)
+                    if ipaddr not in addrpool[1]:
+                        break
+                    dbapi.address_update(addr.uuid, {'address_pool_id': addrpool[0].id})
+                    break
 
     def _assign_addresses_to_interface(self, hostname, interface, networktypes):
-
         if isinstance(networktypes, list):
             networktypelist = networktypes
         elif networktypes:
@@ -365,67 +367,25 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
 
         addresses = dbapi.addresses_get_all()
 
+        name_index = {
+            hostname + "-oam": constants.NETWORK_TYPE_OAM,
+            hostname + "-mgmt": constants.NETWORK_TYPE_MGMT,
+            hostname + "-cluster-host": constants.NETWORK_TYPE_CLUSTER_HOST,
+            hostname + "-pxeboot": constants.NETWORK_TYPE_PXEBOOT,
+            hostname + "-admin": constants.NETWORK_TYPE_ADMIN,
+        }
+
         for network_type in networktypelist:
             for addr in addresses:
                 if not (addr.name):
                     continue
                 try:
-                    if (addr.name == (hostname + "-oam")) and (network_type == constants.NETWORK_TYPE_OAM):
-                        dbapi.address_update(addr.uuid, {'interface_id': interface.id})
-                    elif (addr.name == (hostname + "-mgmt")) and (network_type == constants.NETWORK_TYPE_MGMT):
-                        dbapi.address_update(addr.uuid, {'interface_id': interface.id})
-                    elif (addr.name == (hostname + "-cluster-host")) \
-                            and (network_type == constants.NETWORK_TYPE_CLUSTER_HOST):
-                        dbapi.address_update(addr.uuid, {'interface_id': interface.id})
-                    elif (addr.name == (hostname + "-pxeboot")) and (network_type == constants.NETWORK_TYPE_PXEBOOT):
-                        dbapi.address_update(addr.uuid, {'interface_id': interface.id})
-                    elif (addr.name == (hostname + "-admin")) and (network_type == constants.NETWORK_TYPE_ADMIN):
-                        dbapi.address_update(addr.uuid, {'interface_id': interface.id})
-                    elif (addr.ifname == interface.ifname and addr.interface_id is None):
+                    if (name_index.get(addr.name, None) == network_type
+                            or (addr.ifname == interface.ifname and addr.interface_id is None)):
                         dbapi.address_update(addr.uuid, {'interface_id': interface.id})
                 except Exception as ex:
-                    print(f"EXCEPTION {addr.name} {ex}")
-
-    def _create_addresses_for_node(self, nodename, network_type):
-
-        dbapi = db_api.get_instance()
-
-        addr_pool = None
-        if (network_type == constants.NETWORK_TYPE_OAM):
-            addr_pool = dbapi.address_pool_query({'name': 'oam'})
-        elif (network_type == constants.NETWORK_TYPE_MGMT):
-            addr_pool = dbapi.address_pool_query({'name': 'management'})
-        elif (network_type == constants.NETWORK_TYPE_CLUSTER_HOST):
-            addr_pool = dbapi.address_pool_query({'name': 'cluster-host'})
-        elif (network_type == constants.NETWORK_TYPE_PXEBOOT):
-            addr_pool = dbapi.address_pool_query({'name': 'pxeboot'})
-        elif (network_type == constants.NETWORK_TYPE_ADMIN):
-            addr_pool = dbapi.address_pool_query({'name': 'admin'})
-
-        if addr_pool:
-            ip_address = netaddr.IPAddress(addr_pool.network)
-            if addr_pool.floating_address_id:
-                ip_address = ip_address + 1
-            if addr_pool.controller0_address_id:
-                ip_address = ip_address + 2
-            if addr_pool.controller1_address_id:
-                ip_address = ip_address + 3
-            if addr_pool.gateway_address_id:
-                ip_address = ip_address + 4
-            for idx in range(4, 30):
-                ip_address = ip_address + idx
-                try:
-                    dbapi.address_get_by_address(str(ip_address))
-                except exception.AddressNotFoundByAddress:
-                    address = {
-                        'family': addr_pool.family,
-                        'prefix': addr_pool.prefix,
-                        'name': f'{nodename}-{network_type}',
-                        'address': str(ip_address),
-                        'address_pool_id': addr_pool.id
-                    }
-                    dbutils.create_test_address(**address)
-                    break
+                    print(f"Failed to link address {addr.name} to interface "
+                          f"{interface.ifname}: {ex}")
 
     @puppet.puppet_context
     def _update_context(self):
@@ -448,18 +408,13 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
         pass
 
 
-class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
+class InterfaceTestCase1(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
 
     def setUp(self):
-        super(InterfaceTestCase, self).setUp()
+        super(InterfaceTestCase1, self).setUp()
         self._setup_context()
-        p = mock.patch('sysinv.puppet.interface.is_syscfg_network')
-        self.mock_puppet_interface_sysconfig = p.start()
-        self.mock_puppet_interface_sysconfig.return_value = True
-        self.addCleanup(p.stop)
 
     def _setup_configuration(self):
-        # Create a single port/interface for basic function testing
         self.host = self._create_test_host(constants.CONTROLLER)
         self.port, self.iface = self._create_ethernet_test(
             "mgmt0", constants.INTERFACE_CLASS_PLATFORM,
@@ -468,26 +423,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.oam_gateway_address = self.oam_subnet[1]
 
     def _update_context(self):
-        # ensure DB entries are updated prior to updating the context which
-        # will re-read the entries from the DB.
-        self.host.save(self.admin_context)
-        self.port.save(self.admin_context)
-        self.iface.save(self.admin_context)
-        super(InterfaceTestCase, self)._update_context()
-
-    def test_is_platform_network_type_true(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_MGMT)
-        result = interface.is_platform_network_type(self.iface)
-        self.assertTrue(result)
-
-    def test_is_platform_network_type_false(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        result = interface.is_platform_network_type(self.iface)
-        self.assertFalse(result)
+        super(InterfaceTestCase1, self)._update_context()
 
     def test_get_port_interface_id_index(self):
         index = self.operator.interface._get_port_interface_id_index(self.host)  # pylint: disable=no-member
@@ -501,15 +437,9 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             self.assertTrue(port['pciaddr'] in index)
             self.assertIn(port, index[port['pciaddr']])
 
-    def test_get_interface_name_index(self):
-        index = self.operator.interface._get_interface_name_index(self.interfaces)  # pylint: disable=no-member
-        for iface in self.interfaces:
-            self.assertTrue(iface['ifname'] in index)
-            self.assertEqual(index[iface['ifname']], iface)
-
     def test_get_network_type_index(self):
         index = self.operator.interface._get_network_type_index()  # pylint: disable=no-member
-        for network in self.networks:
+        for network in self._get_all_networks():
             self.assertTrue(network['type'] in index)
             self.assertEqual(index[network['type']], network)
 
@@ -525,48 +455,6 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             self.assertTrue(route['ifname'] in index)
             self.assertIn(route, index[route['ifname']])
 
-    def test_get_gateway_index(self):
-        index = self.operator.interface._get_gateway_index()  # pylint: disable=no-member
-        self.assertEqual(len(index), 2)
-        self.assertEqual(index[constants.NETWORK_TYPE_MGMT],
-                         str(self.mgmt_gateway_address))
-        self.assertEqual(index[constants.NETWORK_TYPE_OAM],
-                         str(self.oam_gateway_address))
-
-    def test_is_worker_subfunction_true(self):
-        self.host['personality'] = constants.WORKER
-        self.host['subfunctions'] = constants.WORKER
-        self._update_context()
-        self.assertTrue(interface.is_worker_subfunction(self.context))
-
-    def test_is_worker_subfunction_true_cpe(self):
-        self.host['personality'] = constants.CONTROLLER
-        self.host['subfunctions'] = constants.WORKER
-        self._update_context()
-        self.assertTrue(interface.is_worker_subfunction(self.context))
-
-    def test_is_worker_subfunction_false(self):
-        self.host['personality'] = constants.STORAGE
-        self.host['subfunctions'] = constants.STORAGE
-        self._update_context()
-        self.assertFalse(interface.is_worker_subfunction(self.context))
-
-    def test_is_worker_subfunction_false_cpe(self):
-        self.host['personality'] = constants.CONTROLLER
-        self.host['subfunctions'] = constants.CONTROLLER
-        self._update_context()
-        self.assertFalse(interface.is_worker_subfunction(self.context))
-
-    def test_is_pci_interface_true(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
-        self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
-        self.assertTrue(interface.is_pci_interface(self.iface))
-
-    def test_is_pci_interface_false(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        self.assertFalse(interface.is_pci_interface(self.iface))
-
     def test_get_interface_mtu(self):
         value = interface.get_interface_mtu(self.context, self.iface)
         self.assertEqual(value, self.iface['imtu'])
@@ -579,24 +467,6 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         value = interface.get_interface_port_name(self.context, self.iface)
         self.assertEqual(value, self.port['name'])
 
-    def test_get_lower_interface_vlan(self):
-        vlan = self._create_vlan_test(
-            "cluster-host", constants.INTERFACE_CLASS_PLATFORM,
-            constants.NETWORK_TYPE_CLUSTER_HOST, 1, self.iface)
-        self._update_context()
-        value = interface.get_lower_interface(self.context, vlan)
-        self.assertEqual(value, self.iface)
-
-    def test_get_lower_interface_vf(self):
-        port, iface = self._create_ethernet_test(
-            'sriov1', constants.INTERFACE_CLASS_PCI_SRIOV,
-            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=2,
-            sriov_vf_driver=None)
-        vf = self._create_vf_test("vf1", 1, None, lower_iface=iface)
-        self._update_context()
-        value = interface.get_lower_interface(self.context, vf)
-        self.assertEqual(value, iface)
-
     def test_get_interface_os_ifname_ethernet(self):
         value = interface.get_interface_os_ifname(self.context, self.iface)
         self.assertEqual(value, self.port['name'])
@@ -606,7 +476,160 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         value = interface.get_interface_os_ifname(self.context, self.iface)
         self.assertEqual(value, self.iface['ifname'])
 
+    def _get_route_config(self, name='default', ensure='present',
+                          gateway='1.2.3.1', interface='eth0',
+                          netmask='0.0.0.0', network='default',
+                          metric=1):
+        config = {'name': name,
+                  'ensure': ensure,
+                  'gateway': gateway,
+                  'interface': interface,
+                  'netmask': netmask,
+                  'network': network,
+                  'options': 'metric ' + str(metric)}
+        return config
+
+    def test_get_route_config(self):
+        route = {'network': '1.2.3.0',
+                 'prefix': 24,
+                 'gateway': '1.2.3.1',
+                 'metric': 20}
+        config = interface.get_route_config(route, "eth0")
+        expected = self._get_route_config(
+            name='1.2.3.0/24', network='1.2.3.0',
+            netmask='255.255.255.0', metric=20)
+        self.assertEqual(expected, config)
+
+    def test_get_route_config_default(self):
+        route = {'network': '0.0.0.0',
+                 'prefix': 0,
+                 'gateway': '1.2.3.1',
+                 'metric': 1}
+        config = interface.get_route_config(route, "eth0")
+        expected = self._get_route_config()
+        self.assertEqual(expected, config)
+
+    def test_is_an_n3000_i40_device_false(self):
+        self.assertFalse(
+            interface.is_an_n3000_i40_device(self.context, self.iface))
+
+    def test_find_sriov_interfaces_by_driver_none(self):
+        ifaces = interface.find_sriov_interfaces_by_driver(
+            self.context, constants.DRIVER_MLX_CX4)
+        self.assertTrue(not ifaces)
+
+
+class InterfaceTestCase2(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
+
+    def setUp(self):
+        super(InterfaceTestCase2, self).setUp()
+        self._setup_context()
+
+    def _setup_configuration(self):
+        pass
+
+    def _update_context(self):
+        # skip automatic context update, context updates will be invoked individually
+        # in each test function, via the self._do_update_context() method
+        pass
+
+    def _do_update_context(self):
+        super(InterfaceTestCase2, self)._update_context()
+
+    def _create_host(self, personality, subfunction=None):
+        self.host = self._create_test_host(personality, subfunction)
+
+    def _create_host_and_interface(self, ifclass, networktype, **kwargs):
+        self.host = self._create_test_host(
+            kwargs.get('personality', constants.CONTROLLER),
+            kwargs.get('subfunction', None))
+        self.port, self.iface = self._create_ethernet_test(
+            kwargs.get('name', 'mgmt0'), ifclass, networktype, **kwargs)
+
+    def _set_address_mode(self, iface, ipv4_mode=constants.IPV4_DISABLED,
+                          ipv6_mode=constants.IPV6_DISABLED):
+        self.dbapi.address_mode_update(iface.id,
+                                       {'family': constants.IPV4_FAMILY, 'mode': ipv4_mode})
+        self.dbapi.address_mode_update(iface.id,
+                                       {'family': constants.IPV6_FAMILY, 'mode': ipv6_mode})
+        iface.ipv4_mode = ipv4_mode
+        iface.ipv6_mode = ipv6_mode
+
+    def test_is_platform_network_type_true(self):
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_MGMT)
+        self._do_update_context()
+        result = interface.is_platform_network_type(self.iface)
+        self.assertTrue(result)
+
+    def test_is_platform_network_type_false(self):
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_DATA,
+                constants.NETWORK_TYPE_DATA)
+        self._do_update_context()
+        result = interface.is_platform_network_type(self.iface)
+        self.assertFalse(result)
+
+    def test_is_worker_subfunction_true(self):
+        self._create_host(constants.WORKER)
+        self._do_update_context()
+        self.assertTrue(interface.is_worker_subfunction(self.context))
+
+    def test_is_worker_subfunction_true_cpe(self):
+        self._create_host(constants.CONTROLLER, constants.WORKER)
+        self._do_update_context()
+        self.assertTrue(interface.is_worker_subfunction(self.context))
+
+    def test_is_worker_subfunction_false(self):
+        self._create_host(constants.STORAGE)
+        self._do_update_context()
+        self.assertFalse(interface.is_worker_subfunction(self.context))
+
+    def test_is_worker_subfunction_false_cpe(self):
+        self._create_host(constants.CONTROLLER)
+        self._do_update_context()
+        self.assertFalse(interface.is_worker_subfunction(self.context))
+
+    def test_is_pci_interface_true(self):
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PCI_SRIOV,
+                constants.NETWORK_TYPE_PCI_SRIOV)
+        self._do_update_context()
+        self.assertTrue(interface.is_pci_interface(self.iface))
+
+    def test_is_pci_interface_false(self):
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_DATA,
+                constants.NETWORK_TYPE_DATA)
+        self._do_update_context()
+        self.assertFalse(interface.is_pci_interface(self.iface))
+
+    def test_get_lower_interface_vlan(self):
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_MGMT)
+        vlan = self._create_vlan_test(
+            "cluster-host", constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_CLUSTER_HOST, 1, self.iface)
+        self._do_update_context()
+        value = interface.get_lower_interface(self.context, vlan)
+        self.assertEqual(value, self.iface)
+
+    def test_get_lower_interface_vf(self):
+        self._create_host_and_interface(
+            constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV,
+            name='sriov1', sriov_numvfs=2)
+        vf = self._create_vf_test("vf1", 1, None, lower_iface=self.iface)
+        self._do_update_context()
+        value = interface.get_lower_interface(self.context, vf)
+        self.assertEqual(value, self.iface)
+
     def test_get_interface_os_ifname_vlan_over_ethernet(self):
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_MGMT)
         vlan1 = self._create_vlan_test(
             "cluster-host", constants.INTERFACE_CLASS_PLATFORM,
             constants.NETWORK_TYPE_CLUSTER_HOST, 1, self.iface)
@@ -619,7 +642,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         vlan4 = self._create_vlan_test(
             "testvlan.999", constants.INTERFACE_CLASS_NONE,
             constants.NETWORK_TYPE_CLUSTER_HOST, 1, self.iface)
-        self._update_context()
+        self._do_update_context()
         self.assertEqual(interface.get_interface_os_ifname(self.context, vlan1),
                          "vlan1")
         self.assertEqual(interface.get_interface_os_ifname(self.context, vlan2),
@@ -630,398 +653,301 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                          "testvlan#999")
 
     def test_get_interface_os_ifname_vlan_over_bond(self):
+        self._create_host(constants.CONTROLLER)
         bond = self._create_bond_test("none")
         vlan = self._create_vlan_test(
             "cluster-host", constants.INTERFACE_CLASS_PLATFORM,
             constants.NETWORK_TYPE_CLUSTER_HOST, 1, bond)
-        self._update_context()
+        self._do_update_context()
         value = interface.get_interface_os_ifname(self.context, vlan)
         self.assertEqual(value, "vlan1")
 
-    def test_get_interface_primary_address(self):
-        address = interface.get_interface_primary_address(
-            self.context, self.iface)
-        self.assertIsNotNone(address)
-        self.assertEqual(address['address'], '192.168.1.2')
-        self.assertEqual(address['prefix'], 24)
-        self.assertEqual(address['netmask'], '255.255.255.0')
-
-    def test_get_interface_primary_address_none(self):
-        self.context['addresses'] = {}
-        address = interface.get_interface_primary_address(
-            self.context, self.iface)
-        self.assertIsNone(address)
-
-    def test_get_interface_address_family_ipv4(self):
-        family = interface.get_interface_address_family(
-            self.context, self.iface)
-        self.assertEqual(family, 'inet')
-
-    def test_get_interface_address_family_ipv6(self):
-        address = interface.get_interface_primary_address(
-            self.context, self.iface)
-        address['address'] = '2001::1'
-        address['prefix'] = 64
-        address['family'] = 6
-        family = interface.get_interface_address_family(
-            self.context, self.iface)
-        self.assertEqual(family, 'inet6')
-
-    def test_get_interface_address_family_none(self):
-        self.context['addresses'] = {}
-        family = interface.get_interface_address_family(
-            self.context, self.iface)
-        self.assertEqual(family, 'inet')
-
-    def test_get_interface_gateway_address_oam(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_OAM
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_OAM)
-        gateway = interface.get_interface_gateway_address(
-            self.context, constants.NETWORK_TYPE_OAM)
-        expected = str(self.oam_gateway_address)
+    def test_get_gateway_address_oam(self):
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_OAM)
+        network, address = self._create_address_for_interface(self.iface)
+        self._do_update_context()
+        gateway = interface.get_gateway_address(self.context, network, address)
+        expected = str(self.oam_subnet[1])
         self.assertEqual(gateway, expected)
 
-    def test_get_interface_gateway_address_mgmt(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_MGMT)
-        gateway = interface.get_interface_gateway_address(
-            self.context, constants.NETWORK_TYPE_MGMT)
-        expected = str(self.mgmt_gateway_address)
+    def test_get_gateway_address_mgmt(self):
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_MGMT)
+        network, address = self._create_address_for_interface(self.iface)
+        self._do_update_context()
+        gateway = interface.get_gateway_address(self.context, network, address)
+        expected = str(self.mgmt_subnet[1])
         self.assertEqual(gateway, expected)
-
-    def test_get_interface_gateway_address_none(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        gateway = interface.get_interface_gateway_address(
-            self.context, constants.NETWORK_TYPE_DATA)
-        self.assertIsNone(gateway)
 
     def test_get_interface_address_method_for_none(self):
-        self.iface['ifclass'] = None
-        method = interface.get_interface_address_method(
-            self.context, self.iface)
-        self.assertEqual(method, 'manual')
-        self.mock_puppet_interface_sysconfig.return_value = False
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_NONE,
+                constants.NETWORK_TYPE_NONE)
+        self._do_update_context()
         method = interface.get_interface_address_method(
             self.context, self.iface)
         self.assertEqual(method, 'manual')
 
     def test_get_interface_address_method_for_data(self):
-        # test for CentOS
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        method = interface.get_interface_address_method(
-            self.context, self.iface)
-        self.assertEqual(method, 'manual')
-        # test for Debian
-        self.mock_puppet_interface_sysconfig.return_value = False
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_DATA,
+                constants.NETWORK_TYPE_DATA)
+        _, address_ipv4 = self._create_address_for_interface(
+            self.iface, family=constants.IPV4_FAMILY)
+        _, address_ipv6 = self._create_address_for_interface(
+            self.iface, family=constants.IPV6_FAMILY)
+        self._do_update_context()
+
         self.iface['ipv4_mode'] = constants.IPV4_DISABLED
         self.iface['ipv6_mode'] = constants.IPV6_DISABLED
         method = interface.get_interface_address_method(
             self.context, self.iface)
         self.assertEqual(method, 'manual')
+
         self.iface['ipv4_mode'] = constants.IPV4_STATIC
         self.iface['ipv6_mode'] = constants.IPV6_DISABLED
         method = interface.get_interface_address_method(
             self.context, self.iface)
-        self.assertEqual(method, 'static')
+        self.assertEqual(method, 'manual')
+
         self.iface['ipv4_mode'] = constants.IPV4_DISABLED
         self.iface['ipv6_mode'] = constants.IPV6_STATIC
         method = interface.get_interface_address_method(
             self.context, self.iface)
-        self.assertEqual(method, 'static')
+        self.assertEqual(method, 'manual')
+
         self.iface['ipv4_mode'] = constants.IPV4_STATIC
         self.iface['ipv6_mode'] = constants.IPV6_STATIC
         method = interface.get_interface_address_method(
             self.context, self.iface)
+        self.assertEqual(method, 'manual')
+
+        self.iface['ipv4_mode'] = constants.IPV4_DISABLED
+        self.iface['ipv6_mode'] = constants.IPV6_DISABLED
+        method = interface.get_interface_address_method(
+            self.context, self.iface, None, address_ipv4)
+        self.assertEqual(method, 'manual')
+
+        self.iface['ipv4_mode'] = constants.IPV4_STATIC
+        self.iface['ipv6_mode'] = constants.IPV6_DISABLED
+        method = interface.get_interface_address_method(
+            self.context, self.iface, None, address_ipv4)
+        self.assertEqual(method, 'static')
+
+        self.iface['ipv4_mode'] = constants.IPV4_DISABLED
+        self.iface['ipv6_mode'] = constants.IPV6_STATIC
+        method = interface.get_interface_address_method(
+            self.context, self.iface, None, address_ipv4)
+        self.assertEqual(method, 'manual')
+
+        self.iface['ipv4_mode'] = constants.IPV4_STATIC
+        self.iface['ipv6_mode'] = constants.IPV6_STATIC
+        method = interface.get_interface_address_method(
+            self.context, self.iface, None, address_ipv4)
+        self.assertEqual(method, 'static')
+
+        self.iface['ipv4_mode'] = constants.IPV4_DISABLED
+        self.iface['ipv6_mode'] = constants.IPV6_DISABLED
+        method = interface.get_interface_address_method(
+            self.context, self.iface, None, address_ipv6)
+        self.assertEqual(method, 'manual')
+
+        self.iface['ipv4_mode'] = constants.IPV4_STATIC
+        self.iface['ipv6_mode'] = constants.IPV6_DISABLED
+        method = interface.get_interface_address_method(
+            self.context, self.iface, None, address_ipv6)
+        self.assertEqual(method, 'manual')
+
+        self.iface['ipv4_mode'] = constants.IPV4_DISABLED
+        self.iface['ipv6_mode'] = constants.IPV6_STATIC
+        method = interface.get_interface_address_method(
+            self.context, self.iface, None, address_ipv6)
+        self.assertEqual(method, 'static')
+
+        self.iface['ipv4_mode'] = constants.IPV4_STATIC
+        self.iface['ipv6_mode'] = constants.IPV6_STATIC
+        method = interface.get_interface_address_method(
+            self.context, self.iface, None, address_ipv6)
         self.assertEqual(method, 'static')
 
     def test_get_interface_address_method_for_pci_sriov(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
-        self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
-        method = interface.get_interface_address_method(
-            self.context, self.iface)
-        self.assertEqual(method, 'manual')
-        self.mock_puppet_interface_sysconfig.return_value = False
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PCI_SRIOV,
+                constants.NETWORK_TYPE_PCI_SRIOV)
+        self._do_update_context()
         method = interface.get_interface_address_method(
             self.context, self.iface)
         self.assertEqual(method, 'manual')
 
     def test_get_interface_address_method_for_pci_pthru(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_PASSTHROUGH
-        self.iface['networktype'] = constants.NETWORK_TYPE_PCI_PASSTHROUGH
-        method = interface.get_interface_address_method(
-            self.context, self.iface)
-        self.assertEqual(method, 'manual')
-        self.mock_puppet_interface_sysconfig.return_value = False
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                constants.NETWORK_TYPE_PCI_PASSTHROUGH)
+        self._do_update_context()
         method = interface.get_interface_address_method(
             self.context, self.iface)
         self.assertEqual(method, 'manual')
 
     def test_get_interface_address_method_for_pxeboot_worker(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_PXEBOOT
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_PXEBOOT)
-        self.host['personality'] = constants.WORKER
-        self._update_context()
-        self._update_interface_address_pool(
-            self.iface, constants.NETWORK_TYPE_PXEBOOT)
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_PXEBOOT)
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_PXEBOOT,
+                personality=constants.WORKER)
+        self._do_update_context()
+        network = self._find_network_by_type(constants.NETWORK_TYPE_PXEBOOT)
         method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
-        self.assertEqual(method, 'dhcp')
-        self.mock_puppet_interface_sysconfig.return_value = False
-        method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
+            self.context, self.iface, network)
         self.assertEqual(method, 'dhcp')
 
     def test_get_interface_address_method_for_pxeboot_storage(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_PXEBOOT
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_PXEBOOT)
-        self.host['personality'] = constants.STORAGE
-        self._update_context()
-        self._update_interface_address_pool(
-            self.iface, constants.NETWORK_TYPE_PXEBOOT)
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_PXEBOOT)
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_PXEBOOT,
+                personality=constants.STORAGE)
+        self._do_update_context()
+        network = self._find_network_by_type(constants.NETWORK_TYPE_PXEBOOT)
         method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
-        self.assertEqual(method, 'dhcp')
-        self.mock_puppet_interface_sysconfig.return_value = False
-        method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
+            self.context, self.iface, network)
         self.assertEqual(method, 'dhcp')
 
     def test_get_interface_address_method_for_pxeboot_controller(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_PXEBOOT
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_PXEBOOT)
-        self.host['personality'] = constants.CONTROLLER
-        self._update_context()
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_PXEBOOT)
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_PXEBOOT)
+        self._do_update_context()
+        network = self._find_network_by_type(constants.NETWORK_TYPE_PXEBOOT)
         method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
-        self.assertEqual(method, 'static')
-        self.mock_puppet_interface_sysconfig.return_value = False
-        method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
+            self.context, self.iface, network)
         self.assertEqual(method, 'static')
 
     def test_get_interface_address_method_for_mgmt_worker(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_MGMT)
-        self.host['personality'] = constants.WORKER
-        self._update_context()
-        self._update_interface_address_pool(
-            self.iface, constants.NETWORK_TYPE_MGMT)
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_MGMT)
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_MGMT,
+                personality=constants.WORKER)
+        self._do_update_context()
+        network = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
         method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
-        self.assertEqual(method, 'static')
-        self.mock_puppet_interface_sysconfig.return_value = False
-        method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
+            self.context, self.iface, network)
         self.assertEqual(method, 'static')
 
     def test_get_interface_address_method_for_mgmt_storage(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_MGMT)
-        self.host['personality'] = constants.STORAGE
-        self._update_context()
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_MGMT)
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_MGMT,
+                personality=constants.STORAGE)
+        self._do_update_context()
+        network = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
         method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
-        self.assertEqual(method, 'static')
-        self.mock_puppet_interface_sysconfig.return_value = False
-        method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
+            self.context, self.iface, network)
         self.assertEqual(method, 'static')
 
     def test_get_interface_address_method_for_mgmt_controller(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_MGMT)
-        self.host['personality'] = constants.CONTROLLER
-        self._update_context()
-        self._update_interface_address_pool(
-            self.iface, constants.NETWORK_TYPE_MGMT)
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_MGMT)
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_MGMT)
+        self._do_update_context()
+        network = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
         method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
-        self.assertEqual(method, 'static')
-        self.mock_puppet_interface_sysconfig.return_value = False
-        method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
+            self.context, self.iface, network)
         self.assertEqual(method, 'static')
 
     def test_get_interface_address_method_for_cluster_host_worker(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_CLUSTER_HOST
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
-        self.host['personality'] = constants.WORKER
-        self._update_context()
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_MGMT,
+                personality=constants.WORKER)
+        self._do_update_context()
+        network = self._find_network_by_type(constants.NETWORK_TYPE_CLUSTER_HOST)
         method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
-        self.assertEqual(method, 'static')
-        self.mock_puppet_interface_sysconfig.return_value = False
-        method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
+            self.context, self.iface, network)
         self.assertEqual(method, 'static')
 
     def test_get_interface_address_method_for_cluster_host_storage(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_CLUSTER_HOST
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
-        self.host['personality'] = constants.STORAGE
-        self._update_context()
-        self._update_interface_address_pool(
-            self.iface, constants.NETWORK_TYPE_CLUSTER_HOST)
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_CLUSTER_HOST,
+                personality=constants.STORAGE)
+        self._do_update_context()
+        network = self._find_network_by_type(constants.NETWORK_TYPE_CLUSTER_HOST)
         method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
-        self.assertEqual(method, 'static')
-        self.mock_puppet_interface_sysconfig.return_value = False
-        method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
+            self.context, self.iface, network)
         self.assertEqual(method, 'static')
 
     def test_get_interface_address_method_for_cluster_host_controller(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_CLUSTER_HOST
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
-        self.host['personality'] = constants.CONTROLLER
-        self._update_context()
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_CLUSTER_HOST)
+        self._do_update_context()
+        network = self._find_network_by_type(constants.NETWORK_TYPE_CLUSTER_HOST)
         method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
-        self.assertEqual(method, 'static')
-        self.mock_puppet_interface_sysconfig.return_value = False
-        method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
+            self.context, self.iface, network)
         self.assertEqual(method, 'static')
 
     def test_get_interface_address_method_for_oam_controller(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_OAM
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_OAM)
-        self.host['personality'] = constants.CONTROLLER
-        self._update_context()
-        self._update_interface_address_pool(
-            self.iface, constants.NETWORK_TYPE_OAM)
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_OAM)
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_OAM)
+        self._do_update_context()
+        network = self._find_network_by_type(constants.NETWORK_TYPE_OAM)
         method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
-        self.assertEqual(method, 'static')
-        self.mock_puppet_interface_sysconfig.return_value = False
-        method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
+            self.context, self.iface, network)
         self.assertEqual(method, 'static')
 
     def test_get_interface_address_method_for_platform_ipv4(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['ipv4_mode'] = constants.IPV4_STATIC
-        self.iface['networktype'] = constants.NETWORK_TYPE_NONE
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_NONE)
+        network, address = self._create_address_for_interface(self.iface)
+        self._set_address_mode(self.iface, ipv4_mode=constants.IPV4_STATIC)
+        self._do_update_context()
         method = interface.get_interface_address_method(
-            self.context, self.iface)
+            self.context, self.iface, network, address)
         self.assertEqual(method, 'static')
-        self.mock_puppet_interface_sysconfig.return_value = False
-        method = interface.get_interface_address_method(
-            self.context, self.iface)
-        self.assertEqual(method, 'static')
-
-        self.iface['networktypelist'] = [constants.NETWORK_TYPE_MGMT,
-                                         constants.NETWORK_TYPE_CLUSTER_HOST]
-        # test for CentOS
-        self.mock_puppet_interface_sysconfig.return_value = True
-        method = interface.get_interface_address_method(
-            self.context, self.iface)
-        self.assertEqual(method, 'static')
-
-        # test for Debian
-        self.mock_puppet_interface_sysconfig.return_value = False
-        method = interface.get_interface_address_method(
-            self.context, self.iface)
-        self.assertEqual(method, 'manual')
 
     def test_get_interface_address_method_for_platform_ipv6(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['ipv6_mode'] = constants.IPV6_STATIC
-        self.iface['networktype'] = constants.NETWORK_TYPE_NONE
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_NONE)
+        network, address = self._create_address_for_interface(
+            self.iface, family=constants.IPV6_FAMILY)
+        self._set_address_mode(self.iface, ipv6_mode=constants.IPV6_STATIC)
+        self._do_update_context()
         method = interface.get_interface_address_method(
-            self.context, self.iface)
-        self.assertEqual(method, 'static')
-        self.mock_puppet_interface_sysconfig.return_value = False
-        method = interface.get_interface_address_method(
-            self.context, self.iface)
-        self.assertEqual(method, 'static')
-
-        self.iface['networktypelist'] = [constants.NETWORK_TYPE_MGMT,
-                                         constants.NETWORK_TYPE_CLUSTER_HOST]
-        # test for CentOS
-        self.mock_puppet_interface_sysconfig.return_value = True
-        method = interface.get_interface_address_method(
-            self.context, self.iface)
+            self.context, self.iface, network, address)
         self.assertEqual(method, 'static')
 
-        # test for Debian
-        self.mock_puppet_interface_sysconfig.return_value = False
+    def test_get_interface_address_method_for_platform_base(self):
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_CLUSTER_HOST])
+        self._do_update_context()
         method = interface.get_interface_address_method(
             self.context, self.iface)
         self.assertEqual(method, 'manual')
 
     def test_get_interface_address_method_for_platform_invalid(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['ipv4_mode'] = constants.IPV4_STATIC
-        self.iface['networktype'] = constants.NETWORK_TYPE_OAM
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_OAM)
-        self.host['personality'] = constants.WORKER
-        self._update_context()
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_OAM)
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_OAM,
+                personality=constants.WORKER)
+        self._set_address_mode(self.iface, ipv4_mode=constants.IPV4_STATIC)
+        self._do_update_context()
+        network = self._find_network_by_type(constants.NETWORK_TYPE_OAM)
         method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
-        self.assertEqual(method, 'dhcp')
-        self.mock_puppet_interface_sysconfig.return_value = False
-        method = interface.get_interface_address_method(
-            self.context, self.iface, network.id)
+            self.context, self.iface, network)
         self.assertEqual(method, 'dhcp')
 
     def test_get_interface_traffic_classifier_for_mgmt(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktypelist'] = [constants.NETWORK_TYPE_MGMT]
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_MGMT)
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_MGMT)
+        self._do_update_context()
         classifier = interface.get_interface_traffic_classifier(
             self.context, self.iface)
-        print(self.context)
         expected = ('%s %s %s %s > /dev/null' %
                     (constants.TRAFFIC_CONTROL_SCRIPT,
                      self.port['name'], constants.NETWORK_TYPE_MGMT,
@@ -1029,70 +955,74 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.assertEqual(classifier, expected)
 
     def test_get_interface_traffic_classifier_for_cluster_host(self):
-        self.iface['ifname'] = 'cluster_host0'
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktypelist'] = [constants.NETWORK_TYPE_CLUSTER_HOST]
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_CLUSTER_HOST)
+        self._do_update_context()
         classifier = interface.get_interface_traffic_classifier(
             self.context, self.iface)
         self.assertIsNone(classifier)
 
     def test_get_interface_traffic_classifier_for_oam(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktypelist'] = [constants.NETWORK_TYPE_OAM]
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_OAM)
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_OAM)
+        self._do_update_context()
         classifier = interface.get_interface_traffic_classifier(
             self.context, self.iface)
         self.assertIsNone(classifier)
 
     def test_get_interface_traffic_classifier_for_none(self):
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_NONE,
+                constants.NETWORK_TYPE_NONE)
+        self._do_update_context()
         classifier = interface.get_interface_traffic_classifier(
             self.context, self.iface)
         self.assertIsNone(classifier)
 
     def test_get_sriov_interface_device_id(self):
-        port, iface = self._create_ethernet_test(
-            'sriov1', constants.INTERFACE_CLASS_PCI_SRIOV,
-            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=2,
-            sriov_vf_driver=None)
-        self._update_context()
-        value = interface.get_sriov_interface_device_id(self.context, iface)
+        self._create_host_and_interface(
+            constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV,
+            name='sriov1', sriov_numvfs=2)
+        self._do_update_context()
+        value = interface.get_sriov_interface_device_id(self.context, self.iface)
         self.assertEqual(value, '1572')
 
     def test_get_sriov_interface_port(self):
-        port, iface = self._create_ethernet_test(
-            'sriov1', constants.INTERFACE_CLASS_PCI_SRIOV,
-            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=2,
-            sriov_vf_driver=None)
-        vf = self._create_vf_test("vf1", 1, None, lower_iface=iface)
-        self._update_context()
+        self._create_host_and_interface(
+            constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV,
+            name='sriov1', sriov_numvfs=2)
+        vf = self._create_vf_test("vf1", 1, None, lower_iface=self.iface)
+        self._do_update_context()
         value = interface.get_sriov_interface_port(self.context, vf)
-        self.assertEqual(value, port)
+        self.assertEqual(value, self.port)
 
     def test_get_sriov_interface_port_invalid(self):
-        port, iface = self._create_ethernet_test('pthru',
+        self._create_host_and_interface(
             constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
-            constants.NETWORK_TYPE_PCI_PASSTHROUGH)
-        self._update_context()
+            constants.NETWORK_TYPE_PCI_PASSTHROUGH,
+            name='pthru')
+        self._do_update_context()
         self.assertRaises(AssertionError,
                           interface.get_sriov_interface_port,
                           self.context,
-                          iface)
+                          self.iface)
 
     def test_get_sriov_interface_vf_addrs(self):
         vf_addr1 = "0000:81:00.0"
         vf_addr2 = "0000:81:01.0"
         vf_addr_list = [vf_addr1, vf_addr2]
-        port, iface = self._create_ethernet_test(
-            'sriov1', constants.INTERFACE_CLASS_PCI_SRIOV,
-            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=2,
-            sriov_vf_driver=None)
-        vf1 = self._create_vf_test("vf1", 1, None, lower_iface=iface)
-        self._update_context()
+        self._create_host_and_interface(
+            constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV,
+            name='sriov1', sriov_numvfs=2)
+        vf1 = self._create_vf_test("vf1", 1, None, lower_iface=self.iface)
+        self._do_update_context()
         addrs1 = interface.get_sriov_interface_vf_addrs(
-            self.context, iface, vf_addr_list)
+            self.context, self.iface, vf_addr_list)
         self.assertEqual(len(addrs1), 1)
         addrs2 = interface.get_sriov_interface_vf_addrs(
             self.context, vf1, vf_addr_list)
@@ -1103,13 +1033,13 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         vf_addr2 = "0000:81:01.0"
         vf_addr3 = "0000:81:02.0"
         vf_addr_list = [vf_addr1, vf_addr2, vf_addr3]
-        port, iface = self._create_ethernet_test(
-            'sriov1', constants.INTERFACE_CLASS_PCI_SRIOV,
-            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=3,
-            sriov_vf_driver=None)
-        vf1 = self._create_vf_test("vf1", 1, None, lower_iface=iface)
-        vf2 = self._create_vf_test("vf2", 1, None, lower_iface=iface)
-        self._update_context()
+        self._create_host_and_interface(
+            constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV,
+            name='sriov1', sriov_numvfs=3)
+        vf1 = self._create_vf_test("vf1", 1, None, lower_iface=self.iface)
+        vf2 = self._create_vf_test("vf2", 1, None, lower_iface=self.iface)
+        self._do_update_context()
         addrs1 = interface.get_sriov_interface_vf_addrs(
             self.context, vf1, vf_addr_list)
         self.assertEqual(len(addrs1), 1)
@@ -1117,7 +1047,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             self.context, vf2, vf_addr_list)
         self.assertEqual(len(addrs2), 1)
         addrs3 = interface.get_sriov_interface_vf_addrs(
-            self.context, iface, vf_addr_list)
+            self.context, self.iface, vf_addr_list)
         self.assertEqual(len(addrs3), 1)
 
     def test_get_sriov_interface_vf_addrs_multiple_parents(self):
@@ -1125,13 +1055,13 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         vf_addr2 = "0000:81:01.0"
         vf_addr3 = "0000:81:02.0"
         vf_addr_list = [vf_addr1, vf_addr2, vf_addr3]
-        port, iface = self._create_ethernet_test(
-            'sriov1', constants.INTERFACE_CLASS_PCI_SRIOV,
-            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=3,
-            sriov_vf_driver=None)
-        vf1 = self._create_vf_test("vf1", 2, None, lower_iface=iface)
+        self._create_host_and_interface(
+            constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV,
+            name='sriov1', sriov_numvfs=3)
+        vf1 = self._create_vf_test("vf1", 2, None, lower_iface=self.iface)
         vf2 = self._create_vf_test("vf2", 1, None, lower_iface=vf1)
-        self._update_context()
+        self._do_update_context()
         addrs1 = interface.get_sriov_interface_vf_addrs(
             self.context, vf1, vf_addr_list)
         self.assertEqual(len(addrs1), 1)
@@ -1139,210 +1069,184 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             self.context, vf2, vf_addr_list)
         self.assertEqual(len(addrs2), 1)
         addrs3 = interface.get_sriov_interface_vf_addrs(
-            self.context, iface, vf_addr_list)
+            self.context, self.iface, vf_addr_list)
         self.assertEqual(len(addrs3), 1)
 
     def test_get_bridge_interface_name_none_dpdk_supported(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        self.port['dpdksupport'] = True
-        self._update_context()
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_DATA,
+                constants.NETWORK_TYPE_DATA,
+                dpdksupport=True)
+        self._do_update_context()
         ifname = interface.get_bridge_interface_name(self.context, self.iface)
         self.assertIsNone(ifname)
 
     def test_get_bridge_interface_name_none_not_data(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_MGMT)
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_MGMT)
+        self._do_update_context()
         ifname = interface.get_bridge_interface_name(self.context, self.iface)
         self.assertIsNone(ifname)
 
     def test_get_bridge_interface_name(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        self.port['dpdksupport'] = False
-        self._update_context()
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_DATA,
+                constants.NETWORK_TYPE_DATA,
+                dpdksupport=False)
+        self._do_update_context()
         ifname = interface.get_bridge_interface_name(self.context, self.iface)
         self.assertEqual(ifname, 'br-' + self.port['name'])
 
     def test_needs_interface_config_kernel_mgmt(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_MGMT
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_MGMT)
-        self.host['personality'] = constants.CONTROLLER
-        self._update_context()
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_MGMT)
+        self._do_update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
 
     def test_needs_interface_config_kernel_cluster_host(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_CLUSTER_HOST
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
-        self.host['personality'] = constants.CONTROLLER
-        self._update_context()
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_CLUSTER_HOST)
+        self._do_update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
 
     def test_needs_interface_config_kernel_oam(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_OAM
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_OAM)
-        self.host['personality'] = constants.CONTROLLER
-        self._update_context()
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_OAM)
+        self._do_update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
 
     def test_needs_interface_config_data(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        self.host['personality'] = constants.CONTROLLER
-        self.port['dpdksupport'] = True
-        self._update_context()
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_DATA,
+                constants.NETWORK_TYPE_DATA,
+                dpdksupport=True)
+        self._do_update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertFalse(needed)
 
     def test_needs_interface_config_data_slow(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        self.host['personality'] = constants.CONTROLLER
-        self.port['dpdksupport'] = False
-        self._update_context()
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_DATA,
+                constants.NETWORK_TYPE_DATA,
+                dpdksupport=False)
+        self._do_update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertFalse(needed)
 
     def test_needs_interface_config_data_mlx5(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        self.host['personality'] = constants.CONTROLLER
-        self.port['driver'] = constants.DRIVER_MLX_CX4
-        self._update_context()
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_DATA,
+                constants.NETWORK_TYPE_DATA,
+                driver=constants.DRIVER_MLX_CX4)
+        self._do_update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertFalse(needed)
 
     def test_needs_interface_config_data_slow_worker(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        self.host['personality'] = constants.WORKER
-        self.port['dpdksupport'] = False
-        self._update_context()
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_DATA,
+                constants.NETWORK_TYPE_DATA,
+                personality=constants.WORKER,
+                dpdksupport=False)
+        self._do_update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
 
     def test_needs_interface_config_data_mlx5_worker(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        self.host['personality'] = constants.WORKER
-        self.port['driver'] = constants.DRIVER_MLX_CX4
-        self._update_context()
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_DATA,
+                constants.NETWORK_TYPE_DATA,
+                personality=constants.WORKER,
+                driver=constants.DRIVER_MLX_CX4)
+        self._do_update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
 
     def test_needs_interface_config_sriov_worker(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
-        self.iface['iftype'] = constants.INTERFACE_TYPE_ETHERNET
-        self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
-        self.host['personality'] = constants.WORKER
-        self._update_context()
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PCI_SRIOV,
+                constants.NETWORK_TYPE_PCI_SRIOV,
+                personality=constants.WORKER)
+        self._do_update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
 
     def test_needs_interface_config_pthru_worker(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_PASSTHROUGH
-        self.iface['iftype'] = constants.INTERFACE_TYPE_ETHERNET
-        self.iface['networktype'] = constants.NETWORK_TYPE_PCI_PASSTHROUGH
-        self.host['personality'] = constants.WORKER
-        self._update_context()
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                constants.NETWORK_TYPE_PCI_PASSTHROUGH,
+                personality=constants.WORKER)
+        self._do_update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
 
     def test_needs_interface_config_data_cpe_worker(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        self.host['personality'] = constants.CONTROLLER
-        self.host['subfunctions'] = constants.WORKER
-        self.port['dpdksupport'] = True
-        self._update_context()
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_DATA,
+                constants.NETWORK_TYPE_DATA,
+                personality=constants.CONTROLLER,
+                subfunction=constants.WORKER,
+                dpdksupport=True)
+        self._do_update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertFalse(needed)
 
     def test_needs_interface_config_data_slow_cpe_worker(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        self.host['personality'] = constants.CONTROLLER
-        self.host['subfunctions'] = constants.WORKER
-        self.port['dpdksupport'] = False
-        self._update_context()
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_DATA,
+                constants.NETWORK_TYPE_DATA,
+                personality=constants.CONTROLLER,
+                subfunction=constants.WORKER,
+                dpdksupport=False)
+        self._do_update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
 
     def test_needs_interface_config_data_mlx5_cpe_worker(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_DATA
-        self.iface['networktype'] = constants.NETWORK_TYPE_DATA
-        self.host['personality'] = constants.CONTROLLER
-        self.host['subfunctions'] = constants.WORKER
-        self.port['driver'] = constants.DRIVER_MLX_CX4
-        self._update_context()
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_DATA,
+                constants.NETWORK_TYPE_DATA,
+                personality=constants.CONTROLLER,
+                subfunction=constants.WORKER,
+                driver=constants.DRIVER_MLX_CX4)
+        self._do_update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
 
     def test_needs_interface_config_sriov_cpe(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
-        self.iface['iftype'] = constants.INTERFACE_TYPE_ETHERNET
-        self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
-        self.host['personality'] = constants.CONTROLLER
-        self.host['subfunctions'] = constants.CONTROLLER
-        self._update_context()
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PCI_SRIOV,
+                constants.NETWORK_TYPE_PCI_SRIOV)
+        self._do_update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertFalse(needed)
 
     def test_needs_interface_config_sriov_cpe_worker(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
-        self.iface['iftype'] = constants.INTERFACE_TYPE_ETHERNET
-        self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
-        self.host['personality'] = constants.CONTROLLER
-        self.host['subfunctions'] = constants.WORKER
-        self._update_context()
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PCI_SRIOV,
+                constants.NETWORK_TYPE_PCI_SRIOV,
+                personality=constants.CONTROLLER,
+                subfunction=constants.WORKER)
+        self._do_update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
 
     def test_needs_interface_config_pthru_cpe_worker(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_PASSTHROUGH
-        self.iface['iftype'] = constants.INTERFACE_TYPE_ETHERNET
-        self.iface['networktype'] = constants.NETWORK_TYPE_PCI_PASSTHROUGH
-        self.host['personality'] = constants.CONTROLLER
-        self.host['subfunctions'] = constants.WORKER
-        self._update_context()
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                constants.NETWORK_TYPE_PCI_PASSTHROUGH,
+                personality=constants.CONTROLLER,
+                subfunction=constants.WORKER)
+        self._do_update_context()
         needed = interface.needs_interface_config(self.context, self.iface)
         self.assertTrue(needed)
-
-    def _get_network_config(self, ifname='eth0', ensure='present',
-                            family='inet', method='dhcp',
-                            hotplug='false', onboot='true',
-                            mtu=None, options=None, **kwargs):
-        config = {'ifname': ifname,
-                  'ensure': ensure,
-                  'family': family,
-                  'method': method,
-                  'hotplug': hotplug,
-                  'onboot': onboot}
-        if mtu:
-            config['mtu'] = str(mtu)
-        config['options'] = options or {}
-        config.update(**kwargs)
-        return config
-
-    def _get_static_network_config(self, **kwargs):
-        ifname = kwargs.pop('ifname', 'eth0')
-        method = kwargs.pop('method', 'static')
-        ipaddress = kwargs.pop('ipaddress', '192.168.1.2')
-        netmask = kwargs.pop('netmask', '255.255.255.0')
-        return self._get_network_config(
-            ifname=ifname, method=method,
-            ipaddress=ipaddress, netmask=netmask, **kwargs)
 
     def _get_network_config_ifupdown(self, ifname='eth0', ensure='present',
                             family='inet', method='dhcp',
@@ -1371,19 +1275,6 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             ifname=ifname, method=method,
             ipaddress=ipaddress, netmask=netmask, **kwargs)
 
-    def _get_route_config(self, name='default', ensure='present',
-                          gateway='1.2.3.1', interface='eth0',
-                          netmask='0.0.0.0', network='default',
-                          metric=1):
-        config = {'name': name,
-                  'ensure': ensure,
-                  'gateway': gateway,
-                  'interface': interface,
-                  'netmask': netmask,
-                  'network': network,
-                  'options': 'metric ' + str(metric)}
-        return config
-
     def _get_sriov_config(self, ifname='default',
                           vf_driver=constants.SRIOV_DRIVER_TYPE_VFIO,
                           num_vfs=2, pf_addr=None, device_id='1572',
@@ -1411,7 +1302,7 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         return config
 
     def _get_loopback_config(self):
-        network_config = self._get_network_config(
+        network_config = self._get_network_config_ifupdown(
             ifname=interface.LOOPBACK_IFNAME, method=interface.LOOPBACK_METHOD)
         return interface.format_network_config(network_config)
 
@@ -1437,349 +1328,178 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             interface.LOOPBACK_IFNAME)
         self.assertEqual(result, expected)
 
-    def test_get_controller_ethernet_config_oam(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_OAM
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_OAM)
-        self._update_context()
-        self._update_interface_address_pool(
-            self.iface, constants.NETWORK_TYPE_OAM)
-        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_OAM)
-        config = interface.get_interface_network_config(
-            self.context, self.iface, network.id)
-        options = {'IPV6_AUTOCONF': 'no',
-                   'LINKDELAY': '20'}
-        expected = self._get_static_network_config(
-            ifname=f"{self.port['name']}:{network.id}", mtu=1500, gateway='10.10.10.1',
-            options=options)
-        print(expected)
-        self.assertEqual(expected, config)
-
     def test_get_controller_ethernet_config_oam_ifupdown(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_OAM
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_OAM)
-        self._update_context()
-        self._update_interface_address_pool(
-            self.iface, constants.NETWORK_TYPE_OAM)
-        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_OAM)
-        config = interface.get_interface_network_config(
-            self.context, self.iface, network.id)
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_OAM)
+        network, address = self._create_address_for_interface(self.iface)
+        self._do_update_context()
+        configs = interface.get_interface_network_configs(
+            self.context, self.iface, network)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
         options = {'stx-description': 'ifname:mgmt0,net:oam',
                    'post-up': '{}'.format(ipv6_autocnf_off),
                    'mtu': '1500',
                    'gateway': '10.10.10.1'}
         expected = self._get_static_network_config_ifupdown(
-            ifname=f"{self.port['name']}:{network.id}", options=options)
-        print(expected)
-        self.assertEqual(expected, config)
-
-    def test_get_controller_ethernet_config_mgmt(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktypelist'] = [constants.NETWORK_TYPE_MGMT]
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_MGMT)
-        self._update_context()
-        self._update_interface_address_pool(
-            self.iface, constants.NETWORK_TYPE_MGMT)
-        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
-        config = interface.get_interface_network_config(
-            self.context, self.iface, network.id)
-        options = {'IPV6_AUTOCONF': 'no',
-                   'LINKDELAY': '20'}
-        expected = self._get_static_network_config(
-            ifname=f"{self.port['name']}:{network.id}", mtu=1500,
-            gateway='192.168.204.1', options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+            ipaddress='10.10.10.10',
+            ifname=f"{self.port['name']}:{network.id}-{address.id}", options=options)
+        self.assertEqual(expected, configs[0])
 
     def test_get_controller_ethernet_config_mgmt_ifupdown(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktypelist'] = [constants.NETWORK_TYPE_MGMT]
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_MGMT)
-        self._update_context()
-        self._update_interface_address_pool(
-            self.iface, constants.NETWORK_TYPE_MGMT)
-        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
-        config = interface.get_interface_network_config(
-            self.context, self.iface, network.id)
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_MGMT)
+        network, address = self._create_address_for_interface(self.iface)
+        self._do_update_context()
+        configs = interface.get_interface_network_configs(
+            self.context, self.iface, network)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
         options = {'post-up': '%s' % ipv6_autocnf_off,
                    'mtu': '1500',
                    'stx-description': 'ifname:mgmt0,net:mgmt',
                    'gateway': '192.168.204.1'}
         expected = self._get_static_network_config_ifupdown(
-            ifname=f"{self.port['name']}:{network.id}", options=options)
-        print(expected)
-        self.assertEqual(expected, config)
-
-    def test_get_controller_ethernet_config_cluster_host(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_CLUSTER_HOST
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
-        self._update_context()
-        self._update_interface_address_pool(
-            self.iface, constants.NETWORK_TYPE_CLUSTER_HOST)
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
-        config = interface.get_interface_network_config(
-            self.context, self.iface, network.id)
-        options = {'IPV6_AUTOCONF': 'no',
-                   'LINKDELAY': '20'}
-        expected = self._get_static_network_config(
-            ifname=f"{self.port['name']}:{network.id}", mtu=1500,
-            options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+            ipaddress='192.168.204.10',
+            ifname=f"{self.port['name']}:{network.id}-{address.id}", options=options)
+        self.assertEqual(expected, configs[0])
 
     def test_get_controller_ethernet_config_cluster_host_ifupdown(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_CLUSTER_HOST
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
-        self._update_context()
-        self._update_interface_address_pool(
-            self.iface, constants.NETWORK_TYPE_CLUSTER_HOST)
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
-        config = interface.get_interface_network_config(
-            self.context, self.iface, network.id)
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_CLUSTER_HOST)
+        network, address = self._create_address_for_interface(self.iface)
+        self._do_update_context()
+        configs = interface.get_interface_network_configs(
+            self.context, self.iface, network)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
         options = {'stx-description': 'ifname:mgmt0,net:cluster-host',
                    'post-up': '{}'.format(ipv6_autocnf_off),
-                   'mtu': '1500'}
+                   'mtu': '1500',
+                   'gateway': '192.168.206.1'}
         expected = self._get_static_network_config_ifupdown(
-            ifname=f"{self.port['name']}:{network.id}", options=options)
-        print(expected)
-        self.assertEqual(expected, config)
-
-    def test_get_controller_ethernet_config_slave(self):
-        bond = self._create_bond_test("bond0")
-        self._update_context()
-        iface = self.context['interfaces'][bond['uses'][0]]
-        port = self.context['ports'][iface['id']]
-        config = interface.get_interface_network_config(self.context, iface)
-        options = {'IPV6_AUTOCONF': 'no',
-                   'SLAVE': 'yes',
-                   'PROMISC': 'yes',
-                   'MASTER': 'bond0',
-                   'LINKDELAY': '20'}
-        expected = self._get_network_config(
-            ifname=port['name'], mtu=1500, method='manual', options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+            ipaddress='192.168.206.10',
+            ifname=f"{self.port['name']}:{network.id}-{address.id}", options=options)
+        self.assertEqual(expected, configs[0])
 
     def test_get_controller_ethernet_config_slave_ifupdown(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
+        self._create_host(constants.CONTROLLER)
         bond = self._create_bond_test("bond0")
-        self._update_context()
+        self._do_update_context()
         iface = self.context['interfaces'][bond['uses'][0]]
         port = self.context['ports'][iface['id']]
-        config = interface.get_interface_network_config(self.context, iface)
+        configs = interface.get_interface_network_configs(self.context, iface)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(port['name'])
         options = {'allow-bond0': port['name'],
                    'bond-master': 'bond0',
-                   'stx-description': 'ifname:eth1,net:None',
+                   'stx-description': 'ifname:eth0,net:None',
                    'pre-up': '/usr/sbin/ip link set dev {} promisc on; {}'.format(port['name'],
                                                                              ipv6_autocnf_off),
                    'mtu': '1500'}
         expected = self._get_network_config_ifupdown(
             ifname=port['name'], method='manual', options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+        self.assertEqual(expected, configs[0])
 
     def test_get_controller_ethernet_config_slave_sriov_bond(self):
+        self._create_host(constants.CONTROLLER)
         port1, iface1 = self._create_ethernet_test(
             ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
             sriov_numvfs=16)
         port2, iface2 = self._create_ethernet_test(
             ifclass=constants.INTERFACE_CLASS_PCI_SRIOV,
             sriov_numvfs=16)
-        interface_id = len(self.interfaces)
-        ifname = 'bond' + str(interface_id)
-        ifclass = constants.INTERFACE_CLASS_PLATFORM
-        networks = []
-        iface = {'id': interface_id,
-                     'uuid': str(uuid.uuid4()),
-                     'forihostid': self.host.id,
-                     'ifname': ifname,
-                     'iftype': constants.INTERFACE_TYPE_AE,
-                     'imac': '02:11:22:33:44:' + str(10 + interface_id),
-                     'uses': [iface1['ifname'], iface2['ifname']],
-                     'used_by': [],
-                     'ifclass': ifclass,
-                     'networks': networks,
-                     'imtu': 1500,
-                     'txhashpolicy': 'layer2'}
-        iface['aemode'] = 'active_standby'
-        iface['primary_reselect'] = constants.PRIMARY_RESELECT_ALWAYS
+        self._create_bond_test("bond0",
+                               ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                               iface1=iface1,
+                               iface2=iface2,
+                               aemode='active_standby',
+                               primary_reselect=constants.PRIMARY_RESELECT_ALWAYS)
+        self._do_update_context()
 
-        iface1['used_by'].append(iface['ifname'])
-        iface2['used_by'].append(iface['ifname'])
-        bond = dbutils.create_test_interface(**iface)
-        self.interfaces.append(bond)
-        self._setup_address_and_routes(bond)
-        self._update_context()
+        iface = iface1
+        port = port1
+        configs = interface.get_interface_network_configs(self.context, iface)
+        numvfs_path = '/sys/class/net/{}/device/sriov_numvfs'.format(port['name'])
+        numvfs_cmd = 'echo 0 > {0}; echo 16 > {0}'.format(numvfs_path)
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(port['name'])
+        options = {'allow-bond0': port['name'],
+                   'bond-master': 'bond0',
+                   'stx-description': 'ifname:{},net:None'.format(iface.ifname),
+                   'pre-up': '/usr/sbin/ip link set dev {} promisc on; {}; {}'.format(
+                       port['name'], numvfs_cmd, ipv6_autocnf_off),
+                   'mtu': '1500'}
+        expected = self._get_network_config_ifupdown(ifname=port['name'], method='manual',
+                                                     options=options)
+        self.assertEqual(expected, configs[0])
 
-        iface = self.context['interfaces'][bond['uses'][0]]
-        port = self.context['ports'][iface['id']]
-        config1 = interface.get_interface_network_config(
-            self.context, iface)
-        options1 = {'IPV6_AUTOCONF': 'no',
-                   'SLAVE': 'yes',
-                   'PROMISC': 'yes',
-                   'MASTER': ifname,
-                   'LINKDELAY': '20',
-                   'pre_up':
-                       'echo 0 > /sys/class/net/eth1/device/sriov_numvfs; '
-                       'echo 16 > /sys/class/net/eth1/device/sriov_numvfs'}
-        expected = self._get_network_config(
-            ifname=port['name'], method='manual',
-            mtu=1500, options=options1)
-        print(expected)
-        self.assertEqual(expected, config1)
-        iface = self.context['interfaces'][bond['uses'][1]]
-        port = self.context['ports'][iface['id']]
-        config2 = interface.get_interface_network_config(
-            self.context, iface)
-        options2 = {'IPV6_AUTOCONF': 'no',
-                   'SLAVE': 'yes',
-                   'PROMISC': 'yes',
-                   'MASTER': ifname,
-                   'LINKDELAY': '20',
-                   'pre_up':
-                       'echo 0 > /sys/class/net/eth2/device/sriov_numvfs; '
-                       'echo 16 > /sys/class/net/eth2/device/sriov_numvfs'}
-        expected = self._get_network_config(
-            ifname=port['name'], method='manual',
-            mtu=1500, options=options2)
-        print(expected)
-        self.assertEqual(expected, config2)
-
-    def test_get_controller_bond_network_config(self):
-        bond = self._create_bond_test("bond0")
-        self._update_context()
-        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
-        config = interface.get_bond_network_config(self.context, bond, {'options': {}}, network.id)
-        expected = {'options':
-                       {'BONDING_OPTS': 'mode=balance-xor xmit_hash_policy=layer2 miimon=100',
-                        'MACADDR': bond['imac'],
-                        'up': 'sleep 10'}}
-        print(expected)
-        self.assertEqual(expected, config)
-
-    def test_get_controller_bond_config_duplex(self):
-        system_dict = self.system.as_dict()
-        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
-        self.dbapi.isystem_update(self.system.uuid, system_dict)
-        bond = self._create_bond_test(
-            "bond0", ifclass=constants.INTERFACE_CLASS_PLATFORM,
-            networktype=constants.NETWORK_TYPE_MGMT)
-        self._update_context()
-        self._update_interface_address_pool(
-            bond, constants.NETWORK_TYPE_MGMT)
-        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
-        config = interface.get_interface_network_config(self.context, bond, network.id)
-        options = {'IPV6_AUTOCONF': 'no',
-                   'up': 'sleep 10',
-                   'MACADDR': bond['imac'],
-                   'BONDING_OPTS':
-                       'mode=802.3ad lacp_rate=fast xmit_hash_policy=layer2 miimon=100'}
-        expected = self._get_static_network_config(
-            ifname=f"{bond['ifname']}:{network.id}", gateway='192.168.204.1',
-            ipaddress='192.168.1.2', mtu=1500, options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+        iface = iface2
+        port = port2
+        configs = interface.get_interface_network_configs(self.context, iface)
+        numvfs_path = '/sys/class/net/{}/device/sriov_numvfs'.format(port['name'])
+        numvfs_cmd = 'echo 0 > {0}; echo 16 > {0}'.format(numvfs_path)
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(port['name'])
+        options = {'allow-bond0': port['name'],
+                   'bond-master': 'bond0',
+                   'stx-description': 'ifname:{},net:None'.format(iface.ifname),
+                   'pre-up': '/usr/sbin/ip link set dev {} promisc on; {}; {}'.format(
+                       port['name'], numvfs_cmd, ipv6_autocnf_off),
+                   'mtu': '1500'}
+        expected = self._get_network_config_ifupdown(ifname=port['name'], method='manual',
+                                                     options=options)
+        self.assertEqual(expected, configs[0])
 
     def test_get_controller_bond_config_duplex_ifupdown(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
+        self._create_host(constants.CONTROLLER)
         system_dict = self.system.as_dict()
         system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
         self.dbapi.isystem_update(self.system.uuid, system_dict)
         bond = self._create_bond_test(
             "bond0", ifclass=constants.INTERFACE_CLASS_PLATFORM,
             networktype=constants.NETWORK_TYPE_MGMT)
-        self._update_context()
-        self._update_interface_address_pool(
-            bond, constants.NETWORK_TYPE_MGMT)
-        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
-        config = interface.get_interface_network_config(self.context, bond, network.id)
+        network, address = self._create_address_for_interface(bond)
+        self._do_update_context()
+        configs = interface.get_interface_network_configs(self.context, bond, network)
         options = {'bond-lacp-rate': 'fast',
                    'bond-miimon': '100',
                    'bond-mode': '802.3ad',
-                   'bond-slaves': 'eth1 eth2 ',
+                   'bond-slaves': 'eth0 eth1 ',
                    'bond-xmit-hash-policy': 'layer2',
                    'stx-description': 'ifname:bond0,net:mgmt',
                    'gateway': '192.168.204.1',
-                   'hwaddress': '02:11:22:33:44:13',
+                   'hwaddress': '02:11:22:33:44:12',
                    'mtu': '1500',
                    'post-up': 'echo 0 > /proc/sys/net/ipv6/conf/bond0/autoconf; echo '
                               '0 > /proc/sys/net/ipv6/conf/bond0/accept_ra; echo 0 > '
                               '/proc/sys/net/ipv6/conf/bond0/accept_redirects',
                    'up': 'sleep 10'}
         expected = self._get_static_network_config_ifupdown(
-            ifname=f"{bond['ifname']}:{network.id}", options=options)
-        print(expected)
-        self.assertEqual(expected, config)
-
-    def test_get_controller_bond_config_duplex_direct(self):
-        system_dict = self.system.as_dict()
-        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX_DIRECT
-        self.dbapi.isystem_update(self.system.uuid, system_dict)
-        bond = self._create_bond_test(
-            "bond0", ifclass=constants.INTERFACE_CLASS_PLATFORM,
-            networktype=constants.NETWORK_TYPE_MGMT)
-        self._update_context()
-        self._update_interface_address_pool(
-            bond, constants.NETWORK_TYPE_MGMT)
-        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
-        config = interface.get_interface_network_config(self.context, bond, network.id)
-        options = {'IPV6_AUTOCONF': 'no',
-                   'up': 'sleep 10',
-                   'pre_up': '/sbin/modprobe bonding; grep bond0 '
-                             '/sys/class/net/bonding_masters || echo +bond0 > '
-                             '/sys/class/net/bonding_masters; sysctl -wq '
-                             'net.ipv6.conf.bond0.accept_dad=0',
-                   'MACADDR': bond['imac'],
-                   'BONDING_OPTS':
-                       'mode=802.3ad lacp_rate=fast xmit_hash_policy=layer2 miimon=100'}
-        expected = self._get_static_network_config(
-            ifname=f"{bond['ifname']}:{network.id}", gateway='192.168.204.1', ipaddress='192.168.1.2',
-            mtu=1500, options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+            ipaddress='192.168.204.10',
+            ifname=f"{bond['ifname']}:{network.id}-{address.id}", options=options)
+        self.assertEqual(expected, configs[0])
 
     def test_get_controller_bond_config_duplex_direct_ifupdown(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
+        self._create_host(constants.CONTROLLER)
         system_dict = self.system.as_dict()
         system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX_DIRECT
         self.dbapi.isystem_update(self.system.uuid, system_dict)
         bond = self._create_bond_test(
             "bond0", ifclass=constants.INTERFACE_CLASS_PLATFORM,
             networktype=constants.NETWORK_TYPE_MGMT)
-        self._update_context()
-        self._update_interface_address_pool(
-            bond, constants.NETWORK_TYPE_MGMT)
+        network, address = self._create_address_for_interface(bond)
+        self._do_update_context()
         network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
-        config = interface.get_interface_network_config(self.context, bond, network.id)
+
+        configs = interface.get_interface_network_configs(self.context, bond)
         options = {'bond-lacp-rate': 'fast',
                    'bond-miimon': '100',
                    'bond-mode': '802.3ad',
-                   'bond-slaves': 'eth1 eth2 ',
+                   'bond-slaves': 'eth0 eth1 ',
                    'bond-xmit-hash-policy': 'layer2',
-                   'stx-description': 'ifname:bond0,net:mgmt',
-                   'gateway': '192.168.204.1',
-                   'hwaddress': '02:11:22:33:44:13',
+                   'stx-description': 'ifname:bond0,net:None',
+                   'hwaddress': '02:11:22:33:44:12',
                    'mtu': '1500',
-                   'post-up': 'echo 0 > /proc/sys/net/ipv6/conf/bond0/autoconf; echo '
+                   'post-up': '/usr/local/bin/tc_setup.sh bond0 mgmt 10000 > /dev/null; '
+                              'echo 0 > /proc/sys/net/ipv6/conf/bond0/autoconf; echo '
                               '0 > /proc/sys/net/ipv6/conf/bond0/accept_ra; echo 0 > '
                               '/proc/sys/net/ipv6/conf/bond0/accept_redirects',
                    'pre-up': '/sbin/modprobe bonding; grep bond0 '
@@ -1787,33 +1507,37 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                              '/sys/class/net/bonding_masters; sysctl -wq '
                              'net.ipv6.conf.bond0.accept_dad=0',
                    'up': 'sleep 10'}
-        expected = self._get_static_network_config_ifupdown(
-            ifname=f"{bond['ifname']}:{network.id}", options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+        expected = self._get_network_config_ifupdown(
+            method='manual', ifname=f"{bond['ifname']}", options=options)
+        self.assertEqual(expected, configs[0])
 
-    def test_get_controller_bond_config_balanced(self):
-        bond = self._create_bond_test("bond0")
-        self._update_context()
-        config = interface.get_interface_network_config(self.context, bond)
-        options = {'IPV6_AUTOCONF': 'no',
-                   'up': 'sleep 10',
-                   'MACADDR': bond['imac'],
-                   'BONDING_OPTS':
-                       'mode=balance-xor xmit_hash_policy=layer2 miimon=100'}
-        expected = self._get_network_config(
-            ifname=bond['ifname'], mtu=1500, method='manual', options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+        configs = interface.get_interface_network_configs(self.context, bond, network)
+        options = {'bond-lacp-rate': 'fast',
+                   'bond-miimon': '100',
+                   'bond-mode': '802.3ad',
+                   'bond-slaves': 'eth0 eth1 ',
+                   'bond-xmit-hash-policy': 'layer2',
+                   'stx-description': 'ifname:bond0,net:mgmt',
+                   'gateway': '192.168.204.1',
+                   'hwaddress': '02:11:22:33:44:12',
+                   'mtu': '1500',
+                   'post-up': 'echo 0 > /proc/sys/net/ipv6/conf/bond0/autoconf; echo '
+                              '0 > /proc/sys/net/ipv6/conf/bond0/accept_ra; echo 0 > '
+                              '/proc/sys/net/ipv6/conf/bond0/accept_redirects',
+                   'up': 'sleep 10'}
+        expected = self._get_static_network_config_ifupdown(
+            ipaddress='192.168.204.10',
+            ifname=f"{bond['ifname']}:{network.id}-{address.id}", options=options)
+        self.assertEqual(expected, configs[0])
 
     def test_get_controller_bond_config_balanced_ifupdown(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
+        self._create_host(constants.CONTROLLER)
         bond = self._create_bond_test("bond0")
-        self._update_context()
-        config = interface.get_interface_network_config(self.context, bond)
+        self._do_update_context()
+        configs = interface.get_interface_network_configs(self.context, bond)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(bond['ifname'])
         options = {'bond-miimon': '100',
-                  'bond-slaves': 'eth1 eth2 ',
+                  'bond-slaves': 'eth0 eth1 ',
                   'bond-mode': 'balance-xor',
                   'bond-xmit-hash-policy': 'layer2',
                   'stx-description': 'ifname:bond0,net:None',
@@ -1823,36 +1547,18 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                   'up': 'sleep 10'}
         expected = self._get_network_config_ifupdown(
             ifname=bond['ifname'], method='manual', options=options)
-        print(expected)
-        self.assertEqual(expected, config)
-
-    def test_get_controller_bond_config_8023ad(self):
-        bond = self._create_bond_test("bond0")
-        bond['aemode'] = '802.3ad'
-        self._update_context()
-        config = interface.get_interface_network_config(self.context, bond)
-        options = {'IPV6_AUTOCONF': 'no',
-                   'up': 'sleep 10',
-                   'MACADDR': bond['imac'],
-                   'BONDING_OPTS':
-                       'mode=802.3ad lacp_rate=fast '
-                       'xmit_hash_policy=layer2 miimon=100'}
-        expected = self._get_network_config(
-            ifname=bond['ifname'], mtu=1500, method='manual', options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+        self.assertEqual(expected, configs[0])
 
     def test_get_controller_bond_config_8023ad_ifupdown(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
-        bond = self._create_bond_test("bond0")
-        bond['aemode'] = '802.3ad'
-        self._update_context()
-        config = interface.get_interface_network_config(self.context, bond)
+        self._create_host(constants.CONTROLLER)
+        bond = self._create_bond_test("bond0", aemode='802.3ad')
+        self._do_update_context()
+        configs = interface.get_interface_network_configs(self.context, bond)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(bond['ifname'])
         options = {'bond-lacp-rate': 'fast',
                    'bond-miimon': '100',
                    'bond-mode': '802.3ad',
-                   'bond-slaves': 'eth1 eth2 ',
+                   'bond-slaves': 'eth0 eth1 ',
                    'bond-xmit-hash-policy': 'layer2',
                    'stx-description': 'ifname:bond0,net:None',
                    'hwaddress': bond['imac'],
@@ -1861,36 +1567,21 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'up': 'sleep 10'}
         expected = self._get_network_config_ifupdown(
             ifname=bond['ifname'], method='manual', options=options)
-        print(expected)
-        self.assertEqual(expected, config)
-
-    def test_get_controller_bond_config_active_standby(self):
-        bond = self._create_bond_test("bond0")
-        bond['aemode'] = 'active_standby'
-        bond['primary_reselect'] = constants.PRIMARY_RESELECT_ALWAYS
-        self._update_context()
-        config = interface.get_interface_network_config(self.context, bond)
-        options = {'IPV6_AUTOCONF': 'no',
-                   'up': 'sleep 10',
-                   'MACADDR': bond['imac'],
-                   'BONDING_OPTS': 'mode=active-backup miimon=100 primary=eth1 primary_reselect=always'}
-        expected = self._get_network_config(
-            ifname=bond['ifname'], mtu=1500, method='manual', options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+        self.assertEqual(expected, configs[0])
 
     def test_get_controller_bond_config_active_standby_ifupdown(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
-        bond = self._create_bond_test("bond0")
-        bond['aemode'] = 'active_standby'
-        bond['primary_reselect'] = constants.PRIMARY_RESELECT_ALWAYS
-        self._update_context()
-        config = interface.get_interface_network_config(self.context, bond)
+        self._create_host(constants.CONTROLLER)
+        bond = self._create_bond_test(
+            "bond0",
+            aemode='active_standby',
+            primary_reselect=constants.PRIMARY_RESELECT_ALWAYS)
+        self._do_update_context()
+        configs = interface.get_interface_network_configs(self.context, bond)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(bond['ifname'])
         options = {'bond-miimon': '100',
                    'bond-mode': 'active-backup',
-                   'bond-slaves': 'eth1 eth2 ',
-                   'bond-primary': 'eth1',
+                   'bond-slaves': 'eth0 eth1 ',
+                   'bond-primary': 'eth0',
                    'bond-primary-reselect': 'always',
                    'stx-description': 'ifname:bond0,net:None',
                    'hwaddress': bond['imac'],
@@ -1899,71 +1590,41 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'up': 'sleep 10'}
         expected = self._get_network_config_ifupdown(
             ifname=bond['ifname'], method='manual', options=options)
-        print(expected)
-        self.assertEqual(expected, config)
-
-    def test_get_controller_bond_config_active_standby_primary_reselect(self):
-        bond = self._create_bond_test("bond0", constants.INTERFACE_CLASS_PLATFORM,
-                                      constants.NETWORK_TYPE_MGMT)
-        bond['aemode'] = 'active_standby'
-        bond['primary_reselect'] = constants.PRIMARY_RESELECT_BETTER
-        self._update_context()
-        config = interface.get_interface_network_config(self.context, bond)
-        options = {'IPV6_AUTOCONF': 'no',
-                   'up': 'sleep 10',
-                   'MACADDR': bond['imac'],
-                   'BONDING_OPTS': 'mode=active-backup miimon=100 primary=eth1 primary_reselect=better'}
-        expected = self._get_network_config(
-            ifname=bond['ifname'], mtu=1500, method='manual', options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+        self.assertEqual(expected, configs[0])
 
     def test_get_controller_bond_config_active_standby_primary_reselect_ifupdown(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
-        bond = self._create_bond_test("bond0", constants.INTERFACE_CLASS_PLATFORM,
-                                      constants.NETWORK_TYPE_MGMT)
-        bond['aemode'] = 'active_standby'
-        bond['primary_reselect'] = constants.PRIMARY_RESELECT_BETTER
-        self._update_context()
-        config = interface.get_interface_network_config(self.context, bond)
+        self._create_host(constants.CONTROLLER)
+        bond = self._create_bond_test(
+            "bond0",
+            constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_MGMT,
+            aemode='active_standby',
+            primary_reselect=constants.PRIMARY_RESELECT_BETTER)
+        self._do_update_context()
+        configs = interface.get_interface_network_configs(self.context, bond)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(bond['ifname'])
         options = {'bond-miimon': '100',
                    'bond-mode': 'active-backup',
-                   'bond-slaves': 'eth1 eth2 ',
-                   'bond-primary': 'eth1',
+                   'bond-slaves': 'eth0 eth1 ',
+                   'bond-primary': 'eth0',
                    'bond-primary-reselect': 'better',
                    'stx-description': 'ifname:bond0,net:None',
                    'hwaddress': bond['imac'],
                    'mtu': '1500',
-                   'post-up': '{}'.format(ipv6_autocnf_off),
+                   'post-up': '/usr/local/bin/tc_setup.sh bond0 mgmt 10000 > /dev/null; ' +
+                              '{}'.format(ipv6_autocnf_off),
                    'up': 'sleep 10'}
         expected = self._get_network_config_ifupdown(
             ifname=bond['ifname'], method='manual', options=options)
-        print(expected)
-        self.assertEqual(expected, config)
-
-    def test_get_controller_vlan_config(self):
-        vlan = self._create_vlan_test("vlan1", None, None, 1, self.iface)
-        self._update_context()
-        config = interface.get_interface_network_config(self.context, vlan)
-        options = {'IPV6_AUTOCONF': 'no',
-                   'PHYSDEV': self.port['name'],
-                   'VLAN': 'yes',
-                   'post_down': 'ip link del vlan#1',
-                   'pre_up': '/sbin/modprobe -q 8021q; ip link add link '
-                             '{} name vlan#1 type vlan id 1'.format(
-                                 self.port['name'])}
-        expected = self._get_network_config(
-            ifname="vlan#1", mtu=1500, method='manual',
-            options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+        self.assertEqual(expected, configs[0])
 
     def test_get_controller_vlan_config_ifupdown(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_MGMT)
         vlan = self._create_vlan_test("vlan1", None, None, 1, self.iface)
-        self._update_context()
-        config = interface.get_interface_network_config(self.context, vlan)
+        self._do_update_context()
+        configs = interface.get_interface_network_configs(self.context, vlan)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off("vlan#1")
         mtu = '1500'
         set_mtu = self._get_postup_mtu("vlan#1", mtu)
@@ -1977,87 +1638,49 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'vlan-raw-device': '{}'.format(self.port['name'])}
         expected = self._get_network_config_ifupdown(
             ifname="vlan#1", method='manual', options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+        self.assertEqual(expected, configs[0])
 
-    def test_get_controller_vlan_config_duplex_direct(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
-        system_dict = self.system.as_dict()
-        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX_DIRECT
-        self.dbapi.isystem_update(self.system.uuid, system_dict)
-        vlan = self._create_vlan_test(
-            "vlan100", constants.INTERFACE_CLASS_PLATFORM,
-            constants.NETWORK_TYPE_MGMT, 100, self.iface)
-        self._update_context()
-        self._update_interface_address_pool(
-            vlan, constants.NETWORK_TYPE_MGMT)
-        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
-        config = interface.get_interface_network_config(self.context, vlan, network.id)
-        options = {'stx-description': 'ifname:vlan100,net:mgmt',
-                   'gateway': '192.168.204.1',
-                   'mtu': '1500',
-                   'post-down': 'ip link del vlan100',
-                   'post-up': '/usr/sbin/ip link set dev vlan100 mtu 1500; echo 0 > '
-                              '/proc/sys/net/ipv6/conf/vlan100/autoconf; echo 0 '
-                              '> /proc/sys/net/ipv6/conf/vlan100/accept_ra; echo 0 > '
-                              '/proc/sys/net/ipv6/conf/vlan100/accept_redirects',
-                   'pre-up': '/sbin/modprobe -q 8021q; ip link add link '
-                             '{} name vlan100 type vlan id 100; '.format(
-                                 self.port['name']) +
-                             'sysctl -wq net.ipv6.conf.vlan100.accept_dad=0',
-                   'vlan-raw-device': '{}'.format(self.port['name'])}
-        expected = self._get_static_network_config(ifname=f"vlan100:{network.id}",
-            ipaddress='192.168.1.2', options=options)
-        print(expected)
-        self.assertEqual(expected, config)
-
-    def test_get_controller_vlan_config_duplex_direct_ifname_with_dot(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
-        system_dict = self.system.as_dict()
-        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX_DIRECT
-        self.dbapi.isystem_update(self.system.uuid, system_dict)
-        vlan = self._create_vlan_test("vlan.dot", None,
-            constants.NETWORK_TYPE_MGMT, 100, self.iface)
-        self._update_context()
-        self._update_interface_address_pool(vlan, constants.NETWORK_TYPE_MGMT)
-        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
-        config = interface.get_interface_network_config(self.context, vlan,
-            network.id)
-        options = {'stx-description': 'ifname:vlan.dot,net:mgmt',
+    def test_get_controller_vlan_config_ifname_with_dot(self):
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_MGMT)
+        vlan = self._create_vlan_test("vlan.dot", None, None, 1, self.iface)
+        self._do_update_context()
+        configs = interface.get_interface_network_configs(self.context, vlan)
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off("vlan.dot")
+        mtu = '1500'
+        set_mtu = self._get_postup_mtu("vlan.dot", mtu)
+        options = {'stx-description': 'ifname:vlan.dot,net:None',
+                   'mtu': mtu,
                    'post-down': 'ip link del vlan.dot',
-                   'mtu': '1500',
-                   'post-up': '/usr/sbin/ip link set dev vlan.dot mtu 1500; echo 0 > '
-                              '/proc/sys/net/ipv6/conf/vlan.dot/autoconf; echo 0 '
-                              '> /proc/sys/net/ipv6/conf/vlan.dot/accept_ra; echo 0 > '
-                              '/proc/sys/net/ipv6/conf/vlan.dot/accept_redirects',
                    'pre-up': '/sbin/modprobe -q 8021q; ip link add link '
-                             '{} name vlan.dot type vlan id 100; '.format(
-                                 self.port['name']) +
-                             'sysctl -wq net.ipv6.conf.vlan/dot.accept_dad=0',
+                             '{} name vlan.dot type vlan id 1'.format(
+                                 self.port['name']),
+                   'post-up': '{} {}'.format(set_mtu, ipv6_autocnf_off),
                    'vlan-raw-device': '{}'.format(self.port['name'])}
-        expected = self._get_network_config(ifname=f"vlan.dot:{network.id}",
-                                            method='manual', options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+        expected = self._get_network_config_ifupdown(
+            ifname="vlan.dot", method='manual', options=options)
+        self.assertEqual(expected, configs[0])
 
     def test_get_controller_vlan_config_duplex_direct_ifupdown(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_NONE,
+                constants.NETWORK_TYPE_NONE)
         system_dict = self.system.as_dict()
         system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX_DIRECT
         self.dbapi.isystem_update(self.system.uuid, system_dict)
         vlan = self._create_vlan_test(
             "vlan100", constants.INTERFACE_CLASS_PLATFORM,
             constants.NETWORK_TYPE_MGMT, 100, self.iface)
-        self._update_context()
-        self._update_interface_address_pool(
-            vlan, constants.NETWORK_TYPE_MGMT)
-        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
-        config = interface.get_interface_network_config(self.context, vlan, network.id)
-        options = {'stx-description': 'ifname:vlan100,net:mgmt',
-                   'gateway': '192.168.204.1',
+        network, address = self._create_address_for_interface(vlan)
+        self._do_update_context()
+
+        configs = interface.get_interface_network_configs(self.context, vlan)
+        options = {'stx-description': 'ifname:vlan100,net:None',
                    'mtu': '1500',
                    'post-down': 'ip link del vlan100',
-                   'post-up': '/usr/sbin/ip link set dev vlan100 mtu 1500; echo 0 > '
+                   'post-up': '/usr/local/bin/tc_setup.sh vlan100 mgmt 10000 > /dev/null; '
+                              '/usr/sbin/ip link set dev vlan100 mtu 1500; echo 0 > '
                               '/proc/sys/net/ipv6/conf/vlan100/autoconf; echo 0 '
                               '> /proc/sys/net/ipv6/conf/vlan100/accept_ra; echo 0 > '
                               '/proc/sys/net/ipv6/conf/vlan100/accept_redirects',
@@ -2066,35 +1689,165 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                                  self.port['name']) +
                              'sysctl -wq net.ipv6.conf.vlan100.accept_dad=0',
                    'vlan-raw-device': '{}'.format(self.port['name'])}
-        expected = self._get_static_network_config_ifupdown(
-            ifname=f"vlan100:{network.id}", options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+        expected = self._get_network_config_ifupdown(
+            method='manual', ifname="vlan100", options=options)
+        self.assertEqual(expected, configs[0])
 
-    def test_get_controller_vlan_config_over_bond(self):
-        bond = self._create_bond_test("bond0")
-        vlan = self._create_vlan_test("vlan1", None, None, 1, bond)
-        self._update_context()
-        config = interface.get_interface_network_config(self.context, vlan)
-        options = {'IPV6_AUTOCONF': 'no',
-                   'PHYSDEV': bond['ifname'],
-                   'VLAN': 'yes',
-                   'post_down': 'ip link del vlan#1',
-                   'pre_up': '/sbin/modprobe -q 8021q; ip link add link '
-                             '{} name vlan#1 type vlan id 1'.format(
-                                 bond['ifname'])}
-        expected = self._get_network_config(
-            ifname="vlan#1", mtu=1500, method='manual',
-            options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+        configs = interface.get_interface_network_configs(self.context, vlan, network)
+        options = {'stx-description': 'ifname:vlan100,net:mgmt',
+                   'gateway': '192.168.204.1',
+                   'mtu': '1500',
+                   'post-up': '/usr/sbin/ip link set dev vlan100 mtu 1500; echo 0 > '
+                              '/proc/sys/net/ipv6/conf/vlan100/autoconf; echo 0 '
+                              '> /proc/sys/net/ipv6/conf/vlan100/accept_ra; echo 0 > '
+                              '/proc/sys/net/ipv6/conf/vlan100/accept_redirects',
+                   'pre-up': '/sbin/modprobe -q 8021q',
+                   'vlan-raw-device': '{}'.format(self.port['name'])}
+        expected = self._get_static_network_config_ifupdown(
+            ipaddress='192.168.204.10',
+            ifname=f"vlan100:{network.id}-{address.id}", options=options)
+        self.assertEqual(expected, configs[0])
+
+    def test_is_disable_dad_required(self):
+        self._create_host_and_interface(constants.INTERFACE_CLASS_NONE, constants.NETWORK_TYPE_NONE)
+        bond = self._create_bond_test("bond0", constants.INTERFACE_CLASS_PLATFORM)
+        vlan = self._create_vlan_test("vlan100", constants.INTERFACE_CLASS_PLATFORM,
+                                      constants.NETWORK_TYPE_MGMT, 100, self.iface)
+        mgmt_network = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
+        clhost_network = self._find_network_by_type(constants.NETWORK_TYPE_CLUSTER_HOST)
+
+        # Ethernet
+        self.iface.networktypelist = [constants.NETWORK_TYPE_MGMT]
+        self.assertTrue(interface.is_disable_dad_required(self.iface, None))
+        self.assertFalse(interface.is_disable_dad_required(self.iface, mgmt_network))
+
+        self.iface.networktypelist = [constants.NETWORK_TYPE_CLUSTER_HOST]
+        self.assertTrue(interface.is_disable_dad_required(self.iface, None))
+        self.assertFalse(interface.is_disable_dad_required(self.iface, clhost_network))
+
+        self.iface.networktypelist = [constants.NETWORK_TYPE_MGMT,
+                                      constants.NETWORK_TYPE_CLUSTER_HOST]
+        self.assertTrue(interface.is_disable_dad_required(self.iface, None))
+        self.assertFalse(interface.is_disable_dad_required(self.iface, mgmt_network))
+        self.assertFalse(interface.is_disable_dad_required(self.iface, clhost_network))
+
+        # Bond
+        bond.networktypelist = [constants.NETWORK_TYPE_MGMT]
+        self.assertTrue(interface.is_disable_dad_required(bond, None))
+        self.assertFalse(interface.is_disable_dad_required(bond, mgmt_network))
+
+        bond.networktypelist = [constants.NETWORK_TYPE_CLUSTER_HOST]
+        self.assertTrue(interface.is_disable_dad_required(bond, None))
+        self.assertFalse(interface.is_disable_dad_required(bond, clhost_network))
+
+        bond.networktypelist = [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_CLUSTER_HOST]
+        self.assertTrue(interface.is_disable_dad_required(bond, None))
+        self.assertFalse(interface.is_disable_dad_required(bond, mgmt_network))
+        self.assertFalse(interface.is_disable_dad_required(bond, clhost_network))
+
+        # VLAN
+        vlan.networktypelist = [constants.NETWORK_TYPE_MGMT]
+        self.assertTrue(interface.is_disable_dad_required(vlan, None))
+        self.assertFalse(interface.is_disable_dad_required(vlan, mgmt_network))
+
+        vlan.networktypelist = [constants.NETWORK_TYPE_CLUSTER_HOST]
+        self.assertTrue(interface.is_disable_dad_required(vlan, None))
+        self.assertFalse(interface.is_disable_dad_required(vlan, clhost_network))
+
+        vlan.networktypelist = [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_CLUSTER_HOST]
+        self.assertTrue(interface.is_disable_dad_required(vlan, None))
+        self.assertFalse(interface.is_disable_dad_required(vlan, mgmt_network))
+        self.assertFalse(interface.is_disable_dad_required(vlan, clhost_network))
+
+    def test_get_controller_ethernet_config_duplex_direct_mgmt_only(self):
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_MGMT)
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX_DIRECT
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+        network, address = self._create_address_for_interface(self.iface)
+        self._do_update_context()
+
+        configs = interface.get_interface_network_configs(
+            self.context, self.iface)
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
+        options = {'post-up': '/usr/local/bin/tc_setup.sh eth0 mgmt 10000 > /dev/null; ' +
+                              '{}'.format(ipv6_autocnf_off),
+                   'pre-up': 'sysctl -wq net.ipv6.conf.{}.accept_dad=0'.format(self.port['name']),
+                   'mtu': '1500',
+                   'stx-description': 'ifname:mgmt0,net:None'}
+        expected = self._get_network_config_ifupdown(
+            method='manual', ifname=f"{self.port['name']}", options=options)
+        self.assertEqual(expected, configs[0])
+
+        configs = interface.get_interface_network_configs(
+            self.context, self.iface, network)
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
+        options = {'post-up': '%s' % ipv6_autocnf_off,
+                   'mtu': '1500',
+                   'stx-description': 'ifname:mgmt0,net:mgmt',
+                   'gateway': '192.168.204.1'}
+        expected = self._get_static_network_config_ifupdown(
+            ipaddress='192.168.204.10',
+            ifname=f"{self.port['name']}:{network.id}-{address.id}", options=options)
+        self.assertEqual(expected, configs[0])
+
+    def test_get_controller_ethernet_config_duplex_direct_mgmt_plus_cluster_host(self):
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_CLUSTER_HOST])
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX_DIRECT
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+        mgmt_network, mgmt_address = self._create_address_for_interface(self.iface,
+                constants.NETWORK_TYPE_MGMT)
+        clhost_network, clhost_address = self._create_address_for_interface(self.iface,
+                constants.NETWORK_TYPE_CLUSTER_HOST)
+        self._do_update_context()
+
+        configs = interface.get_interface_network_configs(
+            self.context, self.iface)
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
+        options = {'post-up': '/usr/local/bin/tc_setup.sh eth0 mgmt 10000 > /dev/null; ' +
+                              '{}'.format(ipv6_autocnf_off),
+                   'pre-up': 'sysctl -wq net.ipv6.conf.{}.accept_dad=0'.format(self.port['name']),
+                   'mtu': '1500',
+                   'stx-description': 'ifname:mgmt0,net:None'}
+        expected = self._get_network_config_ifupdown(
+            method='manual', ifname=f"{self.port['name']}", options=options)
+        self.assertEqual(expected, configs[0])
+
+        configs = interface.get_interface_network_configs(
+            self.context, self.iface, mgmt_network)
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
+        options = {'post-up': '%s' % ipv6_autocnf_off,
+                   'mtu': '1500',
+                   'stx-description': 'ifname:mgmt0,net:mgmt',
+                   'gateway': '192.168.204.1'}
+        expected = self._get_static_network_config_ifupdown(
+            ipaddress='192.168.204.10',
+            ifname=f"{self.port['name']}:{mgmt_network.id}-{mgmt_address.id}", options=options)
+        self.assertEqual(expected, configs[0])
+
+        configs = interface.get_interface_network_configs(
+            self.context, self.iface, clhost_network)
+        ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
+        options = {'post-up': '%s' % ipv6_autocnf_off,
+                   'mtu': '1500',
+                   'stx-description': 'ifname:mgmt0,net:cluster-host',
+                   'gateway': '192.168.206.1'}
+        expected = self._get_static_network_config_ifupdown(
+            ipaddress='192.168.206.10',
+            ifname=f"{self.port['name']}:{clhost_network.id}-{clhost_address.id}", options=options)
+        self.assertEqual(expected, configs[0])
 
     def test_get_controller_vlan_config_over_bond_ifupdown(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
+        self._create_host(constants.CONTROLLER)
         bond = self._create_bond_test("bond0")
         vlan = self._create_vlan_test("vlan1", None, None, 1, bond)
-        self._update_context()
-        config = interface.get_interface_network_config(self.context, vlan)
+        self._do_update_context()
+        configs = interface.get_interface_network_configs(self.context, vlan)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off("vlan#1")
         mtu = '1500'
         set_mtu = self._get_postup_mtu("vlan#1", mtu)
@@ -2108,157 +1861,72 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'vlan-raw-device': '{}'.format(bond['ifname'])}
         expected = self._get_network_config_ifupdown(
             ifname="vlan#1", method='manual', options=options)
-        print(expected)
-        self.assertEqual(expected, config)
-
-    def test_get_worker_ethernet_config_mgmt(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktypelist'] = [constants.NETWORK_TYPE_MGMT]
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_MGMT)
-        self.host['personality'] = constants.WORKER
-        self._update_context()
-        self._update_interface_address_pool(
-            self.iface, constants.NETWORK_TYPE_MGMT)
-        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
-        config = interface.get_interface_network_config(
-            self.context, self.iface, network.id)
-        options = {'IPV6_AUTOCONF': 'no',
-                   'LINKDELAY': '20'}
-        expected = self._get_static_network_config(
-            ifname=f"{self.port['name']}:{network.id}", mtu=1500, gateway='192.168.204.2', options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+        self.assertEqual(expected, configs[0])
 
     def test_get_worker_ethernet_config_mgmt_ifupdown(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktypelist'] = [constants.NETWORK_TYPE_MGMT]
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_MGMT)
-        self.host['personality'] = constants.WORKER
-        self._update_context()
-        self._update_interface_address_pool(
-            self.iface, constants.NETWORK_TYPE_MGMT)
-        network = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
-        config = interface.get_interface_network_config(
-            self.context, self.iface, network.id)
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_MGMT,
+                personality=constants.WORKER)
+        network, address = self._create_address_for_interface(self.iface)
+        self._do_update_context()
+        configs = interface.get_interface_network_configs(
+            self.context, self.iface, network)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
         options = {'stx-description': 'ifname:mgmt0,net:mgmt',
                    'mtu': '1500',
                    'gateway': '192.168.204.2',
                    'post-up': '{}'.format(ipv6_autocnf_off)}
-        expected = self._get_static_network_config_ifupdown(ifname=f"{self.port['name']}:{network.id}",
-                                                            options=options)
-        print(expected)
-        self.assertEqual(expected, config)
-
-    def test_get_worker_ethernet_config_cluster_host(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_CLUSTER_HOST
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
-        self.host['personality'] = constants.WORKER
-        self._update_context()
-        self._update_interface_address_pool(
-            self.iface, constants.NETWORK_TYPE_CLUSTER_HOST)
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
-        config = interface.get_interface_network_config(
-            self.context, self.iface, network.id)
-        options = {'IPV6_AUTOCONF': 'no',
-                   'LINKDELAY': '20'}
-        expected = self._get_static_network_config(
-            ifname=f"{self.port['name']}:{network.id}", mtu=1500, options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+        expected = self._get_static_network_config_ifupdown(
+            ipaddress='192.168.204.10',
+            ifname=f"{self.port['name']}:{network.id}-{address.id}", options=options)
+        self.assertEqual(expected, configs[0])
 
     def test_get_worker_ethernet_config_cluster_host_ifupdown(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PLATFORM
-        self.iface['networktype'] = constants.NETWORK_TYPE_CLUSTER_HOST
-        self.iface['networks'] = self._get_network_ids_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
-        self.host['personality'] = constants.WORKER
-        self._update_context()
-        self._update_interface_address_pool(
-            self.iface, constants.NETWORK_TYPE_CLUSTER_HOST)
-        network = self.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
-        config = interface.get_interface_network_config(
-            self.context, self.iface, network.id)
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PLATFORM,
+                constants.NETWORK_TYPE_CLUSTER_HOST,
+                personality=constants.WORKER)
+        network, address = self._create_address_for_interface(self.iface)
+        self._do_update_context()
+        configs = interface.get_interface_network_configs(
+            self.context, self.iface, network)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
         options = {'stx-description': 'ifname:mgmt0,net:cluster-host',
                    'mtu': '1500',
+                   'gateway': '192.168.206.1',
                    'post-up': '{}'.format(ipv6_autocnf_off)}
         expected = self._get_static_network_config_ifupdown(
-            ifname=f"{self.port['name']}:{network.id}", options=options)
-        print(expected)
-        self.assertEqual(expected, config)
-
-    def test_get_worker_ethernet_config_pci_sriov(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
-        self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
-        self.host['personality'] = constants.WORKER
-        self._update_context()
-        config = interface.get_interface_network_config(
-            self.context, self.iface)
-        options = {'IPV6_AUTOCONF': 'no',
-                   'LINKDELAY': '20',
-                   'pre_up':
-                       'echo 0 > /sys/class/net/eth0/device/sriov_numvfs; '
-                       'echo 0 > /sys/class/net/eth0/device/sriov_numvfs'}
-        expected = self._get_network_config(
-            ifname=self.port['name'], method='manual',
-            mtu=1500, options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+            ipaddress='192.168.206.10',
+            ifname=f"{self.port['name']}:{network.id}-{address.id}", options=options)
+        self.assertEqual(expected, configs[0])
 
     def test_get_worker_ethernet_config_pci_sriov_ifupdown(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
-        self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
-        self.host['personality'] = constants.WORKER
-        self._update_context()
-        config = interface.get_interface_network_config(
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PCI_SRIOV,
+                constants.NETWORK_TYPE_PCI_SRIOV,
+                personality=constants.WORKER)
+        self._do_update_context()
+        configs = interface.get_interface_network_configs(
             self.context, self.iface)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
         options = {'stx-description': 'ifname:mgmt0,net:None',
                    'mtu': '1500',
                    'pre-up': 'echo 0 > /sys/class/net/{}/device/sriov_numvfs;'
-                             ' echo 0 > /sys/class/net/{}/device/sriov_numvfs'.format(self.port['name'],
-                                                                                 self.port['name']),
+                             ' echo 0 > /sys/class/net/{}/device/sriov_numvfs'.format(
+                                 self.port['name'], self.port['name']),
                    'post-up': '{}'.format(ipv6_autocnf_off)}
         expected = self._get_network_config_ifupdown(
             ifname=self.port['name'], method='manual', options=options)
-        print(expected)
-        self.assertEqual(expected, config)
-
-    def test_get_worker_ethernet_config_pci_pthru(self):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_PASSTHROUGH
-        self.iface['networktype'] = constants.NETWORK_TYPE_PCI_PASSTHROUGH
-        self.host['personality'] = constants.WORKER
-        self._update_context()
-        config = interface.get_interface_network_config(
-            self.context, self.iface)
-        options = {'IPV6_AUTOCONF': 'no',
-                   'LINKDELAY': '20',
-                   'pre_up':
-                       'if [ -f  /sys/class/net/eth0/device/sriov_numvfs ]; then'
-                       ' echo 0 > /sys/class/net/eth0/device/sriov_numvfs; fi'}
-        expected = self._get_network_config(
-            ifname=self.port['name'], mtu=1500, method='manual',
-            options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+        self.assertEqual(expected, configs[0])
 
     def test_get_worker_ethernet_config_pci_pthru_ifupdown(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_PASSTHROUGH
-        self.iface['networktype'] = constants.NETWORK_TYPE_PCI_PASSTHROUGH
-        self.host['personality'] = constants.WORKER
-        self._update_context()
-        config = interface.get_interface_network_config(
+        self._create_host_and_interface(
+                constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                constants.NETWORK_TYPE_PCI_PASSTHROUGH,
+                personality=constants.WORKER)
+        self._do_update_context()
+        configs = interface.get_interface_network_configs(
             self.context, self.iface)
         ipv6_autocnf_off = self._get_ipv6_autoconf_off(self.port['name'])
         options = {'stx-description': 'ifname:mgmt0,net:None',
@@ -2270,53 +1938,31 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
                    'post-up': '{}'.format(ipv6_autocnf_off)}
         expected = self._get_network_config_ifupdown(
             ifname=self.port['name'], method='manual', options=options)
-        print(expected)
-        self.assertEqual(expected, config)
+        self.assertEqual(expected, configs[0])
 
     def test_get_worker_ethernet_config_pci_sriov_vf(self):
-        port, iface = self._create_ethernet_test(
-            'sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
-            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=2,
-            sriov_vf_driver=None)
-        vf = self._create_vf_test("vf", 1, None, lower_iface=iface)
-        self._update_context()
-        config = interface.get_interface_network_config(self.context, vf)
-        expected = {}
-        print(expected)
-        self.assertEqual(expected, config)
-
-    def test_get_route_config(self):
-        route = {'network': '1.2.3.0',
-                 'prefix': 24,
-                 'gateway': '1.2.3.1',
-                 'metric': 20}
-        config = interface.get_route_config(route, "eth0")
-        expected = self._get_route_config(
-            name='1.2.3.0/24', network='1.2.3.0',
-            netmask='255.255.255.0', metric=20)
-        print(expected)
-        self.assertEqual(expected, config)
-
-    def test_get_route_config_default(self):
-        route = {'network': '0.0.0.0',
-                 'prefix': 0,
-                 'gateway': '1.2.3.1',
-                 'metric': 1}
-        config = interface.get_route_config(route, "eth0")
-        expected = self._get_route_config()
-        print(expected)
-        self.assertEqual(expected, config)
+        self._create_host_and_interface(
+            constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV,
+            name='sriov1', sriov_numvfs=2)
+        vf = self._create_vf_test("vf", 1, None, lower_iface=self.iface)
+        self._do_update_context()
+        configs = interface.get_interface_network_configs(self.context, vf)
+        expected = []
+        self.assertEqual(expected, configs)
 
     def _create_sriov_vf_config(self, iface_vf_driver, port_vf_driver,
                                 vf_addr_list, num_vfs, max_tx_rate=None):
-        self.iface['ifclass'] = constants.INTERFACE_CLASS_PCI_SRIOV
-        self.iface['networktype'] = constants.NETWORK_TYPE_PCI_SRIOV
-        self.iface['sriov_vf_driver'] = iface_vf_driver
-        self.iface['sriov_numvfs'] = num_vfs
-        self.iface['max_tx_rate'] = max_tx_rate
-        self.port['sriov_vf_driver'] = port_vf_driver
-        self.port['sriov_vfs_pci_address'] = vf_addr_list
-        self._update_context()
+        self._create_host_and_interface(
+            constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV,
+            name='sriov1',
+            iface_sriov_vf_driver=iface_vf_driver,
+            sriov_numvfs=num_vfs,
+            max_tx_rate=max_tx_rate,
+            port_sriov_vf_driver=port_vf_driver,
+            sriov_vfs_pci_address=vf_addr_list)
+        self._do_update_context()
 
         config = interface.get_sriov_config(self.context, self.iface)
         return config
@@ -2393,16 +2039,18 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.assertEqual(expected, config)
 
     def test_get_sriov_config_iftype_vf(self):
-        port, iface = self._create_ethernet_test(
-            'sriov1', constants.INTERFACE_CLASS_PCI_SRIOV,
-            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=4,
+        self._create_host_and_interface(
+            constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV,
+            name='sriov1',
+            sriov_numvfs=4,
             iface_sriov_vf_driver=None,
             port_sriov_vf_driver="iavf",
             sriov_vfs_pci_address="0000:b1:02.0,0000:b1:02.1,0000:b1:02.2,0000:b1:02.3")
-        self._create_vf_test("vf1", 1, 'vfio', lower_iface=iface)
-        self._update_context()
+        self._create_vf_test("vf1", 1, 'vfio', lower_iface=self.iface)
+        self._do_update_context()
 
-        config = interface.get_sriov_config(self.context, iface)
+        config = interface.get_sriov_config(self.context, self.iface)
 
         expected_vf_config = {
             '0000:b1:02.0': {'addr': '0000:b1:02.0', 'driver': None},
@@ -2411,24 +2059,26 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             '0000:b1:02.3': {'addr': '0000:b1:02.3', 'driver': 'vfio-pci'}
         }
         expected = self._get_sriov_config(
-            iface['ifname'], None,
-            num_vfs=4, pf_addr=port['pciaddr'],
-            port_name="eth1",
+            self.iface['ifname'], None,
+            num_vfs=4, pf_addr=self.port['pciaddr'],
+            port_name="eth0",
             vf_config=expected_vf_config)
         self.assertEqual(expected, config)
 
     def test_get_sriov_config_iftype_vf_nested(self):
-        port, iface = self._create_ethernet_test(
-            'sriov1', constants.INTERFACE_CLASS_PCI_SRIOV,
-            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=4,
+        self._create_host_and_interface(
+            constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV,
+            name='sriov1',
+            sriov_numvfs=4,
             iface_sriov_vf_driver=None,
             port_sriov_vf_driver="iavf",
             sriov_vfs_pci_address="0000:b1:02.0,0000:b1:02.1,0000:b1:02.2,0000:b1:02.3")
-        vf1 = self._create_vf_test("vf1", 2, 'vfio', lower_iface=iface)
+        vf1 = self._create_vf_test("vf1", 2, 'vfio', lower_iface=self.iface)
         self._create_vf_test("vf2", 1, 'netdevice', lower_iface=vf1)
-        self._update_context()
+        self._do_update_context()
 
-        config = interface.get_sriov_config(self.context, iface)
+        config = interface.get_sriov_config(self.context, self.iface)
 
         expected_vf_config = {
             '0000:b1:02.0': {'addr': '0000:b1:02.0', 'driver': None},
@@ -2437,24 +2087,26 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             '0000:b1:02.3': {'addr': '0000:b1:02.3', 'driver': 'iavf'}
         }
         expected = self._get_sriov_config(
-            iface['ifname'], None,
-            num_vfs=4, pf_addr=port['pciaddr'],
-            port_name="eth1",
+            self.iface['ifname'], None,
+            num_vfs=4, pf_addr=self.port['pciaddr'],
+            port_name="eth0",
             vf_config=expected_vf_config)
         self.assertEqual(expected, config)
 
     def test_get_sriov_config_iftype_vf_sibling(self):
-        port, iface = self._create_ethernet_test(
-            'sriov1', constants.INTERFACE_CLASS_PCI_SRIOV,
-            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=4,
+        self._create_host_and_interface(
+            constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV,
+            name='sriov1',
+            sriov_numvfs=4,
             iface_sriov_vf_driver=None,
             port_sriov_vf_driver="iavf",
             sriov_vfs_pci_address="0000:b1:02.0,0000:b1:02.1,0000:b1:02.2,0000:b1:02.3")
-        self._create_vf_test("vf1", 2, 'vfio', lower_iface=iface)
-        self._create_vf_test("vf2", 1, 'netdevice', lower_iface=iface)
-        self._update_context()
+        self._create_vf_test("vf1", 2, 'vfio', lower_iface=self.iface)
+        self._create_vf_test("vf2", 1, 'netdevice', lower_iface=self.iface)
+        self._do_update_context()
 
-        config = interface.get_sriov_config(self.context, iface)
+        config = interface.get_sriov_config(self.context, self.iface)
 
         expected_vf_config = {
             '0000:b1:02.0': {'addr': '0000:b1:02.0', 'driver': None},
@@ -2463,9 +2115,9 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             '0000:b1:02.3': {'addr': '0000:b1:02.3', 'driver': 'vfio-pci'}
         }
         expected = self._get_sriov_config(
-            iface['ifname'], None,
-            num_vfs=4, pf_addr=port['pciaddr'],
-            port_name="eth1",
+            self.iface['ifname'], None,
+            num_vfs=4, pf_addr=self.port['pciaddr'],
+            port_name="eth0",
             vf_config=expected_vf_config)
         self.assertEqual(expected, config)
 
@@ -2484,8 +2136,10 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
             constants.SRIOV_DRIVER_TYPE_VFIO, 'i40evf', vf_addr_list,
             num_vfs, max_tx_rate)
         expected_vf_config = {
-            '0000:81:00.0': {'addr': '0000:81:00.0', 'driver': 'vfio-pci', 'max_tx_rate': 1000, 'vfnumber': 0},
-            '0000:81:01.0': {'addr': '0000:81:01.0', 'driver': 'vfio-pci', 'max_tx_rate': 1000, 'vfnumber': 1}
+            '0000:81:00.0': {'addr': '0000:81:00.0', 'driver': 'vfio-pci', 'max_tx_rate': 1000,
+                             'vfnumber': 0},
+            '0000:81:01.0': {'addr': '0000:81:01.0', 'driver': 'vfio-pci', 'max_tx_rate': 1000,
+                             'vfnumber': 1}
         }
         expected = self._get_sriov_config(
             ifname=self.iface['ifname'],
@@ -2497,76 +2151,77 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.assertEqual(expected, config)
 
     def test_get_sriov_config_vf_sibling_with_ratelimit(self):
-        port, iface = self._create_ethernet_test(
-            'sriov1', constants.INTERFACE_CLASS_PCI_SRIOV,
-            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=4,
+        self._create_host_and_interface(
+            constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV,
+            name='sriov1',
+            sriov_numvfs=4,
             iface_sriov_vf_driver=None,
             port_sriov_vf_driver="iavf",
             sriov_vfs_pci_address="0000:b1:02.0,0000:b1:02.1,0000:b1:02.2,0000:b1:02.3")
-        self._create_vf_test("vf1", 2, 'vfio', lower_iface=iface)
-        self._create_vf_test("vf2", 1, 'netdevice', lower_iface=iface, max_tx_rate=1000)
-        self._update_context()
+        self._create_vf_test("vf1", 2, 'vfio', lower_iface=self.iface)
+        self._create_vf_test("vf2", 1, 'netdevice', lower_iface=self.iface, max_tx_rate=1000)
+        self._do_update_context()
 
-        config = interface.get_sriov_config(self.context, iface)
+        config = interface.get_sriov_config(self.context, self.iface)
 
         expected_vf_config = {
             '0000:b1:02.0': {'addr': '0000:b1:02.0', 'driver': None},
-            '0000:b1:02.1': {'addr': '0000:b1:02.1', 'driver': 'iavf', 'max_tx_rate': 1000, 'vfnumber': 1},
+            '0000:b1:02.1': {'addr': '0000:b1:02.1', 'driver': 'iavf', 'max_tx_rate': 1000,
+                             'vfnumber': 1},
             '0000:b1:02.2': {'addr': '0000:b1:02.2', 'driver': 'vfio-pci'},
             '0000:b1:02.3': {'addr': '0000:b1:02.3', 'driver': 'vfio-pci'}
         }
         expected = self._get_sriov_config(
-            iface['ifname'], None,
-            num_vfs=4, pf_addr=port['pciaddr'],
-            port_name="eth1",
+            self.iface['ifname'], None,
+            num_vfs=4, pf_addr=self.port['pciaddr'],
+            port_name="eth0",
             vf_config=expected_vf_config)
         self.assertEqual(expected, config)
 
     def test_get_fpga_config(self):
-        port, iface = self._create_ethernet_test(
-            'n3000', constants.INTERFACE_CLASS_PCI_SRIOV,
-            constants.NETWORK_TYPE_PCI_SRIOV, sriov_numvfs=4,
+        self._create_host_and_interface(
+            constants.INTERFACE_CLASS_PCI_SRIOV,
+            constants.NETWORK_TYPE_PCI_SRIOV,
+            name='n3000',
+            sriov_numvfs=4,
             iface_sriov_vf_driver=None,
             port_sriov_vf_driver="iavf",
             sriov_vfs_pci_address="0000:b1:02.0,0000:b1:02.1,0000:b1:02.2,0000:b1:02.3",
             pdevice="Ethernet Controller [0d58]")
-        self._create_vf_test("vf1", 2, 'vfio', lower_iface=iface)
+        self._create_vf_test("vf1", 2, 'vfio', lower_iface=self.iface)
         self._create_vlan_test('oam', constants.INTERFACE_CLASS_PLATFORM,
-                               constants.NETWORK_TYPE_OAM, 1, lower_iface=iface)
-        self._update_context()
+                               constants.NETWORK_TYPE_OAM, 1, lower_iface=self.iface)
+        self._do_update_context()
 
-        config = interface.get_fpga_config(self.context, iface)
+        config = interface.get_fpga_config(self.context, self.iface)
 
         # Since the interface's fpga config is used to determine whether
         # any upper vlan interfaces need to be brought up after an
         # n3000 device is reset, we ensure that no virtual (VF)
         # type interfaces are in the dict.
         expected = self._get_fpga_config(
-            portname='eth1', device_id='0d58', vlans=["vlan1"])
+            portname='eth0', device_id='0d58', vlans=["vlan1"])
         self.assertEqual(expected, config)
 
-    def test_is_an_n3000_i40_device_false(self):
-        self.assertFalse(
-            interface.is_an_n3000_i40_device(self.context, self.iface))
-
     def test_is_an_n3000_i40_device_true(self):
-        self.port['pdevice'] = "Ethernet Controller [0d58]"
-        self._update_context()
+        self._create_host_and_interface(
+            constants.INTERFACE_CLASS_PLATFORM,
+            constants.NETWORK_TYPE_MGMT,
+            pdevice="Ethernet Controller [0d58]")
+        self._do_update_context()
         self.assertTrue(
             interface.is_an_n3000_i40_device(self.context, self.iface))
 
-    def test_find_sriov_interfaces_by_driver_none(self):
-        ifaces = interface.find_sriov_interfaces_by_driver(
-            self.context, constants.DRIVER_MLX_CX4)
-        self.assertTrue(not ifaces)
-
     def test_find_sriov_interfaces_by_driver_one(self):
+        self._create_host(constants.CONTROLLER)
+
         expected = ['sriov_cx4_0']
         vf_num = 2
 
         for ifname in expected:
             self._create_sriov_cx4_if_test(ifname, vf_num)
-        self._update_context()
+        self._do_update_context()
 
         ifaces = interface.find_sriov_interfaces_by_driver(
             self.context, constants.DRIVER_MLX_CX4)
@@ -2575,12 +2230,14 @@ class InterfaceTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.assertEqual(sorted(results), sorted(expected))
 
     def test_find_sriov_interfaces_by_driver_two(self):
+        self._create_host(constants.CONTROLLER)
+
         expected = ['sriov_cx4_0', 'sriov_cx4_1']
         vf_num = 2
 
         for ifname in expected:
             self._create_sriov_cx4_if_test(ifname, vf_num)
-        self._update_context()
+        self._do_update_context()
 
         ifaces = interface.find_sriov_interfaces_by_driver(
             self.context, constants.DRIVER_MLX_CX4)
@@ -2609,10 +2266,6 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.expected_slave_interfaces = []
         self.expected_mlx_interfaces = []
         self.expected_bmc_interface = None
-        p = mock.patch('sysinv.puppet.interface.is_syscfg_network')
-        self.mock_puppet_interface_sysconfig = p.start()
-        self.mock_puppet_interface_sysconfig.return_value = True
-        self.addCleanup(p.stop)
         self._assign_addresses_to_pool()
         self.exp_yaml_config = {}
 
@@ -2637,29 +2290,17 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         class_name = self.__class__.__name__
         return os.path.join(hiera_directory, class_name) + ".yaml"
 
-    def test_generate_interface_config(self):
-        hieradata_directory = self._create_hieradata_directory()
-        config_filename = self._get_config_filename(hieradata_directory)
-        with open(config_filename, 'w') as config_file:
-            config = self.operator.interface.get_host_config(self.host)  # pylint: disable=no-member
-            self.assertIsNotNone(config)
-            yaml.dump(config, config_file, default_flow_style=False)
-
     def test_generate_interface_config_ifupdown(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
         hieradata_directory = self._create_hieradata_directory()
         config_filename = self._get_config_filename(hieradata_directory)
-        # print(config_filename)
         with open(config_filename, 'w') as config_file:
             config = self.operator.interface.get_host_config(self.host)  # pylint: disable=no-member
             self.assertIsNotNone(config)
             yaml.dump(config, config_file, default_flow_style=False)
 
     def test_interface_config_yaml_data_validation(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
         hieradata_directory = self._create_hieradata_directory()
         config_filename = self._get_config_filename(hieradata_directory)
-        print(config_filename)
         with open(config_filename, 'w') as config_file:
             config = self.operator.interface.get_host_config(self.host)  # pylint: disable=no-member
             self.assertIsNotNone(config)
@@ -2697,7 +2338,6 @@ class InterfaceHostTestCase(InterfaceTestCaseMixin, dbbase.BaseHostTestCase):
         self.assertIn('interfaces', context)
         self.assertIn('addresses', context)
         self.assertIn('routes', context)
-        self.assertIn('gateways', context)
 
     def test_is_platform_interface(self):
         if not self.expected_platform_interfaces:
@@ -2829,10 +2469,10 @@ class InterfaceControllerEthernet(InterfaceHostTestCase):
                      'tc': False},
             "eth1": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mgmt,net:{None}', 'tc': True},
-            "eth1:1": {'family': 'inet', 'method': 'static',
+            "eth1:1-3": {'family': 'inet', 'method': 'static',
                        'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
                        'tc': False},
-            "eth1:2": {'family': 'inet', 'method': 'static',
+            "eth1:2-7": {'family': 'inet', 'method': 'static',
                        'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
                        'tc': False},
             "eth2": {'family': 'inet', 'method': 'static',
@@ -2873,13 +2513,13 @@ class InterfaceControllerEthernetCfg2(InterfaceHostTestCase):
                      'tc': False},
             "eth1": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mgmt0,net:{None}', 'tc': True},
-            "eth1:1": {'family': 'inet', 'method': 'static',
+            "eth1:1-3": {'family': 'inet', 'method': 'static',
                        'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_PXEBOOT}',
                        'tc': False},
-            "eth1:2": {'family': 'inet', 'method': 'static',
+            "eth1:2-7": {'family': 'inet', 'method': 'static',
                        'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_MGMT}',
                        'tc': False},
-            "eth1:4": {'family': 'inet', 'method': 'static',
+            "eth1:4-15": {'family': 'inet', 'method': 'static',
                        'stx-description': 'ifname:mgmt0,'
                                      f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
                        'tc': False},
@@ -2918,13 +2558,13 @@ class InterfaceControllerEthernetCfg3(InterfaceHostTestCase):
                      'tc': False},
             "eth1": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mgmt0,net:{None}', 'tc': True},
-            "eth1:1": {'family': 'inet', 'method': 'static',
+            "eth1:1-3": {'family': 'inet', 'method': 'static',
                        'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_PXEBOOT}',
                        'tc': False},
-            "eth1:2": {'family': 'inet', 'method': 'static',
+            "eth1:2-7": {'family': 'inet', 'method': 'static',
                        'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_MGMT}',
                        'tc': False},
-            "eth1:4": {'family': 'inet', 'method': 'static',
+            "eth1:4-15": {'family': 'inet', 'method': 'static',
                        'stx-description': 'ifname:mgmt0,'
                                      f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
                        'tc': False},
@@ -2982,10 +2622,10 @@ class InterfaceControllerBond(InterfaceHostTestCase):
                      'tc': False},
             "mgmt0": {'family': 'inet', 'method': 'manual',
                       'stx-description': f'ifname:mgmt0,net:{None}', 'tc': True},
-            "mgmt0:1": {'family': 'inet', 'method': 'static',
+            "mgmt0:1-3": {'family': 'inet', 'method': 'static',
                       'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_PXEBOOT}',
                       'tc': False},
-            "mgmt0:2": {'family': 'inet', 'method': 'static',
+            "mgmt0:2-7": {'family': 'inet', 'method': 'static',
                       'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_MGMT}',
                       'tc': False},
             "cluster-host0": {'family': 'inet', 'method': 'static',
@@ -3087,31 +2727,33 @@ class InterfaceComputeEthernet(InterfaceHostTestCase):
         # worker and all interfaces are ethernet interfaces. Do not explicit
         # attach the PXEboot network
         self.host = self._create_test_host(constants.WORKER)
-        self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
+        _, if_mgmt = self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                    constants.NETWORK_TYPE_MGMT,
                                    hostname=self.host.hostname)
-        self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
-                                    constants.NETWORK_TYPE_CLUSTER_HOST,
-                                    hostname=self.host.hostname)
+        _, if_clhost = self._create_ethernet_test('cluster-host',
+                                   constants.INTERFACE_CLASS_PLATFORM,
+                                   constants.NETWORK_TYPE_CLUSTER_HOST,
+                                   hostname=self.host.hostname)
         self._create_ethernet_test('data', constants.INTERFACE_CLASS_DATA,
-                                    hostname=self.host.hostname)
+                                   hostname=self.host.hostname)
         self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
-                                    constants.NETWORK_TYPE_PCI_SRIOV,
-                                    hostname=self.host.hostname)
+                                   constants.NETWORK_TYPE_PCI_SRIOV,
+                                   hostname=self.host.hostname)
         self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
-                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH,
-                                    hostname=self.host.hostname)
-        port, iface = (
-            self._create_ethernet_test('slow', constants.INTERFACE_CLASS_DATA,
-                                       constants.NETWORK_TYPE_DATA,
-                                       dpdksupport=False,
-                                       hostname=self.host.hostname))
-        port, iface = (
-            self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
-                                       constants.NETWORK_TYPE_DATA,
-                                       driver=constants.DRIVER_MLX_CX4,
-                                       hostname=self.host.hostname))
+                                   constants.NETWORK_TYPE_PCI_PASSTHROUGH,
+                                   hostname=self.host.hostname)
+        self._create_ethernet_test('slow', constants.INTERFACE_CLASS_DATA,
+                                   constants.NETWORK_TYPE_DATA,
+                                   dpdksupport=False,
+                                   hostname=self.host.hostname)
+        self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
+                                   constants.NETWORK_TYPE_DATA,
+                                   driver=constants.DRIVER_MLX_CX4,
+                                   hostname=self.host.hostname)
         self._create_ethernet_test('none')
+
+        self._create_address_for_interface(if_mgmt)
+        self._create_address_for_interface(if_clhost)
 
     def setUp(self):
         super(InterfaceComputeEthernet, self).setUp()
@@ -3126,10 +2768,10 @@ class InterfaceComputeEthernet(InterfaceHostTestCase):
         self.exp_yaml_config = {
             "eth0": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mgmt,net:{None}', 'tc': True},
-            "eth0:1": {'family': 'inet', 'method': 'dhcp',
+            "eth0:1-0": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
                      'tc': False},
-            "eth0:2": {'family': 'inet', 'method': 'static',
+            "eth0:2-37": {'family': 'inet', 'method': 'static',
                      'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
                      'tc': False},
             "eth1": {'family': 'inet', 'method': 'static',
@@ -3139,9 +2781,9 @@ class InterfaceComputeEthernet(InterfaceHostTestCase):
                      'stx-description': f'ifname:sriov,net:{None}', 'tc': False},
             "eth4": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:pthru,net:{None}', 'tc': False},
-            "eth5": {'family': 'inet6', 'method': 'manual',
+            "eth5": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:slow,net:{None}', 'tc': False},
-            "eth6": {'family': 'inet6', 'method': 'manual',
+            "eth6": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mlx5,net:{None}', 'tc': False},
             "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
                    'tc': False},
@@ -3154,11 +2796,12 @@ class InterfaceComputeEthernetCfg2(InterfaceHostTestCase):
         # worker and all interfaces are ethernet interfaces.
         # Explicitly assign PXEboot network with the management network
         self.host = self._create_test_host(constants.WORKER)
-        self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
+        _, if_mgmt = self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                     [constants.NETWORK_TYPE_MGMT,
                                      constants.NETWORK_TYPE_PXEBOOT],
                                     hostname=self.host.hostname)
-        self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+        _, if_clhost = self._create_ethernet_test('cluster-host',
+                                    constants.INTERFACE_CLASS_PLATFORM,
                                     constants.NETWORK_TYPE_CLUSTER_HOST,
                                     hostname=self.host.hostname)
         self._create_ethernet_test('data', constants.INTERFACE_CLASS_DATA,
@@ -3169,17 +2812,18 @@ class InterfaceComputeEthernetCfg2(InterfaceHostTestCase):
         self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
                                     constants.NETWORK_TYPE_PCI_PASSTHROUGH,
                                     hostname=self.host.hostname)
-        port, iface = (
-            self._create_ethernet_test('slow', constants.INTERFACE_CLASS_DATA,
-                                       constants.NETWORK_TYPE_DATA,
-                                       dpdksupport=False,
-                                       hostname=self.host.hostname))
-        port, iface = (
-            self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
-                                       constants.NETWORK_TYPE_DATA,
-                                       driver=constants.DRIVER_MLX_CX4,
-                                       hostname=self.host.hostname))
+        self._create_ethernet_test('slow', constants.INTERFACE_CLASS_DATA,
+                                    constants.NETWORK_TYPE_DATA,
+                                    dpdksupport=False,
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
+                                    constants.NETWORK_TYPE_DATA,
+                                    driver=constants.DRIVER_MLX_CX4,
+                                    hostname=self.host.hostname)
         self._create_ethernet_test('none')
+
+        self._create_address_for_interface(if_mgmt)
+        self._create_address_for_interface(if_clhost)
 
     def setUp(self):
         super(InterfaceComputeEthernetCfg2, self).setUp()
@@ -3194,10 +2838,10 @@ class InterfaceComputeEthernetCfg2(InterfaceHostTestCase):
         self.exp_yaml_config = {
             "eth0": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mgmt,net:{None}', 'tc': True},
-            "eth0:1": {'family': 'inet', 'method': 'dhcp',
+            "eth0:1-0": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
                      'tc': False},
-            "eth0:2": {'family': 'inet', 'method': 'static',
+            "eth0:2-37": {'family': 'inet', 'method': 'static',
                      'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
                      'tc': False},
             "eth1": {'family': 'inet', 'method': 'static',
@@ -3207,9 +2851,9 @@ class InterfaceComputeEthernetCfg2(InterfaceHostTestCase):
                      'stx-description': f'ifname:sriov,net:{None}', 'tc': False},
             "eth4": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:pthru,net:{None}', 'tc': False},
-            "eth5": {'family': 'inet6', 'method': 'manual',
+            "eth5": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:slow,net:{None}', 'tc': False},
-            "eth6": {'family': 'inet6', 'method': 'manual',
+            "eth6": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mlx5,net:{None}', 'tc': False},
             "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
                    'tc': False},
@@ -3222,10 +2866,11 @@ class InterfaceComputeEthernetCfg3(InterfaceHostTestCase):
         # worker and all interfaces are ethernet interfaces.
         # explicitly assign pxeboot network with the cluster-host network
         self.host = self._create_test_host(constants.WORKER)
-        self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
+        _, if_mgmt = self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                     [constants.NETWORK_TYPE_MGMT],
                                     hostname=self.host.hostname)
-        self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+        _, if_clhost = self._create_ethernet_test('cluster-host',
+                                    constants.INTERFACE_CLASS_PLATFORM,
                                     [constants.NETWORK_TYPE_CLUSTER_HOST,
                                      constants.NETWORK_TYPE_PXEBOOT],
                                     hostname=self.host.hostname)
@@ -3237,17 +2882,18 @@ class InterfaceComputeEthernetCfg3(InterfaceHostTestCase):
         self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
                                     constants.NETWORK_TYPE_PCI_PASSTHROUGH,
                                     hostname=self.host.hostname)
-        port, iface = (
-            self._create_ethernet_test('slow', constants.INTERFACE_CLASS_DATA,
-                                       constants.NETWORK_TYPE_DATA,
-                                       dpdksupport=False,
-                                       hostname=self.host.hostname))
-        port, iface = (
-            self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
-                                       constants.NETWORK_TYPE_DATA,
-                                       driver=constants.DRIVER_MLX_CX4,
-                                       hostname=self.host.hostname))
+        self._create_ethernet_test('slow', constants.INTERFACE_CLASS_DATA,
+                                    constants.NETWORK_TYPE_DATA,
+                                    dpdksupport=False,
+                                    hostname=self.host.hostname)
+        self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
+                                    constants.NETWORK_TYPE_DATA,
+                                    driver=constants.DRIVER_MLX_CX4,
+                                    hostname=self.host.hostname)
         self._create_ethernet_test('none')
+
+        self._create_address_for_interface(if_mgmt)
+        self._create_address_for_interface(if_clhost)
 
     def setUp(self):
         super(InterfaceComputeEthernetCfg3, self).setUp()
@@ -3265,19 +2911,19 @@ class InterfaceComputeEthernetCfg3(InterfaceHostTestCase):
                      'tc': True},
             "eth1": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:cluster-host,net:{None}', 'tc': False},
-            "eth1:1": {'family': 'inet', 'method': 'dhcp',
+            "eth1:1-0": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:cluster-host,net:{constants.NETWORK_TYPE_PXEBOOT}',
                      'tc': False},
-            "eth1:4": {'family': 'inet', 'method': 'static',
+            "eth1:4-38": {'family': 'inet', 'method': 'static',
                      'stx-description': f'ifname:cluster-host,'
                      f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}', 'tc': False},
             "eth3": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:sriov,net:{None}', 'tc': False},
             "eth4": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:pthru,net:{None}', 'tc': False},
-            "eth5": {'family': 'inet6', 'method': 'manual',
+            "eth5": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:slow,net:{None}', 'tc': False},
-            "eth6": {'family': 'inet6', 'method': 'manual',
+            "eth6": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mlx5,net:{None}', 'tc': False},
             "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
                    'tc': False},
@@ -3348,7 +2994,7 @@ class InterfaceComputeVlanOverEthernetCfg2(InterfaceHostTestCase):
         port, iface = self._create_ethernet_test(
             'pxeboot', constants.INTERFACE_CLASS_PLATFORM,
             constants.NETWORK_TYPE_PXEBOOT)
-        self._create_vlan_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
+        if_mgmt = self._create_vlan_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                [constants.NETWORK_TYPE_MGMT,
                                 constants.NETWORK_TYPE_CLUSTER_HOST],
                                2, iface)
@@ -3359,10 +3005,13 @@ class InterfaceComputeVlanOverEthernetCfg2(InterfaceHostTestCase):
         self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH)
 
+        self._create_address_for_interface(if_mgmt, constants.NETWORK_TYPE_MGMT)
+        self._create_address_for_interface(if_mgmt, constants.NETWORK_TYPE_CLUSTER_HOST)
+
     def setUp(self):
         super(InterfaceComputeVlanOverEthernetCfg2, self).setUp()
         self.exp_yaml_config = {
-            "data": {'family': 'inet6', 'method': 'manual',
+            "data": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:data,net:{None}', 'tc': False},
             "eth0": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:pxeboot,net:{constants.NETWORK_TYPE_PXEBOOT}',
@@ -3371,10 +3020,10 @@ class InterfaceComputeVlanOverEthernetCfg2(InterfaceHostTestCase):
                      'stx-description': f'ifname:eth2,net:{None}', 'tc': False},
             "vlan2": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mgmt,net:{None}', 'tc': True},
-            "vlan2:2": {'family': 'inet', 'method': 'static',
+            "vlan2:2-37": {'family': 'inet', 'method': 'static',
                      'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
                      'tc': False},
-            "vlan2:4": {'family': 'inet', 'method': 'static',
+            "vlan2:4-38": {'family': 'inet', 'method': 'static',
                      'stx-description': f'ifname:mgmt,'
                                     f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
                      'tc': False},
@@ -3431,9 +3080,9 @@ class InterfaceComputeBond(InterfaceHostTestCase):
         # Setup a sample configuration where the personality is set to a
         # worker and all interfaces are aggregated ethernet interfaces.
         self.host = self._create_test_host(constants.WORKER)
-        self._create_bond_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
+        if_mgmt = self._create_bond_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
                                constants.NETWORK_TYPE_MGMT)
-        self._create_bond_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+        if_clhost = self._create_bond_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
                                constants.NETWORK_TYPE_CLUSTER_HOST)
         self._create_bond_test('data', constants.INTERFACE_CLASS_DATA,
                                constants.NETWORK_TYPE_DATA)
@@ -3443,6 +3092,9 @@ class InterfaceComputeBond(InterfaceHostTestCase):
         self._create_ethernet_test('pthru',
                                    constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH)
+
+        self._create_address_for_interface(if_mgmt)
+        self._create_address_for_interface(if_clhost)
 
     def setUp(self):
         super(InterfaceComputeBond, self).setUp()
@@ -3462,10 +3114,10 @@ class InterfaceComputeBond(InterfaceHostTestCase):
                      'stx-description': f'ifname:eth1,net:{None}', 'tc': False},
             "mgmt": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mgmt,net:{None}', 'tc': True},
-            "mgmt:1": {'family': 'inet', 'method': 'dhcp',
+            "mgmt:1-0": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
                      'tc': False},
-            "mgmt:2": {'family': 'inet', 'method': 'static',
+            "mgmt:2-37": {'family': 'inet', 'method': 'static',
                      'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
                      'tc': False},
             "eth2": {'family': 'inet', 'method': 'manual',
@@ -3520,6 +3172,31 @@ class InterfaceComputeVlanOverBond(InterfaceHostTestCase):
                                           'eth6', 'eth7',
                                           'eth10', 'eth11']
         self.expected_pci_interfaces = ['sriov', 'pthru']
+        self.exp_yaml_config = {
+            "eth0": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:eth0,net:{None}', 'tc': False},
+            "eth1": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:eth1,net:{None}', 'tc': False},
+            "pxeboot": {'family': 'inet', 'method': 'dhcp',
+                     'stx-description': f'ifname:pxeboot,net:{constants.NETWORK_TYPE_PXEBOOT}',
+                     'tc': False},
+            "vlan1": {'family': 'inet', 'method': 'dhcp',
+                     'stx-description': f'ifname:oam,net:{constants.NETWORK_TYPE_OAM}',
+                     'tc': False},
+            "vlan2": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
+                     'tc': True},
+            "vlan3": {'family': 'inet', 'method': 'static',
+                     'stx-description': f'ifname:cluster-host,'
+                                    f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
+                                    'tc': False},
+            "eth4": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:sriov,net:{None}', 'tc': False},
+            "eth5": {'family': 'inet', 'method': 'manual',
+                     'stx-description': f'ifname:pthru,net:{None}', 'tc': False},
+            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
+                   'tc': False},
+        }
 
 
 class InterfaceCpeEthernet(InterfaceHostTestCase):
@@ -3795,448 +3472,1125 @@ class InterfaceCpeComputeVlanOverBond(InterfaceHostTestCase):
         self.expected_pci_interfaces = ['sriov', 'pthru']
 
 
-class InterfaceHostV6TestCase(InterfaceTestCaseMixin, dbbase.BaseIPv6Mixin,
-                              dbbase.BaseHostTestCase):
+# Mnemonics for building expected interface configs
+NET = 'net'                 # Expected network type, constants.NETWORK_TYPE_<type> or None
+FAMILY = 'family'           # Expected family, INET or INET6
+INET = 'inet'               # Value 'inet' for expected FAMILY
+INET6 = 'inet6'             # Value 'inet6' for expected FAMILY
+METHOD = 'method'           # Expected method, STATIC or MANUAL
+STATIC = 'static'           # Value 'static' for expected METHOD
+MANUAL = 'manual'           # Value 'manual' for expected METHOD
+DHCP = 'dhcp'               # Value 'dhcp' for expected METHOD
+OPTIONS = 'options'         # Expected options, dictionary
+GATEWAY = 'gateway'         # Option 'gateway', True if gateway address must be present
+ALLOW = 'allow'             # Option 'allow-<master>' for bond slaves, True if must be present
+UP = 'up'                   # Option 'up' operation, should be a list of command mnemonics
+PRE_UP = 'pre-up'           # Option 'pre-up' operation, should be a list of command mnemonics
+POST_UP = 'post-up'         # Option 'post-up' operation, should be a list of command mnemonics
+DOWN = 'down'               # Option 'down' operation, should be a list of command mnemonics
+PRE_DOWN = 'pre-down'       # Option 'pre-down' operation, should be a list of command mnemonics
+POST_DOWN = 'post-down'     # Option 'post-down' operation, should be a list of command mnemonics
+IPV6_CFG = 'ipv6-cfg'       # Operation command to set IPv6 autoconf, accept_ra and accept_redirects
+SET_MTU = 'set-mtu'         # Operation command to set MTU
+SET_TC = 'set-tc'           # Operation command to configure traffic classifier
+VLAN_MOD = 'vlan-mod'       # Operation command to add vlan kernel module
+VLAN_ADD = 'vlan-add'       # Operation command to create vlan
+VLAN_DEL = 'vlan-del'       # Operation command to remove vlan
+PROMISC_ON = 'prmsc-on'     # Operation command to enable promiscuous mode
+UNDEPR = 'undepr'           # Operation command to undeprecate IPv6 address
+SRIOV = 'sriov'             # Operation command to setup sriov
+PTHROUGH = 'pthrough'       # Operation command to setup pass-through
+SLEEP = 'sleep'             # Operation command to sleep for 10 seconds
+BOND_SETUP = 'bond-stp'     # Operation command to setup bond
+DIS_DAD = 'disable-dad'     # Operation command to disable DAD
+MODES = 'modes'             # List of modes where this configuration is expected, all if unspecified
+SS_IPV4 = 'ss-ipv4'         # Configuration is expected for Single Stack IPv4 mode
+SS_IPV6 = 'ss-ipv6'         # Configuration is expected for Single Stack IPv6 mode
+DS_IPV4 = 'ds-ipv4'         # Configuration is expected for Dual Stack / Primary IPv4 mode
+DS_IPV6 = 'ds-ipv6'         # Configuration is expected for Dual Stack / Primary IPv6 mode
+OPERATIONS = [UP, PRE_UP, POST_UP, DOWN, PRE_DOWN, POST_DOWN]
 
+
+class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
     def setUp(self):
-        super(InterfaceHostV6TestCase, self).setUp()
+        super(InterfaceConfigTestMixin, self).setUp()
         self._setup_context()
-        self.expected_platform_interfaces = []
-        self.expected_data_interfaces = []
-        self.expected_pci_interfaces = []
-        self.expected_slow_interfaces = []
-        self.expected_bridged_interfaces = []
-        self.expected_slave_interfaces = []
-        self.expected_mlx_interfaces = []
-        self.expected_bmc_interface = None
-        p = mock.patch('sysinv.puppet.interface.is_syscfg_network')
-        self.mock_puppet_interface_sysconfig = p.start()
-        self.mock_puppet_interface_sysconfig.return_value = True
-        self.addCleanup(p.stop)
-        self._assign_addresses_to_pool()
-        self.exp_yaml_config = {}
 
     def _setup_configuration(self):
-        # Personality is set to worker to avoid issues due to missing OAM
-        # interface in this empty/dummy configuration
-        self.host = self._create_test_host(constants.WORKER)
+        self.interface_index = {}
+        self.new_address_index = {}
 
     def _update_context(self):
-        # ensure DB entries are updated prior to updating the context which
-        # will re-read the entries from the DB.
-        self.host.save(self.admin_context)
-        super(InterfaceHostV6TestCase, self)._update_context()
+        # skip automatic context update
+        pass
 
-    def _create_hieradata_directory(self):
-        hiera_path = os.path.join(os.environ['VIRTUAL_ENV'], 'hieradata')
-        if not os.path.exists(hiera_path):
-            os.mkdir(hiera_path, 0o755)
-        return hiera_path
+    def _do_update_context(self):
+        super(InterfaceConfigTestMixin, self)._update_context()
 
-    def _get_config_filename(self, hiera_directory):
-        class_name = self.__class__.__name__
-        return os.path.join(hiera_directory, class_name) + ".yaml"
+    debuglevel = int(os.environ.get('TOX_DEBUG_LEVEL', '0'))
 
-    def test_interface_config_yaml_data_validation(self):
-        self.mock_puppet_interface_sysconfig.return_value = False
-        hieradata_directory = self._create_hieradata_directory()
-        config_filename = self._get_config_filename(hieradata_directory)
-        print(config_filename)
-        with open(config_filename, 'w') as config_file:
-            config = self.operator.interface.get_host_config(self.host)  # pylint: disable=no-member
-            self.assertIsNotNone(config)
-            yaml.dump(config, config_file, default_flow_style=False)
+    def _include_interface(self, iface, info):
+        iface_dict = {
+            'interface': iface,
+            'info': info,
+            'networks': {
+                None: {
+                    'network': None,
+                    'addresses': {
+                        constants.IPV4_FAMILY: [],
+                        constants.IPV6_FAMILY: [],
+                    }
+                }
+            },
+            'gateways': {}
+        }
+        self.interface_index[iface.ifname] = iface_dict
+        return iface_dict
 
-        hiera_data = dict()
-        with open(config_filename, 'r') as config_file:
-            hiera_data = yaml.safe_load(config_file)
+    def _include_network(self, iface, network):
+        self.interface_index[iface.ifname]['networks'][network.id] = {
+            'network': network,
+            'addresses': {
+                constants.IPV4_FAMILY: [],
+                constants.IPV6_FAMILY: [],
+            }
+        }
 
-        self.assertTrue('platform::network::interfaces::network_config' in hiera_data.keys())
+    def _include_address(self, iface, network, address):
+        network_id = network.id if network else None
+        (self.interface_index[iface.ifname]['networks'][network_id]['addresses']
+            [address.family]).append(address)
 
-        if len(self.exp_yaml_config):
-            intf_cfg = hiera_data['platform::network::interfaces::network_config']
-            for exp_intf in self.exp_yaml_config:
-                self.assertTrue(exp_intf in intf_cfg.keys())
+    def _include_gateway(self, iface, address, gateway):
+        self.interface_index[iface.ifname]['gateways'][address.id] = gateway
 
-                if exp_intf != 'lo':
-                    self.assertEqual(self.exp_yaml_config[exp_intf]['family'],
-                                    intf_cfg[exp_intf]['family'])
-                    self.assertEqual(self.exp_yaml_config[exp_intf]['method'],
-                                    intf_cfg[exp_intf]['method'])
-                    self.assertEqual(self.exp_yaml_config[exp_intf]['stx-description'],
-                                    intf_cfg[exp_intf]['options']['stx-description'])
-
-                if self.exp_yaml_config[exp_intf]['tc']:
-                    self.assertTrue('tc_setup.sh'
-                                    in intf_cfg[exp_intf]['options']['post-up'])
+    def _get_new_address(self, addrpool, family=None):
+        id = addrpool.id if addrpool else -int(family)
+        entry = self.new_address_index.get(id, None)
+        if not entry:
+            if addrpool:
+                ipnetwork = netaddr.IPNetwork(addrpool.network + '/' + str(addrpool.prefix))
+            else:
+                if family == constants.IPV6_FAMILY:
+                    ipnetwork = netaddr.IPNetwork('fda0::/64')
                 else:
-                    if 'post-up' in intf_cfg[exp_intf]['options'].keys():
-                        self.assertFalse('tc_setup.sh'
-                                         in intf_cfg[exp_intf]['options']['post-up'])
+                    ipnetwork = netaddr.IPNetwork('192.168.100.0/24')
+            entry = {'ipnetwork': ipnetwork, 'offset': 10}
+            self.new_address_index[id] = entry
+        offset = entry['offset']
+        entry['offset'] += 1
+        return str(entry['ipnetwork'][offset]), entry['ipnetwork'].prefixlen
 
-                if self.exp_yaml_config[exp_intf]['undeprecate']:
-                    self.assertTrue('ip -6 addr replace'
-                                    in intf_cfg[exp_intf]['options']['post-up'])
-                else:
-                    if 'post-up' in intf_cfg[exp_intf]['options'].keys():
-                        self.assertFalse('ip -6 addr replace'
-                                          in intf_cfg[exp_intf]['options']['post-up'])
+    def _get_new_pool_address(self, addrpool):
+        return self._get_new_address(addrpool)
 
+    def _get_new_detached_address(self, family):
+        return self._get_new_address(None, family)
 
-class InterfaceControllerEthernetV6(InterfaceHostV6TestCase):
-    def _setup_configuration(self):
-        # Setup a sample configuration where all platform interfaces are
-        # ethernet interfaces.
-        self.host = self._create_test_host(constants.CONTROLLER)
-        self._create_ethernet_test('oam', constants.INTERFACE_CLASS_PLATFORM,
-                                   constants.NETWORK_TYPE_OAM,
-                                   hostname=self.host.hostname)
-        self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
-                                   constants.NETWORK_TYPE_MGMT,
-                                   hostname=self.host.hostname)
-        self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
+    def _setup_detached_address(self, iface, family):
+        addr, prefixlen = self._get_new_detached_address(family)
+        address = self._create_test_address(
+                name=f"{iface.ifname}-detached-ipv{family}",
+                family=family,
+                prefix=prefixlen,
+                address=addr,
+                interface_id=iface.id)
+        if (family == constants.IPV4_FAMILY and iface.ipv4_mode == constants.IPV4_STATIC or
+                family == constants.IPV6_FAMILY and iface.ipv6_mode == constants.IPV6_STATIC):
+            self._include_address(iface, None, address)
+
+    def _setup_detached_addresses(self, iface):
+        iface_info = self.interface_index[iface.ifname]['info']
+        for _ in range(iface_info['ipv4_addresses']):
+            self._setup_detached_address(iface, constants.IPV4_FAMILY)
+        for _ in range(iface_info['ipv6_addresses']):
+            self._setup_detached_address(iface, constants.IPV6_FAMILY)
+
+    def _assign_address_to_interface(self, iface, address):
+        dbapi = db_api.get_instance()
+        dbapi.address_update(address.uuid, {'interface_id': iface.id})
+        address.interface_id = iface.id
+        address.ifname = iface.ifname
+
+    def _get_controller_pool_address(self, iface, addrpool):
+        self.assertIsNotNone(addrpool.controller0_address_id)
+        address = self._find_address_by_id(addrpool.controller0_address_id)
+        self._assign_address_to_interface(iface, address)
+        return address
+
+    def _create_non_controller_pool_address(self, iface, network, addrpool):
+        addr, prefixlen = self._get_new_pool_address(addrpool)
+        return self._create_test_address(
+                name=utils.format_address_name(self.host.hostname, network.type),
+                family=addrpool.family,
+                prefix=prefixlen,
+                address=addr,
+                interface_id=iface.id,
+                address_pool_id=addrpool.id)
+
+    def _setup_gateway(self, iface, network, addrpool, address):
+        if (network and network.type == constants.NETWORK_TYPE_MGMT and
+                self.host.personality in [constants.WORKER, constants.STORAGE]):
+            gateway_address = addrpool.floating_address
+        else:
+            gateway_address = addrpool.gateway_address
+        self._include_gateway(iface, address, gateway_address)
+
+    def _setup_pool_address(self, iface, network, addrpool):
+        if self.host.personality == constants.CONTROLLER:
+            address = self._get_controller_pool_address(iface, addrpool)
+        else:
+            address = self._create_non_controller_pool_address(iface, network, addrpool)
+        self._include_address(iface, network, address)
+        self._setup_gateway(iface, network, addrpool, address)
+
+    def _setup_network_and_addresses(self, iface, networktype):
+        network = self._find_network_by_type(networktype)
+        self._include_network(iface, network)
+        if self.host.personality != constants.CONTROLLER:
+            if networktype not in [constants.NETWORK_TYPE_MGMT,
                                    constants.NETWORK_TYPE_CLUSTER_HOST,
-                                   hostname=self.host.hostname)
-        self._create_ethernet_test('none')
+                                   constants.NETWORK_TYPE_STORAGE,
+                                   constants.NETWORK_TYPE_ADMIN]:
+                return
+        addrpools = self._find_network_address_pools(network.id)
+        for addrpool in addrpools:
+            self._setup_pool_address(iface, network, addrpool)
 
-    def setUp(self):
-        super(InterfaceControllerEthernetV6, self).setUp()
-        self.exp_yaml_config = {
-            "eth0": {'family': 'inet6', 'method': 'static',
-                     'stx-description': f'ifname:oam,net:{constants.NETWORK_TYPE_OAM}',
-                     'tc': False, 'undeprecate': False},
-            "eth1": {'family': 'inet6', 'method': 'manual',
-                     'stx-description': f'ifname:mgmt,net:{None}',
-                     'tc': True, 'undeprecate': False},
-            "eth1:1": {'family': 'inet', 'method': 'static',
-                       'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
-                       'tc': False, 'undeprecate': False},
-            "eth1:2": {'family': 'inet6', 'method': 'static',
-                       'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
-                       'tc': False, 'undeprecate': True},
-            "eth2": {'family': 'inet6', 'method': 'static',
-                     'stx-description': 'ifname:cluster-host,'
-                                   f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
-                     'tc': False, 'undeprecate': False},
-            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
-                   'tc': False, 'undeprecate': False},
+    def _setup_networks_and_addresses(self, iface):
+        for networktype in iface.networktypelist:
+            self._setup_network_and_addresses(iface, networktype)
+
+    def _setup_addresses(self, iface):
+        if iface.ifclass == constants.INTERFACE_CLASS_DATA:
+            self._setup_detached_addresses(iface)
+        elif iface.ifclass == constants.INTERFACE_CLASS_PLATFORM:
+            if iface.networktypelist:
+                self._setup_networks_and_addresses(iface)
+            else:
+                self._setup_detached_addresses(iface)
+
+    def _setup_interface(self, iface, interface_info):
+        self._include_interface(iface, interface_info)
+        self._setup_addresses(iface)
+
+    def _build_interface_info(self, **kwargs):
+        return {'kernel_name': kwargs.get('kernel_name', None),
+                'upper_device': kwargs.get('upper_device', None),
+                'bond_slaves': kwargs.get('bond_slaves', None),
+                'bond_primary': kwargs.get('bond_primary', None),
+                'dpdksupport': kwargs.get('dpdksupport', True),
+                'driver': kwargs.get('driver', None),
+                'ipv4_addresses': kwargs.get('ipv4_addresses', 0),
+                'ipv6_addresses': kwargs.get('ipv6_addresses', 0)}
+
+    def _setup_bond_slave(self, port, iface, master_info):
+
+        interface_info = self._build_interface_info(
+            kernel_name=port.name,
+            upper_device=master_info['kernel_name'],
+            is_slave=True)
+
+        self._setup_interface(iface, interface_info)
+
+    def _get_address_netmask(self, address):
+        network = netaddr.IPNetwork(address.address + '/' + str(address.prefix))
+        if network.version == constants.IPV6_FAMILY:
+            return str(network.prefixlen)
+        else:
+            return str(network.netmask)
+
+    def _get_stx_description(self, iface, network):
+        networktext = network.type if network else 'None'
+        return f"ifname:{iface.ifname},net:{networktext}"
+
+    def _get_traffic_classifier_cmd(self, iface, kernel_name):
+        if constants.NETWORK_TYPE_MGMT in iface.networktypelist:
+            cmd = '%s %s %s %s > /dev/null' % (constants.TRAFFIC_CONTROL_SCRIPT,
+                                               kernel_name,
+                                               constants.NETWORK_TYPE_MGMT,
+                                               constants.LINK_SPEED_10G)
+            return [cmd]
+        return []
+
+    def _get_cmd_ipv6_autoconf_off(self, os_ifname):
+        return ['echo 0 > /proc/sys/net/ipv6/conf/{}/autoconf'.format(os_ifname),
+                'echo 0 > /proc/sys/net/ipv6/conf/{}/accept_ra'.format(os_ifname),
+                'echo 0 > /proc/sys/net/ipv6/conf/{}/accept_redirects'.format(os_ifname)]
+
+    def _get_cmd_postup_mtu(self, os_ifname, mtu):
+        return ['/usr/sbin/ip link set dev {} mtu {}'.format(os_ifname, mtu)]
+
+    def _get_cmd_vlan_kernel_module(self):
+        return ['/sbin/modprobe -q 8021q']
+
+    def _get_cmd_vlan_creation(self, raw_device, kernel_name, vlan_id):
+        return ['ip link add link {} name {} type vlan id {}'.format(
+            raw_device, kernel_name, vlan_id)]
+
+    def _get_cmd_vlan_removal(self, kernel_name):
+        return ['ip link del {}'.format(kernel_name)]
+
+    def _get_promisc_cmd(self, kernel_name):
+        return ['/usr/sbin/ip link set dev {} promisc on'.format(kernel_name)]
+
+    def _get_undeprecate_cmd(self, kernel_name, address):
+        return ['ip -6 addr replace {}/{} dev {} preferred_lft forever'.format(
+            address.address, address.prefix, kernel_name)]
+
+    def _get_sriov_numvfs_path(self, port):
+        return '/sys/class/net/{}/device/sriov_numvfs'.format(port)
+
+    def _get_sriov_numvfs_cmd(self, port, numvfs):
+        sriovfs_path = self._get_sriov_numvfs_path(port)
+        return ['echo 0 > {}'.format(sriovfs_path),
+                'echo {} > {}'.format(numvfs, sriovfs_path)]
+
+    def _get_pci_passthrough_numvfs_cmd(self, port):
+        sriovfs_path = self._get_sriov_numvfs_path(port)
+        return ['if [ -f  {0} ]; then echo 0 > {0}; fi'.format(sriovfs_path)]
+
+    def _get_sleep_cmd(self):
+        return ['sleep 10']
+
+    def _get_bonding_setup_cmd(self, kernel_name):
+        return ['/sbin/modprobe bonding',
+                'grep %s /sys/class/net/bonding_masters || '
+                'echo +%s > /sys/class/net/bonding_masters' % (kernel_name, kernel_name)]
+
+    def _get_disable_dad_cmd(self, kernel_name):
+        return ["sysctl -wq net.ipv6.conf.%s.accept_dad=0" % kernel_name]
+
+    def _get_operations(self, iface_dict, commands, address):
+        iface = iface_dict['interface']
+        kernel_name = iface_dict['info']['kernel_name']
+        operation_list = []
+        for command in commands:
+            if command == IPV6_CFG:
+                operation_list.extend(self._get_cmd_ipv6_autoconf_off(kernel_name))
+            elif command == SET_MTU:
+                operation_list.extend(self._get_cmd_postup_mtu(kernel_name, iface.imtu))
+            elif command == SET_TC:
+                operation_list.extend(self._get_traffic_classifier_cmd(iface, kernel_name))
+            elif command == VLAN_MOD:
+                operation_list.extend(self._get_cmd_vlan_kernel_module())
+            elif command == VLAN_ADD:
+                operation_list.extend(self._get_cmd_vlan_creation(
+                    iface_dict['info']['upper_device'], kernel_name, iface.vlan_id))
+            elif command == VLAN_DEL:
+                operation_list.extend(self._get_cmd_vlan_removal(kernel_name))
+            elif command == PROMISC_ON:
+                operation_list.extend(self._get_promisc_cmd(kernel_name))
+            elif command == UNDEPR:
+                operation_list.extend(self._get_undeprecate_cmd(kernel_name, address))
+            elif command == SRIOV:
+                operation_list.extend(self._get_sriov_numvfs_cmd(kernel_name, iface.sriov_numvfs))
+            elif command == PTHROUGH:
+                operation_list.extend(self._get_pci_passthrough_numvfs_cmd(kernel_name))
+            elif command == SLEEP:
+                operation_list.extend(self._get_sleep_cmd())
+            elif command == BOND_SETUP:
+                operation_list.extend(self._get_bonding_setup_cmd(kernel_name))
+            elif command == DIS_DAD:
+                operation_list.extend(self._get_disable_dad_cmd(kernel_name))
+        return '; '.join(operation_list)
+
+    def _get_ifcfg_options(self, iface_dict, network, address, exp_cfg):
+        iface = iface_dict['interface']
+        exp_options = exp_cfg[OPTIONS]
+
+        options = {'mtu': str(iface_dict['interface'].imtu),
+                   'stx-description': self._get_stx_description(iface, network)}
+
+        if exp_options.pop('vlan-raw-device', False):
+            self.assertEqual(iface.iftype, constants.INTERFACE_TYPE_VLAN,
+                             f"Interface {iface.ifname} is not VLAN")
+            options['vlan-raw-device'] = iface_dict['info']['upper_device']
+
+        if exp_options.pop('hwaddress', False):
+            options['hwaddress'] = iface.imac.rstrip()
+        if exp_options.pop('bond-primary', False):
+            options['bond-primary'] = iface_dict['info']['bond_primary']
+        if exp_options.pop('bond-slaves', False):
+            options['bond-slaves'] = iface_dict['info']['bond_slaves']
+        if exp_options.pop('bond-master', False):
+            options['bond-master'] = iface_dict['info']['upper_device']
+        if exp_options.pop(ALLOW, False):
+            key = 'allow-{}'.format(iface_dict['info']['upper_device'])
+            options[key] = iface_dict['info']['kernel_name']
+
+        for oper in OPERATIONS:
+            oper_list = exp_options.pop(oper, None)
+            if oper_list:
+                options[oper] = self._get_operations(iface_dict, oper_list, address)
+
+        options.update(exp_options)
+
+        return options
+
+    def _get_expected_interface_config(self, iface_dict, network, address, exp_cfg, base):
+        iface = iface_dict['interface']
+
+        has_gateway = exp_cfg[OPTIONS].pop(GATEWAY, False)
+
+        config = {
+            'ensure': 'present',
+            'onboot': 'true',
+            'hotplug': 'false',
+            'family': exp_cfg[FAMILY],
+            'method': exp_cfg[METHOD],
+            'options': self._get_ifcfg_options(iface_dict, network, address, exp_cfg)}
+
+        if exp_cfg[METHOD] == STATIC:
+            self.assertIsNotNone(address,
+                    f"Address expected for interface {iface.ifname} / "
+                    f"network {network.type if network else None}, but not present")
+            config['ipaddress'] = address.address
+            config['netmask'] = self._get_address_netmask(address)
+            if has_gateway:
+                gateway = iface_dict['gateways'].get(address.id, None)
+                self.assertIsNotNone(gateway,
+                        f"Gateway expected for interface {iface.ifname} / "
+                        f"network {network.type if network else None} / "
+                        f"address {address.address} but not present")
+                config['options']['gateway'] = gateway
+
+        kernelname = iface_dict['info']['kernel_name']
+        if base:
+            ifname = kernelname
+        else:
+            ifname = f"{kernelname}:{network.id if network else 0}-{address.id if address else 0}"
+
+        return {ifname: config}
+
+    def _get_address(self, iface_dict, network, family, index):
+        network_id = network.id if network else None
+        self.assertIn(network_id, iface_dict['networks'],
+                f"Network '{network.type if network else None}' is not associated"
+                f"with interface '{iface_dict['interface'].ifname}'")
+        addr_list = iface_dict['networks'][network_id]['addresses'][family]
+        self.assertGreater(len(addr_list), index,
+                f"There are only {len(addr_list)} IPv{family} addresses associated with interface "
+                f"{iface_dict['interface'].ifname} for network {network.type if network else None},"
+                f" index {index + 1} is out of bounds")
+        return addr_list[index]
+
+    def _is_config_included(self, exp_cfg):
+        modes = exp_cfg.pop(MODES, None)
+        if not modes:
+            return True
+        return self.system_mode in modes
+
+    def _get_expected_interface_configs(self, ifname, expected_iface_configs):
+        self.assertIn(ifname, self.interface_index, f"Interface {ifname} was not created")
+        iface_dict = self.interface_index[ifname]
+        address_index = defaultdict(lambda: defaultdict(int))
+        base = True
+        interface_configs = {}
+        for exp_cfg in expected_iface_configs:
+            if not self._is_config_included(exp_cfg):
+                continue
+            network = self._find_network_by_type(exp_cfg[NET])
+            network_id = network.id if network else None
+            if network_id not in iface_dict['networks']:
+                if (network.type == constants.NETWORK_TYPE_PXEBOOT and
+                        constants.NETWORK_TYPE_MGMT in iface_dict['interface'].networktypelist):
+                    self._setup_network_and_addresses(iface_dict['interface'], network.type)
+            address = None
+            if exp_cfg[METHOD] == STATIC:
+                if exp_cfg[FAMILY] == INET6:
+                    family = constants.IPV6_FAMILY
+                else:
+                    family = constants.IPV4_FAMILY
+                address = self._get_address(iface_dict, network, family,
+                                            address_index[network_id][family])
+                address_index[network_id][family] += 1
+            config = self._get_expected_interface_config(iface_dict, network,
+                                                         address, exp_cfg, base)
+            interface_configs.update(config)
+            base = False
+        return interface_configs
+
+    def _add_loopback_config(self, interface_configs):
+        interface_configs['lo'] = {'ensure': 'present',
+                                   'family': 'inet',
+                                   'hotplug': 'false',
+                                   'method': 'loopback',
+                                   'onboot': 'true',
+                                   'options': {}}
+
+    def _get_expected_config(self, expected_configs):
+        interface_configs = {}
+        for ifname, expected_iface_configs in expected_configs.items():
+            configs = self._get_expected_interface_configs(ifname, expected_iface_configs)
+            interface_configs.update(configs)
+        self._add_loopback_config(interface_configs)
+        return interface_configs
+
+    def _get_generated_config(self):
+        hiera_data = self.operator.interface.get_host_config(self.host)
+        self.assertIn('platform::network::interfaces::network_config', hiera_data)
+        return hiera_data['platform::network::interfaces::network_config']
+
+    def _remove_non_serializable_elements(self, object_vars):
+        object_vars.pop('_changed_fields', None)
+        object_vars.pop('_created_at', None)
+        object_vars.pop('_updated_at', None)
+        return object_vars
+
+    # Prints interface index contents for debug purposes
+    def _print_interface_index(self):
+        printable_interface_index = {}
+        for interface_dict in self.interface_index.values():
+            interface = interface_dict['interface']
+            printable_network_dict = {}
+            for network_dict in interface_dict['networks'].values():
+                network = network_dict['network']
+                printable_address_index = defaultdict(list)
+                for family, addresses in network_dict['addresses'].items():
+                    for address in addresses:
+                        printable_address_index[family].append(
+                                self._remove_non_serializable_elements(vars(address)))
+                printable_network_dict[network.id if network else 0] = {
+                    'network': (self._remove_non_serializable_elements(vars(network)) if network
+                                else None),
+                    'addresses': printable_address_index}
+            printable_interface_index[interface.ifname] = {
+                'interface': self._remove_non_serializable_elements(vars(interface)),
+                'info': interface_dict['info'],
+                'networks': printable_network_dict}
+        print(json.dumps(printable_interface_index, sort_keys=True, indent=4))
+
+    def _create_host(self, personality=constants.CONTROLLER, subfunction=None):
+        self.host = self._create_test_host(personality, subfunction)
+
+    def _add_ethernet(self, ifname=None, ifclass=None, networktype=None, **kwargs):
+        port, iface = self._create_ethernet_test(ifname, ifclass, networktype, **kwargs)
+
+        driver = kwargs.get('driver', 'ixgbe')
+
+        interface_info = self._build_interface_info(
+            kernel_name=port.name,
+            dpdksupport=kwargs.get('dpdksupport', True),
+            driver=driver,
+            ipv4_addresses=kwargs.get('ipv4_addresses', 0),
+            ipv6_addresses=kwargs.get('ipv6_addresses', 0))
+
+        self._setup_interface(iface, interface_info)
+
+        return iface
+
+    def _add_bond(self, ifname=None, ifclass=None, networktype=None, **kwargs):
+        port1, slave1 = self._create_ethernet_test()
+        port2, slave2 = self._create_ethernet_test()
+
+        iface = self._create_bond_test(ifname, ifclass, networktype,
+                                       iface1=slave1, iface2=slave2, **kwargs)
+
+        interface_info = self._build_interface_info(
+            kernel_name=iface.ifname,
+            bond_slaves='{} {} '.format(port1.name, port2.name),
+            bond_primary=port1.name,
+            ipv4_addresses=kwargs.get('ipv4_addresses', 0),
+            ipv6_addresses=kwargs.get('ipv6_addresses', 0))
+
+        self._setup_interface(iface, interface_info)
+
+        self._setup_bond_slave(port1, slave1, interface_info)
+        self._setup_bond_slave(port2, slave2, interface_info)
+
+        return iface
+
+    def _add_vlan(self, lower_iface, vlan_id, ifname=None, ifclass=None,
+                  networktype=None, **kwargs):
+        iface = self._create_vlan_test(ifname, ifclass, networktype, vlan_id, lower_iface, **kwargs)
+
+        lower_iface_dict = self.interface_index[lower_iface.ifname]
+        lower_iface_info = lower_iface_dict['info']
+
+        interface_info = self._build_interface_info(
+            kernel_name=interface.get_vlan_os_ifname(iface),
+            upper_device=lower_iface_info['kernel_name'],
+            ipv4_addresses=kwargs.get('ipv4_addresses', 0),
+            ipv6_addresses=kwargs.get('ipv6_addresses', 0))
+
+        self._setup_interface(iface, interface_info)
+
+        return iface
+
+    def _validate_config(self, expected):
+        self._do_update_context()
+        expected_config = self._get_expected_config(expected)
+        if self.debuglevel >= 2:
+            self._print_interface_index()
+        generated_config = self._get_generated_config()
+        self.assertEqual(expected_config, generated_config)
+        if self.debuglevel >= 1:
+            print(json.dumps(generated_config, sort_keys=True, indent=4))
+
+    def test_controller_ethernet_oam(self):
+        self._create_host(constants.CONTROLLER)
+        self._add_ethernet('oam0', constants.INTERFACE_CLASS_PLATFORM, constants.NETWORK_TYPE_OAM)
+        expected = {
+            'oam0': [
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}},
+                {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_OAM, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6],
+                    NET: constants.NETWORK_TYPE_OAM, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [SET_TC, IPV6_CFG]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_OAM, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}}],
         }
+        self._validate_config(expected)
 
-
-class InterfaceControllerEthernetV6Cfg2(InterfaceHostV6TestCase):
-    def _setup_configuration(self):
-        # Setup a sample configuration where all platform interfaces are
-        # ethernet interfaces. In this case the management is assigned
-        # to management and cluster-host networks
-
-        self.host = self._create_test_host(constants.CONTROLLER)
-
-        self._create_ethernet_test('oam0', constants.INTERFACE_CLASS_PLATFORM,
-                                    constants.NETWORK_TYPE_OAM,
-                                    hostname=self.host.hostname)
-
-        self._create_ethernet_test('mgmt0', constants.INTERFACE_CLASS_PLATFORM,
-                                    [constants.NETWORK_TYPE_MGMT,
-                                     constants.NETWORK_TYPE_CLUSTER_HOST],
-                                    hostname=self.host.hostname)
-
-        self._create_ethernet_test('none')
-
-    def setUp(self):
-        super(InterfaceControllerEthernetV6Cfg2, self).setUp()
-        self.exp_yaml_config = {
-            "eth0": {'family': 'inet6', 'method': 'static',
-                     'stx-description': f'ifname:oam0,net:{constants.NETWORK_TYPE_OAM}',
-                     'tc': False, 'undeprecate': False},
-            "eth1": {'family': 'inet6', 'method': 'manual',
-                     'stx-description': f'ifname:mgmt0,net:{None}',
-                     'tc': True, 'undeprecate': False},
-            "eth1:1": {'family': 'inet', 'method': 'static',
-                       'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_PXEBOOT}',
-                       'tc': False, 'undeprecate': False},
-            "eth1:2": {'family': 'inet6', 'method': 'static',
-                       'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_MGMT}',
-                       'tc': False, 'undeprecate': True},
-            "eth1:4": {'family': 'inet6', 'method': 'static',
-                       'stx-description': 'ifname:mgmt0,'
-                                     f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
-                       'tc': False, 'undeprecate': False},
-            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
-                       'tc': False, 'undeprecate': False},
+    def test_controller_ethernet_separate_nets_pxeboot_unassigned(self):
+        self._create_host(constants.CONTROLLER)
+        self._add_ethernet('mgmt0', constants.INTERFACE_CLASS_PLATFORM, constants.NETWORK_TYPE_MGMT)
+        self._add_ethernet('clhost0', constants.INTERFACE_CLASS_PLATFORM,
+                           constants.NETWORK_TYPE_CLUSTER_HOST)
+        self._add_ethernet('none')
+        expected = {
+            'mgmt0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}},
+                {NET: constants.NETWORK_TYPE_PXEBOOT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}}],
+            'clhost0': [
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}},
+                {MODES: [SS_IPV4],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [SET_TC, IPV6_CFG]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}}],
         }
+        self._validate_config(expected)
 
-
-class InterfaceControllerEthernetV6Cfg3(InterfaceHostV6TestCase):
-    def _setup_configuration(self):
-        # Setup a sample configuration where all platform interfaces are
-        # ethernet interfaces. In this case the management is assigned
-        # to management, pxeboot and cluster-host networks
-
-        self.host = self._create_test_host(constants.CONTROLLER)
-
-        self._create_ethernet_test('oam0', constants.INTERFACE_CLASS_PLATFORM,
-                                    constants.NETWORK_TYPE_OAM,
-                                    hostname=self.host.hostname)
-
-        self._create_ethernet_test('mgmt0', constants.INTERFACE_CLASS_PLATFORM,
-                                    [constants.NETWORK_TYPE_MGMT,
-                                     constants.NETWORK_TYPE_CLUSTER_HOST,
-                                     constants.NETWORK_TYPE_PXEBOOT],
-                                    hostname=self.host.hostname)
-
-        self._create_ethernet_test('none')
-
-    def setUp(self):
-        super(InterfaceControllerEthernetV6Cfg3, self).setUp()
-        self.exp_yaml_config = {
-            "eth0": {'family': 'inet6', 'method': 'static',
-                     'stx-description': f'ifname:oam0,net:{constants.NETWORK_TYPE_OAM}',
-                     'tc': False, 'undeprecate': False},
-            "eth1": {'family': 'inet', 'method': 'manual',
-                     'stx-description': f'ifname:mgmt0,net:{None}',
-                     'tc': True, 'undeprecate': False},
-            "eth1:1": {'family': 'inet', 'method': 'static',
-                       'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_PXEBOOT}',
-                       'tc': False, 'undeprecate': False},
-            "eth1:2": {'family': 'inet6', 'method': 'static',
-                       'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_MGMT}',
-                       'tc': False, 'undeprecate': True},
-            "eth1:4": {'family': 'inet6', 'method': 'static',
-                       'stx-description': 'ifname:mgmt0,'
-                                     f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
-                       'tc': False, 'undeprecate': False},
-            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
-                   'tc': False, 'undeprecate': False},
+    def test_controller_ethernet_joined_nets_pxeboot_unassigned(self):
+        self._create_host(constants.CONTROLLER)
+        self._add_ethernet('mgmt0', constants.INTERFACE_CLASS_PLATFORM,
+                           [constants.NETWORK_TYPE_MGMT,
+                            constants.NETWORK_TYPE_CLUSTER_HOST])
+        self._add_ethernet('none')
+        expected = {
+            'mgmt0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}},
+                {NET: constants.NETWORK_TYPE_PXEBOOT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}},
+                {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}}],
         }
+        self._validate_config(expected)
 
-
-class InterfaceComputeEthernetV6(InterfaceHostV6TestCase):
-    def _setup_configuration(self):
-        # Setup a sample configuration where the personality is set to a
-        # worker and all interfaces are ethernet interfaces. Do not explicit
-        # attach the PXEboot network
-        self.host = self._create_test_host(constants.WORKER)
-        self._create_addresses_for_node(self.host.hostname, constants.NETWORK_TYPE_MGMT)
-        self._create_addresses_for_node(self.host.hostname, constants.NETWORK_TYPE_CLUSTER_HOST)
-        self._create_addresses_for_node(self.host.hostname, constants.NETWORK_TYPE_PXEBOOT)
-
-        self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
-                                   constants.NETWORK_TYPE_MGMT,
-                                   hostname=self.host.hostname)
-        self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
-                                    constants.NETWORK_TYPE_CLUSTER_HOST,
-                                    hostname=self.host.hostname)
-        self._create_ethernet_test('data', constants.INTERFACE_CLASS_DATA,
-                                    hostname=self.host.hostname)
-        self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
-                                    constants.NETWORK_TYPE_PCI_SRIOV,
-                                    hostname=self.host.hostname)
-        self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
-                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH,
-                                    hostname=self.host.hostname)
-        port, iface = (
-            self._create_ethernet_test('slow', constants.INTERFACE_CLASS_DATA,
-                                       constants.NETWORK_TYPE_DATA,
-                                       dpdksupport=False,
-                                       hostname=self.host.hostname))
-        port, iface = (
-            self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
-                                       constants.NETWORK_TYPE_DATA,
-                                       driver=constants.DRIVER_MLX_CX4,
-                                       hostname=self.host.hostname))
-        self._create_ethernet_test('none')
-
-    def setUp(self):
-        super(InterfaceComputeEthernetV6, self).setUp()
-        self.expected_bmc_interface = 'mgmt'
-        self.expected_platform_interfaces = ['mgmt', 'cluster-host']
-        self.expected_data_interfaces = ['slow', 'data', 'mlx5']
-        self.expected_pci_interfaces = ['sriov', 'pthru']
-        self.expected_slow_interfaces = ['slow']
-        self.expected_bridged_interfaces = ['slow']
-        self.expected_slave_interfaces = []
-        self.expected_mlx_interfaces = ['mlx5']
-        self.exp_yaml_config = {
-            "eth0": {'family': 'inet6', 'method': 'manual',
-                     'stx-description': f'ifname:mgmt,net:{None}',
-                     'tc': True, 'undeprecate': False},
-            "eth0:1": {'family': 'inet', 'method': 'dhcp',
-                     'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
-                     'tc': False, 'undeprecate': False},
-            "eth0:2": {'family': 'inet6', 'method': 'static',
-                     'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
-                     'tc': False, 'undeprecate': True},
-            "eth1": {'family': 'inet6', 'method': 'static',
-                     'stx-description': f'ifname:cluster-host,'
-                     f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
-                     'tc': False, 'undeprecate': False},
-            "eth3": {'family': 'inet', 'method': 'manual',
-                     'stx-description': f'ifname:sriov,net:{None}',
-                     'tc': False, 'undeprecate': False},
-            "eth4": {'family': 'inet', 'method': 'manual',
-                     'stx-description': f'ifname:pthru,net:{None}',
-                     'tc': False, 'undeprecate': False},
-            "eth5": {'family': 'inet6', 'method': 'manual',
-                     'stx-description': f'ifname:slow,net:{None}',
-                     'tc': False, 'undeprecate': False},
-            "eth6": {'family': 'inet6', 'method': 'manual',
-                     'stx-description': f'ifname:mlx5,net:{None}',
-                     'tc': False, 'undeprecate': False},
-            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
-                   'tc': False, 'undeprecate': False},
+    def test_controller_ethernet_joined_nets_pxeboot_assigned(self):
+        self._create_host(constants.CONTROLLER)
+        self._add_ethernet('mgmt0', constants.INTERFACE_CLASS_PLATFORM,
+                           [constants.NETWORK_TYPE_MGMT,
+                            constants.NETWORK_TYPE_CLUSTER_HOST,
+                            constants.NETWORK_TYPE_PXEBOOT])
+        self._add_ethernet('none')
+        expected = {
+            'mgmt0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}},
+                {NET: constants.NETWORK_TYPE_PXEBOOT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}},
+                {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}}],
         }
+        self._validate_config(expected)
 
-
-class InterfaceComputeEthernetV6Cfg2(InterfaceHostV6TestCase):
-    def _setup_configuration(self):
-        # Setup a sample configuration where the personality is set to a
-        # worker and all interfaces are ethernet interfaces.
-        # Explicitly assign PXEboot network with the management network
-        self.host = self._create_test_host(constants.WORKER)
-        self._create_addresses_for_node(self.host.hostname, constants.NETWORK_TYPE_MGMT)
-        self._create_addresses_for_node(self.host.hostname, constants.NETWORK_TYPE_CLUSTER_HOST)
-        self._create_addresses_for_node(self.host.hostname, constants.NETWORK_TYPE_PXEBOOT)
-        self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
-                                    [constants.NETWORK_TYPE_MGMT,
-                                     constants.NETWORK_TYPE_PXEBOOT],
-                                    hostname=self.host.hostname)
-        self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
-                                    constants.NETWORK_TYPE_CLUSTER_HOST,
-                                    hostname=self.host.hostname)
-        self._create_ethernet_test('data', constants.INTERFACE_CLASS_DATA,
-                                    hostname=self.host.hostname)
-        self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
-                                    constants.NETWORK_TYPE_PCI_SRIOV,
-                                    hostname=self.host.hostname)
-        self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
-                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH,
-                                    hostname=self.host.hostname)
-        port, iface = (
-            self._create_ethernet_test('slow', constants.INTERFACE_CLASS_DATA,
-                                       constants.NETWORK_TYPE_DATA,
-                                       dpdksupport=False,
-                                       hostname=self.host.hostname))
-        port, iface = (
-            self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
-                                       constants.NETWORK_TYPE_DATA,
-                                       driver=constants.DRIVER_MLX_CX4,
-                                       hostname=self.host.hostname))
-        self._create_ethernet_test('none')
-
-    def setUp(self):
-        super(InterfaceComputeEthernetV6Cfg2, self).setUp()
-        self.expected_bmc_interface = 'mgmt'
-        self.expected_platform_interfaces = ['mgmt', 'cluster-host']
-        self.expected_data_interfaces = ['slow', 'data', 'mlx5']
-        self.expected_pci_interfaces = ['sriov', 'pthru']
-        self.expected_slow_interfaces = ['slow']
-        self.expected_bridged_interfaces = ['slow']
-        self.expected_slave_interfaces = []
-        self.expected_mlx_interfaces = ['mlx5']
-        self.exp_yaml_config = {
-            "eth0": {'family': 'inet6', 'method': 'manual',
-                     'stx-description': f'ifname:mgmt,net:{None}',
-                     'tc': True, 'undeprecate': False},
-            "eth0:1": {'family': 'inet', 'method': 'dhcp',
-                     'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
-                     'tc': False, 'undeprecate': False},
-            "eth0:2": {'family': 'inet6', 'method': 'static',
-                     'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
-                     'tc': False, 'undeprecate': True},
-            "eth1": {'family': 'inet6', 'method': 'static',
-                     'stx-description': f'ifname:cluster-host,'
-                     f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
-                     'tc': False, 'undeprecate': False},
-            "eth3": {'family': 'inet', 'method': 'manual',
-                     'stx-description': f'ifname:sriov,net:{None}',
-                     'tc': False, 'undeprecate': False},
-            "eth4": {'family': 'inet', 'method': 'manual',
-                     'stx-description': f'ifname:pthru,net:{None}',
-                     'tc': False, 'undeprecate': False},
-            "eth5": {'family': 'inet6', 'method': 'manual',
-                     'stx-description': f'ifname:slow,net:{None}',
-                     'tc': False, 'undeprecate': False},
-            "eth6": {'family': 'inet6', 'method': 'manual',
-                     'stx-description': f'ifname:mlx5,net:{None}',
-                     'tc': False, 'undeprecate': False},
-            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
-                   'tc': False, 'undeprecate': False},
+    def test_controller_ethernet_separate_nets_pxeboot_assigned(self):
+        self._create_host(constants.CONTROLLER)
+        self._add_ethernet('pxe0', constants.INTERFACE_CLASS_PLATFORM,
+                           constants.NETWORK_TYPE_PXEBOOT)
+        self._add_ethernet('mgmt0', constants.INTERFACE_CLASS_PLATFORM,
+                           [constants.NETWORK_TYPE_MGMT,
+                            constants.NETWORK_TYPE_CLUSTER_HOST])
+        self._add_ethernet('none')
+        expected = {
+            'pxe0': [
+                {NET: constants.NETWORK_TYPE_PXEBOOT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}}],
+            'mgmt0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}},
+                {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}},
+                {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}}],
         }
+        self._validate_config(expected)
 
-
-class InterfaceComputeEthernetV6Cfg3(InterfaceHostV6TestCase):
-    def _setup_configuration(self):
-        # Setup a sample configuration where the personality is set to a
-        # worker and all interfaces are ethernet interfaces.
-        # explicitly assign pxeboot network with the cluster-host network
-        self.host = self._create_test_host(constants.WORKER)
-        self._create_addresses_for_node(self.host.hostname, constants.NETWORK_TYPE_MGMT)
-        self._create_addresses_for_node(self.host.hostname, constants.NETWORK_TYPE_CLUSTER_HOST)
-        self._create_addresses_for_node(self.host.hostname, constants.NETWORK_TYPE_PXEBOOT)
-
-        self._create_ethernet_test('mgmt', constants.INTERFACE_CLASS_PLATFORM,
-                                    [constants.NETWORK_TYPE_MGMT],
-                                    hostname=self.host.hostname)
-        self._create_ethernet_test('cluster-host', constants.INTERFACE_CLASS_PLATFORM,
-                                    [constants.NETWORK_TYPE_CLUSTER_HOST,
-                                     constants.NETWORK_TYPE_PXEBOOT],
-                                    hostname=self.host.hostname)
-        self._create_ethernet_test('data', constants.INTERFACE_CLASS_DATA,
-                                    hostname=self.host.hostname)
-        self._create_ethernet_test('sriov', constants.INTERFACE_CLASS_PCI_SRIOV,
-                                    constants.NETWORK_TYPE_PCI_SRIOV,
-                                    hostname=self.host.hostname)
-        self._create_ethernet_test('pthru', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
-                                    constants.NETWORK_TYPE_PCI_PASSTHROUGH,
-                                    hostname=self.host.hostname)
-        port, iface = (
-            self._create_ethernet_test('slow', constants.INTERFACE_CLASS_DATA,
-                                       constants.NETWORK_TYPE_DATA,
-                                       dpdksupport=False,
-                                       hostname=self.host.hostname))
-        port, iface = (
-            self._create_ethernet_test('mlx5', constants.INTERFACE_CLASS_DATA,
-                                       constants.NETWORK_TYPE_DATA,
-                                       driver=constants.DRIVER_MLX_CX4,
-                                       hostname=self.host.hostname))
-        self._create_ethernet_test('none')
-
-    def setUp(self):
-        super(InterfaceComputeEthernetV6Cfg3, self).setUp()
-        self.expected_bmc_interface = 'mgmt'
-        self.expected_platform_interfaces = ['mgmt', 'cluster-host']
-        self.expected_data_interfaces = ['slow', 'data', 'mlx5']
-        self.expected_pci_interfaces = ['sriov', 'pthru']
-        self.expected_slow_interfaces = ['slow']
-        self.expected_bridged_interfaces = ['slow']
-        self.expected_slave_interfaces = []
-        self.expected_mlx_interfaces = ['mlx5']
-        self.exp_yaml_config = {
-            "eth0": {'family': 'inet6', 'method': 'static',
-                     'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_MGMT}',
-                     'tc': True, 'undeprecate': False},
-            "eth1": {'family': 'inet6', 'method': 'manual',
-                     'stx-description': f'ifname:cluster-host,net:{None}',
-                     'tc': False, 'undeprecate': False},
-            "eth1:1": {'family': 'inet', 'method': 'dhcp',
-                     'stx-description': f'ifname:cluster-host,net:{constants.NETWORK_TYPE_PXEBOOT}',
-                     'tc': False, 'undeprecate': False},
-            "eth1:4": {'family': 'inet6', 'method': 'static',
-                     'stx-description': f'ifname:cluster-host,'
-                     f'net:{constants.NETWORK_TYPE_CLUSTER_HOST}',
-                     'tc': False, 'undeprecate': True},
-            "eth3": {'family': 'inet', 'method': 'manual',
-                     'stx-description': f'ifname:sriov,net:{None}',
-                     'tc': False, 'undeprecate': False},
-            "eth4": {'family': 'inet', 'method': 'manual',
-                     'stx-description': f'ifname:pthru,net:{None}',
-                     'tc': False, 'undeprecate': False},
-            "eth5": {'family': 'inet6', 'method': 'manual',
-                     'stx-description': f'ifname:slow,net:{None}',
-                     'tc': False, 'undeprecate': False},
-            "eth6": {'family': 'inet6', 'method': 'manual',
-                     'stx-description': f'ifname:mlx5,net:{None}',
-                     'tc': False, 'undeprecate': False},
-            "lo": {'family': 'inet', 'method': 'loopback', 'stx-description': '',
-                   'tc': False, 'undeprecate': False},
+    def test_controller_vlan_over_bond(self):
+        self._create_host(constants.CONTROLLER)
+        pxe0 = self._add_bond('pxe0', constants.INTERFACE_CLASS_PLATFORM,
+                              constants.NETWORK_TYPE_PXEBOOT)
+        self._add_vlan(pxe0, 100, 'mgmt0', constants.INTERFACE_CLASS_PLATFORM,
+                       constants.NETWORK_TYPE_MGMT)
+        self._add_vlan(pxe0, 200, 'clhost0', constants.INTERFACE_CLASS_PLATFORM,
+                       constants.NETWORK_TYPE_CLUSTER_HOST)
+        expected = {
+            'pxe0': [
+                {NET: constants.NETWORK_TYPE_PXEBOOT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'bond-lacp-rate': 'fast', 'bond-miimon': '100',
+                              'bond-mode': '802.3ad', 'bond-slaves': True,
+                              'bond-xmit-hash-policy': 'layer2', 'hwaddress': True,
+                              POST_UP: [SET_TC, IPV6_CFG], UP: [SLEEP]}}],
+            'eth0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {ALLOW: True, 'bond-master': True, PRE_UP: [PROMISC_ON, IPV6_CFG]}}],
+            'eth1': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {ALLOW: True, 'bond-master': True, PRE_UP: [PROMISC_ON, IPV6_CFG]}}],
+            'mgmt0': [
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_TC, SET_MTU, IPV6_CFG]}},
+                {MODES: [SS_IPV4],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_MTU, IPV6_CFG, SET_TC]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_MTU, IPV6_CFG]}},
+                {MODES: [SS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_MTU, IPV6_CFG, SET_TC]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_MTU, IPV6_CFG, UNDEPR]}}],
+            'clhost0': [
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_TC, SET_MTU, IPV6_CFG]}},
+                {MODES: [SS_IPV4],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_MTU, IPV6_CFG, SET_TC]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_MTU, IPV6_CFG]}},
+                {MODES: [SS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_MTU, IPV6_CFG, SET_TC]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'vlan-raw-device': True, PRE_UP: [VLAN_MOD],
+                              POST_UP: [SET_MTU, IPV6_CFG, UNDEPR]}}],
         }
+        self._validate_config(expected)
+
+    def test_controller_duplex_direct_ethernet(self):
+        self._create_host(constants.CONTROLLER)
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX_DIRECT
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+        self._add_ethernet('mgmt0', constants.INTERFACE_CLASS_PLATFORM,
+                           constants.NETWORK_TYPE_MGMT)
+        self._add_ethernet('clhost0', constants.INTERFACE_CLASS_PLATFORM,
+                           constants.NETWORK_TYPE_CLUSTER_HOST)
+        expected = {
+            'mgmt0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {PRE_UP: [DIS_DAD], POST_UP: [SET_TC, IPV6_CFG]}},
+                {NET: constants.NETWORK_TYPE_PXEBOOT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}}],
+            'clhost0': [
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {PRE_UP: [DIS_DAD], POST_UP: [SET_TC, IPV6_CFG]}},
+                {MODES: [SS_IPV4],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, PRE_UP: [DIS_DAD], POST_UP: [IPV6_CFG]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, PRE_UP: [DIS_DAD], POST_UP: [SET_TC, IPV6_CFG]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}}],
+        }
+        self._validate_config(expected)
+
+    def test_controller_duplex_direct_vlan_over_bond(self):
+        self._create_host(constants.CONTROLLER)
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX_DIRECT
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+        pxe0 = self._add_ethernet('pxe0', constants.INTERFACE_CLASS_PLATFORM,
+                                  constants.NETWORK_TYPE_PXEBOOT)
+        self._add_bond('mgmt0', constants.INTERFACE_CLASS_PLATFORM,
+                       constants.NETWORK_TYPE_MGMT)
+        self._add_vlan(pxe0, 200, 'clhost0', constants.INTERFACE_CLASS_PLATFORM,
+                       constants.NETWORK_TYPE_CLUSTER_HOST)
+        expected = {
+            'pxe0': [
+                {NET: constants.NETWORK_TYPE_PXEBOOT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}}],
+            'mgmt0': [
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {'bond-lacp-rate': 'fast', 'bond-miimon': '100',
+                              'bond-mode': '802.3ad', 'bond-slaves': True,
+                              'bond-xmit-hash-policy': 'layer2', 'hwaddress': True,
+                              PRE_UP: [BOND_SETUP, DIS_DAD], POST_UP: [SET_TC, IPV6_CFG],
+                              UP: [SLEEP]}},
+                {MODES: [SS_IPV4],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'bond-lacp-rate': 'fast', 'bond-miimon': '100',
+                              'bond-mode': '802.3ad', 'bond-slaves': True,
+                              'bond-xmit-hash-policy': 'layer2', 'hwaddress': True,
+                              PRE_UP: [BOND_SETUP, DIS_DAD], POST_UP: [IPV6_CFG, SET_TC],
+                              UP: [SLEEP]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'bond-lacp-rate': 'fast', 'bond-miimon': '100',
+                              'bond-mode': '802.3ad', 'bond-slaves': True,
+                              'bond-xmit-hash-policy': 'layer2', 'hwaddress': True,
+                              POST_UP: [IPV6_CFG], UP: [SLEEP]}},
+                {MODES: [SS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'bond-lacp-rate': 'fast', 'bond-miimon': '100',
+                              'bond-mode': '802.3ad', 'bond-slaves': True,
+                              'bond-xmit-hash-policy': 'layer2', 'hwaddress': True,
+                              PRE_UP: [BOND_SETUP, DIS_DAD], POST_UP: [IPV6_CFG, SET_TC],
+                              UP: [SLEEP]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'bond-lacp-rate': 'fast', 'bond-miimon': '100',
+                              'bond-mode': '802.3ad', 'bond-slaves': True,
+                              'bond-xmit-hash-policy': 'layer2', 'hwaddress': True,
+                              POST_UP: [IPV6_CFG, UNDEPR],
+                              UP: [SLEEP]}}],
+            'eth1': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {ALLOW: True, 'bond-master': True, PRE_UP: [PROMISC_ON, IPV6_CFG]}}],
+            'eth2': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {ALLOW: True, 'bond-master': True, PRE_UP: [PROMISC_ON, IPV6_CFG]}}],
+            'clhost0': [
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {'vlan-raw-device': True,
+                              PRE_UP: [VLAN_MOD, VLAN_ADD, DIS_DAD], POST_UP: [SET_MTU, IPV6_CFG],
+                              POST_DOWN: [VLAN_DEL]}},
+                {MODES: [SS_IPV4],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'vlan-raw-device': True,
+                              PRE_UP: [VLAN_MOD, VLAN_ADD, DIS_DAD],
+                              POST_UP: [SET_MTU, IPV6_CFG], POST_DOWN: [VLAN_DEL]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'vlan-raw-device': True,
+                              PRE_UP: [VLAN_MOD], POST_UP: [SET_MTU, IPV6_CFG]}},
+                {MODES: [SS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'vlan-raw-device': True,
+                              PRE_UP: [VLAN_MOD, VLAN_ADD, DIS_DAD],
+                              POST_UP: [SET_MTU, IPV6_CFG], POST_DOWN: [VLAN_DEL]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, 'vlan-raw-device': True,
+                              PRE_UP: [VLAN_MOD], POST_UP: [SET_MTU, IPV6_CFG, UNDEPR]}}],
+        }
+        self._validate_config(expected)
+
+    def test_worker_ethernet_pxe_unassigned(self):
+        self._create_host(constants.WORKER)
+        self._add_ethernet('mgmt0', constants.INTERFACE_CLASS_PLATFORM,
+                           constants.NETWORK_TYPE_MGMT)
+        self._add_ethernet('clhost0', constants.INTERFACE_CLASS_PLATFORM,
+                           constants.NETWORK_TYPE_CLUSTER_HOST)
+        self._add_ethernet('none')
+        expected = {
+            'mgmt0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}},
+                {NET: constants.NETWORK_TYPE_PXEBOOT, FAMILY: INET, METHOD: DHCP,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}}],
+            'clhost0': [
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}},
+                {MODES: [SS_IPV4],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [SET_TC, IPV6_CFG]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}}],
+        }
+        self._validate_config(expected)
+
+    def test_worker_ethernet_pxe_with_mgmt(self):
+        self._create_host(constants.WORKER)
+        self._add_ethernet('mgmt0', constants.INTERFACE_CLASS_PLATFORM,
+                           [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_PXEBOOT])
+        self._add_ethernet('clhost0', constants.INTERFACE_CLASS_PLATFORM,
+                           constants.NETWORK_TYPE_CLUSTER_HOST)
+        self._add_ethernet('none')
+        expected = {
+            'mgmt0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}},
+                {NET: constants.NETWORK_TYPE_PXEBOOT, FAMILY: INET, METHOD: DHCP,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}}],
+            'clhost0': [
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}},
+                {MODES: [SS_IPV4],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [SET_TC, IPV6_CFG]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}}],
+        }
+        self._validate_config(expected)
+
+    def test_worker_ethernet_pxe_with_cluster_host(self):
+        self._create_host(constants.WORKER)
+        self._add_ethernet('mgmt0', constants.INTERFACE_CLASS_PLATFORM, constants.NETWORK_TYPE_MGMT)
+        self._add_ethernet('clhost0', constants.INTERFACE_CLASS_PLATFORM,
+                           [constants.NETWORK_TYPE_CLUSTER_HOST, constants.NETWORK_TYPE_PXEBOOT])
+        self._add_ethernet('none')
+        expected = {
+            'mgmt0': [
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}},
+                {MODES: [SS_IPV4],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, SET_TC]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, SET_TC]}},
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_MGMT, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}}],
+            'clhost0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}},
+                {NET: constants.NETWORK_TYPE_PXEBOOT, FAMILY: INET, METHOD: DHCP,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
+                    NET: constants.NETWORK_TYPE_CLUSTER_HOST, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {GATEWAY: True, POST_UP: [IPV6_CFG, UNDEPR]}}],
+        }
+        self._validate_config(expected)
+
+    def test_worker_sriov_and_pci_passthrough(self):
+        self._create_host(constants.WORKER)
+        self._add_ethernet('sriov0', constants.INTERFACE_CLASS_PCI_SRIOV,
+                           constants.NETWORK_TYPE_PCI_SRIOV)
+        self._add_ethernet('pthru0', constants.INTERFACE_CLASS_PCI_PASSTHROUGH,
+                           constants.NETWORK_TYPE_PCI_PASSTHROUGH)
+        expected = {
+            'sriov0': [
+                {NET: constants.NETWORK_TYPE_PCI_SRIOV, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {PRE_UP: [SRIOV], POST_UP: [IPV6_CFG]}}],
+            'pthru0': [
+                {NET: constants.NETWORK_TYPE_PCI_PASSTHROUGH, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {PRE_UP: [PTHROUGH], POST_UP: [IPV6_CFG]}}],
+        }
+        self._validate_config(expected)
+
+    def test_worker_data_over_ethernet(self):
+        self._create_host(constants.WORKER)
+        self._add_ethernet('data0', constants.INTERFACE_CLASS_DATA, constants.NETWORK_TYPE_DATA)
+        self._add_ethernet('slow0', constants.INTERFACE_CLASS_DATA, constants.NETWORK_TYPE_DATA,
+                           dpdksupport=False)
+        self._add_ethernet('mlx0', constants.INTERFACE_CLASS_DATA, constants.NETWORK_TYPE_DATA,
+                           driver=constants.DRIVER_MLX_CX4)
+        expected = {
+            'slow0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}}],
+            'mlx0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}}],
+        }
+        self._validate_config(expected)
+
+    def _get_static_address_args(self, static_enabled, addr_count):
+        families = [self.primary_address_family]
+        if self.secondary_address_family:
+            families.append(self.secondary_address_family)
+        kwargs = {}
+        if constants.IPV4_FAMILY in families:
+            if static_enabled:
+                kwargs['ipv4_mode'] = constants.IPV4_STATIC
+            kwargs['ipv4_addresses'] = addr_count
+        if constants.IPV6_FAMILY in families:
+            if static_enabled:
+                kwargs['ipv6_mode'] = constants.IPV6_STATIC
+            kwargs['ipv6_addresses'] = addr_count
+        return kwargs
+
+    def test_worker_data_over_ethernet_static_addresses(self):
+        self._create_host(constants.WORKER)
+        system_dict = self.system.as_dict()
+        system_dict['capabilities']['vswitch_type'] = constants.VSWITCH_TYPE_NONE
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+        self._add_ethernet('data0', constants.INTERFACE_CLASS_DATA, constants.NETWORK_TYPE_DATA)
+        self._add_ethernet('data1', constants.INTERFACE_CLASS_DATA, constants.NETWORK_TYPE_DATA,
+                           **self._get_static_address_args(False, 1))
+        self._add_ethernet('data2', constants.INTERFACE_CLASS_DATA, constants.NETWORK_TYPE_DATA,
+                           **self._get_static_address_args(True, 0))
+        self._add_ethernet('data3', constants.INTERFACE_CLASS_DATA, constants.NETWORK_TYPE_DATA,
+                           **self._get_static_address_args(True, 1))
+        self._add_ethernet('data4', constants.INTERFACE_CLASS_DATA, constants.NETWORK_TYPE_DATA,
+                           **self._get_static_address_args(True, 2))
+        expected = {
+            'data0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}}],
+            'data1': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}}],
+            'data2': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}}],
+            'data3': [
+                {MODES: [DS_IPV4, DS_IPV6],
+                    NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
+                    NET: None, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
+                    NET: None, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}}],
+            'data4': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
+                    NET: None, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
+                    NET: None, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
+                    NET: None, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
+                    NET: None, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}}],
+        }
+        self._validate_config(expected)
+
+
+class InterfaceConfigTestIPv4(InterfaceConfigTestMixin,
+                              dbbase.BaseHostTestCase):
+    system_mode = SS_IPV4
+
+
+class InterfaceConfigTestIPv6(InterfaceConfigTestMixin,
+                              dbbase.BaseIPv6Mixin,
+                              dbbase.BaseHostTestCase):
+    system_mode = SS_IPV6
+
+
+class InterfaceConfigTestDualStackPrimaryIPv4(InterfaceConfigTestMixin,
+                                              dbbase.BaseDualStackPrimaryIPv4Mixin,
+                                              dbbase.BaseHostTestCase):
+    system_mode = DS_IPV4
+
+
+class InterfaceConfigTestDualStackPrimaryIPv6(InterfaceConfigTestMixin,
+                                              dbbase.BaseDualStackPrimaryIPv6Mixin,
+                                              dbbase.BaseHostTestCase):
+    system_mode = DS_IPV6

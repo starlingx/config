@@ -5141,7 +5141,9 @@ class Connection(api.Connection):
     def networks_get_by_pool(self, pool_id, limit=None, marker=None,
                              sort_key=None, sort_dir=None):
         query = model_query(models.Networks)
-        query = query.filter_by(address_pool_id=pool_id)
+        query = (query.join(models.NetworkAddressPools,
+                            models.NetworkAddressPools.network_id == models.Networks.id))
+        query = query.filter(models.NetworkAddressPools.address_pool_id == pool_id)
         return _paginate_query(models.Networks, limit, marker,
                                sort_key, sort_dir, query)
 
@@ -5384,6 +5386,16 @@ class Connection(api.Connection):
             raise exception.AddressNotFound(address_uuid=address_uuid)
         return result
 
+    def _address_get_by_id(self, address_id):
+        query = model_query(models.Addresses)
+        query = (query.
+                 filter(models.Addresses.id == address_id))
+        try:
+            result = query.one()
+        except NoResultFound:
+            raise exception.AddressNotFoundById(address_id=address_id)
+        return result
+
     def _address_query(self, values):
         query = model_query(models.Addresses)
         query = (query.
@@ -5411,6 +5423,10 @@ class Connection(api.Connection):
     @db_objects.objectify(objects.address)
     def address_get(self, address_uuid):
         return self._address_get(address_uuid)
+
+    @db_objects.objectify(objects.address)
+    def address_get_by_id(self, address_id):
+        return self._address_get_by_id(address_id)
 
     @db_objects.objectify(objects.address)
     def address_get_by_name(self, name, limit=None, marker=None,

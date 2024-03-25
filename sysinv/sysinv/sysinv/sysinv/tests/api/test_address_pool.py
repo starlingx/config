@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2023 Wind River Systems, Inc.
+# Copyright (c) 2023-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -88,7 +88,7 @@ class AddressPoolTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
     def _delete_management_pool(self):
         current_pools = self.get_json(self.API_PREFIX)
         for addrpool in current_pools[self.RESULT_KEY]:
-            if addrpool['name'] == 'management':
+            if addrpool['name'].startswith('management'):
                 uuid = addrpool['uuid']
                 self.delete(self.get_single_url(uuid),
                     headers=self.API_HEADERS)
@@ -178,12 +178,14 @@ class TestPostMixin(AddressPoolTestCase):
                       f"with {name_1} address pool.",
                       response.json['error_message'])
 
-    def _test_create_address_pool_pass_overlap_with_oam(self, network,
-            prefix):
-        name = "system-controller-oam-subnet"
+    def _test_create_address_pool_pass_overlap_with_oam(self, network, prefix):
+
+        oam_pool_name = self._format_pool_name("oam", self.oam_subnet)
+        sysctl_oam_pool_name = self._format_pool_name("system-controller-oam-subnet",
+                                                      self.oam_subnet)
 
         # First test with different name, which should fail
-        name_1 = f"{name}_1"
+        name_1 = f"{sysctl_oam_pool_name}_1"
         ndict_1 = self.get_post_object(name_1, network, prefix)
         response = self.post_json(self.API_PREFIX,
                                   ndict_1,
@@ -194,11 +196,11 @@ class TestPostMixin(AddressPoolTestCase):
         self.assertEqual('application/json', response.content_type)
         self.assertEqual(response.status_code, http_client.CONFLICT)
         self.assertIn(f"Address pool {network}/{prefix} overlaps "
-                      f"with oam address pool.",
+                      f"with {oam_pool_name} address pool.",
                       response.json['error_message'])
 
         # Now check with the name: system-controller-oam-subnet
-        ndict_2 = self.get_post_object(name, network, prefix)
+        ndict_2 = self.get_post_object(sysctl_oam_pool_name, network, prefix)
         response = self.post_json(self.API_PREFIX,
                                   ndict_2,
                                   headers=self.API_HEADERS)
@@ -422,7 +424,11 @@ class TestPostMixin(AddressPoolTestCase):
         network = str(self.mgmt_subnet.network)
         prefix = self.mgmt_subnet.prefixlen
 
-        ndict = self.get_post_object('management', network, prefix)
+        if constants.DUAL_STACK_COMPATIBILITY_MODE:
+            name = "management"
+        else:
+            name = self._format_pool_name("management", self.mgmt_subnet)
+        ndict = self.get_post_object(name, network, prefix)
         ndict['gateway_address'] = str(self.mgmt_subnet[1])
 
         response = self.post_json(self.API_PREFIX,

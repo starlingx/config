@@ -111,8 +111,6 @@ class NetworkAddrpoolTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
         return network
 
     def _setup_context(self):
-        print("_setup_context")
-
         self.host0 = self._create_test_host(personality=constants.CONTROLLER, unit=0,
                                             id=1, mgmt_ip="1.1.1.1")
         self.c0_oam_if = dbutils.create_test_interface(ifname='enp0s3', forihostid=self.host0.id)
@@ -151,7 +149,7 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         # Test creation of object
         net_type = constants.NETWORK_TYPE_MGMT
         ndict = self.get_post_object(self.networks[net_type].uuid,
-                                     self.address_pools['management'].uuid)
+                                     self.address_pools['management-ipv4'].uuid)
         response = self.post_json(self.API_PREFIX,
                                   ndict,
                                   headers=self.API_HEADERS)
@@ -159,9 +157,12 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         self.assertEqual('application/json', response.content_type)
         self.assertEqual(response.status_code, http_client.OK)
         # Check that an expected field matches.
-        self.assertEqual(response.json['address_pool_name'], self.address_pools['management'].name)
-        self.assertEqual(response.json['address_pool_id'], self.address_pools['management'].id)
-        self.assertEqual(response.json['address_pool_uuid'], self.address_pools['management'].uuid)
+        self.assertEqual(response.json['address_pool_name'],
+                         self.address_pools['management-ipv4'].name)
+        self.assertEqual(response.json['address_pool_id'],
+                         self.address_pools['management-ipv4'].id)
+        self.assertEqual(response.json['address_pool_uuid'],
+                         self.address_pools['management-ipv4'].uuid)
         self.assertEqual(response.json['network_name'], self.networks[net_type].name)
         self.assertEqual(response.json['network_id'], self.networks[net_type].id)
         self.assertEqual(response.json['network_uuid'], self.networks[net_type].uuid)
@@ -169,9 +170,9 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         uuid = response.json['uuid']
         # Verify that the object was created and some basic attribute matches
         response = self.get_json(self.get_single_url(uuid))
-        self.assertEqual(response['address_pool_name'], self.address_pools['management'].name)
-        self.assertEqual(response['address_pool_id'], self.address_pools['management'].id)
-        self.assertEqual(response['address_pool_uuid'], self.address_pools['management'].uuid)
+        self.assertEqual(response['address_pool_name'], self.address_pools['management-ipv4'].name)
+        self.assertEqual(response['address_pool_id'], self.address_pools['management-ipv4'].id)
+        self.assertEqual(response['address_pool_uuid'], self.address_pools['management-ipv4'].uuid)
         self.assertEqual(response['network_name'], self.networks[net_type].name)
         self.assertEqual(response['network_id'], self.networks[net_type].id)
         self.assertEqual(response['network_uuid'], self.networks[net_type].uuid)
@@ -195,7 +196,7 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         # add primary
         net_type = constants.NETWORK_TYPE_MGMT
         ndict = self.get_post_object(self.networks[net_type].uuid,
-                                     self.address_pools['management'].uuid)
+                                     self.address_pools['management-ipv4'].uuid)
         response = self.post_json(self.API_PREFIX,
                                   ndict,
                                   headers=self.API_HEADERS)
@@ -252,7 +253,7 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         # add primary
         net_type = constants.NETWORK_TYPE_OAM
         ndict = self.get_post_object(self.networks[net_type].uuid,
-                                     self.address_pools['oam'].uuid)
+                                     self.address_pools['oam-ipv4'].uuid)
         response = self.post_json(self.API_PREFIX,
                                   ndict,
                                   headers=self.API_HEADERS)
@@ -367,7 +368,7 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         # add primary
         net_type = constants.NETWORK_TYPE_MGMT
         ndict = self.get_post_object(self.networks[net_type].uuid,
-                                     self.address_pools['management'].uuid)
+                                     self.address_pools['management-ipv4'].uuid)
         response = self.post_json(self.API_PREFIX,
                                   ndict,
                                   headers=self.API_HEADERS)
@@ -377,7 +378,7 @@ class TestPostMixin(NetworkAddrpoolTestCase):
 
         # add secondary
         ndict = self.get_post_object(self.networks[net_type].uuid,
-                                     self.address_pools['oam'].uuid)
+                                     self.address_pools['oam-ipv4'].uuid)
         response = self.post_json(self.API_PREFIX,
                                   ndict,
                                   headers=self.API_HEADERS,
@@ -390,7 +391,7 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         # add primary
         net_type = constants.NETWORK_TYPE_PXEBOOT
         ndict = self.get_post_object(self.networks[net_type].uuid,
-                                     self.address_pools['pxeboot'].uuid)
+                                     self.address_pools['pxeboot-ipv4'].uuid)
         response = self.post_json(self.API_PREFIX,
                                   ndict,
                                   headers=self.API_HEADERS)
@@ -413,7 +414,7 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         # add primary
         net_type = constants.NETWORK_TYPE_MGMT
         ndict = self.get_post_object(self.networks[net_type].uuid,
-                                     self.address_pools['management'].uuid)
+                                     self.address_pools['management-ipv4'].uuid)
         response = self.post_json(self.API_PREFIX,
                                   ndict,
                                   headers=self.API_HEADERS)
@@ -445,7 +446,7 @@ class TestPostMixin(NetworkAddrpoolTestCase):
     def test_error_create_network_addrpool_primary_duplicate(self):
         net_type = constants.NETWORK_TYPE_MGMT
         ndict = self.get_post_object(self.networks[net_type].uuid,
-                                     self.address_pools['management'].uuid)
+                                     self.address_pools['management-ipv4'].uuid)
         response = self.post_json(self.API_PREFIX,
                                   ndict,
                                   headers=self.API_HEADERS)
@@ -486,7 +487,7 @@ class TestDelete(NetworkAddrpoolTestCase):
 
         net_type = constants.NETWORK_TYPE_MGMT
         net_pool = dbutils.create_test_network_addrpool(
-            address_pool_id=self.address_pools['management'].id,
+            address_pool_id=self.address_pools['management-ipv4'].id,
             network_id=self.networks[net_type].id)
 
         response = self.delete(self.get_single_url(net_pool.uuid),
@@ -507,7 +508,7 @@ class TestDelete(NetworkAddrpoolTestCase):
 
         net_type = constants.NETWORK_TYPE_MGMT
         net_pool = dbutils.create_test_network_addrpool(
-            address_pool_id=self.address_pools['management'].id,
+            address_pool_id=self.address_pools['management-ipv4'].id,
             network_id=self.networks[net_type].id)
 
         response = self.delete(self.get_single_url(net_pool.uuid),
@@ -528,7 +529,7 @@ class TestDelete(NetworkAddrpoolTestCase):
 
         net_type = constants.NETWORK_TYPE_MGMT
         net_pool_1 = dbutils.create_test_network_addrpool(
-            address_pool_id=self.address_pools['management'].id,
+            address_pool_id=self.address_pools['management-ipv4'].id,
             network_id=self.networks[net_type].id)
         net_pool_2 = dbutils.create_test_network_addrpool(
             address_pool_id=self.address_pools['management-ipv6'].id,
@@ -550,7 +551,7 @@ class TestDelete(NetworkAddrpoolTestCase):
 
         # check that pool_uuid is filled since it was the secondary pool
         response = self.get_json(self.get_single_network_url(self.networks[net_type].uuid))
-        self.assertEqual(response['pool_uuid'], self.address_pools['management'].uuid)
+        self.assertEqual(response['pool_uuid'], self.address_pools['management-ipv4'].uuid)
         self.assertEqual(response['type'], self.networks[net_type].type)
         self.assertEqual(response['primary_pool_family'],
                          self.networks[net_type].primary_pool_family)
@@ -568,7 +569,7 @@ class TestDelete(NetworkAddrpoolTestCase):
 
         net_type = constants.NETWORK_TYPE_OAM
         net_pool = dbutils.create_test_network_addrpool(
-            address_pool_id=self.address_pools['oam'].id,
+            address_pool_id=self.address_pools['oam-ipv4'].id,
             network_id=self.networks[net_type].id)
 
         response = self.delete(self.get_single_url(net_pool.uuid),
@@ -589,7 +590,7 @@ class TestDelete(NetworkAddrpoolTestCase):
 
         net_type = constants.NETWORK_TYPE_PXEBOOT
         net_pool = dbutils.create_test_network_addrpool(
-            address_pool_id=self.address_pools['pxeboot'].id,
+            address_pool_id=self.address_pools['pxeboot-ipv4'].id,
             network_id=self.networks[net_type].id)
 
         response = self.delete(self.get_single_url(net_pool.uuid),
@@ -610,7 +611,7 @@ class TestDelete(NetworkAddrpoolTestCase):
 
         net_type = constants.NETWORK_TYPE_CLUSTER_HOST
         net_pool = dbutils.create_test_network_addrpool(
-            address_pool_id=self.address_pools['cluster-host'].id,
+            address_pool_id=self.address_pools['cluster-host-ipv4'].id,
             network_id=self.networks[net_type].id)
 
         response = self.delete(self.get_single_url(net_pool.uuid),
@@ -631,7 +632,7 @@ class TestDelete(NetworkAddrpoolTestCase):
 
         net_type = constants.NETWORK_TYPE_CLUSTER_HOST
         net_pool = dbutils.create_test_network_addrpool(
-            address_pool_id=self.address_pools['cluster-pod'].id,
+            address_pool_id=self.address_pools['cluster-pod-ipv4'].id,
             network_id=self.networks[net_type].id)
 
         response = self.delete(self.get_single_url(net_pool.uuid),
@@ -652,7 +653,7 @@ class TestDelete(NetworkAddrpoolTestCase):
 
         net_type = constants.NETWORK_TYPE_CLUSTER_SERVICE
         net_pool = dbutils.create_test_network_addrpool(
-            address_pool_id=self.address_pools['cluster-service'].id,
+            address_pool_id=self.address_pools['cluster-service-ipv4'].id,
             network_id=self.networks[net_type].id)
 
         response = self.delete(self.get_single_url(net_pool.uuid),
@@ -673,7 +674,7 @@ class TestDelete(NetworkAddrpoolTestCase):
 
         net_type = constants.NETWORK_TYPE_STORAGE
         net_pool = dbutils.create_test_network_addrpool(
-            address_pool_id=self.address_pools['storage'].id,
+            address_pool_id=self.address_pools['storage-ipv4'].id,
             network_id=self.networks[net_type].id)
 
         response = self.delete(self.get_single_url(net_pool.uuid),

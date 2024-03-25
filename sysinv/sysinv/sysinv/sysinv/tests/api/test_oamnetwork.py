@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -204,6 +204,15 @@ class TestPatchMixin(OAMNetworkTestCase):
         self._test_patch_success(patch_obj)
 
     def test_patch_incomplete(self):
+        fields = {'floating_address_id': None, 'controller0_address_id': None,
+                  'controller1_address_id': None, 'gateway_address_id': None}
+        network = self._find_network_by_type(constants.NETWORK_TYPE_OAM)
+        addrpools = self._find_network_address_pools(network.id)
+        for addrpool in addrpools:
+            addresses = self.dbapi.addresses_get_by_pool(addrpool.id)
+            for address in addresses:
+                self.dbapi.address_update(address.uuid, {'address_pool_id': None})
+            self.dbapi.address_pool_update(addrpool.uuid, fields)
         oam_floating_ip = self.oam_subnet[2] + 100
         patch_obj = {
             'oam_floating_ip': str(oam_floating_ip),

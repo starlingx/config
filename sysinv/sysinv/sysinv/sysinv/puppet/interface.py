@@ -6,7 +6,6 @@
 
 import collections
 import copy
-import os
 import re
 import six
 
@@ -129,6 +128,10 @@ class InterfacePuppet(base.BasePuppet):
 
     def _create_interface_context(self, host):
         host_interfaces = self.dbapi.iinterface_get_by_ihost(host.uuid)
+        networks = self._get_network_type_index()
+        address_pools = self._get_address_pool_index()
+        network_address_pools = self._get_network_addresspool_index()
+        addresses = self._get_address_interface_name_index(host)
         context = {
             'hostname': host.hostname,
             'personality': host.personality,
@@ -137,14 +140,17 @@ class InterfacePuppet(base.BasePuppet):
             'system_mode': self._get_system().system_mode,
             'ports': self._get_port_interface_id_index(host),
             'interfaces': self._get_interface_name_index(host_interfaces),
+            'interface_networks': self._get_interface_network_index(
+                host_interfaces, addresses, networks, address_pools, network_address_pools),
             'interfaces_datanets': self._get_interface_name_datanets(
                 host.hostname, host_interfaces),
             'devices': self._get_port_pciaddr_index(host),
-            'addresses': self._get_address_interface_name_index(host),
+            'addresses': addresses,
             'routes': self._get_routes_interface_name_index(host),
-            'networks': self._get_network_type_index(),
-            'gateways': self._get_gateway_index(),
-            'floatingips': self._get_floating_ip_index(),
+            'networks': networks,
+            'address_pools': address_pools,
+            'floatingips': self._get_floating_ip_index(networks, address_pools,
+                                                       network_address_pools),
             'datanets': self._get_datanetworks(host),
             'vswitchtype': self._vswitch_type(),
         }
@@ -196,6 +202,61 @@ class InterfacePuppet(base.BasePuppet):
         """
         return interface._get_address_interface_name_index(self.dbapi, host)
 
+    def _get_interface_network_index(self, host_interfaces, address_index, network_type_index,
+                                     addrpool_index, network_addrpool_index):
+        """
+        Builds a dictionary that associates interfaces with networks and addresses.
+        Format:
+        {
+            <interface_name>: {
+                <network_id or None>: {
+                    'network': <network_object or None>,
+                    'addresses': [ <address 1>, <address 2>, ... ]
+                }
+            }
+        }
+        """
+
+        network_id_index = {}
+        for network in network_type_index.values():
+            network_id_index[network.id] = network
+
+        interface_index = {}
+        for iface in host_interfaces:
+            interface_dict = {None: {'network': None, 'addresses': []}}
+            for networktype in iface.networktypelist:
+                network = network_type_index[networktype]
+                interface_dict[network.id] = {'network': network, 'addresses': []}
+            interface_index[iface.ifname] = interface_dict
+
+        for address_list in address_index.values():
+            for address in address_list:
+                addrpool = addrpool_index.get(address.pool_uuid, None)
+                network_addrpool = network_addrpool_index.get(address.pool_uuid, None)
+
+                network = None
+                if addrpool and network_addrpool:
+                    network = network_id_index[network_addrpool.network_id]
+
+                network_id = network.id if network else None
+
+                interface_entry = interface_index.get(address.ifname, None)
+                if not interface_entry:
+                    continue
+
+                network_entry = interface_entry.get(network_id, None)
+
+                if not network_entry:
+                    network_entry = {
+                        'network': network,
+                        'addresses': []
+                    }
+                    interface_entry[network_id] = network_entry
+
+                network_entry['addresses'].append(address)
+
+        return interface_index
+
     def _get_routes_interface_name_index(self, host):
         """
         Builds a dictionary of route lists indexed by interface name.
@@ -216,119 +277,56 @@ class InterfacePuppet(base.BasePuppet):
             networks[network['type']] = network
         return networks
 
-    def _get_gateway_index(self):
-        """
-        Builds a dictionary of gateway IP addresses indexed by network type.
-        """
-        gateways = {}
-        try:
-            mgmt_address = self._get_address_by_name(
-                constants.CONTROLLER_GATEWAY, constants.NETWORK_TYPE_MGMT)
-            gateways.update({
-                constants.NETWORK_TYPE_MGMT: mgmt_address.address})
-        except exception.AddressNotFoundByName:
-            pass
+    def _get_address_pool_index(self):
+        addrpool_index = {}
+        addrpools = self.dbapi.address_pools_get_all()
+        for addrpool in addrpools:
+            addrpool_index[addrpool.uuid] = addrpool
+        return addrpool_index
 
-        try:
-            oam_address = self._get_address_by_name(
-                constants.CONTROLLER_GATEWAY, constants.NETWORK_TYPE_OAM)
-            gateways.update({
-                constants.NETWORK_TYPE_OAM: oam_address.address})
-        except exception.AddressNotFoundByName:
-            pass
+    def _get_network_addresspool_index(self):
+        network_addrpool_index = {}
+        network_addrpools = self.dbapi.network_addrpool_get_all()
+        for network_addrpool in network_addrpools:
+            network_addrpool_index[network_addrpool.address_pool_uuid] = network_addrpool
+        return network_addrpool_index
 
-        return gateways
-
-    def _get_floating_ip_index(self):
+    def _get_floating_ip_index(self, networks, address_pools, network_address_pools):
         """
         Builds a dictionary of floating ip addresses indexed by network type.
         """
-        mgmt_address = self._get_address_by_name(
-            constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_MGMT)
 
-        mgmt_floating_ip = (str(mgmt_address.address) + '/' +
-                            str(mgmt_address.prefix))
-
-        floating_ips = {
-            constants.NETWORK_TYPE_MGMT: mgmt_floating_ip
-        }
-
-        try:
-            pxeboot_address = self._get_address_by_name(
-                constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_PXEBOOT)
-
-            pxeboot_floating_ip = (str(pxeboot_address.address) + '/' +
-                                   str(pxeboot_address.prefix))
-
-            floating_ips.update({
-                constants.NETWORK_TYPE_PXEBOOT: pxeboot_floating_ip,
-            })
-        except exception.AddressNotFoundByName:
-            pass
+        networktypes = [
+            constants.NETWORK_TYPE_MGMT,
+            constants.NETWORK_TYPE_PXEBOOT,
+            constants.NETWORK_TYPE_CLUSTER_HOST,
+            constants.NETWORK_TYPE_IRONIC,
+            constants.NETWORK_TYPE_STORAGE,
+            constants.NETWORK_TYPE_ADMIN
+        ]
 
         system = self._get_system()
         if system.system_mode != constants.SYSTEM_MODE_SIMPLEX:
-            oam_address = self._get_address_by_name(
-                constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_OAM)
+            networktypes.append(constants.NETWORK_TYPE_OAM)
 
-            oam_floating_ip = (str(oam_address.address) + '/' +
-                               str(oam_address.prefix))
+        network_index = {}
+        for network in networks.values():
+            if network.type in networktypes:
+                network_index[network.id] = network
 
-            floating_ips.update({
-                constants.NETWORK_TYPE_OAM: oam_floating_ip
-            })
-
-        try:
-            cluster_address = self._get_address_by_name(
-                constants.CONTROLLER_HOSTNAME,
-                constants.NETWORK_TYPE_CLUSTER_HOST)
-            if cluster_address:
-                cluster_floating_ip = (str(cluster_address.address) + '/' +
-                                       str(cluster_address.prefix))
-                floating_ips.update({
-                    constants.NETWORK_TYPE_CLUSTER_HOST: cluster_floating_ip
-                })
-        except exception.AddressNotFoundByName:
-            pass
-
-        try:
-            ironic_address = self._get_address_by_name(
-                constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_IRONIC)
-
-            ironic_floating_ip = (str(ironic_address.address) + '/' +
-                                  str(ironic_address.prefix))
-
-            floating_ips.update({
-                constants.NETWORK_TYPE_IRONIC: ironic_floating_ip,
-            })
-        except exception.AddressNotFoundByName:
-            pass
-
-        try:
-            storage_address = self._get_address_by_name(
-                constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_STORAGE)
-
-            storage_floating_ip = (str(storage_address.address) + '/' +
-                                   str(storage_address.prefix))
-
-            floating_ips.update({
-                constants.NETWORK_TYPE_STORAGE: storage_floating_ip,
-            })
-        except exception.AddressNotFoundByName:
-            pass
-
-        try:
-            admin_address = self._get_address_by_name(
-                constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_ADMIN)
-
-            admin_floating_ip = (str(admin_address.address) + '/' +
-                                   str(admin_address.prefix))
-
-            floating_ips.update({
-                constants.NETWORK_TYPE_ADMIN: admin_floating_ip,
-            })
-        except exception.AddressNotFoundByName:
-            pass
+        floating_ips = collections.defaultdict(list)
+        for network_address_pool in network_address_pools.values():
+            network = network_index.get(network_address_pool.network_id, None)
+            if not network:
+                continue
+            address_pool = address_pools[network_address_pool.address_pool_uuid]
+            if not address_pool.floating_address_id:
+                continue
+            try:
+                address = self.dbapi.address_get_by_id(address_pool.floating_address_id)
+                floating_ips[network.type].append(address)
+            except exception.AddressNotFoundById:
+                pass
 
         return floating_ips
 
@@ -666,82 +664,46 @@ def _set_address_netmask(address):
     return address
 
 
-def get_interface_primary_address(context, iface, network_id=None):
+def get_gateway_address(context, network, address):
     """
-    Determine the primary IP address on an interface (if any).  If multiple
-    addresses exist then the first address is returned.
+    Gets the corresponding gateway for the provided address
     """
-    addresses = context['addresses'].get(iface['ifname'], [])
-    if len(addresses) > 0 and network_id is None:
-        return _set_address_netmask(addresses[0])
-    elif network_id:
-        for address in addresses:
-            net = find_network_by_pool_uuid(context,
-                                            address.pool_uuid)
-            if net and network_id == net.id:
-                return _set_address_netmask(address)
 
+    addrpool = context['address_pools'].get(address.pool_uuid, None)
 
-def get_interface_address_family(context, iface, network_id=None):
-    """
-    Determine the IP family/version of the interface primary address.  If there
-    is no address then the IPv4 family identifier is returned so that an
-    appropriate default is always present in interface configurations.
-    """
-    address = get_interface_primary_address(context, iface, network_id)
-    if not address:
-        return 'inet'  # default to ipv4
-    elif IPAddress(address['address']).version == 4:
-        return 'inet'
-    elif IPAddress(address['address']).version == 6:
-        return 'inet6'
+    if not addrpool:
+        return None
 
-
-def get_interface_gateway_address(context, networktype):
-    """
-    Determine if the interface has a default gateway.
-    """
-    if (networktype == constants.NETWORK_TYPE_MGMT and
+    if (network and network.type == constants.NETWORK_TYPE_MGMT and
             context['personality'] in [constants.WORKER, constants.STORAGE]):
-        address = context['floatingips'].get(networktype, None)
-        if address is None:
-            return None
-        return address.split('/')[0]
-    return context['gateways'].get(networktype, None)
+        gateway_address = addrpool.floating_address
+    else:
+        gateway_address = addrpool.gateway_address
+
+    return gateway_address
 
 
-def get_interface_address_method(context, iface, network_id=None):
-    """
-    Determine what type of interface to configure for each network type.
-    """
-    networktype = find_networktype_by_network_id(context, network_id)
+def get_interface_address_method(context, iface, network=None, address=None):
+    networktype = network.type if network else None
 
     has_static_addr = False
-    if (iface.ipv4_mode == constants.IPV4_STATIC or iface.ipv6_mode == constants.IPV6_STATIC):
-        has_static_addr = True
+    if address:
+        if address.family == constants.IPV4_FAMILY and iface.ipv4_mode == constants.IPV4_STATIC:
+            has_static_addr = True
+        elif address.family == constants.IPV6_FAMILY and iface.ipv6_mode == constants.IPV6_STATIC:
+            has_static_addr = True
 
     if iface.ifclass == constants.INTERFACE_CLASS_DATA:
-        if is_syscfg_network():
-            if is_vswitch_type_unaccelerated(context):
-                return STATIC_METHOD
-        else:
-            if has_static_addr:
-                return STATIC_METHOD
+        if has_static_addr:
+            return STATIC_METHOD
         # All data interfaces configured in the kernel because they are not
         # natively supported in vswitch or need to be shared with the kernel
         # because of a platform VLAN should be left as manual config
         return MANUAL_METHOD
-    elif (iface.ifclass == constants.INTERFACE_CLASS_PLATFORM and
-            networktype is None and has_static_addr):
-
-        # On Debian, interfaces of networktype:None with alias should be
-        # manual method (i.e: lo) and alias will be Static method (i.e: lo:1)
-        if not is_syscfg_network() and len(iface.networktypelist) > 1:
-            return MANUAL_METHOD
-
-        # Allow platform-class interface with ipv4 mode set to static to
-        # have static ip address
-        return STATIC_METHOD
+    elif (iface.ifclass == constants.INTERFACE_CLASS_PLATFORM and networktype is None):
+        if has_static_addr:
+            return STATIC_METHOD
+        return MANUAL_METHOD
     elif not iface.ifclass or iface.ifclass == constants.INTERFACE_CLASS_NONE \
             or not networktype:
         # Interfaces that are configured purely as a dependency from other
@@ -871,43 +833,22 @@ def get_basic_network_config(ifname, ensure='present',
               'onboot': onboot,
               'options': {}}
     if mtu:
-        if is_syscfg_network():
-            config['mtu'] = str(mtu)
-        else:
-            config['options']['mtu'] = str(mtu)
+        config['options']['mtu'] = str(mtu)
     return config
 
 
-def get_bridge_network_config(context, iface):
+def is_disable_dad_required(iface, network=None):
     """
-    Builds a network config dictionary for bridge interface resource.
+    Disable DAD command is included in the base interface config, only for interfaces associated
+    with management and cluster-host networks.
     """
-    os_ifname = get_interface_os_ifname(context, iface)
-    os_ifname = 'br-' + os_ifname
-    method = get_interface_address_method(context, iface)
-    family = get_interface_address_family(context, iface)
-    config = get_basic_network_config(
-        os_ifname, method=method, family=family)
-    config['options']['TYPE'] = 'Bridge'
-    return config
 
-
-def is_disable_dad_required(context, iface, config, network_id=None):
-    """
-    Determine whether DAD is required to be disabled.
-    If mgmt and cluster-host are separate vlans, the vlan has DAD disabled.
-    If the vlans are shared between networks, the DAD is disabled
-       on the parent vlan interface, not the alias interfaces.
-    If mgmt and cluster-host are not vlan, the interfaces have DAD disabled.
-    """
-    networktype = find_networktype_by_network_id(context, network_id)
-    if len(iface.networktypelist) > 1:
-        if (iface['iftype'] == constants.INTERFACE_TYPE_VLAN and
-                network_id is None):
+    if network:
+        return False
+    networks = [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_CLUSTER_HOST]
+    for networktype in iface.networktypelist:
+        if networktype in networks:
             return True
-    elif (networktype and networktype in [constants.NETWORK_TYPE_MGMT,
-                                          constants.NETWORK_TYPE_CLUSTER_HOST]):
-        return True
     return False
 
 
@@ -922,21 +863,18 @@ def get_interface_sysctl_ifname(context, iface):
         return os_ifname
 
 
-def get_duplex_direct_network_config(context, iface, config, network_id):
+def get_duplex_direct_network_config(context, iface, config, network):
     """
     Disable dad on the specified interface for duplex-direct config
     """
     if iface['iftype'] == constants.INTERFACE_TYPE_AE:
-        networktype = find_networktype_by_network_id(context, network_id)
-        if (networktype and networktype in [constants.NETWORK_TYPE_MGMT,
-                                            constants.NETWORK_TYPE_CLUSTER_HOST]):
-            command = ("/sbin/modprobe bonding; "
-                    "grep %s /sys/class/net/bonding_masters || "
-                    "echo +%s > /sys/class/net/bonding_masters" % (
-                        iface['ifname'], iface['ifname']))
-            fill_interface_config_option_operation(config['options'], IFACE_PRE_UP_OP, command)
+        command = ("/sbin/modprobe bonding; "
+                "grep %s /sys/class/net/bonding_masters || "
+                "echo +%s > /sys/class/net/bonding_masters" % (
+                    iface['ifname'], iface['ifname']))
+        fill_interface_config_option_operation(config['options'], IFACE_PRE_UP_OP, command)
 
-    if not is_syscfg_network() and iface['iftype'] == constants.INTERFACE_TYPE_VLAN:
+    if iface['iftype'] == constants.INTERFACE_TYPE_VLAN:
         add_vlan_interface_creation_command(context, iface, config['options'])
 
     sysctl_ifname = get_interface_sysctl_ifname(context, iface)
@@ -951,10 +889,7 @@ def get_vlan_network_config(context, iface, config):
     interface.
     """
     lower_os_ifname = get_lower_interface_os_ifname(context, iface)
-    if is_syscfg_network():
-        options = {'VLAN': 'yes', 'PHYSDEV': lower_os_ifname}
-    else:
-        options = {'vlan-raw-device': lower_os_ifname}
+    options = {'vlan-raw-device': lower_os_ifname}
     fill_interface_config_option_operation(options, IFACE_PRE_UP_OP,
                                            '/sbin/modprobe -q 8021q')
     if iface['ifclass'] != constants.INTERFACE_CLASS_PLATFORM:
@@ -974,28 +909,6 @@ def add_vlan_interface_creation_command(context, iface, options):
         (lower_os_ifname, os_ifname, iface['vlan_id']))
     fill_interface_config_option_operation(options, IFACE_POST_DOWN_OP,
         'ip link del %s' % (os_ifname))
-
-
-def get_bond_interface_options_sysconfig(iface, primary_iface):
-    """
-    Get the interface config attribute for bonding options
-    """
-    ae_mode = iface['aemode']
-    tx_hash_policy = iface['txhashpolicy']
-    options = None
-    if ae_mode in ACTIVE_STANDBY_AE_MODES:
-        # Requires the active device in an active_standby LAG
-        # configuration to be determined based on the lowest MAC address
-        options = 'mode=active-backup miimon=100 primary={}'.format(primary_iface['ifname'])
-        if iface['primary_reselect']:
-            options += ' primary_reselect=%s' % iface['primary_reselect']
-    else:
-        options = 'xmit_hash_policy=%s miimon=100' % tx_hash_policy
-        if ae_mode in BALANCED_AE_MODES:
-            options = 'mode=balance-xor ' + options
-        elif ae_mode in LACP_AE_MODES:
-            options = 'mode=802.3ad lacp_rate=fast ' + options
-    return options
 
 
 def get_bond_interface_options_ifupdown(iface, primary_iface):
@@ -1028,7 +941,7 @@ def get_bond_interface_options_ifupdown(iface, primary_iface):
     return options
 
 
-def get_bond_network_config(context, iface, config, network_id):
+def get_bond_network_config(context, iface, config):
     """
     Augments a basic config dictionary with the attributes specific to a bond
     interface.
@@ -1038,16 +951,10 @@ def get_bond_network_config(context, iface, config, network_id):
     bonding_options = None
     iface_mac = iface['imac'].rstrip()
 
-    if is_syscfg_network():
-        options['MACADDR'] = iface_mac
-        bonding_options = get_bond_interface_options_sysconfig(iface, primary_iface)
-        if bonding_options:
-            options['BONDING_OPTS'] = bonding_options
-    else:
-        options['hwaddress'] = iface_mac
-        bonding_options = get_bond_interface_options_ifupdown(iface, primary_iface)
-        if bonding_options:
-            options.update(bonding_options)
+    options['hwaddress'] = iface_mac
+    bonding_options = get_bond_interface_options_ifupdown(iface, primary_iface)
+    if bonding_options:
+        options.update(bonding_options)
 
     if bonding_options:
         fill_interface_config_option_operation(options, IFACE_UP_OP, 'sleep 10')
@@ -1092,14 +999,9 @@ def get_ethernet_network_config(context, iface, config):
     """
     interface_class = iface['ifclass']
     options = {}
-    # Increased to accommodate devices that require more time to
-    # complete link auto-negotiation
-    if is_syscfg_network():
-        options['LINKDELAY'] = '20'
 
     if is_bridged_interface(context, iface):
-        if is_syscfg_network():
-            options['BRIDGE'] = get_bridge_interface_name(context, iface)
+        pass
     elif is_slave_interface(context, iface):
         if not is_data_interface(context, iface):
             # Data interfaces that require a network configuration are not
@@ -1107,21 +1009,16 @@ def get_ethernet_network_config(context, iface, config):
             # rely on the Linux device driver to setup some or all functions
             # on the device (e.g., the Mellanox DPDK driver relies on the
             # Linux driver to set the proper MTU value).
-            if is_syscfg_network():
-                options['SLAVE'] = 'yes'
-                options['MASTER'] = get_master_interface(context, iface)
-                options['PROMISC'] = 'yes'
-            else:
-                master = get_master_interface(context, iface)
-                options['bond-master'] = master
-                osname = get_interface_os_ifname(context, iface)
-                command = '/usr/sbin/ip link set dev {} promisc on'.format(osname)
-                fill_interface_config_option_operation(options, IFACE_PRE_UP_OP, command)
-                # the allow-* is a separated stanza in ifupdown, but without
-                # support in puppet-network module, this stanza is needed to
-                # make ifup to run the slave's pre-up commands. It will be
-                # adjusted during parsing in apply_network_config.sh
-                options['allow-{}'.format(master)] = osname
+            master = get_master_interface(context, iface)
+            options['bond-master'] = master
+            osname = get_interface_os_ifname(context, iface)
+            command = '/usr/sbin/ip link set dev {} promisc on'.format(osname)
+            fill_interface_config_option_operation(options, IFACE_PRE_UP_OP, command)
+            # the allow-* is a separated stanza in ifupdown, but without
+            # support in puppet-network module, this stanza is needed to
+            # make ifup to run the slave's pre-up commands. It will be
+            # adjusted during parsing in apply_network_config.sh
+            options['allow-{}'.format(master)] = osname
             if interface_class == constants.INTERFACE_CLASS_PCI_SRIOV:
                 if iface['iftype'] == constants.INTERFACE_TYPE_ETHERNET:
                     sriovfs_path = ("/sys/class/net/%s/device/sriov_numvfs" %
@@ -1346,13 +1243,11 @@ def get_fpga_config(context, iface):
     return config
 
 
-def get_common_network_config(context, iface, config, network_id=None):
+def get_common_network_config(context, iface, config, network=None, address=None):
     """
     Augments a basic config dictionary with the attributes specific to an upper
     layer interface (i.e., an interface that is used to terminate IP traffic).
     """
-    LOG.debug("get_common_network_config %s %s network_id=%s" %
-              (iface.ifname, iface.networktypelist, network_id))
 
     os_ifname = get_interface_os_ifname(context, iface)
     if os_ifname == config['ifname']:
@@ -1362,55 +1257,53 @@ def get_common_network_config(context, iface, config, network_id=None):
             fill_interface_config_option_operation(config['options'], IFACE_POST_UP_OP,
                                                    traffic_classifier)
 
-    method = get_interface_address_method(context, iface, network_id)
+    method = get_interface_address_method(context, iface, network, address)
     if method == STATIC_METHOD:
-        address = get_interface_primary_address(context, iface, network_id)
         if address:
+            _set_address_netmask(address)
+
             config['ipaddress'] = address['address']
             config['netmask'] = address['netmask']
-        else:
-            LOG.info("Interface %s has no primary address" % iface['ifname'])
 
-        networktype = find_networktype_by_network_id(context, network_id)
-        gateway = get_interface_gateway_address(context, networktype)
-        if gateway:
-            if is_syscfg_network():
-                config['gateway'] = gateway
-            else:
+            gateway = get_gateway_address(context, network, address)
+            if gateway:
                 config['options']['gateway'] = gateway
     return config
 
 
-def get_final_network_config(context, iface, config, network_id=None):
+def get_final_network_config(context, iface, config, network=None):
     """
     Augments a basic config dictionary with the attribute that must be
     appended to an attribute that is already configured (e.g. pre_up)
     """
     # add duplex_direct specific network config
     if context['system_mode'] == constants.SYSTEM_MODE_DUPLEX_DIRECT:
-        if is_disable_dad_required(context, iface, config, network_id):
-            config = get_duplex_direct_network_config(context, iface, config,
-                                                      network_id)
+        if is_disable_dad_required(iface, network):
+            config = get_duplex_direct_network_config(context, iface, config, network)
     return config
 
 
-def get_interface_network_config(context, iface, network_id=None):
+def get_interface_network_config(context, iface, network=None, address=None):
     """
     Builds a network_config resource dictionary for a given interface
     """
-    if iface['iftype'] == constants.INTERFACE_TYPE_VF:
-        # Only the parent SR-IOV interface needs a network config
+
+    method = get_interface_address_method(context, iface, network, address)
+
+    # if and address is present but the address mode is not static, there's
+    # no need to generate a labeled config for the interface
+    if address is not None and method == MANUAL_METHOD:
         return {}
 
-    # Create a basic network config resource
     os_ifname = get_interface_os_ifname(context, iface)
-    method = get_interface_address_method(context, iface, network_id)
-    family = get_interface_address_family(context, iface, network_id)
+    family = get_address_family(address)
 
     # for now label all interfaces that have network_id, later we will
     # set the definitive values
-    if network_id:
-        ifname = "%s:%d" % (os_ifname, network_id)
+    if network or address:
+        net_num = network.id if network else 0
+        addr_num = address.id if address else 0
+        ifname = "%s:%d-%d" % (os_ifname, net_num, addr_num)
     else:
         ifname = os_ifname
 
@@ -1419,61 +1312,96 @@ def get_interface_network_config(context, iface, network_id=None):
         ifname, method=method, family=family, mtu=mtu)
 
     # Add options common to all top level interfaces
-    config = get_common_network_config(context, iface, config, network_id)
+    config = get_common_network_config(context, iface, config, network, address)
 
     # ensure addresses have host scope when configured against the loopback
     if os_ifname == LOOPBACK_IFNAME:
-        if is_syscfg_network():
-            options = {'SCOPE': 'scope host'}
-        else:
-            options = {'scope': 'host'}
+        options = {'scope': 'host'}
         config['options'].update(options)
 
     # Add type specific options
     if iface['iftype'] == constants.INTERFACE_TYPE_VLAN:
         config = get_vlan_network_config(context, iface, config)
     elif iface['iftype'] == constants.INTERFACE_TYPE_AE:
-        config = get_bond_network_config(context, iface, config, network_id)
+        config = get_bond_network_config(context, iface, config)
     else:
         config = get_ethernet_network_config(context, iface, config)
 
     # Add final options
-    config = get_final_network_config(context, iface, config, network_id)
+    config = get_final_network_config(context, iface, config, network)
 
-    if not is_syscfg_network():
-        if iface['iftype'] == constants.INTERFACE_TYPE_VLAN:
-            # When configuring a static IPv6 interface, CentOS' ifup tool uses 'ip link'
-            # command to set both IPv4 and IPv6 MTU.
-            # Debian's ifup tool instead uses sysctl to set only the IPv6 MTU. But this
-            # value gets reset to the underlying device's MTU soon after ifup set sets the
-            # interface state to up. So we need to set the MTU again during post-up.
-            # Using 'ip link' command here instead of sysctl, will set both IPv4 and IPv6
-            # MTU like in CentOS.
-            set_mtu = '/usr/sbin/ip link set dev {} mtu {}'.format(os_ifname, mtu)
-            fill_interface_config_option_operation(config['options'], IFACE_POST_UP_OP, set_mtu)
+    if iface['iftype'] == constants.INTERFACE_TYPE_VLAN:
+        # When configuring a static IPv6 interface, CentOS' ifup tool uses 'ip link'
+        # command to set both IPv4 and IPv6 MTU.
+        # Debian's ifup tool instead uses sysctl to set only the IPv6 MTU. But this
+        # value gets reset to the underlying device's MTU soon after ifup set sets the
+        # interface state to up. So we need to set the MTU again during post-up.
+        # Using 'ip link' command here instead of sysctl, will set both IPv4 and IPv6
+        # MTU like in CentOS.
+        set_mtu = '/usr/sbin/ip link set dev {} mtu {}'.format(os_ifname, mtu)
+        fill_interface_config_option_operation(config['options'], IFACE_POST_UP_OP, set_mtu)
 
     # disable ipv6 autoconfig
-    if is_syscfg_network():
-        config['options'].update({'IPV6_AUTOCONF': 'no'})
-    else:
-        interface_op = IFACE_POST_UP_OP
-        if is_slave_interface(context, iface):
-            # ifupdown's ifup only runs pre-up for slave interfaces
-            interface_op = IFACE_PRE_UP_OP
+    interface_op = IFACE_POST_UP_OP
+    if is_slave_interface(context, iface):
+        # ifupdown's ifup only runs pre-up for slave interfaces
+        interface_op = IFACE_PRE_UP_OP
 
-        autoconf_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/autoconf'.format(os_ifname)
-        fill_interface_config_option_operation(config['options'], interface_op, autoconf_off)
-        accept_ra_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/accept_ra'.format(os_ifname)
-        fill_interface_config_option_operation(config['options'], interface_op, accept_ra_off)
-        accept_redir_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/accept_redirects'.format(os_ifname)
-        fill_interface_config_option_operation(config['options'], interface_op, accept_redir_off)
+    autoconf_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/autoconf'.format(os_ifname)
+    fill_interface_config_option_operation(config['options'], interface_op, autoconf_off)
+    accept_ra_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/accept_ra'.format(os_ifname)
+    fill_interface_config_option_operation(config['options'], interface_op, accept_ra_off)
+    accept_redir_off = 'echo 0 > /proc/sys/net/ipv6/conf/{}/accept_redirects'.format(os_ifname)
+    fill_interface_config_option_operation(config['options'], interface_op, accept_redir_off)
+
+    network_type = network.type if network else None
 
     # add the description field with the database ifname and networktype if available
-    if not is_syscfg_network():
-        networktype = find_networktype_by_network_id(context, network_id)
-        config['options']['stx-description'] = f"ifname:{iface['ifname']},net:{networktype}"
+    config['options']['stx-description'] = f"ifname:{iface['ifname']},net:{network_type}"
 
     return config
+
+
+def _append_interface_config(iface_configs, iface_config):
+    if len(iface_config) > 0:
+        iface_configs.append(iface_config)
+
+
+def get_interface_network_configs(context, iface, network=None):
+    """
+    Builds a list of network_config resource dictionaries for a given interface,
+    each corresponding to an associated address, plus the base unlabeled config
+    """
+
+    if iface['iftype'] == constants.INTERFACE_TYPE_VF:
+        # Only the parent SR-IOV interface needs a network config
+        return []
+
+    iface_configs = []
+
+    network_id = network.id if network else None
+    network_dict = context['interface_networks'][iface.ifname][network_id]
+
+    if network:
+        if len(network_dict['addresses']) == 0:
+            iface_config = get_interface_network_config(context, iface, network)
+            _append_interface_config(iface_configs, iface_config)
+    else:
+        # Most basic interface config, no network no address
+        iface_config = get_interface_network_config(context, iface)
+        _append_interface_config(iface_configs, iface_config)
+
+    for address in network_dict['addresses']:
+        iface_config = get_interface_network_config(context, iface, network, address)
+        _append_interface_config(iface_configs, iface_config)
+
+    return iface_configs
+
+
+def get_address_family(address):
+    if address and IPAddress(address['address']).version == 6:
+        return 'inet6'
+    return 'inet'
 
 
 def generate_network_config(context, hiera_config, iface):
@@ -1483,24 +1411,18 @@ def generate_network_config(context, hiera_config, iface):
     resource, while in other cases it will emit multiple resources to create a
     bridge, or to add additional route resources.
     """
+
     os_ifname = get_interface_os_ifname(context, iface)
 
     # Setup the default device configuration for the interface.  This will be
     # overridden if there is a specific network type configuration, otherwise
     # it will act as the parent device for the aliases
-    net_config = get_interface_network_config(context, iface)
-    if net_config:
-        hiera_config[NETWORK_CONFIG_RESOURCE].update({
-            net_config['ifname']: format_network_config(net_config)
-        })
-
-    for net_type in iface.networktypelist:
-        net_id = find_network_id_by_networktype(context, net_type)
-        net_config = get_interface_network_config(context, iface, net_id)
-        if net_config:
-            hiera_config[NETWORK_CONFIG_RESOURCE].update({
-                net_config['ifname']: format_network_config(net_config)
-            })
+    networks = context['interface_networks'][iface.ifname]
+    for network_dict in networks.values():
+        net_configs = get_interface_network_configs(context, iface, network_dict['network'])
+        for net_config in net_configs:
+            hiera_config[NETWORK_CONFIG_RESOURCE][net_config['ifname']] = \
+                    format_network_config(net_config)
 
     # Add complementary puppet resource definitions (if needed)
     for route in get_interface_routes(context, iface):
@@ -1524,23 +1446,11 @@ def generate_network_config(context, hiera_config, iface):
         })
 
 
-def find_network_by_pool_uuid(context, pool_uuid):
-    for networktype, network in six.iteritems(context['networks']):
-        if network.pool_uuid == pool_uuid:
-            return network
-    return None
-
-
 def find_network_id_by_networktype(context, networktype):
-    for net_type, network in six.iteritems(context['networks']):
-        if networktype == net_type:
-            return network.id
-
-
-def find_networktype_by_network_id(context, network_id):
-    for networktype, network in six.iteritems(context['networks']):
-        if network.id == network_id:
-            return networktype
+    network = context['networks'].get(networktype, None)
+    if network:
+        return network.id
+    return None
 
 
 def find_interface_by_type(context, networktype):
@@ -1553,20 +1463,6 @@ def find_interface_by_type(context, networktype):
         for net_type in iface.networktypelist:
             if networktype == net_type:
                 return iface
-
-
-def find_address_by_type(context, networktype):
-    """
-    Lookup an address based on networktype.  This is only intended for for
-    types that only have 1 such address per node.  For example, for SDN we
-    only expect/support a single data IP address per node because the SDN
-    controller cannot support more than 1.
-    """
-    for ifname, addresses in six.iteritems(context['addresses']):
-        for address in addresses:
-            if address['networktype'] == networktype:
-                return address['address'], address['prefix']
-    return None, None
 
 
 def find_sriov_interfaces_by_driver(context, driver):
@@ -1641,8 +1537,7 @@ def process_interface_labels(config, context):
     Adjust interface labeling according to ifupdown package rules and StarlingX
     requirements
     """
-    # This rules are a result of using Debian's ifupdown package,
-    # StarlingX do not support dual-stack for now
+    # This rules are a result of using Debian's ifupdown package
     #
     # Rules for label adjustment:
     # 1) if the interface have just one label:
@@ -1700,7 +1595,7 @@ def process_interface_labels(config, context):
                     networktypelist = context['interfaces'][ifname].networktypelist
                     undeprecate = "ip -6 addr replace" + \
                                   f" {intf_data['ipaddress']}/{intf_data['netmask']}" + \
-                                  f" dev {intf} preferred_lft forever;"
+                                  f" dev {intf} preferred_lft forever"
                     if constants.NETWORK_TYPE_MGMT in networktypelist:
                         fill_interface_config_option_operation(intf_data['options'],
                                                                IFACE_POST_UP_OP, undeprecate)
@@ -1794,13 +1689,11 @@ def generate_unassigned_pxeboot_intf_config(context, config, db_api,
     if not is_pxeboot_present and is_mgmt_present:
         if mgmt_intf:
             LOG.info(f"add pxeboot network config in {mgmt_intf.ifname} ")
-            net_id = find_network_id_by_networktype(context,
-                                                    constants.NETWORK_TYPE_PXEBOOT)
+            network = context['networks'][constants.NETWORK_TYPE_PXEBOOT]
             # Setup the default device configuration for the interface.  This will be
             # overridden if there is a specific network type configuration, otherwise
             # it will act as the parent device for the aliases
             mgmt_intf.networktypelist.append(constants.NETWORK_TYPE_PXEBOOT)
-            net_config = get_interface_network_config(context, mgmt_intf, net_id)
             address_name = None
             if context['hostname'] == constants.CONTROLLER_0_HOSTNAME:
                 address_name = utils.format_address_name(constants.CONTROLLER_0_HOSTNAME,
@@ -1808,15 +1701,12 @@ def generate_unassigned_pxeboot_intf_config(context, config, db_api,
             elif context['hostname'] == constants.CONTROLLER_1_HOSTNAME:
                 address_name = utils.format_address_name(constants.CONTROLLER_1_HOSTNAME,
                                                          constants.NETWORK_TYPE_PXEBOOT)
+            address = None
             if address_name:
-                address = None
                 address = utils.get_primary_address_by_name(db_api, address_name,
                                                             constants.NETWORK_TYPE_PXEBOOT)
-                if (address and net_config['method'] == 'static'):
-                    addr_data = _set_address_netmask({'address': address.address,
-                                                    'prefix': address.prefix})
-                    net_config['ipaddress'] = addr_data['address']
-                    net_config['netmask'] = addr_data['netmask']
+
+            net_config = get_interface_network_config(context, mgmt_intf, network, address)
 
             if net_config:
                 config[NETWORK_CONFIG_RESOURCE].update({
@@ -1824,22 +1714,33 @@ def generate_unassigned_pxeboot_intf_config(context, config, db_api,
                 })
 
 
-def get_address_config(context, iface, address):
+def get_address_config(context, iface, addresses):
     ifname = get_interface_os_ifname(context, iface)
-    return {
-        'ifname': ifname,
-        'address': address,
-    }
+
+    if constants.DUAL_STACK_COMPATIBILITY_MODE:
+        address = addresses[0]
+        return {
+            'ifname': ifname,
+            'address': str(address.address) + '/' + str(address.prefix)
+        }
+    else:
+        address_list = []
+        for address in addresses:
+            address_list.append(str(address.address) + '/' + str(address.prefix))
+        return {
+            'ifname': ifname,
+            'addresses': address_list,
+        }
 
 
 def generate_address_configs(context, config):
     """
     Generate the puppet resource for each of the floating IP addresses
     """
-    for networktype, address in six.iteritems(context['floatingips']):
+    for networktype, addresses in six.iteritems(context['floatingips']):
         iface = find_interface_by_type(context, networktype)
         if iface:
-            address_config = get_address_config(context, iface, address)
+            address_config = get_address_config(context, iface, addresses)
             config[ADDRESS_CONFIG_RESOURCE].update({
                 networktype: address_config
             })
@@ -1848,7 +1749,7 @@ def generate_address_configs(context, config):
             iface = find_interface_by_type(context,
                                            constants.NETWORK_TYPE_MGMT)
             if iface:
-                address_config = get_address_config(context, iface, address)
+                address_config = get_address_config(context, iface, addresses)
                 config[ADDRESS_CONFIG_RESOURCE].update({
                     networktype: address_config
                 })
@@ -1857,7 +1758,7 @@ def generate_address_configs(context, config):
             iface = find_interface_by_type(context,
                                            constants.NETWORK_TYPE_CLUSTER_HOST)
             if iface:
-                address_config = get_address_config(context, iface, address)
+                address_config = get_address_config(context, iface, addresses)
                 config[ADDRESS_CONFIG_RESOURCE].update({
                     networktype: address_config
                 })
@@ -1919,13 +1820,12 @@ def fill_interface_config_option_operation(options, operation, command):
     """
     Join new command to previous commands on the same operation
     """
-    if_op = {IFACE_UP_OP: 'up', IFACE_PRE_UP_OP: 'pre_up', IFACE_POST_UP_OP: 'post_up',
-         IFACE_DOWN_OP: 'down', IFACE_PRE_DOWN_OP: 'pre_down', IFACE_POST_DOWN_OP: 'post_down'}
-    if not is_syscfg_network():
-        if_op[IFACE_PRE_UP_OP] = 'pre-up'
-        if_op[IFACE_POST_UP_OP] = 'post-up'
-        if_op[IFACE_PRE_DOWN_OP] = 'pre-down'
-        if_op[IFACE_POST_DOWN_OP] = 'post-down'
+    if_op = {IFACE_UP_OP: 'up',
+             IFACE_PRE_UP_OP: 'pre-up',
+             IFACE_POST_UP_OP: 'post-up',
+             IFACE_DOWN_OP: 'down',
+             IFACE_PRE_DOWN_OP: 'pre-down',
+             IFACE_POST_DOWN_OP: 'post-down'}
 
     if operation in if_op.keys():
         if if_op[operation] in options.keys():
@@ -1937,21 +1837,11 @@ def fill_interface_config_option_operation(options, operation, command):
 
 
 def get_intf_op_name(operation):
-    if_op = {IFACE_UP_OP: 'up', IFACE_PRE_UP_OP: 'pre_up', IFACE_POST_UP_OP: 'post_up',
-         IFACE_DOWN_OP: 'down', IFACE_PRE_DOWN_OP: 'pre_down', IFACE_POST_DOWN_OP: 'post_down'}
-    if not is_syscfg_network():
-        if_op[IFACE_PRE_UP_OP] = 'pre-up'
-        if_op[IFACE_POST_UP_OP] = 'post-up'
-        if_op[IFACE_PRE_DOWN_OP] = 'pre-down'
-        if_op[IFACE_POST_DOWN_OP] = 'post-down'
+    if_op = {IFACE_UP_OP: 'up',
+             IFACE_PRE_UP_OP: 'pre-up',
+             IFACE_POST_UP_OP: 'post-up',
+             IFACE_DOWN_OP: 'down',
+             IFACE_PRE_DOWN_OP: 'pre-down',
+             IFACE_POST_DOWN_OP: 'post-down'}
 
     return if_op[operation]
-
-
-def is_syscfg_network():
-    """
-    Detect if the system is using sysconfig network interface file format
-    """
-    if not os.path.isdir("/etc/sysconfig/network-scripts/"):
-        return False
-    return True

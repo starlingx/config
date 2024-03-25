@@ -62,13 +62,14 @@ class DbNetworkTestCaseIPv4(base.BaseHostTestCase):
     def test_network_addrpool_db(self):
 
         to_add = [
-            (constants.NETWORK_TYPE_MGMT, ('management', 'management-ipv6')),
-            (constants.NETWORK_TYPE_OAM, ('oam', 'oam-ipv6')),
-            (constants.NETWORK_TYPE_ADMIN, ('admin', 'admin-ipv6')),
-            (constants.NETWORK_TYPE_CLUSTER_HOST, ('cluster-host', 'cluster-host-ipv6')),
-            (constants.NETWORK_TYPE_CLUSTER_POD, ('cluster-pod', 'cluster-pod-ipv6')),
-            (constants.NETWORK_TYPE_CLUSTER_SERVICE, ('cluster-service', 'cluster-service-ipv6')),
-            (constants.NETWORK_TYPE_STORAGE, ('storage', 'storage-ipv6'))
+            (constants.NETWORK_TYPE_MGMT, ('management-ipv4', 'management-ipv6')),
+            (constants.NETWORK_TYPE_OAM, ('oam-ipv4', 'oam-ipv6')),
+            (constants.NETWORK_TYPE_ADMIN, ('admin-ipv4', 'admin-ipv6')),
+            (constants.NETWORK_TYPE_CLUSTER_HOST, ('cluster-host-ipv4', 'cluster-host-ipv6')),
+            (constants.NETWORK_TYPE_CLUSTER_POD, ('cluster-pod-ipv4', 'cluster-pod-ipv6')),
+            (constants.NETWORK_TYPE_CLUSTER_SERVICE, ('cluster-service-ipv4',
+                                                      'cluster-service-ipv6')),
+            (constants.NETWORK_TYPE_STORAGE, ('storage-ipv4', 'storage-ipv6'))
         ]
 
         # test network_addrpool_create()
@@ -101,16 +102,16 @@ class DbNetworkTestCaseIPv4(base.BaseHostTestCase):
         net_pools = self.dbapi.network_addrpool_get_by_network_id(net.id)
         self.assertEqual(len(net_pools), 2)
         self.assertEqual(net_pools[0].network_type, constants.NETWORK_TYPE_MGMT)
-        self.assertEqual(net_pools[0].address_pool_name, "management")
+        self.assertEqual(net_pools[0].address_pool_name, "management-ipv4")
         self.assertEqual(net_pools[1].network_type, constants.NETWORK_TYPE_MGMT)
         self.assertEqual(net_pools[1].address_pool_name, "management-ipv6")
 
         # test network_addrpool_get_by_pool_id()
-        pool4 = self.dbapi.address_pool_query({'name': 'management'})
+        pool4 = self.dbapi.address_pool_query({'name': 'management-ipv4'})
         net_pools = self.dbapi.network_addrpool_get_by_pool_id(pool4.id)
         self.assertEqual(len(net_pools), 1)
         self.assertEqual(net_pools[0].address_pool_id, pool4.id)
-        self.assertEqual(net_pools[0].address_pool_name, 'management')
+        self.assertEqual(net_pools[0].address_pool_name, 'management-ipv4')
 
         # test network_addrpool_query()
         net_pool_q = self.dbapi.network_addrpool_query({'address_pool_id': pool4.id,
@@ -152,7 +153,7 @@ class DbNetworkTestCaseIPv4(base.BaseHostTestCase):
                           'controller-mgmt', constants.IPV6_FAMILY)
 
         self._create_test_addresses(hostnames=[constants.CONTROLLER_HOSTNAME],
-                                    subnet=netaddr.IPNetwork('fd01::/64'),
+                                    subnets=[netaddr.IPNetwork('fd01::/64')],
                                     network_type=constants.NETWORK_TYPE_MGMT)
 
         addr = self.dbapi.address_get_by_name_and_family('controller-mgmt',

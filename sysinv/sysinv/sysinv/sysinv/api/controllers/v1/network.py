@@ -181,9 +181,13 @@ class NetworkController(rest.RestController):
             # the use of addrpool named 'management'.
             if pool_uuid:
                 pool = pecan.request.dbapi.address_pool_get(pool_uuid)
-                if pool['name'] != "management":
-                    msg = _("Network of type {} must use the addrpool named '{}'."
-                    .format(networktype, address_pool.MANAGEMENT_ADDRESS_POOL))
+                if constants.DUAL_STACK_COMPATIBILITY_MODE:
+                    pool_name = address_pool.MANAGEMENT_ADDRESS_POOL_NAMES[None]
+                else:
+                    pool_name = address_pool.MANAGEMENT_ADDRESS_POOL_NAMES[pool.family]
+                if pool['name'] != pool_name:
+                    msg = _("Network of type {} must use the addrpool named '{}' for {}."
+                            .format(networktype, pool_name, constants.IP_FAMILIES[pool.family]))
                     raise wsme.exc.ClientSideError(msg)
 
     def _check_network_pool(self, pool):

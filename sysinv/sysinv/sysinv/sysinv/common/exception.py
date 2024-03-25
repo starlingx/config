@@ -732,6 +732,10 @@ class AddressNotFound(NotFound):
     message = _("Address %(address_uuid)s could not be found.")
 
 
+class AddressNotFoundById(NotFound):
+    message = _("Address %(address_id)s could not be found.")
+
+
 class AddressNotFoundByAddress(NotFound):
     message = _("Address %(address)s could not be found.")
 

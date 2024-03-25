@@ -82,7 +82,7 @@ class NetworkTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
         return self._create_test_network(
             name=network_type,
             network_type=network_type,
-            subnet=self.mgmt_subnet,
+            subnets=self.mgmt_subnets,
         )
 
     # Don't create default test networks
@@ -103,31 +103,31 @@ class NetworkTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
 
         self._create_test_addresses(
             hostnames,
-            self.mgmt_subnet,
+            self.mgmt_subnets,
             constants.NETWORK_TYPE_MGMT)
 
         self._create_test_addresses(
-            hostnames, self.oam_subnet,
+            hostnames, self.oam_subnets,
             constants.NETWORK_TYPE_OAM)
 
         self._create_test_addresses(
-            hostnames, self.cluster_host_subnet,
+            hostnames, self.cluster_host_subnets,
             constants.NETWORK_TYPE_CLUSTER_HOST)
 
         self._create_test_addresses(
-            hostnames, self.storage_subnet,
+            hostnames, self.storage_subnets,
             constants.NETWORK_TYPE_STORAGE)
 
         self._create_test_addresses(
-            hostnames, self.admin_subnet,
+            hostnames, self.admin_subnets,
             constants.NETWORK_TYPE_ADMIN)
 
         self._create_test_addresses(
-            hostnames, self.system_controller_subnet,
+            hostnames, self.system_controller_subnets,
             constants.NETWORK_TYPE_SYSTEM_CONTROLLER)
 
         self._create_test_addresses(
-            hostnames, self.system_controller_oam_subnet,
+            hostnames, self.system_controller_oam_subnets,
             constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM)
 
 
@@ -245,9 +245,16 @@ class TestPostMixin(NetworkTestCase):
             constants.NETWORK_TYPE_PXEBOOT,
             self.pxeboot_subnet)
 
+    def _get_mgmt_addrpool_name(self):
+        if constants.DUAL_STACK_COMPATIBILITY_MODE:
+            return 'management'
+        if self.primary_address_family == constants.IPV6_FAMILY:
+            return 'management-ipv6'
+        return 'management-ipv4'
+
     def test_create_success_management(self):
         self._test_create_network_success(
-            'management',
+            self._get_mgmt_addrpool_name(),
             constants.NETWORK_TYPE_MGMT,
             self.mgmt_subnet)
 
@@ -321,7 +328,7 @@ class TestPostMixin(NetworkTestCase):
 
     def test_create_fail_duplicate_management(self):
         self._test_create_network_fail_duplicate(
-            'management',
+            self._get_mgmt_addrpool_name(),
             constants.NETWORK_TYPE_MGMT,
             self.mgmt_subnet)
 
