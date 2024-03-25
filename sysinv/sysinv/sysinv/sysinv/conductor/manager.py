@@ -10271,8 +10271,7 @@ class ConductorManager(service.PeriodicService):
             puppet_common.REPORT_STATUS_CFG:
                 puppet_common.REPORT_UPGRADE_CONTROL_PLANE
         }
-        self._config_apply_runtime_manifest(context, config_uuid, config_dict,
-                                                       skip_update_config=True)
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
 
     def handle_k8s_upgrade_control_plane_success(self, context, kube_upgrade_obj, host_uuid,
                                           new_state, fail_state):
