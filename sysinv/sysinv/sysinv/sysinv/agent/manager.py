@@ -224,7 +224,8 @@ class AgentManager(service.PeriodicService):
         self._first_grub_update = False
         self._inventoried_initial = False
         self._inventory_reported = set()
-        self._first_boot_flag = os.path.exists(FIRST_BOOT_FLAG)
+        self._first_boot_flag = os.path.exists(FIRST_BOOT_FLAG) or \
+            os.path.exists(constants.VOLATILE_FIRST_BOOT_FLAG)
 
     def start(self):
         super(AgentManager, self).start()
@@ -579,6 +580,14 @@ class AgentManager(service.PeriodicService):
                                              host_uuid,
                                              msg_dict)
             if os.path.exists(FIRST_BOOT_FLAG):
+                # Create volatile first_boot file, that will be checked by agent manager
+                # when it get crashed and restarted, so that it will know this boot is still
+                # first boot.
+                try:
+                    os.mknod(constants.VOLATILE_FIRST_BOOT_FLAG)
+                except OSError:
+                    LOG.error("%s could not be created." % constants.VOLATILE_FIRST_BOOT_FLAG)
+
                 os.remove(FIRST_BOOT_FLAG)
                 LOG.info("Removed %s" % FIRST_BOOT_FLAG)
         except exception.SysinvException:
