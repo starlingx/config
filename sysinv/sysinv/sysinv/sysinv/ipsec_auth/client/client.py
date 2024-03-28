@@ -98,7 +98,7 @@ class Client(object):
         message = {}
 
         puk1_data = utils.load_data(constants.TMP_PUK1_FILE)
-        puc_data = utils.load_data(constants.TRUSTED_CA_CERT_PATH)
+        puc_data = utils.load_data(constants.TRUSTED_CA_CERT_1_PATH)
 
         LOG.info("Generate RSA Private Key (PRK2).")
         prk2 = self._generate_prk2()
@@ -154,14 +154,16 @@ class Client(object):
                 return False
 
             utils.save_data(constants.TMP_PUK1_FILE, key)
-            utils.save_data(constants.TRUSTED_CA_CERT_PATH, ca_cert)
+            utils.save_data(constants.TRUSTED_CA_CERT_1_PATH, ca_cert)
+            if self.op_code == constants.OP_CODE_INITIAL_AUTH:
+                utils.save_data(constants.TRUSTED_CA_CERT_0_PATH, ca_cert)
 
         if self.state == State.STAGE_4:
             LOG.info("Received IPSec Auth CSR Response")
             cert = base64.b64decode(msg['cert'])
             digest = base64.b64decode(msg['hash'])
 
-            ca_cert = utils.load_data(constants.TRUSTED_CA_CERT_PATH)
+            ca_cert = utils.load_data(constants.TRUSTED_CA_CERT_1_PATH)
 
             data = msg['cert'].encode('utf-8')
             if self.op_code == constants.OP_CODE_INITIAL_AUTH:
