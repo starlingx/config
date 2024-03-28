@@ -2497,7 +2497,8 @@ class ConductorManager(service.PeriodicService):
             if utils.config_is_reboot_required(host.config_target):
                 config_uuid = self._config_set_reboot_required(config_uuid)
             self._puppet.update_host_config(host, config_uuid)
-        elif os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_ONGOING):
+
+        elif os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_UNLOCK):
             # Remove unlock ready flag to prevent maintenance rebooting the
             # node until the runtime manifest is finished.
             try:
