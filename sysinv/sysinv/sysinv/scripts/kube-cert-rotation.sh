@@ -177,6 +177,18 @@ RESTART_SYSINV=0
 RESTART_CERT_MON=0
 RESTART_ETCD=0
 
+# Fist check the validity of the Root CAs in /etc/kubernetes/pki/ca.crt and /etc/etcd/ca.crt
+# If they are expired the process should not continue
+for CA in /etc/kubernetes/pki/ca.crt /etc/etcd/ca.crt;
+do
+    sudo cat ${CA} | openssl x509 -checkend 0 >/dev/null
+    RC=$?
+    if [ ${RC} -eq 1 ]; then
+        echo "${CA} Root CA is expired. Leaf certificates renewal will not be attempted."
+        ERR=1
+    fi
+done
+
 # step 1, renew kubernetes certificates
 # Renew apiserver certificate
 if [ ${ERR} -eq 0 ]; then
