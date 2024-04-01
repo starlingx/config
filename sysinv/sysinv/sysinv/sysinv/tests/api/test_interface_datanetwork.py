@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2021-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -44,8 +44,13 @@ class InterfaceDataNetworkTestCase(base.FunctionalTest):
             administrative=constants.ADMIN_UNLOCKED,
             invprovision=constants.PROVISIONED,
         )
-        self.datanetwork = dbutils.create_test_datanetwork(
-            name='test1',
+        self.datanetwork0 = dbutils.create_test_datanetwork(
+            name='dn0',
+            uuid=str(uuid.uuid4()),
+            network_type=constants.DATANETWORK_TYPE_VLAN,
+            mtu=1500)
+        self.datanetwork1 = dbutils.create_test_datanetwork(
+            name='dn1',
             uuid=str(uuid.uuid4()),
             network_type=constants.DATANETWORK_TYPE_VLAN,
             mtu=1500)
@@ -88,17 +93,26 @@ class InterfaceDataNetworkCreateTestCase(InterfaceDataNetworkTestCase):
         super(InterfaceDataNetworkCreateTestCase, self).setUp()
 
     def test_assign_interface_datanetwork(self):
-        # system interface-datanetwork-assign controller-0 sriov0 test1
+        # system interface-datanetwork-assign controller-0 sriov0 dn0
         sriov0_assign_dn = dbutils.post_get_test_interface_datanetwork(
                 interface_uuid=self.if_sriov0.uuid,
-                datanetwork_uuid=self.datanetwork.uuid)
+                datanetwork_uuid=self.datanetwork0.uuid)
         self._post_and_check(sriov0_assign_dn, expect_errors=False)
 
         # system interface-datanetwork-list controller-0
         if_dn_list = self.get_json('/ihosts/%s/interface_datanetworks'
                                  % self.controller.uuid, expect_errors=False)
-        self.assertEqual('test1', if_dn_list['interface_datanetworks'][0]['datanetwork_name'])
+        self.assertEqual('dn0', if_dn_list['interface_datanetworks'][0]['datanetwork_name'])
         self.assertEqual('sriov0', if_dn_list['interface_datanetworks'][0]['ifname'])
+
+        # Assign the same data network again
+        self._post_and_check(sriov0_assign_dn, expect_errors=True)
+
+        # Assign a different data network to the same interface
+        sriov0_assign_dn1 = dbutils.post_get_test_interface_datanetwork(
+                interface_uuid=self.if_sriov0.uuid,
+                datanetwork_uuid=self.datanetwork1.uuid)
+        self._post_and_check(sriov0_assign_dn1, expect_errors=True)
 
         # system interface-datanetwork-remove {uuid}
         self.delete('/interface_datanetworks/%s'
@@ -106,21 +120,21 @@ class InterfaceDataNetworkCreateTestCase(InterfaceDataNetworkTestCase):
                     expect_errors=False)
 
     def test_assign_interface_datanetwork_error_non_sriov(self):
-        # system interface-datanetwork-assign controller-0 data0 test1
+        # system interface-datanetwork-assign controller-0 data0 dn0
         # rejected because host is unlocked
         data0_assign_dn = dbutils.post_get_test_interface_datanetwork(
                 interface_uuid=self.if_data0.uuid,
-                datanetwork_uuid=self.datanetwork.uuid)
+                datanetwork_uuid=self.datanetwork0.uuid)
         self._post_and_check(data0_assign_dn, expect_errors=True)
 
     def test_assign_interface_datanetwork_error_non_aio_sx(self):
         self.mock_utils_is_aio_simplex_system.return_value = False
 
-        # system interface-datanetwork-assign controller-0 sriov1 test1
+        # system interface-datanetwork-assign controller-0 sriov1 dn0
         # rejected because system is not AIO-SX
         sriov1_assign_dn = dbutils.post_get_test_interface_datanetwork(
                 interface_uuid=self.if_sriov1.uuid,
-                datanetwork_uuid=self.datanetwork.uuid)
+                datanetwork_uuid=self.datanetwork0.uuid)
         self._post_and_check(sriov1_assign_dn, expect_errors=True)
 
         self.mock_utils_is_aio_simplex_system.return_value = True
