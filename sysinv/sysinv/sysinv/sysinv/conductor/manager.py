@@ -4842,11 +4842,8 @@ class ConductorManager(service.PeriodicService):
             # If they somehow don't match we've got bigger problems
             return True
 
-        # TODO(bqian) this is to be replaced with host.sw_version after
-        # https://review.opendev.org/c/starlingx/config/+/915376
-        # in a USM upgrade scenario.
         host_obj = self.dbapi.ihost_get(host_uuid)
-        host_version = host_obj.software_load
+        host_version = host_obj.sw_version
 
         return host_version == tsc.SW_VERSION
 

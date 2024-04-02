@@ -36,12 +36,19 @@ class UsmUpgrade(object):
         return not (self == other)
 
 
-def get_software_upgrade(token, region_name, timeout=30):
+def get_region_name(dbapi):
+    system = dbapi.isystem_get_one()
+    region_name = system.region_name
+    return region_name
 
-    if not token:
-        token = get_token(region_name)
 
-    endpoint = token.get_service_url("usm", "usm")
+def get_usm_endpoint(token):
+    return token.get_service_url("usm", "usm")
+
+
+def get_software_upgrade(region_name, timeout=30):
+    token = get_token(region_name)
+    endpoint = get_usm_endpoint(token)
 
     if not endpoint:
         return None
@@ -52,6 +59,27 @@ def get_software_upgrade(token, region_name, timeout=30):
     return response
 
 
+def get_host_deploy(dbapi, hostname):
+
+    region_name = get_region_name(dbapi)
+    token = get_token(region_name)
+    endpoint = get_usm_endpoint(token)
+
+    if not endpoint:
+        return None
+
+    endpoint += "/v1/deploy_host"
+
+    hostlist = rest_api_request(token, "GET", endpoint, timeout=10)
+    if hostname is None:
+        return hostlist
+
+    for host in hostlist:
+        if host['hostname'] == hostname:
+            return host
+    return None
+
+
 def get_platform_upgrade(dbapi, usm_only=False):
     """
     Get upgrade object from either sysinv db or USM service.
@@ -60,11 +88,10 @@ def get_platform_upgrade(dbapi, usm_only=False):
     """
 
     upgrade = None
-    system = dbapi.isystem_get_one()
-    region_name = system.region_name
+    region_name = get_region_name(dbapi)
 
     try:
-        response = get_software_upgrade(None, region_name)
+        response = get_software_upgrade(region_name)
         if response:
             upgrade = UsmUpgrade(state=response["state"],
                                  from_load=response["from_release"],

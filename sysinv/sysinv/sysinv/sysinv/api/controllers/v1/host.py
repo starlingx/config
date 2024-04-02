@@ -1,5 +1,4 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
-
 #
 # Copyright 2013 Hewlett-Packard Development Company, L.P.
 # All Rights Reserved.
@@ -2880,12 +2879,6 @@ class HostController(rest.RestController):
                       "all osds must be down.")
                     % (rpc_ihost.hostname))
 
-        if upgrade.state in [constants.UPGRADE_STARTED]:
-            LOG.info("host-upgrade check upgrade_refresh %s" %
-                     rpc_ihost.hostname)
-            force = body.get('force', False) is True
-            self._semantic_check_upgrade_refresh(upgrade, rpc_ihost, force)
-
         # Update the target load for this host
         self._update_load(uuid, body, new_target_load)
 
@@ -2982,10 +2975,6 @@ class HostController(rest.RestController):
                     raise wsme.exc.ClientSideError(_(
                         "host-downgrade rejected: Upgrade not in %s state." %
                         constants.UPGRADE_ABORTING))
-
-        # Check for new hardware since upgrade-start
-        force = body.get('force', False) is True
-        self._semantic_check_downgrade_refresh(upgrade, rpc_ihost, force)
 
         # Remove the host manifest. This is similar to the process taken
         # during host-reinstall. The manifest needs to be removed to prevent
@@ -3778,12 +3767,21 @@ class HostController(rest.RestController):
             # Check if there's an upgrade in progress
             upgrade = usm_service.get_platform_upgrade(pecan.request.dbapi)
             if upgrade.state == constants.UPGRADE_UPGRADING_CONTROLLERS:
+                # TODO (bqian) this block will be removed once legacy upgrade is no longer supported
                 host_upgrade = objects.host_upgrade.get_by_host_id(
                     pecan.request.context, ihost['id'])
                 if host_upgrade.software_load == upgrade.from_load:
                     raise wsme.exc.ClientSideError(
                         _("Upgrade is in progress. At this time %s cannot be unlocked"
                           % ihost['hostname']))
+            elif upgrade.state in [constants.DEPLOY_STATE_HOST, constants.DEPLOY_STATE_HOST_FAILED]:
+                # USM upgrade, host-unlock is allowed only when it is deployed
+                host_upgrade = usm_service.get_host_deploy(pecan.request.dbapi, ihost['hostname'])
+                if host_upgrade is not None:
+                    if host_upgrade['host_state'] != constants.DEPLOY_HOST_DEPLOYED:
+                        raise wsme.exc.ClientSideError(
+                            _("Upgrade is in progress. At this time %s cannot be unlocked"
+                              % ihost['hostname']))
         except exception.NotFound:
             pass
 
@@ -3806,9 +3804,6 @@ class HostController(rest.RestController):
                     "failed. Please abort upgrade and downgrade host." %
                     ihost['hostname'])
             raise wsme.exc.ClientSideError(msg)
-
-        # Check for new hardware since upgrade-start
-        self._semantic_check_upgrade_refresh(upgrade, ihost, force_unlock)
 
     @staticmethod
     def _semantic_check_duplex_oam_config(ihost):
@@ -4583,131 +4578,6 @@ class HostController(rest.RestController):
                                               'notok': bk['state'],
                                               'ok': constants.SB_STATE_CONFIGURED}
                     raise wsme.exc.ClientSideError(msg)
-
-    @staticmethod
-    def _new_host_hardware_since_upgrade(host, upgrade_created_at):
-        """
-        Determines the new hardware on the host since the upgrade started.
-
-        :param host  host object
-        :param upgrade_created_at upgrade start timestamp
-
-        returns: new_hw tuple of new hardware on host
-        """
-        new_hw = []
-        disks = pecan.request.dbapi.idisk_get_by_ihost(host.id)
-        new_disks = [x.uuid for x in disks
-                     if x.created_at and (x.created_at > upgrade_created_at)]
-        if new_disks:
-            new_hw.append(('disks', host.hostname, new_disks))
-
-        interfaces = pecan.request.dbapi.iinterface_get_by_ihost(host.id)
-        new_interfaces = [
-            x.uuid for x in interfaces
-            if x.created_at and (x.created_at > upgrade_created_at)]
-        if new_interfaces:
-            new_hw.append(('interfaces', host.hostname, new_interfaces))
-
-        stors = pecan.request.dbapi.istor_get_by_ihost(host.id)
-        new_stors = [x.uuid for x in stors
-                     if x.created_at and (x.created_at > upgrade_created_at)]
-        if new_stors:
-            new_hw.append(('stors', host.hostname, new_stors))
-
-        return new_hw
-
-    def _semantic_check_upgrade_refresh(self, upgrade, ihost, force):
-        """
-        Determine whether upgrade should be aborted/refreshed due to
-        new hardware since upgrade start
-        """
-        if force:
-            LOG.info("_semantic_check_upgrade_refresh check force")
-            return
-
-        if ihost['hostname'] != constants.CONTROLLER_1_HOSTNAME:
-            return
-
-        if upgrade.state not in [constants.UPGRADE_STARTED,
-                                 constants.UPGRADE_DATA_MIGRATION,
-                                 constants.UPGRADE_DATA_MIGRATION_COMPLETE,
-                                 constants.UPGRADE_UPGRADING_CONTROLLERS]:
-            LOG.info("_semantic_check_upgrade_refresh allow upgrade state=%s" %
-                     upgrade.state)
-            return
-
-        upgrade_created_at = upgrade.created_at
-
-        # check for new host hardware since upgrade started
-        hosts = pecan.request.dbapi.ihost_get_list()
-        new_hw = []
-        for h in hosts:
-            if not h.personality:
-                continue
-
-            if h.created_at > upgrade_created_at:
-                new_hw.append(('host', h.hostname, h.uuid))
-                break
-
-            new_hw_h = self._new_host_hardware_since_upgrade(
-                h, upgrade_created_at)
-            if new_hw_h:
-                new_hw.extend(new_hw_h)
-
-        if new_hw:
-            msg = _("New hardware %s detected after upgrade started at %s. "
-                    "Upgrade should be aborted."
-                    % (new_hw, upgrade_created_at))
-            raise wsme.exc.ClientSideError(msg)
-
-    def _semantic_check_downgrade_refresh(self, upgrade, ihost, force):
-        """
-        Determine whether downgrade should be aborted due to
-        new hardware since upgrade start
-        """
-        if force:
-            LOG.info("_semantic_check_downgrade_refresh check force")
-            return
-
-        if upgrade.state not in [constants.UPGRADE_ABORTING,
-                                 constants.UPGRADE_ABORTING_ROLLBACK]:
-            LOG.info("_semantic_check_downgrade_refresh allow upgrade state=%s" %
-                     upgrade.state)
-            return
-
-        upgrade_created_at = upgrade.created_at
-
-        # check for new host hardware since upgrade started
-        hosts = pecan.request.dbapi.ihost_get_list()
-        new_hw = []
-        for h in hosts:
-            if not h.personality:
-                continue
-
-            if h.created_at > upgrade_created_at:
-                new_hw.append(('host', h.hostname, h.uuid))
-
-            new_hw_h = self._new_host_hardware_since_upgrade(
-                h, upgrade_created_at)
-            if new_hw_h:
-                new_hw.extend(new_hw_h)
-
-        if new_hw:
-            new_host_hw = [(new_hw_type, name, info) for (new_hw_type, name, info) in new_hw
-                           if name == ihost['hostname']]
-            if new_host_hw:
-                msg = _("New host %s detected after upgrade started at %s. "
-                        "Host can not be downgraded."
-                        % (ihost['hostname'], upgrade_created_at))
-                raise wsme.exc.ClientSideError(msg)
-            else:
-                # Acceptable to downgrade this host
-                msg = _("New host hardware %s detected after upgrade "
-                        "started at %s. "
-                        "Allow downgrade of %s during upgrade abort phase."
-                         % (new_hw, upgrade_created_at, ihost['hostname']))
-                LOG.info(msg)
-                return
 
     @staticmethod
     def _semantic_check_nova_local_storage(ihost_uuid, personality, required=False):
@@ -6305,63 +6175,74 @@ class HostController(rest.RestController):
             # No upgrade in progress so nothing to check
             return
 
-        # Get the load running on the destination controller
-        # TODO(bqian) below should call USM for host upgrade for USM major release
-        # deploy
-        host_upgrade = objects.host_upgrade.get_by_host_id(
-            pecan.request.context, to_host['id'])
-        to_host_load_id = host_upgrade.software_load
+        if isinstance(upgrade, usm_service.UsmUpgrade):
+            to_host_deploy = usm_service.get_host_deploy(pecan.request.dbapi, to_host['hostname'])
+            if to_host_deploy['host_state'] == constants.DEPLOY_HOST_DEPLOYED:
+                # to host has deployed
+                pass
+            else:
+                from_host_deploy = usm_service.get_host_deploy(pecan.request.dbapi, from_host['hostname'])
+                if from_host_deploy['host_state'] == constants.DEPLOY_HOST_PENDING and \
+                        to_host_deploy['host_state'] == constants.DEPLOY_HOST_PENDING:
+                    # no host has started deploy yet
+                    pass
+                else:
+                    err_msg = "Swact is not allowed. " + \
+                              "New release has not been deployed to %s" % to_host['hostname']
+                    raise wsme.exc.ClientSideError(err_msg)
+        else:
+            # TODO (bqian) below to be removed after USM upgrade cutoff
+            host_upgrade = objects.host_upgrade.get_by_host_id(
+                pecan.request.context, to_host['id'])
+            to_host_load_id = host_upgrade.software_load
 
-        # Get the load names
-        from_sw_version = objects.load.get_by_uuid(
-            pecan.request.context, upgrade.from_load).software_version
-        to_sw_version = objects.load.get_by_uuid(
-            pecan.request.context, upgrade.to_load).software_version
-        to_host_sw_version = objects.load.get_by_uuid(
-            pecan.request.context, to_host_load_id).software_version
+            # Get the load names
+            from_sw_version = objects.load.get_by_uuid(
+                pecan.request.context, upgrade.from_load).software_version
+            to_sw_version = objects.load.get_by_uuid(
+                pecan.request.context, upgrade.to_load).software_version
+            to_host_sw_version = objects.load.get_by_uuid(
+                pecan.request.context, to_host_load_id).software_version
 
-        if upgrade.state in [constants.UPGRADE_STARTING,
-                             constants.UPGRADE_STARTED,
-                             constants.UPGRADE_DATA_MIGRATION]:
-            # Swacting controllers is not supported until database migration is complete
-            raise wsme.exc.ClientSideError(
-                _("Swact action not allowed. Upgrade state must be %s") %
-                (constants.UPGRADE_DATA_MIGRATION_COMPLETE))
-
-        activating_states = [constants.UPGRADE_ACTIVATION_REQUESTED,
-                             constants.UPGRADE_ACTIVATING]
-        if upgrade.state in activating_states and not force_swact:
-            # Block swacts during activation to prevent interrupting the
-            # upgrade scripts.
-            # Allow swacts during UPGRADE_ACTIVATING_HOSTS as the active
-            # controller may need a lock/unlock if a runtime manifest fails.
-            # Allow force swacts for recovery in edge cases.
-            raise wsme.exc.ClientSideError(
-                _("Swact action not allowed. Wait until the upgrade-activate "
-                  "command completes"))
-
-        if upgrade.state == constants.UPGRADE_ABORTING:
-            if to_host_load_id == upgrade.to_load:
-                # Cannot swact to new load if aborting upgrade
+            if upgrade.state in [constants.UPGRADE_STARTING,
+                                 constants.UPGRADE_STARTED,
+                                 constants.UPGRADE_DATA_MIGRATION]:
+                # Swacting controllers is not supported until database migration is complete
                 raise wsme.exc.ClientSideError(
-                    _("Aborting upgrade: %s must be using load %s before this "
-                      "operation can proceed. Currently using load %s.") %
-                    (to_host['hostname'], from_sw_version, to_host_sw_version))
-        elif upgrade.state == constants.UPGRADE_ABORTING_ROLLBACK:
-            if from_host['software_load'] == from_sw_version and to_host.software_load == to_sw_version:
-                raise wsme.exc.ClientSideError(_("Aborting upgrade: Unable to swact from %s to %s")
-                    % (from_sw_version, to_sw_version))
-        elif to_host_load_id == upgrade.from_load:
-            # On CPE loads we must abort before we swact back to the old load
-            # Any VMs on the active controller will be lost during the swact
-            if constants.WORKER in to_host.subfunctions:
-                raise wsme.exc.ClientSideError(
-                    _("Upgrading: %s must be using load %s before this "
-                      "operation can proceed. Currently using load %s.") %
-                    (to_host['hostname'], to_sw_version, to_host_sw_version))
+                    _("Swact action not allowed. Upgrade state must be %s") %
+                    (constants.UPGRADE_DATA_MIGRATION_COMPLETE))
 
-        # Check for new hardware since upgrade-start
-        self._semantic_check_upgrade_refresh(upgrade, to_host, force_swact)
+            activating_states = [constants.UPGRADE_ACTIVATION_REQUESTED,
+                                 constants.UPGRADE_ACTIVATING]
+            if upgrade.state in activating_states and not force_swact:
+                # Block swacts during activation to prevent interrupting the
+                # upgrade scripts.
+                # Allow swacts during UPGRADE_ACTIVATING_HOSTS as the active
+                # controller may need a lock/unlock if a runtime manifest fails.
+                # Allow force swacts for recovery in edge cases.
+                raise wsme.exc.ClientSideError(
+                    _("Swact action not allowed. Wait until the upgrade-activate "
+                      "command completes"))
+
+            if upgrade.state == constants.UPGRADE_ABORTING:
+                if to_host_load_id == upgrade.to_load:
+                    # Cannot swact to new load if aborting upgrade
+                    raise wsme.exc.ClientSideError(
+                        _("Aborting upgrade: %s must be using load %s before this "
+                          "operation can proceed. Currently using load %s.") %
+                        (to_host['hostname'], from_sw_version, to_host_sw_version))
+            elif upgrade.state == constants.UPGRADE_ABORTING_ROLLBACK:
+                if from_host['software_load'] == from_sw_version and to_host.software_load == to_sw_version:
+                    raise wsme.exc.ClientSideError(_("Aborting upgrade: Unable to swact from %s to %s")
+                        % (from_sw_version, to_sw_version))
+            elif to_host_load_id == upgrade.from_load:
+                # On AIO loads we must abort before we swact back to the old load
+                # Any VMs on the active controller will be lost during the swact
+                if constants.WORKER in to_host.subfunctions:
+                    raise wsme.exc.ClientSideError(
+                        _("Upgrading: %s must be using load %s before this "
+                          "operation can proceed. Currently using load %s.") %
+                        (to_host['hostname'], to_sw_version, to_host_sw_version))
 
     def _semantic_check_swact_kube_rootca_update(self, ihost, force_swact=False):
         """
