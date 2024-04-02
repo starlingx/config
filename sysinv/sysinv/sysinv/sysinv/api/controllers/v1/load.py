@@ -563,6 +563,7 @@ class LoadController(rest.RestController):
 
         # make sure the load isn't in use by an upgrade
         try:
+            # NOTE(bqian) load relates only to the legacy upgrade
             upgrade = pecan.request.dbapi.software_upgrade_get_one()
         except exception.NotFound:
             pass

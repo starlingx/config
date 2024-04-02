@@ -27,6 +27,7 @@ from oslo_utils import uuidutils
 from sysinv._i18n import _
 from sysinv.common import constants
 from sysinv.common import exception
+from sysinv.common import usm_service as usm_service
 from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 
@@ -1072,7 +1073,7 @@ class CephOperator(object):
             # Get upgrade status
             upgrade = None
             try:
-                upgrade = self._db_api.software_upgrade_get_one()
+                upgrade = usm_service.get_platform_upgrade(self._db_api)
             except exception.NotFound:
                 LOG.info("No upgrade in progress. Skipping quota "
                          "upgrade checks.")

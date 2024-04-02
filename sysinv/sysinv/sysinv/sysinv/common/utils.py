@@ -88,6 +88,7 @@ from sysinv.common import exception
 from sysinv.common import constants
 from sysinv.helm import common as helm_common
 from sysinv.common import kubernetes
+from sysinv.common import usm_service as usm_service
 
 
 try:
@@ -1873,7 +1874,7 @@ def is_upgrade_in_progress(dbapi):
 
     """
     try:
-        upgrade = dbapi.software_upgrade_get_one()
+        upgrade = usm_service.get_platform_upgrade(dbapi)
         LOG.debug("Platform Upgrade in Progress: state=%s" % upgrade.state)
         return True, upgrade
     except exception.NotFound:

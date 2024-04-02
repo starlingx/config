@@ -94,6 +94,7 @@ from sysinv.common import constants
 from sysinv.common import device
 from sysinv.common import exception
 from sysinv.common import kubernetes
+from sysinv.common import usm_service as usm_service
 from sysinv.common import utils as cutils
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.common import health
@@ -2570,7 +2571,7 @@ class HostController(rest.RestController):
 
         upgrade = None
         try:
-            upgrade = pecan.request.dbapi.software_upgrade_get_one()
+            upgrade = usm_service.get_platform_upgrade(pecan.request.dbapi)
         except exception.NotFound:
             return True
 
@@ -2826,7 +2827,7 @@ class HostController(rest.RestController):
             return
 
         try:
-            pecan.request.dbapi.software_upgrade_get_one()
+            usm_service.get_platform_upgrade(pecan.request.dbapi)
         except exception.NotFound:
             return
 
@@ -3803,7 +3804,7 @@ class HostController(rest.RestController):
 
         try:
             # Check if there's an upgrade in progress
-            upgrade = pecan.request.dbapi.software_upgrade_get_one()
+            upgrade = usm_service.get_platform_upgrade(pecan.request.dbapi)
             if upgrade.state == constants.UPGRADE_UPGRADING_CONTROLLERS:
                 host_upgrade = objects.host_upgrade.get_by_host_id(
                     pecan.request.context, ihost['id'])
@@ -3819,7 +3820,7 @@ class HostController(rest.RestController):
 
         # Don't allow unlock of controller-1 if it is being upgraded
         try:
-            upgrade = pecan.request.dbapi.software_upgrade_get_one()
+            upgrade = usm_service.get_platform_upgrade(pecan.request.dbapi)
         except exception.NotFound:
             # No upgrade in progress
             return
@@ -3982,8 +3983,7 @@ class HostController(rest.RestController):
 
         # Determine required platform reserved memory for this numa node
         low_core = cutils.is_low_core_system(ihost, pecan.request.dbapi)
-        reserved = cutils. \
-            get_required_platform_reserved_memory(
+        reserved = cutils.get_required_platform_reserved_memory(
                 pecan.request.dbapi, ihost, node['numa_node'], low_core)
 
         # Determine configured memory for this numa node
@@ -5990,7 +5990,7 @@ class HostController(rest.RestController):
     def _check_lock_controller_during_upgrade(hostname):
         # Check to ensure in valid upgrade state for host-lock
         try:
-            upgrade = pecan.request.dbapi.software_upgrade_get_one()
+            upgrade = usm_service.get_platform_upgrade(pecan.request.dbapi)
         except exception.NotFound:
             # No upgrade in progress
             return
@@ -6328,12 +6328,14 @@ class HostController(rest.RestController):
 
         # First check if we are in an upgrade
         try:
-            upgrade = pecan.request.dbapi.software_upgrade_get_one()
+            upgrade = usm_service.get_platform_upgrade(pecan.request.dbapi)
         except exception.NotFound:
             # No upgrade in progress so nothing to check
             return
 
         # Get the load running on the destination controller
+        # TODO(bqian) below should call USM for host upgrade for USM major release
+        # deploy
         host_upgrade = objects.host_upgrade.get_by_host_id(
             pecan.request.context, to_host['id'])
         to_host_load_id = host_upgrade.software_load
@@ -6521,8 +6523,7 @@ class HostController(rest.RestController):
                 if ihost_ctr.config_target and\
                         ihost_ctr.config_target != ihost_ctr.config_applied:
                     try:
-                        upgrade = \
-                            pecan.request.dbapi.software_upgrade_get_one()
+                        upgrade = usm_service.get_platform_upgrade(pecan.request.dbapi)
                     except exception.NotFound:
                         upgrade = None
                     if upgrade and upgrade.state == \
@@ -6643,7 +6644,7 @@ class HostController(rest.RestController):
         if not force:
             # Check if there is upgrade in progress
             try:
-                upgrade = pecan.request.dbapi.software_upgrade_get_one()
+                upgrade = usm_service.get_platform_upgrade(pecan.request.dbapi)
                 if upgrade.state in [constants.UPGRADE_ABORTING_ROLLBACK]:
                     LOG.info("%s not in a force lock and in an upgrade abort, "
                              "do not check Ceph status"
@@ -6698,7 +6699,7 @@ class HostController(rest.RestController):
                 constants.WORKER in subfunctions_set):
             upgrade = None
             try:
-                upgrade = pecan.request.dbapi.software_upgrade_get_one()
+                upgrade = usm_service.get_platform_upgrade(pecan.request.dbapi)
                 upgrade_state = upgrade.state
             except exception.NotFound:
                 upgrade_state = None

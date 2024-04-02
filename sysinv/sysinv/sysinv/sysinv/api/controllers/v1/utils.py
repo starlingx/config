@@ -40,6 +40,7 @@ from sysinv.common import ceph
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import health
+from sysinv.common import usm_service as usm_service
 from sysinv.helm import common as helm_common
 
 
@@ -508,7 +509,7 @@ def check_disallow_during_upgrades():
 
     # There must not already be a platform upgrade in progress
     try:
-        pecan.request.dbapi.software_upgrade_get_one()
+        usm_service.get_platform_upgrade(pecan.request.dbapi)
     except exception.NotFound:
         pass
     else:
