@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2023 Wind River Systems, Inc.
+# Copyright (c) 2020-2024 Wind River Systems, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -204,28 +204,31 @@ def get_subcloud(token, subcloud_name):
     return resp
 
 
-def load_subclouds(resp):
+def load_subclouds(resp, invalid_deploy_states=None):
     sc_list = []
-    for obj in resp['subclouds']:
+    for obj in resp["subclouds"]:
+        if invalid_deploy_states and obj["deploy-status"] in invalid_deploy_states:
+            continue
         sc = {}
-        sc['name'] = obj['name']
-        sc['management-state'] = obj['management-state']
-        sc['availability-status'] = obj['availability-status']
-        sc['sync_status'] = obj['sync_status']
-        for ss in obj['endpoint_sync_status']:
-            sc[ss['endpoint_type']] = ss['sync_status']
+        sc["name"] = obj["name"]
+        sc["region-name"] = obj["region-name"]
+        sc["management-state"] = obj["management-state"]
+        sc["availability-status"] = obj["availability-status"]
+        sc["sync_status"] = obj["sync_status"]
+        for ss in obj["endpoint_sync_status"]:
+            sc[ss["endpoint_type"]] = ss["sync_status"]
         sc_list.append(sc)
 
     return sc_list
 
 
-def get_subclouds_from_dcmanager(token):
+def get_subclouds_from_dcmanager(token, invalid_deploy_states=None):
     api_url = dc_get_service_endpoint_url(token)
     api_cmd = api_url + '/subclouds'
     LOG.debug('api_cmd %s' % api_cmd)
     resp = rest_api_request(token, "GET", api_cmd)
 
-    return load_subclouds(resp)
+    return load_subclouds(resp, invalid_deploy_states)
 
 
 def is_subcloud_online(subcloud_name, token=None):
@@ -237,6 +240,33 @@ def is_subcloud_online(subcloud_name, token=None):
         LOG.error('Cannot find subcloud %s' % subcloud_name)
         return False
     return subcloud_info['availability-status'] == AVAILABILITY_ONLINE
+
+
+def query_subcloud_online_with_deploy_state(
+    subcloud_name, invalid_deploy_states=None, token=None
+):
+    """Check if subcloud is online and not in an invalid deploy state"""
+    if not token:
+        token = get_token()
+    subcloud_info = get_subcloud(token, subcloud_name)
+    if not subcloud_info:
+        LOG.error("Cannot find subcloud %s" % subcloud_name)
+        return False, None, None
+    subcloud_valid_state = False
+    if (
+        invalid_deploy_states
+        and subcloud_info["deploy-status"] in invalid_deploy_states
+    ):
+        subcloud_valid_state = False
+    else:
+        subcloud_valid_state = (
+            subcloud_info["availability-status"] == AVAILABILITY_ONLINE
+        )
+    return (
+        subcloud_valid_state,
+        subcloud_info["availability-status"],
+        subcloud_info["deploy-status"],
+    )
 
 
 def update_subcloud_status(token, subcloud_name, status):
