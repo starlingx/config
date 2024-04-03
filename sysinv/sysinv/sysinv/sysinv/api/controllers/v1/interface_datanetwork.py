@@ -17,7 +17,7 @@
 #    under the License.
 #
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2019-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -244,20 +244,20 @@ class InterfaceDataNetworkController(rest.RestController):
     @staticmethod
     def _query_interface_datanetwork(interface_datanetwork):
         try:
-            result = pecan.request.dbapi.interface_datanetwork_query(
-                interface_datanetwork)
+            result = pecan.request.dbapi.interface_datanetwork_get_by_interface(
+                interface_datanetwork['interface_id'], 1)
         except exception.InterfaceDataNetworkNotFoundByKeys:
             return None
-        return result
+        return result[0] if len(result) > 0 else None
 
     def _check_duplicate_interface_datanetwork(self, interface_datanetwork):
         ifdn = self._query_interface_datanetwork(interface_datanetwork)
         if not ifdn:
             return
-        msg = _("Interface '%s' assignment with Data Network '%s' "
-                "already exists."
+        msg = _("Interface '%s' can have only one Data Network assignment."
+                " Data Network '%s' already assigned."
                 % (ifdn['ifname'],
-                   ifdn['datanetwork_name']))
+                    ifdn['datanetwork_name']))
         raise wsme.exc.ClientSideError(msg)
 
     @staticmethod
