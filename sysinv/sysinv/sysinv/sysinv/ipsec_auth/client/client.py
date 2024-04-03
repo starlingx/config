@@ -144,6 +144,7 @@ class Client(object):
             self.ots_token = msg['token']
             self.hostname = msg['hostname']
             key = base64.b64decode(msg['pub_key'])
+            root_ca_cert = base64.b64decode(msg['root_ca_cert'])
             ca_cert = base64.b64decode(msg['ca_cert'])
             digest = base64.b64decode(msg['hash'])
 
@@ -154,8 +155,10 @@ class Client(object):
                 return False
 
             utils.save_data(constants.TMP_PUK1_FILE, key)
+            utils.save_data(constants.TRUSTED_ROOT_CA_CERT_1_PATH, root_ca_cert)
             utils.save_data(constants.TRUSTED_CA_CERT_1_PATH, ca_cert)
             if self.op_code == constants.OP_CODE_INITIAL_AUTH:
+                utils.save_data(constants.TRUSTED_ROOT_CA_CERT_0_PATH, root_ca_cert)
                 utils.save_data(constants.TRUSTED_CA_CERT_0_PATH, ca_cert)
 
         if self.state == State.STAGE_4:

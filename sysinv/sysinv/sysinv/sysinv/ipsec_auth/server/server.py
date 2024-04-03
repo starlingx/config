@@ -88,6 +88,7 @@ class IPsecConnection(object):
     kubeapi = kubernetes.KubeOperator()
     CA_KEY = 'tls.key'
     CA_CRT = 'tls.crt'
+    ROOT_CA_CRT = 'ca.crt'
 
     def __init__(self):
         self.op_code = None
@@ -102,6 +103,7 @@ class IPsecConnection(object):
         self.ots_token = Token()
         self.ca_key = self._get_system_local_ca_secret_info(self.CA_KEY)
         self.ca_crt = self._get_system_local_ca_secret_info(self.CA_CRT)
+        self.root_ca_crt = self._get_system_local_ca_secret_info(self.ROOT_CA_CRT)
         self.state = State.STAGE_1
 
     def handle_messaging(self, sock, sel):
@@ -144,7 +146,7 @@ class IPsecConnection(object):
             data = json.loads(recv_message.decode('utf-8'))
             payload = {}
 
-            if not self.ca_key or not self.ca_crt:
+            if not self.ca_key or not self.ca_crt or not self.root_ca_crt:
                 raise ValueError('Failed to retrieve system-local-ca information')
 
             if self.state == State.STAGE_2:
@@ -169,6 +171,7 @@ class IPsecConnection(object):
                 payload["hostname"] = self.hostname
                 payload["pub_key"] = pub_key.decode("utf-8")
                 payload["ca_cert"] = self.ca_crt.decode("utf-8")
+                payload["root_ca_cert"] = self.root_ca_crt.decode("utf-8")
                 payload["hash"] = hash_payload.decode("utf-8")
 
                 LOG.info("Sending IPSec Auth Response")
