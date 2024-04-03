@@ -9562,7 +9562,7 @@ class ConductorManager(service.PeriodicService):
 
         config_dict = {
             "personalities": personalities,
-            "classes": self.PUPPET_RUNTIME_CLASS_USERS,
+            "classes": [self.PUPPET_RUNTIME_CLASS_USERS],
             puppet_common.REPORT_STATUS_CFG:
                 puppet_common.REPORT_USER_CONFIG,
         }
