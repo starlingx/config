@@ -3707,7 +3707,7 @@ def is_bundle_extension_valid(filename):
 
 
 def get_primary_address_by_name(dbapi, db_address_name, networktype, raise_exc=False):
-    """Search address by database name to retrieve the relevant addres from
+    """Search address by database name to retrieve the relevant address from
        the primary pool, if multipĺe entries for the same name are found, the
        query will use the network's pool_uuid to get the address family (IPv4 or
        IPv6) related to the primary.
@@ -3719,11 +3719,9 @@ def get_primary_address_by_name(dbapi, db_address_name, networktype, raise_exc=F
 
     :return: the address object if found, None otherwise
     """
-    address = None
     # first search directly by name
-    try:
-        address = dbapi.address_get_by_name(db_address_name)
-    except exception.AddressNotFoundByName():
+    address = dbapi.address_get_by_name(db_address_name)
+    if len(address) == 0:
         # if there is no match by name return here
         LOG.info(f"address {db_address_name} not found, returning")
         if raise_exc:

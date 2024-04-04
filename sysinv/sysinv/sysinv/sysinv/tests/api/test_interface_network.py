@@ -14,11 +14,13 @@ from sysinv.api.controllers.v1 import interface as api_if_v1
 from sysinv.common import constants
 from sysinv.tests.api import base
 from sysinv.tests.db import utils as dbutils
+from sysinv.db import api as dbapi
 
 
 class InterfaceNetworkTestCase(base.FunctionalTest):
     def setUp(self):
         super(InterfaceNetworkTestCase, self).setUp()
+        self.dbapi = dbapi.get_instance()
 
         p = mock.patch.object(api_if_v1, '_get_lower_interface_macs')
         self.mock_lower_macs = p.start()
@@ -139,6 +141,16 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
             link_capacity=10000,
             vlan_id=8,
             address_pool_id=self.address_pool_admin.id)
+        self.address_pool_storage = dbutils.create_test_address_pool(
+            id=6,
+            network='192.168.209.0',
+            name='storage',
+            ranges=[['192.168.209.2', '192.168.209.254']],
+            prefix=24)
+        self.storage_network = dbutils.create_test_network(
+            id=6,
+            type=constants.NETWORK_TYPE_STORAGE,
+            address_pool_id=self.address_pool_storage.id)
 
     def _post_and_check(self, ndict, expect_errors=False):
         response = self.post_json('%s' % self._get_path(), ndict,
@@ -297,6 +309,33 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             interface_uuid=worker_interface.uuid,
             network_uuid=self.cluster_host_network.uuid)
         self._post_and_check(worker_interface_network, expect_errors=False)
+
+    def test_create_storage_interface_network(self):
+        controller_interface = dbutils.create_test_interface(
+            ifname='enp0s8',
+            forihostid=self.controller.id)
+        worker_interface = dbutils.create_test_interface(
+            ifname='enp0s8',
+            forihostid=self.worker.id)
+
+        controller_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=controller_interface.uuid,
+            network_uuid=self.storage_network.uuid)
+        self._post_and_check(controller_interface_network, expect_errors=False)
+
+        # Since the network is (by default) setup for dynamic address
+        # allocation, the addresses for each node should be created
+        # automatically when the interface is associated with the network.
+        addresses = self.dbapi.address_get_by_name('controller-0-storage')
+        self.assertEqual(len(addresses), 1)
+
+        worker_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=worker_interface.uuid,
+            network_uuid=self.storage_network.uuid)
+        self._post_and_check(worker_interface_network, expect_errors=False)
+
+        addresses = self.dbapi.address_get_by_name('worker-0-storage')
+        self.assertEqual(len(addresses), 1)
 
     # Expected error:
     # You cannot assign a network of type 'oam' to an interface

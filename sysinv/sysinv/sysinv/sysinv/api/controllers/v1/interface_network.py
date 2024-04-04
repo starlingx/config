@@ -525,12 +525,11 @@ def _update_host_mgmt_address(host, interface):
 def _update_host_admin_address(host, interface):
     address_name = cutils.format_address_name(host.hostname,
                                               constants.NETWORK_TYPE_ADMIN)
-    try:
-        addresses = pecan.request.dbapi.address_get_by_name(address_name)
-        for addr in addresses:
-            updates = {'interface_id': interface['id']}
-            pecan.request.dbapi.address_update(addr.uuid, updates)
-    except exception.AddressNotFoundByName:
+    addresses = pecan.request.dbapi.address_get_by_name(address_name)
+    for addr in addresses:
+        updates = {'interface_id': interface['id']}
+        pecan.request.dbapi.address_update(addr.uuid, updates)
+    if len(addresses) == 0:
         # For non-controller hosts, allocate address from pool if dynamic
         admin_network = pecan.request.dbapi.network_get_by_type(
             constants.NETWORK_TYPE_ADMIN)
@@ -570,12 +569,11 @@ def _update_host_cluster_address(host, interface):
     """
     address_name = cutils.format_address_name(
         host.hostname, constants.NETWORK_TYPE_CLUSTER_HOST)
-    try:
-        addresses = pecan.request.dbapi.address_get_by_name(address_name)
-        for addr in addresses:
-            updates = {'interface_id': interface['id']}
-            pecan.request.dbapi.address_update(addr.uuid, updates)
-    except exception.AddressNotFoundByName:
+    addresses = pecan.request.dbapi.address_get_by_name(address_name)
+    for addr in addresses:
+        updates = {'interface_id': interface['id']}
+        pecan.request.dbapi.address_update(addr.uuid, updates)
+    if len(addresses) == 0:
         cluster_host_network = pecan.request.dbapi.network_get_by_type(
             constants.NETWORK_TYPE_CLUSTER_HOST)
         if cluster_host_network.dynamic:
@@ -596,12 +594,11 @@ def _update_host_ironic_address(host, interface):
 def _update_host_storage_address(host, interface):
     address_name = cutils.format_address_name(host.hostname,
                                               constants.NETWORK_TYPE_STORAGE)
-    try:
-        addresses = pecan.request.dbapi.address_get_by_name(address_name)
-        for addr in addresses:
-            updates = {'interface_id': interface['id']}
-            pecan.request.dbapi.address_update(addr.uuid, updates)
-    except exception.AddressNotFoundByName:
+    addresses = pecan.request.dbapi.address_get_by_name(address_name)
+    for addr in addresses:
+        updates = {'interface_id': interface['id']}
+        pecan.request.dbapi.address_update(addr.uuid, updates)
+    if len(addresses) == 0:
         # For non-controller hosts, allocate address from pool if dynamic
         storage_network = pecan.request.dbapi.network_get_by_type(
             constants.NETWORK_TYPE_STORAGE)
