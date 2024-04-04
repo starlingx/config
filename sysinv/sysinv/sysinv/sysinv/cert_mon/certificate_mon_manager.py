@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2022 Wind River Systems, Inc.
+# Copyright (c) 2020-2024 Wind River Systems, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,12 +36,13 @@ TASK_NAME_PAUSE_AUDIT = 'pause'
 INVALID_SUBCLOUD_AUDIT_DEPLOY_STATES = [
     # Secondary subclouds should not be audited as they are expected
     # to be managed by a peer system controller (geo-redundancy feat.)
+    'create-complete',
+    'pre-rehome',
+    'rehome-failed',
+    'rehome-pending',
+    'rehoming',
     'secondary',
     'secondary-failed',
-    'rehome-pending',
-    'pre-rehome',
-    'rehoming',
-    'rehome-failed'
 ]
 
 cert_mon_opts = [
@@ -118,12 +119,19 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             # Do nothing if it is not systemcontroller
             return
 
-        all_subclouds = utils.get_subclouds()[:]
+        all_subclouds = utils.get_subclouds_from_dcmanager(
+            self.token_cache.get_token(), INVALID_SUBCLOUD_AUDIT_DEPLOY_STATES
+        )
         LOG.info("Periodic: begin subcloud certificate audit: %d subclouds"
                  % len(all_subclouds))
-        for subcloud_name in all_subclouds:
-            self.sc_audit_queue.enqueue(
-                subcloud_audit_queue.SubcloudAuditData(subcloud_name))
+        for sc in all_subclouds:
+            try:
+                self.sc_audit_queue.enqueue(
+                    subcloud_audit_queue.SubcloudAuditData(sc['name']))
+            except subcloud_audit_queue.SubcloudAuditException as exc:
+                # Log as warn because we can see this if the watch has fired
+                # near the same time as we are auditing the subcloud
+                LOG.warn("Failed to enqueue subcloud audit: %s", str(exc))
 
     def on_start_audit(self):
         """
@@ -136,14 +144,18 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
             return
 
         if CONF.certmon.startup_audit_all:
-            LOG.info("Service start: audit all subclouds")
+            LOG.info("Service start startup_audit_all: audit all subclouds")
             self.audit_sc_cert_start(None)
             return
 
-        LOG.info("Service start: begin subcloud certificate audit [batch: %s]"
-                 % CONF.certmon.audit_batch_size)
         all_subclouds = utils.get_subclouds_from_dcmanager(
-            self.token_cache.get_token())
+            self.token_cache.get_token(), INVALID_SUBCLOUD_AUDIT_DEPLOY_STATES
+        )
+        LOG.info(
+            "Service start: begin subcloud certificate audit [#sc: %d, batch: %s]"
+            % (len(all_subclouds), CONF.certmon.audit_batch_size)
+        )
+
         for subcloud in all_subclouds:
             if subcloud[utils.ENDPOINT_TYPE_DC_CERT] != utils.SYNC_STATUS_IN_SYNC:
                 subcloud_name = subcloud['name']
@@ -352,7 +364,8 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         self.dc_monitor = watcher.DC_CertWatcher()
         self.dc_monitor.initialize(
             audit_subcloud=lambda subcloud_name:
-                self.audit_subcloud(subcloud_name, allow_requeue=True))
+                self.audit_subcloud(subcloud_name, allow_requeue=True),
+            invalid_deploy_states=INVALID_SUBCLOUD_AUDIT_DEPLOY_STATES)
 
     def init_restapicert_monitor(self):
         self.restapicert_monitor = watcher.RestApiCert_CertWatcher()

@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2022 Wind River Systems, Inc.
+# Copyright (c) 2020-2024 Wind River Systems, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -375,7 +375,7 @@ class DC_CertWatcher(CertWatcher):
     def __init__(self):
         super(DC_CertWatcher, self).__init__()
 
-    def initialize(self, audit_subcloud):
+    def initialize(self, audit_subcloud, invalid_deploy_states):
         self.context.initialize()
         dc_role = self.context.dc_role
         LOG.info('DC role: %s' % dc_role)
@@ -390,7 +390,11 @@ class DC_CertWatcher(CertWatcher):
         self.context.kubernete_namespace = ns
         self.register_listener(AdminEndpointRenew(self.context))
         if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-            self.register_listener(DCIntermediateCertRenew(self.context, audit_subcloud))
+            self.register_listener(
+                DCIntermediateCertRenew(
+                    self.context, audit_subcloud, invalid_deploy_states
+                )
+            )
             self.register_listener(RootCARenew(self.context))
 
 
@@ -520,26 +524,42 @@ class AdminEndpointRenew(CertificateRenew):
 
 
 class DCIntermediateCertRenew(CertificateRenew):
-    def __init__(self, context, audit_subcloud):
+    def __init__(self, context, audit_subcloud, invalid_deploy_states):
         super(DCIntermediateCertRenew, self).__init__(context)
+        self.invalid_deploy_states = invalid_deploy_states
         self.secret_pattern = re.compile('-adminep-ca-certificate$')
         self.audit_subcloud = audit_subcloud
 
     def check_filter(self, event_data):
-        m = self.secret_pattern.search(event_data.secret_name)
-        if m and m.start() > 0:
-            # Ensure subcloud is online (watch events can fire
-            # for secrets before the subcloud first comes online)
+        search_result = self.secret_pattern.search(event_data.secret_name)
+        if search_result and search_result.start() > 0:
+            # Ensure subcloud is in a valid deploy-status and online (watch
+            # events can fire for secrets before the subcloud first comes online)
             subcloud_name = self._get_subcloud_name(event_data)
             try:
-                if not utils.is_subcloud_online(subcloud_name,
-                                                token=self.context.get_token()):
-                    LOG.info('%s check_filter[%s]: subcloud is not online' %
-                             (self.__class__.__name__, subcloud_name))
+                (
+                    subcloud_valid_state,
+                    availability_status,
+                    deploy_status,
+                ) = utils.query_subcloud_online_with_deploy_state(
+                    subcloud_name,
+                    invalid_deploy_states=self.invalid_deploy_states,
+                    token=self.context.get_token(),
+                )
+                if not subcloud_valid_state:
+                    LOG.info(
+                        "%s check_filter: subcloud %s is ignored, "
+                        "availability=%s, deploy_status: %s",
+                        self.__class__.__name__,
+                        subcloud_name,
+                        availability_status,
+                        deploy_status,
+                    )
                     return False
             except Exception:
-                LOG.exception('Failed to check subcloud availability: %s'
-                              % subcloud_name)
+                LOG.exception(
+                    "Failed to check subcloud availability: %s" % subcloud_name
+                )
                 return False
             return self.certificate_is_ready(event_data)
         else:
