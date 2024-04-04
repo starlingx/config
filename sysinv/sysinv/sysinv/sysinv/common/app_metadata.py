@@ -22,7 +22,6 @@ from oslo_log import log as logging
 from sysinv._i18n import _
 from sysinv.common import constants
 from sysinv.common import exception
-from sysinv.common import kubernetes
 from sysinv.common import utils
 
 CONF = cfg.CONF
@@ -261,16 +260,13 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
             validate_dict_field(parent,
                                 constants.APP_METADATA_SUPPORTED_K8S_VERSION)
 
-        # TODO: uncomment when supported_k8s_version is included on
-        # the metadata file of at least all default apps
-        #
-        # if value is None:
-        #    raise exception.SysinvException(_(
-        #        "Kubernetes supported versions not specified on application "
-        #        "metadata file. Please add a 'supported_k8s_version' section "
-        #        "containing at least a 'minimum' field ('maximum' field is "
-        #        "optional)."))
-        #
+        if value is None:
+            raise exception.SysinvException(_(
+                "Kubernetes supported versions not specified on application "
+                "metadata file. Please add a 'supported_k8s_version' section "
+                "containing at least a 'minimum' field ('maximum' field is "
+                "optional)."))
+
         return value
 
     def validate_k8s_minimum_version(parent):
@@ -282,15 +278,12 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
         """
         validate_string_field(parent, constants.APP_METADATA_MINIMUM)
 
-        # TODO: uncomment when k8s_minimum_version is included on
-        # the metadata file of at least all default apps
-        #
-        # value = validate_string_field(parent, constants.APP_METADATA_MINIMUM)
-        # if value is None:
-        #    raise exception.SysinvException(_(
-        #        "Minimum supported Kubernetes version not specified "
-        #        "on application metadata file. Please add a 'minimum' "
-        #        "field to the 'supported_k8s_version' section."))
+        value = validate_string_field(parent, constants.APP_METADATA_MINIMUM)
+        if value is None:
+            raise exception.SysinvException(_(
+                "Minimum supported Kubernetes version not specified "
+                "on application metadata file. Please add a 'minimum' "
+                "field to the 'supported_k8s_version' section."))
 
     def validate_k8s_upgrades_section(k8s_upgrades_auto_update,
                                       k8s_upgrades_timing):
@@ -590,13 +583,9 @@ def extract_bundle_metadata(file_path):
                 constants.APP_METADATA_MINIMUM, None)
 
         if minimum_supported_k8s_version is None:
-            # TODO(ipiresso): Turn this into an error message rather than
-            # a warning when the k8s app upgrade implementation is in place
-            # and remove the hardcoded value. Also, do not add the bundle to
-            # the database in this scenario.
-            LOG.warning("Minimum supported Kubernetes version missing from {}"
-                        .format(file_path))
-            minimum_supported_k8s_version = kubernetes.get_kube_versions()[0]['version']
+            LOG.error("Minimum supported Kubernetes version missing from {}"
+                      .format(file_path))
+            return None
 
         minimum_supported_k8s_version = minimum_supported_k8s_version.strip().lstrip('v')
 
