@@ -3676,14 +3676,12 @@ class ConductorManager(service.PeriodicService):
             if set_address_interface:
                 if new_interface and 'id' in new_interface:
                     values = {'interface_id': new_interface['id']}
-                    try:
-                        addr_name = cutils.format_address_name(
-                            ihost.hostname, new_interface_networktype)
-                        addresses = self.dbapi.address_get_by_name(addr_name)
-                        for address in addresses:
-                            self.dbapi.address_update(address['uuid'], values)
-                    except exception.AddressNotFoundByName:
-                        pass
+                    addr_name = cutils.format_address_name(
+                        ihost.hostname, new_interface_networktype)
+                    addresses = self.dbapi.address_get_by_name(addr_name)
+                    for address in addresses:
+                        self.dbapi.address_update(address['uuid'], values)
+
                     # Do any potential distributed cloud config
                     # We do this here where the interface is created.
                     cutils.perform_distributed_cloud_config(self.dbapi,
@@ -3691,15 +3689,13 @@ class ConductorManager(service.PeriodicService):
                                                             ihost)
                 if port:
                     values = {'interface_id': port.interface_id}
-                try:
-                    addr_name = cutils.format_address_name(ihost.hostname,
-                                                           networktype)
-                    addresses = self.dbapi.address_get_by_name(addr_name)
-                    for address in addresses:
-                        if address['interface_id'] is None:
-                            self.dbapi.address_update(address['uuid'], values)
-                except exception.AddressNotFoundByName:
-                    pass
+
+                addr_name = cutils.format_address_name(ihost.hostname,
+                                                       networktype)
+                addresses = self.dbapi.address_get_by_name(addr_name)
+                for address in addresses:
+                    if address['interface_id'] is None:
+                        self.dbapi.address_update(address['uuid'], values)
 
         if ihost.invprovision not in [constants.PROVISIONED, constants.PROVISIONING, constants.UPGRADING]:
             LOG.info("Updating %s host invprovision from %s to %s" %
