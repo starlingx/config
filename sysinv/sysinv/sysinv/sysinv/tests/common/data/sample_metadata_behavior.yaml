@@ -1,0 +1,20 @@
+---
+app_name: sample-app
+app_version: 1.2-3
+supported_k8s_version:
+  minimum: 'v1.2.3'
+behavior:
+  platform_managed_app: true
+  desired_state: applied
+  evaluate_reapply:
+    after:
+      - metrics-server.1
+      - vault.1
+      - oran.3
+    triggers:
+      - type: kube-upgrade-complete
+        filters:
+          - availability: services-enabled
+      - type: host-delete
+        filters:
+          - personality: controller

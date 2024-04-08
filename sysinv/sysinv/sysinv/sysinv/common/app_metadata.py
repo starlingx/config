@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2023 Wind River Systems, Inc.
+# Copyright (c) 2023-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -125,7 +125,7 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
             if not error_message:
                 error_message = _("Invalid boolean value: {}"
                                   .format(value))
-                raise exception.SysinvException(error_message)
+            raise exception.SysinvException(error_message)
 
     def validate_dict(value, error_message=None):
         """Validate dictionary types"""
@@ -142,7 +142,7 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
         if not isinstance(value, list):
             if not error_message:
                 error_message = _("Invalid list: {}".format(value))
-                raise exception.SysinvException(error_message)
+            raise exception.SysinvException(error_message)
 
     # Field-level validations:
     def validate_string_field(parent, key):
@@ -426,8 +426,9 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                                 six.string_types))
             for release, release_patches in supported_releases.items():
                 validate_string(release, release_error_message)
-                validate_list_field(release_patches,
-                                    release_patches_error_message)
+                validate_list(release_patches,
+                              release_patches_error_message)
+
                 for patch in release_patches:
                     validate_string(patch, patch_error_message)
                 if release == check_release:
