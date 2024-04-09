@@ -1507,6 +1507,13 @@ class ConductorManager(service.PeriodicService):
                         LOG.info("%s: adding '%s' from database to %s" % (
                             func, line.strip(), dnsmasq_hosts_file))
                         f_out.write(line)
+
+                        # Also add a line to dnsmasq.addn_hosts for dnslookup
+                        # of the static (non-dhcp'ed) controller pxeboot hostnames.
+                        hostname_internal = pxeboot_hostname + "." + constants.INTERNAL_DOMAIN
+                        addn_line_internal = self._dnsmasq_addn_host_entry_to_string(
+                                address.address, hostname_internal, [pxeboot_hostname])
+                        f_out_addn.write(addn_line_internal)
                         break
 
             # When the leases file exists, parse it looking for
