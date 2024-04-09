@@ -109,7 +109,7 @@ class OpenstackBasePuppet(base.BasePuppet):
         # to add networks etc during ansible bootstrap will fail as
         # haproxy has not been configured yet.
 
-        # TODO<fcorream>: Remove OLD_ANSIBLE_BOOTSTRAP_COMPLETED_FLAG
+        # TODO(fcorream): Remove OLD_ANSIBLE_BOOTSTRAP_COMPLETED_FLAG
         # just needed for upgrade to R9
         is_upgrading = cutils.is_upgrade_in_progress(self.dbapi)[0]
 

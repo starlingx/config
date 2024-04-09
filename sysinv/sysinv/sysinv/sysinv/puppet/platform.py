@@ -966,7 +966,7 @@ class PlatformPuppet(base.BasePuppet):
     def _get_dc_root_ca_config(self):
         config = {}
         system = self._get_system()
-        # TODO<fcorream>: Remove OLD_ANSIBLE_BOOTSTRAP_COMPLETED_FLAG
+        # TODO(fcorream): Remove OLD_ANSIBLE_BOOTSTRAP_COMPLETED_FLAG
         # just needed for upgrade to R9
         is_upgrading = utils.is_upgrade_in_progress(self.dbapi)[0]
 

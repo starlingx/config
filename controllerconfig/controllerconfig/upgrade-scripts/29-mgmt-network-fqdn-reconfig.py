@@ -24,6 +24,8 @@ from controllerconfig.common import log
 
 PLATFORM_CONF_PATH = '/etc/platform'
 PLATFORM_SIMPLEX_FLAG = '/etc/platform/simplex'
+# TODO(fcorream) Remove UPGRADE_DO_NOT_USE_FQDN when
+# upgrade from release <= 9.0 is not supported anymore
 UPGRADE_DO_NOT_USE_FQDN = PLATFORM_CONF_PATH + \
     '/.upgrade_do_not_use_fqdn'
 

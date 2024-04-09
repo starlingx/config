@@ -847,10 +847,9 @@ def apply_sriov_config(db_credentials, hostname):
     conn = psycopg2.connect(connection_string)
     cur = conn.cursor()
     cur.execute(
-        "select id, mgmt_ip from i_host where hostname=%s;", (hostname,))
+        "select id from i_host where hostname=%s;", (hostname,))
     host = cur.fetchone()
     host_id = host[0]
-    mgmt_ip = host[1]
     cur.execute("select id from pci_devices "
                 "where sriov_numvfs > 0 and host_id=%s",
                 (host_id,))
@@ -874,7 +873,7 @@ def apply_sriov_config(db_credentials, hostname):
         with open(tmpfile, 'w') as f:
             yaml.dump(config, f, default_flow_style=False)
         puppet_common.puppet_apply_manifest(
-            mgmt_ip, personality, manifest='runtime', runtime=tmpfile)
+            hostname, personality, manifest='runtime', runtime=tmpfile)
         os.close(fd)
         os.remove(tmpfile)
 

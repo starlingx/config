@@ -195,7 +195,6 @@ class ihost(Base):
     # MAC 01:34:67:9A:CD:FG  (need 16 bytes; convention here String(255))
 
     mgmt_mac = Column(String(255), unique=True)
-    mgmt_ip = Column(String(255))
 
     sw_version = Column(String(128))
 

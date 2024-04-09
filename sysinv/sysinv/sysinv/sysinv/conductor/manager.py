@@ -3707,7 +3707,6 @@ class ConductorManager(service.PeriodicService):
                     addresses = self.dbapi.address_get_by_name(addr_name)
                     for address in addresses:
                         self.dbapi.address_update(address['uuid'], values)
-
                     # Do any potential distributed cloud config
                     # We do this here where the interface is created.
                     cutils.perform_distributed_cloud_config(self.dbapi,
@@ -3715,7 +3714,6 @@ class ConductorManager(service.PeriodicService):
                                                             ihost)
                 if port:
                     values = {'interface_id': port.interface_id}
-
                 addr_name = cutils.format_address_name(ihost.hostname,
                                                        networktype)
                 addresses = self.dbapi.address_get_by_name(addr_name)
@@ -6693,7 +6691,14 @@ class ConductorManager(service.PeriodicService):
 
             for host in ihosts:
                 if host.mgmt_mac == mac:
-                    LOG.info("Host found ihost db for macs: %s" % host.hostname)
+                    # TODO(fcorream): for backward compatibility the
+                    # mgmt_ip is added to ihost.
+                    # remove it when upgrade from Release <= 9.0
+                    # is not supported anymore
+                    host.mgmt_ip = self.get_address_by_host_networktype(
+                        context, host.hostname, constants.NETWORK_TYPE_MGMT)
+                    LOG.debug("Host found ihost db for macs: %s %s" %
+                              (host.hostname, host.mgmt_ip))
                     return host
         LOG.debug("RPC get_ihost_by_macs called but found no ihost.")
 
@@ -6710,7 +6715,14 @@ class ConductorManager(service.PeriodicService):
 
         try:
             ihost = self.dbapi.ihost_get_by_hostname(ihost_hostname)
-
+            # TODO(fcorream): for backward compatibility the
+            # mgmt_ip is added to ihost.
+            # remove it when upgrade from Release <= 9.0
+            # is not supported anymore
+            ihost.mgmt_ip = self.get_address_by_host_networktype(
+                context, ihost.hostname, constants.NETWORK_TYPE_MGMT)
+            LOG.debug("Host found ihost db for hostname: %s %s" %
+                      (ihost.hostname, ihost.mgmt_ip))
             return ihost
 
         except exception.NodeNotFound:

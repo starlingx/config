@@ -129,8 +129,6 @@ def get_test_ihost(**kw):
             'invprovision': kw.get('invprovision', 'unprovisioned'),
             'mgmt_mac': kw.get('mgmt_mac',
                                          '01:34:67:9A:CD:FE'),
-            'mgmt_ip': kw.get('mgmt_ip',
-                                         '192.168.24.11'),
             'personality': kw.get('personality', 'controller'),
             'administrative': kw.get('administrative', 'locked'),
             'operational': kw.get('operational', 'disabled'),
