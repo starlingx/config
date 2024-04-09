@@ -53,6 +53,7 @@ import xml.etree.ElementTree as ElementTree
 from contextlib import contextmanager
 from datetime import datetime
 from datetime import timedelta
+from distutils.util import strtobool
 from distutils.version import LooseVersion
 from copy import deepcopy
 from urllib3.exceptions import MaxRetryError
@@ -7782,6 +7783,11 @@ class ConductorManager(service.PeriodicService):
                                                                          True,
                                                                          k8s_upgrade_timing)
 
+        auto_downgrade = strtobool(app.app_metadata.get(constants.APP_METADATA_DOWNGRADES, {})
+                                   .get(constants.APP_METADATA_AUTO_DOWNGRADE,
+                                        str(constants.APP_METADATA_AUTO_DOWNGRADE_DEFAULT_VALUE)))
+        latest_downgrade_bundle = None
+        available_versions = set()
         latest_version_bundle = None
 
         if k8s_version is None:
@@ -7790,15 +7796,8 @@ class ConductorManager(service.PeriodicService):
             k8s_version = k8s_version.strip().lstrip('v')
 
         for bundle_metadata in bundle_metadata_list:
-            if LooseVersion(bundle_metadata.version) <= LooseVersion(app.app_version):
-                LOG.debug("Bundle {} version {} lower than installed app version ({})"
-                          .format(bundle_metadata.file_path,
-                                  bundle_metadata.version,
-                                  app.app_version))
-            elif not bundle_metadata.auto_update:
-                LOG.debug("Application auto update disabled for bundle {}"
-                          .format(bundle_metadata.file_path))
-            elif LooseVersion(k8s_version) < LooseVersion(bundle_metadata.k8s_minimum_version):
+            available_versions.add(bundle_metadata.version)
+            if LooseVersion(k8s_version) < LooseVersion(bundle_metadata.k8s_minimum_version):
                 LOG.debug("Kubernetes version {} is lower than {} which is "
                           "the minimum required for bundle {}"
                           .format(k8s_version,
@@ -7811,12 +7810,36 @@ class ConductorManager(service.PeriodicService):
                           .format(k8s_version,
                                   bundle_metadata.k8s_maximum_version,
                                   bundle_metadata.file_path))
+            elif LooseVersion(bundle_metadata.version) == LooseVersion(app.app_version):
+                LOG.debug("Bundle {} version and installed app version are the same ({})"
+                          .format(bundle_metadata.file_path,
+                                  app.app_version))
+            elif LooseVersion(bundle_metadata.version) < LooseVersion(app.app_version):
+                LOG.debug("Bundle {} version {} is lower than installed app version ({})"
+                          .format(bundle_metadata.file_path,
+                                  bundle_metadata.version,
+                                  app.app_version))
+                if (latest_downgrade_bundle is None or LooseVersion(bundle_metadata.version) >
+                        LooseVersion(latest_downgrade_bundle.version)):
+                    latest_downgrade_bundle = bundle_metadata
+            elif not bundle_metadata.auto_update:
+                LOG.debug("Application auto update disabled for bundle {}"
+                          .format(bundle_metadata.file_path))
             elif ((latest_version_bundle is None) or
                   (LooseVersion(bundle_metadata.version) >
                    LooseVersion(latest_version_bundle.version))):
                 # Only set the chosen bundle if it was not set before or if the version
                 # of the current one is higher than the one previously set.
                 latest_version_bundle = bundle_metadata
+
+        # Downgrade if the installed app version is not available anymore and an older compatible
+        # bundle is available instead.
+        if (auto_downgrade and
+                app.app_version not in available_versions and
+                latest_downgrade_bundle is not None):
+            LOG.info("Application {} will be downgraded from version {} to {}"
+                     .format(app.name, app.app_version, latest_downgrade_bundle.version))
+            return latest_downgrade_bundle
 
         return latest_version_bundle
 

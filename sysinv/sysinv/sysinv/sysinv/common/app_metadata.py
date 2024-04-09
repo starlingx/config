@@ -125,7 +125,7 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
             if not error_message:
                 error_message = _("Invalid boolean value: {}"
                                   .format(value))
-                raise exception.SysinvException(error_message)
+            raise exception.SysinvException(error_message)
 
     def validate_dict(value, error_message=None):
         """Validate dictionary types"""
@@ -380,6 +380,13 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
             if from_versions:
                 for version in from_versions:
                     validate_string(version)
+
+        # Downgrades section validation
+        downgrades = validate_dict_field(doc, constants.APP_METADATA_DOWNGRADES)
+        if downgrades:
+            validate_boolstr_field(
+                downgrades,
+                constants.APP_METADATA_AUTO_DOWNGRADE)
 
         # Kubernetes version section validation
         k8s_version = validate_k8s_version(doc)
