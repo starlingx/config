@@ -197,6 +197,8 @@ class ihost(Base):
     mgmt_mac = Column(String(255), unique=True)
     mgmt_ip = Column(String(255))
 
+    sw_version = Column(String(128))
+
     # board management IP address, MAC, type and username
     bm_ip = Column(String(255))
     bm_mac = Column(String(255))

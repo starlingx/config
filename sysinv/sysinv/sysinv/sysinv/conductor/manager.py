@@ -1242,6 +1242,9 @@ class ConductorManager(service.PeriodicService):
         values.update({'forisystemid': system.id})
         values.update({constants.HOST_ACTION_STATE: constants.HAS_REINSTALLING})
 
+        # set sw_version value
+        values.update({'sw_version': tsc.SW_VERSION})
+
         # get tboot value from the active controller
         active_controller = None
         hosts = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
@@ -1930,9 +1933,8 @@ class ConductorManager(service.PeriodicService):
             sw_version = load.software_version
         else:
             # No load provided, look it up...
-            host_upgrade = self.dbapi.host_upgrade_get_by_host(host.id)
-            target_load = self.dbapi.load_get(host_upgrade.target_load)
-            sw_version = target_load.software_version
+            host = self.dbapi.ihost_get_by_hostname(host.hostname)
+            sw_version = host.sw_version
 
         if (host.personality == constants.CONTROLLER and
                 constants.WORKER in tsc.subfunctions):

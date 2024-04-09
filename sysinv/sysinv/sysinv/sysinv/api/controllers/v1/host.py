@@ -107,7 +107,8 @@ HOST_XML_ATTRIBUTES = ['hostname', 'personality', 'subfunctions', 'mgmt_mac',
                        'mgmt_ip', 'bm_ip', 'bm_type', 'bm_username',
                        'bm_password', 'boot_device', 'rootfs_device',
                        'hw_settle', 'install_output', 'console',
-                       'vsc_controllers', 'power_on', 'location', 'apparmor']
+                       'vsc_controllers', 'power_on', 'location', 'apparmor',
+                       'sw_version']
 
 
 def _get_controller_address(hostname):
@@ -584,6 +585,9 @@ class Host(base.APIBase):
     reboot_needed = types.boolean
     " Represent whether a reboot is needed after device image update"
 
+    sw_version = wtypes.text
+    "The host software version."
+
     def __init__(self, **kwargs):
         self.fields = list(objects.host.fields.keys())
         for k in self.fields:
@@ -612,7 +616,7 @@ class Host(base.APIBase):
                           'reboot_needed', 'inv_state', 'clock_synchronization',
                           'max_cpu_mhz_configured', 'min_cpu_mhz_allowed',
                           'max_cpu_mhz_allowed', 'cstates_available',
-                          'apparmor', 'nvme_host_id', 'nvme_host_nqn']
+                          'apparmor', 'nvme_host_id', 'nvme_host_nqn', 'sw_version']
 
         fields = minimum_fields if not expand else None
         uhost = Host.from_rpc_object(rpc_ihost, fields)

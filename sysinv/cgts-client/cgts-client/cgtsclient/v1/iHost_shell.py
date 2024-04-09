@@ -39,7 +39,7 @@ def _print_ihost_show(ihost, columns=None, output_format=None):
                   'reboot_needed', 'max_cpu_mhz_configured',
                   'min_cpu_mhz_allowed', 'max_cpu_mhz_allowed',
                   'cstates_available', 'apparmor', 'iscsi_initiator_name',
-                  'nvme_host_id', 'nvme_host_nqn']
+                  'nvme_host_id', 'nvme_host_nqn', 'sw_version']
         optional_fields = ['vsc_controllers', 'ttys_dcd']
         if ihost.subfunctions != ihost.personality:
             fields.append('subfunctions')
