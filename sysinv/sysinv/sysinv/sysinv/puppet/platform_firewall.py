@@ -6,7 +6,6 @@
 
 import copy
 
-from netaddr import IPAddress
 from oslo_log import log
 from sysinv.common import constants
 from sysinv.common import exception
@@ -248,14 +247,9 @@ class PlatformFirewallPuppet(base.BasePuppet):
         for network in firewall_networks:
 
             gnp_name = host.personality + "-" + network.type + "-if-gnp"
-            addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
-            ip_version = IPAddress(f"{addr_pool.network}").version
             nodetype_selector = f"has(nodetype) && nodetype == '{host.personality}'"
             iftype_selector = f"has(iftype) && iftype contains '{network.type}'"
             selector = f"{nodetype_selector} && {iftype_selector}"
-            ICMP = "ICMP"
-            if (ip_version == 6):
-                ICMP = "ICMPv6"
 
             firewall_gnp = dict()
             firewall_gnp["apiVersion"] = "crd.projectcalico.org/v1"
@@ -270,13 +264,20 @@ class PlatformFirewallPuppet(base.BasePuppet):
             firewall_gnp["spec"].update({"egress": list()})
             firewall_gnp["spec"].update({"ingress": list()})
 
-            for proto in ["TCP", "UDP", ICMP]:
-                self._add_gnp_proto_rules(host, network, ip_version, firewall_gnp, proto)
+            addr_pools = self.dbapi.address_pools_get_by_network(network.id)
+            for addr_pool in addr_pools:
+                ip_version = addr_pool.family
+                ICMP = "ICMP"
+                if ip_version == 6:
+                    ICMP = "ICMPv6"
 
-            if network.type in IPSEC_NETWORKS:
-                self._add_gnp_proto_rules(host, network, ip_version, firewall_gnp, "ESP", 50)
+                for proto in ["TCP", "UDP", ICMP]:
+                    self._add_gnp_proto_rules(host, network, ip_version, firewall_gnp, proto)
 
-            config[PLATFORM_FIREWALL_CLASSES[network.type]] = copy.copy(firewall_gnp)
+                if network.type in IPSEC_NETWORKS:
+                    self._add_gnp_proto_rules(host, network, ip_version, firewall_gnp, "ESP", 50)
+
+            config[PLATFORM_FIREWALL_CLASSES[network.type]] = firewall_gnp
 
     def _set_rules_oam(self, gnp_config, network, host, dc_role):
         """ Fill the OAM network specific filtering data
@@ -317,15 +318,21 @@ class PlatformFirewallPuppet(base.BasePuppet):
             elif rule["protocol"] == "UDP":
                 rule.update({"destination": {"ports": udp_ports}})
 
-        addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
-        ip_version = IPAddress(f"{addr_pool.network}").version
-        self._add_destination_net_filter(gnp_config["spec"]["ingress"],
-                                    f"{addr_pool.network}/{addr_pool.prefix}")
-        if (ip_version == 6):
-            for rule in gnp_config["spec"]["ingress"]:
-                if rule["protocol"] == "ICMPv6":
-                    rule["destination"]["nets"].append(LINK_LOCAL)
-                    rule["destination"]["nets"].append(LINK_LOCAL_MC)
+        addr_pools = self.dbapi.address_pools_get_by_network(network.id)
+        for addr_pool in addr_pools:
+            ip_version = addr_pool.family
+            self._add_destination_net_filter(gnp_config["spec"]["ingress"],
+                                             f"{addr_pool.network}/{addr_pool.prefix}")
+            if (ip_version == constants.IPV6_FAMILY):
+                for rule in gnp_config["spec"]["ingress"]:
+                    if rule["protocol"] == "ICMPv6":
+                        rule["destination"]["nets"].append(LINK_LOCAL)
+                        rule["destination"]["nets"].append(LINK_LOCAL_MC)
+
+    def _copy_tcp_rule(self, config, direction, ip_version):
+        for rule in config[direction]:
+            if rule["protocol"] == "TCP" and rule["ipVersion"] == ip_version:
+                return copy.deepcopy(rule)
 
     def _set_rules_mgmt(self, gnp_config, network, host):
         """ Fill the management network specific filtering data
@@ -333,33 +340,36 @@ class PlatformFirewallPuppet(base.BasePuppet):
         :param gnp_config: the dict containing the hiera data to be filled
         :param network: the sysinv.object.network object for this network
         """
-        addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
-        ip_version = IPAddress(f"{addr_pool.network}").version
-        self._add_source_net_filter(gnp_config["spec"]["ingress"],
-                                    f"{addr_pool.network}/{addr_pool.prefix}")
-        if (ip_version == 6):
-            self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL)
-        if (ip_version == 4):
-            # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
-            # worker/storage nodes request IP dynamically
-            rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
-            gnp_config["spec"]["ingress"].append(rule)
+        addr_pools = self.dbapi.address_pools_get_by_network(network.id)
+        for addr_pool in addr_pools:
+            ip_version = addr_pool.family
+            self._add_source_net_filter(gnp_config["spec"]["ingress"],
+                                        f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
 
-            # copy the TCP rule and do the same for IGMP
-            igmp_proto = 2
-            igmp_egr_rule = copy.deepcopy(gnp_config["spec"]["egress"][0])
-            igmp_egr_rule["protocol"] = igmp_proto
-            igmp_egr_rule["metadata"]["annotations"]["name"] = \
-                f"stx-egr-{host.personality}-{network.type}-igmp{ip_version}"
-            gnp_config["spec"]["egress"].append(igmp_egr_rule)
-            igmp_ingr_rule = copy.deepcopy(gnp_config["spec"]["ingress"][0])
-            igmp_ingr_rule["protocol"] = igmp_proto
-            igmp_ingr_rule["metadata"]["annotations"]["name"] = \
-                f"stx-ingr-{host.personality}-{network.type}-igmp{ip_version}"
-            # Allow 0.0.0.0/32 for the case the switch sends IGMP queries from
-            # a VLAN without the IP address configured.
-            igmp_ingr_rule["source"]["nets"].append("0.0.0.0/32")
-            gnp_config["spec"]["ingress"].append(igmp_ingr_rule)
+            if (ip_version == 6):
+                self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
+
+            if (ip_version == 4):
+                # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
+                # worker/storage nodes request IP dynamically
+                rule = self._get_dhcp_rule(host.personality, "UDP", constants.IPV4_FAMILY)
+                gnp_config["spec"]["ingress"].append(rule)
+
+                # copy the TCP rule and do the same for IGMP
+                igmp_proto = 2
+                igmp_egr_rule = self._copy_tcp_rule(gnp_config["spec"], "egress", ip_version)
+                igmp_egr_rule["protocol"] = igmp_proto
+                igmp_egr_rule["metadata"]["annotations"]["name"] = \
+                    f"stx-egr-{host.personality}-{network.type}-igmp{constants.IPV4_FAMILY}"
+                gnp_config["spec"]["egress"].append(igmp_egr_rule)
+                igmp_ingr_rule = self._copy_tcp_rule(gnp_config["spec"], "ingress", ip_version)
+                igmp_ingr_rule["protocol"] = igmp_proto
+                igmp_ingr_rule["metadata"]["annotations"]["name"] = \
+                    f"stx-ingr-{host.personality}-{network.type}-igmp{constants.IPV4_FAMILY}"
+                # Allow 0.0.0.0/32 for the case the switch sends IGMP queries from
+                # a VLAN without the IP address configured.
+                igmp_ingr_rule["source"]["nets"].append("0.0.0.0/32")
+                gnp_config["spec"]["ingress"].append(igmp_ingr_rule)
 
     def _set_rules_admin(self, gnp_config, network, host):
         """ Fill the admin network specific filtering data
@@ -367,28 +377,29 @@ class PlatformFirewallPuppet(base.BasePuppet):
         :param gnp_config: the dict containing the hiera data to be filled
         :param network: the sysinv.object.network object for this network
         """
-        addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
-        ip_version = IPAddress(f"{addr_pool.network}").version
-        self._add_source_net_filter(gnp_config["spec"]["ingress"],
-                                    f"{addr_pool.network}/{addr_pool.prefix}")
-        if (ip_version == 6):
-            self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL)
-        if (ip_version == 4):
-            # copy the TCP rule and do the same for IGMP
-            igmp_proto = 2
-            igmp_egr_rule = copy.deepcopy(gnp_config["spec"]["egress"][0])
-            igmp_egr_rule["protocol"] = igmp_proto
-            igmp_egr_rule["metadata"]["annotations"]["name"] = \
-                f"stx-egr-{host.personality}-{network.type}-igmp{ip_version}"
-            gnp_config["spec"]["egress"].append(igmp_egr_rule)
-            igmp_ingr_rule = copy.deepcopy(gnp_config["spec"]["ingress"][0])
-            igmp_ingr_rule["protocol"] = igmp_proto
-            igmp_ingr_rule["metadata"]["annotations"]["name"] = \
-                f"stx-ingr-{host.personality}-{network.type}-igmp{ip_version}"
-            # Allow 0.0.0.0/32 for the case the switch sends IGMP queries from
-            # a VLAN without the IP address configured.
-            igmp_ingr_rule["source"]["nets"].append("0.0.0.0/32")
-            gnp_config["spec"]["ingress"].append(igmp_ingr_rule)
+        addr_pools = self.dbapi.address_pools_get_by_network(network.id)
+        for addr_pool in addr_pools:
+            ip_version = addr_pool.family
+            self._add_source_net_filter(gnp_config["spec"]["ingress"],
+                                        f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
+            if (ip_version == 6):
+                self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
+            if (ip_version == 4):
+                # copy the TCP rule and do the same for IGMP
+                igmp_proto = 2
+                igmp_egr_rule = self._copy_tcp_rule(gnp_config["spec"], "egress", ip_version)
+                igmp_egr_rule["protocol"] = igmp_proto
+                igmp_egr_rule["metadata"]["annotations"]["name"] = \
+                    f"stx-egr-{host.personality}-{network.type}-igmp{ip_version}"
+                gnp_config["spec"]["egress"].append(igmp_egr_rule)
+                igmp_ingr_rule = self._copy_tcp_rule(gnp_config["spec"], "ingress", ip_version)
+                igmp_ingr_rule["protocol"] = igmp_proto
+                igmp_ingr_rule["metadata"]["annotations"]["name"] = \
+                    f"stx-ingr-{host.personality}-{network.type}-igmp{ip_version}"
+                # Allow 0.0.0.0/32 for the case the switch sends IGMP queries from
+                # a VLAN without the IP address configured.
+                igmp_ingr_rule["source"]["nets"].append("0.0.0.0/32")
+                gnp_config["spec"]["ingress"].append(igmp_ingr_rule)
 
     def _set_rules_cluster_host(self, gnp_config, network, host):
         """ Fill the cluster-host network specific filtering data
@@ -397,59 +408,64 @@ class PlatformFirewallPuppet(base.BasePuppet):
         :param network: the sysinv.object.network object for this network
         """
 
-        addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
-        ip_version = IPAddress(f"{addr_pool.network}").version
-        self._add_source_net_filter(gnp_config["spec"]["ingress"],
-                                    f"{addr_pool.network}/{addr_pool.prefix}")
-
-        # add cluster-pod to cover the cases where there is no tunneling, the pod traffic goes
-        # directly in the cluster-host interface
+        cpod_pool_index = {}
         cpod_net = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_CLUSTER_POD)
         if cpod_net:
-            cpod_pool = self.dbapi.address_pool_get(cpod_net.pool_uuid)
-            cpod_ip_version = IPAddress(f"{cpod_pool.network}").version
-            if (cpod_ip_version == ip_version):
-                self._add_source_net_filter(gnp_config["spec"]["ingress"],
-                                            f"{cpod_pool.network}/{cpod_pool.prefix}")
+            cpod_pools = self.dbapi.address_pools_get_by_network(cpod_net.id)
+            for cpod_pool in cpod_pools:
+                cpod_pool_index[cpod_pool.family] = cpod_pool
         else:
             LOG.info("Cannot find cluster-pod network to add to cluster-host firewall")
 
-        # copy the TCP rule and do the same for SCTP
-        sctp_egr_rule = copy.deepcopy(gnp_config["spec"]["egress"][0])
-        sctp_egr_rule["protocol"] = "SCTP"
-        sctp_egr_rule["metadata"]["annotations"]["name"] = \
-            f"stx-egr-{host.personality}-{network.type}-sctp{ip_version}"
-        gnp_config["spec"]["egress"].append(sctp_egr_rule)
-        sctp_ingr_rule = copy.deepcopy(gnp_config["spec"]["ingress"][0])
-        sctp_ingr_rule["protocol"] = "SCTP"
-        sctp_ingr_rule["metadata"]["annotations"]["name"] = \
-            f"stx-ingr-{host.personality}-{network.type}-sctp{ip_version}"
-        gnp_config["spec"]["ingress"].append(sctp_ingr_rule)
+        addr_pools = self.dbapi.address_pools_get_by_network(network.id)
+        for addr_pool in addr_pools:
+            ip_version = addr_pool.family
+            self._add_source_net_filter(gnp_config["spec"]["ingress"],
+                                        f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
 
-        if (ip_version == 6):
-            # add link-local network too
-            self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL)
+            # add cluster-pod to cover the cases where there is no tunneling, the pod traffic goes
+            # directly in the cluster-host interface
+            cpod_pool = cpod_pool_index.get(ip_version, None)
+            if cpod_pool:
+                self._add_source_net_filter(gnp_config["spec"]["ingress"],
+                                            f"{cpod_pool.network}/{cpod_pool.prefix}", ip_version)
 
-        if (ip_version == 4):
-            # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
-            rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
-            gnp_config["spec"]["ingress"].append(rule)
+            # copy the TCP rule and do the same for SCTP
+            sctp_egr_rule = self._copy_tcp_rule(gnp_config["spec"], "egress", ip_version)
+            sctp_egr_rule["protocol"] = "SCTP"
+            sctp_egr_rule["metadata"]["annotations"]["name"] = \
+                f"stx-egr-{host.personality}-{network.type}-sctp{ip_version}"
+            gnp_config["spec"]["egress"].append(sctp_egr_rule)
+            sctp_ingr_rule = self._copy_tcp_rule(gnp_config["spec"], "ingress", ip_version)
+            sctp_ingr_rule["protocol"] = "SCTP"
+            sctp_ingr_rule["metadata"]["annotations"]["name"] = \
+                f"stx-ingr-{host.personality}-{network.type}-sctp{ip_version}"
+            gnp_config["spec"]["ingress"].append(sctp_ingr_rule)
 
-            # copy the TCP rule and do the same for IGMP
-            igmp_proto = 2
-            igmp_egr_rule = copy.deepcopy(gnp_config["spec"]["egress"][0])
-            igmp_egr_rule["protocol"] = igmp_proto
-            igmp_egr_rule["metadata"]["annotations"]["name"] = \
-                f"stx-egr-{host.personality}-{network.type}-igmp{ip_version}"
-            gnp_config["spec"]["egress"].append(igmp_egr_rule)
-            igmp_ingr_rule = copy.deepcopy(gnp_config["spec"]["ingress"][0])
-            igmp_ingr_rule["protocol"] = igmp_proto
-            igmp_ingr_rule["metadata"]["annotations"]["name"] = \
-                f"stx-ingr-{host.personality}-{network.type}-igmp{ip_version}"
-            # Allow 0.0.0.0/32 for the case the switch sends IGMP queries from
-            # a VLAN without the IP address configured.
-            igmp_ingr_rule["source"]["nets"].append("0.0.0.0/32")
-            gnp_config["spec"]["ingress"].append(igmp_ingr_rule)
+            if (ip_version == 6):
+                # add link-local network too
+                self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
+
+            if (ip_version == 4):
+                # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
+                rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
+                gnp_config["spec"]["ingress"].append(rule)
+
+                # copy the TCP rule and do the same for IGMP
+                igmp_proto = 2
+                igmp_egr_rule = self._copy_tcp_rule(gnp_config["spec"], "egress", ip_version)
+                igmp_egr_rule["protocol"] = igmp_proto
+                igmp_egr_rule["metadata"]["annotations"]["name"] = \
+                    f"stx-egr-{host.personality}-{network.type}-igmp{ip_version}"
+                gnp_config["spec"]["egress"].append(igmp_egr_rule)
+                igmp_ingr_rule = self._copy_tcp_rule(gnp_config["spec"], "ingress", ip_version)
+                igmp_ingr_rule["protocol"] = igmp_proto
+                igmp_ingr_rule["metadata"]["annotations"]["name"] = \
+                    f"stx-ingr-{host.personality}-{network.type}-igmp{ip_version}"
+                # Allow 0.0.0.0/32 for the case the switch sends IGMP queries from
+                # a VLAN without the IP address configured.
+                igmp_ingr_rule["source"]["nets"].append("0.0.0.0/32")
+                gnp_config["spec"]["ingress"].append(igmp_ingr_rule)
 
     def _set_rules_pxeboot(self, gnp_config, network, host):
         """ Fill the pxeboot network specific filtering data
@@ -458,16 +474,17 @@ class PlatformFirewallPuppet(base.BasePuppet):
         :param network: the sysinv.object.network object for this network
         """
 
-        addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
-        ip_version = IPAddress(f"{addr_pool.network}").version
-        self._add_source_net_filter(gnp_config["spec"]["ingress"],
-                                    f"{addr_pool.network}/{addr_pool.prefix}")
-        if (ip_version == 6):
-            self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL)
-        if (ip_version == 4):
-            # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
-            rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
-            gnp_config["spec"]["ingress"].append(rule)
+        addr_pools = self.dbapi.address_pools_get_by_network(network.id)
+        for addr_pool in addr_pools:
+            ip_version = addr_pool.family
+            self._add_source_net_filter(gnp_config["spec"]["ingress"],
+                                        f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
+            if (ip_version == 6):
+                self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
+            if (ip_version == 4):
+                # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
+                rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
+                gnp_config["spec"]["ingress"].append(rule)
 
     def _set_rules_storage(self, gnp_config, network, host):
         """ Fill the storage network specific filtering data
@@ -476,18 +493,19 @@ class PlatformFirewallPuppet(base.BasePuppet):
         :param network: the sysinv.object.network object for this network
         """
 
-        addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
-        ip_version = IPAddress(f"{addr_pool.network}").version
-        self._add_source_net_filter(gnp_config["spec"]["ingress"],
-                                    f"{addr_pool.network}/{addr_pool.prefix}")
-        if (ip_version == 6):
-            self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL)
-        if (ip_version == 4):
-            # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
-            rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
-            gnp_config["spec"]["ingress"].append(rule)
+        addr_pools = self.dbapi.address_pools_get_by_network(network.id)
+        for addr_pool in addr_pools:
+            ip_version = addr_pool.family
+            self._add_source_net_filter(gnp_config["spec"]["ingress"],
+                                        f"{addr_pool.network}/{addr_pool.prefix}", ip_version)
+            if (ip_version == 6):
+                self._add_source_net_filter(gnp_config["spec"]["ingress"], LINK_LOCAL, ip_version)
+            if (ip_version == 4):
+                # add rule to allow DHCP requests (dhcp-offer have src addr == 0.0.0.0)
+                rule = self._get_dhcp_rule(host.personality, "UDP", ip_version)
+                gnp_config["spec"]["ingress"].append(rule)
 
-    def _add_source_net_filter(self, rule_list, source_net):
+    def _add_source_net_filter(self, rule_list, source_net, ip_version):
         """ Add source network in the rule list
 
         :param rule_list: the list containing the firewall rules that need to receive the source
@@ -495,6 +513,8 @@ class PlatformFirewallPuppet(base.BasePuppet):
         :param source_net: the string containing the value
         """
         for rule in rule_list:
+            if rule["ipVersion"] != ip_version:
+                continue
             if ("source" in rule.keys()):
                 if ("nets" in rule["source"].keys()):
                     rule["source"]["nets"].append(source_net)
@@ -527,33 +547,35 @@ class PlatformFirewallPuppet(base.BasePuppet):
         :param host_personality: the node personality (controller, storage, or worker)
         """
 
-        addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
-        ip_version = IPAddress(f"{addr_pool.network}").version
-        ICMP = "ICMP"
-        if ip_version == 6:
-            ICMP = "ICMPv6"
+        routes_networks = self._get_routes_networks(network.type)
 
-        rules = list()
-        for proto in ["TCP", "UDP", ICMP]:
-            rule = {"metadata": dict()}
-            rule["metadata"] = {"annotations": dict()}
-            rule["metadata"]["annotations"] = {"name":
-                f"stx-ingr-{host_personality}-subcloud-{proto.lower()}{ip_version}"}
-            rule.update({"protocol": proto})
-            rule.update({"ipVersion": ip_version})
-            rule.update({"action": "Allow"})
-            if (proto == "TCP"):
-                rule.update({"destination": {"ports": self._get_subcloud_tcp_ports()}})
-            elif (proto == "UDP"):
-                rule.update({"destination": {"ports": self._get_subcloud_udp_ports()}})
-            rules.append(rule)
+        addr_pools = self.dbapi.address_pools_get_by_network(network.id)
+        for addr_pool in addr_pools:
+            ip_version = addr_pool.family
+            ICMP = "ICMP"
+            if ip_version == 6:
+                ICMP = "ICMPv6"
 
-        networks = self._get_routes_networks(network.type)
-        for network in networks:
-            self._add_source_net_filter(rules, network)
+            rules = list()
+            for proto in ["TCP", "UDP", ICMP]:
+                rule = {"metadata": dict()}
+                rule["metadata"] = {"annotations": dict()}
+                rule["metadata"]["annotations"] = {"name":
+                    f"stx-ingr-{host_personality}-subcloud-{proto.lower()}{ip_version}"}
+                rule.update({"protocol": proto})
+                rule.update({"ipVersion": ip_version})
+                rule.update({"action": "Allow"})
+                if (proto == "TCP"):
+                    rule.update({"destination": {"ports": self._get_subcloud_tcp_ports()}})
+                elif (proto == "UDP"):
+                    rule.update({"destination": {"ports": self._get_subcloud_udp_ports()}})
+                rules.append(rule)
 
-        for rule in rules:
-            gnp_config["spec"]["ingress"].append(rule)
+            for route_network in routes_networks[ip_version]:
+                self._add_source_net_filter(rules, route_network, ip_version)
+
+            for rule in rules:
+                gnp_config["spec"]["ingress"].append(rule)
 
     def _set_rules_subcloud_mgmt(self, gnp_config, network, host_personality):
         """ Add filtering rules for mgmt network in a subcloud installation
@@ -566,41 +588,46 @@ class PlatformFirewallPuppet(base.BasePuppet):
         :param host_personality: the node personality (controller, storage, or worker)
         """
 
-        addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
-        ip_version = IPAddress(f"{addr_pool.network}").version
-        ICMP = "ICMP"
-        if ip_version == 6:
-            ICMP = "ICMPv6"
+        routes_networks = self._get_routes_networks(network.type)
 
-        rules = list()
-        for proto in ["TCP", "UDP", ICMP]:
-            rule = {"metadata": dict()}
-            rule["metadata"] = {"annotations": dict()}
-            rule["metadata"]["annotations"] = {"name":
-                f"stx-ingr-{host_personality}-subcloud-{proto.lower()}{ip_version}"}
-            rule.update({"protocol": proto})
-            rule.update({"ipVersion": ip_version})
-            rule.update({"action": "Allow"})
-            if (proto == "TCP"):
-                rule.update({"destination": {"ports": self._get_subcloud_tcp_ports()}})
-            elif (proto == "UDP"):
-                rule.update({"destination": {"ports": self._get_subcloud_udp_ports()}})
-            gnp_config["spec"]["ingress"].append(rule)
-            rules.append(rule)
+        addr_pools = self.dbapi.address_pools_get_by_network(network.id)
+        for addr_pool in addr_pools:
+            ip_version = addr_pool.family
+            ICMP = "ICMP"
+            if ip_version == 6:
+                ICMP = "ICMPv6"
 
-        networks = self._get_routes_networks(network.type)
-        for network in networks:
-            self._add_source_net_filter(rules, network)
+            rules = list()
+            for proto in ["TCP", "UDP", ICMP]:
+                rule = {"metadata": dict()}
+                rule["metadata"] = {"annotations": dict()}
+                rule["metadata"]["annotations"] = {"name":
+                    f"stx-ingr-{host_personality}-subcloud-{proto.lower()}{ip_version}"}
+                rule.update({"protocol": proto})
+                rule.update({"ipVersion": ip_version})
+                rule.update({"action": "Allow"})
+                if (proto == "TCP"):
+                    rule.update({"destination": {"ports": self._get_subcloud_tcp_ports()}})
+                elif (proto == "UDP"):
+                    rule.update({"destination": {"ports": self._get_subcloud_udp_ports()}})
+                gnp_config["spec"]["ingress"].append(rule)
+                rules.append(rule)
+
+            for route_network in routes_networks[ip_version]:
+                self._add_source_net_filter(rules, route_network, ip_version)
 
     def _get_routes_networks(self, network_type):
         routes = self.dbapi.routes_get_by_network_type_and_host_personality(
                 network_type, constants.CONTROLLER)
-        networks = set()
+        network_sets = {constants.IPV4_FAMILY: set(), constants.IPV6_FAMILY: set()}
+        networks = {}
         for route in routes:
             network = route.network + '/' + str(route.prefix)
-            networks.add(network)
-        networks = list(networks)
-        networks.sort()
+            network_sets[int(route.family)].add(network)
+        for family, net_set in network_sets.items():
+            net_list = list(net_set)
+            net_list.sort()
+            networks[family] = net_list
         return networks
 
     def _set_rules_systemcontroller(self, gnp_config, network, host_personality):
@@ -611,68 +638,38 @@ class PlatformFirewallPuppet(base.BasePuppet):
         :param host_personality: the node personality (controller, storage, or worker)
         """
 
+        routes_networks = self._get_routes_networks(network.type)
+
         rules = []
-        addr_pool = self.dbapi.address_pool_get(network.pool_uuid)
-        ip_version = IPAddress(f"{addr_pool.network}").version
-        ICMP = "ICMP"
-        if ip_version == 6:
-            ICMP = "ICMPv6"
+        addr_pools = self.dbapi.address_pools_get_by_network(network.id)
+        for addr_pool in addr_pools:
+            ip_version = addr_pool.family
+            ICMP = "ICMP"
+            if ip_version == 6:
+                ICMP = "ICMPv6"
 
-        for proto in ["TCP", "UDP", ICMP]:
-            rule = {"metadata": dict()}
-            rule["metadata"] = {"annotations": dict()}
-            rule["metadata"]["annotations"] = {"name":
-                f"stx-ingr-{host_personality}-systemcontroller-{proto.lower()}{ip_version}"}
-            rule.update({"protocol": proto})
-            rule.update({"ipVersion": ip_version})
-            rule.update({"action": "Allow"})
-            if (proto == "TCP"):
-                tcp_list = self._get_systemcontroller_tcp_ports()
-                rule.update({"destination": {"ports": tcp_list}})
-            elif (proto == "UDP"):
-                udp_list = self._get_systemcontroller_udp_ports()
-                rule.update({"destination": {"ports": udp_list}})
-            gnp_config["spec"]["ingress"].append(rule)
-            rules.append(rule)
+            for proto in ["TCP", "UDP", ICMP]:
+                rule = {"metadata": dict()}
+                rule["metadata"] = {"annotations": dict()}
+                rule["metadata"]["annotations"] = {"name":
+                    f"stx-ingr-{host_personality}-systemcontroller-{proto.lower()}{ip_version}"}
+                rule.update({"protocol": proto})
+                rule.update({"ipVersion": ip_version})
+                rule.update({"action": "Allow"})
+                if (proto == "TCP"):
+                    tcp_list = self._get_systemcontroller_tcp_ports()
+                    rule.update({"destination": {"ports": tcp_list}})
+                elif (proto == "UDP"):
+                    udp_list = self._get_systemcontroller_udp_ports()
+                    rule.update({"destination": {"ports": udp_list}})
+                gnp_config["spec"]["ingress"].append(rule)
+                rules.append(rule)
 
-        networks = self._get_routes_networks(network.type)
-        for network in networks:
-            self._add_source_net_filter(rules, network)
+            for route_network in routes_networks[ip_version]:
+                self._add_source_net_filter(rules, route_network, ip_version)
 
     def _set_extra_rules(self, config):
-        self._ingress_ipv6_for_ipv4_install_case(config)
-        return
-
-    def _ingress_ipv6_for_ipv4_install_case(self, full_config):
-
-        intf_ip_version = dict()
-        for hep in full_config[FIREWALL_HE_INTERFACE_CFG].keys():
-            hep_data = full_config[FIREWALL_HE_INTERFACE_CFG][hep]
-            iftype_list = (hep_data['metadata']['labels']['iftype']).split('.')
-            interface = hep_data['spec']['interfaceName']
-            intf_ip_version.update({interface: set()})
-            for iftype in iftype_list:
-                for gnp_config in full_config.keys():
-                    if (gnp_config == FIREWALL_HE_INTERFACE_CFG
-                            or gnp_config == FIREWALL_EXTRA_FILTER_CFG):
-                        continue
-                    if not full_config[gnp_config]:
-                        continue
-                    gnp_data = full_config[gnp_config]
-                    if (iftype in gnp_data['spec']['selector']):
-                        for ingress in gnp_data['spec']['ingress']:
-                            intf_ip_version[interface].add(ingress['ipVersion'])
-
-        is_ipv4_install = True
-        for intf in intf_ip_version.keys():
-            if (6 in intf_ip_version[intf]):
-                is_ipv4_install = False
-                break
-
-        if is_ipv4_install:
-            full_config[FIREWALL_EXTRA_FILTER_CFG].update(
-                {"ingress-ipv6-for-ipv4-install": list(intf_ip_version.keys())})
-        return
+        pass
 
     def _get_subcloud_tcp_ports(self):
         """ Get the TCP L4 ports for subclouds
@@ -768,12 +765,13 @@ class PlatformFirewallPuppet(base.BasePuppet):
             elif host.hostname == constants.CONTROLLER_1_HOSTNAME:
                 address_name = cutils.format_address_name(constants.CONTROLLER_1_HOSTNAME, net_type)
 
-        address = cutils.get_primary_address_by_name(self.dbapi, address_name, net_type)
-        if (address):
+        addresses = self.dbapi.address_get_by_name(address_name)
+        address_texts = [str(address.address) for address in addresses]
+        if (address_texts):
             if ("expectedIPs" in host_endpoints["spec"].keys()):
-                host_endpoints["spec"]["expectedIPs"].append(str(address.address))
+                host_endpoints["spec"]["expectedIPs"].extend(address_texts)
             else:
-                host_endpoints["spec"].update({"expectedIPs": [str(address.address)]})
+                host_endpoints["spec"].update({"expectedIPs": address_texts})
         else:
             LOG.info(f"cannot find address:{address_name} for net_type:{net_type} expectedIPs")
 
