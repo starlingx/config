@@ -5582,7 +5582,8 @@ class ConductorManager(service.PeriodicService):
                                                                 host_uuids=ihost_uuid):
                 if db_part.device_path not in ipart_device_paths and \
                         not upgrade_in_progress and \
-                        not os.path.exists(tsc.RESTORE_IN_PROGRESS_FLAG) and \
+                        not self._verify_restore_in_progress() and \
+                        cutils.is_inventory_config_complete(self.dbapi, forihostid) and \
                         db_part.status != constants.PARTITION_CREATE_ON_UNLOCK_STATUS:
                     self.dbapi.partition_destroy(db_part.uuid)
                     LOG.info("Delete DB partition stuck: %s" % str(db_part.items()))
