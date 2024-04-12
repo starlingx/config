@@ -35,5 +35,6 @@ app = {
                           '/v1/upgrade/[a-zA-Z0-9\-]+/in_upgrade',
                           '/v1/upgrade/[a-zA-Z0-9\-]+/upgrade_in_progress',
                           '/v1/ihosts/[a-zA-Z0-9\:]+/mgmt_ip',
+                          '/v1/isystems/region_id',
                           ]
 }

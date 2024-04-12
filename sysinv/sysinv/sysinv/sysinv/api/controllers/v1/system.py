@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2021,2024 Wind River Systems, Inc.
 #
 
 import jsonpatch
@@ -24,6 +24,7 @@ import os
 import re
 import pecan
 from pecan import rest
+from pecan import expose
 import six
 import wsme
 from wsme import types as wtypes
@@ -208,6 +209,7 @@ class SystemController(rest.RestController):
     _custom_actions = {
         'detail': ['GET'],
         'mgmtvlan': ['GET'],
+        'region_id': ['GET'],
     }
 
     def __init__(self):
@@ -721,3 +723,9 @@ class SystemController(rest.RestController):
                 else:
                     return interface['vlan_id']
         return None
+
+    @expose('json')
+    def region_id(self):
+        system = pecan.request.dbapi.isystem_get_one()
+        result = {"region_name": system.region_name}
+        return result
