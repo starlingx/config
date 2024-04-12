@@ -43,9 +43,8 @@ time_left_s_by_openssl() {
         exp_date_s=$(date -d "${exp_date}" +%s)
         current_date_s=$(date +%s)
         time_left_s=$((${exp_date_s}-${current_date_s}))
-    else
-        return 1
     fi
+    echo $time_left_s
 }
 
 # Check if the trusted CA cert is consistent with system-local-ca
@@ -65,7 +64,7 @@ fi
 
 # Retrieve the serial number of the IPsec trusted CA cert.
 if [ ${ERR_CA} -eq 0 ]; then
-    serial_in_file=$(openssl x509 -in /etc/swanctl/x509ca/system-local-ca.crt -noout -serial)
+    serial_in_file=$(openssl x509 -in /etc/swanctl/x509ca/system-local-ca-1.crt -noout -serial)
 
     if [ "x${serial_in_file}" = "x"  ]; then
         LOG_error "Failed to retrieve serial number from CA cert file."
@@ -84,7 +83,7 @@ fi
 # Check if it's time to renew IPsec certificate.
 if [ ${ERR_CERT} -eq 0 ]; then
     time_left_s=$(time_left_s_by_openssl "${IPSEC_CERT_PATH}")
-    if [ $? -ne 0 ]; then
+    if [ "x${time_left_s}" = "x" ]; then
         LOG_error "Failed to retrieve expiry date from ${IPSEC_CERT_PATH}"
         ERR_CERT=1
     fi
