@@ -185,6 +185,23 @@ def create_users(keystone, users_to_create):
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=1000)
+def set_users_options(keystone, users_to_update, options):
+    """
+    Set the options for a list of users
+
+    :param keystone: keystone's client
+    :param users_to_update: list of user's names to update
+    :param options: a dictionary of options to set for the users
+    """
+
+    keystone_users = keystone.users.list()
+
+    for user in keystone_users:
+        if user.name in users_to_update:
+            keystone.users.update(user.id, options=options)
+
+
+@retry(stop_max_attempt_number=3, wait_fixed=1000)
 def grant_admin_role(keystone, users_to_create, project_name):
     roles_dict = {role.name: role.id for role in keystone.roles.list()}
     users_dict = {user.name: user.id for user in keystone.users.list()}
