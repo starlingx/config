@@ -731,7 +731,7 @@ class AppOperator(object):
         # Extract the list of images from the charts and overrides where
         # applicable. Save the list to the same location as the fluxcd manifest
         # so it can be sync'ed.
-        app.charts = self._get_list_of_charts(app)
+        app.charts = self._get_list_of_charts(app, include_disabled=True)
 
         self._plugins.activate_plugins(app)
         LOG.info("Generating application overrides to discover required images.")
@@ -1231,13 +1231,27 @@ class AppOperator(object):
         else:
             app_root_kustomize_file = constants.APP_ROOT_KUSTOMIZE_FILE
 
-        root_kustomization_path = os.path.join(
-            manifest, app_root_kustomize_file)
+        root_kustomization_path = \
+            os.path.join(manifest, app_root_kustomize_file)
+
+        # In the event include_disabed is set to True, make sure the file exists.
+        # Possible that the file has not yet been created yet.
+        if not os.path.exists(root_kustomization_path) and include_disabled:
+            LOG.info(
+                "_get_list_of_charts: Function called with include_disabled=True, "
+                "but the kustomize-orig.yaml file does not exist yet. Creating it "
+                "now."
+            )
+            original_root_kustomization_path = os.path.join(
+                manifest, constants.APP_ROOT_KUSTOMIZE_FILE
+            )
+            shutil.copy(original_root_kustomization_path, root_kustomization_path)
+
         for f in (helmrepo_path, root_kustomization_path):
             if not os.path.isfile(f):
                 raise exception.SysinvException(_(
                     "Mandatory FluxCD yaml file doesn't exist "
-                    "%s" % helmrepo_path))
+                    "%s" % f))
 
         # get global namespace
         with io.open(root_kustomization_path, 'r', encoding='utf-8') as f:
@@ -1282,19 +1296,25 @@ class AppOperator(object):
                     # Dunno if we need to return these in order respecting dependsOn?
                     # dependencies = [dep["name"] for dep in helmrelease_yaml["spec"].
                     # get(["dependsOn"], [])]
-                    chart_obj = FluxCDChart(
-                        metadata_name=metadata_name,
-                        name=metadata_name,
-                        namespace=namespace,
-                        location=location,
-                        filesystem_location=filesystem_location,
-                        release=release,
-                        chart_os_path=chart_path,
-                        chart_label=chart_name,
-                        chart_version=chart_version,
-                        helm_repo_name=helm_repo_name
-                    )
-                    charts.append(chart_obj)
+                    if (include_disabled or
+                        cutils.is_chart_enabled(self._dbapi,
+                                                app.name,
+                                                metadata_name,
+                                                namespace)):
+                        chart_obj = FluxCDChart(
+                            metadata_name=metadata_name,
+                            name=metadata_name,
+                            namespace=namespace,
+                            location=location,
+                            filesystem_location=filesystem_location,
+                            release=release,
+                            chart_os_path=chart_path,
+                            chart_label=chart_name,
+                            chart_version=chart_version,
+                            helm_repo_name=helm_repo_name
+                        )
+                        LOG.info(f"_get_list_of_charts: Adding Chart: {chart_name}")
+                        charts.append(chart_obj)
         return charts
 
     def _get_overrides_files(self, app):
@@ -2650,6 +2670,18 @@ class AppOperator(object):
 
         ready = True
         try:
+            # Helm Applciation overrides must be generated first so that any
+            # helm overrides, such as enabling a chart will be added to the app
+            # object.
+            LOG.info("Generating application overrides...")
+
+            self._update_app_status(
+                app, new_progress=constants.APP_PROGRESS_GENERATE_OVERRIDES)
+
+            helm_files = self._helm.generate_helm_application_overrides(
+                    app.sync_overrides_dir, app.name, mode, cnamespace=None,
+                    chart_info=app.charts, combined=True)
+
             app.charts = self._get_list_of_charts(app)
 
             if AppOperator.is_app_aborted(app.name):
@@ -2668,21 +2700,15 @@ class AppOperator(object):
             lifecycle_hook_info_app_apply.lifecycle_type = constants.APP_LIFECYCLE_TYPE_RBD
             self.app_lifecycle_actions(None, None, rpc_app, lifecycle_hook_info_app_apply)
 
-            self._update_app_status(
-                app, new_progress=constants.APP_PROGRESS_GENERATE_OVERRIDES)
-
             if AppOperator.is_app_aborted(app.name):
                 raise exception.KubeAppAbort()
 
-            LOG.info("Generating application overrides...")
-            helm_files = self._helm.generate_helm_application_overrides(
-                    app.sync_overrides_dir, app.name, mode, cnamespace=None,
-                    chart_info=app.charts, combined=True)
-
             if helm_files:
                 LOG.info("Application overrides generated.")
+                LOG.info("Writing fluxcd overrides...")
                 # put the helm_overrides in the chart's system-overrides.yaml
                 self._write_fluxcd_overrides(app.charts, helm_files)
+                LOG.info("Fluxcd overrides generated.")
 
                 self._update_app_status(
                     app, new_progress=constants.APP_PROGRESS_DOWNLOAD_IMAGES)
