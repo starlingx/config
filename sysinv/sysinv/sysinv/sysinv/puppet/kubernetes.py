@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2023 Wind River Systems, Inc.
+# Copyright (c) 2018-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -30,8 +30,9 @@ from sysinv.puppet import interface
 
 LOG = logging.getLogger(__name__)
 
-# Offset aligns with kubeadm DNS IP allocation scheme:
-# kubenetes/cmd/kubeadm/app/constants/constants.go:GetDNSIP
+# Offsets align with kubeadm IP allocation scheme:
+# kubenetes/cmd/kubeadm/app/constants/constants.go:GetAPIServerVirtualIP,GetDNSIP
+CLUSTER_SERVICE_API_IP_OFFSET = 1
 CLUSTER_SERVICE_DNS_IP_OFFSET = 10
 
 # certificate keyring params
@@ -64,6 +65,8 @@ class KubernetesPuppet(base.BasePuppet):
             {'platform::kubernetes::params::enabled': True,
              'platform::kubernetes::params::service_domain':
                  self._get_dns_service_domain(),
+             'platform::kubernetes::params::apiserver_cluster_ip':
+                 self._get_apiserver_cluster_ip(),
              'platform::kubernetes::params::dns_service_ip':
                  self._get_dns_service_ip(),
              'platform::kubernetes::params::upgrade_to_version':
@@ -393,6 +396,10 @@ class KubernetesPuppet(base.BasePuppet):
     def _get_dns_service_domain(self):
         # Setting this to a constant for now. Will be configurable later
         return constants.DEFAULT_DNS_SERVICE_DOMAIN
+
+    def _get_apiserver_cluster_ip(self):
+        subnet = netaddr.IPNetwork(self._get_cluster_service_subnet())
+        return str(subnet[CLUSTER_SERVICE_API_IP_OFFSET])
 
     def _get_dns_service_ip(self):
         subnet = netaddr.IPNetwork(self._get_cluster_service_subnet())
