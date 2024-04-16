@@ -453,6 +453,67 @@ class ManagerTestCase(base.DbTestCase):
         self.mocked_kube_get_kubelet_versions.start()
         self.addCleanup(self.mocked_kube_get_kubelet_versions.stop)
 
+        self.kube_get_kubernetes_version_result = "v1.26.1"
+
+        def mock_kube_get_kubernetes_version(object):
+            return self.kube_get_kubernetes_version_result
+        self.mocked_kube_get_kubernetes_version = mock.patch(
+            'sysinv.common.kubernetes.KubeOperator.kube_get_kubernetes_version',
+            mock_kube_get_kubernetes_version)
+        self.mocked_kube_get_kubernetes_version.start()
+        self.addCleanup(self.mocked_kube_get_kubernetes_version.stop)
+
+        # Mock KubeAppBundleDatabase
+        self.bundle_metadata_list = [
+            mock.MagicMock(version="1.0.5",
+                           k8s_minimum_version="1.26.1",
+                           k8s_maximum_version="1.26.1",
+                           auto_update=True,
+                           file_path="/path/to/bundle1"),
+            mock.MagicMock(version="1.1.0",
+                           k8s_minimum_version="1.26.1",
+                           k8s_maximum_version=None,
+                           auto_update=False,
+                           file_path="/path/to/bundle2"),
+            mock.MagicMock(version="1.2.0",
+                           k8s_minimum_version="1.27",
+                           k8s_maximum_version=None,
+                           auto_update=True,
+                           file_path="/path/to/bundle3"),
+            mock.MagicMock(version="1.2.5",
+                           k8s_minimum_version="1.27",
+                           k8s_maximum_version="1.28",
+                           auto_update=True,
+                           file_path="/path/to/bundle4"),
+        ]
+
+        def mock_kube_app_bundle_storage_get_all(*args):
+            return self.bundle_metadata_list
+        self.mocked_kube_app_bundle_storage_get_all = mock.patch(
+            'sysinv.conductor.manager.KubeAppBundleDatabase.get_all',
+            mock_kube_app_bundle_storage_get_all)
+        self.mocked_kube_app_bundle_storage_get_all.start()
+        self.addCleanup(self.mocked_kube_app_bundle_storage_get_all.stop)
+
+        def mock_kube_app_bundle_storage_create_all(*args):
+            return True
+        self.mocked_kube_app_bundle_storage_create_all = mock.patch(
+            'sysinv.conductor.manager.KubeAppBundleDatabase.create_all',
+            mock_kube_app_bundle_storage_create_all)
+        self.mocked_kube_app_bundle_storage_create_all.start()
+        self.addCleanup(self.mocked_kube_app_bundle_storage_create_all.stop)
+
+        # Mock app_metadata.py
+        self.extract_bundle_metadata_result = {"key": "value"}
+
+        def mock_bundle_metadata(obj):
+            return self.extract_bundle_metadata_result
+        self.mocked_extract_bundle_metadata = mock.patch(
+            'sysinv.common.app_metadata.extract_bundle_metadata',
+            mock_bundle_metadata)
+        self.mocked_extract_bundle_metadata.start()
+        self.addCleanup(self.mocked_extract_bundle_metadata.stop)
+
         # Mock the KubeVersion
         self.get_kube_versions_result = [
             {'version': 'v1.41.1',
@@ -528,7 +589,6 @@ class ManagerTestCase(base.DbTestCase):
         self.service._update_pxe_config = mock.Mock()
         self.service._ceph_mon_create = mock.Mock()
         self.service._sx_to_dx_post_migration_actions = mock.Mock()
-        self.service._populate_app_bundle_metadata = mock.Mock()
         self.service._initialize_ostree_inotify = mock.Mock()
         self.alarm_raised = False
         self.kernel_alarms = {}
@@ -5309,6 +5369,165 @@ class ManagerTestCase(base.DbTestCase):
                                                       ihost_hostname0))
         self.assertFalse(self._is_kernel_alarm_raised(alarm_id,
                                                       ihost_hostname1))
+
+    def get_app_object_moked_and_call_start(self):
+        self.service.start()
+
+        app = mock.MagicMock()
+        app.name = "test_app"
+        app.app_version = "1.0.0"
+        app.app_metadata = {
+            constants.APP_METADATA_DOWNGRADES: {
+                constants.APP_METADATA_AUTO_DOWNGRADE: "True"
+            }
+        }
+
+        return app
+
+    # For unit test to get_app_bundle function, check that the return value of the
+    # kube_get_kubelet_versions and KubeAppBundleDatabase.get_all functions were
+    # mocked within the setUp function
+    def test_get_app_bundle_for_update(self):
+        app_moked = self.get_app_object_moked_and_call_start()
+
+        # Test when k8s_version is None
+        result = self.service._get_app_bundle_for_update(app_moked)
+        # It should be if 1.1.0 auto_update was not false
+        self.assertEqual(result.version, "1.0.5")
+
+    def test_get_app_bundle_for_update_k8s_version(self):
+        app_moked = self.get_app_object_moked_and_call_start()
+
+        # Test when k8s_version is specified
+        result = self.service._get_app_bundle_for_update(app_moked, k8s_version="v1.27.5")
+        self.assertEqual(result.version, "1.2.5")
+        # It was not version 1.2.5 because this metadata supports at most
+        # version 1.20.0 of kubernets
+        result = self.service._get_app_bundle_for_update(app_moked, k8s_version="v1.29.2")
+        self.assertEqual(result.version, "1.2.0")
+
+    def test_get_app_bundle_for_update_k8s_upgrade_timing(self):
+        app_moked = self.get_app_object_moked_and_call_start()
+
+        # Test with k8s_upgrade_timing key
+        result = self.service._get_app_bundle_for_update(
+            app_moked, k8s_version=None, k8s_upgrade_timing=constants.APP_METADATA_TIMING_PRE)
+        # It should be if 1.1.0 auto_update was not false
+        self.assertEqual(result.version, "1.0.5")
+
+        # Test with k8s_upgrade_timing key
+        result = self.service._get_app_bundle_for_update(
+            app_moked, k8s_version=None, k8s_upgrade_timing=constants.APP_METADATA_TIMING_POST)
+        # It should be if 1.1.0 auto_update was not false
+        self.assertEqual(result.version, "1.0.5")
+
+    def test_get_app_bundle_for_update_downgrade(self):
+        app_moked = self.get_app_object_moked_and_call_start()
+
+        # Using a higher app version than is available. The function must be able
+        # to return the largest version available.
+        app_moked.app_version = "1.2.3"
+        result = self.service._get_app_bundle_for_update(app_moked)
+        self.assertEqual(result.version, "1.1.0")
+
+    def test_get_app_bundle_for_update_return_none(self):
+        app_moked = self.get_app_object_moked_and_call_start()
+
+        # Test when k8s_version lower than what is available.
+        # This forces the return None
+        result = self.service._get_app_bundle_for_update(app_moked, k8s_version="v1.17.0")
+        self.assertEqual(result, None)
+
+    @mock.patch('glob.glob')
+    @mock.patch('sysinv.common.app_metadata.extract_bundle_metadata')
+    @mock.patch('sysinv.conductor.manager.ConductorManager._update_cached_app_bundles_set')
+    def test_populate_app_bundle_metadata(self,
+                                          mock_update_cached_app_bundles_set,
+                                          mock_extract_bundle_metadata,
+                                          mock_glob):
+
+        self.service._kube_app_bundle_storage = mock.MagicMock()
+        mock_bundle_data = {"key": "value"}
+        mock_extract_bundle_metadata.return_value = mock_bundle_data
+        mock_glob.return_value = ["example_bundle.tgz"]
+
+        self.service._populate_app_bundle_metadata()
+
+        # Assert that the dependencies were called with the correct arguments
+        mock_extract_bundle_metadata.assert_called_once_with("example_bundle.tgz")
+        mock_update_cached_app_bundles_set.assert_called_once()
+        self.service._kube_app_bundle_storage.create_all.assert_called_once_with(
+            [mock_bundle_data])
+
+    @mock.patch('sysinv.common.app_metadata.extract_bundle_metadata')
+    def teste_add_app_bundle(self, mock_extract_bundle_metadata):
+
+        self.service._kube_app_bundle_storage = mock.MagicMock()
+        mock_bundle_data = {"key": "value"}
+        mock_extract_bundle_metadata.return_value = mock_bundle_data
+        self.service._add_app_bundle("full_bundle_path")
+
+        # Assert that the dependencies were called with the correct arguments
+        mock_extract_bundle_metadata.assert_called_once_with("full_bundle_path")
+        self.service._kube_app_bundle_storage.create.assert_called_once_with(mock_bundle_data)
+
+    def test_remove_app_bundle(self):
+
+        self.service._kube_app_bundle_storage = mock.MagicMock()
+        self.service._remove_app_bundle("full_bundle_path")
+
+        # Assert that the dependencies were called with the correct arguments
+        self.service._kube_app_bundle_storage\
+            .destroy_by_file_path.assert_called_once_with("full_bundle_path")
+
+    def test_update_cached_app_bundles_set(self):
+        # Ensure that the cache is initially empty
+        self.assertEqual(len(self.service._cached_app_bundle_set), 0)
+
+        self.service.start()
+        # Call the function to update the cache
+        self.service._update_cached_app_bundles_set()
+
+        # Ensure that the cache has been updated correctly
+        expected_set = {"/path/to/bundle1",
+                        "/path/to/bundle2",
+                        "/path/to/bundle3",
+                        "/path/to/bundle4"}
+        self.assertEqual(self.service._cached_app_bundle_set, expected_set)
+
+    @mock.patch('glob.glob')
+    @mock.patch('sysinv.conductor.manager.ConductorManager._add_app_bundle')
+    @mock.patch('sysinv.conductor.manager.ConductorManager._remove_app_bundle')
+    @mock.patch('sysinv.conductor.manager.ConductorManager._update_cached_app_bundles_set')
+    def test_update_app_bundles_storage(self,
+                                        mock_update_cached_app_bundles_set,
+                                        mock_remove_app_bundle,
+                                        mock_add_app_bundle,
+                                        mock_glob):
+
+        self.service._cached_app_bundle_set = [
+            "/path/to/bundle1",
+            "/path/to/bundle2",
+            "/path/to/bundle3",
+            "/path/to/bundle4",
+        ]
+        bundle_path_list = [
+            "/path/to/bundle1",
+            "/path/to/bundle3",
+            "/path/to/bundle4",
+            "/path/to/bundle5",
+        ]
+
+        mock_glob.return_value = bundle_path_list
+        self.service._update_app_bundles_storage()
+
+        # For this test was remove /path/to/bundle3 and add /path/to/bundle5
+        mock_add_app_bundle.assert_called_once_with("/path/to/bundle5")
+        mock_remove_app_bundle.assert_called_once_with("/path/to/bundle2")
+
+        # ou must call the _update_cached_app_bundles_set function to
+        # update only 1 time
+        mock_update_cached_app_bundles_set.assert_called_once()
 
 
 @mock.patch('sysinv.conductor.manager.verify_files', lambda x, y: True)
