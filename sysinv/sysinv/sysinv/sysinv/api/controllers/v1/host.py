@@ -2047,6 +2047,19 @@ class HostController(rest.RestController):
                           "name={}, value={}. ").format(
                               capability, new_value))
 
+    def _get_mgmt_ip(self, hostname):
+        # Notify maintenance about updated mgmt_ip
+        # During mgmt network reconfiguration, do not change the mgmt IP
+        # in maintencance as it will be updated after the unlock.
+        if os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_ONGOING):
+            return cutils.gethostbyname(constants.CONTROLLER_0_FQDN)
+        else:
+            address_name = cutils.format_address_name(hostname,
+                                                    constants.NETWORK_TYPE_MGMT)
+            address = utils.get_primary_address_by_name(address_name,
+                                                        constants.NETWORK_TYPE_MGMT, True)
+            return address.address
+
     def _patch(self, uuid, patch):
         log_start = cutils.timestamped("ihost_patch_start")
 
@@ -2299,16 +2312,7 @@ class HostController(rest.RestController):
                 ihost_obj['uuid'], {'capabilities': ihost_obj['capabilities']})
 
             # Notify maintenance about updated mgmt_ip
-            # During mgmt network reconfiguration, do not change the mgmt IP
-            # in maintencance as it will be updated after the unlock.
-            if os.path.isfile(tsc.MGMT_NETWORK_RECONFIGURATION_ONGOING):
-                ihost_obj['mgmt_ip'] = cutils.gethostbyname(constants.CONTROLLER_0_FQDN)
-            else:
-                address_name = cutils.format_address_name(ihost_obj.hostname,
-                                                        constants.NETWORK_TYPE_MGMT)
-                address = utils.get_primary_address_by_name(address_name,
-                                                            constants.NETWORK_TYPE_MGMT, True)
-                ihost_obj['mgmt_ip'] = address.address
+            ihost_obj['mgmt_ip'] = self._get_mgmt_ip(ihost_obj.hostname)
 
             hostupdate.notify_mtce = True
 
@@ -2340,6 +2344,10 @@ class HostController(rest.RestController):
             if nonmtc_change_count > 0:
                 LOG.info("%s Action %s perform notify_mtce" %
                          (hostupdate.displayid, myaction))
+
+                # Notify maintenance about updated mgmt_ip
+                ihost_obj['mgmt_ip'] = self._get_mgmt_ip(ihost_obj.hostname)
+
                 new_ihost_mtc = ihost_obj.as_dict()
                 new_ihost_mtc = cutils.removekeys_nonmtce(new_ihost_mtc)
 
