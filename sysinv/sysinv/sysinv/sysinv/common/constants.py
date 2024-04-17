@@ -2512,3 +2512,17 @@ MGMT_IPSEC_DISABLED = 'disabled'
 # If True, makes outputs compatible with single stack versions of ansible-playbooks and stx-puppet.
 # Shall be removed when the other projects are updated.
 DUAL_STACK_COMPATIBILITY_MODE = True
+
+# certificate constants
+VALIDITY = "Validity"
+NOT_BEFORE = "Not Before"
+NOT_AFTER = "Not After"
+RESIDUAL_TIME = "Residual Time"
+NAMESPACE = "Namespace"
+SECRET = "Secret"
+RENEWAL = "Renewal"
+SECRET_TYPE = "Secret Type"
+FILEPATH = "File Path"
+AUTOMATIC = "Automatic"
+MANUAL = "Manual"
+ISSUER = "Issuer"

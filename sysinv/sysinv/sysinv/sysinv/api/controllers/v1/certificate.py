@@ -185,7 +185,9 @@ class CertificateController(rest.RestController):
     """REST controller for certificates."""
 
     _custom_actions = {'certificate_install': ['POST'],
-                       'certificate_renew': ['POST']}
+                       'certificate_renew': ['POST'],
+                       'get_all_certs': ['GET'],
+                       'get_all_k8s_certs': ['GET']}
 
     def __init__(self):
         self._api_token = None
@@ -600,6 +602,36 @@ class CertificateController(rest.RestController):
         LOG.info("certificate %s" % log_end)
 
         return Certificate.convert_with_links(certificate)
+
+    @expose('json')
+    @cutils.synchronized(LOCK_NAME)
+    def get_all_certs(self, expired=False, soon_to_expiry=None):
+        cert_data = pecan.request.rpcapi.get_all_certs(pecan.request.context)
+        return self._get_cert_data(cert_data, expired, soon_to_expiry)
+
+    @expose('json')
+    @cutils.synchronized(LOCK_NAME)
+    def get_all_k8s_certs(self, expired=False, soon_to_expiry=None):
+        cert_data = pecan.request.rpcapi.get_all_k8s_certs(pecan.request.context)
+        return self._get_cert_data(cert_data, expired, soon_to_expiry)
+
+    @staticmethod
+    def _get_cert_data(cert_data, expired, soon_to_expiry):
+        expired_certs = {}
+        if expired:
+            for key, val in cert_data.items():
+                no_of_days = int(val[constants.RESIDUAL_TIME].split('d')[0])
+                if no_of_days < 0:
+                    expired_certs[key] = val
+            return expired_certs
+        soon_to_expiry_certs = {}
+        if soon_to_expiry:
+            for key, val in cert_data.items():
+                no_of_days = int(val[constants.RESIDUAL_TIME].split('d')[0])
+                if 0 <= no_of_days <= int(soon_to_expiry):
+                    soon_to_expiry_certs[key] = val
+            return soon_to_expiry_certs
+        return cert_data
 
 
 def _check_endpoint_domain_exists():

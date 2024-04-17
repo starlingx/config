@@ -19182,6 +19182,158 @@ class ConductorManager(service.PeriodicService):
     def _audit_prune_stale_backup_alarms(self, context):
         self._prune_stale_backup_alarms(context)
 
+    def get_all_certs(self, context):
+        """
+            list all the platform certificates with the all the certificate values
+            residual time, issue date, expiry date, issuer, subject, namespace,
+            secret, renewal and secret type
+        """
+        certs = [("ssl", constants.MANUAL, constants.SSL_PEM_FILE),
+                  ("docker_registry", constants.MANUAL, constants.DOCKER_REGISTRY_CERT_FILE),
+                  (constants.OPENLDAP_CERT_SECRET_NAME, constants.MANUAL,
+                    "/etc/ldap/certs/openldap-cert.crt"),
+                  ("dc-adminep-root-ca", constants.AUTOMATIC, constants.DC_ROOT_CA_CERT_PATH),
+                  ("dc-adminep-server", constants.AUTOMATIC, constants.ADMIN_EP_CERT_FILENAME),
+                  ("openstack", constants.MANUAL, constants.OPENSTACK_CERT_FILE),
+                  ("openstack_ca", constants.MANUAL, constants.OPENSTACK_CERT_CA_FILE),
+                  ("etcd-ca", constants.MANUAL, constants.ETCD_ROOTCA_FILE),
+                  ("etcd-client", constants.AUTOMATIC, "/etc/etcd/etcd-client.crt"),
+                  ("etcd-server", constants.AUTOMATIC, "/etc/etcd/etcd-server.crt"),
+                  ("apiserver-etcd-client", constants.AUTOMATIC,
+                   "/etc/kubernetes/pki/apiserver-etcd-client.crt"),
+                  ("kubelet-client", constants.AUTOMATIC, "/var/lib/kubelet/pki/kubelet-client-current.pem"),
+                  ("kubernetes-root-ca", constants.MANUAL, constants.KUBERNETES_ROOTCA_FILE),
+                  ("apiserver", constants.AUTOMATIC, "/etc/kubernetes/pki/apiserver.crt"),
+                  ("apiserver-kubelet-client", constants.AUTOMATIC,
+                   "/etc/kubernetes/pki/apiserver-kubelet-client.crt"),
+                  ("front-proxy-client", constants.AUTOMATIC, "/etc/kubernetes/pki/front-proxy-client.crt"),
+                  ("front-proxy-ca", constants.AUTOMATIC, "/etc/kubernetes/pki/front-proxy-ca.crt")]
+        kube_operator = kubernetes.KubeOperator()
+        certificates = kube_operator.list_custom_resources("cert-manager.io", "v1", "certificates")
+        k8s_secrets_list = [cert["spec"]["secretName"] for cert in certificates]
+
+        certs_info = {}
+        ssl_ca_path = constants.SSL_CERT_CA_LIST_SHARED_DIR
+        for cert in os.listdir(ssl_ca_path):
+            certs.append((cert, constants.MANUAL, os.path.join(ssl_ca_path, cert)))
+        for cert_name, renewal, cert_path in certs:
+            if not os.path.exists(cert_path):
+                continue
+
+            cert_obj = cutils.get_certificate_from_file(cert_path)
+            certs_info[cert_name] = cutils.get_cert_values(cert_obj)
+            certs_info[cert_name][constants.FILEPATH] = cert_path
+            certs_info[cert_name][constants.RENEWAL] = renewal
+
+        for secret in [constants.RESTAPI_CERT_SECRET_NAME,
+                       constants.REGISTRY_CERT_SECRET_NAME,
+                       constants.OPENLDAP_CERT_SECRET_NAME]:
+            ns = constants.CERT_NAMESPACE_PLATFORM_CERTS
+            if kube_operator.kube_get_secret(secret, ns):
+                if secret == constants.RESTAPI_CERT_SECRET_NAME:
+                    certs_info[secret] = certs_info["ssl"]
+                    del certs_info["ssl"]
+                elif secret == constants.REGISTRY_CERT_SECRET_NAME:
+                    certs_info[secret] = certs_info["docker_registry"]
+                    del certs_info["docker_registry"]
+                certs_info[secret][constants.NAMESPACE] = ns
+                certs_info[secret][constants.SECRET] = secret
+            if secret in k8s_secrets_list:
+                certs_info[secret][constants.RENEWAL] = constants.AUTOMATIC
+
+        secrets = []
+        # oidc app certs
+        oidc_ns = "kube-system"
+        app_name = "oidc-auth-apps"
+        try:
+            app = kubeapp_obj.get_by_name(context, app_name)
+            oidc_client_db_chart = objects.helm_overrides.get_by_appid_name(context, app.id,
+                                                                             "oidc-client", oidc_ns)
+            dex_db_chart = objects.helm_overrides.get_by_appid_name(context, app.id, "dex", oidc_ns)
+
+            if oidc_client_db_chart.user_overrides and dex_db_chart.user_overrides:
+                client_user_overrides = yaml.load(oidc_client_db_chart.user_overrides)
+                dex_user_overrides = yaml.load(dex_db_chart.user_overrides)
+                oidc_ca_issuer = None
+                if "issuer_root_ca_secret" in client_user_overrides["config"]:
+                    oidc_ca_issuer = client_user_overrides["config"]["issuer_root_ca_secret"]
+                secrets.append((oidc_ca_issuer, oidc_ns))
+                if "volumes" in dex_user_overrides:
+                    for entry in dex_user_overrides["volumes"]:
+                        secrets.append((entry["secret"]["secretName"], oidc_ns))
+        except exception.KubeAppNotFound:
+            LOG.info("%s app not present" % app_name)
+
+        # system-local-ca secret
+        secrets.append(("system-local-ca", "cert-manager"))
+
+        # WRA secrets
+        wra_ca_secrets = ["mon-elastic-services-ca-crt", "mon-elastic-services-extca-crt"]
+        wra_ns = "monitor"
+        wra_elastic_svc_secret = "mon-elastic-services-secrets"
+        secrets.append((wra_elastic_svc_secret, wra_ns))
+        wra_secrets = cutils.get_secrets_info(secrets)
+        for ca_secret in wra_ca_secrets:
+            if ca_secret in k8s_secrets_list:
+                if ca_secret == "mon-elastic-services-ca-crt":
+                    key = f"{wra_elastic_svc_secret}/ca.crt"
+                elif ca_secret == "mon-elastic-services-extca-crt":
+                    key = f"{wra_elastic_svc_secret}/ext-ca.crt"
+                if key in wra_secrets:
+                    wra_secrets[key][constants.RENEWAL] = constants.AUTOMATIC
+
+        certs_info.update(wra_secrets)
+
+        # dc endpoint certificates
+        system = self.dbapi.isystem_get_one()
+        system_dc_role = system.get('distributed_cloud_role', None)
+        if system_dc_role:
+            if system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+                ca_cert = "dc-adminep-root-ca-certificate"
+                server_cert = "dc-adminep-certificate"
+                ns = "dc-cert"
+            elif system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+                ca_cert = "sc-adminep-root-ca-certificate"
+                server_cert = "sc-adminep-certificate"
+                ns = "sc-cert"
+            certs_info[ca_cert] = certs_info["dc-adminep-root-ca"]
+            certs_info[server_cert] = certs_info["dc-adminep-server"]
+            # ns,secret only applies to systemcontroller for "dc-adminep-root-ca-certificate" as there is
+            # a corresponding secret, on subcloud there is no "sc-adminep-root-ca-certificate" secret, it
+            # is derived from file path
+            if system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+                certs_info[ca_cert][constants.NAMESPACE] = ns
+                certs_info[ca_cert][constants.SECRET] = ca_cert
+            certs_info[server_cert][constants.NAMESPACE] = ns
+            certs_info[server_cert][constants.SECRET] = server_cert
+            del certs_info["dc-adminep-root-ca"]
+            del certs_info["dc-adminep-server"]
+
+        # user account certificates
+        user_account_certs = [("admin_conf_client", "/etc/kubernetes/admin.conf"),
+                              ("scheduler_conf_client", "/etc/kubernetes/scheduler.conf"),
+                              ("controller_manager_client", "/etc/kubernetes/controller-manager.conf")]
+        for cert_name, cert_path in user_account_certs:
+            with open(cert_path, 'r') as f:
+                data = yaml.safe_load(f)
+                client_cert = base64.decode_as_bytes(
+                    data["users"][0]["user"]["client-certificate-data"])
+                cert_obj = cutils.extract_certs_from_pem(client_cert)[0]
+                certs_info[cert_name] = cutils.get_cert_values(cert_obj)
+                certs_info[cert_name][constants.FILEPATH] = cert_path
+                certs_info[cert_name][constants.RENEWAL] = constants.AUTOMATIC
+
+        LOG.debug(certs_info)
+        return certs_info
+
+    def get_all_k8s_certs(self, context):
+        """
+            list all the k8s tls/opaque certificates with the all the certificate values
+            residual time, issue date, expiry date, issuer, subject, namespace,
+            secret, renewal and secret type
+        """
+        return cutils.get_secrets_info()
+
 
 def device_image_state_sort_key(dev_img_state):
     if dev_img_state.bitstream_type == dconstants.BITSTREAM_TYPE_ROOT_KEY:

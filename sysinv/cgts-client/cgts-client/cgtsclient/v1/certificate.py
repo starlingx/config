@@ -41,3 +41,23 @@ class CertificateManager(base.Manager):
         path = self._path(uuid)
         _, body = self.api.json_request('DELETE', path)
         return body
+
+    def get_all_certs(self, expired=False, soon_to_expiry=None):
+        if expired:
+            path = f'{self._path("get_all_certs")}?expired=True'
+        elif soon_to_expiry:
+            path = f'{self._path("get_all_certs")}?soon_to_expiry={soon_to_expiry}'
+        else:
+            path = self._path("get_all_certs")
+        _, body = self.api.json_request('GET', path)
+        return body
+
+    def get_all_k8s_certs(self, expired=False, soon_to_expiry=None):
+        if expired:
+            path = f'{self._path("get_all_k8s_certs")}?expired=True'
+        elif soon_to_expiry:
+            path = f'{self._path("get_all_k8s_certs")}?soon_to_expiry={soon_to_expiry}'
+        else:
+            path = self._path("get_all_k8s_certs")
+        _, body = self.api.json_request('GET', path)
+        return body
