@@ -34,58 +34,12 @@ def _print_certificate_show(certificate):
     utils.print_tuple_list(data)
 
 
-@utils.arg('certificate_uuid', metavar='<certificate_uuid>',
-           help="UUID of certificate")
-def do_certificate_show(cc, args):
-    """Show Certificate details."""
-    certificate = cc.certificate.get(args.certificate_uuid)
-    if certificate:
-        _print_certificate_show(certificate)
-    else:
-        print("No Certificates installed")
-
-
-def do_certificate_list(cc, args):
-    """List certificates."""
-    certificates = cc.certificate.list()
-    fields = ['uuid', 'certtype', 'expiry_date', 'subject']
-    field_labels = fields
-    for certificate in certificates:
-        if certificate.subject and len(certificate.subject) > 20:
-            certificate.subject = certificate.subject[:20] + "..."
-    utils.print_list(certificates, fields, field_labels, sortby=0)
-
-
-@utils.arg('certificate_file',
-           metavar='<certificate_file>',
-           help='Path to Certificate file (PEM format) to install. '
-                'WARNING: For security reasons, the original certificate_file '
-                'will be removed. Installing an invalid certificate '
-                'could cause service interruption.')
-@utils.arg('-p', '--passphrase',
-           metavar='<passphrase>',
-           help='The passphrase for the PEM file')
-@utils.arg('-m', '--mode',
-           metavar='<mode>',
-           help="optional mode: 'docker_registry', "
-                "'openstack', 'openstack_ca', 'ssl_ca'. "
-                "Default is 'ssl'.")
-def do_certificate_install(cc, args):
-    """Install certificate."""
-
-    certificate_file = args.certificate_file
+def _install_cert(cc, certificate_file, data):
     try:
         sec_file = open(certificate_file, 'rb')
     except Exception:
         raise exc.CommandError("Error: Could not open file %s." %
                                certificate_file)
-
-    data = {'passphrase': args.passphrase,
-            'mode': args.mode}
-
-    if data['mode'] in ['openldap', 'openldap_ca']:
-        raise exc.CommandError('Warning: Invalid mode: %s' % data['mode'])
-
     has_private_key = False
     try:
         with open(certificate_file, 'r') as reader:
@@ -128,18 +82,146 @@ def do_certificate_install(cc, args):
 
 
 @utils.arg('certificate_uuid', metavar='<certificate_uuid>',
-           help="UUID of certificate to uninstall")
+           help="UUID of certificate")
+def do_certificate_show(cc, args):
+    """Show Certificate details."""
+    certificate = cc.certificate.get(args.certificate_uuid)
+    if certificate:
+        _print_certificate_show(certificate)
+    else:
+        print("No Certificates installed")
+
+
+def do_certificate_list(cc, args):
+    """List certificates."""
+    certificates = cc.certificate.list()
+    fields = ['uuid', 'certtype', 'expiry_date', 'subject']
+    field_labels = fields
+    for certificate in certificates:
+        if certificate.subject and len(certificate.subject) > 20:
+            certificate.subject = certificate.subject[:20] + "..."
+    utils.print_list(certificates, fields, field_labels, sortby=0)
+
+
+@utils.arg('certificate_file',
+           metavar='<certificate_file>',
+           help='Path to Certificate file (PEM format) to install. '
+                'WARNING: For security reasons, the original certificate_file '
+                'will be removed. Installing an invalid certificate '
+                'could cause service interruption.')
+@utils.arg('-p', '--passphrase',
+           metavar='<passphrase>',
+           help='The passphrase for the PEM file')
 @utils.arg('-m', '--mode',
            metavar='<mode>',
-           help="Supported mode: 'ssl_ca'.")
-def do_certificate_uninstall(cc, args):
-    """Uninstall certificate."""
+           help="optional mode: 'server', 'ca'. ")
+def do_os_certificate_install(cc, args):
+    """Install certificate."""
+    certificate_file = args.certificate_file
 
-    supported_modes = ['ssl_ca']
-    if args.mode not in supported_modes:
-        msg = ("Unsupported mode: {}\nPlease use certificate-install"
-               " instead to update the existing certificate").format(args.mode)
+    data = {'passphrase': args.passphrase,
+            'mode': args.mode}
+
+    if not data['mode']:
+        raise exc.CommandError('Warning: Need to specify a valid mode: server or ca')
+
+    if data['mode'] == 'server':
+        data['mode'] = 'openstack'
+    elif data['mode'] == 'ca':
+        data['mode'] = 'openstack_ca'
+    else:
+        raise exc.CommandError('Warning: Invalid mode: %s' % data['mode'])
+
+    _install_cert(cc, certificate_file, data)
+
+
+def do_os_certificate_list(cc, args):
+    """List openstack certificates."""
+    os_cert_types = ['openstack', 'openstack_ca']
+    certificates = []
+    for certificate in cc.certificate.list():
+        if certificate.certtype in os_cert_types:
+            if certificate.certtype == "openstack":
+                certificate.certtype = "server"
+            elif certificate.certtype == "openstack_ca":
+                certificate.certtype = "ca"
+            certificates.append(certificate)
+
+    fields = ['uuid', 'certtype', 'expiry_date', 'subject']
+    field_labels = fields
+    for certificate in certificates:
+        if certificate.subject and len(certificate.subject) > 20:
+            certificate.subject = certificate.subject[:20] + "..."
+    utils.print_list(certificates, fields, field_labels, sortby=0)
+
+
+@utils.arg('certificate_uuid', metavar='<certificate_uuid>',
+           help="UUID of certificate")
+def do_os_certificate_show(cc, args):
+    """Show Openstack Certificate details."""
+    certificate = cc.certificate.get(args.certificate_uuid)
+    if certificate.certtype in ['openstack', 'openstack_ca']:
+        if certificate.certtype == "openstack":
+            certificate.certtype = "server"
+        elif certificate.certtype == "openstack_ca":
+            certificate.certtype = "ca"
+        _print_certificate_show(certificate)
+    else:
+        print('No certificate of type "openstack" is installed '
+              'with this uuid: %s' % (args.certificate_uuid))
+
+
+@utils.arg('certificate_file',
+           metavar='<certificate_file>',
+           help='Path to Certificate file (PEM format) to install. '
+                'WARNING: For security reasons, the original certificate_file '
+                'will be removed. Installing an invalid certificate '
+                'could cause service interruption.')
+@utils.arg('-p', '--passphrase',
+           metavar='<passphrase>',
+           help='The passphrase for the PEM file')
+def do_ca_certificate_install(cc, args):
+    """Install certificate."""
+    certificate_file = args.certificate_file
+
+    data = {'passphrase': args.passphrase,
+            'mode': 'ssl_ca'}
+
+    _install_cert(cc, certificate_file, data)
+
+
+@utils.arg('certificate_uuid', metavar='<certificate_uuid>',
+           help="UUID of certificate to uninstall")
+def do_ca_certificate_uninstall(cc, args):
+    """Uninstall ca certificate."""
+    certificate = cc.certificate.get(args.certificate_uuid)
+    if certificate.certtype == 'ssl_ca':
+        cc.certificate.certificate_uninstall(args.certificate_uuid)
+        print('Uninstalled certificate: %s' % (args.certificate_uuid))
+    else:
+        msg = "Only ssl_ca type certs can be uninstalled using this command"
         raise exc.CommandError(msg)
 
-    cc.certificate.certificate_uninstall(args.certificate_uuid)
-    print('Uninstalled certificate: %s' % (args.certificate_uuid))
+
+def do_ca_certificate_list(cc, args):
+    """List certificates."""
+    certificates = [certificate for certificate in cc.certificate.list()
+                    if certificate.certtype == 'ssl_ca']
+    fields = ['uuid', 'expiry_date', 'subject']
+    field_labels = fields
+    for certificate in certificates:
+        if certificate.subject and len(certificate.subject) > 20:
+            certificate.subject = certificate.subject[:20] + "..."
+    utils.print_list(certificates, fields, field_labels, sortby=0)
+
+
+@utils.arg('certificate_uuid', metavar='<certificate_uuid>',
+           help="UUID of certificate")
+def do_ca_certificate_show(cc, args):
+    """Show Certificate details."""
+    certificate = cc.certificate.get(args.certificate_uuid)
+    if certificate.certtype == 'ssl_ca':
+        _print_certificate_show(certificate)
+    else:
+        print('No certificate of type "ssl_ca" is installed with '
+              'this uuid: %s' % (args.certificate_uuid))
