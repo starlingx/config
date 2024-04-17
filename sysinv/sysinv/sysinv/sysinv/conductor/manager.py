@@ -379,6 +379,14 @@ class ConductorManager(service.PeriodicService):
         self._do_detect_swact = True
 
         # Guard for a function that should run only once per conductor start
+        # A call to _generate_dnsmasq_hosts_file is added to the
+        # _controller_config_active_apply audit to ensure that
+        # it is run on conductor process startup. This variable
+        # is set True once called to avoid it being called on
+        # subsequent audits.
+        self._generate_dnsmasq_hosts_file_called = False
+
+        # Guard for a function that should run only once per conductor start
         self._has_loaded_missing_apps_metadata = False
 
         self.apps_metadata = {constants.APP_METADATA_APPS: {},
@@ -1102,6 +1110,7 @@ class ConductorManager(service.PeriodicService):
             # Create the ihost (if necessary).
             ihost_dict = {'mgmt_mac': mac}
             self.create_ihost(context, ihost_dict, reason='dhcp pxeboot')
+            self._generate_dnsmasq_hosts_file()
 
     def handle_dhcp_lease_from_clone(self, context, mac):
         """Handle dhcp request from a cloned controller-1.
@@ -6735,6 +6744,11 @@ class ConductorManager(service.PeriodicService):
     def _controller_config_active_apply(self, context):
         """Check whether target config has been applied to active
            controller to run postprocessing"""
+
+        if not self._generate_dnsmasq_hosts_file_called:
+            # Refresh the dnsmasq.hosts file on process restart
+            self._generate_dnsmasq_hosts_file()
+            self._generate_dnsmasq_hosts_file_called = True
 
         # check whether target config may be finished based upon whether
         # the active controller has the active config target
