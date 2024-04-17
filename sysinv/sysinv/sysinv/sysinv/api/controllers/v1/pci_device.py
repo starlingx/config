@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2022 Wind River Systems, Inc.
+# Copyright (c) 2015-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -387,6 +387,23 @@ def _check_field(field):
 
 def _check_device_sriov(device, host):
     sriov_update = False
+    if (device['pdevice_id'] in constants.PCI_ALIAS_SRIOV_ENABLED_QAT_DEVICE_IDS):
+        LOG.debug("sriov enabled qat dev: %s" % device['pdevice_id'])
+        current_device = pecan.request.dbapi.pci_device_get(device['pciaddr'],
+                                                        hostid=host['id'])
+        # Because of the limitations of the Intel qat_service code, only max number
+        # of VFs configuration is supported. Currently it is not allowed to modify
+        # the number of VFs and any other configuration using sysinv. Qat is already
+        # initialized with the max number of VFs at the time of bootstrap, so
+        # returning from here without doing any configuration.
+        msg = (_("QAT device is already initialized, "
+                    "further modification not allowed. Details:- "
+                    "devicename: {}, enabled status: {}, driver: {}, "
+                    "VF driver: vfio, sriov numvfs: {}").format(
+                    current_device['name'], current_device['enabled'],
+                    current_device['driver'], current_device['sriov_numvfs']))
+        raise wsme.exc.ClientSideError(msg)
+
     if (device['pdevice_id'] in dconstants.SRIOV_ENABLED_FEC_DEVICE_IDS and
             host.invprovision not in [constants.UPGRADING, constants.PROVISIONED]):
         raise wsme.exc.ClientSideError(_("Cannot configure device %s "

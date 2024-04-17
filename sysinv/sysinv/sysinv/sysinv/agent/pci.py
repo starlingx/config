@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -39,7 +39,13 @@ KNOWN_PCI_DEVICES = [{"vendor_id": constants.NOVA_PCI_ALIAS_QAT_PF_VENDOR,
                       "device_id": constants.NOVA_PCI_ALIAS_QAT_C62X_PF_DEVICE,
                       "class_id": constants.NOVA_PCI_ALIAS_QAT_CLASS},
                      {"class_id": constants.NOVA_PCI_ALIAS_GPU_CLASS},
-                     {"class_id": dconstants.PCI_DEVICE_CLASS_FPGA}]
+                     {"class_id": dconstants.PCI_DEVICE_CLASS_FPGA},
+                     {"vendor_id": constants.PCI_ALIAS_QAT_VENDOR,
+                      "device_id": constants.PCI_ALIAS_QAT_4XXX_PF_DEVICE,
+                      "class_id": constants.PCI_ALIAS_QAT_CLASS},
+                     {"vendor_id": constants.PCI_ALIAS_QAT_VENDOR,
+                      "device_id": constants.PCI_ALIAS_QAT_401XX_PF_DEVICE,
+                      "class_id": constants.PCI_ALIAS_QAT_CLASS}]
 
 # PCI-SIG 0x06 bridge devices to not inventory.
 IGNORE_BRIDGE_PCI_CLASSES = ['bridge', 'isa bridge', 'host bridge']
