@@ -61,11 +61,6 @@ class PlatformFirewallTestCaseMixin(base.PuppetTestCaseMixin):
     def _setup_configuration(self):
         pass
 
-    def _find_network_by_type(self, networktype):
-        for network in self.networks:
-            if network['type'] == networktype:
-                return network
-
     def _get_network_ids_by_type(self, networktype):
         if isinstance(networktype, list):
             networktypelist = networktype

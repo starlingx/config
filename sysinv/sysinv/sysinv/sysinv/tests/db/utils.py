@@ -730,31 +730,39 @@ def create_test_address_pool(**kw):
     controller1_address = address_pool.pop('controller1_address', None)
     gateway_address = address_pool.pop('gateway_address', None)
 
+    addresses = []
     if floating_address:
         try:
             fl_addr = dbapi.address_get_by_address(floating_address)
+            addresses.append(fl_addr)
             address_pool['floating_address_id'] = fl_addr.id
         except Exception:
             pass
     if controller0_address:
         try:
             c0_addr = dbapi.address_get_by_address(controller0_address)
+            addresses.append(c0_addr)
             address_pool['controller0_address_id'] = c0_addr.id
         except Exception:
             pass
     if controller1_address:
         try:
             c1_addr = dbapi.address_get_by_address(controller1_address)
+            addresses.append(c1_addr)
             address_pool['controller1_address_id'] = c1_addr.id
         except Exception:
             pass
     if gateway_address:
         try:
-            c1_addr = dbapi.address_get_by_address(gateway_address)
-            address_pool['gateway_address_id'] = c1_addr.id
+            gw_addr = dbapi.address_get_by_address(gateway_address)
+            addresses.append(gw_addr)
+            address_pool['gateway_address_id'] = gw_addr.id
         except Exception:
             pass
-    return dbapi.address_pool_create(address_pool)
+    db_address_pool = dbapi.address_pool_create(address_pool)
+    for address in addresses:
+        dbapi.address_update(address.uuid, {'address_pool_id': db_address_pool.id})
+    return db_address_pool
 
 
 def get_test_address(**kw):
@@ -1362,6 +1370,18 @@ def create_test_interface(**kw):
     dbapi = db_api.get_instance()
     forihostid = kw.get('forihostid')
     interface_obj = dbapi.iinterface_create(forihostid, interface)
+
+    ipv4_mode = interface.get('ipv4_mode', None)
+    if ipv4_mode:
+        dbapi.address_mode_update(interface_obj.id,
+                                  {'family': constants.IPV4_FAMILY, 'mode': ipv4_mode})
+        interface_obj.ipv4_mode = ipv4_mode
+
+    ipv6_mode = interface.get('ipv6_mode', None)
+    if ipv6_mode:
+        dbapi.address_mode_update(interface_obj.id,
+                                  {'family': constants.IPV6_FAMILY, 'mode': ipv6_mode})
+        interface_obj.ipv6_mode = ipv6_mode
 
     # assign the network to the interface
     for network in networks_list:

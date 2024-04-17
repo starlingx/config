@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -555,11 +555,6 @@ class InterfaceTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
         for key in first:
             if key in second:
                 self.assertEqual(first[key], second[key])
-
-    def _find_network_by_type(self, networktype):
-        for network in self.networks:
-            if network['type'] == networktype:
-                return network
 
     def _find_address_pool_by_uuid(self, pool_uuid):
         for pool in self.address_pools:

@@ -39,6 +39,33 @@ from sysinv.tests import base
 from sysinv.tests.db import utils as dbutils
 
 
+PXEBOOT_SUBNET = netaddr.IPNetwork('192.168.202.0/24')
+
+MGMT_SUBNET_IPV4 = netaddr.IPNetwork('192.168.204.0/24')
+OAM_SUBNET_IPV4 = netaddr.IPNetwork('10.10.10.0/24')
+CLUSTER_HOST_SUBNET_IPV4 = netaddr.IPNetwork('192.168.206.0/24')
+CLUSTER_POD_SUBNET_IPV4 = netaddr.IPNetwork('172.16.0.0/16')
+CLUSTER_SERVICE_SUBNET_IPV4 = netaddr.IPNetwork('10.96.0.0/12')
+MULTICAST_SUBNET_IPV4 = netaddr.IPNetwork('239.1.1.0/28')
+STORAGE_SUBNET_IPV4 = netaddr.IPNetwork('10.10.20.0/24')
+ADMIN_SUBNET_IPV4 = netaddr.IPNetwork('10.10.30.0/24')
+SYSTEM_CONTROLLER_SUBNET_IPV4 = netaddr.IPNetwork('192.168.104.0/24')
+SYSTEM_CONTROLLER_OAM_SUBNET_IPV4 = netaddr.IPNetwork('10.10.50.0/24')
+NAMESERVERS_IPV4 = ['8.8.8.8', '8.8.4.4']
+
+MGMT_SUBNET_IPV6 = netaddr.IPNetwork('fd01::/64')
+OAM_SUBNET_IPV6 = netaddr.IPNetwork('fd00::/64')
+CLUSTER_HOST_SUBNET_IPV6 = netaddr.IPNetwork('fd02::/64')
+CLUSTER_POD_SUBNET_IPV6 = netaddr.IPNetwork('fd03::/64')
+CLUSTER_SERVICE_SUBNET_IPV6 = netaddr.IPNetwork('fd04::/112')
+MULTICAST_SUBNET_IPV6 = netaddr.IPNetwork('ff08::1:1:0/124')
+STORAGE_SUBNET_IPV6 = netaddr.IPNetwork('fd05::/64')
+ADMIN_SUBNET_IPV6 = netaddr.IPNetwork('fd09::/64')
+SYSTEM_CONTROLLER_SUBNET_IPV6 = netaddr.IPNetwork('fd07::/64')
+SYSTEM_CONTROLLER_OAM_SUBNET_IPV6 = netaddr.IPNetwork('fd06::/64')
+NAMESERVERS_IPV6 = ['2001:4860:4860::8888', '2001:4860:4860::8844']
+
+
 @six.add_metaclass(abc.ABCMeta)
 class DbTestCase(base.TestCase):
 
@@ -49,19 +76,34 @@ class DbTestCase(base.TestCase):
 
 class BaseIPv4Mixin(object):
 
-    pxeboot_subnet = netaddr.IPNetwork('192.168.202.0/24')
-    mgmt_subnet = netaddr.IPNetwork('192.168.204.0/24')
-    oam_subnet = netaddr.IPNetwork('10.10.10.0/24')
-    cluster_host_subnet = netaddr.IPNetwork('192.168.206.0/24')
-    cluster_pod_subnet = netaddr.IPNetwork('172.16.0.0/16')
-    cluster_service_subnet = netaddr.IPNetwork('10.96.0.0/12')
-    multicast_subnet = netaddr.IPNetwork('239.1.1.0/28')
-    storage_subnet = netaddr.IPNetwork('10.10.20.0/24')
-    admin_subnet = netaddr.IPNetwork('10.10.30.0/24')
-    system_controller_subnet = netaddr.IPNetwork('192.168.104.0/24')
-    system_controller_oam_subnet = netaddr.IPNetwork('10.10.50.0/24')
+    primary_address_family = constants.IPV4_FAMILY
+    secondary_address_family = None
 
-    nameservers = ['8.8.8.8', '8.8.4.4']
+    pxeboot_subnet = PXEBOOT_SUBNET
+    mgmt_subnet = MGMT_SUBNET_IPV4
+    oam_subnet = OAM_SUBNET_IPV4
+    cluster_host_subnet = CLUSTER_HOST_SUBNET_IPV4
+    cluster_pod_subnet = CLUSTER_POD_SUBNET_IPV4
+    cluster_service_subnet = CLUSTER_SERVICE_SUBNET_IPV4
+    multicast_subnet = MULTICAST_SUBNET_IPV4
+    storage_subnet = STORAGE_SUBNET_IPV4
+    admin_subnet = ADMIN_SUBNET_IPV4
+    system_controller_subnet = SYSTEM_CONTROLLER_SUBNET_IPV4
+    system_controller_oam_subnet = SYSTEM_CONTROLLER_OAM_SUBNET_IPV4
+
+    pxeboot_subnets = [PXEBOOT_SUBNET]
+    mgmt_subnets = [MGMT_SUBNET_IPV4]
+    oam_subnets = [OAM_SUBNET_IPV4]
+    cluster_host_subnets = [CLUSTER_HOST_SUBNET_IPV4]
+    cluster_pod_subnets = [CLUSTER_POD_SUBNET_IPV4]
+    cluster_service_subnets = [CLUSTER_SERVICE_SUBNET_IPV4]
+    multicast_subnets = [MULTICAST_SUBNET_IPV4]
+    storage_subnets = [STORAGE_SUBNET_IPV4]
+    admin_subnets = [ADMIN_SUBNET_IPV4]
+    system_controller_subnets = [SYSTEM_CONTROLLER_SUBNET_IPV4]
+    system_controller_oam_subnets = [SYSTEM_CONTROLLER_OAM_SUBNET_IPV4]
+
+    nameservers = NAMESERVERS_IPV4
 
     # Used to test changing oam from ipv4 to ipv6
     change_family_oam_subnet = netaddr.IPNetwork('fd00::/64')
@@ -69,22 +111,75 @@ class BaseIPv4Mixin(object):
 
 class BaseIPv6Mixin(object):
 
-    pxeboot_subnet = netaddr.IPNetwork('192.168.202.0/24')
-    mgmt_subnet = netaddr.IPNetwork('fd01::/64')
-    oam_subnet = netaddr.IPNetwork('fd00::/64')
-    cluster_host_subnet = netaddr.IPNetwork('fd02::/64')
-    cluster_pod_subnet = netaddr.IPNetwork('fd03::/64')
-    cluster_service_subnet = netaddr.IPNetwork('fd04::/112')
-    multicast_subnet = netaddr.IPNetwork('ff08::1:1:0/124')
-    storage_subnet = netaddr.IPNetwork('fd05::/64')
-    admin_subnet = netaddr.IPNetwork('fd09::/64')
-    system_controller_subnet = netaddr.IPNetwork('fd07::/64')
-    system_controller_oam_subnet = netaddr.IPNetwork('fd06::/64')
+    primary_address_family = constants.IPV6_FAMILY
+    secondary_address_family = None
 
-    nameservers = ['2001:4860:4860::8888', '2001:4860:4860::8844']
+    pxeboot_subnet = PXEBOOT_SUBNET
+    mgmt_subnet = MGMT_SUBNET_IPV6
+    oam_subnet = OAM_SUBNET_IPV6
+    cluster_host_subnet = CLUSTER_HOST_SUBNET_IPV6
+    cluster_pod_subnet = CLUSTER_POD_SUBNET_IPV6
+    cluster_service_subnet = CLUSTER_SERVICE_SUBNET_IPV6
+    multicast_subnet = MULTICAST_SUBNET_IPV6
+    storage_subnet = STORAGE_SUBNET_IPV6
+    admin_subnet = ADMIN_SUBNET_IPV6
+    system_controller_subnet = SYSTEM_CONTROLLER_SUBNET_IPV6
+    system_controller_oam_subnet = SYSTEM_CONTROLLER_OAM_SUBNET_IPV6
+
+    pxeboot_subnets = [PXEBOOT_SUBNET]
+    mgmt_subnets = [MGMT_SUBNET_IPV6]
+    oam_subnets = [OAM_SUBNET_IPV6]
+    cluster_host_subnets = [CLUSTER_HOST_SUBNET_IPV6]
+    cluster_pod_subnets = [CLUSTER_POD_SUBNET_IPV6]
+    cluster_service_subnets = [CLUSTER_SERVICE_SUBNET_IPV6]
+    multicast_subnets = [MULTICAST_SUBNET_IPV6]
+    storage_subnets = [STORAGE_SUBNET_IPV6]
+    admin_subnets = [ADMIN_SUBNET_IPV6]
+    system_controller_subnets = [SYSTEM_CONTROLLER_SUBNET_IPV6]
+    system_controller_oam_subnets = [SYSTEM_CONTROLLER_OAM_SUBNET_IPV6]
+
+    nameservers = NAMESERVERS_IPV6
 
     # Used to test changing oam from ipv6 to ipv4
     change_family_oam_subnet = netaddr.IPNetwork('10.10.10.0/24')
+
+
+class BaseDualStackPrimaryIPv4Mixin(BaseIPv4Mixin):
+
+    secondary_address_family = constants.IPV6_FAMILY
+
+    mgmt_subnets = [MGMT_SUBNET_IPV4, MGMT_SUBNET_IPV6]
+    oam_subnets = [OAM_SUBNET_IPV4, OAM_SUBNET_IPV6]
+    cluster_host_subnets = [CLUSTER_HOST_SUBNET_IPV4, CLUSTER_HOST_SUBNET_IPV6]
+    cluster_pod_subnets = [CLUSTER_POD_SUBNET_IPV4, CLUSTER_POD_SUBNET_IPV6]
+    cluster_service_subnets = [CLUSTER_SERVICE_SUBNET_IPV4, CLUSTER_SERVICE_SUBNET_IPV6]
+    multicast_subnets = [MULTICAST_SUBNET_IPV4, MULTICAST_SUBNET_IPV6]
+    storage_subnets = [STORAGE_SUBNET_IPV4, STORAGE_SUBNET_IPV6]
+    admin_subnets = [ADMIN_SUBNET_IPV4, ADMIN_SUBNET_IPV6]
+    system_controller_subnets = [SYSTEM_CONTROLLER_SUBNET_IPV4, SYSTEM_CONTROLLER_SUBNET_IPV6]
+    system_controller_oam_subnets = [SYSTEM_CONTROLLER_OAM_SUBNET_IPV4,
+                                     SYSTEM_CONTROLLER_OAM_SUBNET_IPV6]
+
+    nameservers = NAMESERVERS_IPV4 + NAMESERVERS_IPV6
+
+
+class BaseDualStackPrimaryIPv6Mixin(BaseIPv6Mixin):
+
+    secondary_address_family = constants.IPV4_FAMILY
+
+    mgmt_subnets = [MGMT_SUBNET_IPV6, MGMT_SUBNET_IPV4]
+    oam_subnets = [OAM_SUBNET_IPV6, OAM_SUBNET_IPV4]
+    cluster_host_subnets = [CLUSTER_HOST_SUBNET_IPV6, CLUSTER_HOST_SUBNET_IPV4]
+    cluster_pod_subnets = [CLUSTER_POD_SUBNET_IPV6, CLUSTER_POD_SUBNET_IPV4]
+    cluster_service_subnets = [CLUSTER_SERVICE_SUBNET_IPV6, CLUSTER_SERVICE_SUBNET_IPV4]
+    multicast_subnets = [MULTICAST_SUBNET_IPV6, MULTICAST_SUBNET_IPV4]
+    storage_subnets = [STORAGE_SUBNET_IPV6, STORAGE_SUBNET_IPV4]
+    admin_subnets = [ADMIN_SUBNET_IPV6, ADMIN_SUBNET_IPV4]
+    system_controller_subnets = [SYSTEM_CONTROLLER_SUBNET_IPV6, SYSTEM_CONTROLLER_SUBNET_IPV4]
+    system_controller_oam_subnets = [SYSTEM_CONTROLLER_OAM_SUBNET_IPV6,
+                                     SYSTEM_CONTROLLER_OAM_SUBNET_IPV4]
+
+    nameservers = NAMESERVERS_IPV6 + NAMESERVERS_IPV4
 
 
 class BaseCephStorageBackendMixin(object):
@@ -135,7 +230,10 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         super(BaseSystemTestCase, self).setUp()
         self.hosts = []
         self.address_pools = []
-        self.networks = []
+        self.networks_by_type = {}
+        self.networks_by_id = {}
+        self.address_pools_by_network_id = {}
+        self.addresses_by_id = {}
         self.network_addrpools = []
         self.datanetworks = []
         self._create_test_common()
@@ -152,7 +250,9 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self.ptp = None
         self.hosts = []
         self.address_pools = []
-        self.networks = []
+        self.networks_by_type = {}
+        self.networks_by_id = {}
+        self.address_pools_by_network_id = {}
         self.network_addrpools = []
         self.datanetworks = []
         self.oam = None
@@ -208,26 +308,49 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self.ptp = dbutils.create_test_ptp(
             system_id=self.system.id)
 
-    def _create_test_network(self, name, network_type, subnet, ranges=None):
-        address_pool_id = self._create_test_address_pool(name, subnet, ranges).id
+    def _format_pool_name(self, network_name, subnet):
+        if subnet.version == constants.IPV6_FAMILY:
+            family = 'ipv6'
+        else:
+            family = 'ipv4'
+        return network_name + '-' + family
 
-        primary_pool_family = ""
-        if not isinstance(subnet, netaddr.IPNetwork):
-            subnet = netaddr.IPNetwork(subnet)
+    def _create_test_network(self, name, network_type, subnets, link_addresses=False):
 
-        primary_pool_family = constants.IP_FAMILIES[subnet.version]
+        address_pools = []
+        for subnet in subnets:
+            pool_name = self._format_pool_name(name, subnet)
+            address_pool = self._create_test_address_pool(
+                pool_name, subnet, link_addresses=link_addresses)
+            address_pools.append(address_pool)
+
+        primary_pool_family = constants.IP_FAMILIES[subnets[0].version]
 
         network = dbutils.create_test_network(
             type=network_type,
-            address_pool_id=address_pool_id,
+            address_pool_id=address_pools[0].id,
             primary_pool_family=primary_pool_family)
 
-        self.networks.append(network)
+        self._add_network_to_index(network)
 
-        network_addrpool = dbutils.create_test_network_addrpool(address_pool_id=address_pool_id,
-                                                                network_id=network.id)
-        self.network_addrpools.append(network_addrpool)
+        for address_pool in address_pools:
+            network_addrpool = dbutils.create_test_network_addrpool(
+                address_pool_id=address_pool.id, network_id=network.id)
+            self.network_addrpools.append(network_addrpool)
+            self._add_address_pool_to_index(address_pool, network)
+
         return network
+
+    def _add_network_to_index(self, network):
+        self.networks_by_type[network.type] = network
+        self.networks_by_id[network.id] = network
+
+    def _add_address_pool_to_index(self, addrpool, network):
+        pools = self.address_pools_by_network_id.get(network.id, None)
+        if not pools:
+            pools = []
+            self.address_pools_by_network_id[network.id] = pools
+        pools.append(addrpool)
 
     def _create_test_route(self, interface, gateway, family=4, network='10.10.10.0', prefix=24):
         route = dbutils.create_test_route(
@@ -245,16 +368,20 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self.datanetworks.append(datanetwork)
         return datanetwork
 
-    def _create_test_address_pool(self, name, subnet, ranges=None, append=True):
+    def _create_test_address_pool(self, name, subnet, ranges=None, append=True,
+                                  link_addresses=False):
         if not ranges:
             ranges = [(str(subnet[2]), str(subnet[-2]))]
+        base_address = netaddr.IPAddress(subnet[1])
+        gateway_address = None
         floating_address = None
         controller0_address = None
         controller1_address = None
-        if name in ["pxeboot", "management", "oam", "cluster-host", "storage", "admin"]:
-            floating_address = netaddr.IPAddress(ranges[0][0])
-            controller0_address = floating_address + 1
-            controller1_address = floating_address + 2
+        if link_addresses:
+            gateway_address = base_address
+            floating_address = base_address + 1
+            controller0_address = base_address + 2
+            controller1_address = base_address + 3
 
         pool = dbutils.create_test_address_pool(
             name=name,
@@ -262,6 +389,7 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
             family=subnet.version,
             prefix=subnet.prefixlen,
             ranges=ranges,
+            gateway_address=str(gateway_address),
             floating_address=str(floating_address),
             controller0_address=str(controller0_address),
             controller1_address=str(controller1_address))
@@ -273,43 +401,49 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
 
         self._create_test_network('pxeboot',
                                   constants.NETWORK_TYPE_PXEBOOT,
-                                  self.pxeboot_subnet)
+                                  self.pxeboot_subnets,
+                                  link_addresses=True)
 
         self._create_test_network('management',
                                   constants.NETWORK_TYPE_MGMT,
-                                  self.mgmt_subnet)
+                                  self.mgmt_subnets,
+                                  link_addresses=True)
 
         self._create_test_network('oam',
                                   constants.NETWORK_TYPE_OAM,
-                                  self.oam_subnet)
+                                  self.oam_subnets,
+                                  link_addresses=True)
 
         self._create_test_network('cluster-host',
                                   constants.NETWORK_TYPE_CLUSTER_HOST,
-                                  self.cluster_host_subnet)
+                                  self.cluster_host_subnets,
+                                  link_addresses=True)
 
         self._create_test_network('cluster-pod',
                                   constants.NETWORK_TYPE_CLUSTER_POD,
-                                  self.cluster_pod_subnet)
+                                  self.cluster_pod_subnets)
 
         self._create_test_network('cluster-service',
                                   constants.NETWORK_TYPE_CLUSTER_SERVICE,
-                                  self.cluster_service_subnet)
+                                  self.cluster_service_subnets)
 
         self._create_test_network('storage',
                                   constants.NETWORK_TYPE_STORAGE,
-                                  self.storage_subnet)
+                                  self.storage_subnets,
+                                  link_addresses=True)
 
         self._create_test_network('admin',
                                   constants.NETWORK_TYPE_ADMIN,
-                                  self.admin_subnet)
+                                  self.admin_subnets,
+                                  link_addresses=True)
 
         self._create_test_network('system-controller',
                                   constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
-                                  self.system_controller_subnet)
+                                  self.system_controller_subnets)
 
         self._create_test_network('system-controller-oam',
                                   constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM,
-                                  self.system_controller_oam_subnet)
+                                  self.system_controller_oam_subnets)
 
     def _create_test_datanetworks(self):
 
@@ -319,17 +453,26 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         self._create_test_datanetwork('data1',
                                       constants.DATANETWORK_TYPE_VLAN)
 
-    def _create_test_addresses(self, hostnames, subnet, network_type,
+    def _add_address_to_index(self, address):
+        self.addresses_by_id[address.id] = address
+
+    def _create_test_address(self, **kwargs):
+        address = dbutils.create_test_address(**kwargs)
+        self._add_address_to_index(address)
+        return address
+
+    def _create_test_addresses(self, hostnames, subnets, network_type,
                                start=1, stop=None):
-        ips = itertools.islice(subnet, start, stop)
         addresses = []
-        for name in hostnames:
-            address = dbutils.create_test_address(
-                          name=utils.format_address_name(name, network_type),
-                          family=subnet.version,
-                          prefix=subnet.prefixlen,
-                          address=str(next(ips)))
-            addresses.append(address)
+        for subnet in subnets:
+            ips = itertools.islice(subnet, start, stop)
+            for name in hostnames:
+                address = self._create_test_address(
+                            name=utils.format_address_name(name, network_type),
+                            family=subnet.version,
+                            prefix=subnet.prefixlen,
+                            address=str(next(ips)))
+                addresses.append(address)
         return addresses
 
     def _create_test_static_ips(self):
@@ -341,36 +484,35 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         ]
 
         self._create_test_addresses(
-            hostnames, self.pxeboot_subnet,
+            hostnames, self.pxeboot_subnets,
             constants.NETWORK_TYPE_PXEBOOT)
 
         self.mgmt_addresses = self._create_test_addresses(
-            hostnames,
-            self.mgmt_subnet,
+            hostnames, self.mgmt_subnets,
             constants.NETWORK_TYPE_MGMT)
 
         self._create_test_addresses(
-            hostnames, self.oam_subnet,
+            hostnames, self.oam_subnets,
             constants.NETWORK_TYPE_OAM)
 
         self._create_test_addresses(
-            hostnames, self.cluster_host_subnet,
+            hostnames, self.cluster_host_subnets,
             constants.NETWORK_TYPE_CLUSTER_HOST)
 
         self._create_test_addresses(
-            hostnames, self.storage_subnet,
+            hostnames, self.storage_subnets,
             constants.NETWORK_TYPE_STORAGE)
 
         self._create_test_addresses(
-            hostnames, self.admin_subnet,
+            hostnames, self.admin_subnets,
             constants.NETWORK_TYPE_ADMIN)
 
         self._create_test_addresses(
-            hostnames, self.system_controller_subnet,
+            hostnames, self.system_controller_subnets,
             constants.NETWORK_TYPE_SYSTEM_CONTROLLER)
 
         self._create_test_addresses(
-            hostnames, self.system_controller_oam_subnet,
+            hostnames, self.system_controller_oam_subnets,
             constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM)
 
     def _create_test_oam(self):
@@ -386,8 +528,23 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
         ]
 
         self._create_test_addresses(
-            hostnames, self.multicast_subnet,
+            hostnames, self.multicast_subnets,
             constants.NETWORK_TYPE_MULTICAST)
+
+    def _get_all_networks(self):
+        return self.networks_by_id.values()
+
+    def _find_network_by_type(self, networktype):
+        return self.networks_by_type.get(networktype, None)
+
+    def _find_network_by_id(self, network_id):
+        return self.networks_by_id.get(network_id, None)
+
+    def _find_network_address_pools(self, network_id):
+        return self.address_pools_by_network_id.get(network_id, [])
+
+    def _find_address_by_id(self, address_id):
+        return self.addresses_by_id.get(address_id, None)
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -484,10 +641,10 @@ class BaseHostTestCase(BaseSystemTestCase):
 
     def _create_test_host_addresses(self, hostname):
         self._create_test_addresses(
-            [hostname], self.mgmt_subnet,
+            [hostname], self.mgmt_subnets,
             constants.NETWORK_TYPE_MGMT, start=10)
         self._create_test_addresses(
-            [hostname], self.cluster_host_subnet,
+            [hostname], self.cluster_host_subnets,
             constants.NETWORK_TYPE_CLUSTER_HOST, start=10)
 
     def _create_test_host_platform_interface(self, host):
@@ -721,7 +878,8 @@ class OpenstackTestCase(AppTestCase):
         self._create_test_host_platform_interface(self.host2)
         self._create_test_host_data_interface(self.host2)
         self.fake_hieradata = ""
-        with open(os.path.join(os.getcwd(), "sysinv", "tests", "puppet", "fake_hieradata.yaml")) as fake_data:
+        with open(os.path.join(os.getcwd(), "sysinv", "tests",
+                               "puppet", "fake_hieradata.yaml")) as fake_data:
             self.fake_hieradata = fake_data.read()
 
 

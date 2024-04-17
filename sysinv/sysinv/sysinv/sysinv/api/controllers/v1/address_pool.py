@@ -15,7 +15,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2015-2021 Wind River Systems, Inc.
+# Copyright (c) 2015-2024 Wind River Systems, Inc.
 #
 
 
@@ -63,15 +63,26 @@ SUBCLOUD_WRITABLE_ADDRPOOLS = ['system-controller-subnet',
 # so we can't depend on the address pool having a static name.
 SUBCLOUD_WRITABLE_NETWORK_TYPES = ['admin']
 
-# Address pool of oam and system controller oam are allowed to be of
+# Address pools of oam and system controller oam are allowed to be of
 # overlapped prefix in the subcloud.
-OAM_ADDRESS_POOL = 'oam'
-SYSTEM_CONTROLLER_OAM_ADDRESS_POOL = 'system-controller-oam-subnet'
+if constants.DUAL_STACK_COMPATIBILITY_MODE:
+    OAM_ADDRESS_POOL_OVERLAP_INDEX = {'oam': 'system-controller-oam-subnet',
+                                      'oam-ipv4': 'system-controller-oam-subnet-ipv4',
+                                      'oam-ipv6': 'system-controller-oam-subnet-ipv6'}
+else:
+    OAM_ADDRESS_POOL_OVERLAP_INDEX = {'oam-ipv4': 'system-controller-oam-subnet-ipv4',
+                                      'oam-ipv6': 'system-controller-oam-subnet-ipv6'}
 
 # Address pool for the management network in an AIO-SX installation
 # is allowed to be deleted/modified post install
-MANAGEMENT_ADDRESS_POOL = 'management'
-AIOSX_WRITABLE_ADDRPOOLS = [MANAGEMENT_ADDRESS_POOL]
+if constants.DUAL_STACK_COMPATIBILITY_MODE:
+    MANAGEMENT_ADDRESS_POOL_NAMES = {None: 'management',
+                                     constants.IPV4_FAMILY: 'management-ipv4',
+                                     constants.IPV6_FAMILY: 'management-ipv6'}
+else:
+    MANAGEMENT_ADDRESS_POOL_NAMES = {constants.IPV4_FAMILY: 'management-ipv4',
+                                     constants.IPV6_FAMILY: 'management-ipv6'}
+AIOSX_WRITABLE_ADDRPOOLS = MANAGEMENT_ADDRESS_POOL_NAMES.values()
 
 
 class AddressPoolPatchType(types.JsonPatchType):
@@ -324,8 +335,8 @@ class AddressPoolController(rest.RestController):
                                              f"{addrpool['prefix']}"])
         pools = pecan.request.dbapi.address_pools_get_all()
         for pool in pools:
-            if pool.name == OAM_ADDRESS_POOL and \
-                    addrpool['name'] == SYSTEM_CONTROLLER_OAM_ADDRESS_POOL:
+            if pool.name in OAM_ADDRESS_POOL_OVERLAP_INDEX and \
+                    addrpool['name'] == OAM_ADDRESS_POOL_OVERLAP_INDEX[pool.name]:
                 # we are ignoring overlap in this case as subcloud oam and
                 # system-controller oam are sharable.
                 continue
@@ -405,15 +416,15 @@ class AddressPoolController(rest.RestController):
                any(network.type == constants.NETWORK_TYPE_MGMT
                    for network in networks):
 
-                if (new_name != MANAGEMENT_ADDRESS_POOL):
+                if (new_name != addrpool.name):
                     msg = _("Cannot complete the action because the "
                             "address pool for mgmt network must be named as '{}'."
-                            .format(MANAGEMENT_ADDRESS_POOL))
+                            .format(addrpool.name))
                     raise ValueError(msg)
 
     def _check_aiosx_mgmt(self, addrpool):
         if (utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and
-                addrpool['name'] == MANAGEMENT_ADDRESS_POOL):
+                addrpool['name'] in MANAGEMENT_ADDRESS_POOL_NAMES.values()):
             if (utils.get_distributed_cloud_role() !=
                     constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
                 if 'gateway_address' in addrpool and \
@@ -750,7 +761,7 @@ class AddressPoolController(rest.RestController):
             # if proxy is being used, remove the old management network IPs
             # from the no_proxy list
             if cutils.is_initial_config_complete() and \
-               addrpool.name == MANAGEMENT_ADDRESS_POOL:
+                    addrpool.name in MANAGEMENT_ADDRESS_POOL_NAMES.values():
                 self._remove_mgmt_ips_from_no_proxy_list(addresses)
 
         # Delete the address pool, which will also delete any associated

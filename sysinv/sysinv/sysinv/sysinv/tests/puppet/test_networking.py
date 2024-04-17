@@ -49,11 +49,6 @@ class NetworkingTestCaseMixin(base.PuppetTestCaseMixin):
         class_name = self.__class__.__name__
         return os.path.join(hiera_directory, class_name) + ".yaml"
 
-    def _find_network_by_type(self, networktype):
-        for network in self.networks:
-            if network['type'] == networktype:
-                return network
-
     def _get_network_ids_by_type(self, networktype):
         if isinstance(networktype, list):
             networktypelist = networktype
@@ -259,11 +254,11 @@ class NetworkingTestTestCaseControllerDualStackIPv4Primary(NetworkingTestCaseMix
                                                   subnet=cfgdata[1][0])
             network_addrpool = dbutils.create_test_network_addrpool(address_pool_id=pool.id,
                                                                     network_id=net.id)
-            self._create_test_addresses(hostnames=hosts, subnet=cfgdata[1][0],
+            self._create_test_addresses(hostnames=hosts, subnets=[cfgdata[1][0]],
                                         network_type=cfgdata[0], start=2)
             if cfgdata[0] in [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_OAM]:
                 self._create_test_addresses(hostnames=[constants.CONTROLLER_GATEWAY],
-                                            subnet=cfgdata[1][0],
+                                            subnets=[cfgdata[1][0]],
                                             network_type=cfgdata[0], start=1, stop=2)
             self.network_addrpools.append(network_addrpool)
 
@@ -398,11 +393,11 @@ class NetworkingTestTestCaseControllerDualStackIPv6Primary(NetworkingTestCaseMix
                                                   subnet=cfgdata[1][0])
             network_addrpool = dbutils.create_test_network_addrpool(address_pool_id=pool.id,
                                                                     network_id=net.id)
-            self._create_test_addresses(hostnames=hosts, subnet=cfgdata[1][0],
+            self._create_test_addresses(hostnames=hosts, subnets=[cfgdata[1][0]],
                                         network_type=cfgdata[0], start=2)
             if cfgdata[0] in [constants.NETWORK_TYPE_MGMT, constants.NETWORK_TYPE_OAM]:
                 self._create_test_addresses(hostnames=[constants.CONTROLLER_GATEWAY],
-                                            subnet=cfgdata[1][0],
+                                            subnets=[cfgdata[1][0]],
                                             network_type=cfgdata[0], start=1, stop=2)
             self.network_addrpools.append(network_addrpool)
 

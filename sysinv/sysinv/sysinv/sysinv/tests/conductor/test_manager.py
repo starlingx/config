@@ -17,7 +17,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 
 """Test class for Sysinv ManagerService."""
@@ -5910,13 +5910,15 @@ class ManagerTestCaseInternal(base.BaseHostTestCase):
 
         net_mgmt = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_MGMT)
         pool_mgmt6 = self.dbapi.address_pool_query({"name": "management-ipv6"})
-        pool_mgmt4 = self.dbapi.address_pool_query({"name": "management"})
-        dbutils.create_test_network_addrpool(address_pool_id=pool_mgmt6.id, network_id=net_mgmt.id)
+        pool_mgmt4 = self.dbapi.address_pool_query({"name": "management-ipv4"})
+        dbutils.create_test_network_addrpool(address_pool_id=pool_mgmt6.id,
+                                             network_id=net_mgmt.id)
 
         net_clhost = self.dbapi.network_get_by_type(constants.NETWORK_TYPE_CLUSTER_HOST)
         pool_clhost6 = self.dbapi.address_pool_query({"name": "cluster-host-ipv6"})
-        pool_clhost4 = self.dbapi.address_pool_query({"name": "cluster-host"})
-        dbutils.create_test_network_addrpool(address_pool_id=pool_clhost6.id, network_id=net_clhost.id)
+        pool_clhost4 = self.dbapi.address_pool_query({"name": "cluster-host-ipv4"})
+        dbutils.create_test_network_addrpool(address_pool_id=pool_clhost6.id,
+                                             network_id=net_clhost.id)
 
         worker_name = 'newhost'
         ihost['mgmt_mac'] = '00:11:22:33:44:55'
@@ -5972,8 +5974,8 @@ class ManagerTestCaseInternal(base.BaseHostTestCase):
 
         self.create_ipv6_pools()
 
-        pool_mgmt4 = self.dbapi.address_pool_query({"name": "management"})
-        pool_clhost4 = self.dbapi.address_pool_query({"name": "cluster-host"})
+        pool_mgmt4 = self.dbapi.address_pool_query({"name": "management-ipv4"})
+        pool_clhost4 = self.dbapi.address_pool_query({"name": "cluster-host-ipv4"})
         net_pools = self.dbapi.network_addrpool_get_all()
         for net_pool in net_pools:
             self.dbapi.network_addrpool_destroy(net_pool.uuid)
