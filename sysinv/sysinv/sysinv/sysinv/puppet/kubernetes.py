@@ -632,6 +632,8 @@ class KubernetesPuppet(base.BasePuppet):
                 config.update({'platform::kubernetes::params::k8s_topology_mgr_policy': label.label_value})
             elif label.label_key == constants.KUBE_CPU_MANAGER_LABEL:
                 config.update({'platform::kubernetes::params::k8s_cpu_mgr_policy': label.label_value})
+            elif label.label_key == constants.KUBE_MEMORY_MANAGER_LABEL:
+                config.update({'platform::kubernetes::params::k8s_memory_mgr_policy': label.label_value})
 
         config.update(
             {'platform::kubernetes::params::k8s_cpuset':

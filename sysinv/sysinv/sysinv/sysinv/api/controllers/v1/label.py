@@ -352,7 +352,8 @@ def _check_host_locked(host, host_labels):
              common.LABEL_SRIOVDP,
              common.LABEL_SRIOVDP_VHOSTNET,
              constants.KUBE_TOPOLOGY_MANAGER_LABEL,
-             constants.KUBE_CPU_MANAGER_LABEL]
+             constants.KUBE_CPU_MANAGER_LABEL,
+             constants.KUBE_MEMORY_MANAGER_LABEL]
 
         lock_required_labels = [x for x in host_labels
                                 if x in labels_requiring_lock]
@@ -387,6 +388,11 @@ def _semantic_check_worker_labels(body):
                 raise wsme.exc.ClientSideError(
                     _(
                         "Invalid value for %s label." % constants.KUBE_POWER_MANAGER_LABEL))
+        elif label_key == constants.KUBE_MEMORY_MANAGER_LABEL:
+            if label_value not in constants.KUBE_MEMORY_MANAGER_VALUES:
+                raise wsme.exc.ClientSideError(
+                    _(
+                        "Invalid value for %s label." % constants.KUBE_MEMORY_MANAGER_LABEL))
 
 
 def _get_system_enabled_k8s_plugins():
