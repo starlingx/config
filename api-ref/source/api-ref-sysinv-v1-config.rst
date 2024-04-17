@@ -12592,3 +12592,35 @@ unauthorized (401), forbidden (403), badMethod (405), overLimit (413)
       "success": "kube-config-kubelet applied.",
       "error": ""
    }
+
+***********************************
+Get Region Name
+***********************************
+
+.. rest_method:: GET /v1/isystems/region_id
+
+**Normal response codes**
+
+200
+
+**Error response codes**
+
+serviceUnavailable (503), badRequest (400),
+forbidden (403), badMethod (405)
+
+
+**Response parameters**
+
+.. csv-table::
+   :header: "Parameter", "Style", "Type", "Description"
+   :widths: 20, 20, 20, 60
+
+   "region_name", "plain", "xsd:string", "region name can be default RegionOne or UUID"
+
+::
+
+   {
+      "region_name": "f558ce1b-de27-4132-8ca6-ac7f34ae8d21",
+   }
+
+This operation does not accept a request body.
