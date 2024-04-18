@@ -1717,20 +1717,13 @@ def generate_unassigned_pxeboot_intf_config(context, config, db_api,
 def get_address_config(context, iface, addresses):
     ifname = get_interface_os_ifname(context, iface)
 
-    if constants.DUAL_STACK_COMPATIBILITY_MODE:
-        address = addresses[0]
-        return {
-            'ifname': ifname,
-            'address': str(address.address) + '/' + str(address.prefix)
-        }
-    else:
-        address_list = []
-        for address in addresses:
-            address_list.append(str(address.address) + '/' + str(address.prefix))
-        return {
-            'ifname': ifname,
-            'addresses': address_list,
-        }
+    address_list = []
+    for address in addresses:
+        address_list.append(str(address.address) + '/' + str(address.prefix))
+    return {
+        'ifname': ifname,
+        'addresses': address_list,
+    }
 
 
 def generate_address_configs(context, config):
