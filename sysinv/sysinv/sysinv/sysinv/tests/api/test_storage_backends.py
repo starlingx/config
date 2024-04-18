@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 #
 #
-# Copyright (c) 2017-2021 Wind River Systems, Inc.
+# Copyright (c) 2017-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -1379,6 +1379,26 @@ class StorageBackendConfigTest(base.FunctionalTest):
         super(StorageBackendConfigTest, self).setUp()
         self.dbapi = dbapi.get_instance()
 
+        pool_mgmt = dbutils.create_test_address_pool(
+            name='mgmt',
+            network='192.168.204.0',
+            ranges=[['192.168.204.2', '192.168.204.254']],
+            prefix=24)
+        dbutils.create_test_network(
+            type=constants.NETWORK_TYPE_MGMT,
+            address_pool_id=pool_mgmt.id,
+            primary_pool_family="IPv4")
+
+        pool_clhost = dbutils.create_test_address_pool(
+            name='clhost',
+            network='193.168.204.0',
+            ranges=[['193.168.204.2', '193.168.204.254']],
+            prefix=24)
+        dbutils.create_test_network(
+            type=constants.NETWORK_TYPE_CLUSTER_HOST,
+            address_pool_id=pool_clhost.id,
+            primary_pool_family="IPv4")
+
     def test_get_ceph_mon_ip_addresses(self):
         self._test_get_ceph_mon_ip_addresses(constants.NETWORK_TYPE_MGMT)
         self._test_get_ceph_mon_ip_addresses(constants.NETWORK_TYPE_CLUSTER_HOST)
@@ -1396,7 +1416,71 @@ class StorageBackendConfigTest(base.FunctionalTest):
 
         addresses = list(map(lambda x: '{}-{}'.format(x, network_type), hostnames))
         addresses_mock = \
-            list(map(lambda x, y: ({'name': x, 'address': y}), addresses, ips_mock))
+            list(map(lambda x, y: ({'name': x, 'address': y,
+                                    'family': constants.IPV4_FAMILY}), addresses, ips_mock))
+        addresses_mock_object = \
+            list(map(lambda x: namedtuple("Addresses", x.keys())(*x.values()), addresses_mock))
+
+        p = mock.patch.object(self.dbapi, 'ceph_mon_get_list')
+        p.start().return_value = list(map(lambda x: {'hostname': x}, hostnames))
+        self.addCleanup(p.stop)
+
+        p = mock.patch.object(self.dbapi, 'storage_ceph_get_list')
+        p.start().return_value = [{'network': network_type}]
+        self.addCleanup(p.stop)
+
+        p = mock.patch.object(self.dbapi, 'addresses_get_all')
+        p.start().return_value = addresses_mock_object
+        self.addCleanup(p.stop)
+
+        result = StorageBackendConfig.get_ceph_mon_ip_addresses(self.dbapi)
+        self.assertDictEqual(result, result_mock)
+
+
+class StorageBackendConfigTestIPv6(base.FunctionalTest):
+    def setUp(self):
+        super(StorageBackendConfigTestIPv6, self).setUp()
+        self.dbapi = dbapi.get_instance()
+
+        pool_mgmt = dbutils.create_test_address_pool(
+            name='mgmt-ipv6',
+            network='fd00::',
+            ranges=[['fd00::1', 'fd00::ffff']],
+            prefix=64, family=constants.IPV6_FAMILY)
+        dbutils.create_test_network(
+            type=constants.NETWORK_TYPE_MGMT,
+            address_pool_id=pool_mgmt.id,
+            primary_pool_family="IPv6")
+
+        pool_clhost = dbutils.create_test_address_pool(
+            name='clhost-ipv6',
+            network='fd01::',
+            ranges=[['fd01::1', 'fd00::ffff']],
+            prefix=64, family=constants.IPV6_FAMILY)
+        dbutils.create_test_network(
+            type=constants.NETWORK_TYPE_CLUSTER_HOST,
+            address_pool_id=pool_clhost.id,
+            primary_pool_family="IPv6")
+
+    def test_get_ceph_mon_ipv6_addresses(self):
+        self._test_get_ceph_mon_ip_addresses(constants.NETWORK_TYPE_MGMT)
+        self._test_get_ceph_mon_ip_addresses(constants.NETWORK_TYPE_CLUSTER_HOST)
+        pass
+
+    def _test_get_ceph_mon_ip_addresses(self, network_type):
+        hostnames = [constants.CONTROLLER_HOSTNAME,
+                     constants.CONTROLLER_0_HOSTNAME,
+                     constants.CONTROLLER_1_HOSTNAME]
+        ips_mock = ['1', '2', '3']
+        placeholders = [constants.CEPH_FLOATING_MON,
+                        constants.CEPH_MON_0,
+                        constants.CEPH_MON_1]
+        result_mock = dict(map(lambda x, y: (x, y), placeholders, ips_mock))
+
+        addresses = list(map(lambda x: '{}-{}'.format(x, network_type), hostnames))
+        addresses_mock = \
+            list(map(lambda x, y: ({'name': x, 'address': y,
+                                    'family': constants.IPV6_FAMILY}), addresses, ips_mock))
         addresses_mock_object = \
             list(map(lambda x: namedtuple("Addresses", x.keys())(*x.values()), addresses_mock))
 

@@ -1,7 +1,7 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 
 #
-# Copyright (c) 2016-2022 Wind River Systems, Inc.
+# Copyright (c) 2016-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -223,9 +223,11 @@ class StorageBackendConfig(object):
             hostif = '%s-%s' % (host, network_type)
             hostif2ph[hostif] = ph
         # map placeholder to ceph-mon ip address
+        network = dbapi.network_get_by_type(network_type)
+        addr_pool = dbapi.address_pool_get(network.pool_uuid)
         ph2ipaddr = OrderedDict({})
         for addr in dbapi.addresses_get_all():
-            if addr.name in hostif2ph:
+            if (addr.name in hostif2ph) and (addr.family == addr_pool.family):
                 ph = hostif2ph[addr.name]
                 ph2ipaddr[ph] = addr.address
         return ph2ipaddr
