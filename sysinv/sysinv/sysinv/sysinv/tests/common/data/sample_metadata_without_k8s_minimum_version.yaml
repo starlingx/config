@@ -1,0 +1,4 @@
+---
+app_name: sample-app
+app_version: 1.2-3
+maintain_user_overrides: true
