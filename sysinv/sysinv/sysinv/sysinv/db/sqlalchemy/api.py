@@ -5905,6 +5905,17 @@ class Connection(api.Connection):
             )
         return result
 
+    @db_objects.objectify(objects.address_pool)
+    def address_pools_get_by_network(self, network_id,
+                                     limit=None, marker=None,
+                                     sort_key=None, sort_dir=None):
+        query = model_query(models.AddressPools)
+        query = (query.join(models.NetworkAddressPools,
+                            models.NetworkAddressPools.address_pool_id == models.AddressPools.id))
+        query = query.filter(models.NetworkAddressPools.network_id == network_id)
+        return _paginate_query(models.AddressPools, limit, marker,
+                               sort_key, sort_dir, query)
+
     def address_pool_destroy(self, address_pool_uuid):
         query = model_query(models.AddressPools)
         query = add_identity_filter(query, address_pool_uuid)
