@@ -19208,6 +19208,15 @@ class ConductorManager(service.PeriodicService):
                    "/etc/kubernetes/pki/apiserver-kubelet-client.crt"),
                   ("front-proxy-client", constants.AUTOMATIC, "/etc/kubernetes/pki/front-proxy-client.crt"),
                   ("front-proxy-ca", constants.AUTOMATIC, "/etc/kubernetes/pki/front-proxy-ca.crt")]
+
+        # IPsec certificate
+        try:
+            hostname = socket.gethostname()
+            ipsec_path = f"/etc/swanctl/x509/system-ipsec-certificate-{hostname}.crt"
+            certs.append(("ipsec", constants.AUTOMATIC, ipsec_path))
+        except socket.error:
+            LOG.debug("Failed to get local hostname to retrieve IPsec certificate")
+
         kube_operator = kubernetes.KubeOperator()
         certificates = kube_operator.list_custom_resources("cert-manager.io", "v1", "certificates")
         k8s_secrets_list = [cert["spec"]["secretName"] for cert in certificates]
