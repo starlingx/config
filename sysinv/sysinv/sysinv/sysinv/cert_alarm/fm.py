@@ -60,8 +60,7 @@ class FaultApiMgr(object):
 
             txt.append("Certificate ")
             if snapshot[utils.SNAPSHOT_KEY_MODE] is utils.UUID:
-                txt.append("\'system certificate-show %s\' (mode=%s) " %
-                    (snapshot[utils.UUID], utils.get_mode(cert_name)))
+                txt.append("\'system certificate-show %s\' " % (cert_name))
             elif snapshot[utils.SNAPSHOT_KEY_MODE] is utils.MODE_CERT_MGR:
                 txt.append("namespace=%s, certificate=%s " %
                     (snapshot[utils.SNAPSHOT_KEY_k8s_ns], snapshot[utils.SNAPSHOT_KEY_k8s_cert]))
