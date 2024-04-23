@@ -195,7 +195,7 @@ class Client(object):
 
                 LOG.info("Generating config files and restart ipsec")
                 strong = config.StrongswanPuppet(self.hostname[constants.UNIT_HOSTNAME],
-                                                self.local_addr, network,
+                                                self.personality, self.local_addr, network,
                                                 unit_ip, floating_ip)
                 strong.generate_file()
                 puppet_cf = subprocess.run(['puppet', 'apply', '-e',
