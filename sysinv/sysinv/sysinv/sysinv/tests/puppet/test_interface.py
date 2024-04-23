@@ -2469,7 +2469,7 @@ class InterfaceControllerEthernet(InterfaceHostTestCase):
                      'tc': False},
             "eth1": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mgmt,net:{None}', 'tc': True},
-            "eth1:1-3": {'family': 'inet', 'method': 'static',
+            "eth1:1": {'family': 'inet', 'method': 'static',
                        'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
                        'tc': False},
             "eth1:2-7": {'family': 'inet', 'method': 'static',
@@ -2513,7 +2513,7 @@ class InterfaceControllerEthernetCfg2(InterfaceHostTestCase):
                      'tc': False},
             "eth1": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mgmt0,net:{None}', 'tc': True},
-            "eth1:1-3": {'family': 'inet', 'method': 'static',
+            "eth1:1": {'family': 'inet', 'method': 'static',
                        'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_PXEBOOT}',
                        'tc': False},
             "eth1:2-7": {'family': 'inet', 'method': 'static',
@@ -2558,7 +2558,7 @@ class InterfaceControllerEthernetCfg3(InterfaceHostTestCase):
                      'tc': False},
             "eth1": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mgmt0,net:{None}', 'tc': True},
-            "eth1:1-3": {'family': 'inet', 'method': 'static',
+            "eth1:1": {'family': 'inet', 'method': 'static',
                        'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_PXEBOOT}',
                        'tc': False},
             "eth1:2-7": {'family': 'inet', 'method': 'static',
@@ -2622,7 +2622,7 @@ class InterfaceControllerBond(InterfaceHostTestCase):
                      'tc': False},
             "mgmt0": {'family': 'inet', 'method': 'manual',
                       'stx-description': f'ifname:mgmt0,net:{None}', 'tc': True},
-            "mgmt0:1-3": {'family': 'inet', 'method': 'static',
+            "mgmt0:1": {'family': 'inet', 'method': 'static',
                       'stx-description': f'ifname:mgmt0,net:{constants.NETWORK_TYPE_PXEBOOT}',
                       'tc': False},
             "mgmt0:2-7": {'family': 'inet', 'method': 'static',
@@ -2768,7 +2768,7 @@ class InterfaceComputeEthernet(InterfaceHostTestCase):
         self.exp_yaml_config = {
             "eth0": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mgmt,net:{None}', 'tc': True},
-            "eth0:1-0": {'family': 'inet', 'method': 'dhcp',
+            "eth0:1": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
                      'tc': False},
             "eth0:2-37": {'family': 'inet', 'method': 'static',
@@ -2838,7 +2838,7 @@ class InterfaceComputeEthernetCfg2(InterfaceHostTestCase):
         self.exp_yaml_config = {
             "eth0": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mgmt,net:{None}', 'tc': True},
-            "eth0:1-0": {'family': 'inet', 'method': 'dhcp',
+            "eth0:1": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
                      'tc': False},
             "eth0:2-37": {'family': 'inet', 'method': 'static',
@@ -2911,7 +2911,7 @@ class InterfaceComputeEthernetCfg3(InterfaceHostTestCase):
                      'tc': True},
             "eth1": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:cluster-host,net:{None}', 'tc': False},
-            "eth1:1-0": {'family': 'inet', 'method': 'dhcp',
+            "eth1:1": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:cluster-host,net:{constants.NETWORK_TYPE_PXEBOOT}',
                      'tc': False},
             "eth1:4-38": {'family': 'inet', 'method': 'static',
@@ -3114,7 +3114,7 @@ class InterfaceComputeBond(InterfaceHostTestCase):
                      'stx-description': f'ifname:eth1,net:{None}', 'tc': False},
             "mgmt": {'family': 'inet', 'method': 'manual',
                      'stx-description': f'ifname:mgmt,net:{None}', 'tc': True},
-            "mgmt:1-0": {'family': 'inet', 'method': 'dhcp',
+            "mgmt:1": {'family': 'inet', 'method': 'dhcp',
                      'stx-description': f'ifname:mgmt,net:{constants.NETWORK_TYPE_PXEBOOT}',
                      'tc': False},
             "mgmt:2-37": {'family': 'inet', 'method': 'static',
@@ -3859,7 +3859,10 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
         if base:
             ifname = kernelname
         else:
-            ifname = f"{kernelname}:{network.id if network else 0}-{address.id if address else 0}"
+            if network and network.type == constants.NETWORK_TYPE_PXEBOOT:
+                ifname = f"{kernelname}:{network.id if network else 0}"
+            else:
+                ifname = f"{kernelname}:{network.id if network else 0}-{address.id if address else 0}"
 
         return {ifname: config}
 
