@@ -6619,6 +6619,7 @@ class ConductorManager(service.PeriodicService):
             self.dbapi.ihost_update(
                 host_uuid,
                 {'inv_state': constants.INV_STATE_INITIAL_INVENTORIED})
+            self._clear_deploy_alarm(host_uuid)
         except exception.ServerNotFound:
             LOG.error("initial_inventory_completed invalid host_uuid %s" %
                       host_uuid)
@@ -19204,6 +19205,18 @@ class ConductorManager(service.PeriodicService):
     )
     def _audit_prune_stale_backup_alarms(self, context):
         self._prune_stale_backup_alarms(context)
+
+    def _clear_deploy_alarm(self, host_uuid):
+        """
+        Clear the deploy alarm after host applies new software release and reboots
+        :param host_uuid: uuid of the host associated with the alarm
+        """
+        host = self.dbapi.ihost_get(host_uuid)
+        entity_instance_id = "%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST, host.hostname)
+        LOG.info("Clearing deploy host alarm %s for %s" % (
+            fm_constants.FM_ALARM_ID_USM_DEPLOY_HOST_SUCCESS_RR, entity_instance_id))
+        self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_USM_DEPLOY_HOST_SUCCESS_RR,
+                                entity_instance_id)
 
     def get_all_certs(self, context):
         """
