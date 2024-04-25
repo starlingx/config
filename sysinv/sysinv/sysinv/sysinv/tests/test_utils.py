@@ -396,6 +396,20 @@ class GenericUtilsTestCase(base.TestCase):
         self.assertFalse(utils.is_url('https://'))
         self.assertFalse(utils.is_url('//controller'))
 
+    def test_is_bundle_extension_valid(self):
+        # Test with a file name ending with ".tgz"
+        self.assertTrue(utils.is_bundle_extension_valid("example.tgz"))
+
+        # Test with a file name ending with ".TGZ"
+        self.assertTrue(utils.is_bundle_extension_valid("example.TGZ"))
+
+    def test_is_bundle_extension_valid_bad_content(self):
+        # Test with a file name ending with ".tar"
+        self.assertFalse(utils.is_bundle_extension_valid("example.tar"))
+
+        # Test with a file name ending with ".txt"
+        self.assertFalse(utils.is_bundle_extension_valid("example.txt"))
+
 
 class MkfsTestCase(base.TestCase):
 
