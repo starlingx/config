@@ -170,7 +170,7 @@ class BasePuppet(object):
 
     def _get_address_by_name(self, name, networktype):
         """
-        Retrieve an address entry by name and scoped by network type
+        Retrieve a primary address entry by name and scoped by network type
         """
         addresses = self.context.setdefault('_address_names', {})
         address_name = utils.format_address_name(name, networktype)
@@ -179,7 +179,24 @@ class BasePuppet(object):
             address = utils.get_primary_address_by_name(self.dbapi,
                                                         address_name,
                                                         networktype, True)
-            addresses[address_name] = address
+            if address is not None:
+                addresses[address_name] = address
+
+        return address
+
+    def _get_secondary_address_by_name(self, name, networktype):
+        """
+        Retrieve a secondary address entry by name and scoped by network type
+        """
+        addresses = self.context.setdefault('_sec_address_names', {})
+        address_name = utils.format_address_name(name, networktype)
+        address = addresses.get(address_name)
+        if address is None:
+            address = utils.get_secondary_address_by_name(self.dbapi,
+                                                          address_name,
+                                                          networktype, True)
+            if address is not None:
+                addresses[address_name] = address
 
         return address
 

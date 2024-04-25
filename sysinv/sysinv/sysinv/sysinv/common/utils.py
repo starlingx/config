@@ -3726,7 +3726,7 @@ def get_primary_address_by_name(dbapi, db_address_name, networktype, raise_exc=F
         LOG.info(f"address {db_address_name} not found, returning")
         if raise_exc:
             raise exception.AddressNotFoundByName(name=db_address_name)
-        return address
+        return None
 
     # if there is a single entry, return here
     if len(address) == 1:
@@ -3753,6 +3753,62 @@ def get_primary_address_by_name(dbapi, db_address_name, networktype, raise_exc=F
             pass
         except Exception as ex:
             LOG.info(f"get_primary_address_by_name general exception: {str(ex)}")
+
+    if not address and raise_exc:
+        raise exception.AddressNotFoundByName(name=db_address_name)
+    return address
+
+
+def get_secondary_address_by_name(dbapi, db_address_name, networktype, raise_exc=False):
+    """Search address by database name to retrieve the relevant address from
+       the secondary pool, if multipĺe entries for the same name are found, the
+       query will use the network's pool_uuid to get the address family (IPv4 or
+       IPv6) related to the secondary.
+
+    :param dbapi: the database api reference
+    :param db_address_name: the address name in the database
+    :param networktype: the network type
+    :param raise_exc: raise AddressNotFoundByName instead of returning None
+
+    :return: the address object if found, None otherwise
+    """
+    address = None
+    secondary_pool = None
+
+    if not db_address_name or not networktype:
+        LOG.err(f"no db_address_name={db_address_name} or networktype={networktype} provided")
+        return address
+
+    try:
+        networks = dbapi.networks_get_by_type(networktype)
+        if networks and len(networks) == 1:
+            net_pools = dbapi.network_addrpool_get_by_network_id(networks[0].id)
+            if len(net_pools) == 2 and networks[0].pool_uuid:
+                for net_pool in net_pools:
+                    if net_pool.address_pool_uuid != networks[0].pool_uuid:
+                        # this is the secondary
+                        secondary_pool = dbapi.address_pool_get(net_pool.address_pool_uuid)
+            else:
+                LOG.debug(f"network {networks[0].type},{networks[0].pool_uuid} have"
+                         f" {len(net_pools)} pools")
+        else:
+            LOG.debug(f"It is only possible to have one network obj for networktype={networktype}")
+
+        if secondary_pool:
+            address = dbapi.address_get_by_name_and_family(db_address_name,
+                                                           secondary_pool.family)
+
+    except exception.AddressPoolNotFound:
+        LOG.debug(f"cannot find address pool for name={db_address_name} with"
+                  f" network type={networktype}")
+        pass
+    except exception.AddressNotFoundByNameAndFamily:
+        LOG.debug(f"cannot find secondary address for name={db_address_name} with"
+                  f" network type={networktype} and family={secondary_pool.family}")
+        pass
+    except Exception as ex:
+        LOG.info(f"get_secondary_address_by_name general exception: {str(ex)}")
+        pass
 
     if not address and raise_exc:
         raise exception.AddressNotFoundByName(name=db_address_name)
