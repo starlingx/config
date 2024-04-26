@@ -2508,10 +2508,10 @@ def is_chart_enabled(dbapi, app_name, chart_name, namespace):
         db_app = find_kube_app(dbapi, app_name)
         db_chart = dbapi.helm_override_get(db_app.id, chart_name, namespace)
     except exception.KubeAppNotFound:
-        LOG.exception("is_chart_enabled: %s application unknown" % (app_name))
+        LOG.warning("is_chart_enabled: %s application unknown" % (app_name))
         return False
     except exception.HelmOverrideNotFound:
-        LOG.exception("is_chart_enabled: %s/%s/%s overrides missing" % (
+        LOG.warning("is_chart_enabled: %s/%s/%s overrides missing" % (
             app_name, chart_name, namespace))
         return False
 
