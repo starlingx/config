@@ -6980,6 +6980,12 @@ class HostController(rest.RestController):
             pecan.request.context,
             hostupdate.ihost_orig['uuid'])
 
+        # Remove IPSec flag to allow a new configuration after reinstall
+        capabilities = hostupdate.ihost_orig['capabilities']
+        if capabilities.get('mgmt_ipsec') is not None:
+            capabilities.pop('mgmt_ipsec')
+            hostupdate.ihost_val_update({'capabilities': capabilities})
+
         hostupdate.notify_mtce = True
         if hostupdate.ihost_orig['personality'] == constants.STORAGE:
             istors = pecan.request.dbapi.istor_get_by_ihost(
