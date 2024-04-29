@@ -3111,7 +3111,7 @@ def get_certificate_from_secret(secret_name, secret_ns):
         if 'ca.crt' in data:
             ca_crt = base64.decode_as_text(data['ca.crt'])
         else:
-            LOG.warning("Secret does't have CA data stored:  %s\\%s" %
+            LOG.warning("Secret doesn't have CA data stored:  %s\\%s" %
                         (secret_ns, secret_name))
             ca_crt = ''
     except TypeError:
@@ -3172,6 +3172,9 @@ def verify_self_signed_ca_cert(crt):
 
 
 def verify_cert_issuer(cert, issuer):
+    if cert == issuer:
+        return verify_self_signed_ca_cert(cert)
+
     tmpfile_crt = tempfile.NamedTemporaryFile()
     tmpfile_crt.write(
         extract_certs_from_pem(cert.encode('utf-8'))[-1].public_bytes(serialization.Encoding.PEM))

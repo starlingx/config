@@ -482,9 +482,8 @@ class Health(object):
                         err_msg += 'Platform Issuer Root CA certificate is not trusted by the platform.\n'
                         return err_msg
             else:
-                if not utils.verify_cert_chain_trusted(tls_crt):
-                    err_msg += 'Platform Issuer Root CA certificate is not trusted by the platform.\n'
-                    return err_msg
+                err_msg += 'Platform Issuer CA certificate chain is incorrect.\n'
+                return err_msg
 
         return err_msg
 
