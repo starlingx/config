@@ -177,7 +177,8 @@ def get_test_ihost(**kw):
             'max_cpu_mhz_allowed': kw.get('max_cpu_mhz_allowed', ''),
             'cstates_available': kw.get('cstates_available', ''),
             'nvme_host_id': kw.get('nvme_host_id', None),
-            'nvme_host_nqn': kw.get('nvme_host_nqn', None)
+            'nvme_host_nqn': kw.get('nvme_host_nqn', None),
+            'sw_version': kw.get('sw_version', SW_VERSION)
              }
     return inv
 

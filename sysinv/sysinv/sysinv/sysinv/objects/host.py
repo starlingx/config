@@ -66,6 +66,9 @@ class Host(base.SysinvObject):
             'mgmt_mac': utils.str_or_none,
             'mgmt_ip': utils.str_or_none,
 
+            # Software version
+            'sw_version': utils.str_or_none,
+
             # Board management members
             'bm_ip': utils.str_or_none,
             'bm_mac': utils.str_or_none,
