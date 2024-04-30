@@ -21,7 +21,7 @@ ACTION=$3
 CONFIG_PERMDIR="/opt/platform/config/${TO_RELEASE}"
 UPGRADE_IN_PROGRESS_APPS_FILE='/etc/platform/.upgrade_in_progress_apps'
 UPDATE_RESULT_SLEEP=30
-UPDATE_RESULT_ATTEMPTS=30  # ~15 min to update app
+UPDATE_RESULT_ATTEMPTS=45  # ~22.5 min to allow updates to complete.
 
 # This will log to /var/log/platform.log
 function log {
