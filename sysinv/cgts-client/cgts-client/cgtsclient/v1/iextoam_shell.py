@@ -51,7 +51,10 @@ def do_oam_show(cc, args):
 
     iextoam = iextoams[0]
 
-    # iextoam = cc.iextoam.get(args.uuid)
+    print("WARNING: The oam-show command is deprecated and only shows parameters from the primary "
+          "address pool. Use network-addrpool-list / addrpool-list / addrpool-show instead to "
+          "view parameters from all associated address pools.")
+
     _print_iextoam_show(iextoam, cc)
 
 
@@ -82,6 +85,10 @@ def do_oam_modify(cc, args):
     iextoams = cc.iextoam.list()
 
     iextoam = iextoams[0]
+
+    print("WARNING: The oam-modify command is deprecated and only allows modification of the "
+          "primary address pool. Use network-addrpool-list / addrpool-list to list all associated "
+          "address pools, and addrpool-modify to edit the parameters.")
 
     if cc.isystem.list()[0].system_mode == constants.SYSTEM_MODE_SIMPLEX:
         for i, elem in enumerate(args.attributes[0]):

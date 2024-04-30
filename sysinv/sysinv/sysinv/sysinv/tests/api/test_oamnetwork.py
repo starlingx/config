@@ -419,7 +419,7 @@ class IPv6TestList(TestListMixin,
     pass
 
 
-class IPv4TestPatch(TestListMixin,
+class IPv4TestPatch(TestPatchMixin,
                     OAMNetworkTestCase):
     pass
 

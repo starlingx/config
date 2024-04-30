@@ -168,10 +168,11 @@ def is_valid_subnet(subnet, ip_version=None):
             "Please configure valid %s subnet") %
             (subnet.version, subnet, ip_version_to_string(ip_version)))
     elif subnet.size < 8:
+        max_prefix = 29 if subnet.version == constants.IPV4_FAMILY else 125
         raise wsme.exc.ClientSideError(_(
             "Invalid subnet size %s with %s. "
-            "Please configure at least size /24 subnet") %
-            (subnet.size, subnet))
+            "Please configure at least size /%d subnet") %
+            (subnet.size, subnet, max_prefix))
     elif subnet.ip != subnet.network:
         raise wsme.exc.ClientSideError(_(
             "Invalid network address %s."
@@ -187,9 +188,9 @@ def is_valid_address_within_subnet(ip_address, subnet):
 
     if ip_address.version != subnet.version:
         raise wsme.exc.ClientSideError(_(
-            "Invalid IP version %s %s. "
-            "Please configure valid %s address.") %
-            (ip_address.version, subnet, ip_version_to_string(subnet.version)))
+            "Invalid IP version %s: %s. "
+            "Please configure valid %s address for subnet %s.") %
+            (ip_address.version, ip_address, ip_version_to_string(subnet.version), subnet))
     elif ip_address == subnet.network:
         raise wsme.exc.ClientSideError(_(
             "Invalid IP address: %s. "

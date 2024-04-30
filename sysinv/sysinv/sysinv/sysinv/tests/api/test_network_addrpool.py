@@ -261,6 +261,10 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         self.assertEqual('application/json', response.content_type)
         self.assertEqual(response.status_code, http_client.OK)
 
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_oam_config')
+        self.mock_rpcapi_update_oam_config = p.start()
+        self.addCleanup(p.stop)
+
         # add secondary
         ndict = self.get_post_object(self.networks[net_type].uuid,
                                      self.address_pools['oam-ipv6'].uuid)
@@ -280,6 +284,7 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         self.assertEqual(response['network_name'], self.networks[net_type].name)
         self.assertEqual(response['network_id'], self.networks[net_type].id)
         self.assertEqual(response['network_uuid'], self.networks[net_type].uuid)
+        self.mock_rpcapi_update_oam_config.assert_called_once()
 
     def test_success_create_network_addrpool_primary_subcloud(self):
         self._setup_context()
@@ -515,6 +520,51 @@ class TestDelete(NetworkAddrpoolTestCase):
                                headers=self.API_HEADERS,
                                expect_errors=True)
         self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+
+    def test_success_delete_oam_network_addrpool_secondary(self):
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_oam_config')
+        self.mock_rpcapi_update_oam_config = p.start()
+        self.addCleanup(p.stop)
+
+        p = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
+        self.mock_utils_get_system_mode = p.start()
+        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
+        self.addCleanup(p.stop)
+
+        p = mock.patch('sysinv.common.utils.is_initial_config_complete')
+        self.mock_utils_is_initial_config_complete = p.start()
+        self.mock_utils_is_initial_config_complete.return_value = True
+        self.addCleanup(p.stop)
+
+        net_type = constants.NETWORK_TYPE_OAM
+        net_pool_1 = dbutils.create_test_network_addrpool(
+            address_pool_id=self.address_pools['oam-ipv4'].id,
+            network_id=self.networks[net_type].id)
+        net_pool_2 = dbutils.create_test_network_addrpool(
+            address_pool_id=self.address_pools['oam-ipv6'].id,
+            network_id=self.networks[net_type].id)
+
+        response = self.delete(self.get_single_url(net_pool_2.uuid),
+                               headers=self.API_HEADERS)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+
+        # Test deletion of net_pool_2
+        response = self.get_json(self.get_single_url(net_pool_2.uuid),
+                                 expect_errors=True)
+        self.assertEqual(response.status_code, http_client.NOT_FOUND)
+
+        # Test presence of net_pool_1
+        response = self.get_json(self.get_single_url(net_pool_1.uuid),
+                                 expect_errors=True)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        # check that pool_uuid is filled since it was the secondary pool
+        response = self.get_json(self.get_single_network_url(self.networks[net_type].uuid))
+        self.assertEqual(response['pool_uuid'], self.address_pools['oam-ipv4'].uuid)
+        self.assertEqual(response['type'], self.networks[net_type].type)
+        self.assertEqual(response['primary_pool_family'],
+                         self.networks[net_type].primary_pool_family)
+        self.mock_rpcapi_update_oam_config.assert_called_once()
 
     def test_success_delete_mgmt_network_addrpool_secondary(self):
         p = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')

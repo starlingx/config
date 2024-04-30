@@ -268,6 +268,9 @@ class NetworkAddresspoolController(rest.RestController):
         addresses = utils.PopulateAddresses.create_network_addresses(pool, network)
         self._populate_network_addresses(pool, network, addresses, result)
 
+        if network.type == constants.NETWORK_TYPE_OAM:
+            pecan.request.rpcapi.update_oam_config(pecan.request.context)
+
         return NetworkAddresspool.convert_with_links(result)
 
     @wsme_pecan.wsexpose(NetworkAddresspool, types.uuid)
@@ -300,8 +303,7 @@ class NetworkAddresspoolController(rest.RestController):
         pool = pecan.request.dbapi.address_pool_get(to_delete['address_pool_uuid'])
 
         if cutils.is_initial_config_complete():
-            if (network['type'] in [constants.NETWORK_TYPE_OAM,
-                                constants.NETWORK_TYPE_CLUSTER_HOST,
+            if (network['type'] in [constants.NETWORK_TYPE_CLUSTER_HOST,
                                 constants.NETWORK_TYPE_PXEBOOT,
                                 constants.NETWORK_TYPE_CLUSTER_POD,
                                 constants.NETWORK_TYPE_CLUSTER_SERVICE,
@@ -328,3 +330,6 @@ class NetworkAddresspoolController(rest.RestController):
                 pecan.request.dbapi.address_update(addr.uuid, {'interface_id': None})
 
         pecan.request.dbapi.network_addrpool_destroy(to_delete.uuid)
+
+        if network.type == constants.NETWORK_TYPE_OAM:
+            pecan.request.rpcapi.update_oam_config(pecan.request.context)
