@@ -1707,31 +1707,23 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('get_fernet_keys',
                                                 key_id=key_id))
 
-    def kube_upgrade_start(self, context, k8s_version):
-        """Asynchronously, start a Kubernetes upgrade to the given version.
+    def kube_pre_application_update(self, context):
+        """Asynchronously, update applications before Kubernetes is upgraded.
 
-        :param context: Context of the request
-        :param k8s_version: Kubernetes target version
-        :param k8s_upgrade_timing: When applications should be updated
+        :param context: Context of the request.
         """
 
-        return self.cast(context, self.make_msg('kube_upgrade_start',
+        return self.cast(context, self.make_msg('kube_pre_application_update'))
+
+    def kube_post_application_update(self, context, k8s_version):
+        """Asynchronously, update applications after Kubernetes is upgraded.
+
+        :param context: Context of the request.
+        :param k8s_version: Target Kubernetes version.
+        """
+
+        return self.cast(context, self.make_msg('kube_post_application_update',
                                                 k8s_version=k8s_version))
-
-    def update_apps_based_on_k8s_version_async(self,
-                                               context,
-                                               k8s_version,
-                                               k8s_upgrade_timing):
-        """Asynchronously, update all applications based on a given Kubernetes version.
-
-        :param context: Context of the request
-        :param k8s_version: Kubernetes target version
-        :param k8s_upgrade_timing: When applications should be updated
-        """
-
-        return self.cast(context, self.make_msg('update_apps_based_on_k8s_version_async',
-                                                k8s_version=k8s_version,
-                                                k8s_upgrade_timing=k8s_upgrade_timing))
 
     def evaluate_apps_reapply(self, context, trigger):
         """Synchronously, determine whether an application

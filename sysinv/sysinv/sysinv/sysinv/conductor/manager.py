@@ -7618,9 +7618,45 @@ class ConductorManager(service.PeriodicService):
                     self._update_image_conversion_alarm(fm_constants.FM_ALARM_STATE_CLEAR,
                                                 constants.FILESYSTEM_NAME_IMAGE_CONVERSION)
 
-    def _auto_upload_managed_app(self, context, app_name):
+    def _auto_upload_managed_app(self,
+                                 context,
+                                 app_name,
+                                 k8s_version=None,
+                                 k8s_upgrade_timing=None,
+                                 async_upload=True):
+        """ Automatically upload managed applications.
+
+        :param context: Context of the request.
+        :param app_name: Name of the application to be uploaded.
+        :param k8s_version: Kubernetes target version.
+        :param k8s_upgrade_timing: When applications should be uploaded.
+        :param async_upload: Upload asynchronously if True. Upload synchronously if False.
+        :return: True if the upload successfully started when running asynchronously.
+                 True if the app was successfully uploaded when running synchronously.
+                 False if an error has occurred.
+                 None if there is not an upload version available for the given app.
+        """
+
         if self._patching_operation_is_occurring():
-            return
+            return False
+
+        # Delete current uploaded version if a newer one is available
+        try:
+            existing_app = kubeapp_obj.get_by_name(context, app_name)
+            app_bundle = self._get_app_bundle_for_update(existing_app, k8s_version, k8s_upgrade_timing)
+            if app_bundle:
+                hook_info_delete = LifecycleHookInfo()
+                hook_info_delete.mode = constants.APP_LIFECYCLE_MODE_AUTO
+                self.perform_app_delete(context, existing_app, hook_info_delete)
+            else:
+                LOG.debug("No bundle found for uploading a new version of %s" % app_name)
+                return
+        except exception.KubeAppNotFound:
+            pass
+        except Exception as e:
+            LOG.exception("Failed to delete app {} during automatic upload: {}"
+                          .format(app_name, e))
+            return False
 
         LOG.info("Platform managed application %s: Creating..." % app_name)
         app_data = {'name': app_name,
@@ -7628,46 +7664,65 @@ class ConductorManager(service.PeriodicService):
                     'manifest_name': constants.APP_MANIFEST_NAME_PLACEHOLDER,
                     'manifest_file': constants.APP_TARFILE_NAME_PLACEHOLDER,
                     'status': constants.APP_UPLOAD_IN_PROGRESS}
+
         try:
             self.dbapi.kube_app_create(app_data)
             app = kubeapp_obj.get_by_name(context, app_name)
+            app_bundle = self._get_app_bundle_for_update(app, k8s_version, k8s_upgrade_timing)
+
+            if app_bundle is None:
+                # Skip if no bundles are found
+                LOG.debug("No bundle found for uploading %s" % app_name)
+                return
+
+            tarball = self._check_tarfile(app_name, app_bundle.file_path)
+            if ((tarball.manifest_name is None) or
+                    (tarball.manifest_file is None)):
+                app.status = constants.APP_UPLOAD_FAILURE
+                app.save()
+                return False
+
+            app.name = tarball.app_name
+            app.app_version = tarball.app_version
+            app.manifest_name = tarball.manifest_name
+            app.manifest_file = os.path.basename(tarball.manifest_file)
+            app.save()
+
+            # Action: Upload.
+            # Do not block this audit task or any other periodic task. This
+            # could be long running. The next audit cycle will pick up the
+            # latest status.
+            LOG.info("Platform managed application %s: "
+                        "Uploading..." % app_name)
+
+            hook_info = LifecycleHookInfo()
+            hook_info.mode = constants.APP_LIFECYCLE_MODE_AUTO
+
+            if async_upload:
+                greenthread.spawn(self.perform_app_upload,
+                                context,
+                                app,
+                                tarball.tarball_name,
+                                hook_info)
+            else:
+                self.perform_app_upload(context,
+                                        app,
+                                        tarball.tarball_name,
+                                        hook_info)
         except exception.KubeAppAlreadyExists as e:
             LOG.exception(e)
-            return
+            return False
         except exception.KubeAppNotFound as e:
             LOG.exception(e)
-            return
-
-        tarfile = self._search_tarfile(app_name, managed_app=True)
-        if tarfile is None:
-            # Skip if no tarball or multiple tarballs found
-            return
-
-        tarball = self._check_tarfile(app_name, tarfile)
-        if ((tarball.manifest_name is None) or
-                (tarball.manifest_file is None)):
-            app.status = constants.APP_UPLOAD_FAILURE
-            app.save()
-            return
-
-        app.name = tarball.app_name
-        app.app_version = tarball.app_version
-        app.manifest_name = tarball.manifest_name
-        app.manifest_file = os.path.basename(tarball.manifest_file)
-        app.save()
-
-        # Action: Upload.
-        # Do not block this audit task or any other periodic task. This
-        # could be long running. The next audit cycle will pick up the
-        # latest status.
-        LOG.info("Platform managed application %s: "
-                    "Uploading..." % app_name)
-
-        hook_info = LifecycleHookInfo()
-        hook_info.mode = constants.APP_LIFECYCLE_MODE_AUTO
-
-        greenthread.spawn(self.perform_app_upload, context,
-                          app, tarball.tarball_name, hook_info)
+            return False
+        except Exception as e:
+            if k8s_version:
+                LOG.exception("App {} automatic upload to match Kubernetes version {} "
+                              "failed with: {}".format(app.name, k8s_version, e))
+            else:
+                LOG.exception("App {} automatic upload {} failed with: {}"
+                              .format(app.name, k8s_version, e))
+            return False
 
     def _auto_apply_managed_app(self, context, app_name):
         try:
@@ -7702,7 +7757,7 @@ class ConductorManager(service.PeriodicService):
 
         self._inner_sync_auto_apply(context, app_name)
 
-    def update_apps_based_on_k8s_version_sync(self, context, k8s_version, k8s_upgrade_timing):
+    def update_apps_based_on_k8s_version(self, context, k8s_version, k8s_upgrade_timing):
         """ Update applications based on a given Kubernetes version (blocking).
 
         :param context: Context of the request
@@ -7730,10 +7785,12 @@ class ConductorManager(service.PeriodicService):
             except exception.KubeAppNotFound:
                 continue
 
-            # Apps should be either in 'applied' or 'apply-failure' state.
+            # Apps should be either in 'applied' or 'apply-failure' state to be updated.
             # Applied apps are selected to be updated since they are currently in use.
             # If the app is in 'apply-failure' state we give it a chance to be
             # successfully applied via the update process.
+            # If a newer compatible version of an app in 'uploaded' or 'uploaded-failed' state
+            # is available then the current version is removed and the new one is uploaded.
             if (app.status == constants.APP_APPLY_SUCCESS or
                     app.status == constants.APP_APPLY_FAILURE):
                 threads[app.name] = threadpool.spawn(self._auto_update_app,
@@ -7742,6 +7799,14 @@ class ConductorManager(service.PeriodicService):
                                                      k8s_version,
                                                      k8s_upgrade_timing,
                                                      async_update=False)
+            elif (app.status == constants.APP_UPLOAD_SUCCESS or
+                    app.status == constants.APP_UPLOAD_FAILURE):
+                threads[app.name] = threadpool.spawn(self._auto_upload_managed_app,
+                                                     context,
+                                                     app_name,
+                                                     k8s_version,
+                                                     k8s_upgrade_timing,
+                                                     async_upload=False)
 
         # Wait for all updates to finish
         threadpool.waitall()
@@ -7754,38 +7819,6 @@ class ConductorManager(service.PeriodicService):
                 result = False
 
         return result
-
-    def update_apps_based_on_k8s_version_async(self, context, k8s_version, k8s_upgrade_timing):
-        """ Update applications based on a given Kubernetes version (non-blocking).
-
-        :param context: Context of the request
-        :param k8s_version: Kubernetes target version.
-        :param k8s_upgrade_timing: When applications should be updated.
-        """
-        update_candidates = [app_name for app_name in
-                             self.apps_metadata[constants.APP_METADATA_APPS].keys()]
-
-        LOG.info("Checking available application updates for Kubernetes version {}."
-                 .format(k8s_version))
-
-        for app_name in update_candidates:
-            try:
-                app = kubeapp_obj.get_by_name(context, app_name)
-            except exception.KubeAppNotFound:
-                continue
-
-            # Apps should be either in 'applied' or 'apply-failure' state.
-            # Applied apps are selected to be updated since they are currently in use.
-            # If the app is in 'apply-failure' state we give it a chance to be
-            # successfully applied via the update process.
-            if (app.status == constants.APP_APPLY_SUCCESS or
-                    app.status == constants.APP_APPLY_FAILURE):
-                if self._auto_update_app(context,
-                                         app_name,
-                                         k8s_version,
-                                         k8s_upgrade_timing) is False:
-                    LOG.error("Failed to update {} to match Kubernetes version {}"
-                              .format(app_name, k8s_version))
 
     def _get_app_bundle_for_update(self, app, k8s_version=None, k8s_upgrade_timing=None):
         """ Retrieve metadata from the most updated application bundle
@@ -7833,11 +7866,13 @@ class ConductorManager(service.PeriodicService):
                           .format(k8s_version,
                                   bundle_metadata.k8s_maximum_version,
                                   bundle_metadata.file_path))
-            elif LooseVersion(bundle_metadata.version) == LooseVersion(app.app_version):
+            elif (app.app_version != constants.APP_VERSION_PLACEHOLDER and
+                    LooseVersion(bundle_metadata.version) == LooseVersion(app.app_version)):
                 LOG.debug("Bundle {} version and installed app version are the same ({})"
                           .format(bundle_metadata.file_path,
                                   app.app_version))
-            elif LooseVersion(bundle_metadata.version) < LooseVersion(app.app_version):
+            elif (app.app_version != constants.APP_VERSION_PLACEHOLDER and
+                    LooseVersion(bundle_metadata.version) < LooseVersion(app.app_version)):
                 LOG.debug("Bundle {} version {} is lower than installed app version ({})"
                           .format(bundle_metadata.file_path,
                                   bundle_metadata.version,
@@ -7859,7 +7894,8 @@ class ConductorManager(service.PeriodicService):
         # bundle is available instead.
         if (auto_downgrade and
                 app.app_version not in available_versions and
-                latest_downgrade_bundle is not None):
+                latest_downgrade_bundle is not None and
+                k8s_upgrade_timing is None):
             LOG.info("Application {} will be downgraded from version {} to {}"
                      .format(app.name, app.app_version, latest_downgrade_bundle.version))
             return latest_downgrade_bundle
@@ -8462,11 +8498,12 @@ class ConductorManager(service.PeriodicService):
 
         # Skip kubernetes labels audit when K8S upgrade is in progress.
         # The kube-apiserver will not be available during kube-upgrade-abort operation.
+        # Kubernetes upgrade may be completed but apps still need to be post updated.
         try:
             self.verify_k8s_upgrade_not_in_progress()
-        except Exception:
-            LOG.info("k8s Upgrade in progress - _k8s_application_audit skip "
-                     "activity")
+            self.verify_k8s_app_upgrade_is_completed()
+        except Exception as e:
+            LOG.info("_k8s_application_audit skip activity: {}".format(str(e)))
             return
 
         if self._verify_restore_in_progress():
@@ -10620,6 +10657,22 @@ class ConductorManager(service.PeriodicService):
         else:
             raise exception.SysinvException(_(
                 "Kubernetes upgrade is in progress and not completed."))
+
+    def verify_k8s_app_upgrade_is_completed(self):
+        """ Check if application update steps have finished during a k8s upgrade
+
+        Raise an exception if the final update step (post-updated-apps) hasn't
+        been reached.
+        """
+        try:
+            kube_upgrade = self.dbapi.kube_upgrade_get_one()
+            if kube_upgrade.state == kubernetes.KUBE_POST_UPDATED_APPS:
+                return
+        except exception.NotFound:
+            pass
+        else:
+            raise exception.SysinvException(_(
+                "Application post update not completed for the existing k8s upgrade"))
 
     def verify_upgrade_not_in_progress(self):
         """ Check if there is an upgrade in progress.
@@ -16234,8 +16287,10 @@ class ConductorManager(service.PeriodicService):
         """
 
         # Defer apps reapply evaluation if Kubernetes upgrades are in progress
+        # or if apps are still post updating.
         try:
             self.verify_k8s_upgrade_not_in_progress()
+            self.verify_k8s_app_upgrade_is_completed()
         except Exception as e:
             LOG.info("Deferring apps reapply evaluation. {}".format(str(e)))
             return
@@ -16615,6 +16670,7 @@ class ConductorManager(service.PeriodicService):
                                        lifecycle_hook_info_app_upload)
         except Exception as e:
             LOG.error("Error performing app_lifecycle_actions %s" % str(e))
+            return False
 
     def perform_app_apply(self, context, rpc_app, mode, lifecycle_hook_info_app_apply):
         """Handling of application install request (via AppOperator)
@@ -16939,6 +16995,18 @@ class ConductorManager(service.PeriodicService):
 
         LOG.info("Successfully completed k8s control plane backup.")
 
+    def _check_app_kube_compatibility(self, app, kube_version):
+        """Checks if an application is compatible with a kubernetes version
+
+        :param app: Application object
+        :param kube_version: Kubernetes version
+        """
+        kube_min_version, kube_max_version = \
+                cutils.get_app_supported_kube_version(app.name, app.app_version)
+
+        return kubernetes.is_kube_version_supported(
+                kube_version, kube_min_version, kube_max_version)
+
     def _check_installed_apps_compatibility(self, kube_version):
         """Checks whether all installed applications are compatible
            with the new k8s version
@@ -16956,11 +17024,7 @@ class ConductorManager(service.PeriodicService):
             if app.status != constants.APP_APPLY_SUCCESS:
                 continue
 
-            kube_min_version, kube_max_version = \
-                cutils.get_app_supported_kube_version(app.name, app.app_version)
-
-            if not kubernetes.is_kube_version_supported(
-                    kube_version, kube_min_version, kube_max_version):
+            if not self._check_app_kube_compatibility(app, kube_version):
                 LOG.error("The installed Application {} ({}) is incompatible with the "
                           "new Kubernetes version {}.".format(app.name,
                                                               app.app_version,
@@ -16968,30 +17032,6 @@ class ConductorManager(service.PeriodicService):
                 success = False
 
         return success
-
-    def kube_upgrade_start(self, context, k8s_version):
-        """ Start a Kubernetes upgrade by updating all required apps.
-
-        :param context: Context of the request.
-        :param k8s_version: Kubernetes target version.
-        :param k8s_upgrade_timing: When apps should be updated.
-        """
-
-        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
-
-        if (self.update_apps_based_on_k8s_version_sync(context,
-                                                       k8s_version,
-                                                       constants.APP_METADATA_TIMING_PRE) and
-                self._check_installed_apps_compatibility(k8s_version)):
-            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_STARTED
-            LOG.info("Started kubernetes upgrade from version: %s to version: %s"
-                    % (kube_upgrade_obj.from_version, kube_upgrade_obj.to_version))
-        else:
-            kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_STARTING_FAILED
-            LOG.info("Failed to start kubernetes upgrade from version: %s to version: %s"
-                    % (kube_upgrade_obj.from_version, kube_upgrade_obj.to_version))
-
-        kube_upgrade_obj.save()
 
     def kube_download_images(self, context, kube_version):
         """Download the kubernetes images for this version"""
@@ -17081,6 +17121,42 @@ class ConductorManager(service.PeriodicService):
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
         kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES
         kube_upgrade_obj.save()
+
+    def kube_application_update(self, context, timing, success_state, failure_state):
+        """ Generic method to update applications during Kubernetes upgrade
+
+        :param context: Context of the request.
+        """
+
+        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+
+        # Update all apps that are compatible with the target k8s version.
+        # Check for compatibility after updating since an app update may fail
+        # and be reverted to a previous incompatible version.
+        if (self.update_apps_based_on_k8s_version(context,
+                                                  kube_upgrade_obj.to_version,
+                                                  timing) and
+                self._check_installed_apps_compatibility(kube_upgrade_obj.to_version)):
+            kube_upgrade_obj.state = success_state
+            LOG.info("Applications updated to match Kubernetes version %s."
+                    % (kube_upgrade_obj.to_version))
+        else:
+            kube_upgrade_obj.state = failure_state
+            LOG.info("Failed to update applications to match Kubernetes version %s."
+                    % (kube_upgrade_obj.to_version))
+
+        kube_upgrade_obj.save()
+
+    def kube_pre_application_update(self, context):
+        """ Update applications before Kubernetes is upgraded.
+
+        :param context: Context of the request.
+        """
+
+        self.kube_application_update(context,
+                                     constants.APP_METADATA_TIMING_PRE,
+                                     kubernetes.KUBE_PRE_UPDATED_APPS,
+                                     kubernetes.KUBE_PRE_UPDATING_APPS_FAILED)
 
     def kube_host_cordon(self, context, host_name):
         """Cordon the pods to evict on this host"""
@@ -17399,6 +17475,31 @@ class ConductorManager(service.PeriodicService):
         kube_upgrade_obj = objects.kube_upgrade.get_one(context)
         kube_upgrade_obj.state = kubernetes.KUBE_UPGRADED_STORAGE
         kube_upgrade_obj.save()
+
+    def kube_post_application_update(self, context, k8s_version):
+        """ Update applications after Kubernetes is upgraded.
+
+        :param context: Context of the request.
+        :param k8s_version: Target Kubernetes version
+        """
+
+        self.kube_application_update(context,
+                                     constants.APP_METADATA_TIMING_POST,
+                                     kubernetes.KUBE_POST_UPDATED_APPS,
+                                     kubernetes.KUBE_POST_UPDATING_APPS_FAILED)
+
+        # Remove remaining uploaded apps that are not compatible with the new
+        # Kubernetes version
+        apps = self.dbapi.kube_app_get_all()
+        for app in apps:
+            if app.status != constants.APP_UPLOAD_SUCCESS and \
+                    app.status != constants.APP_UPLOAD_FAILURE:
+                continue
+
+            if not self._check_app_kube_compatibility(app, k8s_version):
+                hook_info_delete = LifecycleHookInfo()
+                hook_info_delete.mode = constants.APP_LIFECYCLE_MODE_AUTO
+                self.perform_app_delete(context, app, hook_info_delete)
 
     def kube_upgrade_abort(self, context, kube_state):
         """

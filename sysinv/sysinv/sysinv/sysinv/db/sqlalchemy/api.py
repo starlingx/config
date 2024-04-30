@@ -27,6 +27,7 @@ from oslo_db import exception as db_exc
 from oslo_db.sqlalchemy import enginefacade
 from oslo_db.sqlalchemy import utils as db_utils
 
+from sqlalchemy import func
 from sqlalchemy import insert
 from sqlalchemy import inspect
 from sqlalchemy import or_
@@ -9620,3 +9621,49 @@ class Connection(api.Connection):
 
     def kube_app_bundle_destroy_by_file_path(self, file_path):
         self.kube_app_bundle_destroy_all(file_path)
+
+    def kube_app_bundle_is_k8s_compatible(self,
+                                          name, k8s_timing,
+                                          target_k8s_version, current_k8s_version=None):
+
+        # Stacking filters for better readability
+        target_k8s_version = target_k8s_version.strip().lstrip('v')
+        query = model_query(models.KubeAppBundle)
+        query = query.filter_by(name=name,
+                                auto_update=True,
+                                k8s_auto_update=True,
+                                k8s_timing=k8s_timing)
+        query = query.filter(models.KubeAppBundle.k8s_minimum_version <= target_k8s_version)
+        query = query.filter(or_(models.KubeAppBundle.k8s_maximum_version >= target_k8s_version,
+                                 models.KubeAppBundle.k8s_maximum_version.is_(None)))
+        if current_k8s_version:
+            current_k8s_version = current_k8s_version.strip().lstrip('v')
+            query = query.filter(models.KubeAppBundle.k8s_minimum_version <= current_k8s_version)
+            query = query.filter(or_(models.KubeAppBundle.k8s_maximum_version >= current_k8s_version,
+                                     models.KubeAppBundle.k8s_maximum_version.is_(None)))
+
+        return query.count() > 0
+
+    def kube_app_bundle_max_k8s_compatible_by_name(self,
+                                                   name,
+                                                   current_k8s_version,
+                                                   target_k8s_version):
+
+        # Stacking filters for better readability
+        current_k8s_version = current_k8s_version.strip().lstrip('v')
+        target_k8s_version = target_k8s_version.strip().lstrip('v')
+        query = model_query(func.max(models.KubeAppBundle.k8s_maximum_version))
+        query = query.filter_by(name=name, auto_update=True, k8s_auto_update=True)
+        query = query.filter(or_(
+            models.KubeAppBundle.k8s_timing == constants.APP_METADATA_TIMING_POST,
+            models.KubeAppBundle.k8s_minimum_version == current_k8s_version))
+        query = query.filter(models.KubeAppBundle.k8s_maximum_version <= target_k8s_version)
+
+        try:
+            result = query.one()[0]
+        except NoResultFound:
+            result = None
+        except MultipleResultsFound:
+            raise exception.MultipleResults()
+
+        return result

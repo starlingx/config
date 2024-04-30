@@ -1110,7 +1110,7 @@ class ManagerTestCase(base.DbTestCase):
         ret = self.service.platform_interfaces(self.context, ihost['id'] + 1)
         self.assertEqual(ret, [])
 
-    def test_kube_upgrade_start(self):
+    def test_kube_pre_application_update(self):
         # Create application
         dbutils.create_test_app(
             name='stx-openstack',
@@ -1126,19 +1126,19 @@ class ManagerTestCase(base.DbTestCase):
         utils.create_test_kube_upgrade(
             from_version=from_version,
             to_version=to_version,
-            state=kubernetes.KUBE_UPGRADE_STARTING,
+            state=kubernetes.KUBE_UPGRADE_STARTED,
         )
 
-        # Start upgrade
-        self.service.kube_upgrade_start(self.context, to_version)
+        # Run update
+        self.service.kube_pre_application_update(self.context)
 
         # Verify that the upgrade state was updated
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state,
-                         kubernetes.KUBE_UPGRADE_STARTED)
+                         kubernetes.KUBE_PRE_UPDATED_APPS)
 
-    def test_kube_upgrade_start_app_not_compatible(self):
-        # Test creation of upgrade when the installed application isn't
+    def test_kube_pre_application_update_app_not_compatible(self):
+        # Test pre app update step when the installed application isn't
         # compatible with the new kubernetes version
 
         # Create application
@@ -1156,16 +1156,16 @@ class ManagerTestCase(base.DbTestCase):
         utils.create_test_kube_upgrade(
             from_version=from_version,
             to_version=to_version,
-            state=kubernetes.KUBE_UPGRADE_STARTING,
+            state=kubernetes.KUBE_UPGRADE_STARTED,
         )
 
-        # Start upgrade
-        self.service.kube_upgrade_start(self.context, to_version)
+        # Run update
+        self.service.kube_pre_application_update(self.context)
 
         # Verify that the upgrade state was updated
         updated_upgrade = self.dbapi.kube_upgrade_get_one()
         self.assertEqual(updated_upgrade.state,
-                         kubernetes.KUBE_UPGRADE_STARTING_FAILED)
+                         kubernetes.KUBE_PRE_UPDATING_APPS_FAILED)
 
     def test_kube_download_images(self):
         # Create controller-0
@@ -2330,6 +2330,63 @@ class ManagerTestCase(base.DbTestCase):
                          kubernetes.KUBE_UPGRADING_NETWORKING_FAILED)
         mock_backup_kube_control_plane.assert_called()
         mock_remove_kube_control_plane_backup.assert_called()
+
+    def test_kube_post_application_update(self):
+        # Create application
+        dbutils.create_test_app(
+            name='stx-openstack',
+            app_version='1.0-19',
+            manifest_name='manifest',
+            manifest_file='stx-openstack.yaml',
+            status='applied',
+            active=True)
+
+        # Create an upgrade
+        from_version = 'v1.42.1'
+        to_version = 'v1.43.1'
+        utils.create_test_kube_upgrade(
+            from_version=from_version,
+            to_version=to_version,
+            state=kubernetes.KUBE_UPGRADING_KUBELETS,
+        )
+
+        # Run post update
+        self.service.kube_post_application_update(self.context, to_version)
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_POST_UPDATED_APPS)
+
+    def test_kube_post_application_update_app_not_compatible(self):
+        # Test post app update step when the installed application isn't
+        # compatible with the new kubernetes version
+
+        # Create application
+        dbutils.create_test_app(
+            name='stx-openstack',
+            app_version='1.0-19',
+            manifest_name='manifest',
+            manifest_file='stx-openstack.yaml',
+            status='applied',
+            active=True)
+
+        # Create an upgrade
+        from_version = 'v1.42.1'
+        to_version = 'v1.43.2'
+        utils.create_test_kube_upgrade(
+            from_version=from_version,
+            to_version=to_version,
+            state=kubernetes.KUBE_UPGRADING_KUBELETS,
+        )
+
+        # Run update
+        self.service.kube_post_application_update(self.context, to_version)
+
+        # Verify that the upgrade state was updated
+        updated_upgrade = self.dbapi.kube_upgrade_get_one()
+        self.assertEqual(updated_upgrade.state,
+                         kubernetes.KUBE_POST_UPDATING_APPS_FAILED)
 
     @mock.patch('sysinv.conductor.manager.utils.HostHelper.get_active_controller')
     @mock.patch('sysinv.conductor.manager.'
