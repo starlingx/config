@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2019,2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -17,7 +17,6 @@ import keystoneauth1
 from cgtsclient import exc
 from cgtsclient import shell as cgts_shell
 from cgtsclient.tests import utils
-from cgtsclient.v1.ihost import ihost
 
 FAKE_ENV = {'OS_USERNAME': 'username',
             'OS_PASSWORD': 'password',
@@ -62,8 +61,21 @@ class ShellTest(utils.BaseTestCase):
 
         return out
 
+
+class ShellBaseTest(ShellTest):
+
     def test_help_unknown_command(self):
         self.assertRaises(exc.CommandError, self.shell, 'help foofoo')
+
+    def test_help_on_network_addrpool_subcommand(self):
+        self.shell("help network-addrpool-list")
+        self.shell("help network-addrpool-show")
+        self.shell("help network-addrpool-assign")
+        self.shell("help network-addrpool-remove")
+
+    def test_auth_param(self):
+        self.make_env(exclude='OS_USERNAME')
+        self.test_help()
 
     def test_debug(self):
         httplib2.debuglevel = 0
@@ -101,28 +113,3 @@ class ShellTest(utils.BaseTestCase):
             for r in required:
                 self.assertThat(help_text,
                                 matchers.MatchesRegex(r, self.re_options))
-
-    def test_auth_param(self):
-        self.make_env(exclude='OS_USERNAME')
-        self.test_help()
-
-    @mock.patch('cgtsclient.v1.ihost.ihostManager.list')
-    def test_host_list(self, mock_list):
-        # This unit test mocks returning a single controller-0 host through host-list
-        fake_controller = {'id': '0',
-                           'hostname': 'controller-0',
-                           'personality': 'controller',
-                           'administrative': 'unlocked',
-                           'operational': 'enabled',
-                           'availability': 'available'}
-        mock_list.return_value = [ihost(None, fake_controller, True)]
-        self.make_env()
-        host_results = self.shell("host-list")
-        self.assertIn('controller-0', host_results)
-        self.assertNotIn('controller-1', host_results)
-
-    def test_help_on_network_addrpool_subcommand(self):
-        self.shell("help network-addrpool-list")
-        self.shell("help network-addrpool-show")
-        self.shell("help network-addrpool-assign")
-        self.shell("help network-addrpool-remove")

@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2023 Wind River Systems, Inc.
+# Copyright (c) 2015-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -658,7 +658,7 @@ class ServiceParameterController(rest.RestController):
 
         try:
             # Pass name to update_service_config only in case the parameters are the Intel
-            # NIC driver version and intel_pstate.
+            # NIC driver version, intel_pstate or sysinv_api_workers.
             new_name = None
             if section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
                     name == constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION:
@@ -666,6 +666,10 @@ class ServiceParameterController(rest.RestController):
 
             elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
                     name == constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE:
+                new_name = name
+
+            elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
+                    name == constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS:
                 new_name = name
 
             pecan.request.rpcapi.update_service_config(
@@ -815,8 +819,8 @@ class ServiceParameterController(rest.RestController):
             delete_k8s_configmap(parameter.as_dict(), self.kube_operator)
 
         try:
-            # Pass name to update_service_config only in case the parameter is the Intel
-            # NIC driver version
+            # Pass name to update_service_config only in case the parameter is
+            # the Intel NIC driver version, intel_pstate or sysinv_api_workers
             name = None
             if parameter.section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
                     parameter.name == constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION:
@@ -824,6 +828,10 @@ class ServiceParameterController(rest.RestController):
 
             elif parameter.section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
                    parameter.name == constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE:
+                name = parameter.name
+
+            elif parameter.section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
+                    parameter.name == constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS:
                 name = parameter.name
 
             pecan.request.rpcapi.update_service_config(
