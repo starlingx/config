@@ -602,7 +602,7 @@ def check_node_lock_ceph_mon(ihost, unsafe=False, ceph_helper=None):
                 "monitor available. At least %d unlocked and "
                 "enabled hosts with monitors are required. Please"
                 " ensure hosts with monitors are unlocked and "
-                "enabled."
+                "enabled. "
                 "Use --force --unsafe if you wish to lock anyway.") %
                 (num_monitors, required_monitors))
 

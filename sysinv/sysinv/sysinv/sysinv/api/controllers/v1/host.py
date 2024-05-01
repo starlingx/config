@@ -6245,6 +6245,13 @@ class HostController(rest.RestController):
         ceph_helper = ceph.CephApiOperator()
         num_monitors, required_monitors, __ = \
             ceph_helper.get_monitors_status(pecan.request.dbapi)
+
+        # Checks that the hostname is storage-0 and is provisioned
+        # to determine that only one monitor is needed to perform the unlock.
+        # This allows quorum to be reestablished as quickly as possible.
+        if ihost['hostname'] == "storage-0" and ihost['invprovision'] == constants.PROVISIONED:
+            required_monitors = 1
+
         if num_monitors < required_monitors:
             raise wsme.exc.ClientSideError(
                 _("Can not unlock storage node. Only %d storage "
