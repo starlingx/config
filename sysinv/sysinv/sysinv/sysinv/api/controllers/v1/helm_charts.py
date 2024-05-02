@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -7,6 +7,7 @@
 import pecan
 from pecan import rest
 import six
+import subprocess
 import wsme
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
@@ -15,6 +16,7 @@ import yaml
 from oslo_log import log
 from sysinv._i18n import _
 from sysinv import objects
+from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.helm import common
 
@@ -230,6 +232,13 @@ class HelmChartsController(rest.RestController):
                         (k, ','.join(common.HELM_CHART_ATTRS)))
 
                 if k == common.HELM_CHART_ATTR_ENABLED:
+                    if attributes[k] in ['true', 'True'] and \
+                                        name == constants.HELM_APP_INTEL_DEVICE_PLUGIN_QAT:
+                        if (not self._is_qat_device_present(name, namespace)):
+                            raise wsme.exc.ClientSideError(
+                                _("Unable to update the helm chart attributes "
+                                  "for chart %s under Namespace %s. "
+                                  "Error: QAT device not found." % (name, namespace)))
                     attributes[k] = attributes[k] in ['true', 'True']
 
             # update the attribute changes
@@ -263,3 +272,20 @@ class HelmChartsController(rest.RestController):
             raise wsme.exc.ClientSideError(_("Application %s not found." % app_name))
         except exception.HelmOverrideNotFound:
             pass
+
+    def _is_qat_device_present(self, name, namespace):
+        """
+        Check whether the system has QAT device or not.
+        """
+        try:
+            cmd = 'lspci -n | grep -E -c "{}:({}|{})"'.format(constants.PCI_ALIAS_QAT_VENDOR,
+                                                              constants.PCI_ALIAS_QAT_4XXX_PF_DEVICE,
+                                                              constants.PCI_ALIAS_QAT_401XX_PF_DEVICE)
+            output = subprocess.run(cmd, shell=True, check=False, capture_output=True, text=True)
+            if output.returncode == 0:
+                return True
+            return False
+        except Exception:
+            raise wsme.exc.ClientSideError(
+                _("Failed to update the helm chart attributes for chart %s under "
+                  "Namespace %s." % (name, namespace)))

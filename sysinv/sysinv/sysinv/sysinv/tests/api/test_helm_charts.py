@@ -553,3 +553,72 @@ class ApiHelmChartPatchTestSuiteMixin(ApiHelmChartTestCaseMixin):
         # Verify that the helm override was updated
         response = self.get_json(url, expect_errors=True)
         self.assertEqual(response.json['user_overrides'], None)
+
+
+class ApiHelmChartPatchTestSuiteQat(ApiHelmChartTestCaseMixin):
+    """ Helm Chart Attribute Modify Operations
+    """
+
+    def setUp(self):
+        super(ApiHelmChartPatchTestSuiteQat, self).setUp()
+        self._create_db_app_qat()
+
+    def _create_db_app_qat(self, obj_id=None):
+        return dbutils.create_test_app(id=obj_id, name='intel-device-plugins-operator',
+                                app_version='1.0-8',
+                                manifest_name='intel-device-plugins-operator-manifest',
+                                manifest_file='manifest.yaml',
+                                status='applied',
+                                active=True)
+
+    def _mock_returncode(self, returncode):
+        # mock returncode
+        mock_subprocess = mock.MagicMock()
+        mock_output = mock.MagicMock()
+        mock_output.returncode = returncode
+        p1 = mock.patch('subprocess.run', mock_subprocess)
+        p1.start().return_value = mock_output
+        self.addCleanup(p1.stop)
+        cmd = 'lspci -n | grep -E -c "{}:({}|{})"'.format(8086, 4940, 4942)
+        mock_subprocess(cmd)
+
+    def test_helm_chart_attribute_modify_qat_success(self):
+        self._mock_returncode(0)
+        # Return system apps
+        self.fake_helm_apps.return_value = ['intel-device-plugins-operator']
+        # Return helm chart overrides
+        self.fake_override.return_value = {"enabled": False}
+
+        # Pass a non existant field to be patched by the API
+        url = self.get_single_url_helm_override('intel-device-plugins-operator',
+                                                'intel-device-plugins-qat',
+                                                'intel-device-plugins-operator')
+        response = self.patch_json(url, {'attributes': {"enabled": "true"},
+                                   'flag': '', 'values': {}},
+                                   headers=self.API_HEADERS,
+                                   expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+        self.assertEqual(response.json['attributes'], {'enabled': True})
+
+    def test_helm_chart_attribute_modify_qat_failure(self):
+        self._mock_returncode(1)
+        # Return system apps
+        self.fake_helm_apps.return_value = ['intel-device-plugins-operator']
+        # Return helm chart overrides
+        self.fake_override.return_value = {"enabled": False}
+
+        # Pass a non existant field to be patched by the API
+        url = self.get_single_url_helm_override('intel-device-plugins-operator',
+                                                'intel-device-plugins-qat',
+                                                'intel-device-plugins-operator')
+        response = self.patch_json(url, {'attributes': {"enabled": "true"},
+                                   'flag': '', 'values': {}},
+                                   headers=self.API_HEADERS,
+                                   expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("Unable to update the helm chart attributes for chart "
+                      "intel-device-plugins-qat under Namespace "
+                      "intel-device-plugins-operator. Error: QAT device not "
+                      "found", response.json['error_message'])
