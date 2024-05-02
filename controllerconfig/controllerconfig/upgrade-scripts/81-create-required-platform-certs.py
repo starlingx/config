@@ -4,6 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # This script creates/updates required platform certificates during upgrade.
+# - The secret 'system-local-ca' is updated to include the 'ca.crt' field.
+#
 # - Certificates are created using ansible playbooks.
 #   - (Legacy) SX upgrade is already covered by upgrade playbook.
 #
@@ -15,15 +17,20 @@
 
 import subprocess
 import sys
-import yaml
-from controllerconfig.common import log
-from time import sleep
 import os
+from time import sleep
+import yaml
+
+from controllerconfig.common import log
+from cryptography.hazmat.primitives import serialization
+from sysinv.common import utils as sysinv_utils
+from oslo_serialization import base64
 
 LOG = log.get_logger(__name__)
 KUBE_CMD = 'kubectl --kubeconfig=/etc/kubernetes/admin.conf '
 TMP_FILENAME = '/tmp/update_cert.yml'
 RETRIES = 3
+TRUSTED_BUNDLE_FILEPATH = '/etc/ssl/certs/ca-cert.pem'
 
 
 def get_system_mode():
@@ -137,6 +144,61 @@ def get_old_default_CN_by_cert(certificate):
         'system-openldap-local-certificate': 'system-openldap'
     }
     return default_CN_by_cert[certificate]
+
+
+def find_root_ca(intermediate_ca):
+    """Look in the trusted bundle for the RCA of the ICA provided
+    """
+    with open(TRUSTED_BUNDLE_FILEPATH, 'r') as file:
+        bundle = file.read().encode('utf-8')
+        for cert_obj in sysinv_utils.extract_certs_from_pem(bundle):
+            cert = cert_obj.public_bytes(
+                serialization.Encoding.PEM).decode('utf-8')
+            if sysinv_utils.verify_cert_issuer(intermediate_ca, cert):
+                return cert
+    LOG.error("Root CA not found for system-local-ca. Data will be empty.")
+    return ""
+
+
+def update_system_local_ca_secret():
+    """Update system-local-ca secret
+    """
+    tls_crt, tls_key, ca_crt = sysinv_utils.get_certificate_from_secret(
+        'system-local-ca', 'cert-manager')
+
+    if ca_crt == "" or not sysinv_utils.verify_cert_issuer(tls_crt, ca_crt):
+        ca_crt = find_root_ca(tls_crt)
+        secret_body = {
+            'apiVersion': 'v1',
+            'kind': 'Secret',
+            'metadata': {
+                'name': 'system-local-ca',
+                'namespace': 'cert-manager'
+            },
+            'type': 'kubernetes.io/tls',
+            'data': {
+                'ca.crt': base64.encode_as_text(ca_crt),
+                'tls.crt': base64.encode_as_text(tls_crt),
+                'tls.key': base64.encode_as_text(tls_key),
+            }
+        }
+
+        with open(TMP_FILENAME, 'w') as yaml_file:
+            yaml.safe_dump(secret_body, yaml_file, default_flow_style=False)
+
+        apply_cmd = KUBE_CMD + 'apply -f ' + TMP_FILENAME
+
+        sub = subprocess.Popen(apply_cmd, shell=True, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE)
+        stdout, stderr = sub.communicate()
+        if sub.returncode != 0:
+            LOG.error('Command failed:\n %s\n. %s\n%s\n' % (
+                apply_cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
+            raise Exception('Cannot apply change to system-local-ca secret.')
+        else:
+            os.remove(TMP_FILENAME)
+            LOG.info('Updated system-local-ca secret. Output:\n%s\n'
+                     % stdout.decode('utf-8'))
 
 
 def update_certificate(certificate, short_name):
@@ -266,6 +328,7 @@ def main():
 
         for retry in range(0, RETRIES):
             try:
+                update_system_local_ca_secret()
                 reconfigure_certificates_subject()
                 mode = get_system_mode()
                 # For (legacy) SX upgrade, the role that creates the required
