@@ -281,12 +281,31 @@ class StoragePuppet(base.BasePuppet):
         })
         return config
 
+    def _is_ceph_filesystem_enabled(self, host):
+        filesystems = self.dbapi.host_fs_get_by_ihost(host.id)
+        config = {}
+
+        for fs in filesystems:
+            if fs.name == constants.FILESYSTEM_NAME_CEPH:
+                config.update({
+                    'platform::filesystem::ceph::params::ceph_enabled': True,
+                    'platform::filesystem::ceph::params::lv_size': fs.size,
+                })
+                return config
+
+        config.update({
+            'platform::filesystem::ceph::params::ceph_enabled': False,
+        })
+        return config
+
     def _get_host_fs_config(self, host):
         config = {}
         conversion_config = self._is_image_conversion_filesystem_enabled(host)
         config.update(conversion_config)
         instances_config = self._is_instances_filesystem_enabled(host)
         config.update(instances_config)
+        ceph_config = self._is_ceph_filesystem_enabled(host)
+        config.update(ceph_config)
 
         filesystems = self.dbapi.host_fs_get_by_ihost(host.id)
         for fs in filesystems:

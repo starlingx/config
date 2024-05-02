@@ -9845,6 +9845,8 @@ class ConductorManager(service.PeriodicService):
                     'platform::filesystem::var::runtime',
                 constants.FILESYSTEM_NAME_ROOT:
                     'platform::filesystem::root::runtime',
+                constants.FILESYSTEM_NAME_CEPH:
+                    'platform::filesystem::ceph::runtime',
             }
 
             puppet_class = [classmap.get(fs) for fs in filesystem_list]

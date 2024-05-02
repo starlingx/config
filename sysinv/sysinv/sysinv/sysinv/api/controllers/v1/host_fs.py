@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020,2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -410,10 +410,10 @@ class HostFsController(rest.RestController):
 def _check_host_fs(host_fs):
     """Check host state"""
 
-    if host_fs['name'] not in constants.FS_CREATION_ALLOWED:
+    if host_fs['name'] not in constants.HOSTFS_CREATION_ALLOWED:
         raise wsme.exc.ClientSideError(
-            _("Unsupported filesystem. Only the following filesystems are supported"
-              "for creation or deletion: %s" % str(constants.FS_CREATION_ALLOWED)))
+            _("Unsupported filesystem. Only the following filesystems are supported "
+              "for creation or deletion: %s" % str(constants.HOSTFS_CREATION_ALLOWED)))
 
     ihost_uuid = host_fs['ihost_uuid']
     ihost_uuid.strip()
@@ -477,7 +477,7 @@ def _create(host_fs):
 
     ihost = pecan.request.dbapi.ihost_get(ihost_uuid)
     # See if this filesystem name already exists
-    if cutils.is_filesystem_enabled(pecan.request.dbapi, ihost_uuid, host_fs['name']):
+    if cutils.is_host_filesystem_enabled(pecan.request.dbapi, ihost_uuid, host_fs['name']):
         raise wsme.exc.ClientSideError(
             _("Filesystem name (%s) already present" % host_fs['name']))
 
