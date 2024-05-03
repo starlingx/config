@@ -309,6 +309,8 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
             system_id=self.system.id)
 
     def _format_pool_name(self, network_name, subnet):
+        if network_name in ['system-controller-subnet', 'system-controller-oam-subnet']:
+            return network_name
         if subnet.version == constants.IPV6_FAMILY:
             family = 'ipv6'
         else:

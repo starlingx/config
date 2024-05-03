@@ -424,10 +424,7 @@ class TestPostMixin(AddressPoolTestCase):
         network = str(self.mgmt_subnet.network)
         prefix = self.mgmt_subnet.prefixlen
 
-        if constants.DUAL_STACK_COMPATIBILITY_MODE:
-            name = "management"
-        else:
-            name = self._format_pool_name("management", self.mgmt_subnet)
+        name = self._format_pool_name("management", self.mgmt_subnet)
         ndict = self.get_post_object(name, network, prefix)
         ndict['gateway_address'] = str(self.mgmt_subnet[1])
 

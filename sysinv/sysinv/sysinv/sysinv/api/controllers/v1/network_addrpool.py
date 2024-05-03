@@ -170,8 +170,10 @@ class NetworkAddresspoolController(rest.RestController):
             if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX \
                     and net_pool.network_type == constants.NETWORK_TYPE_OAM:
                 if address_name == f"{constants.CONTROLLER}-{net_pool.network_type}":
-                    addr_intf.update({'interface_id':
-                                    hostname_dict[hostname].interface_id})
+                    # To re-visit: is last hostname looked up intended here ?
+                    if 'hostname' in locals():
+                        addr_intf.update({'interface_id':
+                                        hostname_dict[hostname].interface_id})
 
             # Check for address existent before creation
             try:
