@@ -75,7 +75,7 @@ def get_hw_addr(ifname):
         LOG.exception("Error getting mac address: %s" % (e))
 
 
-def get_client_hostname_and_mgmt_subnet(mac_addr):
+def get_client_host_info_by_mac(mac_addr):
     token = rest_api.get_token(constants.REGION_NAME)
     sysinv_ihost_url = constants.PXECONTROLLER_URL + '/v1/ihosts/'
     api_cmd = sysinv_ihost_url + mac_addr + '/mgmt_ip'
@@ -99,6 +99,8 @@ def get_client_hostname_and_mgmt_subnet(mac_addr):
 
         response['hostname'] = hostname
         response['mgmt_subnet'] = mgmt_info['subnet']
+        response['unit_ip'] = mgmt_info['address']
+        response['floating_ip'] = mgmt_info['floating']
     return response
 
 

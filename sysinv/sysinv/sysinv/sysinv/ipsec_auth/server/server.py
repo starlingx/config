@@ -159,9 +159,11 @@ class IPsecConnection(object):
                            "received in payload.")
                     raise ConnectionRefusedError(msg)
 
-                client_data = utils.get_client_hostname_and_mgmt_subnet(mac_addr)
+                client_data = utils.get_client_host_info_by_mac(mac_addr)
                 self.hostname = client_data['hostname']
                 self.mgmt_subnet = client_data['mgmt_subnet']
+                self.unit_ip = client_data['unit_ip']
+                self.floating_ip = client_data['floating_ip']
 
                 pub_key = self._generate_tmp_key_pair()
                 token = self.ots_token.get_content()
@@ -209,7 +211,11 @@ class IPsecConnection(object):
                 data = bytes(self.signed_cert, 'utf-8')
                 if self.op_code == constants.OP_CODE_INITIAL_AUTH:
                     payload["network"] = self.mgmt_subnet
-                    data = data + bytes(self.mgmt_subnet, 'utf-8')
+                    payload["unit_ip"] = self.unit_ip
+                    payload["floating_ip"] = self.floating_ip
+                    data = data + bytes(self.mgmt_subnet +
+                                        self.unit_ip +
+                                        self.floating_ip, 'utf-8')
 
                 hash_payload = utils.hash_and_sign_payload(self.ca_key, data)
 
