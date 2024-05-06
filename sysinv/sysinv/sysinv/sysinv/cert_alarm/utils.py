@@ -319,7 +319,7 @@ def reset_cert_snapshot():
 
 
 def print_cert_snapshot():
-    LOG.info('Cert snapshot = %s' % CERT_SNAPSHOT)
+    LOG.debug('Cert snapshot = %s' % CERT_SNAPSHOT)
 
 
 def add_cert_snapshot(certname, expirydate, annotation_data, mode_metadata):
