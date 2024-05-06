@@ -4,6 +4,7 @@ ROOT := $(CURDIR)/debian/tmp
 %:
 	dh $@
 override_dh_install:
+	install -m 755 -p -D ipsec-config ${ROOT}/usr/lib/ocf/resource.d/platform/ipsec-config
 	install -m 644 -p -D ipsec-server.service ${ROOT}/lib/systemd/system/ipsec-server.service
 	install -m 644 -p -D ipsec-auth.syslog ${ROOT}/etc/syslog-ng/conf.d/ipsec-auth.conf
 	install -m 644 -p -D ipsec-auth.logrotate ${ROOT}/etc/logrotate.d/ipsec-auth.conf

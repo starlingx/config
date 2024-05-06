@@ -1,0 +1,245 @@
+#!/bin/sh
+#
+# Copyright (c) 2024 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+#
+# Support: www.windriver.com
+#
+#######################################################################
+# Initialization:
+
+: ${OCF_FUNCTIONS_DIR=${OCF_ROOT}/lib/heartbeat}
+. ${OCF_FUNCTIONS_DIR}/ocf-shellfuncs
+
+binname="ipsec-config"
+SWANCTL_CONF_FILE=/etc/swanctl/swanctl.conf
+SWANCTL_ACTIVE_CONF_FILE=/etc/swanctl/swanctl_active.conf
+SWANCTL_STANDBY_CONF_FILE=/etc/swanctl/swanctl_standby.conf
+
+#######################################################################
+
+# Fill in some defaults if no values are specified
+OCF_RESKEY_binary_default=${binname}
+OCF_RESKEY_dbg_default="false"
+
+: ${OCF_RESKEY_binary=${OCF_RESKEY_binary_default}}
+: ${OCF_RESKEY_dbg=${OCF_RESKEY_dbg_default}}
+
+#######################################################################
+
+usage() {
+    cat <<UEND
+
+usage: $0 (start|stop|status|monitor|meta-data)
+
+$0 manages the Platform's System IPsec Config (ipsec-config) process as an HA resource
+
+   The 'start' ...... operation creates a symlink between swanctl_active.conf and swanctl.conf files.
+   The 'stop' ....... operation creates a symlink between swanctl_standby.conf and swanctl.conf files.
+   The 'status' ..... operation checks the status of the ipsec-config service.
+   The 'monitor' .... operation indicates the in-service status of the ipsec-config service.
+   The 'validate-all' operation reports whether the parameters are valid.
+   The 'meta-data' .. operation reports the ipsec-config's meta-data information.
+
+UEND
+}
+
+#######################################################################
+
+meta_data() {
+
+cat <<END
+<?xml version="1.0"?>
+<!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
+<resource-agent name="ipsec-config">
+<version>1.0</version>
+
+<longdesc lang="en">
+This 'ipsec-config' is an OCF Compliant Resource Agent that performs start, stop
+and in-service monitoring of the IPsec Config Process. The main goal of IPsec Config
+is to manage different swanctl connections on controller nodes.
+</longdesc>
+
+<shortdesc lang="en">
+Manages the IPsec Config (ipsec-config) process
+</shortdesc>
+
+<actions>
+<action name="start"        timeout="10s" />
+<action name="stop"         timeout="10s" />
+<action name="status"       timeout="10s" />
+<action name="monitor"      timeout="10s" interval="10m" />
+<action name="meta-data"    timeout="10s" />
+</actions>
+</resource-agent>
+END
+   return ${OCF_SUCCESS}
+}
+
+ipsec_config_status() {
+    local rc
+
+    rc=$(/usr/bin/readlink $SWANCTL_CONF_FILE)
+    if [ "${rc}" = "${SWANCTL_ACTIVE_CONF_FILE}" ]; then
+        ocf_log info "IPsec Config Service (${OCF_RESKEY_binary}) is active."
+        return ${OCF_SUCCESS}
+    elif [ "${rc}" = "${SWANCTL_STANDBY_CONF_FILE}" ]; then
+        ocf_log info "IPsec Config Service (${OCF_RESKEY_binary}) is not running."
+        return ${OCF_NOT_RUNNING}
+    fi
+
+    ocf_log err "IPsec Config Service (${OCF_RESKEY_binary}) is on failure (rc=${rc})"
+    return ${OCF_ERR_CONFIGURED}
+}
+
+ipsec_config_validate() {
+    if [ ! -f ${SWANCTL_ACTIVE_CONF_FILE} ] || [ ! -f ${SWANCTL_STANDBY_CONF_FILE} ] || \
+    [ ! -f ${SWANCTL_CONF_FILE} ]; then
+        ocf_log err "Strongswan config files are missing on system."
+        return ${OCF_ERR_CONFIGURED}
+    fi
+
+    return ${OCF_SUCCESS}
+}
+
+update_ipsec_config() {
+    local action="$1"
+
+    # When the service starts after the controller becomes active,
+    # symlink the active version of the configuration file to swanctl.conf,
+    # reload the configuration and terminate existing SAs so that new ones
+    # obedient to the updated config are created.
+    # When the service stops after the controller becomes standby,
+    # symlink the standby version of the configuration file to swanctl.conf,
+    # reload the configuration and terminate existing SAs so that new ones
+    # obedient to the updated config are created.
+    case ${action} in
+        start)  ln -sf ${SWANCTL_ACTIVE_CONF_FILE} ${SWANCTL_CONF_FILE}
+                ;;
+        stop)   ln -sf ${SWANCTL_STANDBY_CONF_FILE} ${SWANCTL_CONF_FILE}
+                ;;
+    esac
+
+    /usr/sbin/swanctl --load-conns
+    if [ $? -ne 0 ] ; then
+        ocf_log err "Failed to load IPsec swanctl configuration"
+
+        /usr/bin/unlink ${SWANCTL_CONF_FILE}
+        if [ ${action} = "start" ]; then
+            cp ${SWANCTL_ACTIVE_CONF_FILE} ${SWANCTL_CONF_FILE}
+        else
+            cp ${SWANCTL_STANDBY_CONF_FILE} ${SWANCTL_CONF_FILE}
+        fi
+
+        return ${OCF_ERR_CONFIGURED}
+    fi
+
+    /usr/sbin/swanctl --terminate --ike system-nodes
+    if [ $? -ne 0 ] ; then
+        ocf_log warn "Failed to terminate existing IPsec connections"
+    fi
+
+    return ${OCF_SUCCESS}
+}
+
+ipsec_config_start () {
+    local rc
+
+    ipsec_config_status
+    rc=$?
+    if [ ${rc} -eq ${OCF_SUCCESS} ] ; then
+        return ${OCF_SUCCESS}
+    fi
+
+    update_ipsec_config start
+    rc=$?
+    # Record success or failure and return status
+    if [ ${rc} -eq ${OCF_SUCCESS} ] ; then
+        ocf_log info "IPsec Config Service (${OCF_RESKEY_binary}) started"
+    else
+        ocf_log err "IPsec Config Service (${OCF_RESKEY_binary}) failed to start (rc=${rc})"
+    fi
+
+    return ${rc}
+}
+
+ipsec_config_stop () {
+    local rc
+
+    ipsec_config_status
+    rc=$?
+    if [ ${rc} -eq ${OCF_NOT_RUNNING} ] ; then
+        return ${OCF_SUCCESS}
+    fi
+
+    update_ipsec_config stop
+    rc=$?
+    if [ ${rc} -eq ${OCF_SUCCESS} ] ; then
+        ocf_log info "IPsec Config Service (${OCF_RESKEY_binary}) stopped"
+    else
+        ocf_log err "IPsec Config Service (${OCF_RESKEY_binary}) stopped with an error (rc=${rc})"
+    fi
+
+    return ${rc}
+}
+
+ipsec_config_monitor () {
+    local rc
+
+    ipsec_config_status
+    rc=$?
+    if [ ${rc} -eq ${OCF_ERR_CONFIGURED} ]; then
+        return ${rc}
+    fi
+
+    floating_ip=$(grep controller-platform-nfs /etc/hosts | awk -F ' ' '{print $1}' | tr -d '\n')
+    node_addr=$(ip addr | grep -c "$floating_ip/")
+    node_conn=$(/usr/sbin/swanctl --list-conns | grep -c "$floating_ip/")
+    if [ ${node_addr} -eq 1 ]; then
+        node_addr=$((node_addr+1))
+    fi
+
+    if [ ${node_addr} -eq ${node_conn} ]; then
+        ocf_log info "IPsec Config Service (${OCF_RESKEY_binary}) monitor succeeded"
+        return ${OCF_SUCCESS}
+    fi
+
+    ocf_log err "IPsec Config Service (${OCF_RESKEY_binary}) monitor exited with an error"
+    return ${OCF_NOT_RUNNING}
+
+}
+
+case ${__OCF_ACTION} in
+    meta-data)   meta_data
+                 exit ${OCF_SUCCESS}
+                 ;;
+    usage|help)  usage
+                 exit ${OCF_SUCCESS}
+                 ;;
+esac
+
+# Anything except meta-data and help must pass validation
+ipsec_config_validate || exit $?
+
+if [ ${OCF_RESKEY_dbg} = "true" ] ; then
+    ocf_log info "${binname}:${__OCF_ACTION} action"
+fi
+
+case ${__OCF_ACTION} in
+
+    start)        ipsec_config_start
+                  ;;
+    stop)         ipsec_config_stop
+                  ;;
+    status)       ipsec_config_status
+                  ;;
+    validate-all) ipsec_config_validate
+                  ;;
+    monitor)      ipsec_config_monitor
+                  ;;
+    *)            usage
+                  exit ${OCF_ERR_UNIMPLEMENTED}
+                  ;;
+esac
