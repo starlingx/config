@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2023 Wind River Systems, Inc.
+# Copyright (c) 2023-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -33,9 +33,11 @@ class UnifiedSoftwareManagementPuppet(openstack.OpenstackBasePuppet):
         }
 
     def get_system_config(self):
+        bind_host, host = self._get_bind_host()
+
         ksuser = self._get_service_user_name(self.SERVICE_NAME)
-        usm_keystone_auth_uri = self._keystone_auth_uri()
-        usm_keystone_identity_uri = self._keystone_identity_uri()
+        usm_keystone_auth_uri = self._keystone_auth_uri(host)
+        usm_keystone_identity_uri = self._keystone_identity_uri(host)
         controller_multicast = self._get_address_by_name(
             constants.PATCH_CONTROLLER_MULTICAST_MGMT_IP_NAME,
             constants.NETWORK_TYPE_MULTICAST)
@@ -55,8 +57,7 @@ class UnifiedSoftwareManagementPuppet(openstack.OpenstackBasePuppet):
                 self._get_service_user_domain_name(),
             'usm::api::keystone_project_domain':
                 self._get_service_project_domain_name(),
-            'usm::api::bind_host':
-                self._get_management_address(),
+            'usm::api::bind_host': bind_host,
 
             'usm::keystone::auth::public_url': self.get_public_url(),
             'usm::keystone::auth::internal_url': self.get_internal_url(),
@@ -68,9 +69,9 @@ class UnifiedSoftwareManagementPuppet(openstack.OpenstackBasePuppet):
             'usm::keystone::auth::tenant': self._get_service_tenant_name(),
 
             'usm::keystone::authtoken::auth_url':
-                self._keystone_identity_uri(),
+                self._keystone_identity_uri(host),
             'usm::keystone::authtoken::auth_uri':
-                self._keystone_auth_uri(),
+                self._keystone_auth_uri(host),
 
             'usm::controller_multicast': controller_multicast.address,
             'usm::agent_multicast': agent_multicast.address,
