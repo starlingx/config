@@ -2867,11 +2867,18 @@ class AppOperator(object):
             # TODO(dvoicule): we may want to also trigger the upload hooks
             # TODO(dvoicule): we may want to track the fact that this is called during an update
             lifecycle_hook_info_app_update.operation = constants.APP_UPLOAD_OP
-            to_app = self.perform_app_upload(to_rpc_app, tarfile,
-                                             lifecycle_hook_info_app_upload=lifecycle_hook_info_app_update)
+            to_app = self.perform_app_upload(
+                to_rpc_app, tarfile,
+                lifecycle_hook_info_app_upload=lifecycle_hook_info_app_update)
             lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
 
+            # Get the skip_recovery flag from app metadata
+            keys = [constants.APP_METADATA_UPGRADES,
+                    constants.APP_METADATA_UPDATE_FAILURE_SKIP_RECOVERY]
+            skip_recovery = bool(strtobool(str(self._get_metadata_value(to_app, keys, False))))
+
             # Semantic checking for N+1 app
+            semantic_check_result = False
             try:
                 lifecycle_hook_info = copy.deepcopy(lifecycle_hook_info_app_update)
                 lifecycle_hook_info.relative_timing = constants.APP_LIFECYCLE_TIMING_PRE
@@ -2879,74 +2886,70 @@ class AppOperator(object):
                 lifecycle_hook_info[LifecycleConstants.EXTRA][LifecycleConstants.TO_APP] = True
 
                 self.app_lifecycle_actions(None, None, to_rpc_app, lifecycle_hook_info)
+                semantic_check_result = True
             except exception.LifecycleSemanticCheckException as e:
                 LOG.info("App {} rejected operation {} for reason: {}"
                          "".format(to_app.name, constants.APP_UPDATE_OP, str(e)))
-                self._perform_app_recover(to_rpc_app, from_app, to_app,
-                                          lifecycle_hook_info_app_update,
-                                          fluxcd_process_required=False)
-                return False
+                if not skip_recovery:
+                    self._perform_app_recover(to_rpc_app, from_app, to_app,
+                                              lifecycle_hook_info_app_update,
+                                              fluxcd_process_required=False)
+                    return False
             except Exception as e:
                 LOG.error("App {} operation {} semantic check error: {}"
                           "".format(to_app.name, constants.APP_UPDATE_OP, str(e)))
-                self._perform_app_recover(to_rpc_app, from_app, to_app,
-                                          lifecycle_hook_info_app_update,
-                                          fluxcd_process_required=False)
-                return False
+                if not skip_recovery:
+                    self._perform_app_recover(to_rpc_app, from_app, to_app,
+                                              lifecycle_hook_info_app_update,
+                                              fluxcd_process_required=False)
+                    return False
 
-            self.load_application_metadata_from_file(to_rpc_app)
+            if semantic_check_result:
+                self.load_application_metadata_from_file(to_rpc_app)
 
-            # Check whether the new application is compatible with the given k8s version.
-            # If k8s_version is none the check is performed against the active version.
-            self._utils._check_app_compatibility(to_app.name,
-                                                 to_app.version,
-                                                 k8s_version)
+                # Check whether the new application is compatible with the given k8s version.
+                # If k8s_version is none the check is performed against the active version.
+                self._utils._check_app_compatibility(to_app.name,
+                                                     to_app.version,
+                                                     k8s_version)
 
-            self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS)
+                self._update_app_status(to_app, constants.APP_UPDATE_IN_PROGRESS)
 
-            # Get the skip_recovery flag from app metadata
-            keys = [constants.APP_METADATA_UPGRADES,
-                    constants.APP_METADATA_UPDATE_FAILURE_SKIP_RECOVERY]
-            skip_recovery = bool(strtobool(str(self._get_metadata_value(to_app, keys, False))))
+                if operation == constants.APP_APPLY_OP:
+                    reuse_overrides = \
+                        self._get_metadata_value(to_app,
+                                                 constants.APP_METADATA_MAINTAIN_USER_OVERRIDES,
+                                                 False)
+                    if reuse_user_overrides is not None:
+                        reuse_overrides = reuse_user_overrides
 
-            result = False
-            if operation == constants.APP_APPLY_OP:
-                reuse_overrides = \
-                    self._get_metadata_value(to_app,
-                                             constants.APP_METADATA_MAINTAIN_USER_OVERRIDES,
-                                             False)
-                if reuse_user_overrides is not None:
-                    reuse_overrides = reuse_user_overrides
+                    # Preserve user overrides for the new app
+                    if reuse_overrides:
+                        self._preserve_user_overrides(from_app, to_app)
 
-                # Preserve user overrides for the new app
-                if reuse_overrides:
-                    self._preserve_user_overrides(from_app, to_app)
+                    reuse_app_attributes = \
+                        self._get_metadata_value(to_app,
+                                                 constants.APP_METADATA_MAINTAIN_ATTRIBUTES,
+                                                 False)
+                    if reuse_attributes is not None:
+                        reuse_app_attributes = reuse_attributes
 
-                reuse_app_attributes = \
-                    self._get_metadata_value(to_app,
-                                             constants.APP_METADATA_MAINTAIN_ATTRIBUTES,
-                                             False)
-                if reuse_attributes is not None:
-                    reuse_app_attributes = reuse_attributes
+                    # Preserve attributes for the new app
+                    if reuse_app_attributes:
+                        self._preserve_attributes(from_app, to_app)
 
-                # Preserve attributes for the new app
-                if reuse_app_attributes:
-                    self._preserve_attributes(from_app, to_app)
+                    # The app_apply will generate new versioned overrides for the
+                    # app upgrade and will enable the new plugins for that version.
+                    lifecycle_hook_info_app_update.operation = constants.APP_APPLY_OP
+                    result = self.perform_app_apply(
+                        to_rpc_app, mode=None,
+                        lifecycle_hook_info_app_apply=lifecycle_hook_info_app_update,
+                        caller='update')
+                    lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
 
-                # The app_apply will generate new versioned overrides for the
-                # app upgrade and will enable the new plugins for that version.
-
-                # Note: this will not trigger the apply hooks present in conductor/manager:perform_app_apply
-                # Note: here we lose the information that this is an apply triggered by an update
-                # TODO(dvoicule): we may want to also trigger the apply hooks
-                # TODO(dvoicule): we may want to track the fact that this is called during an update
-                lifecycle_hook_info_app_update.operation = constants.APP_APPLY_OP
-                result = self.perform_app_apply(to_rpc_app, mode=None,
-                                                lifecycle_hook_info_app_apply=lifecycle_hook_info_app_update,
-                                                caller='update')
-                lifecycle_hook_info_app_update.operation = constants.APP_UPDATE_OP
-
-            operation_successful = result
+                    operation_successful = result
+            else:
+                operation_successful = semantic_check_result
 
             # If operation failed consider doing the app recovery
             do_recovery = not operation_successful
@@ -3058,7 +3061,7 @@ class AppOperator(object):
             self._deregister_app_abort(to_app.name)
 
         self._clear_app_alarm(to_app.name)
-        return True
+        return operation_successful
 
     def perform_app_remove(self, rpc_app, lifecycle_hook_info_app_remove, force=False):
         """Process application remove request
