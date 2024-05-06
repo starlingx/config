@@ -6507,6 +6507,33 @@ class HostController(rest.RestController):
                              ihost_ctr.subfunction_oper,
                              ihost_ctr.subfunctions))
 
+                # Deny swact for specific in-progress actions.
+                #
+                # Need to handle the case where a lock action has been
+                # issued against the peer controller that is shortly
+                # followed by a swact before the lock is complete.
+                #
+                # Allowing the swact to continue can lead to activating
+                # a locked standby controller.
+                #
+                # Note: The force_swact is not honored to prevent swact
+                #       to a locked controller.
+                #
+                # The following is a list of host actions that if
+                # any are in-progress should force a reject of the
+                # swact request.
+                if ihost_ctr.task:
+                    rejected_actions = [constants.LOCK_ACTION,
+                                        constants.FORCE_LOCK_ACTION,
+                                        constants.FORCE_UNSAFE_LOCK_ACTION]
+                    for reject_action in rejected_actions:
+                        task_str = hostupdate.get_task_from_action(reject_action)
+                        if ihost_ctr.task.startswith(task_str):
+                            raise wsme.exc.ClientSideError(
+                                _("%s is currently being locked. Cannot "
+                                  "Swact to a controller with an in-progress "
+                                  "lock operation.") % (ihost_ctr.hostname))
+
                 # deny swact if a kube rootca update phase is in progress
                 self._semantic_check_swact_kube_rootca_update(hostupdate.ihost_orig,
                                                               force_swact)
