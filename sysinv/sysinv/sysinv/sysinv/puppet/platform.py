@@ -321,6 +321,16 @@ class PlatformPuppet(base.BasePuppet):
         except exception.NotFound:
             pass
 
+        # add the secondary public address if exists
+        try:
+            sec_public_address = self._get_secondary_address_by_name(
+                constants.CONTROLLER, constants.NETWORK_TYPE_OAM)
+            if sec_public_address:
+                config.update({'platform::haproxy::params::public_secondary_ip_address':
+                              sec_public_address.address})
+        except exception.AddressNotFoundByName:
+            pass
+
         return config
 
     def _get_sdn_config(self):
