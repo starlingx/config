@@ -1790,6 +1790,7 @@ HELM_APP_ROOK_CEPH = 'rook-ceph-apps'
 HELM_APP_SNMP = 'snmp'
 HELM_APP_PTP_NOTIFICATION = 'ptp-notification'
 HELM_APP_PORTIERIS = 'portieris'
+HELM_APP_INTEL_DEVICE_PLUGIN_QAT = "intel-device-plugins-qat"
 
 # Apply mode for openstack app
 OPENSTACK_RESTORE_DB = 'restore_db'
