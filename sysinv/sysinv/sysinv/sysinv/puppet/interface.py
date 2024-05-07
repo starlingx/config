@@ -1547,7 +1547,9 @@ def process_interface_labels(config, context):
     #
     # Rules for label adjustment:
     # 1) if the interface have just one label:
-    #   - move the content of label to interface
+    #   - keep the label as it can receive dual-stack configuration later
+    #   - if part of pxeboot network, move the content of label to interface,
+    #     keeping compatibility with MTCE operation (pxeboot is single-stack only)
     # 2) if the interface have more that one label
     #   - if the family is inet
     #       - just keep the labeling
@@ -1560,6 +1562,7 @@ def process_interface_labels(config, context):
     #           - a post-up operation will be added to remove this flag in one
     #             of the interfaces
     #               - the selected label interface will follow the precedence
+    #                   - oam
     #                   - mgmt
     #                   - admin
     #                   - cluster-host
@@ -1583,45 +1586,54 @@ def process_interface_labels(config, context):
             # no need to change the loopback
             continue
 
+        if not label_map[intf]:
+            continue
+
+        # process main ipv6 address
+        for label in label_map[intf].keys():
+            intf_data = label_map[intf][label]
+            if (intf_data['family'] == 'inet6') and (intf_data['method'] == 'static'):
+                name_net = intf_data['options']['stx-description'].split(',')
+                ifname = (name_net[0].split(":"))[1]
+                networktypelist = context['interfaces'][ifname].networktypelist
+                undeprecate = "ip -6 addr replace" + \
+                                f" {intf_data['ipaddress']}/{intf_data['netmask']}" + \
+                                f" dev {intf} preferred_lft forever"
+                if constants.NETWORK_TYPE_OAM in networktypelist:
+                    fill_interface_config_option_operation(intf_data['options'],
+                                                            IFACE_POST_UP_OP, undeprecate)
+                    break
+                elif constants.NETWORK_TYPE_MGMT in networktypelist:
+                    fill_interface_config_option_operation(intf_data['options'],
+                                                            IFACE_POST_UP_OP, undeprecate)
+                    break
+                elif constants.NETWORK_TYPE_ADMIN in networktypelist:
+                    fill_interface_config_option_operation(intf_data['options'],
+                                                            IFACE_POST_UP_OP, undeprecate)
+                    break
+                elif constants.NETWORK_TYPE_CLUSTER_HOST in networktypelist:
+                    fill_interface_config_option_operation(intf_data['options'],
+                                                            IFACE_POST_UP_OP, undeprecate)
+                    break
+                elif constants.NETWORK_TYPE_PXEBOOT in networktypelist:
+                    fill_interface_config_option_operation(intf_data['options'],
+                                                            IFACE_POST_UP_OP, undeprecate)
+                    break
+                elif constants.NETWORK_TYPE_STORAGE in networktypelist:
+                    fill_interface_config_option_operation(intf_data['options'],
+                                                            IFACE_POST_UP_OP, undeprecate)
+                    break
+
         if len(label_map[intf]) == 1:
             label = next(iter(label_map[intf]))
-            merge_interface_operations(config, intf, label)
-            # replace the base interface with the labeled one
-            config[NETWORK_CONFIG_RESOURCE][intf] = config[NETWORK_CONFIG_RESOURCE][label]
-            del config[NETWORK_CONFIG_RESOURCE][label]
-
-        elif len(label_map[intf]) > 1:
-
-            # process main ipv6 address
-            for label in label_map[intf].keys():
-                intf_data = label_map[intf][label]
-                if (intf_data['family'] == 'inet6') and (intf_data['method'] == 'static'):
-                    name_net = intf_data['options']['stx-description'].split(',')
-                    ifname = (name_net[0].split(":"))[1]
-                    networktypelist = context['interfaces'][ifname].networktypelist
-                    undeprecate = "ip -6 addr replace" + \
-                                  f" {intf_data['ipaddress']}/{intf_data['netmask']}" + \
-                                  f" dev {intf} preferred_lft forever"
-                    if constants.NETWORK_TYPE_MGMT in networktypelist:
-                        fill_interface_config_option_operation(intf_data['options'],
-                                                               IFACE_POST_UP_OP, undeprecate)
-                        break
-                    elif constants.NETWORK_TYPE_ADMIN in networktypelist:
-                        fill_interface_config_option_operation(intf_data['options'],
-                                                               IFACE_POST_UP_OP, undeprecate)
-                        break
-                    elif constants.NETWORK_TYPE_CLUSTER_HOST in networktypelist:
-                        fill_interface_config_option_operation(intf_data['options'],
-                                                               IFACE_POST_UP_OP, undeprecate)
-                        break
-                    elif constants.NETWORK_TYPE_PXEBOOT in networktypelist:
-                        fill_interface_config_option_operation(intf_data['options'],
-                                                               IFACE_POST_UP_OP, undeprecate)
-                        break
-                    elif constants.NETWORK_TYPE_STORAGE in networktypelist:
-                        fill_interface_config_option_operation(intf_data['options'],
-                                                               IFACE_POST_UP_OP, undeprecate)
-                        break
+            if 'options' in config[NETWORK_CONFIG_RESOURCE][label].keys():
+                options = config[NETWORK_CONFIG_RESOURCE][label]['options']
+                if ('stx-description' in options.keys()):
+                    if (f"net:{constants.NETWORK_TYPE_PXEBOOT}" in options['stx-description']):
+                        merge_interface_operations(config, intf, label)
+                        # replace the base interface with the labeled one
+                        config[NETWORK_CONFIG_RESOURCE][intf] = config[NETWORK_CONFIG_RESOURCE][label]
+                        del config[NETWORK_CONFIG_RESOURCE][label]
 
             # process DHCPv6, needs to be in the base interface
             for label in label_map[intf].keys():
