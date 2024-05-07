@@ -191,7 +191,7 @@ class Client(object):
                     self.local_addr = self.hostname[constants.UNIT_HOSTNAME] + ', ' \
                                     + self.hostname[constants.FLOATING_UNIT_HOSTNAME]
                 else:
-                    self.local_addr = utils.get_ip_addr(self.ifname)
+                    self.local_addr = self.hostname[constants.UNIT_HOSTNAME]
 
                 LOG.info("Generating config files and restart ipsec")
                 strong = config.StrongswanPuppet(self.hostname[constants.UNIT_HOSTNAME],

@@ -55,16 +55,6 @@ def get_management_interface():
     return get_plataform_conf('management_interface')
 
 
-def get_ip_addr(ifname):
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        ifstruct = struct.pack('256s', bytes(ifname[:15], 'utf-8'))
-        info = fcntl.ioctl(s.fileno(), constants.SIOCGIFADDR, ifstruct)
-        return socket.inet_ntoa(info[20:24])
-    except Exception as e:
-        LOG.exception("Error getting ip address: %s" % (e))
-
-
 def get_hw_addr(ifname):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
