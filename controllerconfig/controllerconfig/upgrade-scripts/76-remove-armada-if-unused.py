@@ -197,18 +197,13 @@ def has_armada_pod():
 
 def is_armada_required():
     """
-    Check for armada manifests or helm v2 releases.
-    Return True if any are found,
-    False otherwise (including if helm v2 was already removed).
-    """
+    Check for Armada pods with application=armada label in namespace
+    armada.
 
-    # Check if there armada apps uploaded/applied, exit if there are any
-    if os.path.exists(ARMADA_MANIFEST_DIRECTORY):
-        for sw_version in os.listdir(ARMADA_MANIFEST_DIRECTORY):
-            directory = os.path.join(ARMADA_MANIFEST_DIRECTORY, sw_version)
-            if os.listdir(directory):
-                LOG.debug("Armada apps found: " + str(os.listdir(directory)))
-                return True
+    Check for helm v2 releases as an additional check.
+
+    Return True if both are found, False otherwise.
+    """
 
     # Check for releases in helm v2, exit if there are any
     if has_helmv2_cli() and has_armada_pod():
