@@ -2449,7 +2449,7 @@ class AppOperator(object):
         # cache with expected keys.
         if not bool(apps_metadata_dict):
             for k in [constants.APP_METADATA_APPS,
-                      constants.APP_METADATA_PLATFORM_MANAGED_APP,
+                      constants.APP_METADATA_PLATFORM_MANAGED_APPS,
                       constants.APP_METADATA_DESIRED_STATES]:
                 apps_metadata_dict[k] = {}
 
