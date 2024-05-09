@@ -351,3 +351,17 @@ def save_cert_bundle(cert_data, cert_prefix):
         cert_path = get_ca_certificate_path(cert_prefix, index)
         save_data(cert_path, cert.public_bytes(encoding=serialization.Encoding.PEM))
         index += 1
+
+
+def create_symlink(src, dst):
+    if not os.path.exists(src):
+        return False
+
+    if os.path.exists(dst):
+        if src == dst:
+            return False
+        os.unlink(dst)
+
+    os.symlink(src, dst)
+
+    return os.path.exists(dst)

@@ -27,6 +27,7 @@ override_dh_install:
 	install -p -D -m 700 $(CURDIR)/scripts/kube-cert-rotation.sh $(CURDIR)/debian/tmp/usr/bin/kube-cert-rotation.sh
 	install -p -D -m 700 $(CURDIR)/scripts/ipsec-cert-renew.sh $(CURDIR)/debian/tmp/usr/bin/ipsec-cert-renew.sh
 	install -p -D -m 700 $(CURDIR)/scripts/ipsec-swap-certificates.py $(CURDIR)/debian/tmp/usr/bin/ipsec-swap-certificates
+	install -p -D -m 700 $(CURDIR)/scripts/check-ipsec-luks-dir.sh $(CURDIR)/debian/tmp/usr/bin/check-ipsec-luks-dir.sh
 	dh_install
 
 override_dh_python3:
@@ -39,3 +40,4 @@ override_dh_installsystemd:
 override_dh_fixperms:
 	dh_fixperms -Xkube-cert-rotation.sh
 	dh_fixperms -Xipsec-cert-renew.sh
+	dh_fixperms -Xcheck-ipsec-luks-dir.sh
