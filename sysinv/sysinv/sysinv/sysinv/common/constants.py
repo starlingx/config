@@ -444,19 +444,28 @@ VALID_MAJOR_LIST = ['3', '8', '65', '66', '67', '68', '69', '70', '71',
 VENDOR_ID_LIO = 'LIO-ORG'
 
 # Storage backends supported
-SB_TYPE_FILE = 'file'
-SB_TYPE_LVM = 'lvm'
 SB_TYPE_CEPH = 'ceph'
 SB_TYPE_CEPH_EXTERNAL = 'ceph-external'
-SB_TYPE_EXTERNAL = 'external'
 SB_TYPE_CEPH_ROOK = 'ceph-rook'
+SB_TYPE_EXTERNAL = 'external'
+SB_TYPE_FILE = 'file'
+SB_TYPE_LVM = 'lvm'
 
-SB_SUPPORTED = [SB_TYPE_FILE,
-                SB_TYPE_LVM,
-                SB_TYPE_CEPH,
+SB_SUPPORTED = [SB_TYPE_CEPH,
                 SB_TYPE_CEPH_EXTERNAL,
+                SB_TYPE_CEPH_ROOK,
                 SB_TYPE_EXTERNAL,
-                SB_TYPE_CEPH_ROOK]
+                SB_TYPE_FILE,
+                SB_TYPE_LVM]
+
+# Storage backends that need apps to complete the configuration (vs puppet)
+SB_APP_DRIVEN_CONFIGURATION = [SB_TYPE_CEPH_ROOK]
+
+# Apps used for backend configuraion
+HELM_APP_ROOK_CEPH = 'rook-ceph'
+
+# Map storage backends to corresponding apps
+SB_APP_MAP = {SB_TYPE_CEPH_ROOK: HELM_APP_ROOK_CEPH}
 
 # Storage backend default names
 SB_DEFAULT_NAME_SUFFIX = "-store"
@@ -480,6 +489,11 @@ SB_SVC_NOVA = 'nova'
 SB_SVC_SWIFT = 'swift'
 SB_SVC_RBD_PROVISIONER = 'rbd-provisioner'
 
+SB_SVC_CEPH_ROOK_BLOCK = 'block'
+SB_SVC_CEPH_ROOK_ECBLOCK = 'ecblock'
+SB_SVC_CEPH_ROOK_FILESYSTEM = 'filesystem'
+SB_SVC_CEPH_ROOK_OBJECT = 'object'
+
 SB_FILE_SVCS_SUPPORTED = [SB_SVC_GLANCE]
 SB_LVM_SVCS_SUPPORTED = [SB_SVC_CINDER]
 # Primary tier supported services.
@@ -487,7 +501,8 @@ SB_CEPH_SVCS_SUPPORTED = [SB_SVC_GLANCE, SB_SVC_CINDER, SB_SVC_SWIFT,
                           SB_SVC_NOVA, SB_SVC_RBD_PROVISIONER]
 SB_CEPH_EXTERNAL_SVCS_SUPPORTED = [SB_SVC_CINDER, SB_SVC_GLANCE, SB_SVC_NOVA]
 SB_EXTERNAL_SVCS_SUPPORTED = [SB_SVC_CINDER, SB_SVC_GLANCE]
-SB_CEPH_ROOK_SVCS_SUPPORTED = [SB_SVC_GLANCE, SB_SVC_CINDER, SB_SVC_NOVA]
+SB_CEPH_ROOK_SVCS_SUPPORTED = [SB_SVC_CEPH_ROOK_BLOCK, SB_SVC_CEPH_ROOK_ECBLOCK,
+                               SB_SVC_CEPH_ROOK_FILESYSTEM, SB_SVC_CEPH_ROOK_OBJECT]
 
 # Storage backend: Service specific backend nomenclature
 CINDER_BACKEND_CEPH = SB_TYPE_CEPH
@@ -501,6 +516,7 @@ GLANCE_BACKEND_GLANCE = 'glance'
 # Clusters
 CLUSTER_TYPE_CEPH = "ceph"
 CLUSTER_CEPH_DEFAULT_NAME = "ceph_cluster"
+CLUSTER_CEPH_ROOK_DEFAULT_NAME = "ceph_rook_cluster"
 
 # Storage Tiers: types (aligns with polymorphic backends)
 SB_TIER_TYPE_CEPH = SB_TYPE_CEPH
@@ -534,6 +550,7 @@ SB_STATE_CONFIGURED = 'configured'
 SB_STATE_CONFIGURING = 'configuring'
 SB_STATE_CONFIG_ERR = 'configuration-failed'
 SB_STATE_CONFIGURING_ON_UNLOCK = 'configuring-on-unlock'
+SB_STATE_CONFIGURING_WITH_APP = 'configuring-with-app'
 
 # Storage backend tasks
 SB_TASK_NONE = None
@@ -562,6 +579,18 @@ CEPH_STORAGE_MODEL = 'storage-nodes'
 CEPH_CONTROLLER_MODEL = 'controller-nodes'
 CEPH_AIO_SX_MODEL = 'aio-sx'
 CEPH_UNDEFINED_MODEL = 'undefined'
+
+# Ceph-rook capabilities fields
+CEPH_ROOK_BACKEND_DEPLOYMENT_CAP = 'deployment_model'
+
+# Ceph-rook deployment models
+CEPH_ROOK_DEPLOYMENT_CONTROLLER = 'controller'
+CEPH_ROOK_DEPLOYMENT_DEDICATED = 'dedicated'
+CEPH_ROOK_DEPLOYMENT_OPEN = 'open'
+
+CEPH_ROOK_DEPLOYMENTS_SUPPORTED = [CEPH_ROOK_DEPLOYMENT_CONTROLLER,
+                                   CEPH_ROOK_DEPLOYMENT_DEDICATED,
+                                   CEPH_ROOK_DEPLOYMENT_OPEN]
 
 # Storage: Minimum number of monitors
 MIN_STOR_MONITORS_MULTINODE = 2
@@ -1789,7 +1818,6 @@ HELM_APP_OIDC_AUTH = 'oidc-auth-apps'
 HELM_APP_CERT_MANAGER = 'cert-manager'
 HELM_APP_NGINX_IC = 'nginx-ingress-controller'
 HELM_APP_VAULT = 'vault'
-HELM_APP_ROOK_CEPH = 'rook-ceph-apps'
 HELM_APP_SNMP = 'snmp'
 HELM_APP_PTP_NOTIFICATION = 'ptp-notification'
 HELM_APP_PORTIERIS = 'portieris'

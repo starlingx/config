@@ -4567,6 +4567,10 @@ class HostController(rest.RestController):
         # deny operation if any storage backend is either configuring or in error
         backends = pecan.request.dbapi.storage_backend_get_list()
         for bk in backends:
+            # TODO(rchurch): revisit. Do nothing for now
+            if bk['backend'] == constants.SB_TYPE_CEPH_ROOK:
+                continue
+
             if bk['state'] != constants.SB_STATE_CONFIGURED:
                 # TODO(oponcea): Remove once sm supports in-service configuration
                 if (bk['backend'] != constants.SB_TYPE_CEPH or

@@ -676,14 +676,30 @@ class SBApiHelper(object):
                     raise wsme.exc.ClientSideError("Service (%s) already has "
                                                    "a backend." % svc)
 
-        # Deny any change while a backend is configuring
+        # For puppet based backend configurations, deny any change while a
+        # backend is configuring.
+        # For application based backend configurations, allow changes if the
+        # application is not in a transitional state
         backends = pecan.request.dbapi.storage_backend_get_list()
         for bk in backends:
-            if bk['state'] == constants.SB_STATE_CONFIGURING:
-                msg = _("%s backend is configuring, please wait for "
-                        "current operation to complete before making "
-                        "changes.") % bk['backend'].title()
-                raise wsme.exc.ClientSideError(msg)
+            if (bk['state'] == constants.SB_STATE_CONFIGURING or
+                    bk['state'] == constants.SB_STATE_CONFIGURING_WITH_APP):
+                if bk['backend'] not in constants.SB_APP_DRIVEN_CONFIGURATION:
+                    msg = _("%s backend is configuring, please wait for "
+                            "current operation to complete before making "
+                            "changes.") % bk['name'].title()
+                    raise wsme.exc.ClientSideError(msg)
+                else:
+                    if bk['task'] in [constants.APP_UPLOAD_IN_PROGRESS,
+                                      constants.APP_APPLY_IN_PROGRESS,
+                                      constants.APP_REMOVE_IN_PROGRESS,
+                                      constants.APP_UPDATE_IN_PROGRESS,
+                                      constants.APP_RECOVER_IN_PROGRESS]:
+                        msg = _("The application %s is in transition, please "
+                                "wait for the current operation to complete "
+                                "before making changes.") % constants.SB_APP_MAP[
+                                    bk['backend']]
+                        raise wsme.exc.ClientSideError(msg)
 
         if not existing_backend:
             existing_backends_by_type = set(bk['backend'] for bk in backends)
@@ -700,6 +716,14 @@ class SBApiHelper(object):
                         % (backend_type,
                            constants.SB_DEFAULT_NAMES[backend_type]))
                 raise wsme.exc.ClientSideError(msg)
+
+            else:
+                exclusive_ceph_backend_list = [constants.SB_TYPE_CEPH, constants.SB_TYPE_CEPH_ROOK]
+                for backend in exclusive_ceph_backend_list:
+                    if (backend in existing_backends_by_type and
+                            backend_type not in existing_backends_by_type):
+                        msg = _("Only one backend between %s is supported." % ", ".join(exclusive_ceph_backend_list))
+                        raise wsme.exc.ClientSideError(msg)
 
         # Deny operations with a single, unlocked, controller.
         # TODO(oponcea): Remove this once sm supports in-service config reload
@@ -856,6 +880,13 @@ class SBApiHelper(object):
     def is_primary_ceph_backend(name_string):
         """Check if a backend name string is for the primary ceph backend. """
         if name_string == constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH]:
+            return True
+        return False
+
+    @staticmethod
+    def is_primary_ceph_rook_backend(name_string):
+        """Check if a backend name string is for the primary ceph rook backend. """
+        if name_string == constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH_ROOK]:
             return True
         return False
 
