@@ -5742,13 +5742,32 @@ class HostController(rest.RestController):
                     _("%s : Rejected: Can not lock an active "
                       "controller.") % hostupdate.ihost_orig['hostname'])
 
+        ceph_rook_backend = StorageBackendConfig.get_backend_conf(
+            pecan.request.dbapi,
+            target=constants.SB_TYPE_CEPH_ROOK
+        )
+
+        # Reject lock while the rook-ceph app is any progress state
+        if (ceph_rook_backend and ceph_rook_backend['task'] in
+                         [constants.APP_UPLOAD_IN_PROGRESS,
+                          constants.APP_APPLY_IN_PROGRESS,
+                          constants.APP_REMOVE_IN_PROGRESS,
+                          constants.APP_UPDATE_IN_PROGRESS,
+                          constants.APP_RECOVER_IN_PROGRESS]):
+                    msg = _("Rejected: The application %s is in transition, please "
+                            "wait for the current operation to complete "
+                            "before host-lock action.") % constants.SB_APP_MAP[
+                                ceph_rook_backend['backend']]
+                    raise wsme.exc.ClientSideError(msg)
+
         # Reject lock while Ceph OSD storage devices are configuring
         if not force:
             stors = pecan.request.dbapi.istor_get_by_ihost(
                 hostupdate.ihost_orig['uuid']
             )
+
             for stor in stors:
-                if stor.state == constants.SB_STATE_CONFIGURING:
+                if (stor.state == constants.SB_STATE_CONFIGURING):
                     raise wsme.exc.ClientSideError(
                         _("%s : Rejected: Can not lock a controller "
                           "with storage devices in '%s' state.") %
