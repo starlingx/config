@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017,2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -43,6 +43,7 @@ REPORT_PCI_SRIOV_CONFIG = 'pci_sriov_config'
 REPORT_CEPH_OSD_CONFIG = 'ceph_osd'
 REPORT_CEPH_RADOSGW_CONFIG = 'ceph_radosgw'
 REPORT_CEPH_ROOK_CONFIG = 'ceph_rook_config'
+REPORT_CONTROLLERFS_CONFIG = 'controllerfs_config'
 # puppet report configs for hosts cert update
 REPORT_KUBE_CERT_UPDATE_TRUSTBOTHCAS = constants.KUBE_CERT_UPDATE_TRUSTBOTHCAS
 REPORT_KUBE_CERT_UPDATE_UPDATECERTS = constants.KUBE_CERT_UPDATE_UPDATECERTS

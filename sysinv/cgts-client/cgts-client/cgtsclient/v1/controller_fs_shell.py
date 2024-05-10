@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2020,2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -12,14 +12,25 @@ from cgtsclient.common import utils
 from cgtsclient import exc
 
 
-def _find_fs(cc, name):
-    fs_list = cc.controller_fs.list()
-    for fs in fs_list:
-        if fs.name == name:
-            break
+def _find_fs(cc, name_or_uuid):
+    if name_or_uuid.isdigit():
+        try:
+            fs = cc.controller_fs.get(name_or_uuid)
+        except exc.HTTPNotFound:
+            raise exc.CommandError('Filesystem not found by uuid: %s'
+                                   % name_or_uuid)
+        else:
+            return fs
     else:
-        raise exc.CommandError('Filesystem "%s" not found' % name)
-    return fs
+        fs_list = cc.controller_fs.list()
+        for fs in fs_list:
+            if fs.name == name_or_uuid:
+                return fs
+            if fs.uuid == name_or_uuid:
+                return fs
+        else:
+            raise exc.CommandError('Filesystem not found by name or '
+                                   'uuid: %s' % name_or_uuid)
 
 
 def _print_controller_fs_show(controller_fs):
@@ -69,13 +80,13 @@ def do_controllerfs_modify(cc, args):
     _print_controllerfs_list(cc, args)
 
 
-@utils.arg('name',
-           metavar='<name>',
-           help='Name of the filesystem [REQUIRED]')
+@utils.arg('fsnameoruuid',
+           metavar='<fs name or uuid>',
+           help="Name or UUID of filesystem [REQUIRED]")
 def do_controllerfs_show(cc, args):
     """Show details of a controller filesystem"""
 
-    controller_fs = _find_fs(cc, args.name)
+    controller_fs = _find_fs(cc, args.fsnameoruuid)
     _print_controller_fs_show(controller_fs)
 
 
@@ -104,3 +115,47 @@ def _print_controllerfs_list(cc, args):
 def do_controllerfs_list(cc, args):
     """Show list of controller filesystems"""
     _print_controllerfs_list(cc, args)
+
+
+@utils.arg('fsnameoruuid',
+           metavar='<fs name or uuid>',
+           help="Name or UUID of filesystem [REQUIRED]")
+def do_controllerfs_delete(cc, args):
+    """Delete a controller filesystem."""
+
+    controller_fs = _find_fs(cc, args.fsnameoruuid)
+
+    try:
+        cc.controller_fs.delete(controller_fs.uuid)
+    except exc.HTTPNotFound:
+        raise exc.CommandError('Filesystem delete failed: '
+                               'name %s' % (args.name))
+    setattr(args, 'column', None)
+    setattr(args, 'format', None)
+    _print_controllerfs_list(cc, args)
+
+
+@utils.arg('name',
+           metavar='<fs name=size>',
+           nargs=1,
+           action='append',
+           help="Name of the Filesystem [REQUIRED]")
+def do_controllerfs_add(cc, args):
+    """Add a controller filesystem"""
+    fields = {}
+    for attr in args.name[0]:
+        try:
+            fs_name, size = attr.split("=", 1)
+
+            fields['name'] = fs_name
+            fields['size'] = size
+        except ValueError:
+            raise exc.CommandError('Filesystem creation attributes must be '
+                                   'FS_NAME=SIZE not "%s"' % attr)
+    try:
+        fs = cc.controller_fs.create(**fields)
+    except exc.HTTPNotFound:
+        raise exc.CommandError('Failed to create filesystem: fields %s' %
+                               (fields))
+
+    _print_controller_fs_show(fs)

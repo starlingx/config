@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020,2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -24,12 +24,23 @@ NEW_SIZE = 20
 UPDATED_CONTROLLER_FS['size'] = NEW_SIZE
 SYSTEM_UUID = "11111111-2222-3333-4444-5555-000000000000"
 
+CREATED_CONTROLLER_FS = {
+    'name': 'cfs2',
+    'size': 10,
+}
+
+DELETED_CONTROLLER_FS = copy.deepcopy(CONTROLLER_FS)
+
 fixtures = {
     '/v1/controller_fs':
     {
         'GET': (
             {},
             {"controller_fs": [CONTROLLER_FS]},
+        ),
+        'POST': (
+            {},
+            CREATED_CONTROLLER_FS,
         ),
     },
     '/v1/controller_fs/%s' % CONTROLLER_FS['uuid']:
@@ -41,6 +52,10 @@ fixtures = {
         'PATCH': (
             {},
             UPDATED_CONTROLLER_FS,
+        ),
+        'DELETE': (
+            {},
+            None,
         ),
     },
     '/v1/isystems/%s/controller_fs/update_many' % SYSTEM_UUID:
@@ -121,3 +136,18 @@ class ControllerFsManagerTest(testtools.TestCase):
         # Since update_many is just a PUT, we don't expect any output from it, so we can't
         # do a proper asert here. We just check if the request made is the one we expected.
         self.assertEqual(self.api.calls, expect)
+
+    def test_controller_fs_create(self):
+        self.mgr.create(**CREATED_CONTROLLER_FS)
+        expect = [
+            ('POST', '/v1/controller_fs', {}, CREATED_CONTROLLER_FS),
+        ]
+        self.assertEqual(self.api.calls, expect)
+
+    def test_controller_fs_delete(self):
+        controller_fs = self.mgr.delete(CONTROLLER_FS['uuid'])
+        expect = [
+            ('DELETE', '/v1/controller_fs/%s' % CONTROLLER_FS['uuid'], {}, None),
+        ]
+        self.assertEqual(self.api.calls, expect)
+        self.assertTrue(controller_fs is None)

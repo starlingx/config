@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 
 """
@@ -801,7 +801,7 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
 
     def update_storage_config(self, context, update_storage=False,
                               reinstall_required=False, reboot_required=True,
-                              filesystem_list=None):
+                              filesystem_list=None, sm_reconfig=False):
         """Synchronously, have the conductor update the storage configuration.
 
         :param context: request context.
@@ -812,7 +812,8 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                 update_storage=update_storage,
                 reinstall_required=reinstall_required,
                 reboot_required=reboot_required,
-                filesystem_list=filesystem_list
+                filesystem_list=filesystem_list,
+                sm_reconfig=sm_reconfig
             )
         )
 
@@ -993,18 +994,6 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         """
         return self.call(context,
                          self.make_msg('update_ceph_external_config',
-                                       sb_uuid=sb_uuid,
-                                       services=services))
-
-    def update_ceph_rook_config(self, context, sb_uuid, services):
-        """Synchronously, have the conductor update Rook Ceph on a controller
-
-        :param context: request context
-        :param sb_uuid: uuid of the storage backend to apply the rook ceph config
-        :param services: list of services using Ceph.
-        """
-        return self.call(context,
-                         self.make_msg('update_ceph_rook_config',
                                        sb_uuid=sb_uuid,
                                        services=services))
 

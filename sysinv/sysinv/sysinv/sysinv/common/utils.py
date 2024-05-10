@@ -3632,6 +3632,15 @@ def is_filesystem_enabled(dbapi, host_id_or_uuid, fs_name):
     return False
 
 
+def get_enabled_controller_filesystem(dbapi, fs_name):
+    """Check if a controller filesystem is present """
+    filesystems = dbapi.controller_fs_get_list()
+    for fs in filesystems:
+        if (fs.name == fs_name):
+            return fs
+    return None
+
+
 def get_rpm_package(load_version, package_name):
     """Search for a package or its initial characters in a specific
     load version. First, it will look in the patch directory, if it

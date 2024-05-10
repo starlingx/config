@@ -5673,18 +5673,23 @@ class HostController(rest.RestController):
         # personality specific lock checks
         personality = hostupdate.ihost_patch.get('personality')
 
-        # Semantic Check: Avoid Lock of Host with recovering OSDs
-        # First ignore: workers, simplex, hosts without OSDs configured
-        if personality != constants.WORKER and \
-                not cutils.is_aio_simplex_system(pecan.request.dbapi) and \
-                pecan.request.dbapi.istor_get_by_ihost(hostupdate.ihost_orig['uuid']) and \
-                self._ceph.check_recovery_in_progress(hostupdate.ihost_orig['hostname']):
-            raise wsme.exc.ClientSideError(
-                _("PGs in recovery state, rejecting %s action on %s as OSDs "
-                  "of this host are getting up to date data from its peer "
-                  "host. Retry once recovery completes." % (
-                      hostupdate.ihost_patch['action'],
-                      hostupdate.ihost_orig['hostname'])))
+        # Semantic Check: Bare-Metal Ceph
+        if StorageBackendConfig.has_backend_configured(
+                pecan.request.dbapi,
+                constants.SB_TYPE_CEPH
+        ):
+            # Semantic Check: Avoid Lock of Host with recovering OSDs
+            # First ignore: workers, simplex, hosts without OSDs configured
+            if personality != constants.WORKER and \
+                   not cutils.is_aio_simplex_system(pecan.request.dbapi) and \
+                   pecan.request.dbapi.istor_get_by_ihost(hostupdate.ihost_orig['uuid']) and \
+                   self._ceph.check_recovery_in_progress(hostupdate.ihost_orig['hostname']):
+                raise wsme.exc.ClientSideError(
+                    _("PGs in recovery state, rejecting %s action on %s as OSDs "
+                      "of this host are getting up to date data from its peer "
+                      "host. Retry once recovery completes." % (
+                          hostupdate.ihost_patch['action'],
+                          hostupdate.ihost_orig['hostname'])))
 
         if personality == constants.CONTROLLER:
             self.check_lock_controller(hostupdate)
@@ -6431,7 +6436,7 @@ class HostController(rest.RestController):
         controller_fs_list = pecan.request.dbapi.controller_fs_get_list()
         for controller_fs in controller_fs_list:
             if controller_fs['replicated']:
-                if (controller_fs.get('state') ==
+                if (eval(controller_fs.get('state'))['status'] ==
                         constants.CONTROLLER_FS_RESIZING_IN_PROGRESS):
                     raise wsme.exc.ClientSideError(
                         _("drbd '%s' is resizing. Wait for the resizing to "

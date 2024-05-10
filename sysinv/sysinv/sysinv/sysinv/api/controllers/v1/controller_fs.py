@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2020 Wind River Systems, Inc.
+# Copyright (c) 2013-2020,2024 Wind River Systems, Inc.
 #
 
 
@@ -466,6 +466,200 @@ def _check_controller_multi_fs_data(context, controller_fs_list_new):
     return cgtsvg_growth_gib
 
 
+def _check_optional_controller_fs(controller_fs, operation):
+    """Check controllerfs limitations"""
+
+    # Can we create/delete this?
+    if controller_fs['name'] not in constants.CONTROLLERFS_CREATION_ALLOWED:
+        raise wsme.exc.ClientSideError(
+            _("Unsupported controller filesystem. Only the following "
+              "filesystems are supported for creation or deletion: {}".format(
+                  str(constants.CONTROLLERFS_CREATION_ALLOWED))))
+
+    # Can we create/delete it on the this host?
+    if not cutils.is_filesystem_supported(controller_fs['name'], constants.CONTROLLER):
+        raise wsme.exc.ClientSideError(
+            _("Cannot %s controller filesystem %s on %s nodes") % (
+                operation, controller_fs['name'], constants.CONTROLLER))
+
+    # FILESYSTEM_NAME_CEPH_DRBD:
+    # Can only be created if:
+    # - a rook storage backend exists
+    # - is an expected two node install (AIO-DX)
+    #
+    # Can only be deleted if:
+    # - it was created via these conditions, so will pass the following creation
+    #   checks
+    rook_backend = pecan.request.dbapi.storage_backend_get_list_by_type(
+        backend_type=constants.SB_TYPE_CEPH_ROOK)
+
+    if not rook_backend:
+        msg = _("Failed to {} controller filesystem {}: {} must be configured "
+                "as storage backend.".format(
+                    operation, controller_fs['name'], constants.SB_TYPE_CEPH_ROOK))
+        raise wsme.exc.ClientSideError(msg)
+
+    if not cutils.is_aio_duplex_system(pecan.request.dbapi):
+        msg = _("Failed to {} controller filesystem {}: command only allowed for "
+                "duplex configs.".format(operation, controller_fs['name']))
+        raise wsme.exc.ClientSideError(msg)
+
+    # Validate if there are pending updates on the controllers lvg
+    controller_hosts = pecan.request.dbapi.ihost_get_by_personality(
+        constants.CONTROLLER
+    )
+    controllers_lvg_updated = True
+    for host in controller_hosts:
+        host_fs_list = pecan.request.dbapi.host_fs_get_by_ihost(host.uuid)
+        host_lvg_list = pecan.request.dbapi.ilvg_get_by_ihost(host.uuid)
+        controllers_lvg_updated = controllers_lvg_updated and \
+            utils.is_host_lvg_updated(host_fs_list, host_lvg_list)
+
+    if not controllers_lvg_updated:
+        msg = _("Failed to {} controller filesystem {}: controllers have pending "
+                "LVG updates, please retry again later.".format(
+                    operation, controller_fs['name']))
+        raise wsme.exc.ClientSideError(msg)
+
+
+def _create(controller_fs):
+    """Create a controller filesystem"""
+
+    _check_optional_controller_fs(controller_fs, operation="create")
+
+    # See if this filesystem name already exists
+    fs_enabled = cutils.get_enabled_controller_filesystem(pecan.request.dbapi, controller_fs['name'])
+    if fs_enabled:
+        if (eval(fs_enabled.get('state'))['status'] != constants.CONTROLLER_FS_UPDATE_ERROR):
+            raise wsme.exc.ClientSideError(
+                _("Controller filesystem (%s) already present" % controller_fs['name']))
+        else:
+            pecan.request.dbapi.controller_fs_destroy(fs_enabled.uuid)
+
+    # Check the available space on cgts-vg
+    cgtsvg_max_free_GiB = _get_controller_cgtsvg_limit()
+    if controller_fs['size'] >= cgtsvg_max_free_GiB:
+        msg = _("ControllerFs creation failed: Not enough free space on %s. "
+                "Current free space %s GiB, "
+                "requested total increase %s GiB" %
+                (constants.LVG_CGTS_VG, cgtsvg_max_free_GiB, controller_fs['size']))
+        raise wsme.exc.ClientSideError(msg)
+
+    # Check valid range for size
+    if (controller_fs['size'] < constants.SB_CEPH_MON_GIB_MIN or
+            controller_fs['size'] > cgtsvg_max_free_GiB):
+        msg = _("ControllerFs creation failed: size for fs '{}' should be in the "
+                "the range ({}, {}).".format(constants.FILESYSTEM_NAME_CEPH_DRBD,
+                                            constants.SB_CEPH_MON_GIB_MIN,
+                                            cgtsvg_max_free_GiB))
+        raise wsme.exc.ClientSideError(msg)
+
+    data = {
+        'name': controller_fs['name'],
+        'state': str({'status': constants.CONTROLLER_FS_CREATING_IN_PROGRESS}),
+        'size': controller_fs['size'],
+        'logical_volume': constants.FILESYSTEM_LV_DICT[controller_fs['name']],
+        'replicated': True,
+    }
+
+    # Check the controller states
+    controller_hosts = pecan.request.dbapi.ihost_get_by_personality(
+        constants.CONTROLLER
+    )
+
+    if (any(chost['invprovision'] == constants.PROVISIONING
+            for chost in controller_hosts) and
+            len(controller_hosts) == 1):
+        data['state'] = str({'status': constants.CONTROLLER_FS_CREATING_ON_UNLOCK})
+
+    elif all(chost.get('administrative') == constants.ADMIN_UNLOCKED and
+             chost.get('operational') == constants.OPERATIONAL_ENABLED
+             for chost in controller_hosts) and len(controller_hosts) > 1:
+        msg = _("Failed to create: It is only possible to create the "
+                "controllerfs FS with the standby controller locked.")
+        raise wsme.exc.ClientSideError(msg)
+
+    new_controller_fs = pecan.request.dbapi.controller_fs_create(data)
+
+    LOG.info("Creating Controller FS: {} => {} {}".format(
+                data['name'], data['logical_volume'], data['size']))
+
+    try:
+        # perform rpc to conductor to perform config apply
+        pecan.request.rpcapi.update_storage_config(
+            pecan.request.context,
+            update_storage=False,
+            reinstall_required=False,
+            reboot_required=False,
+            filesystem_list=[controller_fs['name']],
+            sm_reconfig=True
+        )
+    except Exception as e:
+        msg = _("Failed to create filesystem {}".format(new_controller_fs['name']))
+        LOG.error("%s with exception %s" % (msg, e))
+        pecan.request.dbapi.controller_fs_destroy(new_controller_fs['id'])
+        raise wsme.exc.ClientSideError(msg)
+
+    return new_controller_fs
+
+
+def _delete(controller_fs):
+    """Delete a controller filesystem."""
+
+    _check_optional_controller_fs(controller_fs, operation="delete")
+
+    if eval(controller_fs['state'])['status'] == constants.CONTROLLER_FS_CREATING_ON_UNLOCK:
+        try:
+            pecan.request.dbapi.controller_fs_destroy(controller_fs['id'])
+        except exception.HTTPNotFound:
+            msg = _("Deleting controller filesystem failed: filesystem "
+                    "{}".format(controller_fs['name']))
+            raise wsme.exc.ClientSideError(msg)
+
+    elif (eval(controller_fs['state'])['status'] in [
+            constants.CONTROLLER_FS_CREATING_IN_PROGRESS,
+            constants.CONTROLLER_FS_RESIZING_IN_PROGRESS,
+            constants.CONTROLLER_FS_DELETING_IN_PROGRESS]):
+        msg = _("Controller filesystem {} must have the status {} for deletion.".format(
+            controller_fs['state'], constants.CONTROLLER_FS_AVAILABLE))
+        raise wsme.exc.ClientSideError(msg)
+
+    # Check the controller states
+    controller_hosts = pecan.request.dbapi.ihost_get_by_personality(
+        constants.CONTROLLER
+    )
+    if (all(chost.get('administrative') == constants.ADMIN_UNLOCKED and
+            chost.get('operational') == constants.OPERATIONAL_ENABLED
+            for chost in controller_hosts) and
+            len(controller_hosts) > 1):
+        msg = _("Failed to delete: It is only possible to delete the "
+                "controllerfs FS with the standby controller locked.")
+        raise wsme.exc.ClientSideError(msg)
+
+    try:
+        pecan.request.dbapi.controller_fs_update(
+            controller_fs['uuid'], {
+                'state': str({'status': constants.CONTROLLER_FS_DELETING_IN_PROGRESS})})
+
+        LOG.info("REQUEST: %s controller filesystem will be deleted NOW" % controller_fs['name'])
+
+        # perform rpc to conductor to perform config apply
+        pecan.request.rpcapi.update_storage_config(
+            pecan.request.context,
+            update_storage=False,
+            reinstall_required=False,
+            reboot_required=False,
+            filesystem_list=[controller_fs['name']],
+            sm_reconfig=True
+        )
+    except Exception as e:
+        msg = _("Failed to delete filesystem {}".format(controller_fs['name']))
+        LOG.error("%s with exception %s" % (msg, e))
+        pecan.request.dbapi.controller_fs_update(controller_fs['uuid'], {
+            'state': str({'status': constants.CONTROLLER_FS_AVAILABLE})})
+        raise wsme.exc.ClientSideError(msg)
+
+
 LOCK_NAME = 'FsController'
 
 
@@ -659,7 +853,7 @@ class ControllerFsController(rest.RestController):
                 if fs.name in modified_fs:
                     value = {'size': fs.size}
                     if fs.replicated:
-                        value.update({'state': constants.CONTROLLER_FS_RESIZING_IN_PROGRESS})
+                        value.update({'state': str({'status': constants.CONTROLLER_FS_RESIZING_IN_PROGRESS})})
                     pecan.request.dbapi.controller_fs_update(fs.uuid, value)
 
         try:
@@ -669,7 +863,8 @@ class ControllerFsController(rest.RestController):
                     update_storage=False,
                     reinstall_required=reinstall_required,
                     reboot_required=reboot_required,
-                    filesystem_list=modified_fs
+                    filesystem_list=modified_fs,
+                    sm_reconfig=False
             )
 
         except Exception as e:
@@ -677,13 +872,29 @@ class ControllerFsController(rest.RestController):
             LOG.error("%s with patch %s with exception %s" % (msg, patch, e))
             raise wsme.exc.ClientSideError(msg)
 
+    @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, controller_fs_uuid):
         """Delete a controller_fs."""
-        raise exception.OperationNotPermitted
+
+        try:
+            controller_fs = objects.controller_fs.get_by_uuid(
+                pecan.request.context, controller_fs_uuid).as_dict()
+            _delete(controller_fs)
+        except exception.SysinvException:
+            LOG.exception()
+            raise wsme.exc.ClientSideError(_("Unable to delete controllerfs"))
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(ControllerFs, body=ControllerFs)
-    def post(self, controllerfs):
-        """Create a new controller_fs."""
-        raise exception.OperationNotPermitted
+    def post(self, controller_fs):
+        """Create a controller_fs."""
+
+        try:
+            controller_fs = controller_fs.as_dict()
+            new_controller_fs = _create(controller_fs)
+        except exception.SysinvException:
+            LOG.exception()
+            raise wsme.exc.ClientSideError(_("Invalid data: failed to create "
+                                             "a controller_fs record."))
+        return ControllerFs.convert_with_links(new_controller_fs)

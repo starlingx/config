@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2017-2019 Wind River Systems, Inc.
+# Copyright (c) 2017-2019,2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -64,6 +64,20 @@ class StoragePuppet(base.BasePuppet):
             elif controller_fs.name == constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION:
                 config.update({
                     'platform::drbd::dockerdistribution::params::lv_size':
+                        controller_fs.size
+                })
+            elif controller_fs.name == constants.FILESYSTEM_NAME_CEPH_DRBD:
+                enabled = 'absent'
+                if eval(controller_fs.state)['status'] in [
+                        constants.CONTROLLER_FS_AVAILABLE,
+                        constants.CONTROLLER_FS_CREATING_IN_PROGRESS,
+                        constants.CONTROLLER_FS_CREATING_ON_UNLOCK,
+                        constants.CONTROLLER_FS_RESIZING_IN_PROGRESS]:
+                    enabled = 'present'
+                config.update({
+                    'platform::drbd::rook::params::ensure':
+                        enabled,
+                    'platform::drbd::rook::params::lv_size':
                         controller_fs.size
                 })
 
