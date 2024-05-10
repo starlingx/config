@@ -1940,7 +1940,6 @@ class ConductorManager(service.PeriodicService):
                 sw_version = host.sw_version
             except exception.NodeNotFound:
                 LOG.debug("Host %s couldn't be found." % host.hostname)
-                pass
 
         if (host.personality == constants.CONTROLLER and
                 constants.WORKER in tsc.subfunctions):
