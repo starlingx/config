@@ -37,6 +37,7 @@ from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
+from sysinv.common import address_pool as caddress_pool
 from sysinv import objects
 
 LOG = log.getLogger(__name__)
@@ -164,7 +165,7 @@ class NetworkController(rest.RestController):
             pecan.request.context, network_uuid)
         return Network.convert_with_links(rpc_network)
 
-    def _check_network_type(self, networktype, pool_uuid=None):
+    def _check_network_type(self, networktype):
         networks = pecan.request.dbapi.networks_get_by_type(networktype)
         if networks:
             raise exception.NetworkAlreadyExists(type=networktype)
@@ -175,18 +176,9 @@ class NetworkController(rest.RestController):
                     "role of {}."
                     .format(networktype, constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD))
             raise wsme.exc.ClientSideError(msg)
-        if (networktype == constants.NETWORK_TYPE_MGMT):
-            # There are ansible rules using the explicit name: 'management-ipv4' and
-            # 'management-ipv6' in the addrpool
-            # since the AIO-SX allows mgmt network reconfiguration it is necessary to enforce
-            # the use of addrpool named 'management-ipv4' and 'management-ipv6'.
-            if pool_uuid:
-                pool = pecan.request.dbapi.address_pool_get(pool_uuid)
-                pool_name = address_pool.MANAGEMENT_ADDRESS_POOL_NAMES[pool.family]
-                if pool['name'] != pool_name:
-                    msg = _("Network of type {} must use the addrpool named '{}' for {}."
-                            .format(networktype, pool_name, constants.IP_FAMILIES[pool.family]))
-                    raise wsme.exc.ClientSideError(msg)
+
+    def _check_address_pool_overlap(self, pool, networktype):
+        caddress_pool.check_address_pools_overlaps(pecan.request.dbapi, [pool], {networktype})
 
     def _check_network_pool(self, pool):
         # ensure address pool exists and is not already inuse
@@ -214,10 +206,13 @@ class NetworkController(rest.RestController):
 
             # Check for address existent before creation
             try:
-                address_obj = pecan.request.dbapi.address_get_by_address(
-                    str(address))
-                pecan.request.dbapi.address_update(address_obj.uuid,
-                                                   {'name': address_name})
+                address_obj = pecan.request.dbapi.address_get_by_address(str(address))
+                pecan.request.dbapi.address_update(
+                    address_obj.uuid, {'name': address_name, 'address_pool_id': pool.id})
+                if address_obj.pool_id != pool.id:
+                    # If the address already exists, it could belong to an unassigned address pool
+                    # and has to be removed from it
+                    address_pool.remove_address_from_pool(address_obj)
             except exception.AddressNotFoundByAddress:
                 address_obj = pecan.request.dbapi.address_create(values)
 
@@ -244,14 +239,16 @@ class NetworkController(rest.RestController):
         network.validate_syntax()
         network = network.as_dict()
         network['uuid'] = str(uuid.uuid4())
+        networktype = network['type']
 
         pool_uuid = network.pop('pool_uuid', None)
+        pool = pecan.request.dbapi.address_pool_get(pool_uuid) if pool_uuid else None
 
         # Perform semantic validation
-        self._check_network_type(network['type'], pool_uuid)
+        self._check_network_type(networktype)
+        self._check_address_pool_overlap(pool, networktype)
 
-        if pool_uuid:
-            pool = pecan.request.dbapi.address_pool_get(pool_uuid)
+        if pool:
             network.update({'address_pool_id': pool.id})
             if self._use_legacy_api():
                 # this value is filled here based on the provided pool, if not provided
@@ -279,7 +276,7 @@ class NetworkController(rest.RestController):
         chosts = pecan.request.dbapi.ihost_get_by_personality(
             constants.CONTROLLER)
         if (len(chosts) == 1 and
-                network['type'] == constants.NETWORK_TYPE_OAM):
+                networktype == constants.NETWORK_TYPE_OAM):
             pecan.request.rpcapi.reconfigure_service_endpoints(
                 pecan.request.context, chosts[0])
 
@@ -288,9 +285,9 @@ class NetworkController(rest.RestController):
         # re-home a subcloud to a new central cloud. In this case, we want
         # to update the related services configurations in runtime.
         if cutils.is_initial_config_complete() and \
-            network['type'] in [constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
+            networktype in [constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
                                 constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM]:
-            self._update_system_controller_network_config(network['type'])
+            self._update_system_controller_network_config(networktype)
 
         return Network.convert_with_links(result)
 

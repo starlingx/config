@@ -15,9 +15,9 @@ import mock
 from six.moves import http_client
 
 from oslo_utils import uuidutils
+from sysinv.tests.api import base
 from sysinv.api.controllers.v1 import interface as api_if_v1
 from sysinv.common import constants
-from sysinv.tests.api import base
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
 from sysinv.db import api as db_api
@@ -846,9 +846,20 @@ class TestList(InterfaceTestCase):
 class TestPatchMixin(object):
     def setUp(self):
         super(TestPatchMixin, self).setUp()
-        self._create_host(constants.CONTROLLER)
+        self._create_host(constants.CONTROLLER, admin=constants.ADMIN_LOCKED)
         self._create_host(constants.WORKER, admin=constants.ADMIN_LOCKED)
         self._create_datanetworks()
+
+    def patch_fail(self, interface, http_code=http_client.BAD_REQUEST, message=None, **kwargs):
+        response = self.patch_dict_json(self._get_path(interface.uuid),
+                                        expect_errors=True, **kwargs)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_code)
+        if message:
+            self.assertIn(message, response.json['error_message'])
+        else:
+            self.assertTrue(response.json['error_message'])
+        return response
 
     def test_modify_ifname(self):
         interface = dbutils.create_test_interface(forihostid=self.worker.id)
@@ -1037,6 +1048,37 @@ class TestPatchMixin(object):
     def test_create_sriov_no_mgmt(self):
         self._create_sriov_vf_driver_valid(constants.SRIOV_DRIVER_TYPE_VFIO)
 
+    def test_address_pool_overlap(self):
+        mgmt_net = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
+        mgmt_addrpool = self._find_network_address_pools(mgmt_net.id)[0]
+
+        subnet = self.mgmt_subnet
+        c0_if0_pool = dbutils.create_test_address_pool(
+            name='c0-if0-pool',
+            family=subnet.version,
+            network=str(subnet.ip),
+            ranges=[[str(subnet[1]), str(subnet[-1])]],
+            prefix=subnet.prefixlen)
+
+        c0_if0 = dbutils.create_test_interface(
+            ifname='c0-if0', id=1,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=self.controller.id,
+            ihost_uuid=self.controller.uuid)
+
+        if c0_if0_pool.family == constants.IPV4_FAMILY:
+            ndict = {'ipv4_mode': constants.IPV4_POOL,
+                     'ipv4_pool': c0_if0_pool.uuid}
+        else:
+            ndict = {'ipv6_mode': constants.IPV6_POOL,
+                     'ipv6_pool': c0_if0_pool.uuid}
+
+        msg = (f"Address pool '{c0_if0_pool.name}' {{{c0_if0_pool.uuid}}} "
+               f"{c0_if0_pool.network}/{c0_if0_pool.prefix} overlaps with: "
+               f"'{mgmt_addrpool.name}' {{{mgmt_addrpool.uuid}}} assigned to mgmt network")
+
+        self.patch_fail(c0_if0, message=msg, http_code=http_client.CONFLICT, **ndict)
+
 
 class TestPostMixin(object):
     def setUp(self):
@@ -1148,6 +1190,7 @@ class TestPostMixin(object):
             host=self.worker)
         network = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
         pool = self._find_address_pool_by_uuid(network['pool_uuid'])
+        self.dbapi.address_pool_update(pool.uuid, {'gateway_address_id': None})
         if pool.family == constants.IPV4_FAMILY:
             response = self.patch_dict_json(
                 '%s' % self._get_path(interface['uuid']),
@@ -1277,6 +1320,41 @@ class TestPostMixin(object):
         self.assertTrue(response.json['error_message'])
         self.assertIn('Address pool IP family does not match requested family',
                       response.json['error_message'])
+
+    def test_address_pool_overlap(self):
+        mgmt_net = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
+        mgmt_addrpool = self._find_network_address_pools(mgmt_net.id)[0]
+
+        subnet = self.mgmt_subnet
+        c0_if0_pool = dbutils.create_test_address_pool(
+            name='c0-if0-pool',
+            family=subnet.version,
+            network=str(subnet.ip),
+            ranges=[[str(subnet[1]), str(subnet[-1])]],
+            prefix=subnet.prefixlen)
+
+        if c0_if0_pool.family == constants.IPV4_FAMILY:
+            ndict = self._post_get_test_interface(
+                ihost_uuid=self.controller.uuid,
+                ifname='c0-if0',
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                iftype=constants.INTERFACE_TYPE_ETHERNET,
+                ipv4_mode=constants.IPV4_POOL,
+                ipv4_pool=c0_if0_pool.uuid)
+        else:
+            ndict = self._post_get_test_interface(
+                ihost_uuid=self.controller.uuid,
+                ifname='c0-if0',
+                ifclass=constants.INTERFACE_CLASS_PLATFORM,
+                iftype=constants.INTERFACE_TYPE_ETHERNET,
+                ipv6_mode=constants.IPV6_POOL,
+                ipv6_pool=c0_if0_pool.uuid)
+
+        msg = (f"Address pool '{c0_if0_pool.name}' {{{c0_if0_pool.uuid}}} "
+               f"{c0_if0_pool.network}/{c0_if0_pool.prefix} overlaps with: "
+               f"'{mgmt_addrpool.name}' {{{mgmt_addrpool.uuid}}} assigned to mgmt network")
+
+        self._post_and_check(ndict, expect_errors=True, error_message=msg)
 
     # Expected error: Device interface type must be 'aggregated ethernet' or
     # 'vlan' or 'ethernet'.

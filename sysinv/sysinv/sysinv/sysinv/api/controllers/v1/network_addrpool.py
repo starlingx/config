@@ -21,9 +21,13 @@ from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
+from sysinv.common import address_pool as caddress_pool
 from sysinv import objects
 
 LOG = log.getLogger(__name__)
+
+OPERATION_CREATE = 'create'
+OPERATION_DELETE = 'delete'
 
 
 class NetworkAddresspool(base.APIBase):
@@ -177,11 +181,14 @@ class NetworkAddresspoolController(rest.RestController):
 
             # Check for address existent before creation
             try:
-                address_obj = pecan.request.dbapi.address_get_by_address(
-                    str(address))
-                upd_values = {'name': address_name}
+                address_obj = pecan.request.dbapi.address_get_by_address(str(address))
+                upd_values = {'name': address_name, 'address_pool_id': pool.id}
                 upd_values.update(addr_intf)
                 pecan.request.dbapi.address_update(address_obj.uuid, upd_values)
+                if address_obj.pool_id != pool.id:
+                    # If the address already exists, it could belong to an unassigned address pool
+                    # and has to be removed from it
+                    address_pool.remove_address_from_pool(address_obj)
             except exception.AddressNotFoundByAddress:
                 values.update(addr_intf)
                 address_obj = pecan.request.dbapi.address_create(values)
@@ -206,6 +213,47 @@ class NetworkAddresspoolController(rest.RestController):
         if opt_fields:
             pecan.request.dbapi.address_pool_update(pool.uuid, opt_fields)
 
+    def _check_modification_allowed(self, operation, network):
+        if network.type == constants.NETWORK_TYPE_OAM:
+            return
+        if network.type == constants.NETWORK_TYPE_MGMT:
+            if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
+                chosts = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+                for host in chosts:
+                    if utils.is_aio_simplex_host_unlocked(host):
+                        msg = ("Cannot complete the action because Host {} "
+                               "is in administrative state = unlocked"
+                               .format(host['hostname']))
+                        raise wsme.exc.ClientSideError(msg)
+                return
+        elif network.type not in [constants.NETWORK_TYPE_CLUSTER_HOST,
+                                  constants.NETWORK_TYPE_PXEBOOT,
+                                  constants.NETWORK_TYPE_CLUSTER_POD,
+                                  constants.NETWORK_TYPE_CLUSTER_SERVICE,
+                                  constants.NETWORK_TYPE_STORAGE]:
+            return
+        if cutils.is_initial_config_complete():
+            msg = (f"Cannot {operation} relation for network {{{network.uuid}}} "
+                   f"with type {network.type} after initial configuration completion")
+            raise wsme.exc.ClientSideError(msg)
+
+    def _check_address_pool_overlap(self, network, pool):
+        caddress_pool.check_address_pools_overlaps(pecan.request.dbapi, [pool], {network.type})
+
+    def _network_addresspool_operation_complete(self, operation, network, addrpool):
+        if network.type == constants.NETWORK_TYPE_OAM:
+            pecan.request.rpcapi.update_oam_config(pecan.request.context)
+
+        if network.type == constants.NETWORK_TYPE_MGMT:
+            if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and \
+                    cutils.is_initial_config_complete():
+                pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
+                if address_pool.is_mgmt_network_associated_to_interface():
+                    if operation == OPERATION_CREATE:
+                        address_pool.add_management_addresses_to_no_proxy_list([addrpool])
+                    else:
+                        address_pool.remove_management_addresses_from_no_proxy_list([addrpool])
+
     def _create_network_addrpool(self, network_addrpool):
         # Perform syntactic validation
         network_addrpool.validate_syntax()
@@ -215,6 +263,9 @@ class NetworkAddresspoolController(rest.RestController):
         network = pecan.request.dbapi.network_get(network_addrpool['network_uuid'])
         pool = pecan.request.dbapi.address_pool_get(network_addrpool['address_pool_uuid'])
         pool_family = constants.IP_FAMILIES[pool.family]
+
+        self._check_modification_allowed(OPERATION_CREATE, network)
+        self._check_address_pool_overlap(network, pool)
 
         net_pool_list = pecan.request.dbapi.network_addrpool_get_by_network_id(network.id)
         if len(net_pool_list) == 2:
@@ -268,8 +319,7 @@ class NetworkAddresspoolController(rest.RestController):
         addresses = utils.PopulateAddresses.create_network_addresses(pool, network)
         self._populate_network_addresses(pool, network, addresses, result)
 
-        if network.type == constants.NETWORK_TYPE_OAM:
-            pecan.request.rpcapi.update_oam_config(pecan.request.context)
+        self._network_addresspool_operation_complete(OPERATION_CREATE, network, pool)
 
         return NetworkAddresspool.convert_with_links(result)
 
@@ -302,20 +352,7 @@ class NetworkAddresspoolController(rest.RestController):
         network = pecan.request.dbapi.network_get(to_delete['network_uuid'])
         pool = pecan.request.dbapi.address_pool_get(to_delete['address_pool_uuid'])
 
-        if cutils.is_initial_config_complete():
-            if (network['type'] in [constants.NETWORK_TYPE_CLUSTER_HOST,
-                                constants.NETWORK_TYPE_PXEBOOT,
-                                constants.NETWORK_TYPE_CLUSTER_POD,
-                                constants.NETWORK_TYPE_CLUSTER_SERVICE,
-                                constants.NETWORK_TYPE_STORAGE]):
-                msg = (f"Cannot delete relation for network {network.uuid}"
-                       f" with type {network['type']} after initial configuration completion")
-                raise wsme.exc.ClientSideError(msg)
-            elif (network['type'] in [constants.NETWORK_TYPE_MGMT] and
-                 utils.get_system_mode() != constants.SYSTEM_MODE_SIMPLEX):
-                msg = (f"Cannot delete relation for network {network.uuid}"
-                       f" with type {network['type']} after initial configuration completion")
-                raise wsme.exc.ClientSideError(msg)
+        self._check_modification_allowed(OPERATION_DELETE, network)
 
         if network.pool_uuid == pool.uuid:
             # this operation is blocked for now
@@ -331,5 +368,4 @@ class NetworkAddresspoolController(rest.RestController):
 
         pecan.request.dbapi.network_addrpool_destroy(to_delete.uuid)
 
-        if network.type == constants.NETWORK_TYPE_OAM:
-            pecan.request.rpcapi.update_oam_config(pecan.request.context)
+        self._network_addresspool_operation_complete(OPERATION_DELETE, network, pool)

@@ -86,14 +86,23 @@ class AddressPoolTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
             subnet=self.mgmt_subnet
         )
 
-    def _delete_management_pool(self):
-        current_pools = self.get_json(self.API_PREFIX)
-        for addrpool in current_pools[self.RESULT_KEY]:
-            if addrpool['name'].startswith('management'):
-                uuid = addrpool['uuid']
-                self.delete(self.get_single_url(uuid),
-                    headers=self.API_HEADERS)
-                break
+    def create_test_host(self):
+        return self._create_test_host(constants.CONTROLLER)
+
+    def get_host(self):
+        if self.hosts:
+            return self.hosts[0]
+        return self.create_test_host()
+
+    def create_test_interface(self, ifname='test0', host=None):
+        if not host:
+            host = self.get_host()
+        interface = dbutils.create_test_interface(
+            ifname=ifname,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=host.id,
+            ihost_uuid=host.uuid)
+        return interface
 
     def find_addrpool_by_networktype(self, networktype):
         network = self._find_network_by_type(networktype)
@@ -114,23 +123,6 @@ class TestPatchMixin(object):
             return '/addrpools/' + path
         else:
             return '/addrpools'
-
-    def create_test_host(self):
-        return self._create_test_host(constants.CONTROLLER)
-
-    def get_host(self):
-        if self.hosts:
-            return self.hosts[0]
-        return self.create_test_host()
-
-    def create_test_interface(self):
-        host = self.get_host()
-        interface = dbutils.create_test_interface(
-            ifname='test0',
-            ifclass=constants.INTERFACE_CLASS_PLATFORM,
-            forihostid=host.id,
-            ihost_uuid=host.uuid)
-        return interface
 
     def patch_success(self, addrpool, **kwargs):
         response = self.patch_dict_json(self._get_path(addrpool.uuid),
@@ -200,16 +192,70 @@ class TestPatchMixin(object):
         self.assertIn(f"Invalid IP version {version} {ip}/{prefix}. Please configure valid "
                       f"IPv{addrpool.family} subnet", response.json['error_message'])
 
-    def test_fail_subnet_overlap(self):
-        addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
+    def test_fail_subnet_overlap_single_network(self):
+        mgmt_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_MGMT)
+        oam_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
         ip = str(self.mgmt_subnet.ip)
         for prefix in range(self.mgmt_subnet.prefixlen - 1, self.mgmt_subnet.prefixlen + 2):
-            response = self.patch_oam_fail(addrpool, http_client.CONFLICT,
+            response = self.patch_oam_fail(oam_pool, http_client.CONFLICT,
                                            network=ip,
                                            prefix=str(prefix))
-            self.assertIn(f"Address pool {ip}/{prefix} overlaps with "
-                          f"management-ipv{addrpool.family} address pool.",
+            self.assertIn(f"Address pool {ip}/{prefix} overlaps with: '{mgmt_pool.name}' "
+                          f"{{{mgmt_pool.uuid}}} assigned to mgmt network",
                           response.json['error_message'])
+
+    def test_fail_subnet_overlap_multiple_networks_and_interfaces(self):
+        mgmt_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_MGMT)
+        ch_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_CLUSTER_HOST)
+        oam_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
+
+        if self.mgmt_subnet.version == constants.IPV4_FAMILY:
+            mgmt_subnet = netaddr.IPNetwork('192.169.1.0/24')
+            ch_subnet = netaddr.IPNetwork('192.169.2.0/24')
+            other_subnet = netaddr.IPNetwork('192.169.3.0/24')
+            oam_subnet = netaddr.IPNetwork('192.169.0.0/16')
+        else:
+            mgmt_subnet = netaddr.IPNetwork('fdaa:0:0:1:1::/80')
+            ch_subnet = netaddr.IPNetwork('fdaa:0:0:1:2::/80')
+            other_subnet = netaddr.IPNetwork('fdaa:0:0:1:3::/80')
+            oam_subnet = netaddr.IPNetwork('fdaa:0:0:1::/64')
+
+        self.dbapi.address_pool_update(mgmt_pool.uuid,
+                                       {'network': str(mgmt_subnet.ip),
+                                        'prefix': str(mgmt_subnet.prefixlen),
+                                        'ranges': [[str(mgmt_subnet[1]), str(mgmt_subnet[-1])]]})
+        self.dbapi.address_pool_update(ch_pool.uuid,
+                                       {'network': str(ch_subnet.ip),
+                                        'prefix': str(ch_subnet.prefixlen),
+                                        'ranges': [[str(ch_subnet[1]), str(ch_subnet[-1])]]})
+
+        c0_if1_pool = dbutils.create_test_address_pool(
+            name='c0-if1-pool',
+            family=other_subnet.version,
+            network=str(other_subnet.ip),
+            ranges=[[str(other_subnet[1]), str(other_subnet[-1])]],
+            prefix=other_subnet.prefixlen)
+
+        controller0 = self._create_test_host(constants.CONTROLLER)
+
+        c0_if0 = self.create_test_interface('c0-if0', controller0)
+        c0_if1 = self.create_test_interface('c0-if1', controller0)
+
+        self.dbapi.address_mode_update(c0_if0.id, {'family': mgmt_pool.family, 'mode': 'pool',
+                                                   'address_pool_id': mgmt_pool.id})
+        self.dbapi.address_mode_update(c0_if1.id, {'family': c0_if1_pool.family, 'mode': 'pool',
+                                                   'address_pool_id': c0_if1_pool.id})
+
+        response = self.patch_oam_fail(oam_pool, http_client.CONFLICT,
+                                       network=str(oam_subnet.ip),
+                                       prefix=str(oam_subnet.prefixlen))
+        self.assertIn(f"Address pool {oam_subnet.ip}/{oam_subnet.prefixlen} overlaps with: "
+                      f"'{mgmt_pool.name}' {{{mgmt_pool.uuid}}} assigned to mgmt network and "
+                      f"to '{c0_if0.ifname}' interface in host {controller0.hostname}, "
+                      f"'{ch_pool.name}' {{{ch_pool.uuid}}} assigned to cluster-host network, "
+                      f"'{c0_if1_pool.name}' {{{c0_if1_pool.uuid}}} assigned to '{c0_if1.ifname}' "
+                      f"interface in host {controller0.hostname}",
+                      response.json['error_message'])
 
     def test_oam_subnet_overlap_with_sysctl_oam(self):
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
@@ -219,6 +265,7 @@ class TestPatchMixin(object):
             self.patch_oam_success(addrpool,
                                    network=ip,
                                    prefix=str(prefix),
+                                   ranges=[[str(subnet[1]), str(subnet[62])]],
                                    gateway_address=str(subnet[1]),
                                    floating_address=str(subnet[2]),
                                    controller0_address=str(subnet[3]),
@@ -323,7 +370,8 @@ class TestPatchMixin(object):
 
     def test_modify_prefix(self):
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
-
+        self.dbapi.address_pool_update(addrpool.uuid, {'ranges': [[str(self.oam_subnet[1]),
+                                                                   str(self.oam_subnet[62])]]})
         new_prefix = self.oam_subnet.prefixlen + 2
         address_ids = [addrpool.floating_address_id, addrpool.controller0_address_id,
                        addrpool.controller1_address_id, addrpool.gateway_address_id]
@@ -348,7 +396,9 @@ class TestPatchMixin(object):
 
         self.dbapi.address_destroy_by_id(addrpool.controller0_address_id)
         self.dbapi.address_destroy_by_id(addrpool.gateway_address_id)
-        self.dbapi.address_pool_update(addrpool.uuid, {'controller0_address_id': None,
+        self.dbapi.address_pool_update(addrpool.uuid, {'ranges': [[str(self.oam_subnet[1]),
+                                                                   str(self.oam_subnet[62])]],
+                                                       'controller0_address_id': None,
                                                        'gateway_address_id': None})
         new_prefix = self.oam_subnet.prefixlen + 2
         new_floating_addr = str(self.oam_subnet[12])
@@ -391,10 +441,12 @@ class TestPatchMixin(object):
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
         if addrpool.family == constants.IPV4_FAMILY:
             network = '10.30.0.0'
+            ranges = [['10.30.0.1', '10.30.0.254']]
         else:
             network = '5102::'
+            ranges = [['5102::1', '5102::ffff']]
         response = self.patch_oam_fail(addrpool, http_client.BAD_REQUEST,
-                                       network=network)
+                                       network=network, ranges=ranges)
         self.assertIn(f"IP Address {addrpool.gateway_address} is not in subnet: {network}/"
                       f"{addrpool.prefix}. Please configure valid "
                       f"IPv{addrpool.family} address.",
@@ -409,6 +461,7 @@ class TestPatchMixin(object):
         response = self.patch_oam_success(addrpool,
                                           network=str(network.ip),
                                           prefix=str(network.prefixlen),
+                                          ranges=[[str(network[1]), str(network[-2])]],
                                           gateway_address=str(network[1]),
                                           floating_address=str(network[2]),
                                           controller0_address=str(network[3]),
@@ -463,17 +516,6 @@ class TestPatchMixin(object):
         self.assertIn("The fields must not be empty: %s" % ', '.join(fields),
                       response.json['error_message'])
 
-    def test_fail_gateway_not_allowed(self):
-        addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
-        gateway_addr = addrpool.gateway_address
-        self.dbapi.address_destroy_by_id(addrpool.gateway_address_id)
-        self.dbapi.address_pool_update(addrpool.uuid, {'gateway_address_id': None})
-        response = self.patch_oam_fail(addrpool, http_client.BAD_REQUEST,
-                                       gateway_address=gateway_addr)
-        self.assertIn(f"OAM gateway IP is not allowed to be configured {gateway_addr}. "
-                       "There is already a management gateway address configured.",
-                       response.json['error_message'])
-
     def test_oam_aio_sx_to_dx_migration(self):
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
         interface = self.create_test_interface()
@@ -521,6 +563,247 @@ class TestPatchMixin(object):
         self.assertIn("Action rejected while a kubernetes upgrade is in progress",
                       response.json['error_message'])
 
+    def test_fail_modify_range_with_allocated_addresses(self):
+        controller0 = self._create_test_host(constants.CONTROLLER)
+        c0_if0 = self.create_test_interface('c0-if0', controller0)
+
+        if self.mgmt_subnet.version == constants.IPV4_FAMILY:
+            subnet = netaddr.IPNetwork('192.167.1.0/24')
+        else:
+            subnet = netaddr.IPNetwork('fda1::/64')
+
+        pool = dbutils.create_test_address_pool(
+            name='c1-if0-pool',
+            family=subnet.version,
+            network=str(subnet.ip),
+            ranges=[[str(subnet[1]), str(subnet[150])]],
+            prefix=subnet.prefixlen)
+
+        c0_addr0 = dbutils.create_test_address(
+            name="c0-addr0",
+            family=subnet.version,
+            address=str(subnet[20]),
+            prefix=subnet.prefixlen,
+            address_pool_id=pool.id,
+            interface_id=c0_if0.id)
+
+        dbutils.create_test_address(
+            name="c0-addr1",
+            family=subnet.version,
+            address=str(subnet[120]),
+            prefix=subnet.prefixlen,
+            address_pool_id=pool.id)
+
+        c0_addr2 = dbutils.create_test_address(
+            name="c0-addr2",
+            family=subnet.version,
+            address=str(subnet[30]),
+            prefix=subnet.prefixlen,
+            address_pool_id=pool.id)
+
+        response = self.patch_fail(pool, http_client.CONFLICT,
+                                   ranges=[[str(subnet[100]), str(subnet[-1])]])
+
+        msg = ("The new address pool ranges excludes addresses that have "
+               "already been allocated: {}/{} for interface '{}' on host {}, {}/{}").format(
+                   c0_addr0.address, c0_addr0.prefix, c0_if0.ifname, c0_if0.forihostid,
+                   c0_addr2.address, c0_addr2.prefix)
+        self.assertIn(msg, response.json['error_message'])
+
+    def test_add_new_addresses_existing_unassigned(self):
+        self.mock_utils_is_initial_config_complete.return_value = False
+
+        values = {}
+        mgmt_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_MGMT)
+        for id_field in ADDRESS_FIELDS.values():
+            addr_id = getattr(mgmt_pool, id_field)
+            self.assertIsNotNone(addr_id)
+            self.dbapi.address_update(addr_id, {'address_pool_id': None, 'name': id_field})
+            values[id_field] = None
+
+        self.dbapi.address_pool_update(mgmt_pool.id, values)
+
+        response = self.patch_success(
+            mgmt_pool,
+            floating_address=mgmt_pool.floating_address,
+            gateway_address=mgmt_pool.gateway_address,
+            controller0_address=mgmt_pool.controller0_address,
+            controller1_address=mgmt_pool.controller1_address)
+
+        self.assertEqual(mgmt_pool.floating_address_id, response.json['floating_address_id'])
+        self.assertEqual(mgmt_pool.gateway_address_id, response.json['gateway_address_id'])
+        self.assertEqual(mgmt_pool.controller0_address_id, response.json['controller0_address_id'])
+        self.assertEqual(mgmt_pool.controller1_address_id, response.json['controller1_address_id'])
+
+        floating_address = self.dbapi.address_get(mgmt_pool.floating_address_id)
+        gateway_address = self.dbapi.address_get(mgmt_pool.gateway_address_id)
+        controller0_address = self.dbapi.address_get(mgmt_pool.controller0_address_id)
+        controller1_address = self.dbapi.address_get(mgmt_pool.controller1_address_id)
+
+        self.assertEqual(mgmt_pool.uuid, floating_address.pool_uuid)
+        self.assertEqual(mgmt_pool.uuid, gateway_address.pool_uuid)
+        self.assertEqual(mgmt_pool.uuid, controller0_address.pool_uuid)
+        self.assertEqual(mgmt_pool.uuid, controller1_address.pool_uuid)
+
+        self.assertEqual('controller-mgmt', floating_address.name)
+        self.assertEqual('controller-gateway-mgmt', gateway_address.name)
+        self.assertEqual('controller-0-mgmt', controller0_address.name)
+        self.assertEqual('controller-1-mgmt', controller1_address.name)
+
+    def test_add_new_addresses_existing_assigned(self):
+        self.mock_utils_is_initial_config_complete.return_value = False
+
+        mgmt_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_MGMT)
+
+        subnet = self.mgmt_subnet
+        test_pool = dbutils.create_test_address_pool(
+            name='test-pool',
+            family=subnet.version,
+            network=str(subnet.ip),
+            prefix=subnet.prefixlen,
+            ranges=[[str(subnet[1]), str(subnet[-1])]],
+            floating_address=mgmt_pool.floating_address,
+            gateway_address=mgmt_pool.gateway_address,
+            controller0_address=mgmt_pool.controller0_address,
+            controller1_address=mgmt_pool.controller1_address)
+
+        values = {}
+        for id_field in ADDRESS_FIELDS.values():
+            addr_id = getattr(mgmt_pool, id_field)
+            self.assertIsNotNone(addr_id)
+            self.dbapi.address_update(addr_id, {'address_pool_id': test_pool.id, 'name': id_field})
+            values[id_field] = None
+
+        self.dbapi.address_pool_update(mgmt_pool.id, values)
+
+        response = self.patch_success(
+            mgmt_pool,
+            floating_address=mgmt_pool.floating_address,
+            gateway_address=mgmt_pool.gateway_address,
+            controller0_address=mgmt_pool.controller0_address,
+            controller1_address=mgmt_pool.controller1_address)
+
+        self.assertEqual(mgmt_pool.floating_address_id, response.json['floating_address_id'])
+        self.assertEqual(mgmt_pool.gateway_address_id, response.json['gateway_address_id'])
+        self.assertEqual(mgmt_pool.controller0_address_id, response.json['controller0_address_id'])
+        self.assertEqual(mgmt_pool.controller1_address_id, response.json['controller1_address_id'])
+
+        floating_address = self.dbapi.address_get(mgmt_pool.floating_address_id)
+        gateway_address = self.dbapi.address_get(mgmt_pool.gateway_address_id)
+        controller0_address = self.dbapi.address_get(mgmt_pool.controller0_address_id)
+        controller1_address = self.dbapi.address_get(mgmt_pool.controller1_address_id)
+
+        self.assertEqual(mgmt_pool.uuid, floating_address.pool_uuid)
+        self.assertEqual(mgmt_pool.uuid, gateway_address.pool_uuid)
+        self.assertEqual(mgmt_pool.uuid, controller0_address.pool_uuid)
+        self.assertEqual(mgmt_pool.uuid, controller1_address.pool_uuid)
+
+        self.assertEqual('controller-mgmt', floating_address.name)
+        self.assertEqual('controller-gateway-mgmt', gateway_address.name)
+        self.assertEqual('controller-0-mgmt', controller0_address.name)
+        self.assertEqual('controller-1-mgmt', controller1_address.name)
+
+        test_pool = self.dbapi.address_pool_get(test_pool.id)
+        for id_field in ADDRESS_FIELDS.values():
+            self.assertIsNone(getattr(test_pool, id_field))
+
+    def test_fail_add_new_addresses_existing(self):
+        self.mock_utils_is_initial_config_complete.return_value = False
+
+        mgmt_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_MGMT)
+
+        controller0 = self._create_test_host(constants.CONTROLLER, unit=0)
+        c0_if0 = self.create_test_interface('c0-if0', controller0)
+        c0_if1 = self.create_test_interface('c0-if1', controller0)
+
+        subnet = self.mgmt_subnet
+
+        if1_pool = dbutils.create_test_address_pool(
+            name='if1-pool',
+            family=subnet.version,
+            network=str(subnet.ip),
+            ranges=[[str(subnet[1]), str(subnet[-1])]],
+            prefix=subnet.prefixlen)
+
+        test_pool = dbutils.create_test_address_pool(
+            name='test-pool',
+            family=subnet.version,
+            network=str(subnet.ip),
+            ranges=[[str(subnet[1]), str(subnet[-1])]],
+            prefix=subnet.prefixlen)
+
+        mgmt_addr = dbutils.create_test_address(
+            name="mgmt-addr",
+            family=subnet.version,
+            address=str(subnet[20]),
+            prefix=subnet.prefixlen,
+            address_pool_id=mgmt_pool.id)
+
+        if0_addr = dbutils.create_test_address(
+            name="if0-addr",
+            family=subnet.version,
+            address=str(subnet[21]),
+            prefix=subnet.prefixlen,
+            interface_id=c0_if0.id)
+
+        if1_addr = dbutils.create_test_address(
+            name="if1-addr",
+            family=subnet.version,
+            address=str(subnet[22]),
+            prefix=subnet.prefixlen,
+            address_pool_id=if1_pool.id)
+
+        self.dbapi.address_mode_update(c0_if1.id, {'family': if1_pool.family, 'mode': 'pool',
+                                                   'address_pool_id': if1_pool.id})
+
+        msg = ("Address {} already assigned to the following address pool: {}".format(
+            mgmt_addr.address, mgmt_pool.uuid))
+        for addr_field in ADDRESS_FIELDS.keys():
+            response = self.patch_fail(test_pool, http_client.BAD_REQUEST,
+                                       **{addr_field: mgmt_addr.address})
+            self.assertIn(msg, response.json['error_message'])
+
+        msg = ("Address {} already assigned to the following address pool: {}".format(
+            if1_addr.address, if1_pool.uuid))
+        for addr_field in ADDRESS_FIELDS.keys():
+            response = self.patch_fail(test_pool, http_client.BAD_REQUEST,
+                                       **{addr_field: if1_addr.address})
+            self.assertIn(msg, response.json['error_message'])
+
+        msg = ("Address {} already assigned to the {} interface in host {}".format(
+            if0_addr.address, if0_addr.ifname, if0_addr.forihostid))
+        for addr_field in ADDRESS_FIELDS.keys():
+            response = self.patch_fail(test_pool, http_client.BAD_REQUEST,
+                                       **{addr_field: if0_addr.address})
+            self.assertIn(msg, response.json['error_message'])
+
+    def test_swap_addresses(self):
+        self.mock_utils_is_initial_config_complete.return_value = False
+
+        mgmt_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_MGMT)
+
+        response = self.patch_success(
+            mgmt_pool,
+            floating_address=mgmt_pool.gateway_address,
+            gateway_address=mgmt_pool.controller0_address,
+            controller0_address=mgmt_pool.controller1_address,
+            controller1_address=mgmt_pool.floating_address)
+
+        self.assertEqual(mgmt_pool.gateway_address, response.json['floating_address'])
+        self.assertEqual(mgmt_pool.controller0_address, response.json['gateway_address'])
+        self.assertEqual(mgmt_pool.controller1_address, response.json['controller0_address'])
+        self.assertEqual(mgmt_pool.floating_address, response.json['controller1_address'])
+
+        floating_address = self.dbapi.address_get(mgmt_pool.floating_address_id)
+        gateway_address = self.dbapi.address_get(mgmt_pool.gateway_address_id)
+        controller0_address = self.dbapi.address_get(mgmt_pool.controller0_address_id)
+        controller1_address = self.dbapi.address_get(mgmt_pool.controller1_address_id)
+
+        self.assertEqual(mgmt_pool.gateway_address, floating_address.address)
+        self.assertEqual(mgmt_pool.controller0_address, gateway_address.address)
+        self.assertEqual(mgmt_pool.controller1_address, controller0_address.address)
+        self.assertEqual(mgmt_pool.floating_address, controller1_address.address)
+
 
 class TestPatchIPv4(TestPatchMixin,
                     AddressPoolTestCase):
@@ -537,7 +820,6 @@ class TestPostMixin(object):
 
     def setUp(self):
         super(TestPostMixin, self).setUp()
-        self._delete_management_pool()
 
     def _test_create_address_pool_success(self, name, network, prefix):
         # Test creation of object
@@ -582,76 +864,6 @@ class TestPostMixin(object):
         self.assertEqual(response.status_code, http_client.CONFLICT)
         self.assertIn("Address pool %s already exists" % name,
                       response.json['error_message'])
-
-    def _test_create_address_pool_fail_overlap(self, name_1, network_1,
-            prefix_1, network_2, prefix_2):
-        # Test there is overlap between network_1/prefix_1 and
-        # network_2/prefix_2 and try to create both address pools.
-        ip_set_1 = netaddr.IPSet([f"{network_1}/{prefix_1}"])
-        ip_set_2 = netaddr.IPSet([f"{network_2}/{prefix_2}"])
-        intersection = ip_set_1 & ip_set_2
-        self.assertIsNot(intersection.size, 0, message=f"{network_1}/"
-                         f"{prefix_1} and {network_2}/{prefix_2} is not "
-                         f"overlapped.")
-
-        ndict_1 = self.get_post_object(name_1, network_1, prefix_1)
-        response = self.post_json(self.API_PREFIX,
-                                  ndict_1,
-                                  headers=self.API_HEADERS)
-
-        # Check HTTP response is successful
-        self.assertEqual('application/json', response.content_type)
-        self.assertEqual(response.status_code, http_client.OK)
-
-        name_2 = f"{name_1}_2"
-        ndict_2 = self.get_post_object(name_2, network_2, prefix_2)
-        response = self.post_json(self.API_PREFIX,
-                                  ndict_2,
-                                  headers=self.API_HEADERS,
-                                  expect_errors=True)
-
-        # Check HTTP response is failed
-        self.assertEqual('application/json', response.content_type)
-        self.assertEqual(response.status_code, http_client.CONFLICT)
-        self.assertIn(f"Address pool {network_2}/{prefix_2} overlaps "
-                      f"with {name_1} address pool.",
-                      response.json['error_message'])
-
-    def _test_create_address_pool_pass_overlap_with_oam(self, network, prefix):
-        addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM)
-        netpools = self.dbapi.network_addrpool_get_by_pool_id(addrpool.id)
-        for netpool in netpools:
-            self.dbapi.network_addrpool_destroy(netpool.uuid)
-        self.dbapi.address_pool_destroy(addrpool.uuid)
-
-        oam_pool_name = self._format_pool_name("oam", self.oam_subnet)
-        sysctl_oam_pool_name = self._format_pool_name("system-controller-oam-subnet",
-                                                      self.oam_subnet)
-
-        # First test with different name, which should fail
-        name_1 = f"{sysctl_oam_pool_name}_1"
-        ndict_1 = self.get_post_object(name_1, network, prefix)
-        response = self.post_json(self.API_PREFIX,
-                                  ndict_1,
-                                  headers=self.API_HEADERS,
-                                  expect_errors=True)
-
-        # Check HTTP response is failed
-        self.assertEqual('application/json', response.content_type)
-        self.assertEqual(response.status_code, http_client.CONFLICT)
-        self.assertIn(f"Address pool {network}/{prefix} overlaps "
-                      f"with {oam_pool_name} address pool.",
-                      response.json['error_message'])
-
-        # Now check with the name: system-controller-oam-subnet
-        ndict_2 = self.get_post_object(sysctl_oam_pool_name, network, prefix)
-        response = self.post_json(self.API_PREFIX,
-                                  ndict_2,
-                                  headers=self.API_HEADERS)
-
-        # Check HTTP response is successful
-        self.assertEqual('application/json', response.content_type)
-        self.assertEqual(response.status_code, http_client.OK)
 
     def _test_create_address_pool_address_not_in_subnet(self, addr_type):
         address = str(self.oam_subnet[1])
@@ -748,25 +960,6 @@ class TestPostMixin(object):
         self._test_create_address_pool_fail_duplicate(
             'test', str(self.mgmt_subnet.network), self.mgmt_subnet.prefixlen)
 
-    def test_create_address_pool_fail_exact_overlap(self):
-        self._test_create_address_pool_fail_overlap(
-            'test', str(self.mgmt_subnet.network), self.mgmt_subnet.prefixlen,
-            str(self.mgmt_subnet.network), self.mgmt_subnet.prefixlen)
-
-    def test_create_address_pool_fail_subset_overlap(self):
-        self._test_create_address_pool_fail_overlap(
-            'test', str(self.mgmt_subnet.network), self.mgmt_subnet.prefixlen,
-            str(self.mgmt_subnet.network), self.mgmt_subnet.prefixlen - 1)
-
-    def test_create_address_pool_fail_superset_overlap(self):
-        self._test_create_address_pool_fail_overlap(
-            'test', str(self.mgmt_subnet.network), self.mgmt_subnet.prefixlen - 1,
-            str(self.mgmt_subnet.network), self.mgmt_subnet.prefixlen)
-
-    def test_create_address_pool_pass_exact_overlap_with_oam(self):
-        self._test_create_address_pool_pass_overlap_with_oam(
-            str(self.oam_subnet.network), self.oam_subnet.prefixlen)
-
     def test_address_pool_create_reversed_ranges(self):
         start = str(self.mgmt_subnet[-2])
         end = str(self.mgmt_subnet[1])
@@ -855,72 +1048,290 @@ class TestPostMixin(object):
     def test_address_pool_create_gateway_ip_is_broadcast(self):
         self._test_create_address_pool_invalid_address_broadcast('gateway')
 
-    def test_address_pool_create_fail_address_with_gateway(self):
-        p = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = p.start()
-        self.mock_utils_get_system_mode.return_value = \
-            constants.SYSTEM_MODE_SIMPLEX
-        self.addCleanup(p.stop)
+    def test_fail_create_with_duplicate_address(self):
+        subnet = self.mgmt_subnet
+        new_address = str(subnet[20])
 
-        p = mock.patch('sysinv.api.controllers.v1.address_pool.AddressPoolController._check_name_conflict')
-        self.mock_check_name_conflict = p.start()
-        self.mock_check_name_conflict.return_value = True
-        self.addCleanup(p.stop)
+        base_addrpool = dbutils.get_test_address_pool(
+            name='test_pool',
+            network=str(subnet.ip),
+            prefix=str(subnet.prefixlen),
+            gateway_address=str(subnet[1]),
+            floating_address=str(subnet[2]),
+            controller0_address=str(subnet[3]),
+            controller1_address=str(subnet[4]))
 
-        network = str(self.mgmt_subnet.network)
-        prefix = self.mgmt_subnet.prefixlen
+        field_list = list(ADDRESS_FIELDS.keys())
+        for first in range(len(field_list)):  # pylint: disable=consider-using-enumerate
+            field1 = field_list[first]
+            for second in range(first + 1, len(field_list)):
+                field2 = field_list[second]
+                addrpool = base_addrpool.copy()
+                addrpool[field1] = new_address
+                addrpool[field2] = new_address
+                response = self.post_json(self.API_PREFIX,
+                                          addrpool,
+                                          headers=self.API_HEADERS,
+                                          expect_errors=True)
+                self.assertIn(f"{field2} can not be the same as "
+                              f"{field1}: {new_address}",
+                              response.json['error_message'])
 
-        name = self._format_pool_name("management", self.mgmt_subnet)
-        ndict = self.get_post_object(name, network, prefix)
-        ndict['gateway_address'] = str(self.mgmt_subnet[1])
+    def test_addresses_existing_unassigned(self):
+        if self.mgmt_subnet.version == constants.IPV4_FAMILY:
+            subnet = netaddr.IPNetwork('192.167.1.0/24')
+        else:
+            subnet = netaddr.IPNetwork('fda1::/64')
 
-        response = self.post_json(self.API_PREFIX,
-                                  ndict,
-                                  headers=self.API_HEADERS,
-                                  expect_errors=True)
+        addresses = {}
+        addr_fields = {}
+        ip_addr = subnet[1]
+        for addr_field, id_field in ADDRESS_FIELDS.items():
+            addr = dbutils.create_test_address(
+                name=id_field,
+                family=subnet.version,
+                address=str(ip_addr),
+                prefix=subnet.prefixlen)
+            ip_addr += 1
+            addresses[addr_field] = addr
+            addr_fields[addr_field] = addr.address
 
-        # Check HTTP response is failed
-        self.assertEqual('application/json', response.content_type)
-        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
-        self.assertIn("Gateway address for management network must not be "
-                      "specified for standalone AIO-SX",
-                      response.json['error_message'])
-
-    def test_address_pool_create_success_address_with_gateway_subloud(self):
-        p = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = p.start()
-        self.mock_utils_get_system_mode.return_value = \
-            constants.SYSTEM_MODE_SIMPLEX
-        self.addCleanup(p.stop)
-
-        p = mock.patch('sysinv.api.controllers.v1.utils.get_distributed_cloud_role')
-        self.mock_utils_get_distributed_cloud_role = p.start()
-        self.mock_utils_get_distributed_cloud_role.return_value = \
-            constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD
-        self.addCleanup(p.stop)
-
-        current_pools = self.get_json(self.API_PREFIX)
-        for addrpool in current_pools[self.RESULT_KEY]:
-            if addrpool['name'] == 'management':
-                uuid = addrpool['uuid']
-                response = self.delete(self.get_single_url(uuid),
-                                       headers=self.API_HEADERS)
-                break
-
-        network = str(self.mgmt_subnet.network)
-        prefix = self.mgmt_subnet.prefixlen
-
-        ndict = self.get_post_object('management', network, prefix)
-        ndict['gateway_address'] = str(self.mgmt_subnet[1])
+        ndict = dbutils.get_test_address_pool(
+            name='test-pool',
+            network=str(subnet.ip),
+            prefix=str(subnet.prefixlen),
+            **addr_fields)
 
         response = self.post_json(self.API_PREFIX,
                                   ndict,
-                                  headers=self.API_HEADERS,
-                                  expect_errors=True)
-
-        # Check HTTP response is successful
+                                  headers=self.API_HEADERS)
         self.assertEqual('application/json', response.content_type)
         self.assertEqual(response.status_code, http_client.OK)
+
+        self.assertEqual(addresses['floating_address'].id,
+                         response.json['floating_address_id'])
+        self.assertEqual(addresses['gateway_address'].id,
+                         response.json['gateway_address_id'])
+        self.assertEqual(addresses['controller0_address'].id,
+                         response.json['controller0_address_id'])
+        self.assertEqual(addresses['controller1_address'].id,
+                         response.json['controller1_address_id'])
+
+        floating_address = self.dbapi.address_get(addresses['floating_address'].id)
+        gateway_address = self.dbapi.address_get(addresses['gateway_address'].id)
+        controller0_address = self.dbapi.address_get(addresses['controller0_address'].id)
+        controller1_address = self.dbapi.address_get(addresses['controller1_address'].id)
+
+        new_pool = self.dbapi.address_pool_get(response.json['id'])
+
+        self.assertEqual(new_pool.uuid, floating_address.pool_uuid)
+        self.assertEqual(new_pool.uuid, gateway_address.pool_uuid)
+        self.assertEqual(new_pool.uuid, controller0_address.pool_uuid)
+        self.assertEqual(new_pool.uuid, controller1_address.pool_uuid)
+
+        self.assertEqual('test-pool-floating_address', floating_address.name)
+        self.assertEqual('test-pool-gateway_address', gateway_address.name)
+        self.assertEqual('test-pool-controller0_address', controller0_address.name)
+        self.assertEqual('test-pool-controller1_address', controller1_address.name)
+
+    def test_addresses_existing_assigned(self):
+        if self.mgmt_subnet.version == constants.IPV4_FAMILY:
+            subnet = netaddr.IPNetwork('192.167.1.0/24')
+        else:
+            subnet = netaddr.IPNetwork('fda1::/64')
+
+        existing_pool = dbutils.create_test_address_pool(
+            name='existing-pool',
+            family=subnet.version,
+            network=str(subnet.ip),
+            prefix=subnet.prefixlen,
+            ranges=[[str(subnet[1]), str(subnet[-1])]])
+
+        addresses = {}
+        addr_fields = {}
+        addr_id_fields = {}
+        ip_addr = subnet[1]
+        for addr_field, id_field in ADDRESS_FIELDS.items():
+            addr = dbutils.create_test_address(
+                name=id_field,
+                family=subnet.version,
+                address=str(ip_addr),
+                prefix=subnet.prefixlen,
+                address_pool_id=existing_pool.id)
+            ip_addr += 1
+            addresses[addr_field] = addr
+            addr_fields[addr_field] = addr.address
+            addr_id_fields[id_field] = addr.id
+
+        self.dbapi.address_pool_update(existing_pool.id, addr_id_fields)
+
+        ndict = dbutils.get_test_address_pool(
+            name='test-pool',
+            network=str(subnet.ip),
+            prefix=str(subnet.prefixlen),
+            **addr_fields)
+
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        self.assertEqual(addresses['floating_address'].id,
+                         response.json['floating_address_id'])
+        self.assertEqual(addresses['gateway_address'].id,
+                         response.json['gateway_address_id'])
+        self.assertEqual(addresses['controller0_address'].id,
+                         response.json['controller0_address_id'])
+        self.assertEqual(addresses['controller1_address'].id,
+                         response.json['controller1_address_id'])
+
+        floating_address = self.dbapi.address_get(addresses['floating_address'].id)
+        gateway_address = self.dbapi.address_get(addresses['gateway_address'].id)
+        controller0_address = self.dbapi.address_get(addresses['controller0_address'].id)
+        controller1_address = self.dbapi.address_get(addresses['controller1_address'].id)
+
+        new_pool = self.dbapi.address_pool_get(response.json['id'])
+
+        self.assertEqual(new_pool.uuid, floating_address.pool_uuid)
+        self.assertEqual(new_pool.uuid, gateway_address.pool_uuid)
+        self.assertEqual(new_pool.uuid, controller0_address.pool_uuid)
+        self.assertEqual(new_pool.uuid, controller1_address.pool_uuid)
+
+        self.assertEqual('test-pool-floating_address', floating_address.name)
+        self.assertEqual('test-pool-gateway_address', gateway_address.name)
+        self.assertEqual('test-pool-controller0_address', controller0_address.name)
+        self.assertEqual('test-pool-controller1_address', controller1_address.name)
+
+        existing_pool = self.dbapi.address_pool_get(existing_pool.id)
+        for id_field in ADDRESS_FIELDS.values():
+            self.assertIsNone(getattr(existing_pool, id_field))
+
+    def test_addresses_new_and_existing(self):
+        if self.mgmt_subnet.version == constants.IPV4_FAMILY:
+            subnet = netaddr.IPNetwork('192.167.1.0/24')
+        else:
+            subnet = netaddr.IPNetwork('fda1::/64')
+
+        existing_pool = dbutils.create_test_address_pool(
+            name='existing-pool',
+            family=subnet.version,
+            network=str(subnet.ip),
+            prefix=subnet.prefixlen,
+            ranges=[[str(subnet[1]), str(subnet[-1])]])
+
+        c0_addr = dbutils.create_test_address(
+            name='controller0_address_id',
+            family=subnet.version,
+            address=str(subnet[3]),
+            prefix=subnet.prefixlen,
+            address_pool_id=existing_pool.id)
+
+        self.dbapi.address_pool_update(existing_pool.id, {'controller0_address_id': c0_addr.id})
+
+        ndict = dbutils.get_test_address_pool(
+            name='test-pool',
+            network=str(subnet.ip),
+            prefix=str(subnet.prefixlen),
+            controller0_address=c0_addr.address,
+            controller1_address=str(subnet[4]))
+
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        self.assertEqual(c0_addr.id, response.json['controller0_address_id'])
+
+        c0_addr = self.dbapi.address_get(c0_addr.id)
+        new_pool = self.dbapi.address_pool_get(response.json['id'])
+
+        self.assertEqual(new_pool.uuid, c0_addr.pool_uuid)
+        self.assertEqual('test-pool-controller0_address', c0_addr.name)
+
+        existing_pool = self.dbapi.address_pool_get(existing_pool.id)
+        self.assertIsNone(existing_pool.controller0_address_id)
+
+    def test_fail_existing_addresses(self):
+        mgmt_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_MGMT)
+
+        controller0 = self._create_test_host(constants.CONTROLLER, unit=0)
+        c0_if0 = self.create_test_interface('c0-if0', controller0)
+        c0_if1 = self.create_test_interface('c0-if1', controller0)
+
+        subnet = self.mgmt_subnet
+
+        if1_pool = dbutils.create_test_address_pool(
+            name='if1-pool',
+            family=subnet.version,
+            network=str(subnet.ip),
+            ranges=[[str(subnet[1]), str(subnet[-1])]],
+            prefix=subnet.prefixlen)
+
+        mgmt_addr = dbutils.create_test_address(
+            name="mgmt-addr",
+            family=subnet.version,
+            address=str(subnet[20]),
+            prefix=subnet.prefixlen,
+            address_pool_id=mgmt_pool.id)
+
+        if0_addr = dbutils.create_test_address(
+            name="if0-addr",
+            family=subnet.version,
+            address=str(subnet[21]),
+            prefix=subnet.prefixlen,
+            interface_id=c0_if0.id)
+
+        if1_addr = dbutils.create_test_address(
+            name="if1-addr",
+            family=subnet.version,
+            address=str(subnet[22]),
+            prefix=subnet.prefixlen,
+            address_pool_id=if1_pool.id)
+
+        self.dbapi.address_mode_update(c0_if1.id, {'family': if1_pool.family, 'mode': 'pool',
+                                                   'address_pool_id': if1_pool.id})
+        ndict = dbutils.get_test_address_pool(
+            name='test-pool',
+            network=str(subnet.ip),
+            prefix=str(subnet.prefixlen))
+
+        for addr_field in ADDRESS_FIELDS.keys():
+            del ndict[addr_field]
+
+        msg = ("Address {} already assigned to the following address pool: {}".format(
+            mgmt_addr.address, mgmt_pool.uuid))
+        for addr_field in ADDRESS_FIELDS.keys():
+            ndict[addr_field] = mgmt_addr.address
+            response = self.post_json(self.API_PREFIX, ndict,
+                                      headers=self.API_HEADERS, expect_errors=True)
+            del ndict[addr_field]
+            self.assertEqual('application/json', response.content_type)
+            self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+            self.assertIn(msg, response.json['error_message'])
+
+        msg = ("Address {} already assigned to the following address pool: {}".format(
+            if1_addr.address, if1_pool.uuid))
+        for addr_field in ADDRESS_FIELDS.keys():
+            ndict[addr_field] = if1_addr.address
+            response = self.post_json(self.API_PREFIX, ndict,
+                                      headers=self.API_HEADERS, expect_errors=True)
+            del ndict[addr_field]
+            self.assertEqual('application/json', response.content_type)
+            self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+            self.assertIn(msg, response.json['error_message'])
+
+        msg = ("Address {} already assigned to the {} interface in host {}".format(
+            if0_addr.address, if0_addr.ifname, if0_addr.forihostid))
+        for addr_field in ADDRESS_FIELDS.keys():
+            ndict[addr_field] = if0_addr.address
+            response = self.post_json(self.API_PREFIX, ndict,
+                                      headers=self.API_HEADERS, expect_errors=True)
+            del ndict[addr_field]
+            self.assertEqual('application/json', response.content_type)
+            self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+            self.assertIn(msg, response.json['error_message'])
 
 
 class TestDelete(AddressPoolTestCase):
@@ -932,6 +1343,10 @@ class TestDelete(AddressPoolTestCase):
 
     def setUp(self):
         super(TestDelete, self).setUp()
+        iniconf = mock.patch('sysinv.common.utils.is_initial_config_complete')
+        self.mock_utils_is_initial_config_complete = iniconf.start()
+        self.mock_utils_is_initial_config_complete.return_value = True
+        self.addCleanup(iniconf.stop)
 
     def test_address_pool_delete(self):
         # Delete the API object
@@ -989,6 +1404,77 @@ class TestDelete(AddressPoolTestCase):
 
         self.assertIsNone(deleted_netpool)
         self.mock_rpcapi_update_oam_config.assert_called_once()
+
+    def test_mgmt_address_pool_delete_secondary(self):
+        sysmode = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
+        self.mock_utils_get_system_mode = sysmode.start()
+        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
+        self.addCleanup(sysmode.stop)
+
+        network = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
+        primary_addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_MGMT)
+
+        controller0 = self._create_test_host(constants.CONTROLLER, unit=0)
+        c0_mgmt0 = self.create_test_interface('c0-mgmt0', controller0)
+        dbutils.create_test_interface_network(interface_id=c0_mgmt0.id, network_id=network.id)
+
+        subnet = netaddr.IPNetwork('fd02::/64')
+
+        addrpool = self._create_test_address_pool(name="oam-ipv6", subnet=subnet)
+
+        mgmt_floating = dbutils.create_test_address(
+            name="mgmt-floating",
+            family=subnet.version,
+            address=str(subnet[1]),
+            prefix=subnet.prefixlen,
+            address_pool_id=addrpool.id)
+
+        mgmt_c0 = dbutils.create_test_address(
+            name="mgmt-c0-address",
+            family=subnet.version,
+            address=str(subnet[2]),
+            prefix=subnet.prefixlen,
+            address_pool_id=addrpool.id)
+
+        self.dbapi.address_pool_update(addrpool.uuid, {'floating_address_id': mgmt_floating.id,
+                                                       'controller0_address_id': mgmt_c0.id})
+
+        netpool = dbutils.create_test_network_addrpool(
+            address_pool_id=addrpool.id,
+            network_id=network.id)
+
+        param_values = {'service': constants.SERVICE_TYPE_DOCKER,
+                        'section': constants.SERVICE_PARAM_SECTION_DOCKER_PROXY,
+                        'name': constants.SERVICE_PARAM_NAME_DOCKER_NO_PROXY,
+                        'value': ','.join([primary_addrpool.floating_address,
+                                           primary_addrpool.controller0_address,
+                                           '[' + mgmt_floating.address + ']',
+                                           '[' + mgmt_c0.address + ']'])}
+
+        dbutils.create_test_service_parameter(**param_values)
+
+        # Delete the API object
+        response = self.delete(self.get_single_url(addrpool.uuid),
+                               headers=self.API_HEADERS)
+        # Verify the expected API response for the delete
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+
+        deleted_netpool = None
+        try:
+            deleted_netpool = self.dbapi.network_addrpool_get(netpool.uuid)
+        except exception.NetworkAddrpoolNotFound:
+            pass
+
+        self.assertIsNone(deleted_netpool)
+
+        no_proxy_entry = self.dbapi.service_parameter_get_one(
+            service=constants.SERVICE_TYPE_DOCKER,
+            section=constants.SERVICE_PARAM_SECTION_DOCKER_PROXY,
+            name=constants.SERVICE_PARAM_NAME_DOCKER_NO_PROXY)
+
+        self.assertEqual(','.join([primary_addrpool.floating_address,
+                                   primary_addrpool.controller0_address]),
+                         no_proxy_entry.value)
 
 
 class TestList(AddressPoolTestCase):

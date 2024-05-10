@@ -5365,6 +5365,17 @@ class Connection(api.Connection):
         return self._interface_network_get_by_network_id(network_id, limit, marker,
                                                          sort_key, sort_dir)
 
+    @db_objects.objectify(objects.interface_network)
+    def interface_networks_get_by_network_type(self, network_type, limit=None,
+                                               marker=None, sort_key=None,
+                                               sort_dir=None):
+        query = model_query(models.InterfaceNetworks)
+        query = (query.join(models.Networks,
+                            models.Networks.id == models.InterfaceNetworks.network_id))
+        query = query.filter(models.Networks.type == network_type)
+        return _paginate_query(models.InterfaceNetworks, limit, marker,
+                               sort_key, sort_dir, query)
+
     def interface_network_destroy(self, uuid):
         query = model_query(models.InterfaceNetworks)
         query = add_identity_filter(query, uuid)
@@ -5551,11 +5562,9 @@ class Connection(api.Connection):
                                                 sort_key, sort_dir)
 
     @db_objects.objectify(objects.address)
-    def addresses_get_by_interface_pool(self, interface_uuid, pool_uuid,
+    def address_get_by_interface_pool(self, interface_id, pool_id,
                                    limit=None, marker=None,
                                    sort_key=None, sort_dir=None):
-        interface_id = self.iinterface_get(interface_uuid).id
-        pool_id = self.address_pool_get(pool_uuid).id
         query = model_query(models.Addresses)
         query = (query.
                  join(models.AddressPools,
@@ -5567,7 +5576,7 @@ class Connection(api.Connection):
         try:
             result = query.one()
         except NoResultFound:
-            raise exception.AddressNotFoundByInterfacePool(interface=interface_uuid, pool=pool_uuid)
+            raise exception.AddressNotFoundByInterfacePool(interface=interface_id, pool=pool_id)
         return result
 
     def address_destroy(self, address_uuid):
@@ -5764,6 +5773,21 @@ class Connection(api.Connection):
     @db_objects.objectify(objects.address_mode)
     def address_mode_query(self, interface_id, family):
         return self._address_mode_query(interface_id, family)
+
+    @db_objects.objectify(objects.address_mode)
+    def address_modes_get_all(self, limit=None, marker=None,
+                              sort_key=None, sort_dir=None):
+        query = model_query(models.AddressModes)
+        return _paginate_query(models.AddressModes, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @db_objects.objectify(objects.address_mode)
+    def address_modes_get_by_address_pool(self, address_pool_id, limit=None,
+                                          marker=None, sort_key=None, sort_dir=None):
+        query = model_query(models.AddressModes)
+        query = query.filter(models.AddressModes.address_pool_id == address_pool_id)
+        return _paginate_query(models.AddressModes, limit, marker,
+                               sort_key, sort_dir, query)
 
     @db_objects.objectify(objects.address_mode)
     def address_mode_update(self, interface_id, values, context=None):

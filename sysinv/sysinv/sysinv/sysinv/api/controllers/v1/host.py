@@ -3166,7 +3166,7 @@ class HostController(rest.RestController):
             try:
                 address = \
                     pecan.request.dbapi.address_get_by_address(ip_address)
-                if address.name != name:
+                if address.name != name and utils.is_address_assigned(address):
                     raise exception.AddressAlreadyAllocated(address=ip_address)
             except exception.AddressNotFoundByAddress:
                 pass
