@@ -93,6 +93,7 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
         self.token_cache = utils.TokenCache('internal')
         self.dc_token_cache = utils.TokenCache('dc')
         self.dc_monitor = None
+        self.systemlocalcacert_monitor = None
         self.restapicert_monitor = None
         self.registrycert_monitor = None
         self.openldapcert_monitor = None
@@ -367,6 +368,10 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
                 self.audit_subcloud(subcloud_name, allow_requeue=True),
             invalid_deploy_states=INVALID_SUBCLOUD_AUDIT_DEPLOY_STATES)
 
+    def init_systemlocalcacert_monitor(self):
+        self.systemlocalcacert_monitor = watcher.SystemLocalCACert_CertWatcher()
+        self.systemlocalcacert_monitor.initialize()
+
     def init_restapicert_monitor(self):
         self.restapicert_monitor = watcher.RestApiCert_CertWatcher()
         self.restapicert_monitor.initialize()
@@ -382,6 +387,8 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
     def start_monitor(self, dc_role):
         while True:
             try:
+                # init system-local-ca RCA cert monitor
+                self.init_systemlocalcacert_monitor()
                 # init platform cert monitors
                 self.init_restapicert_monitor()
                 self.init_registrycert_monitor()
@@ -398,6 +405,10 @@ class CertificateMonManager(periodic_task.PeriodicTasks):
                 break
 
         # spawn threads (DC thread spawned only if running in DC role)
+        self.mon_threads.append(
+            eventlet.greenthread.spawn(self.monitor_cert,
+                                       self.systemlocalcacert_monitor))
+
         self.mon_threads.append(
             eventlet.greenthread.spawn(self.monitor_cert,
                                        self.restapicert_monitor))
