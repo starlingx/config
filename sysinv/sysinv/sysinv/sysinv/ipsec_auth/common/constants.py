@@ -66,6 +66,7 @@ SUPPORTED_OP_CODES = [OP_CODE_INITIAL_AUTH,
 MGMT_IPSEC_ENABLING = 'enabling'
 MGMT_IPSEC_ENABLED = 'enabled'
 MGMT_IPSEC_DISABLED = 'disabled'
+MGMT_IPSEC_UPGRADING = 'upgrading'
 
 CHILD_SA_NAME = 'node'
 IKE_SA_NAME = 'system-nodes'

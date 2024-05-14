@@ -299,9 +299,10 @@ class IPsecConnection(object):
             self.ots_token.purge()
 
         if (self.op_code == constants.OP_CODE_INITIAL_AUTH and
-             self.mgmt_ipsec != constants.MGMT_IPSEC_ENABLED and not
-             self._update_mgmt_ipsec_state(constants.MGMT_IPSEC_DISABLED)):
-            return False
+             self.mgmt_ipsec and
+             self.mgmt_ipsec != constants.MGMT_IPSEC_ENABLED and
+             self.mgmt_ipsec != constants.MGMT_IPSEC_UPGRADING):
+            return self._update_mgmt_ipsec_state(constants.MGMT_IPSEC_DISABLED)
 
         return True
 
@@ -340,10 +341,16 @@ class IPsecConnection(object):
             LOG.error("TLS secret is unreachable.")
             return
 
-        data = bytes(secret.data.get(attr, None), "utf-8")
-        if not data:
+        data = secret.data.get(attr, None)
+        if data is None:
+            if attr == self.ROOT_CA_CRT:
+                data = secret.data.get(self.CA_CRT, None)
+
+        if data is None:
             LOG.error("Failed to retrieve %s info." % attr)
-            return
+            return data
+
+        data = bytes(data, "utf-8")
 
         if attr == self.CA_KEY:
             data = base64.b64decode(data)
