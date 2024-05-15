@@ -6,6 +6,7 @@
 import base64
 import json
 import os
+import sys
 import selectors
 import socket
 import subprocess
@@ -29,10 +30,11 @@ LOG = logging.getLogger(__name__)
 
 class Client(object):
 
-    def __init__(self, host, port, op_code):
+    def __init__(self, host, port, op_code, force_reload):
         self.host = host
         self.port = port
         self.op_code = str(op_code)
+        self.force_reload = force_reload
         self.state = State.STAGE_1
         self.ifname = utils.get_management_interface()
         self.personality = utils.get_personality()
@@ -141,6 +143,17 @@ class Client(object):
 
         if self.state == State.STAGE_2:
             LOG.info("Received IPSec Auth Response")
+
+            if self.op_code == constants.OP_CODE_CERT_VALIDATION:
+                server_cert_serial = msg['ca_cert_serial']
+                ca_cert = utils.load_data(constants.TRUSTED_CA_CERT_1_PATH)
+                local_cert = x509.load_pem_x509_certificate(ca_cert)
+                if server_cert_serial != local_cert.serial_number:
+                    return False
+
+                LOG.info("Cert Serial validation OK")
+                return True
+
             self.ots_token = msg['token']
             self.hostname = msg['hostname']
             key = base64.b64decode(msg['pub_key'])
@@ -209,21 +222,26 @@ class Client(object):
                     return False
 
             elif self.op_code == constants.OP_CODE_CERT_RENEWAL:
-                load_creds = subprocess.run(['swanctl', '--load-creds'], stdout=subprocess.PIPE,
+
+                if self.force_reload:
+                    load_all = subprocess.run(['swanctl', '--load-all'], stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, check=False)
+
+                    if load_all.returncode != 0:
+                        err = "Error: %s" % (load_all.stderr.decode("utf-8"))
+                        LOG.exception("Failed to load StrongSwan configuration: %s" % err)
+                        return False
+
+                    LOG.info('IPsec certificate renewed successfully')
+
+                    return True
+
+                load_conns = subprocess.run(['swanctl', '--load-conns'], stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, check=False)
 
-                if load_creds.returncode != 0:
-                    err = "Error: %s" % (load_creds.stderr.decode("utf-8"))
+                if load_conns.returncode != 0:
+                    err = "Error: %s" % (load_conns.stderr.decode("utf-8"))
                     LOG.exception("Failed to load StrongSwan credentials: %s" % err)
-                    return False
-
-                rekey = subprocess.run(['swanctl', '--rekey', '--ike', constants.IKE_SA_NAME,
-                                        '--reauth'], stdout=subprocess.PIPE,
-                                        stderr=subprocess.PIPE, check=False)
-
-                if rekey.returncode != 0:
-                    err = "Error: %s" % (rekey.stderr.decode("utf-8"))
-                    LOG.exception("Failed to rekey IKE SA with StrongSwan: %s" % err)
                     return False
 
                 LOG.info('IPsec certificate renewed successfully')
@@ -258,6 +276,7 @@ class Client(object):
             selectors.EVENT_READ | selectors.EVENT_WRITE,
         )
 
+        exit_code = 0
         keep_running = True
         while keep_running:
             for key, mask in sel.select(timeout=1):
@@ -266,21 +285,34 @@ class Client(object):
                 LOG.debug("State{}".format(self.state))
                 if mask & selectors.EVENT_READ:
                     self.data = utils.socket_recv_all_json(sock, 8192)
-                    if not self._handle_rcvd_data(self.data):
-                        raise ConnectionAbortedError("Error receiving data from server")
+                    if not self.data:
+                        LOG.error("No data received from server")
+                        exit_code = 1
+                        self.state = State.END_STAGE
+                    elif not self._handle_rcvd_data(self.data):
+                        if self.op_code == constants.OP_CODE_CERT_VALIDATION:
+                            LOG.error("Cert Serial validation failed")
+                            exit_code = 2
+                        else:
+                            LOG.error("Error handling data from server")
+                            exit_code = 1
+
+                        self.state = State.END_STAGE
+
                     sel.modify(sock, selectors.EVENT_WRITE)
-                    self.state = State.get_next_state(self.state)
+                    self.state = State.get_next_state(self.state, self.op_code)
 
                 if mask & selectors.EVENT_WRITE:
                     msg = self._handle_send_data(self.data)
                     sock.sendall(bytes(msg, 'utf-8'))
                     sel.modify(sock, selectors.EVENT_READ)
-                    self.state = State.get_next_state(self.state)
+                    self.state = State.get_next_state(self.state, self.op_code)
 
-                if self.state == State.STAGE_5:
+                if self.state == State.END_STAGE:
                     keep_running = False
 
         LOG.info("Shutting down")
         sel.unregister(connection)
         connection.close()
         sel.close()
+        sys.exit(exit_code)

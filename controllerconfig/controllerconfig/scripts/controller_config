@@ -38,11 +38,12 @@ PUPPET_CACHE=/etc/puppet/cache
 PUPPET_CACHE_TMP=/etc/puppet/cache.tmp
 ACTIVE_CONTROLLER_NOT_FOUND_FLAG="/var/run/.active_controller_not_found"
 CERT_DIR=/etc/pki/ca-trust/source/anchors
-IPSEC_ENABLING_RETRIES=3
-IPSEC_ENABLING_DELAY=5
+IPSEC_RETRIES=3
+IPSEC_DELAY=5
 SWANCTL_CONF_FILE=/etc/swanctl/swanctl.conf
 SWANCTL_ACTIVE_CONF_FILE=/etc/swanctl/swanctl_active.conf
 SWANCTL_STANDBY_CONF_FILE=/etc/swanctl/swanctl_standby.conf
+IPSEC_SERVER_PORT=54724
 
 OS_ID=$(grep '^ID=' /etc/os-release | cut -f2- -d= | sed -e 's/\"//g')
 if [ "$OS_ID" == "debian" ]
@@ -243,6 +244,30 @@ umount_platform_dir()
     fi
 }
 
+validate_ca_cert_update()
+{
+    /usr/bin/ipsec-client -o 3 pxecontroller > /dev/null
+    if [ $? -eq 2 ]
+    then
+        ipsec_update_failed=1
+        for retry in $( seq 1 ${IPSEC_RETRIES} )
+        do
+            /usr/bin/ipsec-client -o 2 pxecontroller -f > /dev/null
+            if [ $? -eq 0 ]
+            then
+                ipsec_update_failed=0
+                break
+            fi
+            logger -t $0 -p warn "Updating IPsec cetificates failed (${retry}), retry in ${IPSEC_DELAY} seconds ..."
+            sleep ${IPSEC_DELAY}
+        done
+        if [ ${ipsec_update_failed} -ne 0 ]
+        then
+            warning_error "WARNING: Failed to update IPsec cetificates...."
+        fi
+    fi
+}
+
 start()
 {
     if [ -f /etc/platform/installation_failed ] ; then
@@ -281,7 +306,7 @@ start()
         logger -t $0 -p info "Config and enable IPsec ......"
 
         ipsec_enable_failed=1
-        for retry in $( seq 1 ${IPSEC_ENABLING_RETRIES} )
+        for retry in $( seq 1 ${IPSEC_RETRIES} )
         do
             /usr/bin/ipsec-client pxecontroller > /dev/null
             if [ $? -eq 0 ]
@@ -289,20 +314,34 @@ start()
                 ipsec_enable_failed=0
                 break
             fi
-            logger -t $0 -p warn "Enabling IPsec failed (${retry}), retry in ${IPSEC_ENABLING_DELAY} seconds ..."
-            sleep ${IPSEC_ENABLING_DELAY}
+            logger -t $0 -p warn "Enabling IPsec failed (${retry}), retry in ${IPSEC_DELAY} seconds ..."
+            sleep ${IPSEC_DELAY}
         done
         # Fail if retried maximum times
         if [ ${ipsec_enable_failed} -ne 0 ]
         then
             warning_error "WARNING: Failed to config and enable IPsec for the node"
         fi
+    elif [ ! -e ${FIRST_BOOT} ]
+    then
+        logger -t $0 -p info "Checking if IPsec Certificates is updated......"
+
+        #Verify if ipsec server is running
+        nc -z pxecontroller $IPSEC_SERVER_PORT
+        if [ $? -eq 0 ]
+        then
+            validate_ca_cert_update
+        else
+            warning_error "WARNING: IPSec server is not running...."
+        fi
+    fi
+
     # Link standby swanctl config file to swanctl.conf for initial boot.
     # This makes the symlink correct for only one controller reboot case (eg, active controller
     # is forcely reboot, but when it comes up it will be standby controller).
     # For rare cases such as reboot active controller while standby is locked, the symlink on the
     # active controller will be corrected by ipsec-config SM service when both controllers boots up.
-    elif [ -f ${SWANCTL_ACTIVE_CONF_FILE} ] && [ -f ${SWANCTL_STANDBY_CONF_FILE} ] && [ -f ${COMPLETED} ]
+    if [ -f ${SWANCTL_ACTIVE_CONF_FILE} ] && [ -f ${SWANCTL_STANDBY_CONF_FILE} ] && [ -f ${COMPLETED} ]
     then
         logger -t $0 -p info "Create IPsec configuration file symbolic link for the controller ..."
         ln -sf ${SWANCTL_STANDBY_CONF_FILE} ${SWANCTL_CONF_FILE}

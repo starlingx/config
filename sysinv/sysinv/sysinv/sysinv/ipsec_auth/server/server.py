@@ -18,6 +18,7 @@ from sysinv.ipsec_auth.common import utils
 from sysinv.ipsec_auth.common.objects import State
 from sysinv.ipsec_auth.common.objects import Token
 
+from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -115,7 +116,7 @@ class IPsecConnection(object):
             if data:
                 # A readable client socket has data
                 LOG.debug("Received {!r}".format(data))
-                self.state = State.get_next_state(self.state)
+                self.state = State.get_next_state(self.state, self.op_code)
 
                 LOG.debug("Preparing payload")
                 msg = self._handle_write(data)
@@ -123,14 +124,15 @@ class IPsecConnection(object):
 
                 if self.state == State.STAGE_2:
                     self.ots_token.activate()
-                self.state = State.get_next_state(self.state)
-            elif self.state == State.STAGE_5:
+                self.state = State.get_next_state(self.state, self.op_code)
+            elif self.state == State.END_STAGE:
                 self.ots_token.purge()
-                self._update_mgmt_ipsec_state(constants.MGMT_IPSEC_ENABLED)
+                if self.op_code != constants.OP_CODE_CERT_VALIDATION:
+                    self._update_mgmt_ipsec_state(constants.MGMT_IPSEC_ENABLED)
                 self.keep_connection = False
             elif not data:
                 # Interpret empty result as closed connection
-                LOG.error('Failed to receive data from client or empty buffer provided.')
+                LOG.info('No Data received from client or empty buffer provided.')
                 self._cleanup_connection_data()
                 self.keep_connection = False
         except Exception as e:
@@ -163,24 +165,29 @@ class IPsecConnection(object):
                            "received in payload.")
                     raise ConnectionRefusedError(msg)
 
-                client_data = utils.get_client_host_info_by_mac(mac_addr)
-                self.hostname = client_data['hostname']
-                self.mgmt_subnet = client_data['mgmt_subnet']
-                self.unit_ip = client_data['unit_ip']
-                self.floating_ip = client_data['floating_ip']
+                if self.op_code == constants.OP_CODE_CERT_VALIDATION:
+                    cert = x509.load_pem_x509_certificate(base64.b64decode(self.ca_crt))
+                    LOG.debug("Cert Serial:{}".format(cert.serial_number))
+                    payload["ca_cert_serial"] = cert.serial_number
+                else:
+                    client_data = utils.get_client_host_info_by_mac(mac_addr)
+                    self.hostname = client_data['hostname']
+                    self.mgmt_subnet = client_data['mgmt_subnet']
+                    self.unit_ip = client_data['unit_ip']
+                    self.floating_ip = client_data['floating_ip']
 
-                pub_key = self._generate_tmp_key_pair()
-                token = self.ots_token.get_content()
-                hash_payload = utils.hash_and_sign_payload(self.ca_key, token + pub_key)
+                    pub_key = self._generate_tmp_key_pair()
+                    token = self.ots_token.get_content()
+                    hash_payload = utils.hash_and_sign_payload(self.ca_key, token + pub_key)
 
-                payload["token"] = repr(self.ots_token)
-                payload["hostname"] = self.hostname
-                payload["pub_key"] = pub_key.decode("utf-8")
-                payload["ca_cert"] = self.ca_crt.decode("utf-8")
-                payload["root_ca_cert"] = self.root_ca_crt.decode("utf-8")
-                payload["hash"] = hash_payload.decode("utf-8")
+                    payload["token"] = repr(self.ots_token)
+                    payload["hostname"] = self.hostname
+                    payload["pub_key"] = pub_key.decode("utf-8")
+                    payload["ca_cert"] = self.ca_crt.decode("utf-8")
+                    payload["root_ca_cert"] = self.root_ca_crt.decode("utf-8")
+                    payload["hash"] = hash_payload.decode("utf-8")
 
-                LOG.info("Sending IPSec Auth Response")
+                    LOG.info("Sending IPSec Auth Response")
 
             if self.state == State.STAGE_4:
                 LOG.info("Received IPSec Auth CSR request")
@@ -287,7 +294,8 @@ class IPsecConnection(object):
                 return False
 
         # Certificate renewal request
-        elif self.op_code == constants.OP_CODE_CERT_RENEWAL:
+        elif (self.op_code == constants.OP_CODE_CERT_RENEWAL or
+                self.op_code == constants.OP_CODE_CERT_VALIDATION):
             if self.uuid and self.mgmt_ipsec == constants.MGMT_IPSEC_ENABLED and mgmt_mac:
                 # Valid so do nothing
                 pass
