@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2019,2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -13,20 +13,24 @@ from cgtsclient import exc
 from cgtsclient.v1 import options
 
 
-def _print_service_parameter_show(obj):
+def _print_service_parameter_show(service_parameter, output_format=None):
     fields = ['uuid', 'service', 'section', 'name', 'value',
               'personality', 'resource']
-    data = [(f, getattr(obj, f, '')) for f in fields]
-    utils.print_tuple_list(data)
+    data_list = [(f, getattr(service_parameter, f, '')) for f in fields]
+    data = dict(data_list)
+    utils.print_dict_with_format(data, wrap=72, output_format=output_format)
 
 
 @utils.arg('uuid',
            metavar='<uuid>',
            help="UUID of service parameter")
+@utils.arg('--format',
+           choices=['table', 'yaml', 'value'],
+           help="Specify the output format, defaults to table")
 def do_service_parameter_show(cc, args):
     """Show Service parameter."""
     service_parameter = cc.service_parameter.get(args.uuid)
-    _print_service_parameter_show(service_parameter)
+    _print_service_parameter_show(service_parameter, args.format)
 
 
 @utils.arg('--service',
@@ -107,12 +111,14 @@ def _find_service_parameter(cc, service, section, name):
            metavar='<resource>',
            default=None,
            help="Custom resource to be updated")
+@utils.arg('--format',
+           choices=['table', 'yaml', 'value'],
+           help="specify the output format, defaults to table")
 def do_service_parameter_modify(cc, args):
     """Modify Service Parameter attributes."""
 
     patch = []
     attributes = utils.extract_keypairs(args)
-
     if len(attributes) > 1 \
             and (args.resource is not None or args.personality is not None):
         raise exc.CommandError("Cannot specify multiple parameters with custom resource.")
@@ -129,7 +135,7 @@ def do_service_parameter_modify(cc, args):
             if args.resource:
                 patch.append({'op': 'replace', 'path': '/resource', 'value': args.resource})
             parameter = cc.service_parameter.update(service_parameter.uuid, patch)
-            _print_service_parameter_show(parameter)
+            _print_service_parameter_show(parameter, output_format=args.format)
 
 
 @utils.arg('service',

@@ -12051,6 +12051,11 @@ class ConductorManager(service.PeriodicService):
                 # _config_update_hosts() above. Node needs a reboot to clear it.
                 config_uuid = self._config_clear_reboot_required(config_uuid)
                 self._config_apply_runtime_manifest(context, config_uuid, config_dict, force=True)
+            elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_CONFIG and \
+                    name == constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS:
+                reboot = True
+                personalities = [constants.CONTROLLER]
+                config_uuid = self._config_update_hosts(context, personalities, reboot=True)
             elif section == constants.SERVICE_PARAM_SECTION_PLATFORM_COREDUMP:
                 personalities = [constants.CONTROLLER,
                                  constants.WORKER,

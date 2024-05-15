@@ -1018,6 +1018,30 @@ def is_virtual_worker(ihost):
         return False
 
 
+def get_platform_core_count(dbapi):
+    """
+    Determine the number of platform cores available
+    Returns the minimum of the 2 controllers or 1
+    """
+    core_list = []
+    controllers = dbapi.ihost_get_by_personality(constants.CONTROLLER)
+    platform_functions = [
+        constants.PLATFORM_FUNCTION,
+        constants.SHARED_FUNCTION
+    ]
+    for controller in controllers:
+        number_platform_cores = 0
+        cpu_list = dbapi.icpu_get_by_ihost(controller.uuid)
+        for cpu in cpu_list:
+            if int(cpu['thread']) == 0:
+                if cpu['allocated_function'] in platform_functions:
+                    number_platform_cores += 1
+        if number_platform_cores > 0:
+            core_list.append(number_platform_cores)
+
+    return min(core_list, default=1)
+
+
 def is_low_core_system(ihost, dba):
     """
     Determine if the hosts core count is less than or equal to a xeon-d cpu

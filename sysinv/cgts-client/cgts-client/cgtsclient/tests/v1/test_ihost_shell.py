@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019-2023 Wind River Systems, Inc.
+# Copyright (c) 2019-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -192,6 +192,21 @@ class HostTest(test_shell.ShellTest):
                       results)
         self.assertIn(str(FAKE_KUBE_HOST_UPGRADE_2['status']),
                       results)
+
+    @mock.patch('cgtsclient.v1.ihost.ihostManager.list')
+    def test_host_list(self, mock_list):
+        # This unit test mocks returning a single controller-0 host through host-list
+        fake_controller = {'id': '0',
+                           'hostname': 'controller-0',
+                           'personality': 'controller',
+                           'administrative': 'unlocked',
+                           'operational': 'enabled',
+                           'availability': 'available'}
+        mock_list.return_value = [ihost(None, fake_controller, True)]
+        self.make_env()
+        host_results = self.shell("host-list")
+        self.assertIn('controller-0', host_results)
+        self.assertNotIn('controller-1', host_results)
 
     def test_kube_host_upgrade_kubelet(self):
         self.make_env()

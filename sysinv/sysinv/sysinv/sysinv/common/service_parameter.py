@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2023 Wind River Systems, Inc.
+# Copyright (c) 2017-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -608,6 +608,13 @@ def _validate_max_cpu_min_percentage(name, value):
     return _validate_range(name, value, 60, 100)
 
 
+def _validate_sysinv_api_workers(name, value):
+    """Check if sysinv_api_workers value is valid"""
+    MAX_WORKERS = cutils.get_platform_core_count(pecan.request.dbapi)
+    MIN_WORKERS = 1
+    return _validate_range(name, value, MIN_WORKERS, MAX_WORKERS)
+
+
 def parse_volume_string_to_dict(parameter):
     """
     Parse volume string value from parameter to dictionary.
@@ -801,6 +808,7 @@ PLATFORM_CONFIG_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLATFORM_MAX_CPU_PERCENTAGE,
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION,
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS,
 ]
 
 PLATFORM_CONFIG_PARAMETER_READONLY = [
@@ -816,14 +824,19 @@ PLATFORM_CONFIG_PARAMETER_VALIDATOR = {
         _validate_intel_nic_driver_version,
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE:
         _validate_intel_pstate,
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS:
+        _validate_sysinv_api_workers,
 }
 
 PLATFORM_CONFIG_PARAMETER_RESOURCE = {
-    constants.SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL: 'platform::params::virtual_system',
+    constants.SERVICE_PARAM_NAME_PLAT_CONFIG_VIRTUAL:
+        'platform::params::virtual_system',
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_NIC_DRIVER_VERSION:
         'platform::compute::grub::params::g_intel_nic_driver_version',
     constants.SERVICE_PARAM_NAME_PLAT_CONFIG_INTEL_PSTATE:
         'platform::compute::grub::params::g_intel_pstate',
+    constants.SERVICE_PARAM_NAME_PLATFORM_SYSINV_API_WORKERS:
+        'platform::sysinv::params::sysinv_api_workers',
 }
 
 IDENTITY_LDAP_PARAMETER_OPTIONAL = [
