@@ -1208,7 +1208,7 @@ class HostController(rest.RestController):
         # Ensure data has valid value
         if data not in [constants.MGMT_IPSEC_ENABLING,
                 constants.MGMT_IPSEC_ENABLED, constants.MGMT_IPSEC_DISABLED]:
-            LOG.error(_("Invalid value for mgmt_ipsec: %s" % data))
+            LOG.error(_("Invalid value for %s: %s" % (constants.MGMT_IPSEC_FLAG, data)))
             return False
 
         try:
@@ -1218,10 +1218,10 @@ class HostController(rest.RestController):
                 capabilities = host.get('capabilities')
 
                 if (data == constants.MGMT_IPSEC_DISABLED and
-                        capabilities.get('mgmt_ipsec') is not None):
-                    capabilities.pop('mgmt_ipsec')
+                        capabilities.get(constants.MGMT_IPSEC_FLAG) is not None):
+                    capabilities.pop(constants.MGMT_IPSEC_FLAG)
                 else:
-                    capabilities.update({'mgmt_ipsec': data})
+                    capabilities.update({constants.MGMT_IPSEC_FLAG: data})
 
                 pecan.request.dbapi.ihost_update(uuid, {'capabilities': capabilities})
         except exception.ServerNotFound:
@@ -7021,8 +7021,8 @@ class HostController(rest.RestController):
 
         # Remove IPSec flag to allow a new configuration after reinstall
         capabilities = hostupdate.ihost_orig['capabilities']
-        if capabilities.get('mgmt_ipsec') is not None:
-            capabilities.pop('mgmt_ipsec')
+        if capabilities.get(constants.MGMT_IPSEC_FLAG) is not None:
+            capabilities.pop(constants.MGMT_IPSEC_FLAG)
             hostupdate.ihost_val_update({'capabilities': capabilities})
 
         hostupdate.notify_mtce = True
