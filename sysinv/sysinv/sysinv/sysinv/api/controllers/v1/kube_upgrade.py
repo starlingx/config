@@ -28,6 +28,7 @@ from sysinv.common import constants
 from sysinv.common import dc_api
 from sysinv.common import exception
 from sysinv.common import kubernetes
+from sysinv.common import usm_service as usm_service
 from sysinv.common import utils as cutils
 from sysinv import objects
 
@@ -289,7 +290,7 @@ class KubeUpgradeController(rest.RestController):
 
         # There must not be a platform upgrade in progress
         try:
-            pecan.request.dbapi.software_upgrade_get_one()
+            usm_service.get_platform_upgrade(pecan.request.dbapi)
         except exception.NotFound:
             pass
         else:

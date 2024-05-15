@@ -21,6 +21,7 @@ from sysinv.common import constants
 
 from oslo_log import log as logging
 from sysinv.puppet import common
+from sysinv.common import usm_service as usm_service
 from sysinv.common import utils
 
 
@@ -193,7 +194,7 @@ class PuppetOperator(object):
             host.hostname == constants.CONTROLLER_0_HOSTNAME and
                 not os.path.exists(hiera_file)):
             try:
-                upgrade = self.dbapi.software_upgrade_get_one()
+                upgrade = usm_service.get_platform_upgrade(self.dbapi)
                 if (upgrade.state == constants.UPGRADE_ABORTING_ROLLBACK):
                     LOG.info("controller-0 downgrade for a version using <ip>.yaml")
                     return True

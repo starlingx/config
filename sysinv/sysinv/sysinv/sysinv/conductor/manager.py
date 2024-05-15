@@ -113,6 +113,7 @@ from sysinv.common import kubernetes
 from sysinv.common import openstack_config_endpoints
 from sysinv.common import retrying
 from sysinv.common import service
+from sysinv.common import usm_service as usm_service
 from sysinv.common import utils as cutils
 from sysinv.common.inotify import flags
 from sysinv.common.inotify import INotify
@@ -739,6 +740,7 @@ class ConductorManager(service.PeriodicService):
     def _upgrade_init_actions(self):
         """ Perform any upgrade related startup actions"""
         try:
+            # NOTE(bqian) this is legacy upgrade only code
             upgrade = self.dbapi.software_upgrade_get_one()
         except exception.NotFound:
             # Not upgrading. No need to update status
@@ -4836,12 +4838,15 @@ class ConductorManager(service.PeriodicService):
         :return:
         """
         try:
-            self.dbapi.software_upgrade_get_one()
+            usm_service.get_platform_upgrade(self.dbapi)
         except exception.NotFound:
             # Not upgrading. We assume the host versions match
             # If they somehow don't match we've got bigger problems
             return True
 
+        # TODO(bqian) this is to be replaced with host.sw_version after
+        # https://review.opendev.org/c/starlingx/config/+/915376
+        # in a USM upgrade scenario.
         host_obj = self.dbapi.ihost_get(host_uuid)
         host_version = host_obj.software_load
 
@@ -5087,7 +5092,7 @@ class ConductorManager(service.PeriodicService):
             return
 
         try:
-            self.dbapi.software_upgrade_get_one()
+            usm_service.get_platform_upgrade(self.dbapi)
         except exception.NotFound:
             # No upgrade in progress
             pass
@@ -5524,7 +5529,7 @@ class ConductorManager(service.PeriodicService):
 
         upgrade_in_progress = False
         try:
-            self.dbapi.software_upgrade_get_one()
+            usm_service.get_platform_upgrade(self.dbapi)
             upgrade_in_progress = True
         except exception.NotFound:
             # No upgrade in progress
@@ -5802,7 +5807,7 @@ class ConductorManager(service.PeriodicService):
             return
 
         try:
-            self.dbapi.software_upgrade_get_one()
+            usm_service.get_platform_upgrade(self.dbapi)
         except exception.NotFound:
             # No upgrade in progress
             pass
@@ -6995,6 +7000,7 @@ class ConductorManager(service.PeriodicService):
     @periodic_task.periodic_task(spacing=CONF.conductor_periodic_task_intervals.upgrade_status)
     def _audit_upgrade_status(self, context):
         """Audit upgrade related status"""
+        # NOTE(bqian) legacy upgrade only code
         try:
             upgrade = self.dbapi.software_upgrade_get_one()
         except exception.NotFound:
@@ -10687,7 +10693,7 @@ class ConductorManager(service.PeriodicService):
         Raise an exception if one is found.
         """
         try:
-            self.dbapi.software_upgrade_get_one()
+            usm_service.get_platform_upgrade(self.dbapi)
         except exception.NotFound:
             pass
         else:
@@ -11438,7 +11444,9 @@ class ConductorManager(service.PeriodicService):
            Callback for Sysinv Agent on upgrade manifest failure
         """
         try:
-            upgrade = self.dbapi.software_upgrade_get_one()
+            # TODO (bqian) change below report to USM if USM major release
+            # deploy activate failed
+            upgrade = usm_service.get_platform_upgrade(self.dbapi)
         except exception.NotFound:
             LOG.error("Upgrade record not found during config failure")
             return
@@ -13495,7 +13503,7 @@ class ConductorManager(service.PeriodicService):
         host_uuids = config_dict.get('host_uuids')
 
         try:
-            self.dbapi.software_upgrade_get_one()
+            usm_service.get_platform_upgrade(self.dbapi)
         except exception.NotFound:
             # No upgrade in progress
             pass
@@ -14344,7 +14352,7 @@ class ConductorManager(service.PeriodicService):
 
         # Check if there is an upgrade in progress
         try:
-            upgrade = self.dbapi.software_upgrade_get_one()
+            upgrade = usm_service.get_platform_upgrade(self.dbapi)
         except exception.NotFound:
             # No upgrade in progress
             pass
@@ -14418,6 +14426,8 @@ class ConductorManager(service.PeriodicService):
             if tsc.system_mode == constants.SYSTEM_MODE_SIMPLEX:
                 LOG.info("Generating agent request to create simplex upgrade "
                          "data")
+                # NOTE(bqian) this is legacy upgrade only code, so only fetch upgrade
+                # entity from sysinv db
                 software_upgrade = self.dbapi.software_upgrade_get_one()
                 rpcapi = agent_rpcapi.AgentAPI()
                 # In cases where there is no backup in progress alarm but the flag exists,
@@ -14743,6 +14753,7 @@ class ConductorManager(service.PeriodicService):
         :param success: If the create_simplex_backup call completed
         """
         try:
+            # NOTE(bqian) legacy upgrade only code
             upgrade = self.dbapi.software_upgrade_get_one()
         except exception.NotFound:
             LOG.error("Software upgrade record not found")
@@ -15049,7 +15060,9 @@ class ConductorManager(service.PeriodicService):
             'to_version': None,
             'state': None}
         try:
-            row = self.dbapi.software_upgrade_get_one()
+            # this is checked by ceph-manager, so report both legacy upgrade or
+            # USM major release deploy
+            row = usm_service.get_platform_upgrade(self.dbapi)
             upgrade['from_version'] = row.from_release
             upgrade['to_version'] = row.to_release
             upgrade['state'] = row.state

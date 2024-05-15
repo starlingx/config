@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import json
+import os
 import signal
 
 import six
@@ -17,7 +18,6 @@ from oslo_log import log
 from oslo_utils import encodeutils
 from sysinv.common import configp
 from sysinv.common import exception as si_exception
-from sysinv.common import utils as cutils
 from sysinv.openstack.common.keystone_objects import Token
 
 from sysinv.common.exception import OpenStackException
@@ -133,7 +133,7 @@ def rest_api_request(token, method, api_cmd, api_cmd_headers=None,
         if api_cmd_payload is not None:
             request_info.data = encodeutils.safe_encode(api_cmd_payload)
 
-        ca_file = cutils.get_system_ca_file()
+        ca_file = get_system_ca_file()
         ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH,
                                                  cafile=ca_file)
         request = urlopen(request_info, timeout=timeout, context=ssl_context)
@@ -170,3 +170,19 @@ def rest_api_request(token, method, api_cmd, api_cmd_headers=None,
     finally:
         signal.alarm(0)
         return response
+
+
+def get_system_ca_file():
+    """Return path to system default CA file."""
+    # Duplicate of sysinv.common.utils.get_system_ca_file() to
+    # avoid circular import
+    # Standard CA file locations for Debian/Ubuntu, RedHat/Fedora,
+    # Suse, FreeBSD/OpenBSD
+    ca_path = ['/etc/ssl/certs/ca-certificates.crt',
+               '/etc/pki/tls/certs/ca-bundle.crt',
+               '/etc/ssl/ca-bundle.pem',
+               '/etc/ssl/cert.pem']
+    for ca in ca_path:
+        if os.path.exists(ca):
+            return ca
+    return None
