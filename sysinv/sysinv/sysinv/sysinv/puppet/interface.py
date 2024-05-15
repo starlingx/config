@@ -151,6 +151,8 @@ class InterfacePuppet(base.BasePuppet):
             'address_pools': address_pools,
             'floatingips': self._get_floating_ip_index(networks, address_pools,
                                                        network_address_pools),
+            'gateways': self._get_default_gateway_index(host, addresses, address_pools,
+                                                        network_address_pools),
             'datanets': self._get_datanetworks(host),
             'vswitchtype': self._vswitch_type(),
         }
@@ -329,6 +331,55 @@ class InterfacePuppet(base.BasePuppet):
                 pass
 
         return floating_ips
+
+    GATEWAY_PRECEDENCE_LIST = [constants.NETWORK_TYPE_OAM,
+                               constants.NETWORK_TYPE_MGMT,
+                               constants.NETWORK_TYPE_ADMIN]
+
+    def _get_addrpool_gateway_field(self, host_personality, network_type):
+        if host_personality in [constants.STORAGE, constants.WORKER] and \
+                network_type == constants.NETWORK_TYPE_MGMT:
+            return 'floating_address'
+        return 'gateway_address'
+
+    def _get_default_gateway_index(self, host, addresses, address_pools, network_address_pools):
+        '''
+        Gets a dictionary containing the default gateway addresses indexed by the corresponding
+        address pools. There can be only one default gateway per address family, so if there are
+        multiple address pools with gateways, the default one will follow the precedence order
+        OAM -> Management -> Admin. Only address pools which have an address assigned to an
+        interface in the current host are considered.
+        '''
+
+        assigned_addrpools = set()
+        for address_list in addresses.values():
+            for address in address_list:
+                if address.forihostid == host.id and address.pool_uuid:
+                    assigned_addrpools.add(address.pool_uuid)
+
+        nw_addrpool_index = {}
+        for nw_addrpool in network_address_pools.values():
+            if nw_addrpool.network_type not in self.GATEWAY_PRECEDENCE_LIST:
+                continue
+            if nw_addrpool.address_pool_uuid not in assigned_addrpools:
+                continue
+            addrpools = nw_addrpool_index.setdefault(nw_addrpool.network_type, [])
+            addrpools.append(address_pools[nw_addrpool.address_pool_uuid])
+
+        gateway_index = {}
+        for nw_type in self.GATEWAY_PRECEDENCE_LIST:
+            addrpools = nw_addrpool_index.get(nw_type, None)
+            if not addrpools:
+                continue
+            field = self._get_addrpool_gateway_field(host.personality, nw_type)
+            for addrpool in addrpools:
+                gateway = getattr(addrpool, field)
+                if gateway:
+                    gateway_index[addrpool.uuid] = gateway
+            if gateway_index:
+                break
+
+        return gateway_index
 
     def _get_datanetworks(self, host):
         dnets = {}
@@ -664,23 +715,11 @@ def _set_address_netmask(address):
     return address
 
 
-def get_gateway_address(context, network, address):
+def get_gateway_address(context, address):
     """
     Gets the corresponding gateway for the provided address
     """
-
-    addrpool = context['address_pools'].get(address.pool_uuid, None)
-
-    if not addrpool:
-        return None
-
-    if (network and network.type == constants.NETWORK_TYPE_MGMT and
-            context['personality'] in [constants.WORKER, constants.STORAGE]):
-        gateway_address = addrpool.floating_address
-    else:
-        gateway_address = addrpool.gateway_address
-
-    return gateway_address
+    return context['gateways'].get(address.pool_uuid, None)
 
 
 def get_interface_address_method(context, iface, network=None, address=None):
@@ -1265,7 +1304,7 @@ def get_common_network_config(context, iface, config, network=None, address=None
             config['ipaddress'] = address['address']
             config['netmask'] = address['netmask']
 
-            gateway = get_gateway_address(context, network, address)
+            gateway = get_gateway_address(context, address)
             if gateway:
                 config['options']['gateway'] = gateway
     return config
