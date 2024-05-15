@@ -1933,8 +1933,12 @@ class ConductorManager(service.PeriodicService):
             sw_version = load.software_version
         else:
             # No load provided, look it up...
-            host = self.dbapi.ihost_get_by_hostname(host.hostname)
-            sw_version = host.sw_version
+            try:
+                host = self.dbapi.ihost_get_by_hostname(host.hostname)
+                sw_version = host.sw_version
+            except exception.NodeNotFound:
+                LOG.debug("Host %s couldn't be found." % host.hostname)
+                pass
 
         if (host.personality == constants.CONTROLLER and
                 constants.WORKER in tsc.subfunctions):
