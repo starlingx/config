@@ -194,13 +194,27 @@ class KubeUpgradeController(rest.RestController):
                 LOG.debug("Unable to find a version of application {} to be pre updated."
                           .format(app.name))
 
-            # Applications with timing=post should be compatible with the target k8s version.
-            # Compatibility with current or intermediate versions is not required:
-            post_update_compatible = \
-                pecan.request.dbapi.kube_app_bundle_is_k8s_compatible(
-                    name=app.name,
-                    k8s_timing=constants.APP_METADATA_TIMING_POST,
-                    target_k8s_version=to_version)
+            # Check if the target version is within the range of the applied app
+            post_update_compatible = False
+            applied_app_target_compatible = False
+            applied_app_kube_min_version, applied_app_kube_max_version = \
+                    cutils.get_app_supported_kube_version(app.name, app.app_version)
+            if applied_app_kube_min_version is not None:
+                applied_app_kube_min_version = str(applied_app_kube_min_version).lstrip('v')
+            if applied_app_kube_max_version is not None:
+                applied_app_kube_max_version = str(applied_app_kube_max_version).lstrip('v')
+            if kubernetes.is_kube_version_supported(
+                    to_version, applied_app_kube_min_version, applied_app_kube_max_version):
+                applied_app_target_compatible = True
+
+                # Applications with timing=post should be compatible with the target k8s version.
+                # Compatibility with current or intermediate versions is not required:
+                post_update_compatible = \
+                    pecan.request.dbapi.kube_app_bundle_is_k8s_compatible(
+                        name=app.name,
+                        k8s_timing=constants.APP_METADATA_TIMING_POST,
+                        target_k8s_version=to_version)
+
             if not post_update_compatible:
                 LOG.debug("Unable to find a version of application {} to be post updated."
                           .format(app.name))
@@ -208,10 +222,7 @@ class KubeUpgradeController(rest.RestController):
             if not pre_update_compatible and not post_update_compatible:
                 # If the app cannot be pre or post updated, check if we can proceed with
                 # the current applied version.
-                applied_app_kube_min_version, applied_app_kube_max_version = \
-                    cutils.get_app_supported_kube_version(app.name, app.app_version)
-                if kubernetes.is_kube_version_supported(
-                        to_version, applied_app_kube_min_version, applied_app_kube_max_version):
+                if applied_app_target_compatible:
                     LOG.info("No updates found for application {} during Kubernetes upgrade "
                              "to {} but current applied version {} is supported.".format(
                                  app.name,
