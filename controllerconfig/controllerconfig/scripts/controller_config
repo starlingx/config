@@ -28,6 +28,8 @@ CONFIG_DIR=$CONFIG_PATH
 VOLATILE_CONFIG_PASS="/var/run/.config_pass"
 VOLATILE_CONFIG_FAIL="/var/run/.config_fail"
 COMPLETED="/etc/platform/.initial_config_complete"
+FIRST_BOOT="/etc/platform/.first_boot"
+FIRST_CONTROLLER="/etc/platform/.first_controller"
 INITIAL_MANIFEST_APPLY_FAILED="/etc/platform/.initial_manifest_apply_failed"
 DELAY_SEC=70
 CONTROLLER_UPGRADE_STARTED_FILE="$(basename ${CONTROLLER_UPGRADE_STARTED_FLAG})"
@@ -36,6 +38,8 @@ PUPPET_CACHE=/etc/puppet/cache
 PUPPET_CACHE_TMP=/etc/puppet/cache.tmp
 ACTIVE_CONTROLLER_NOT_FOUND_FLAG="/var/run/.active_controller_not_found"
 CERT_DIR=/etc/pki/ca-trust/source/anchors
+IPSEC_ENABLING_RETRIES=3
+IPSEC_ENABLING_DELAY=5
 
 OS_ID=$(grep '^ID=' /etc/os-release | cut -f2- -d= | sed -e 's/\"//g')
 if [ "$OS_ID" == "debian" ]
@@ -94,6 +98,24 @@ EOF
     echo "Pausing for 5 seconds..."
     sleep 5
     exit 1
+}
+
+warning_error()
+{
+    cat <<EOF
+*****************************************************
+*****************************************************
+$1
+*****************************************************
+*****************************************************
+EOF
+    if [ -e /usr/bin/logger ]
+    then
+        logger "Warning error: $1"
+    fi
+
+    echo "Pausing for 5 seconds..."
+    sleep 5
 }
 
 get_ip()
@@ -245,6 +267,32 @@ start()
             # created had the IMA module loaded properly.
             # This is therefore a fatal error
             fatal_error "${IMA_LOAD_PATH} not available. Aborting."
+        fi
+    fi
+
+    # Call ipsec-client to config and enable IPsec during first boot,
+    # except for the first controller. IPsec is configured and enabled
+    # during bootstrap for the first controller.
+    if [ -e ${FIRST_BOOT} ] && [ ! -e ${FIRST_CONTROLLER} ]
+    then
+        logger -t $0 -p info "Config and enable IPsec ......"
+
+        ipsec_enable_failed=1
+        for retry in $( seq 1 ${IPSEC_ENABLING_RETRIES} )
+        do
+            /usr/bin/ipsec-client pxecontroller > /dev/null
+            if [ $? -eq 0 ]
+            then
+                ipsec_enable_failed=0
+                break
+            fi
+            logger -t $0 -p warn "Enabling IPsec failed (${retry}), retry in ${IPSEC_ENABLING_DELAY} seconds ..."
+            sleep ${IPSEC_ENABLING_DELAY}
+        done
+        # Fail if retried maximum times
+        if [ ${ipsec_enable_failed} -ne 0 ]
+        then
+            warning_error "WARNING: Failed to config and enable IPsec for the node"
         fi
     fi
 

@@ -27,6 +27,7 @@ VOLATILE_CONFIG_PASS="/var/run/.config_pass"
 VOLATILE_CONFIG_FAIL="/var/run/.config_fail"
 LOGFILE="/var/log/worker_config.log"
 IMA_POLICY=/etc/ima.policy
+FIRST_BOOT="/etc/platform/.first_boot"
 
 # Copy of /opt/platform required for worker_services
 VOLATILE_PLATFORM_PATH=$VOLATILE_PATH/cpe_upgrade_opt_platform
@@ -53,6 +54,24 @@ EOF
     echo "Pausing for 5 seconds..."
     sleep 5
     exit 1
+}
+
+warning_error()
+{
+    cat <<EOF
+*****************************************************
+*****************************************************
+$1
+*****************************************************
+*****************************************************
+EOF
+    if [ -e /usr/bin/logger ]
+    then
+        logger "Warning error: $1"
+    fi
+
+    echo "Pausing for 5 seconds..."
+    sleep 5
 }
 
 get_ip()
@@ -176,6 +195,30 @@ start()
             # created had the IMA module loaded properly.
             # This is therefore a fatal error
             fatal_error "${IMA_LOAD_PATH} not available. Aborting."
+        fi
+    fi
+
+    # Call ipsec-auth-client to config and enable IPsec for the node
+    if [ -e ${FIRST_BOOT} ]
+    then
+        logger -t $0 -p info "Config and enable IPsec ......"
+
+        ipsec_enable_failed=1
+        for retry in $( seq 1 ${IPSEC_ENABLING_RETRIES} )
+        do
+            /usr/bin/ipsec-client pxecontroller > /dev/null
+            if [ $? -eq 0 ]
+            then
+                ipsec_enable_failed=0
+                break
+            fi
+            logger -t $0 -p warn "Enabling IPsec failed (${retry}), retry in ${IPSEC_ENABLING_DELAY} seconds ..."
+            sleep ${IPSEC_ENABLING_DELAY}
+        done
+        # Fail if retried maximum times
+        if [ ${ipsec_enable_failed} -ne 0 ]
+        then
+            warning_error "WARNING: Failed to config and enable IPsec for the node"
         fi
     fi
 
