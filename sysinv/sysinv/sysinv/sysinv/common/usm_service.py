@@ -23,9 +23,9 @@ LOG = log.getLogger(__name__)
 # completes.
 class UsmUpgrade(object):
     def __init__(self, state, from_load, to_load):
-        self.state = None
-        self.from_load = None
-        self.to_load = None
+        self.state = state
+        self.from_load = from_load
+        self.to_load = to_load
 
     def __eq__(self, other):
         return self.state == other.state and \
@@ -52,7 +52,7 @@ def get_software_upgrade(token, region_name, timeout=30):
     return response
 
 
-def get_platform_upgrade(dbapi):
+def get_platform_upgrade(dbapi, usm_only=False):
     """
     Get upgrade object from either sysinv db or USM service.
     Upgrade object is from USM service if the service is present,
@@ -73,7 +73,7 @@ def get_platform_upgrade(dbapi):
         # it is ok, legacy upgrade does not have usm service available
         pass
 
-    if upgrade is None:
+    if upgrade is None and not usm_only:
         upgrade = dbapi.software_upgrade_get_one()
 
     return upgrade

@@ -16,6 +16,7 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import kubernetes
 from sysinv.common import utils
+from sysinv.common import usm_service
 from sysinv.common.fm import fmclient
 from sysinv.common.storage_backend_conf import StorageBackendConfig
 from sysinv.cert_alarm.audit import CertAlarmAudit
@@ -75,32 +76,23 @@ class Health(object):
         success = not config_host_list
         return success, config_host_list
 
-    def _check_patch_current(self, hosts):
-        """Checks that each host is patch current"""
-        system = self._dbapi.isystem_get_one()
-        response = patch_api.patch_query_hosts(token=None, timeout=60,
-                                               region_name=system.region_name)
-        patch_hosts = response['data']
-        not_patch_current_hosts = []
-        hostnames = []
-        for host in hosts:
-            hostnames.append(host['hostname'])
+    def _check_patch_current(self):
+        """Checks if hosts are patch current"""
+        success = True
+        from_release = None
+        to_release = None
 
-        for host in patch_hosts:
-            # There may be instances where the patching db returns
-            # hosts that have been recently deleted. We will continue if a host
-            # is the patching db but not sysinv
-            try:
-                hostnames.remove(host['hostname'])
-            except ValueError:
-                LOG.info('Host %s found in patching but not in sysinv. '
-                         'Continuing' % host['hostname'])
-            else:
-                if not host['patch_current']:
-                    not_patch_current_hosts.append(host['hostname'])
+        # from stx-11 onwards patching is handled by USM, so the system
+        # is patch current if there is no deployment in progress in USM
+        # TODO(heitormatsui): change the logic when there is a USM endpoint
+        #  to return data per-host
+        deploy_in_progress = usm_service.get_platform_upgrade(self._dbapi, usm_only=True)
+        if deploy_in_progress:
+            success = False
+            from_release = deploy_in_progress.from_load
+            to_release = deploy_in_progress.to_load
 
-        success = not not_patch_current_hosts and not hostnames
-        return success, not_patch_current_hosts, hostnames
+        return success, from_release, to_release
 
     def _check_alarms(self, context, force=False, alarm_ignore_list=None):
         """Checks that no alarms are active"""
@@ -618,16 +610,11 @@ class Health(object):
 
         health_ok = health_ok and success
 
-        success, error_hosts, missing_hosts = self._check_patch_current(hosts)
+        success, from_release, to_release = self._check_patch_current()
         output += _('All hosts are patch current: [%s]\n') \
             % (Health.SUCCESS_MSG if success else Health.FAIL_MSG)
         if not success:
-            if error_hosts:
-                output += _('Hosts not patch current: %s\n') \
-                    % ', '.join(error_hosts)
-            if missing_hosts:
-                output += _('Hosts without patch data: %s\n') \
-                    % ', '.join(missing_hosts)
+            output += _('Deployment in progress: %s to %s\n' % (from_release, to_release))
 
         health_ok = health_ok and success
 
