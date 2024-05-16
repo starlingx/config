@@ -3942,45 +3942,47 @@ def get_secrets_info(secrets_list=None):
     cert_suf = ("cert", "crt", "ca", "pem", "cer")
     certs_info = {}
     for secret in k8s_secrets:
-        secret_name = secret.metadata.name
-        if secret_name == "kubeadm-certs":
-            continue
-        ns = secret.metadata.namespace
-        secret_type = secret.type
-        renewal = "Manual"
-        if secret_name in certs_secrets_list:
-            renewal = "Automatic"
-        if secret_type == "Opaque":
-            for key, val in secret.data.items():
-                # exception for cm-cert-manager-webhook-ca opaque secret
-                if secret_name == "cm-cert-manager-webhook-ca":
-                    renewal = "Automatic"
-                # list elastic-services,kibana cert from "mon-elastic-services-secrets" secret
-                if secret_name == "mon-elastic-services-secrets":
-                    if key not in ["ext-elastic-services.crt", "kibana.crt", "ca.crt", "ext-ca.crt"]:
-                        continue
-                if key.endswith(cert_suf) and val:
-                    cert_name = f"{secret_name}/{key}"
-                    crt = base64.decode_as_bytes(val)
-                    cert_obj = extract_certs_from_pem(crt)[0]
-                    certs_info[cert_name] = get_cert_values(cert_obj)
-                    certs_info[cert_name][constants.NAMESPACE] = ns
-                    certs_info[cert_name][constants.SECRET] = secret_name
-                    certs_info[cert_name][constants.RENEWAL] = renewal
-                    certs_info[cert_name][constants.SECRET_TYPE] = secret_type
-        elif secret_type == "kubernetes.io/tls":
-            # exception for sc-adminep-ca-certificate tls secret as there is no
-            # corresponding certificate exist.
-            if secret_name == "sc-adminep-ca-certificate":
-                    renewal = "Automatic"
-            cert_name = secret_name
-            crt = base64.decode_as_bytes(secret.data.get('tls.crt'))
-            cert_obj = extract_certs_from_pem(crt)[0]
-            certs_info[cert_name] = get_cert_values(cert_obj)
-            certs_info[cert_name][constants.NAMESPACE] = ns
-            certs_info[cert_name][constants.SECRET] = secret_name
-            certs_info[cert_name][constants.RENEWAL] = renewal
-            certs_info[cert_name][constants.SECRET_TYPE] = secret_type
+        if hasattr(secret, 'data') and secret.data is not None:
+            secret_name = secret.metadata.name
+            if secret_name == "kubeadm-certs":
+                continue
+            ns = secret.metadata.namespace
+            secret_type = secret.type
+            renewal = "Manual"
+            if secret_name in certs_secrets_list:
+                renewal = "Automatic"
+            if secret_type == "Opaque":
+                for key, val in secret.data.items():
+                    # exception for cm-cert-manager-webhook-ca opaque secret
+                    if secret_name == "cm-cert-manager-webhook-ca":
+                        renewal = "Automatic"
+                    # list elastic-services,kibana cert from "mon-elastic-services-secrets" secret
+                    if secret_name == "mon-elastic-services-secrets":
+                        if key not in ["ext-elastic-services.crt", "kibana.crt", "ca.crt",
+                                       "ext-ca.crt"]:
+                            continue
+                    if key.endswith(cert_suf) and val:
+                        cert_name = f"{secret_name}/{key}"
+                        crt = base64.decode_as_bytes(val)
+                        cert_obj = extract_certs_from_pem(crt)[0]
+                        certs_info[cert_name] = get_cert_values(cert_obj)
+                        certs_info[cert_name][constants.NAMESPACE] = ns
+                        certs_info[cert_name][constants.SECRET] = secret_name
+                        certs_info[cert_name][constants.RENEWAL] = renewal
+                        certs_info[cert_name][constants.SECRET_TYPE] = secret_type
+            elif secret_type == "kubernetes.io/tls":
+                # exception for sc-adminep-ca-certificate tls secret as there is no
+                # corresponding certificate exist.
+                if secret_name == "sc-adminep-ca-certificate":
+                        renewal = "Automatic"
+                cert_name = secret_name
+                crt = base64.decode_as_bytes(secret.data.get('tls.crt'))
+                cert_obj = extract_certs_from_pem(crt)[0]
+                certs_info[cert_name] = get_cert_values(cert_obj)
+                certs_info[cert_name][constants.NAMESPACE] = ns
+                certs_info[cert_name][constants.SECRET] = secret_name
+                certs_info[cert_name][constants.RENEWAL] = renewal
+                certs_info[cert_name][constants.SECRET_TYPE] = secret_type
 
     LOG.debug(certs_info)
     return certs_info
