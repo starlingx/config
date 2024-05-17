@@ -616,7 +616,6 @@ class AppOperator(object):
         # get namespace
         with io.open(root_kustomization_path, 'r', encoding='utf-8') as f:
             root_kustomization_yaml = next(yaml.safe_load_all(f))
-            global_namespace = AppOperator.get_global_namespace(root_kustomization_yaml)
             charts_groups = root_kustomization_yaml["resources"]
 
         for chart_group in charts_groups:
@@ -627,9 +626,6 @@ class AppOperator(object):
                 if not os.path.isfile(chart_kustomization_path) or \
                         not os.path.isfile(helmrelease_path):
                     continue
-                with io.open(chart_kustomization_path, 'r', encoding='utf-8') as f:
-                    chart_kustomization_yaml = next(yaml.safe_load_all(f))
-                chart_namespace = chart_kustomization_yaml.get("namespace", global_namespace)
                 with io.open(helmrelease_path, 'r', encoding='utf-8') as f:
                     helmrelease_yaml = next(yaml.safe_load_all(f))
                     chart_name = helmrelease_yaml["metadata"]["name"]
@@ -640,15 +636,16 @@ class AppOperator(object):
                     helm_chart_imgs = images_file[chart_name]
 
                 # Get the image tags from the chart overrides file
-                overrides = chart_namespace + '-' + chart_name + '.yaml'
+                overrides = helm_utils.build_overrides_filename(chart_name)
                 app_overrides_file = os.path.join(overrides_dir, overrides)
                 overrides_file = {}
                 if os.path.exists(app_overrides_file):
                     with io.open(app_overrides_file, 'r', encoding='utf-8') as f:
                         overrides_file = yaml.safe_load(f)
+                else:
+                    LOG.warn("Cannot find overrides file {}".format(app_overrides_file))
 
-                override_imgs = self._image.find_images_in_dict(
-                    overrides_file.get('data', {}).get('values', {}))
+                override_imgs = self._image.find_images_in_dict(overrides_file)
                 override_imgs_copy = copy.deepcopy(override_imgs)
 
                 # Get the image tags from the fluxcd static overrides file
@@ -1341,7 +1338,7 @@ class AppOperator(object):
     def _write_fluxcd_overrides(self, charts, helm_files):
 
         for chart in charts:
-            override_file = chart.name + '.yaml'
+            override_file = helm_utils.build_overrides_filename(chart.name)
 
             for f in os.listdir(chart.chart_os_path):
                 if f.endswith("system-overrides.yaml"):
