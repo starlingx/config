@@ -622,6 +622,27 @@ def _validate_drbd_net_hmac(name, value):
          constants.SERVICE_PARAM_PLATFORM_DRBD_HMAC_SHA256)))
 
 
+def _validate_oot(name, value):
+    """Check if specified value is supported"""
+
+    # Convert the input value to a list for validation against
+    # constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES
+    driver_list = list(map(str.strip, value.split(',')))
+
+    # Ensure that the driver list is a subset of
+    # constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES, and raise
+    # an error if it does not match the predefined OOT values.
+    # it checks whether all elements in the driver_list
+    # are also present in the constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES.
+    # If they are, the expression evaluates to True; otherwise, it evaluates to False
+
+    if (all(x in constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES
+            for x in driver_list)):
+        msg = "Parameter '{}' value must be one of '{}' .".format(
+            name, constants.SERVICE_PARAM_PLAT_KERNEL_OOT_VALUES)
+        raise wsme.exc.ClientSideError(_(msg))
+
+
 def parse_volume_string_to_dict(parameter):
     """
     Parse volume string value from parameter to dictionary.
@@ -999,6 +1020,7 @@ PLATFORM_MTCE_PARAMETER_RESOURCE = {
 
 PLATFORM_KERNEL_PARAMETER_OPTIONAL = [
     constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD,
+    constants.SERVICE_PARAM_NAME_PLATFORM_OOT,
 ]
 
 PLATFORM_KEYSTONE_PARAMETER_OPTIONAL = [
@@ -1033,6 +1055,7 @@ PLATFORM_DRBD_PARAMETER_OPTIONAL = [
 
 PLATFORM_KERNEL_PARAMETER_VALIDATOR = {
     constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD: _validate_kernel_audit,
+    constants.SERVICE_PARAM_NAME_PLATFORM_OOT: _validate_oot,
 }
 
 PLATFORM_KEYSTONE_PARAMETER_VALIDATOR = {
@@ -1082,6 +1105,8 @@ PLATFORM_DRBD_PARAMETER_VALIDATOR = {
 PLATFORM_KERNEL_PARAMETER_RESOURCE = {
     constants.SERVICE_PARAM_NAME_PLATFORM_AUDITD:
         'platform::compute::grub::params::g_audit',
+    constants.SERVICE_PARAM_NAME_PLATFORM_OOT:
+        'platform::compute::grub::params::g_out_of_tree_drivers',
 }
 
 PLATFORM_KEYSTONE_PARAMETER_RESOURCE = {
