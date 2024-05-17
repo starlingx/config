@@ -32,7 +32,6 @@ from oslo_utils import uuidutils
 from sysinv._i18n import _
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
-from sysinv.api.controllers.v1 import controller_fs as controller_fs_utils
 from sysinv.api.controllers.v1 import link
 from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import utils
@@ -164,24 +163,62 @@ def _check_ceph_mon_api_availability():
               "as the storage backend." % (constants.SB_TYPE_CEPH)))
 
 
-def _check_ceph_mon(new_cephmon, old_cephmon=None):
+def _check_node_has_free_disk_space(host, ceph_mon_gib):
+    """ Check node for ceph_mon free disk space.
+        If check failed, raise error with msg.
+    """
+    cgtsvg_max_free_gib = utils.get_node_cgtsvg_limit(host)
 
+    if cutils.is_aio_duplex_system(pecan.request.dbapi):
+        LOG.debug("_check_node_has_free_disk_space This is aio-dx - "
+            "calculate required space for host-fs ceph-lv too")
+        ceph_mon_gib = 2 * ceph_mon_gib
+
+    LOG.debug("_check_node_has_free_disk_space hostname: %s, ceph_mon_gib: %s, "
+             "cgtsvg_max_free_gib: %s"
+             % (host.hostname, ceph_mon_gib,
+                cgtsvg_max_free_gib))
+
+    if (ceph_mon_gib > cgtsvg_max_free_gib):
+        msg = _(
+            "Node '%s' does not have enough free space available in cgts-vg volume group "
+            "to allocate ceph-mon data. %s GiB is required but %s GiB is available." %
+            (host.hostname,
+             ceph_mon_gib,
+             cgtsvg_max_free_gib))
+        raise wsme.exc.ClientSideError(msg)
+
+
+def _check_ceph_mon_size(new_cephmon, old_cephmon=None):
+    """ Check ceph-mon size boundaries and verify if there is enough disk space on the host
+        If an old_cephmon is not set, consider this is a CREATE operation and
+        if an old_cephmon is set, consider this is a RESIZE operation.
+        If check fails, raise an exception with a message
+    """
     if not cutils.is_int_like(new_cephmon['ceph_mon_gib']):
         raise wsme.exc.ClientSideError(
             _("ceph_mon_gib must be an integer."))
 
     new_ceph_mon_gib = int(new_cephmon['ceph_mon_gib'])
     if old_cephmon:
-        old_ceph_mon_gib = int(old_cephmon['ceph_mon_gib']) + 1
+        old_ceph_mon_gib = int(old_cephmon['ceph_mon_gib'])
+        lower_boundary = old_ceph_mon_gib + 1
     else:
-        old_ceph_mon_gib = constants.SB_CEPH_MON_GIB_MIN
+        old_ceph_mon_gib = 0
+        lower_boundary = constants.SB_CEPH_MON_GIB_MIN
 
-    if new_ceph_mon_gib < old_ceph_mon_gib \
-            or new_ceph_mon_gib > constants.SB_CEPH_MON_GIB_MAX:
+    # Check boundaries
+    if (new_ceph_mon_gib < lower_boundary
+            or new_ceph_mon_gib > constants.SB_CEPH_MON_GIB_MAX):
         raise wsme.exc.ClientSideError(
             _("ceph_mon_gib = %s. Value must be between %s and %s."
-              % (new_ceph_mon_gib, old_ceph_mon_gib,
+              % (new_ceph_mon_gib, lower_boundary,
                  constants.SB_CEPH_MON_GIB_MAX)))
+
+    # Verify if there is enough free space on cgts-vg for ceph-mon on selected host
+    ihost = objects.host.get_by_uuid(pecan.request.context, new_cephmon['ihost_uuid'])
+    size_needed = new_ceph_mon_gib - old_ceph_mon_gib
+    _check_node_has_free_disk_space(ihost, size_needed)
 
 
 class CephMonCollection(collection.Collection):
@@ -312,6 +349,9 @@ class CephMonController(rest.RestController):
 
         rpc_cephmon = objects.ceph_mon.get_by_uuid(pecan.request.context,
                                                    cephmon_uuid)
+
+        is_aio_dx = cutils.is_aio_duplex_system(pecan.request.dbapi)
+
         is_ceph_mon_gib_changed = False
 
         patch = [p for p in patch if '/controller' not in p['path']]
@@ -344,9 +384,7 @@ class CephMonController(rest.RestController):
             raise exception.PatchError(patch=patch, reason=e)
 
         if is_ceph_mon_gib_changed:
-            _check_ceph_mon(cephmon.as_dict(), rpc_cephmon.as_dict())
-            controller_fs_utils._check_ceph_mon_growth(
-                cephmon.ceph_mon_gib)
+            _check_ceph_mon_size(cephmon.as_dict(), rpc_cephmon.as_dict())
             utils.check_all_ceph_mon_growth(cephmon.ceph_mon_gib)
 
         for field in objects.ceph_mon.fields:
@@ -355,8 +393,23 @@ class CephMonController(rest.RestController):
 
         LOG.info("SYS_I  cephmon: %s " % cephmon.as_dict())
 
+        # if this is an AIO-DX, must update host-fs ceph to the same size to support
+        # the three ceph monitors solution
+        rpc_hostfs = {}
+        if is_aio_dx:
+            LOG.info("This is an AIO-DX. Update ceph host-fs with the new ceph-mon size.")
+            host_fs_list = pecan.request.dbapi.host_fs_get_by_ihost(ihost=cephmon.forihostid)
+            for fs in host_fs_list:
+                if fs['name'] == constants.FILESYSTEM_NAME_CEPH:
+                    hostfs_uuid = fs['uuid']
+                    rpc_hostfs = objects.host_fs.get_by_uuid(pecan.request.context, hostfs_uuid)
+                    rpc_hostfs['size'] = rpc_cephmon.ceph_mon_gib
+
         try:
             rpc_cephmon.save()
+            # Apply host-fs ceph changes too if this is an AIO-DX
+            if is_aio_dx:
+                rpc_hostfs.save()
         except exception.HTTPNotFound:
             msg = _("Ceph Mon update failed: uuid %s : "
                     " patch %s"
@@ -385,8 +438,9 @@ class CephMonController(rest.RestController):
         parent = pecan.request.path.split('/')[:-1][-1]
         if parent != "ceph_mon":
             raise exception.HTTPNotFound
-        return StorageBackendConfig.get_ceph_mon_ip_addresses(
+        _, ceph_mon_ip_addresses = StorageBackendConfig.get_ceph_mon_ip_addresses(
             pecan.request.dbapi)
+        return ceph_mon_ip_addresses
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(None, six.text_type, status_code=204)
@@ -473,10 +527,7 @@ def _create(ceph_mon):
     if ceph_mons:
         ceph_mon['ceph_mon_gib'] = ceph_mons[0]['ceph_mon_gib']
 
-    _check_ceph_mon(ceph_mon)
-
-    controller_fs_utils._check_ceph_mon_growth(ceph_mon['ceph_mon_gib'])
-    utils.check_all_ceph_mon_growth(ceph_mon['ceph_mon_gib'], chost)
+    _check_ceph_mon_size(ceph_mon)
 
     pecan.request.rpcapi.reserve_ip_for_third_monitor_node(
         pecan.request.context, chost.hostname)

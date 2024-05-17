@@ -801,7 +801,7 @@ def _is_ceph_enabled(dbapi):
     if not ceph_backend:
         return False  # ceph is not configured
 
-    ceph_mon_ips = StorageBackendConfig.get_ceph_mon_ip_addresses(
+    _, ceph_mon_ips = StorageBackendConfig.get_ceph_mon_ip_addresses(
         dbapi)
 
     if not ceph_mon_ips:

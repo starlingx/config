@@ -403,28 +403,6 @@ def _get_controller_cgtsvg_limit():
     return cgtsvg_max_free_GiB
 
 
-def _check_ceph_mon_growth(ceph_mon_gib):
-    """ Check growth of ceph_mon in controller.
-        There is additional items to check for controller_fs compared with
-        check_node_ceph_mon_growth().
-    """
-    controller_fs_list = pecan.request.dbapi.controller_fs_get_list()
-
-    cgtsvg_max_free_GiB = _get_controller_cgtsvg_limit()
-
-    LOG.info("_check_ceph_mon_growth ceph_mon_gib = %s, "
-        "cgtsvg_max_free_GiB = %s" % (ceph_mon_gib, cgtsvg_max_free_GiB))
-
-    _check_relative_controller_fs(None, controller_fs_list)
-
-    rootfs_configured_size_GiB = \
-        _total_size_controller_fs(None, controller_fs_list) + ceph_mon_gib
-    LOG.info("_check_ceph_mon_growth rootfs_configured_size_GiB = %s" %
-             rootfs_configured_size_GiB)
-
-    utils.check_node_ceph_mon_growth(None, ceph_mon_gib, cgtsvg_max_free_GiB)
-
-
 def _check_controller_multi_fs_data(context, controller_fs_list_new):
     """ Check controller filesystem data and return growth
         returns: cgtsvg_growth_gib

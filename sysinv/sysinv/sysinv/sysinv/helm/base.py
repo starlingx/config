@@ -286,8 +286,9 @@ class BaseHelm(object):
         :returns: List of filtered monitor ips.
         """
         monitors = []
-        for name, addr in StorageBackendConfig.get_ceph_mon_ip_addresses(
-                self.dbapi).items():
+        _, ceph_mon_ips = StorageBackendConfig.get_ceph_mon_ip_addresses(
+            self.dbapi)
+        for name, addr in ceph_mon_ips.items():
             if name_filter(name):
                 monitors.append(addr)
 
@@ -309,8 +310,9 @@ class BaseHelm(object):
         elif name_filter:
             monitors = self._get_filtered_ceph_monitor_ips_using_function(name_filter)
         else:
-            monitors = list(StorageBackendConfig.get_ceph_mon_ip_addresses(
-                self.dbapi).values())
+            _, ceph_mon_ips = StorageBackendConfig.get_ceph_mon_ip_addresses(
+                                    self.dbapi)
+            monitors = list(ceph_mon_ips.values())
         return monitors
 
     def _get_formatted_ceph_monitor_ips(self, name_filter=None):

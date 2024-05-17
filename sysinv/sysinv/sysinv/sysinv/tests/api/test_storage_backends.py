@@ -85,6 +85,8 @@ class StorageBackendTestCases(base.FunctionalTest):
         self.tier = dbutils.create_test_storage_tier(forclusterid=self.cluster.id)
         self.load = dbutils.create_test_load()
         self.host = dbutils.create_test_ihost(forisystemid=self.system.id)
+        self.lvg = dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
 
         # Patch management network for ceph
         self.dbapi = dbapi.get_instance()
@@ -1248,6 +1250,8 @@ class StorageCephTestCases(base.FunctionalTest):
         self.tier = dbutils.create_test_storage_tier(forclusterid=self.cluster.id)
         self.load = dbutils.create_test_load()
         self.host = dbutils.create_test_ihost(forisystemid=self.system.id)
+        self.lvg = dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
 
         # Patch management network for ceph
         self.dbapi = dbapi.get_instance()
@@ -1727,8 +1731,9 @@ class StorageBackendConfigTest(base.FunctionalTest):
         p.start().return_value = addresses_mock_object
         self.addCleanup(p.stop)
 
-        result = StorageBackendConfig.get_ceph_mon_ip_addresses(self.dbapi)
+        ceph_network_type, result = StorageBackendConfig.get_ceph_mon_ip_addresses(self.dbapi)
         self.assertDictEqual(result, result_mock)
+        self.assertEqual(ceph_network_type, network_type)
 
 
 class StorageBackendConfigTestIPv6(base.FunctionalTest):
@@ -1790,5 +1795,6 @@ class StorageBackendConfigTestIPv6(base.FunctionalTest):
         p.start().return_value = addresses_mock_object
         self.addCleanup(p.stop)
 
-        result = StorageBackendConfig.get_ceph_mon_ip_addresses(self.dbapi)
+        ceph_network_type, result = StorageBackendConfig.get_ceph_mon_ip_addresses(self.dbapi)
         self.assertDictEqual(result, result_mock)
+        self.assertEqual(ceph_network_type, network_type)
