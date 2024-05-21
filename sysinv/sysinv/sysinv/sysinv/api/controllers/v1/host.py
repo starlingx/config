@@ -105,7 +105,7 @@ LOG = log.getLogger(__name__)
 KEYRING_BM_SERVICE = "BM"
 ERR_CODE_LOCK_SOLE_SERVICE_PROVIDER = "-1003"
 HOST_XML_ATTRIBUTES = ['hostname', 'personality', 'subfunctions', 'mgmt_mac',
-                       'mgmt_ip', 'bm_ip', 'bm_type', 'bm_username',
+                       'bm_ip', 'bm_type', 'bm_username',
                        'bm_password', 'boot_device', 'rootfs_device',
                        'hw_settle', 'install_output', 'console',
                        'vsc_controllers', 'power_on', 'location', 'apparmor',
@@ -198,6 +198,7 @@ class HostStatesController(rest.RestController):
         """List or update the state of a ihost."""
         ihost = objects.host.get_by_uuid(pecan.request.context,
                                          ihost_id)
+        ihost['mgmt_ip'] = utils.get_mgmt_ip(ihost.hostname)
         state = HostStates.convert_with_links(ihost)
         return state
 
@@ -1263,6 +1264,7 @@ class HostController(rest.RestController):
 
         for h in ihosts:
             self._update_controller_personality(h)
+            self._update_host_mgmt_ip(self, h)
 
         return ihosts
 
@@ -1300,6 +1302,13 @@ class HostController(rest.RestController):
             else:
                 activity = 'Controller-Standby'
             host['capabilities'].update({'Personality': activity})
+
+    @staticmethod
+    def _update_host_mgmt_ip(self, host):
+        try:
+            host['mgmt_ip'] = utils.get_mgmt_ip(host.hostname)
+        except exception.AddressNotFoundByName:
+            host['mgmt_ip'] = None
 
     @wsme_pecan.wsexpose(HostCollection, six.text_type, six.text_type, int, six.text_type,
                          six.text_type, six.text_type)
@@ -1356,13 +1365,11 @@ class HostController(rest.RestController):
             ihost_obj = pecan.request.dbapi.ihost_get_by_mgmt_mac(mac)
             if ihost_obj['hostname']:
                 hostname = ihost_obj['hostname']
-                mgmt_addr = ihost_obj['mgmt_ip']
-                if mgmt_addr is None:
-                    address_name = cutils.format_address_name(hostname,
-                                                    constants.NETWORK_TYPE_MGMT)
-                    address = utils.get_primary_address_by_name(address_name,
-                                                    constants.NETWORK_TYPE_MGMT, True)
-                    mgmt_addr = address.address
+                address_name = cutils.format_address_name(hostname,
+                                                constants.NETWORK_TYPE_MGMT)
+                address = utils.get_primary_address_by_name(address_name,
+                                                constants.NETWORK_TYPE_MGMT, True)
+                mgmt_addr = address.address
 
                 if mgmt_addr is not None:
                     # get the management network netmask
@@ -1443,6 +1450,7 @@ class HostController(rest.RestController):
         rpc_ihost = objects.host.get_by_uuid(pecan.request.context,
                                              uuid)
         self._update_controller_personality(rpc_ihost)
+        self._update_host_mgmt_ip(self, rpc_ihost)
 
         return Host.convert_with_links(rpc_ihost)
 
@@ -1474,22 +1482,6 @@ class HostController(rest.RestController):
         if not self._no_controllers_exist():
 
             self._block_add_host_semantic_checks(ihost_dict)
-
-            mgmt_network = pecan.request.dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_MGMT)
-
-            if mgmt_network.dynamic and ihost_dict.get('mgmt_ip'):
-                raise wsme.exc.ClientSideError(_(
-                    "Host-add Rejected: Cannot specify a mgmt_ip when dynamic "
-                    "address allocation is configured"))
-            elif (not mgmt_network.dynamic and
-                  not ihost_dict.get('mgmt_ip') and
-                  ihost_dict.get('personality') not in
-                  [constants.STORAGE, constants.CONTROLLER]):
-                raise wsme.exc.ClientSideError(_(
-                    "Host-add Rejected: Cannot add a worker host without "
-                    "specifying a mgmt_ip when static address allocation is "
-                    "configured."))
 
             # Check whether vsc_controllers is set and perform semantic
             # checking if necessary.
@@ -1552,11 +1544,6 @@ class HostController(rest.RestController):
             if ihost_dict['hostname'] in hostnames:
                 raise wsme.exc.ClientSideError(
                     _("Host-add Rejected: Hostname already exists"))
-            if ihost_dict.get('mgmt_ip') and ihost_dict['mgmt_ip'] in \
-                    [h['mgmt_ip'] for h in current_ihosts]:
-                raise wsme.exc.ClientSideError(
-                    _("Host-add Rejected: Host with mgmt_ip %s already "
-                      "exists") % ihost_dict['mgmt_ip'])
 
         try:
             ihost_obj = pecan.request.dbapi.ihost_get_by_mgmt_mac(
@@ -1663,19 +1650,6 @@ class HostController(rest.RestController):
         if ihost_dict['personality'] in (constants.CONTROLLER, constants.STORAGE):
             self._controller_storage_node_setup(ihost_dict)
 
-        # Validate that management name and IP do not already exist
-        # If one exists, other value must match in addresses table
-        mgmt_address_name = cutils.format_address_name(
-            ihost_dict['hostname'], constants.NETWORK_TYPE_MGMT)
-        self._validate_address_not_allocated(mgmt_address_name,
-                                             ihost_dict.get('mgmt_ip'),
-                                             constants.NETWORK_TYPE_MGMT)
-
-        if ihost_dict.get('mgmt_ip'):
-            self._validate_ip_in_mgmt_network(ihost_dict['mgmt_ip'])
-        else:
-            del ihost_dict['mgmt_ip']
-
         # Set host to reinstalling
         ihost_dict.update({constants.HOST_ACTION_STATE:
                            constants.HAS_REINSTALLING})
@@ -1719,6 +1693,7 @@ class HostController(rest.RestController):
         # Add ihost to mtc
         new_ihost_mtc = ihost_obj.as_dict()
         new_ihost_mtc.update({'operation': 'add'})
+        new_ihost_mtc['mgmt_ip'] = address.address
         new_ihost_mtc = cutils.removekeys_nonmtce(new_ihost_mtc)
 
         mtc_response = mtce_api.host_add(
@@ -1743,7 +1718,6 @@ class HostController(rest.RestController):
             new_ihost_mtc.update({'action': constants.POWERON_ACTION})
 
             mtc_response = {'status': None}
-
             mtc_response = mtce_api.host_modify(
                 self._api_token, self._mtc_address, self._mtc_port, new_ihost_mtc,
                 constants.MTC_ADD_TIMEOUT_IN_SECS)
@@ -2060,7 +2034,7 @@ class HostController(rest.RestController):
             return cutils.gethostbyname(constants.CONTROLLER_0_FQDN)
         else:
             address_name = cutils.format_address_name(hostname,
-                                                    constants.NETWORK_TYPE_MGMT)
+                                                      constants.NETWORK_TYPE_MGMT)
             address = utils.get_primary_address_by_name(address_name,
                                                         constants.NETWORK_TYPE_MGMT, True)
             return address.address
@@ -2316,9 +2290,6 @@ class HostController(rest.RestController):
             pecan.request.dbapi.ihost_update(
                 ihost_obj['uuid'], {'capabilities': ihost_obj['capabilities']})
 
-            # Notify maintenance about updated mgmt_ip
-            ihost_obj['mgmt_ip'] = self._get_mgmt_ip(ihost_obj.hostname)
-
             hostupdate.notify_mtce = True
 
         # Evaluate app reapply on lock/unlock/swact/reinstall
@@ -2350,9 +2321,6 @@ class HostController(rest.RestController):
                 LOG.info("%s Action %s perform notify_mtce" %
                          (hostupdate.displayid, myaction))
 
-                # Notify maintenance about updated mgmt_ip
-                ihost_obj['mgmt_ip'] = self._get_mgmt_ip(ihost_obj.hostname)
-
                 new_ihost_mtc = ihost_obj.as_dict()
                 new_ihost_mtc = cutils.removekeys_nonmtce(new_ihost_mtc)
 
@@ -2370,6 +2338,9 @@ class HostController(rest.RestController):
                     new_ihost_mtc['action'] = constants.FORCE_UNSAFE_LOCK_ACTION
                 elif myaction == constants.FORCE_UNLOCK_ACTION:
                     new_ihost_mtc['action'] = constants.UNLOCK_ACTION
+
+                # Notify maintenance about updated mgmt_ip
+                new_ihost_mtc['mgmt_ip'] = utils.get_mgmt_ip(ihost_obj.hostname)
 
                 if new_ihost_mtc['operation'] == 'add':
                     # Evaluate apps reapply on new host
@@ -3170,6 +3141,7 @@ class HostController(rest.RestController):
             new_ihost_mtc.update({'operation': 'modify'})
             new_ihost_mtc.update({'action': constants.REINSTALL_ACTION})
             new_ihost_mtc = cutils.removekeys_nonmtce(new_ihost_mtc)
+            new_ihost_mtc['mgmt_ip'] = utils.get_mgmt_ip(rpc_ihost.hostname)
 
             mtc_response = mtce_api.host_modify(
                 self._api_token, self._mtc_address, self._mtc_port,

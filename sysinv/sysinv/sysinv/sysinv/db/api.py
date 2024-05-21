@@ -138,7 +138,6 @@ class Connection(object):
                          'uuid': uuidutils.generate_uuid(),
                          'invprovision': 'provisioned',
                          'mgmt_mac': '01:34:67:9A:CD:FE',
-                         'mgmt_ip': '192.168.24.11',
                          'provision_state': states.NOSTATE,
                          'administrative': 'locked',
                          'operational': 'disabled',

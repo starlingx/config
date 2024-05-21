@@ -124,6 +124,10 @@ class Host(base.SysinvObject):
         'target_load': _get_target_load
     }
 
+    _optional_fields = {
+        'mgmt_ip': utils.str_or_none
+    }
+
     @base.remotable_classmethod
     def get_by_uuid(cls, context, uuid):
         return cls.dbapi.ihost_get(uuid)
