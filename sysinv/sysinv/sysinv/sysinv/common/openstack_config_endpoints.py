@@ -185,20 +185,20 @@ def create_users(keystone, users_to_create):
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=1000)
-def set_users_options(keystone, users_to_update, options):
+def update_users(keystone, users_to_update):
     """
     Set the options for a list of users
 
     :param keystone: keystone's client
-    :param users_to_update: list of user's names to update
-    :param options: a dictionary of options to set for the users
+    :param users_to_update: list of users to update
     """
 
     keystone_users = keystone.users.list()
 
     for user in keystone_users:
-        if user.name in users_to_update:
-            keystone.users.update(user.id, options=options)
+        for user_to_update in users_to_update:
+            if user_to_update["name"] == user.name:
+                keystone.users.update(user.id, **user_to_update)
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=1000)
@@ -229,6 +229,57 @@ def grant_admin_role(keystone, users_to_create, project_name):
                                  user=users_dict[username],
                                  project=project_id)
         LOG.info(f'Granted admin role for user {username}')
+
+
+@retry(stop_max_attempt_number=3, wait_fixed=1000)
+def create_roles(keystone, roles_to_create):
+    """
+    Creates a new role
+
+    :param keystone: keystone's client
+    :param roles_to_create: list of roles to create
+    """
+
+    if not roles_to_create:
+        LOG.info('No roles to create')
+        return
+
+    existing_roles = keystone.roles.list()
+    existing_roles_list = [role.name for role in existing_roles]
+
+    for role in roles_to_create:
+        if role["name"] in existing_roles_list:
+            LOG.info(f"Role {role} already exists")
+            continue
+        keystone.roles.create(role["name"], role["domain"])
+        LOG.info(f"Role {role} successfully created")
+
+
+@retry(stop_max_attempt_number=3, wait_fixed=1000)
+def create_projects(keystone, projects_to_create):
+    """
+    Creates a new project
+
+    :param keystone: keystone's client
+    :param projects_to_create: list of projects to create
+    """
+
+    if not projects_to_create:
+        LOG.info('No projects to create')
+        return
+
+    existing_projects = keystone.projects.list()
+    existing_projects_list = [project.name for project in existing_projects]
+
+    for project in projects_to_create:
+        if project["name"] in existing_projects_list:
+            LOG.info(f"Project {project} already exists")
+            continue
+        keystone.projects.create(
+            project["name"], project["domain"], project["description"],
+            parent=project["parent"]
+        )
+        LOG.info(f"Project {project} successfully created")
 
 
 @retry(stop_max_attempt_number=3, wait_fixed=1000)
