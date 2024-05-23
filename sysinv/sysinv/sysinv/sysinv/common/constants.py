@@ -2537,3 +2537,10 @@ FILEPATH = "File Path"
 AUTOMATIC = "Automatic"
 MANUAL = "Manual"
 ISSUER = "Issuer"
+
+# USM deploy state
+DEPLOY_STATE_HOST = 'host'  # host is being deploy
+DEPLOY_STATE_HOST_FAILED = 'host-failed'  # host deployment failed
+# USM deploy host state
+DEPLOY_HOST_PENDING = 'pending'  # host is pending for new deployment
+DEPLOY_HOST_DEPLOYED = 'deployed'  # new software is deployed to the host
