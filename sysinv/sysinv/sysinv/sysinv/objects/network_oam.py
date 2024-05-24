@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2016 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -8,6 +8,7 @@
 # coding=utf-8
 #
 
+import datetime
 import netaddr
 
 from sysinv.common import constants
@@ -120,6 +121,15 @@ class OAMNetwork(base.SysinvObject):
                           'family': subnet.version,
                           'prefix': subnet.prefixlen}
                 self.dbapi.address_update(address.uuid, values)
+
+        # In system oam-modify command we only update the address_pools
+        # and addresses table but not the network table.
+        # Hence the updated_at field is never gets updated in
+        # network table, resulting updated_at is always None in
+        # system oam-show command output. Thats why below code is
+        # explicitly updating the update_at field in the network table
+        values = {'updated_at': datetime.datetime.now()}
+        self.dbapi.network_update(self.uuid, values)
 
         self.obj_reset_changes()
 
