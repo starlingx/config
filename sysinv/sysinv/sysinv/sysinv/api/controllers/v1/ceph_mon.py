@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2019 Wind River Systems, Inc.
+# Copyright (c) 2013-2019,2024 Wind River Systems, Inc.
 #
 
 import jsonpatch
@@ -153,6 +153,17 @@ class CephMon(base.APIBase):
         return ceph_mon
 
 
+def _check_ceph_mon_api_availability():
+    """Check the permission of using ceph-mon-* commands
+       according to the system's storage backend."""
+
+    if not StorageBackendConfig.has_backend(
+            pecan.request.dbapi, constants.SB_TYPE_CEPH):
+        raise wsme.exc.ClientSideError(
+            _("ceph-mon API commands are only allowed for use with '%s' "
+              "as the storage backend." % (constants.SB_TYPE_CEPH)))
+
+
 def _check_ceph_mon(new_cephmon, old_cephmon=None):
 
     if not cutils.is_int_like(new_cephmon['ceph_mon_gib']):
@@ -267,6 +278,9 @@ class CephMonController(rest.RestController):
     @wsme_pecan.wsexpose(CephMonCollection, body=CephMon)
     def post(self, cephmon):
         """Create list of new ceph mons."""
+
+        # Check whether the use of ceph-mon API for creation is allowed.
+        _check_ceph_mon_api_availability()
 
         try:
             cephmon = cephmon.as_dict()
