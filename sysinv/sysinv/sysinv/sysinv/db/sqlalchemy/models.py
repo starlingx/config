@@ -1334,7 +1334,8 @@ class Networks(Base):
 
     primary_pool_family = Column(String(4))
 
-    address_pool = relationship("AddressPools", lazy="joined")
+    address_pool = relationship("AddressPools", lazy="joined",
+                                backref=backref("networks", cascade="all, delete"))
 
 
 class NetworkAddressPools(Base):
@@ -1345,8 +1346,12 @@ class NetworkAddressPools(Base):
     address_pool_id = Column(Integer, ForeignKey('address_pools.id', ondelete='CASCADE'))
     network_id = Column(Integer, ForeignKey('networks.id', ondelete='CASCADE'))
 
-    address_pool = relationship("AddressPools", lazy="joined", backref="network_addresspools")
-    network = relationship("Networks", lazy="joined", backref="network_addresspools")
+    address_pool = relationship("AddressPools", lazy="joined",
+                                backref=backref("network_addresspools",
+                                                cascade="all, delete"))
+    network = relationship("Networks", lazy="joined",
+                           backref=backref("network_addresspools",
+                                           cascade="all, delete"))
 
     UniqueConstraint('network_id', 'address_pool_id', name='u_network_id@address_pool_id')
 
@@ -1363,7 +1368,8 @@ class InterfaceNetworks(Base):
     interface = relationship("Interfaces", lazy="joined",
                              backref=backref("interface_networks",
                                              lazy="joined"))
-    network = relationship("Networks", lazy="joined", backref="interface_networks")
+    network = relationship("Networks", lazy="joined",
+                           backref=backref("interface_networks", cascade="all, delete"))
     UniqueConstraint('interface_id', 'network_id', name='u_interface_id@network_id')
 
 

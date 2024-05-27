@@ -108,6 +108,10 @@ class AddressPoolTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
         network = self._find_network_by_type(networktype)
         return self._find_network_address_pools(network.id)[0]
 
+    def set_dc_role(self, dc_role):
+        system = self.dbapi.isystem_get_one()
+        self.dbapi.isystem_update(system.uuid, {'distributed_cloud_role': dc_role})
+
 
 class TestPatchMixin(object):
 
@@ -344,12 +348,8 @@ class TestPatchMixin(object):
         self.assertEqual(None, response.json['controller1_address_id'])
 
         for deleted_id in deleted_ids:
-            address = None
-            try:
-                address = self.dbapi.address_get_by_id(deleted_id)
-            except exception.AddressNotFoundById:
-                pass
-            self.assertIsNone(address)
+            self.assertRaises(exception.AddressNotFoundById,
+                              self.dbapi.address_get_by_id, deleted_id)
 
     def test_modify_address(self):
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
@@ -422,12 +422,8 @@ class TestPatchMixin(object):
         self.assertIsNone(response.json['gateway_address'])
         self.assertIsNone(response.json['gateway_address_id'])
 
-        c1_address = None
-        try:
-            c1_address = self.dbapi.address_get_by_id(c1_address_id)
-        except exception.AddressNotFoundById:
-            pass
-        self.assertIsNone(c1_address)
+        self.assertRaises(exception.AddressNotFoundById,
+                          self.dbapi.address_get_by_id, c1_address_id)
 
         c0_address = self.dbapi.address_get_by_id(response.json['controller0_address_id'])
         self.assertEqual(addrpool.uuid, c0_address.pool_uuid)
@@ -504,17 +500,37 @@ class TestPatchMixin(object):
                               f"{field1}: {new_address}",
                               response.json['error_message'])
 
-    def test_fail_oam_empty_addresses(self):
-        addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
-        fields = ['floating_address', 'controller0_address', 'controller1_address']
+    def _test_fail_empty_addresses(self, network_type, only_floating=False):
+        self.mock_utils_is_initial_config_complete.return_value = False
+        addrpool = self.find_addrpool_by_networktype(network_type)
+        fields = ['floating_address']
+        if not only_floating:
+            fields.extend(['controller0_address', 'controller1_address'])
         for field in fields:
-            response = self.patch_oam_fail(addrpool, http_client.BAD_REQUEST, **{field: 'None'})
+            response = self.patch_fail(addrpool, http_client.BAD_REQUEST, **{field: 'None'})
             self.assertIn("The field must not be empty: %s" % field, response.json['error_message'])
 
-        response = self.patch_oam_fail(addrpool, http_client.BAD_REQUEST,
-                                       **{field: 'None' for field in fields})
-        self.assertIn("The fields must not be empty: %s" % ', '.join(fields),
+        response = self.patch_fail(addrpool, http_client.BAD_REQUEST,
+                                   **{field: 'None' for field in fields})
+        suffix = 's' if len(fields) > 1 else ''
+        self.assertIn("The field%s must not be empty: %s" % (suffix, ', '.join(fields)),
                       response.json['error_message'])
+
+    def test_fail_empty_addresses_oam(self):
+        self._test_fail_empty_addresses(constants.NETWORK_TYPE_OAM)
+
+    def test_fail_empty_addresses_oam_aio_sx(self):
+        sysmode = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
+        self.mock_utils_get_system_mode = sysmode.start()
+        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
+        self.addCleanup(sysmode.stop)
+        self._test_fail_empty_addresses(constants.NETWORK_TYPE_OAM, True)
+
+    def test_fail_empty_addresses_mgmt(self):
+        self._test_fail_empty_addresses(constants.NETWORK_TYPE_MGMT)
+
+    def test_fail_empty_addresses_admin(self):
+        self._test_fail_empty_addresses(constants.NETWORK_TYPE_ADMIN)
 
     def test_oam_aio_sx_to_dx_migration(self):
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
@@ -803,6 +819,161 @@ class TestPatchMixin(object):
         self.assertEqual(mgmt_pool.controller0_address, gateway_address.address)
         self.assertEqual(mgmt_pool.controller1_address, controller0_address.address)
         self.assertEqual(mgmt_pool.floating_address, controller1_address.address)
+
+    def test_modify_admin(self):
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
+        self.mock_rpcapi_update_admin_config = p.start()
+        self.addCleanup(p.stop)
+
+        controller0 = self._create_test_host(constants.CONTROLLER, unit=0)
+        c0_if0 = self.create_test_interface('c0-if0', controller0)
+        network = self._find_network_by_type(constants.NETWORK_TYPE_ADMIN)
+        admin_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_ADMIN)
+
+        dbutils.create_test_interface_network(interface_id=c0_if0.id, network_id=network.id)
+        self.dbapi.address_update(admin_pool.controller0_address_id, {'interface_id': c0_if0.id})
+
+        subnet = self.admin_subnet
+        self.patch_success(admin_pool, controller0_address=str(subnet[20]))
+
+        self.mock_rpcapi_update_admin_config.assert_called_once()
+        self.assertEqual(False, self.mock_rpcapi_update_admin_config.call_args.kwargs['disable'])
+
+    def test_change_admin_gateway_in_subcloud(self):
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
+        self.mock_rpcapi_update_admin_config = p.start()
+        self.addCleanup(p.stop)
+
+        self.set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
+        controller0 = self._create_test_host(constants.CONTROLLER, unit=0)
+        c0_if0 = self.create_test_interface('c0-if0', controller0)
+        network = self._find_network_by_type(constants.NETWORK_TYPE_ADMIN)
+        admin_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_ADMIN)
+        sc_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_SYSTEM_CONTROLLER)
+
+        dbutils.create_test_interface_network(interface_id=c0_if0.id, network_id=network.id)
+        self.dbapi.address_update(admin_pool.controller0_address_id, {'interface_id': c0_if0.id})
+
+        old_route = dbutils.create_test_route(
+            interface_id=c0_if0.id,
+            family=sc_pool.family,
+            network=sc_pool.network,
+            prefix=sc_pool.prefix,
+            gateway=admin_pool.gateway_address,
+            metric=1)
+
+        subnet = self.admin_subnet
+        new_gateway = str(subnet[20])
+        self.patch_success(admin_pool, gateway_address=new_gateway)
+
+        self.assertRaises(exception.RouteNotFound, self.dbapi.route_get, old_route.uuid)
+
+        new_route = self.dbapi.routes_get_by_interface(c0_if0.id)[0]
+        self.assertEqual(new_gateway, new_route.gateway)
+
+        self.mock_rpcapi_update_admin_config.assert_called_once()
+        self.assertEqual(False, self.mock_rpcapi_update_admin_config.call_args.kwargs['disable'])
+
+    def test_remove_admin_gateway_in_subcloud(self):
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
+        self.mock_rpcapi_update_admin_config = p.start()
+        self.addCleanup(p.stop)
+
+        self.set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
+        controller0 = self._create_test_host(constants.CONTROLLER, unit=0)
+        admin0 = self.create_test_interface('admin0', controller0)
+        mgmt0 = self.create_test_interface('mgm0', controller0)
+        admin_network = self._find_network_by_type(constants.NETWORK_TYPE_ADMIN)
+        mgmt_network = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
+        admin_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_ADMIN)
+        mgmt_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_MGMT)
+        sc_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_SYSTEM_CONTROLLER)
+
+        dbutils.create_test_interface_network(interface_id=admin0.id, network_id=admin_network.id)
+        dbutils.create_test_interface_network(interface_id=mgmt0.id, network_id=mgmt_network.id)
+        self.dbapi.address_update(admin_pool.controller0_address_id, {'interface_id': admin0.id})
+        self.dbapi.address_update(mgmt_pool.controller0_address_id, {'interface_id': mgmt0.id})
+
+        old_cc_routes = []
+        old_random_routes = []
+        for ip, iface in {str(self.mgmt_subnet[30]): mgmt0, str(self.admin_subnet[30]): admin0}.items():
+            old_cc_routes.append(dbutils.create_test_route(
+                interface_id=iface.id,
+                family=sc_pool.family,
+                network=sc_pool.network,
+                prefix=sc_pool.prefix,
+                gateway=ip,
+                metric=1))
+            old_random_routes.append(dbutils.create_test_route(
+                interface_id=iface.id,
+                family=sc_pool.family,
+                network=str(self.cluster_host_subnet.ip),
+                prefix=str(self.cluster_host_subnet.prefixlen),
+                gateway=ip,
+                metric=1))
+
+        self.patch_success(admin_pool, gateway_address='None')
+
+        for old_cc_route in old_cc_routes:
+            self.assertRaises(exception.RouteNotFound, self.dbapi.route_get, old_cc_route.uuid)
+
+        for old_random_route in old_random_routes:
+            self.dbapi.route_get(old_random_route.uuid)
+
+        self.mock_rpcapi_update_admin_config.assert_called_once()
+        self.assertEqual(False, self.mock_rpcapi_update_admin_config.call_args.kwargs['disable'])
+
+    def test_change_mgmt_gateway_in_subcloud(self):
+        self.mock_utils_is_initial_config_complete.return_value = False
+
+        self.set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
+
+        controller0 = self._create_test_host(constants.CONTROLLER, unit=0)
+        c0_mgmt0 = self.create_test_interface('c0_mgm0', controller0)
+
+        controller1 = self._create_test_host(constants.CONTROLLER, unit=1)
+        c1_mgmt0 = self.create_test_interface('c1_mgm0', controller1)
+
+        admin_network = self._find_network_by_type(constants.NETWORK_TYPE_ADMIN)
+        self.dbapi.network_destroy(admin_network.id)
+
+        mgmt_network = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
+        mgmt_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_MGMT)
+        sc_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_SYSTEM_CONTROLLER)
+
+        dbutils.create_test_interface_network(interface_id=c0_mgmt0.id,
+                                              network_id=mgmt_network.id)
+        dbutils.create_test_interface_network(interface_id=c1_mgmt0.id,
+                                              network_id=mgmt_network.id)
+        self.dbapi.address_update(mgmt_pool.controller0_address_id, {'interface_id': c0_mgmt0.id})
+        self.dbapi.address_update(mgmt_pool.controller0_address_id, {'interface_id': c1_mgmt0.id})
+
+        subnet = self.mgmt_subnet
+        new_gateway = str(subnet[20])
+
+        c0_old_route = dbutils.create_test_route(
+            interface_id=c0_mgmt0.id,
+            family=sc_pool.family,
+            network=sc_pool.network,
+            prefix=sc_pool.prefix,
+            gateway=new_gateway,
+            metric=1)
+
+        c1_old_route = dbutils.create_test_route(
+            interface_id=c1_mgmt0.id,
+            family=sc_pool.family,
+            network=sc_pool.network,
+            prefix=sc_pool.prefix,
+            gateway=mgmt_pool.gateway_address,
+            metric=1)
+
+        self.patch_success(mgmt_pool, gateway_address=new_gateway)
+
+        self.dbapi.route_get(c0_old_route.uuid)
+        self.assertRaises(exception.RouteNotFound, self.dbapi.route_get, c1_old_route.uuid)
+
+        c1_new_route = self.dbapi.routes_get_by_interface(c1_mgmt0.id)[0]
+        self.assertEqual(new_gateway, c1_new_route.gateway)
 
 
 class TestPatchIPv4(TestPatchMixin,
@@ -1390,19 +1561,12 @@ class TestDelete(AddressPoolTestCase):
         self.mock_rpcapi_update_oam_config = p.start()
         self.addCleanup(p.stop)
 
-        # Delete the API object
-        response = self.delete(self.get_single_url(addrpool2.uuid),
-                               headers=self.API_HEADERS)
-        # Verify the expected API response for the delete
+        response = self.delete(self.get_single_url(addrpool2.uuid), headers=self.API_HEADERS)
         self.assertEqual(response.status_code, http_client.NO_CONTENT)
 
-        deleted_netpool = None
-        try:
-            deleted_netpool = self.dbapi.network_addrpool_get(netpool.uuid)
-        except exception.NetworkAddrpoolNotFound:
-            pass
+        self.assertRaises(exception.NetworkAddrpoolNotFound,
+                          self.dbapi.network_addrpool_get, netpool.uuid)
 
-        self.assertIsNone(deleted_netpool)
         self.mock_rpcapi_update_oam_config.assert_called_once()
 
     def test_mgmt_address_pool_delete_secondary(self):
@@ -1453,19 +1617,11 @@ class TestDelete(AddressPoolTestCase):
 
         dbutils.create_test_service_parameter(**param_values)
 
-        # Delete the API object
-        response = self.delete(self.get_single_url(addrpool.uuid),
-                               headers=self.API_HEADERS)
-        # Verify the expected API response for the delete
+        response = self.delete(self.get_single_url(addrpool.uuid), headers=self.API_HEADERS)
         self.assertEqual(response.status_code, http_client.NO_CONTENT)
 
-        deleted_netpool = None
-        try:
-            deleted_netpool = self.dbapi.network_addrpool_get(netpool.uuid)
-        except exception.NetworkAddrpoolNotFound:
-            pass
-
-        self.assertIsNone(deleted_netpool)
+        self.assertRaises(exception.NetworkAddrpoolNotFound,
+                          self.dbapi.network_addrpool_get, netpool.uuid)
 
         no_proxy_entry = self.dbapi.service_parameter_get_one(
             service=constants.SERVICE_TYPE_DOCKER,
@@ -1475,6 +1631,110 @@ class TestDelete(AddressPoolTestCase):
         self.assertEqual(','.join([primary_addrpool.floating_address,
                                    primary_addrpool.controller0_address]),
                          no_proxy_entry.value)
+
+    def test_admin_address_pool_delete_primary(self):
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
+        self.mock_rpcapi_update_admin_config = p.start()
+        self.addCleanup(p.stop)
+
+        self.set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
+
+        mgmt_net = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
+        admin_net = self._find_network_by_type(constants.NETWORK_TYPE_ADMIN)
+        mgmt_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_MGMT)
+        admin_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_ADMIN)
+        admin_netpool = self.dbapi.network_addrpool_query({'network_id': admin_net.id,
+                                                           'address_pool_id': admin_pool.id})
+
+        controller0 = self._create_test_host(constants.CONTROLLER, unit=0)
+        c0_mgmt0 = self.create_test_interface('c0-mgmt0', controller0)
+        c0_admin0 = self.create_test_interface('c0-admin0', controller0)
+        dbutils.create_test_interface_network(interface_id=c0_mgmt0.id, network_id=mgmt_net.id)
+        c0_ifnet = dbutils.create_test_interface_network(interface_id=c0_admin0.id,
+                                                         network_id=admin_net.id)
+
+        controller1 = self._create_test_host(constants.CONTROLLER, unit=1)
+        c1_mgmt0 = self.create_test_interface('c1-mgmt0', controller1)
+        c1_admin0 = self.create_test_interface('c1-admin0', controller1)
+        dbutils.create_test_interface_network(interface_id=c1_mgmt0.id, network_id=mgmt_net.id)
+        c1_ifnet = dbutils.create_test_interface_network(interface_id=c1_admin0.id,
+                                                         network_id=admin_net.id)
+
+        admin_subnet_2 = dbbase.ADMIN_SUBNET_IPV6
+        admin_pool_2 = dbutils.create_test_address_pool(
+            name='admin-ipv6',
+            family=admin_subnet_2.version,
+            network=str(admin_subnet_2.ip),
+            ranges=[[str(admin_subnet_2[1]), str(admin_subnet_2[-1])]],
+            prefix=admin_subnet_2.prefixlen)
+
+        admin_2_addresses = {}
+        for field, ip_address, interface_id in (
+                ('controller0_address_id', str(admin_subnet_2[3]), c0_admin0.id),
+                ('controller1_address_id', str(admin_subnet_2[4]), c1_admin0.id)):
+            address = dbutils.create_test_address(
+                name="admin-ipv6-{}".format(field),
+                family=admin_subnet_2.version,
+                address=ip_address,
+                prefix=admin_subnet_2.prefixlen,
+                address_pool_id=admin_pool_2.id,
+                interface_id=interface_id)
+            admin_2_addresses[field] = address.id
+
+        self.dbapi.address_pool_update(admin_pool_2.id, admin_2_addresses)
+        admin_netpool_2 = dbutils.create_test_network_addrpool(
+            address_pool_id=admin_pool_2.id, network_id=admin_net.id)
+
+        sc_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_SYSTEM_CONTROLLER)
+        admin_routes = []
+        for iface in [c0_admin0, c1_admin0]:
+            route = dbutils.create_test_route(
+                interface_id=iface.id,
+                family=sc_pool.family,
+                network=sc_pool.network,
+                prefix=sc_pool.prefix,
+                gateway=admin_pool.gateway_address,
+                metric=1)
+            admin_routes.append(route)
+
+        response = self.delete(self.get_single_url(admin_pool.uuid),
+                               headers=self.API_HEADERS)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+
+        self.assertRaises(exception.NetworkAddrpoolNotFound,
+                          self.dbapi.network_addrpool_get, admin_netpool.uuid)
+
+        self.assertRaises(exception.NetworkAddrpoolNotFound,
+                          self.dbapi.network_addrpool_get, admin_netpool_2.uuid)
+
+        self.assertRaises(exception.NetworkNotFound,
+                          self.dbapi.network_get, admin_net.uuid)
+
+        self.assertRaises(exception.InterfaceNetworkNotFound,
+                          self.dbapi.interface_network_get, c0_ifnet.uuid)
+
+        self.assertRaises(exception.InterfaceNetworkNotFound,
+                          self.dbapi.interface_network_get, c1_ifnet.uuid)
+
+        for route in admin_routes:
+            self.assertRaises(exception.RouteNotFound,
+                              self.dbapi.route_get, route.uuid)
+
+        for iface in [c0_mgmt0, c1_mgmt0]:
+            routes = self.dbapi.routes_get_by_interface(iface.id)
+            self.assertEqual(1, len(routes))
+            route = routes[0]
+            self.assertEqual(mgmt_pool.gateway_address, route.gateway)
+
+        secondary_addresses = self.dbapi.addresses_get_by_pool(admin_pool_2.id)
+        self.assertEqual(2, len(secondary_addresses))
+        for address in secondary_addresses:
+            self.assertIsNone(address.interface_id)
+
+        self.mock_rpcapi_update_admin_config.assert_called()
+        self.assertEqual(2, self.mock_rpcapi_update_admin_config.call_count)
+        for call in self.mock_rpcapi_update_admin_config.call_args_list:
+            self.assertEqual(True, call.kwargs['disable'])
 
 
 class TestList(AddressPoolTestCase):

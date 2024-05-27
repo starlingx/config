@@ -15,6 +15,7 @@ from six.moves import http_client
 
 from oslo_utils import uuidutils
 from sysinv.common import constants
+from sysinv.common import exception
 
 from sysinv.tests.api import base
 from sysinv.tests.db import base as dbbase
@@ -130,6 +131,14 @@ class NetworkTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
         self._create_test_addresses(
             hostnames, self.system_controller_oam_subnets,
             constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM)
+
+    def create_test_interface(self, ifname, host):
+        interface = dbutils.create_test_interface(
+            ifname=ifname,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=host.id,
+            ihost_uuid=host.uuid)
+        return interface
 
 
 class TestPostMixin(NetworkTestCase):
@@ -434,10 +443,6 @@ class TestPostMixin(NetworkTestCase):
         ch_pool = self._find_network_address_pools(chnet.id)[0]
         mgmt_pool = self._find_network_address_pools(mgmtnet.id)[0]
 
-        nw_pools = self.dbapi.network_addrpool_get_by_network_id(mgmtnet.id)
-        for nw_pool in nw_pools:
-            self.dbapi.network_addrpool_destroy(nw_pool.uuid)
-
         self.dbapi.network_destroy(mgmtnet.uuid)
 
         if self.mgmt_subnet.version == constants.IPV4_FAMILY:
@@ -667,6 +672,84 @@ class TestDelete(NetworkTestCase):
         self._test_delete_after_initial_config_allowed(
             constants.NETWORK_TYPE_DATA
         )
+
+    def test_delete_admin_dual_stack(self):
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
+        self.mock_rpcapi_update_admin_config = p.start()
+        self.addCleanup(p.stop)
+
+        mgmt_network = self._create_test_network(
+            name=constants.NETWORK_TYPE_MGMT,
+            network_type=constants.NETWORK_TYPE_MGMT,
+            subnets=[dbbase.MGMT_SUBNET_IPV4, dbbase.MGMT_SUBNET_IPV6],
+            link_addresses=True)
+        mgmt_pools = self._find_network_address_pools(mgmt_network.id)
+
+        admin_network = self._create_test_network(
+            name=constants.NETWORK_TYPE_ADMIN,
+            network_type=constants.NETWORK_TYPE_ADMIN,
+            subnets=[dbbase.ADMIN_SUBNET_IPV4, dbbase.ADMIN_SUBNET_IPV6],
+            link_addresses=True)
+        admin_pools = self._find_network_address_pools(admin_network.id)
+        admin_nw_pools = self.dbapi._network_addrpoool_get_by_network_id(admin_network.id)
+
+        self._create_test_network(
+            name=constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
+            network_type=constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
+            subnets=[dbbase.SYSTEM_CONTROLLER_SUBNET_IPV4, dbbase.SYSTEM_CONTROLLER_SUBNET_IPV6])
+
+        controller0 = self._create_test_host(constants.CONTROLLER, unit=0)
+        c0_mgmt0 = self.create_test_interface('c0_mgm0', controller0)
+        c0_admin0 = self.create_test_interface('c0_admin0', controller0)
+
+        controller1 = self._create_test_host(constants.CONTROLLER, unit=1)
+        c1_mgmt0 = self.create_test_interface('c1_mgm0', controller1)
+        c1_admin0 = self.create_test_interface('c1_admin0', controller1)
+
+        mgmt_gateway = mgmt_pools[0].gateway_address
+        admin_gateway = admin_pools[0].gateway_address
+
+        admin_routes = []
+        for iface in [c0_admin0, c1_admin0]:
+            admin_routes.append(dbutils.create_test_route(
+                interface_id=iface.id,
+                family=dbbase.SYSTEM_CONTROLLER_SUBNET_IPV4.version,
+                network=str(dbbase.SYSTEM_CONTROLLER_SUBNET_IPV4.ip),
+                prefix=dbbase.SYSTEM_CONTROLLER_SUBNET_IPV4.prefixlen,
+                gateway=admin_gateway,
+                metric=1))
+
+        dbutils.create_test_interface_network(interface_id=c0_mgmt0.id,
+                                              network_id=mgmt_network.id)
+        dbutils.create_test_interface_network(interface_id=c0_admin0.id,
+                                              network_id=admin_network.id)
+        dbutils.create_test_interface_network(interface_id=c1_mgmt0.id,
+                                              network_id=mgmt_network.id)
+        dbutils.create_test_interface_network(interface_id=c1_admin0.id,
+                                              network_id=admin_network.id)
+
+        with mock.patch('sysinv.common.utils.is_initial_config_complete', lambda: True):
+            response = self.delete(self.get_single_url(admin_network.uuid),
+                                   headers=self.API_HEADERS)
+            self.assertEqual(response.status_code, http_client.NO_CONTENT)
+
+        for net_pool in admin_nw_pools:
+            self.assertRaises(exception.NetworkAddrpoolNotFound,
+                              self.dbapi.network_addrpool_get, net_pool.uuid)
+
+        self.assertRaises(exception.NetworkNotFound, self.dbapi.network_get, admin_network.id)
+
+        for route in admin_routes:
+            self.assertRaises(exception.RouteNotFound, self.dbapi.route_get, route.uuid)
+
+        for iface in [c0_mgmt0, c1_mgmt0]:
+            new_route = self.dbapi.routes_get_by_interface(c0_mgmt0.id)[0]
+            self.assertEqual(mgmt_gateway, new_route.gateway)
+
+        self.mock_rpcapi_update_admin_config.assert_called()
+        self.assertEqual(2, self.mock_rpcapi_update_admin_config.call_count)
+        for call in self.mock_rpcapi_update_admin_config.call_args_list:
+            self.assertEqual(True, call.args[2])
 
 
 class TestDeleteAIOSimplex(NetworkTestCase):

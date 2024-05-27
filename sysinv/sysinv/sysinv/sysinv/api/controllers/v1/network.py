@@ -234,6 +234,13 @@ class NetworkController(rest.RestController):
         if opt_fields:
             pecan.request.dbapi.address_pool_update(pool.uuid, opt_fields)
 
+    def _get_addrpool(self, network):
+        pool_uuid = network.pop('pool_uuid', None)
+        if not pool_uuid:
+            msg = _("Address pool UUID has to be specified")
+            raise wsme.exc.ClientSideError(msg)
+        return pecan.request.dbapi.address_pool_get(pool_uuid)
+
     def _create_network(self, network):
         # Perform syntactic validation
         network.validate_syntax()
@@ -241,8 +248,7 @@ class NetworkController(rest.RestController):
         network['uuid'] = str(uuid.uuid4())
         networktype = network['type']
 
-        pool_uuid = network.pop('pool_uuid', None)
-        pool = pecan.request.dbapi.address_pool_get(pool_uuid) if pool_uuid else None
+        pool = self._get_addrpool(network)
 
         # Perform semantic validation
         self._check_network_type(networktype)
@@ -250,15 +256,12 @@ class NetworkController(rest.RestController):
 
         if pool:
             network.update({'address_pool_id': pool.id})
-            if self._use_legacy_api():
-                # this value is filled here based on the provided pool, if not provided
-                # it will be executed via network-addrpool API
-                network.update({'primary_pool_family': constants.IP_FAMILIES[pool.family]})
+            network.update({'primary_pool_family': constants.IP_FAMILIES[pool.family]})
 
         # Attempt to create the new network record
         result = pecan.request.dbapi.network_create(network)
 
-        if pool_uuid and self._use_legacy_api():
+        if pool:
             # create here the network-addrpool object
             net_pool = pecan.request.dbapi.network_addrpool_create({"address_pool_id": pool.id,
                                                                     "network_id": result.id})
@@ -302,12 +305,6 @@ class NetworkController(rest.RestController):
         elif type == constants.NETWORK_TYPE_SYSTEM_CONTROLLER_OAM:
             pecan.request.rpcapi.update_dnsmasq_config(
                 pecan.request.context)
-
-    def _use_legacy_api(self):
-        """ Using this function to mark the usage of this API in legacy mode
-            when the pool's UUID is provided, otherwise it is using the new
-            network-addrpool API"""
-        return True
 
     @wsme_pecan.wsexpose(NetworkCollection,
                          types.uuid, int, wtypes.text, wtypes.text)
@@ -360,15 +357,11 @@ class NetworkController(rest.RestController):
                                 .format(network['type'], network_uuid, host['hostname']))
                         raise wsme.exc.ClientSideError(msg)
 
-        if network.pool_uuid and self._use_legacy_api():
-            try:
-                # remove the network-addrpool object that creates the relationship for both tables
-                pool = pecan.request.dbapi.address_pool_get(network.pool_uuid)
-                values = {'address_pool_id': pool.id, 'network_id': network.id}
-                net_pool = pecan.request.dbapi.network_addrpool_query(values)
-                pecan.request.dbapi.network_addrpool_destroy(net_pool.uuid)
-                LOG.info(f"removed network-addrpool {net_pool.uuid}")
-            except Exception as ex:
-                LOG.exception(f"Exception when removing the network-addrpool[{net_pool.uuid}]: {ex}")
-
         pecan.request.dbapi.network_destroy(network_uuid)
+
+        if network.type == constants.NETWORK_TYPE_ADMIN:
+            hosts = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+            if hosts:
+                cutils.update_subcloud_routes(pecan.request.dbapi, hosts)
+                for host in hosts:
+                    pecan.request.rpcapi.update_admin_config(pecan.request.context, host, True)

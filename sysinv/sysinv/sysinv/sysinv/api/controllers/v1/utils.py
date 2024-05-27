@@ -1143,3 +1143,12 @@ def is_address_assigned(address, dbapi=None):
     if addr_modes:
         return True
     return False
+
+
+def is_network_associated_to_interface(networktype, dbapi=None):
+    if not dbapi:
+        dbapi = pecan.request.dbapi
+    if_networks = dbapi.interface_networks_get_by_network_type(networktype)
+    if if_networks:
+        return True
+    return False

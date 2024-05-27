@@ -14,6 +14,7 @@ from six.moves import http_client
 from sysinv.tests.api import base
 from sysinv.api.controllers.v1 import interface as api_if_v1
 from sysinv.common import constants
+from sysinv.common import exception
 from sysinv.tests.db import utils as dbutils
 from sysinv.db import api as dbapi
 
@@ -173,6 +174,25 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
         dbutils.create_test_network_addrpool(
             address_pool_id=self.address_pool_storage.id,
             network_id=self.storage_network.id)
+        self.address_pool_ironic = dbutils.create_test_address_pool(
+            id=7,
+            network='192.168.210.0',
+            name='ironic',
+            ranges=[['192.168.210.2', '192.168.210.254']],
+            prefix=24)
+        self.ironic_network = dbutils.create_test_network(
+            id=7,
+            type=constants.NETWORK_TYPE_IRONIC,
+            address_pool_id=self.address_pool_ironic.id)
+        dbutils.create_test_network_addrpool(
+            address_pool_id=self.address_pool_ironic.id,
+            network_id=self.ironic_network.id)
+        self.network_index = {constants.NETWORK_TYPE_OAM: self.oam_network,
+                              constants.NETWORK_TYPE_MGMT: self.mgmt_network,
+                              constants.NETWORK_TYPE_CLUSTER_HOST: self.cluster_host_network,
+                              constants.NETWORK_TYPE_STORAGE: self.storage_network,
+                              constants.NETWORK_TYPE_ADMIN: self.admin_network,
+                              constants.NETWORK_TYPE_IRONIC: self.ironic_network}
 
     def _post_and_check(self, ndict, expect_errors=False):
         response = self.post_json('%s' % self._get_path(), ndict,
@@ -216,6 +236,42 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
             self.assertEqual(http_client.NO_CONTENT, response.status_int)
         return response
 
+    IPV6_SUBNETS = {constants.NETWORK_TYPE_OAM: netaddr.IPNetwork('fd00::/64'),
+                    constants.NETWORK_TYPE_MGMT: netaddr.IPNetwork('fd01::/64'),
+                    constants.NETWORK_TYPE_CLUSTER_HOST: netaddr.IPNetwork('fd02::/64'),
+                    constants.NETWORK_TYPE_STORAGE: netaddr.IPNetwork('fd05::/64'),
+                    constants.NETWORK_TYPE_ADMIN: netaddr.IPNetwork('fd09::/64'),
+                    constants.NETWORK_TYPE_IRONIC: netaddr.IPNetwork('fd0a::/64')}
+
+    def _create_secondary_addrpool(self, networktype):
+        subnet = self.IPV6_SUBNETS[networktype]
+        network = self.network_index[networktype]
+        addrpool = dbutils.create_test_address_pool(
+            network=str(subnet.ip),
+            family=subnet.version,
+            name=f"{networktype}-ipv{subnet.prefixlen}",
+            ranges=[[str(subnet[1]), str(subnet[-1])]],
+            prefix=subnet.prefixlen)
+        dbutils.create_test_network_addrpool(
+            address_pool_id=addrpool.id,
+            network_id=network.id)
+        return addrpool
+
+    def _create_controller_address(self, addrpool, networktype):
+        subnet = netaddr.IPNetwork(f"{addrpool.network}/{addrpool.prefix}")
+        c0_address = dbutils.create_test_address(
+            family=addrpool.family,
+            address=str(subnet[3]),
+            prefix=addrpool.prefix,
+            name='controller-0-{}'.format(networktype),
+            address_pool_id=addrpool.id)
+        self.dbapi.address_pool_update(addrpool.uuid, {'controller0_address_id': c0_address.id})
+        return c0_address
+
+    def set_dc_role(self, dc_role):
+        system = self.dbapi.isystem_get_one()
+        self.dbapi.isystem_update(system.uuid, {'distributed_cloud_role': dc_role})
+
 
 class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
 
@@ -230,15 +286,120 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             ifname='enp0s8',
             forihostid=self.worker.id)
 
+        pool_ipv4 = self.address_pool_mgmt
+        pool_ipv6 = self._create_secondary_addrpool(constants.NETWORK_TYPE_MGMT)
+        pools = {pool_ipv4.family: pool_ipv4, pool_ipv6.family: pool_ipv6}
+
+        controller_addresses = {}
+        for family, pool in pools.items():
+            controller_addresses[family] = self._create_controller_address(
+                pool, constants.NETWORK_TYPE_MGMT)
+
         controller_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=controller_interface.uuid,
             network_uuid=self.mgmt_network.uuid)
         self._post_and_check(controller_interface_network, expect_errors=False)
 
+        for family, address in controller_addresses.items():
+            updated_address = self.dbapi.address_get(address.id)
+            self.assertEqual(controller_interface.id, updated_address.interface_id)
+
         worker_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=worker_interface.uuid,
             network_uuid=self.mgmt_network.uuid)
         self._post_and_check(worker_interface_network, expect_errors=False)
+
+        worker_addresses = self.dbapi.addresses_get_by_interface(worker_interface.id)
+        self.assertEqual(2, len(worker_addresses))
+        for worker_address in worker_addresses:
+            self.assertEqual(pools[worker_address.family].uuid, worker_address.pool_uuid)
+
+    def test_create_mgmt_interface_network_system_controller(self):
+        self.set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER)
+
+        controller0 = self.controller
+        c0_mgmt0 = dbutils.create_test_interface(ifname='c0_mgm0', forihostid=controller0.id)
+
+        controller1 = dbutils.create_test_ihost(
+            mgmt_mac='04:11:22:33:44:55',
+            forisystemid=self.system.id,
+            hostname='controller-1',
+            personality=constants.CONTROLLER,
+            subfunctions=constants.CONTROLLER,
+            invprovision=constants.PROVISIONED)
+        c1_mgmt0 = dbutils.create_test_interface(ifname='c1_mgm0', forihostid=controller1.id)
+
+        subcloud_subnets = [netaddr.IPNetwork('192.167.101.0/24'),
+                            netaddr.IPNetwork('192.167.102.0/24'),
+                            netaddr.IPNetwork('192.167.103.0/24')]
+        c1_routes = {}
+        for subnet in subcloud_subnets:
+            route = dbutils.create_test_route(
+                interface_id=c1_mgmt0.id,
+                family=subnet.version,
+                network=str(subnet.ip),
+                prefix=subnet.prefixlen,
+                gateway='192.167.0.1',
+                metric=1)
+            c1_routes[route.network] = route
+
+        network = self.mgmt_network
+        dbutils.create_test_interface_network(interface_id=c1_mgmt0.id,
+                                              network_id=network.id)
+
+        controller_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=c0_mgmt0.uuid, network_uuid=network.uuid)
+        self._post_and_check(controller_interface_network, expect_errors=False)
+
+        c0_routes = self.dbapi.routes_get_by_interface(c0_mgmt0.id)
+        for route in c0_routes:
+            c1_route = c1_routes.get(route.network, None)
+            self.assertIsNotNone(c1_route)
+            for field in ['family', 'prefix', 'gateway', 'metric']:
+                self.assertEqual(c1_route[field], route[field])
+
+    def test_create_mgmt_interface_network_subcloud(self):
+        self.set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
+
+        controller0 = self.controller
+        c0_mgmt0 = dbutils.create_test_interface(ifname='c0_mgm0', forihostid=controller0.id)
+
+        cc_subnet = netaddr.IPNetwork('192.168.104.0/24')
+        cc_addrpool = dbutils.create_test_address_pool(
+            network=str(cc_subnet.ip),
+            name='system-controller-ipv4',
+            ranges=[[str(cc_subnet[1]), str(cc_subnet[-1])]],
+            prefix=cc_subnet.prefixlen)
+        dbutils.create_test_network(
+            name=constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
+            type=constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
+            address_pool_id=cc_addrpool.id)
+
+        mgmt_subnet = netaddr.IPNetwork("{}/{}".format(self.address_pool_mgmt.network,
+                                                       self.address_pool_mgmt.prefix))
+        gateway_addr = dbutils.create_test_address(
+            name="controller-gateway-mgmt",
+            family=self.address_pool_mgmt.family,
+            address=str(mgmt_subnet[1]),
+            prefix=self.address_pool_mgmt.prefix,
+            address_pool_id=self.address_pool_mgmt.id)
+
+        self.dbapi.network_destroy(self.admin_network.id)
+        self.dbapi.address_pool_update(self.address_pool_mgmt.id,
+                                       {'gateway_address_id': gateway_addr.id})
+
+        controller_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=c0_mgmt0.uuid, network_uuid=self.mgmt_network.uuid)
+        self._post_and_check(controller_interface_network, expect_errors=False)
+
+        c0_routes = self.dbapi.routes_get_by_interface(c0_mgmt0.id)
+        self.assertEqual(1, len(c0_routes))
+        c0_route = c0_routes[0]
+        self.assertEqual(str(cc_addrpool.family), c0_route.family)
+        self.assertEqual(cc_addrpool.prefix, c0_route.prefix)
+        self.assertEqual(cc_addrpool.network, c0_route.network)
+        self.assertEqual(gateway_addr.address, c0_route.gateway)
+        self.assertEqual(1, c0_route.metric)
 
     def test_create_cluster_host_interface_network(self):
         controller_interface = dbutils.create_test_interface(
@@ -248,15 +409,33 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             ifname='enp0s8',
             forihostid=self.worker.id)
 
+        pool_ipv4 = self.address_pool_cluster_host
+        pool_ipv6 = self._create_secondary_addrpool(constants.NETWORK_TYPE_CLUSTER_HOST)
+        pools = {pool_ipv4.family: pool_ipv4, pool_ipv6.family: pool_ipv6}
+
+        controller_addresses = {}
+        for family, pool in pools.items():
+            controller_addresses[family] = self._create_controller_address(
+                pool, constants.NETWORK_TYPE_CLUSTER_HOST)
+
         controller_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=controller_interface.uuid,
             network_uuid=self.cluster_host_network.uuid)
         self._post_and_check(controller_interface_network, expect_errors=False)
 
+        for family, address in controller_addresses.items():
+            updated_address = self.dbapi.address_get(address.id)
+            self.assertEqual(controller_interface.id, updated_address.interface_id)
+
         worker_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=worker_interface.uuid,
             network_uuid=self.cluster_host_network.uuid)
         self._post_and_check(worker_interface_network, expect_errors=False)
+
+        worker_addresses = self.dbapi.addresses_get_by_interface(worker_interface.id)
+        self.assertEqual(2, len(worker_addresses))
+        for worker_address in worker_addresses:
+            self.assertEqual(pools[worker_address.family].uuid, worker_address.pool_uuid)
 
     def test_create_oam_interface_network(self):
         controller_interface = dbutils.create_test_interface(
@@ -266,10 +445,23 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             ifname='enp0s8',
             forihostid=self.worker.id)
 
+        pool_ipv4 = self.address_pool_oam
+        pool_ipv6 = self._create_secondary_addrpool(constants.NETWORK_TYPE_OAM)
+        pools = {pool_ipv4.family: pool_ipv4, pool_ipv6.family: pool_ipv6}
+
+        controller_addresses = {}
+        for family, pool in pools.items():
+            controller_addresses[family] = self._create_controller_address(
+                pool, constants.NETWORK_TYPE_OAM)
+
         controller_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=controller_interface.uuid,
             network_uuid=self.oam_network.uuid)
         self._post_and_check(controller_interface_network, expect_errors=False)
+
+        for family, address in controller_addresses.items():
+            updated_address = self.dbapi.address_get(address.id)
+            self.assertEqual(controller_interface.id, updated_address.interface_id)
 
         worker_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=worker_interface.uuid,
@@ -284,15 +476,24 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             ifname='enp0s8',
             forihostid=self.worker.id)
 
+        controller_address = self._create_controller_address(
+            self.address_pool_pxeboot, constants.NETWORK_TYPE_PXEBOOT)
+
         controller_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=controller_interface.uuid,
             network_uuid=self.pxeboot_network.uuid)
         self._post_and_check(controller_interface_network, expect_errors=False)
 
+        controller_address = self.dbapi.address_get(controller_address.id)
+        self.assertEqual(controller_interface.id, controller_address.interface_id)
+
         worker_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=worker_interface.uuid,
             network_uuid=self.pxeboot_network.uuid)
         self._post_and_check(worker_interface_network, expect_errors=False)
+
+        worker_addresses = self.dbapi.addresses_get_by_interface(worker_interface.id)
+        self.assertEqual(0, len(worker_addresses))
 
     def test_create_mgmt_cluster_host_interface_network(self):
         controller_interface = dbutils.create_test_interface(
@@ -327,24 +528,154 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             ifname='enp0s8',
             forihostid=self.worker.id)
 
+        pool_ipv4 = self.address_pool_storage
+        pool_ipv6 = self._create_secondary_addrpool(constants.NETWORK_TYPE_STORAGE)
+        pools = {pool_ipv4.family: pool_ipv4, pool_ipv6.family: pool_ipv6}
+
+        controller_addresses = {}
+        for family, pool in pools.items():
+            controller_addresses[family] = self._create_controller_address(
+                pool, constants.NETWORK_TYPE_STORAGE)
+
         controller_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=controller_interface.uuid,
             network_uuid=self.storage_network.uuid)
         self._post_and_check(controller_interface_network, expect_errors=False)
 
-        # Since the network is (by default) setup for dynamic address
-        # allocation, the addresses for each node should be created
-        # automatically when the interface is associated with the network.
-        addresses = self.dbapi.address_get_by_name('controller-0-storage')
-        self.assertEqual(len(addresses), 1)
+        for family, address in controller_addresses.items():
+            updated_address = self.dbapi.address_get(address.id)
+            self.assertEqual(controller_interface.id, updated_address.interface_id)
 
         worker_interface_network = dbutils.post_get_test_interface_network(
             interface_uuid=worker_interface.uuid,
             network_uuid=self.storage_network.uuid)
         self._post_and_check(worker_interface_network, expect_errors=False)
 
-        addresses = self.dbapi.address_get_by_name('worker-0-storage')
-        self.assertEqual(len(addresses), 1)
+        worker_addresses = self.dbapi.addresses_get_by_interface(worker_interface.id)
+        self.assertEqual(2, len(worker_addresses))
+        for worker_address in worker_addresses:
+            self.assertEqual(pools[worker_address.family].uuid, worker_address.pool_uuid)
+
+    def test_create_admin_interface_network(self):
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
+        self.mock_rpcapi_update_admin_config = p.start()
+        self.addCleanup(p.stop)
+
+        controller_interface = dbutils.create_test_interface(
+            ifname='enp0s8',
+            forihostid=self.controller.id)
+        worker_interface = dbutils.create_test_interface(
+            ifname='enp0s8',
+            forihostid=self.worker.id)
+
+        pool_ipv4 = self.address_pool_admin
+        pool_ipv6 = self._create_secondary_addrpool(constants.NETWORK_TYPE_ADMIN)
+        pools = {pool_ipv4.family: pool_ipv4, pool_ipv6.family: pool_ipv6}
+
+        controller_addresses = {}
+        for family, pool in pools.items():
+            controller_addresses[family] = self._create_controller_address(
+                pool, constants.NETWORK_TYPE_ADMIN)
+
+        controller_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=controller_interface.uuid,
+            network_uuid=self.admin_network.uuid)
+        self._post_and_check(controller_interface_network, expect_errors=False)
+
+        for family, address in controller_addresses.items():
+            updated_address = self.dbapi.address_get(address.id)
+            self.assertEqual(controller_interface.id, updated_address.interface_id)
+
+        worker_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=worker_interface.uuid,
+            network_uuid=self.admin_network.uuid)
+        self._post_and_check(worker_interface_network, expect_errors=True)
+
+        self.mock_rpcapi_update_admin_config.assert_called_once()
+        self.assertEqual(False, self.mock_rpcapi_update_admin_config.call_args.args[2])
+
+    def test_create_admin_interface_network_subcloud(self):
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
+        self.mock_rpcapi_update_admin_config = p.start()
+        self.addCleanup(p.stop)
+
+        self.set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
+
+        controller0 = self.controller
+        c0_admin0 = dbutils.create_test_interface(ifname='c0_admin0', forihostid=controller0.id)
+
+        cc_subnet = netaddr.IPNetwork('192.168.104.0/24')
+        cc_addrpool = dbutils.create_test_address_pool(
+            network=str(cc_subnet.ip),
+            name='system-controller-ipv4',
+            ranges=[[str(cc_subnet[1]), str(cc_subnet[-1])]],
+            prefix=cc_subnet.prefixlen)
+        dbutils.create_test_network(
+            name=constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
+            type=constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
+            address_pool_id=cc_addrpool.id)
+
+        admin_subnet = netaddr.IPNetwork("{}/{}".format(self.address_pool_admin.network,
+                                                       self.address_pool_admin.prefix))
+        gateway_addr = dbutils.create_test_address(
+            name="controller-gateway-admin",
+            family=self.address_pool_admin.family,
+            address=str(admin_subnet[1]),
+            prefix=self.address_pool_admin.prefix,
+            address_pool_id=self.address_pool_admin.id)
+
+        self.dbapi.address_pool_update(self.address_pool_admin.id,
+                                       {'gateway_address_id': gateway_addr.id})
+
+        controller_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=c0_admin0.uuid, network_uuid=self.admin_network.uuid)
+        self._post_and_check(controller_interface_network, expect_errors=False)
+
+        c0_routes = self.dbapi.routes_get_by_interface(c0_admin0.id)
+        self.assertEqual(1, len(c0_routes))
+        c0_route = c0_routes[0]
+        self.assertEqual(str(cc_addrpool.family), c0_route.family)
+        self.assertEqual(cc_addrpool.prefix, c0_route.prefix)
+        self.assertEqual(cc_addrpool.network, c0_route.network)
+        self.assertEqual(gateway_addr.address, c0_route.gateway)
+        self.assertEqual(1, c0_route.metric)
+
+        self.mock_rpcapi_update_admin_config.assert_called_once()
+        self.assertEqual(False, self.mock_rpcapi_update_admin_config.call_args.args[2])
+
+    def test_create_ironic_interface_network(self):
+        controller_interface = dbutils.create_test_interface(
+            ifname='enp0s8',
+            forihostid=self.controller.id)
+        worker_interface = dbutils.create_test_interface(
+            ifname='enp0s8',
+            forihostid=self.worker.id)
+
+        pool_ipv4 = self.address_pool_ironic
+        pool_ipv6 = self._create_secondary_addrpool(constants.NETWORK_TYPE_IRONIC)
+        pools = {pool_ipv4.family: pool_ipv4, pool_ipv6.family: pool_ipv6}
+
+        controller_addresses = {}
+        for family, pool in pools.items():
+            controller_addresses[family] = self._create_controller_address(
+                pool, constants.NETWORK_TYPE_IRONIC)
+
+        controller_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=controller_interface.uuid,
+            network_uuid=self.ironic_network.uuid)
+        self._post_and_check(controller_interface_network, expect_errors=False)
+
+        for family, address in controller_addresses.items():
+            updated_address = self.dbapi.address_get(address.id)
+            self.assertEqual(controller_interface.id, updated_address.interface_id)
+
+        worker_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=worker_interface.uuid,
+            network_uuid=self.ironic_network.uuid)
+        self._post_and_check(worker_interface_network, expect_errors=False)
+
+        worker_addresses = self.dbapi.addresses_get_by_interface(worker_interface.id)
+        self.assertEqual(0, len(worker_addresses))
 
     # Expected error:
     # You cannot assign a network of type 'oam' to an interface
@@ -709,3 +1040,55 @@ class InterfaceNetworkDeleteTestCase(InterfaceNetworkTestCase):
         self.assertEqual('', no_proxy_entry.value)
 
         self.mock_rpcapi_set_mgmt_network_reconfig_flag.assert_called_once()
+
+    def test_delete_admin_in_subcloud(self):
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
+        self.mock_rpcapi_update_admin_config = p.start()
+        self.addCleanup(p.stop)
+
+        self.set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
+
+        controller0 = self.controller
+        c0_admin0 = dbutils.create_test_interface(ifname='c0_admin0', forihostid=controller0.id)
+
+        cc_subnet = netaddr.IPNetwork('192.168.104.0/24')
+        cc_addrpool = dbutils.create_test_address_pool(
+            network=str(cc_subnet.ip),
+            name='system-controller-ipv4',
+            ranges=[[str(cc_subnet[1]), str(cc_subnet[-1])]],
+            prefix=cc_subnet.prefixlen)
+        dbutils.create_test_network(
+            name=constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
+            type=constants.NETWORK_TYPE_SYSTEM_CONTROLLER,
+            address_pool_id=cc_addrpool.id)
+
+        admin_subnet = netaddr.IPNetwork("{}/{}".format(self.address_pool_admin.network,
+                                                        self.address_pool_admin.prefix))
+        gateway_addr = dbutils.create_test_address(
+            name="controller-gateway-admin",
+            family=self.address_pool_admin.family,
+            address=str(admin_subnet[1]),
+            prefix=self.address_pool_admin.prefix,
+            address_pool_id=self.address_pool_admin.id)
+
+        route = dbutils.create_test_route(
+            interface_id=c0_admin0.id,
+            family=cc_subnet.version,
+            network=str(cc_subnet.ip),
+            prefix=cc_subnet.prefixlen,
+            gateway=gateway_addr.address,
+            metric=1)
+
+        self.dbapi.address_pool_update(self.address_pool_admin.id,
+                                       {'gateway_address_id': gateway_addr.id})
+
+        ifnw = dbutils.create_test_interface_network(interface_id=c0_admin0.id,
+                                                     network_id=self.admin_network.id)
+
+        response = self.delete(self._get_path(ifnw.uuid), headers=self.API_HEADERS)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+
+        self.assertRaises(exception.RouteNotFound, self.dbapi.route_get, route.uuid)
+
+        self.mock_rpcapi_update_admin_config.assert_called_once()
+        self.assertEqual(True, self.mock_rpcapi_update_admin_config.call_args.args[2])
