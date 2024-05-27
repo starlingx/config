@@ -1293,7 +1293,8 @@ class AppOperator(object):
                     # Dunno if we need to return these in order respecting dependsOn?
                     # dependencies = [dep["name"] for dep in helmrelease_yaml["spec"].
                     # get(["dependsOn"], [])]
-                    if (include_disabled or
+                    if (not app.system_app or
+                        include_disabled or
                         cutils.is_chart_enabled(self._dbapi,
                                                 app.name,
                                                 metadata_name,
@@ -2675,11 +2676,11 @@ class AppOperator(object):
             self._update_app_status(
                 app, new_progress=constants.APP_PROGRESS_GENERATE_OVERRIDES)
 
+            app.charts = self._get_list_of_charts(app)
+
             helm_files = self._helm.generate_helm_application_overrides(
                     app.sync_overrides_dir, app.name, mode, cnamespace=None,
                     chart_info=app.charts, combined=True)
-
-            app.charts = self._get_list_of_charts(app)
 
             if AppOperator.is_app_aborted(app.name):
                 raise exception.KubeAppAbort()
@@ -2716,6 +2717,7 @@ class AppOperator(object):
                 self.download_images(app)
             else:
                 ready = False
+                LOG.error(f"No Helm charts found for application {app.name}.")
         except Exception as e:
             LOG.exception(e)
             if AppOperator.is_app_aborted(app.name):
