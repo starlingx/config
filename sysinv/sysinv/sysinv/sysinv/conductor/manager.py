@@ -43,6 +43,7 @@ import requests
 import ruamel.yaml as yaml
 from ruamel.yaml.compat import StringIO
 import shutil
+import sys
 import six
 import socket
 import tempfile
@@ -57,7 +58,6 @@ from distutils.util import strtobool
 from distutils.version import LooseVersion
 from copy import deepcopy
 from urllib3.exceptions import MaxRetryError
-
 import tsconfig.tsconfig as tsc
 from collections import namedtuple
 from collections import OrderedDict
@@ -87,6 +87,7 @@ from oslo_utils import timeutils
 from oslo_utils import uuidutils
 from platform_util.license import license
 from sqlalchemy.orm import exc
+import sqlalchemy
 from six.moves import http_client as httplib
 from sysinv._i18n import _
 from sysinv.agent import rpcapiproxy as agent_rpcapi
@@ -410,7 +411,12 @@ class ConductorManager(service.PeriodicService):
         self._initialize_backup_actions_log()
 
     def start(self):
-        self._start()
+        try:
+            self._start()
+        except sqlalchemy.exc.OperationalError as ex:
+            self._check_dnsmasq_not_ready(ex)
+            raise
+
         # accept API calls and run periodic tasks after
         # initializing conductor manager service
         if self._rpc_service:
@@ -552,6 +558,16 @@ class ConductorManager(service.PeriodicService):
             ahost = self.dbapi.ihost_get(self.host_uuid)
             self._host_reboot_config_uuid[self.host_uuid] = \
                 [ahost.config_target]
+
+    def _check_dnsmasq_not_ready(self, ex):
+        # DNSMASQ starts before the sysinv-conductor but it may not be ready
+        # check if exception is due to FQDN not translated by DNSMASQ
+        # Log a warning and leave the SM to retry the sysinv-conductor again
+        exception_message = str(ex)
+        if (constants.CONTROLLER_FQDN.lower() in exception_message.lower()):
+            LOG.warn("DNSMasq is not ready to resolve {} yet. sysinv-conductor exit."
+                     .format(constants.CONTROLLER_FQDN))
+            sys.exit(1)
 
     def periodic_tasks(self, context, raise_on_error=False):
         """ Periodic tasks are run at pre-specified intervals. """

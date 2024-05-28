@@ -28,7 +28,9 @@ from oslo_log import log
 from sysinv.common import exception
 from sysinv.common import service as sysinv_service
 from sysinv.common import wsgi_service
+from sysinv.common import constants
 from sysinv import sanity_coverage
+from socket import gaierror
 
 LOG = log.getLogger(__name__)
 CONF = cfg.CONF
@@ -47,6 +49,18 @@ def sysinv_api():
                                           CONF.sysinv_api_port,
                                           workers,
                                           False)
+
+    except gaierror:
+        if (CONF.sysinv_api_bind_ip == constants.CONTROLLER_FQDN):
+            # DNSMASQ starts before the sysinv-api but it may not be ready yet
+            # the exception is: No address associated with hostname
+            # Log a warning and leave the SM to retry the sysinv-api again
+            LOG.warn("DNSMasq is not ready to resolve {} yet. sysinv-api exit."
+                     .format(CONF.sysinv_api_bind_ip))
+            sys.exit(1)
+        else:
+            raise
+
     except exception.ConfigInvalid as e:
         LOG.error(six.text_type(e))
         raise
