@@ -10,6 +10,7 @@
 import io
 import glob
 import os
+import re
 import ruamel.yaml
 import shutil
 import six
@@ -226,6 +227,19 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
         return value
 
     # Specific validations
+    def check_k8s_version_format(version):
+        """Check if the Kubernetes version format is either major.minor or major.minor.patch
+
+        :param version: Version number
+        """
+
+        if not re.fullmatch('([0-9][.])([0-9]+[.])?([0-9]+)', version):
+            raise exception.SysinvException(_(
+                "Supported Kubernetes versions should be formatted as "
+                "major.minor (e.g. v1.27) or major.minor.patch (e.g. v1.27.5). "
+                "Be mindful that the major.minor format will be converted to major.minor.0 "
+                "(e.g. v1.27 is equal to v1.27.0)."))
+
     def validate_timing(parent):
         """ Validate the timing field of a given parent section
 
@@ -248,7 +262,7 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
 
         return value
 
-    def validate_k8s_version(parent):
+    def validate_k8s_version_section(parent):
         """ Validate the Kubernetes version section of a given
             parent section
 
@@ -276,7 +290,6 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
         :param parent: parent section that contains the Kubernetes
                        minimum version field to be verified
         """
-        validate_string_field(parent, constants.APP_METADATA_MINIMUM)
 
         value = validate_string_field(parent, constants.APP_METADATA_MINIMUM)
         if value is None:
@@ -284,6 +297,21 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                 "Minimum supported Kubernetes version not specified "
                 "on application metadata file. Please add a 'minimum' "
                 "field to the 'supported_k8s_version' section."))
+
+        check_k8s_version_format(value.strip().lstrip('v'))
+
+    def validate_k8s_maximum_version(parent):
+        """ Validate the Kubernetes maximum version field of a given
+            parent section
+
+        :param parent: parent section that contains the Kubernetes
+                       maximum version field to be verified
+        """
+
+        value = validate_string_field(parent, constants.APP_METADATA_MAXIMUM)
+
+        if value is not None:
+            check_k8s_version_format(value.strip().lstrip('v'))
 
     def validate_k8s_upgrades_section(k8s_upgrades_auto_update,
                                       k8s_upgrades_timing):
@@ -389,10 +417,10 @@ def validate_metadata_file(path, metadata_file, upgrade_from_release=None):
                 constants.APP_METADATA_AUTO_DOWNGRADE)
 
         # Kubernetes version section validation
-        k8s_version = validate_k8s_version(doc)
+        k8s_version = validate_k8s_version_section(doc)
         if k8s_version:
             validate_k8s_minimum_version(k8s_version)
-            validate_string_field(k8s_version, constants.APP_METADATA_MAXIMUM)
+            validate_k8s_maximum_version(k8s_version)
 
         # Kubernetes upgrades section validation
         k8s_upgrades = \
@@ -576,6 +604,25 @@ def extract_bundle_metadata(file_path):
     :param file_path: Application bundle file path
     """
 
+    def check_major_minor_format(version):
+        """Check if a given version number is formatted as major.minor
+
+        :param version: Version number
+        :return: A re.Match object if formatted as major.minor. None otherwise.
+        """
+        return re.fullmatch('([0-9][.])[0-9]+', version)
+
+    def format_k8s_version(version):
+        """Standardize Kubernetes version numbers
+
+        :param version: Version number
+        :return: Return a formatted version number in the major.minor.patch format
+        """
+        if check_major_minor_format(version):
+            return version + '.0'
+
+        return version
+
     try:
         tarball = tarfile.open(file_path)
         metadata_yaml_path = "./{}".format(constants.APP_METADATA_FILE)
@@ -596,6 +643,7 @@ def extract_bundle_metadata(file_path):
             return None
 
         minimum_supported_k8s_version = minimum_supported_k8s_version.strip().lstrip('v')
+        minimum_supported_k8s_version = format_k8s_version(minimum_supported_k8s_version)
 
         maximum_supported_k8s_version = metadata.get(
             constants.APP_METADATA_SUPPORTED_K8S_VERSION, {}).get(
@@ -603,6 +651,7 @@ def extract_bundle_metadata(file_path):
 
         if maximum_supported_k8s_version is not None:
             maximum_supported_k8s_version = maximum_supported_k8s_version.strip().lstrip('v')
+            maximum_supported_k8s_version = format_k8s_version(maximum_supported_k8s_version)
 
         k8s_upgrades = metadata.get(constants.APP_METADATA_K8S_UPGRADES, None)
         if k8s_upgrades is None:
