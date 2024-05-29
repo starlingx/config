@@ -40,6 +40,9 @@ ACTIVE_CONTROLLER_NOT_FOUND_FLAG="/var/run/.active_controller_not_found"
 CERT_DIR=/etc/pki/ca-trust/source/anchors
 IPSEC_ENABLING_RETRIES=3
 IPSEC_ENABLING_DELAY=5
+SWANCTL_CONF_FILE=/etc/swanctl/swanctl.conf
+SWANCTL_ACTIVE_CONF_FILE=/etc/swanctl/swanctl_active.conf
+SWANCTL_STANDBY_CONF_FILE=/etc/swanctl/swanctl_standby.conf
 
 OS_ID=$(grep '^ID=' /etc/os-release | cut -f2- -d= | sed -e 's/\"//g')
 if [ "$OS_ID" == "debian" ]
@@ -294,6 +297,17 @@ start()
         then
             warning_error "WARNING: Failed to config and enable IPsec for the node"
         fi
+    # Link standby swanctl config file to swanctl.conf for initial boot.
+    # This makes the symlink correct for only one controller reboot case (eg, active controller
+    # is forcely reboot, but when it comes up it will be standby controller).
+    # For rare cases such as reboot active controller while standby is locked, the symlink on the
+    # active controller will be corrected by ipsec-config SM service when both controllers boots up.
+    elif [ -f ${SWANCTL_ACTIVE_CONF_FILE} ] && [ -f ${SWANCTL_STANDBY_CONF_FILE} ] && [ -f ${COMPLETED} ]
+    then
+        logger -t $0 -p info "Create IPsec configuration file symbolic link for the controller ..."
+        ln -sf ${SWANCTL_STANDBY_CONF_FILE} ${SWANCTL_CONF_FILE}
+        /usr/sbin/swanctl --load-conns
+        /usr/sbin/swanctl --terminate --ike system-nodes
     fi
 
     # If hostname is undefined or localhost, something is wrong
