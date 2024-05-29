@@ -334,28 +334,6 @@ def activate_upgrade(from_load, to_load, i_system):
     """ Executed on release N+1, activate the upgrade on all nodes. """
     LOG.info("Starting upgrade activate - from: %s, to: %s" %
              (from_load, to_load))
-    devnull = open(os.devnull, 'w')
-
-    shared_services = i_system.capabilities.get("shared_services", "")
-    if sysinv_constants.SERVICE_TYPE_IDENTITY not in shared_services:
-        try:
-            # Activate keystone
-            #
-            # CONTRACT - contract the previously expanded to_version DB
-            # to remove the old schema and all data migration triggers.
-            # When this process completes, the database will no longer
-            # be able to support the previous release.
-            # To avoid a deadlock during keystone contract we will use offline
-            # migration for simplex upgrades. Since all db_sync operations are
-            # done offline there is no need for the contract for SX systems
-            if not tsc.system_mode == sysinv_constants.SYSTEM_MODE_SIMPLEX:
-                keystone_cmd = ('keystone-manage db_sync --contract')
-                subprocess.check_call([keystone_cmd], shell=True,
-                                      stderr=devnull)
-
-        except subprocess.CalledProcessError:
-            LOG.exception("Failed to contract Keystone databases for upgrade.")
-            raise
     utils.execute_migration_scripts(from_load, to_load, utils.ACTION_ACTIVATE)
 
     LOG.info("Finished upgrade activation")
