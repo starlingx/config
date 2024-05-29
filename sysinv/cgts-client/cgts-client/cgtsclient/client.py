@@ -139,7 +139,11 @@ def get_client(api_version, session=None, service_type=SERVICE_TYPE, **kwargs):
             'region_name': kwargs.get('os_region_name'),
             'endpoint_override': endpoint,
             'global_request_id': kwargs.get('global_request_id'),
-            'user_agent': kwargs.get('user_agent', 'cgtsclient')
+            'user_agent': kwargs.get('user_agent', 'cgtsclient'),
+            'insecure': kwargs.get('insecure'),
+            'ca_file': kwargs.get('ca_file'),
+            'cert_file': kwargs.get('cert_file'),
+            'key_file': kwargs.get('key_file')
         }
     else:
         # This will become a httplib2 object
