@@ -162,6 +162,11 @@ class SessionClient(adapter.LegacyJsonAdapter):
     def __init__(self, *args, **kwargs):
         self.user_agent = USER_AGENT
         self.api_version = DEFAULT_API_VERSION
+        self.insecure = kwargs.pop('insecure', None)
+        self.ca_file = kwargs.pop('ca_file', None)
+        self.cert_file = kwargs.pop('cert_file', None)
+        self.key_file = kwargs.pop('key_file', None)
+
         super(SessionClient, self).__init__(*args, **kwargs)
 
     def _http_request(self, url, method, **kwargs):
@@ -244,8 +249,15 @@ class SessionClient(adapter.LegacyJsonAdapter):
                           kwargs['body'],
                           )}
         data = kwargs.get('data')
+        if self.insecure:
+            verify = False
+        else:
+            verify = self.ca_file or True
+        cert = self.cert_file
+        if cert and self.key_file:
+            cert = (cert, self.key_file)
         req = requests.post(requests_url, headers=headers, files=files,
-                            data=data)
+                            verify=verify, cert=cert, data=data)
         return req.json()
 
     def upload_request_with_multipart(self, method, url, **kwargs):
@@ -261,7 +273,15 @@ class SessionClient(adapter.LegacyJsonAdapter):
         enc = MultipartEncoder(fields)
         headers = {'Content-Type': enc.content_type,
                    "X-Auth-Token": self.session.get_token()}
-        response = requests.post(requests_url, data=enc, headers=headers)
+        if self.insecure:
+            verify = False
+        else:
+            verify = self.ca_file or True
+        cert = self.cert_file
+        if cert and self.key_file:
+            cert = (cert, self.key_file)
+        response = requests.post(requests_url, data=enc,
+                                 verify=verify, cert=cert, headers=headers)
 
         if kwargs.get('check_exceptions'):
             if response.status_code != 200:
@@ -312,6 +332,9 @@ class HTTPClient(httplib2.Http):
 
         # httplib2 overrides
         self.disable_ssl_certificate_validation = insecure
+        self.ca_file = kwargs.get('ca_file', None)
+        self.cert_file = kwargs.get('cert_file', None)
+        self.key_file = kwargs.get('key_file', None)
 
         self.service_catalog = None
 
@@ -483,8 +506,16 @@ class HTTPClient(httplib2.Http):
                           kwargs['body'],
                           )}
         data = kwargs.get('data')
+        if self.disable_ssl_certificate_validation:
+            verify = False
+        else:
+            verify = self.ca_file or True
+        cert = self.cert_file
+        if cert and self.key_file:
+            cert = (cert, self.key_file)
         req = requests.post(connection_url, headers=headers,
                             files=files, data=data,
+                            verify=verify, cert=cert,
                             timeout=UPLOAD_REQUEST_TIMEOUT)
         return req.json()
 
@@ -502,9 +533,17 @@ class HTTPClient(httplib2.Http):
         enc = MultipartEncoder(fields)
         headers = {'Content-Type': enc.content_type,
                    "X-Auth-Token": self.auth_token}
+        if self.disable_ssl_certificate_validation:
+            verify = False
+        else:
+            verify = self.ca_file or True
+        cert = self.cert_file
+        if cert and self.key_file:
+            cert = (cert, self.key_file)
         response = requests.post(connection_url,
                                  data=enc,
                                  headers=headers,
+                                 verify=verify, cert=cert,
                                  timeout=UPLOAD_REQUEST_TIMEOUT)
 
         if kwargs.get('check_exceptions'):
