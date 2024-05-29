@@ -4144,7 +4144,15 @@ class FluxCDHelper(object):
             LOG.warning("Command: %s; %s" % (' '.join(cmd), stderr))
 
         if process.returncode != 0:
-            LOG.error("Command: %s; Error: %s" % (' '.join(cmd), stderr))
+            namespace_error_keys = ["namespaces", "not found"]
+            has_namespace_error = all(substring in stderr for substring in namespace_error_keys)
+
+            # This log is being suppressed only if the error is related to the namespace not being
+            # found during the app upload process. This is expected because in this process the
+            # namespace for the application has not yet been created.
+            if (not has_namespace_error and operation_type != constants.KUBECTL_KUSTOMIZE_VALIDATE):
+                LOG.error("Command: %s; Error: %s" % (' '.join(cmd), stderr))
+
             return False
 
         return True
