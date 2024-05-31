@@ -2248,6 +2248,11 @@ class TestPatch(TestHost):
             availability=constants.AVAILABILITY_ONLINE)
         self._create_test_host_platform_interface(c0_host)
 
+        p = mock.patch('sysinv.common.usm_service.get_host_deploy')
+        get_host_deploy = p.start()
+        get_host_deploy.return_value = None
+        self.addCleanup(p.stop)
+
         # Unlock host
         response = self._patch_host_action(c0_host['hostname'],
                                            constants.UNLOCK_ACTION,
@@ -2308,6 +2313,29 @@ class TestPatch(TestHost):
         # Verify that the host action was cleared
         result = self.get_json('/ihosts/%s' % c0_host['hostname'])
         self.assertEqual(constants.NONE_ACTION, result['action'])
+
+    def test_unlock_action_deploying_controller(self):
+        # Create controller-0
+        c0_host = self._create_controller_0(
+            invprovision=constants.PROVISIONED,
+            administrative=constants.ADMIN_LOCKED,
+            operational=constants.OPERATIONAL_ENABLED,
+            availability=constants.AVAILABILITY_ONLINE)
+        self._create_test_host_platform_interface(c0_host)
+
+        p = mock.patch('sysinv.common.usm_service.get_host_deploy')
+        get_host_deploy = p.start()
+        get_host_deploy.return_value = {"host_state": "deploying"}
+        self.addCleanup(p.stop)
+
+        # Unlock host
+        response = self._patch_host_action(c0_host['hostname'],
+                                           constants.UNLOCK_ACTION,
+                                           'sysinv-test',
+                                           expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertTrue(response.json['error_message'])
 
     def test_unlock_action_controller_inventory_not_complete(self):
         # Create controller-0 without inv_state initial inventory complete
@@ -2640,6 +2668,11 @@ class TestPatch(TestHost):
         self._create_test_host_cpus(w0_host, platform=1, vswitch=2, application=12)
         self._create_test_host_addresses(w0_host.hostname)
 
+        p = mock.patch('sysinv.common.usm_service.get_host_deploy')
+        get_host_deploy = p.start()
+        get_host_deploy.return_value = None
+        self.addCleanup(p.stop)
+
         # Unlock worker host
         response = self._patch_host_action(w0_host['hostname'],
                                            constants.UNLOCK_ACTION,
@@ -2687,6 +2720,11 @@ class TestPatch(TestHost):
             w0_host, platform=1, vswitch=2, application=12)
         self._create_test_host_addresses(w0_host.hostname)
 
+        p = mock.patch('sysinv.common.usm_service.get_host_deploy')
+        get_host_deploy = p.start()
+        get_host_deploy.return_value = None
+        self.addCleanup(p.stop)
+
         # Unlock worker host while lock action in progress
         response = self._patch_host_action(w0_host['hostname'],
                                            constants.UNLOCK_ACTION,
@@ -2727,6 +2765,11 @@ class TestPatch(TestHost):
         self._create_test_host_cpus(
             w0_host, platform=1, vswitch=2, application=12)
         self._create_test_host_addresses(w0_host.hostname)
+
+        p = mock.patch('sysinv.common.usm_service.get_host_deploy')
+        get_host_deploy = p.start()
+        get_host_deploy.return_value = None
+        self.addCleanup(p.stop)
 
         # Unlock worker host while lock action in progress
         response = self._patch_host_action(w0_host['hostname'],
@@ -2838,6 +2881,12 @@ class TestPatch(TestHost):
         self._create_test_host_addresses(w0_host.hostname)
 
         w0_hostname = w0_host['hostname']
+
+        p = mock.patch('sysinv.common.usm_service.get_host_deploy')
+        get_host_deploy = p.start()
+        get_host_deploy.return_value = None
+        self.addCleanup(p.stop)
+
         response = self._patch_host_action(
             w0_hostname, constants.UNLOCK_ACTION,
             'sysinv-test', expect_errors=True)
@@ -3674,6 +3723,12 @@ class TestHostPTPValidation(TestHost):
             'ptp_role': constants.INTERFACE_PTP_ROLE_MASTER
         }
         ptp_if = dbutils.create_test_interface(**interface)
+
+        p = mock.patch('sysinv.common.usm_service.get_host_deploy')
+        get_host_deploy = p.start()
+        get_host_deploy.return_value = None
+        self.addCleanup(p.stop)
+
         response = self._patch_host_action(
             w0_host['hostname'], constants.UNLOCK_ACTION, 'sysinv-test')
         self.assertEqual(response.content_type, 'application/json')

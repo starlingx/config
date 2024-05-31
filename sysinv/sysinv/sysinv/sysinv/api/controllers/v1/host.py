@@ -5617,6 +5617,14 @@ class HostController(rest.RestController):
         if force_unlock:
             return
 
+        hostname = hostupdate.ihost_patch.get('hostname')
+        host_deploy = usm_service.get_host_deploy(pecan.request.dbapi, hostname)
+        if host_deploy is not None:
+            if host_deploy['host_state'] == constants.DEPLOY_HOST_DEPLOYED:
+                return
+            else:
+                raise wsme.exc.ClientSideError(
+                    _("host-unlock rejected: software deploy to %s has not completed" % hostname))
         phosts = []
         try:
             # Token is optional for admin url
@@ -5635,7 +5643,7 @@ class HostController(rest.RestController):
             return
 
         for phost in phosts:
-            if phost.get('hostname') == hostupdate.ihost_patch.get('hostname'):
+            if phost.get('hostname') == hostname:
                 if not phost.get('patch_current'):
                     raise wsme.exc.ClientSideError(
                         _("host-unlock rejected: Not patch current. "

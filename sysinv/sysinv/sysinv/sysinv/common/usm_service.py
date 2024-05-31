@@ -71,6 +71,9 @@ def get_host_deploy(dbapi, hostname):
     endpoint += "/v1/deploy_host"
 
     hostlist = rest_api_request(token, "GET", endpoint, timeout=10)
+    if hostlist is None:
+        return None
+
     if hostname is None:
         return hostlist
 
