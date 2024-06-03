@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2022 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 
 import jsonpatch
@@ -580,7 +580,7 @@ def _check_lvg(op, pv):
         if ilvg.lvm_vg_name == constants.LVG_CGTS_VG:
             controller_fs_list = pecan.request.dbapi.controller_fs_get_list()
             for controller_fs in controller_fs_list:
-                if controller_fs.state == constants.CONTROLLER_FS_RESIZING_IN_PROGRESS:
+                if eval(controller_fs.state)['status'] == constants.CONTROLLER_FS_RESIZING_IN_PROGRESS:
                     msg = _(
                         "Filesystem (%s) resize is in progress. Wait fot the resize "
                         "to finish before adding a physical volume to the cgts-vg "

@@ -432,7 +432,7 @@ def is_drbd_fs_resizing(fs_name=None):
     controller_fs_list = pecan.request.dbapi.controller_fs_get_list()
     for fs in controller_fs_list:
         if fs['replicated']:
-            if fs['state'] == constants.CONTROLLER_FS_RESIZING_IN_PROGRESS:
+            if eval(fs['state'])['status'] == constants.CONTROLLER_FS_RESIZING_IN_PROGRESS:
                 if fs_name:
                     if fs['name'] == fs_name:
                         return True

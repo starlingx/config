@@ -6895,9 +6895,9 @@ class ConductorManager(service.PeriodicService):
 
         for fs in controller_fs_list:
             name = fs.get('name')
-            if ((fs.get('state') != constants.CONTROLLER_FS_AVAILABLE) and
+            if ((eval(fs.get('state'))['status'] != constants.CONTROLLER_FS_AVAILABLE) and
                (constants.FILESYSTEM_DRBD_DICT.get(name) in drbd_fs_resized)):
-                self.dbapi.controller_fs_update(fs.uuid, {'state': constants.CONTROLLER_FS_AVAILABLE})
+                self.dbapi.controller_fs_update(fs.uuid, {'state': str({'status': constants.CONTROLLER_FS_AVAILABLE})})
 
         if all_fs_resized:
             cutils.touch(CONFIG_CONTROLLER_FINI_FLAG)
@@ -8509,7 +8509,7 @@ class ConductorManager(service.PeriodicService):
             return
 
         if not self.check_nodes_stable():
-            LOG.info("Node(s) are in an unstable state. Defer audit.")
+            LOG.info("Node(s) are in an unstable state. Defer _k8s_application_audit.")
             return
 
         # Defer platform managed application activity during update orchestration.
@@ -9689,7 +9689,8 @@ class ConductorManager(service.PeriodicService):
                               update_storage=False,
                               reinstall_required=False,
                               reboot_required=True,
-                              filesystem_list=None):
+                              filesystem_list=None,
+                              sm_reconfig=False):
         """Update the storage configuration"""
         host_uuid_list = []
         if update_storage:
@@ -9708,11 +9709,10 @@ class ConductorManager(service.PeriodicService):
                                                     personalities,
                                                     host_uuids=host_uuid_list,
                                                     reboot=reboot_required)
-
             if not reboot_required and filesystem_list:
                 # apply the manifest at runtime, otherwise a reboot is required
                 # map the updated file system to the runtime puppet class
-                classmap = {
+                drbd_classmap = {
                     constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION:
                         'platform::drbd::dockerdistribution::runtime',
                     constants.FILESYSTEM_NAME_DATABASE:
@@ -9725,14 +9725,30 @@ class ConductorManager(service.PeriodicService):
                         'platform::drbd::dc_vault::runtime',
                     constants.FILESYSTEM_NAME_ETCD:
                         'platform::drbd::etcd::runtime',
+                    constants.FILESYSTEM_NAME_CEPH_DRBD:
+                        'platform::drbd::rook::runtime'
+                }
+
+                sm_classmap = {
+                    constants.FILESYSTEM_NAME_CEPH_DRBD: 'platform::sm::rook::runtime'
                 }
 
                 puppet_class = None
                 if filesystem_list:
-                    puppet_class = [classmap.get(fs) for fs in filesystem_list]
+                    # Get all the relevant DRBD runtime manifests
+                    puppet_class = [drbd_classmap.get(fs) for fs in filesystem_list]
+
+                # Add any relevant SM runtime reconfigurations
+                if sm_reconfig:
+                    for fs in filesystem_list:
+                        if fs in sm_classmap:
+                            puppet_class.append(sm_classmap.get(fs))
+
                 config_dict = {
                     "personalities": personalities,
-                    "classes": puppet_class
+                    "classes": puppet_class,
+                    puppet_common.REPORT_STATUS_CFG:
+                        puppet_common.REPORT_CONTROLLERFS_CONFIG,
                 }
 
                 LOG.info("update_storage_config: %s" % config_dict)
@@ -10181,51 +10197,6 @@ class ConductorManager(service.PeriodicService):
                       'task': None}
             self.dbapi.storage_ceph_external_update(sb_uuid, values)
 
-    def update_ceph_rook_config(self, context, sb_uuid, services):
-        """Update the manifests for Rook Ceph backend and services"""
-
-        personalities = [constants.CONTROLLER]
-
-        # Update service table
-        self.update_service_table_for_cinder()
-
-        ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
-        valid_ctrls = [ctrl for ctrl in ctrls if
-                       ctrl.administrative == constants.ADMIN_UNLOCKED and
-                       ctrl.availability in [constants.AVAILABILITY_AVAILABLE,
-                                             constants.AVAILABILITY_DEGRADED]]
-
-        classes = ['platform::rook::runtime']
-        if cutils.is_aio_duplex_system(self.dbapi):
-            # On 2 node systems we have a floating Ceph monitor.
-            classes.append('platform::drbd::rookmon::runtime')
-            classes.append('platform::sm::ceph::runtime')
-
-        host_ids = [ctrl.uuid for ctrl in valid_ctrls]
-        config_dict = {"personalities": personalities,
-                       "host_uuids": host_ids,
-                       "classes": classes,
-                       puppet_common.REPORT_STATUS_CFG: puppet_common.REPORT_CEPH_ROOK_CONFIG,
-                       }
-
-        # Set config out-of-date for controllers
-        config_uuid = self._config_update_hosts(context,
-                                                personalities,
-                                                host_uuids=host_ids)
-
-        self._config_apply_runtime_manifest(context,
-                                            config_uuid=config_uuid,
-                                            config_dict=config_dict)
-
-        tasks = {}
-        for ctrl in valid_ctrls:
-            tasks[ctrl.hostname] = constants.SB_TASK_APPLY_MANIFESTS
-
-        # Update initial task states
-        values = {'state': constants.SB_STATE_CONFIGURING,
-                  'task': str(tasks)}
-        self.dbapi.storage_ceph_rook_update(sb_uuid, values)
-
     def _is_tracked_alarm(self, alarm_id):
         """ Check _alarm_raised status of specific alarm_id"""
         return self._alarms_raised[alarm_id]
@@ -10308,6 +10279,31 @@ class ConductorManager(service.PeriodicService):
             self.fm_api.set_fault(fault)
         else:
             self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_STORAGE_BACKEND_FAILED,
+                                    entity_instance_id)
+
+    def _update_controller_fs_alarm(self, alarm_state, controller_fs, hostname, reason_text=None):
+        """ Update controller filesystem configuration alarm"""
+        entity_instance_id = "%s=%s.%s=%s" % (fm_constants.FM_ENTITY_TYPE_HOST,
+                                              hostname,
+                                              fm_constants.FM_ENTITY_TYPE_CONTROLLER_FS,
+                                              controller_fs)
+        if alarm_state == fm_constants.FM_ALARM_STATE_SET:
+            fault = fm_api.Fault(
+                alarm_id=fm_constants.FM_ALARM_ID_CONTROLLER_FS_FAILED,
+                alarm_state=alarm_state,
+                entity_type_id=fm_constants.FM_ENTITY_TYPE_CONTROLLER_FS,
+                entity_instance_id=entity_instance_id,
+                severity=fm_constants.FM_ALARM_SEVERITY_MAJOR,
+                reason_text=reason_text,
+                alarm_type=fm_constants.FM_ALARM_TYPE_3,
+                probable_cause=fm_constants.ALARM_PROBABLE_CAUSE_7,
+                proposed_repair_action=_("Use the create or delete command again: "
+                                        "'system controllerfs-delete' or 'system controllerfs-add'."
+                                        " If problem persists, contact next level of support."),
+                service_affecting=True)
+            self.fm_api.set_fault(fault)
+        else:
+            self.fm_api.clear_fault(fm_constants.FM_ALARM_ID_CONTROLLER_FS_FAILED,
                                     entity_instance_id)
 
     def handle_upgrade_abort_failure(self, context, kube_upgrade_obj):
@@ -10533,6 +10529,11 @@ class ConductorManager(service.PeriodicService):
             success = _process_config_report(
                 self.report_ceph_rook_config_success, [context, host_uuid],
                 self.report_ceph_rook_config_failure, [host_uuid, error]
+            )
+        elif reported_cfg == puppet_common.REPORT_CONTROLLERFS_CONFIG:
+            success = _process_config_report(
+                self.report_controllerfs_config_success, [context, host_uuid],
+                self.report_controllerfs_config_failure, [host_uuid, error]
             )
         # Kubernetes root CA host update
         elif reported_cfg in [puppet_common.REPORT_KUBE_CERT_UPDATE_TRUSTBOTHCAS,
@@ -11447,6 +11448,122 @@ class ConductorManager(service.PeriodicService):
         values = {'state': constants.SB_STATE_CONFIG_ERR}
         self.dbapi.istor_update(stor_uuid, values)
 
+    def report_controllerfs_config_success(self, context, host_uuid):
+        """ Callback for Sysinv Agent
+
+        Configuring controllerfs storage was successful, finalize operation. The
+        Agent calls this if manifests are applied correctly. Both controllers
+        have to get their manifests applied before accepting the entire
+        operation as successful.
+        """
+        LOG.info("controllerfs manifests success on host: %s" % host_uuid)
+
+        ctrls = self.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+
+        # Note that even if nodes are degraded we still accept the answer.
+        valid_ctrls = [ctrl for ctrl in ctrls if
+                       (ctrl.administrative == constants.ADMIN_LOCKED and
+                        ctrl.availability == constants.AVAILABILITY_ONLINE) or
+                       (ctrl.administrative == constants.ADMIN_UNLOCKED and
+                        ctrl.operational == constants.OPERATIONAL_ENABLED)]
+
+        # Set state for current node
+        for host in valid_ctrls:
+            if host.uuid == host_uuid:
+                break
+        else:
+            LOG.error("Host %(host) is not in the required state!" % host_uuid)
+            host = self.dbapi.ihost_get(host_uuid)
+            if not host:
+                LOG.error("Host %s is invalid!" % host_uuid)
+                return
+
+        # Update the transitional states
+        controller_fs_list = self.dbapi.controller_fs_get_list()
+
+        for fs in controller_fs_list:
+            state = eval(fs.get('state', '{}'))
+            if (state['status'] in [constants.CONTROLLER_FS_CREATING_IN_PROGRESS,
+                                    constants.CONTROLLER_FS_DELETING_IN_PROGRESS]):
+
+                if state['status'] == constants.CONTROLLER_FS_CREATING_IN_PROGRESS:
+                    final_state = constants.CONTROLLER_FS_AVAILABLE
+                else:
+                    final_state = constants.CONTROLLER_FS_DELETED
+
+                # TODO(rchurch) possibly call inependent verification via
+                # self._verify_drbd_resource_existence(fs.get('name')) but this
+                # only can check the active controller
+
+                tasks = state.get('tasks', {})
+                if tasks:
+                    tasks[host.hostname] = final_state
+                else:
+                    tasks = {host.hostname: final_state}
+
+                # Check if all hosts configurations have applied correctly
+                # and mark config success
+                config_success = True
+                for chost in valid_ctrls:
+                    if tasks.get(chost.hostname, '') != final_state:
+                        config_success = False
+
+                if state['status'] != constants.CONTROLLER_FS_UPDATE_ERROR:
+                    if config_success:
+                        # All hosts have completed configuration, set state,
+                        # clean up tasks
+                        state['status'] = final_state
+                        state.pop('tasks', None)
+
+                        alarms = self.fm_api.get_faults_by_id(fm_constants.FM_ALARM_ID_CONTROLLER_FS_FAILED)
+                        if alarms:
+                            for alarm in alarms:
+                                # Get the hostname from the alarm entity_instance_id:
+                                # host=<hostname>.controllerfs=<controllerfs_name>
+                                hostname = alarm.entity_instance_id.split('host=')[1].split('.controller_fs')[0]
+                                self._update_controller_fs_alarm(fm_constants.FM_ALARM_STATE_CLEAR,
+                                                                 fs.name,
+                                                                 hostname)
+                    else:
+                        # This host_uuid has completed configuration, keep
+                        # transitional state, update tasks
+                        state['tasks'] = tasks
+                    self.dbapi.controller_fs_update(fs.uuid, {'state': str(state)})
+
+                    if config_success and final_state == constants.CONTROLLER_FS_DELETED:
+                        self.dbapi.controller_fs_destroy(fs.uuid)
+
+    def report_controllerfs_config_failure(self, host_uuid, error):
+        """ Callback for Sysinv Agent
+
+        Configuring controllerfs storage failed, set filesystem to err and raise
+        alarm. The agent calls this if controllerfs manifests failed to apply.
+        """
+
+        args = {'host': host_uuid, 'error': error}
+        LOG.error("controllerfs manifests failed on host: %(host)s. Error: %(error)s" % args)
+
+        # Update the transitional states
+        controller_fs_list = self.dbapi.controller_fs_get_list()
+
+        for fs in controller_fs_list:
+            if (eval(fs.get('state'))['status'] in [constants.CONTROLLER_FS_CREATING_IN_PROGRESS,
+                                                    constants.CONTROLLER_FS_DELETING_IN_PROGRESS]):
+                self.dbapi.controller_fs_update(
+                        fs.uuid, {'state': str({'status': constants.CONTROLLER_FS_UPDATE_ERROR})})
+
+                LOG.info("Manifest apply failed. Controller fs {} state is now "
+                         "{}".format(fs.get('name'), constants.CONTROLLER_FS_UPDATE_ERROR))
+
+                host = self.dbapi.ihost_get(host_uuid)
+
+                reason = ("Controller filesystem configuration failed to apply on {}. Retry is "
+                          "required.".format(host['hostname']))
+                self._update_controller_fs_alarm(fm_constants.FM_ALARM_STATE_SET,
+                                                 fs.name,
+                                                 host['hostname'],
+                                                 reason)
+
     def report_upgrade_config_failure(self):
         """
            Callback for Sysinv Agent on upgrade manifest failure
@@ -11895,6 +12012,7 @@ class ConductorManager(service.PeriodicService):
             'logical_volume': constants.FILESYSTEM_LV_DICT[
                 constants.FILESYSTEM_NAME_PLATFORM],
             'replicated': True,
+            'state': str({'status': constants.CONTROLLER_FS_AVAILABLE}),
         }
         LOG.info("Creating FS:%s:%s %d" % (
             data['name'], data['logical_volume'], data['size']))
@@ -11907,6 +12025,7 @@ class ConductorManager(service.PeriodicService):
             'logical_volume': constants.FILESYSTEM_LV_DICT[
                 constants.FILESYSTEM_NAME_DATABASE],
             'replicated': True,
+            'state': str({'status': constants.CONTROLLER_FS_AVAILABLE}),
         }
         LOG.info("Creating FS:%s:%s %d" % (
             data['name'], data['logical_volume'], data['size']))
@@ -11919,6 +12038,7 @@ class ConductorManager(service.PeriodicService):
             'logical_volume': constants.FILESYSTEM_LV_DICT[
                 constants.FILESYSTEM_NAME_EXTENSION],
             'replicated': True,
+            'state': str({'status': constants.CONTROLLER_FS_AVAILABLE}),
         }
         LOG.info("Creating FS:%s:%s %d" % (
             data['name'], data['logical_volume'], data['size']))
@@ -11931,6 +12051,7 @@ class ConductorManager(service.PeriodicService):
                 'logical_volume': constants.FILESYSTEM_LV_DICT[
                     constants.FILESYSTEM_NAME_ETCD],
                 'replicated': True,
+                'state': str({'status': constants.CONTROLLER_FS_AVAILABLE}),
         }
         LOG.info("Creating FS:%s:%s %d" % (
             data_etcd['name'], data_etcd['logical_volume'], data_etcd['size']))
@@ -11943,6 +12064,7 @@ class ConductorManager(service.PeriodicService):
             'logical_volume': constants.FILESYSTEM_LV_DICT[
                 constants.FILESYSTEM_NAME_DOCKER_DISTRIBUTION],
             'replicated': True,
+            'state': str({'status': constants.CONTROLLER_FS_AVAILABLE}),
         }
         LOG.info("Creating FS:%s:%s %d" % (
             data['name'], data['logical_volume'], data['size']))
@@ -11956,6 +12078,7 @@ class ConductorManager(service.PeriodicService):
                 'logical_volume': constants.FILESYSTEM_LV_DICT[
                     constants.FILESYSTEM_NAME_DC_VAULT],
                 'replicated': True,
+                'state': str({'status': constants.CONTROLLER_FS_AVAILABLE}),
             }
             LOG.info("Creating FS:%s:%s %d" % (
                 data['name'], data['logical_volume'], data['size']))
@@ -12432,6 +12555,9 @@ class ConductorManager(service.PeriodicService):
             if "drbd-dockerdistribution" in row and ("SyncSource" in row or "PausedSyncS" in row
                                                      or "Connected" in row):
                 fs.append(constants.DRBD_DOCKER_DISTRIBUTION)
+            if "drbd-ceph" in row and ("SyncSource" in row or "PausedSyncS" in row
+                                       or "Connected" in row):
+                fs.append(constants.DRBD_CEPH)
         return fs
 
     def _drbd_fs_updated(self, context):
@@ -12446,6 +12572,8 @@ class ConductorManager(service.PeriodicService):
         dockerdistribution_lv_size = 0
         drbd_etcd_size = 0
         etcd_lv_size = 0
+        ceph_lv_size = 0
+        drbd_ceph_size = 0
 
         for row in drbd_dict:
             if "sync\'ed" not in row:
@@ -12461,6 +12589,8 @@ class ConductorManager(service.PeriodicService):
                     drbd_etcd_size = self._get_drbd_fs_size("drbd7")[0]
                 elif 'drbd-dockerdistribution' in row:
                     dockerdistribution_size = self._get_drbd_fs_size("drbd8")[0]
+                elif 'drbd-ceph' in row:
+                    drbd_ceph_size = self._get_drbd_fs_size("drbd9")[0]
 
         lvdisplay_dict = self.get_controllerfs_lv_sizes(context)
         if lvdisplay_dict.get('pgsql-lv', None):
@@ -12475,15 +12605,25 @@ class ConductorManager(service.PeriodicService):
             etcd_lv_size = float(lvdisplay_dict['etcd-lv'])
         if lvdisplay_dict.get('dockerdistribution-lv', None):
             dockerdistribution_lv_size = float(lvdisplay_dict['dockerdistribution-lv'])
+        if lvdisplay_dict.get('ceph-float-lv', None):
+            ceph_lv_size = float(lvdisplay_dict['ceph-float-lv'])
 
-        LOG.info("drbd-overview: pgsql-%s, platform-%s, extension-%s,"
-                 " dc-vault-%s, etcd-%s, dockerdistribution-%s",
-                 drbd_pgsql_size, drbd_platform_size, drbd_extension_size,
-                 drbd_patch_size, drbd_etcd_size, dockerdistribution_size)
-        LOG.info("lvdisplay: pgsql-%s, platform-%s, extension-%s,"
-                 " dc-vault-%s, etcd-%s, dockerdistribution-%s",
-                 pgsql_lv_size, platform_lv_size, extension_lv_size,
-                 dc_lv_size, etcd_lv_size, dockerdistribution_lv_size)
+        drbd_overview_msg = "drbd-overview: pgsql-%s, platform-%s, extension-%s," \
+                            " dc-vault-%s, etcd-%s, dockerdistribution-%s" % \
+                            (drbd_pgsql_size, drbd_platform_size, drbd_extension_size,
+                            drbd_patch_size, drbd_etcd_size, dockerdistribution_size)
+
+        lvdisplay_msg = "lvdisplay: pgsql-%s, platform-%s, extension-%s," \
+                        " dc-vault-%s, etcd-%s, dockerdistribution-%s" % \
+                        (pgsql_lv_size, platform_lv_size, extension_lv_size,
+                        dc_lv_size, etcd_lv_size, dockerdistribution_lv_size)
+
+        if drbd_ceph_size != 0 and ceph_lv_size != 0:
+            lvdisplay_msg += ", ceph: %s" % ceph_lv_size
+            drbd_overview_msg += ", ceph: %s" % drbd_ceph_size
+
+        LOG.info(drbd_overview_msg)
+        LOG.info(lvdisplay_msg)
 
         drbd_fs_updated = []
         if math.ceil(drbd_pgsql_size) < math.ceil(pgsql_lv_size):
@@ -12498,6 +12638,9 @@ class ConductorManager(service.PeriodicService):
             drbd_fs_updated.append(constants.DRBD_ETCD)
         if math.ceil(dockerdistribution_size) < math.ceil(dockerdistribution_lv_size):
             drbd_fs_updated.append(constants.DRBD_DOCKER_DISTRIBUTION)
+        if drbd_ceph_size != 0:
+            if math.ceil(drbd_ceph_size) < math.ceil(ceph_lv_size):
+                drbd_fs_updated.append(constants.DRBD_CEPH)
 
         return drbd_fs_updated
 
@@ -12588,6 +12731,21 @@ class ConductorManager(service.PeriodicService):
             retries += 1
             time.sleep(delay)
         return resized
+
+    def _verify_drbd_resource_existence(self, filesystem_name):
+        """
+        Checks the existence of a DRBD resource containing the specified filesystem name.
+
+        :param filesystem_name: The name of the controller filesystem to be checked.
+        :returns:True if a DRBD resource containing the filesystem name exists, False otherwise.
+        """
+
+        drbd_dict = subprocess.check_output("drbd-overview",  # pylint: disable=not-callable
+                                            stderr=subprocess.STDOUT,
+                                            universal_newlines=True)
+
+        # Check if the filesystem name is present in the output of 'drbd-overview'
+        return filesystem_name in drbd_dict
 
     def _resize2fs_drbd_dev(self, context, retry_attempts, drbd_dev, drbd_lv):
         resized = False
@@ -12696,6 +12854,16 @@ class ConductorManager(service.PeriodicService):
                                                             drbd_dev, drbd_lv):
                                     drbd_fs_resized.add(constants.DRBD_DOCKER_DISTRIBUTION)
 
+                        if constants.DRBD_CEPH in (drbd_fs_updated - drbd_fs_resized):
+                            if (not standby_host or (standby_host and
+                                 constants.DRBD_CEPH in self._drbd_fs_sync())):
+                                # patch_gib /var/lib/ceph/mon-a
+                                drbd_dev = "drbd9"
+                                drbd_lv = "ceph-float-lv"
+                                if self._resize2fs_drbd_dev(context, retry_attempts,
+                                                            drbd_dev, drbd_lv):
+                                    drbd_fs_resized.add(constants.DRBD_CEPH)
+
                         if drbd_fs_updated == drbd_fs_resized:
                             LOG.info("resizing filesystems completed")
                             rc = True
@@ -12723,9 +12891,9 @@ class ConductorManager(service.PeriodicService):
         controller_fs_list = self.dbapi.controller_fs_get_list()
         for fs in controller_fs_list:
             fs_name = constants.FILESYSTEM_DRBD_DICT.get(fs.get('name'))
-            if ((fs.get('state') is None) and
-               (fs_name not in drbd_fs_updated) and
-               (fs_name not in drbd_fs_resized)):
+            if ((eval(fs.get('state'))['status'] == constants.CONTROLLER_FS_CREATING_ON_UNLOCK) and
+                    (fs_name not in drbd_fs_updated) and
+                    (fs_name not in drbd_fs_resized)):
                 drbd_fs_resized.add(fs_name)
 
         return rc, drbd_fs_resized
@@ -12908,8 +13076,8 @@ class ConductorManager(service.PeriodicService):
                 controller_fs_list = self.dbapi.controller_fs_get_list()
                 for controller_fs in controller_fs_list:
                     if controller_fs['replicated']:
-                        if (controller_fs.get('state') ==
-                           constants.CONTROLLER_FS_RESIZING_IN_PROGRESS):
+                        if (eval(controller_fs.get('state'))['status'] ==
+                                constants.CONTROLLER_FS_RESIZING_IN_PROGRESS):
                             LOG.info("%s: drbd resize config pending. "
                                      "manifests up to date: "
                                      "target %s, applied %s " %
@@ -14988,6 +15156,12 @@ class ConductorManager(service.PeriodicService):
 
         if system_dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
             lvdisplay_command = lvdisplay_command + '/dev/cgts-vg/dc-vault-lv '
+
+        controller_fs_list = self.dbapi.controller_fs_get_list()
+        for fs in controller_fs_list:
+            if fs.get('name') == constants.FILESYSTEM_NAME_CEPH_DRBD:
+                lvdisplay_command = lvdisplay_command + '/dev/cgts-vg/ceph-float-lv '
+                break
 
         lvdisplay_dict = {}
         # Execute the command.

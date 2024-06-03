@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020,2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -13,6 +13,7 @@ from six.moves import http_client
 from sysinv.tests.api import base
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
+from sysinv.common import constants
 
 
 class FakeConductorAPI(object):
@@ -92,7 +93,7 @@ class ApiControllerFSTestCaseMixin(base.FunctionalTest,
                                                  uuid=None,
                                                  name=controller_fs_name,
                                                  forisystemid=self.system.id,
-                                                 state='available',
+                                                 state=str({'status': constants.CONTROLLER_FS_AVAILABLE}),
                                                  size=controller_fs_size,
                                                  logical_volume=controller_lv,
                                                  replicated=True,
@@ -616,18 +617,36 @@ class ApiControllerFSDeleteTestSuiteMixin(ApiControllerFSTestCaseMixin):
     def setUp(self):
         super(ApiControllerFSDeleteTestSuiteMixin, self).setUp()
 
-    # Test that a valid DELETE operation is blocked by the API
-    # API should return 400 BAD_REQUEST or FORBIDDEN 403
     def test_delete_not_allowed(self):
-        uuid = self.controller_fs_third.uuid
-        response = self.delete(self.get_show_url(uuid),
-                               headers=self.API_HEADERS,
-                               expect_errors=True)
+        response = self.delete('/controller_fs/%s' %
+                                  self.controller_fs_third.uuid,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
 
         # Verify appropriate exception is raised
-        self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, http_client.FORBIDDEN)
-        self.assertIn("Operation not permitted", response.json['error_message'])
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("Unsupported controller filesystem", response.json['error_message'])
+
+    def test_delete_allowed(self):
+
+        # Rook Ceph must be as storage backend
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+        controller_fs = self._create_db_object('ceph-float',
+                                                20,
+                                                'ceph-float-lv')
+
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        response = self.delete('/controller_fs/%s' %
+                                  controller_fs.uuid,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=False)
+
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
 
 
 class ApiControllerFSPostTestSuiteMixin(ApiControllerFSTestCaseMixin):
@@ -636,17 +655,39 @@ class ApiControllerFSPostTestSuiteMixin(ApiControllerFSTestCaseMixin):
     def setUp(self):
         super(ApiControllerFSPostTestSuiteMixin, self).setUp()
 
-    # Test that a valid POST operation is blocked by the API
-    # API should return 400 BAD_REQUEST or FORBIDDEN 403
     def test_post_not_allowed(self):
-        response = self.post_json(self.API_PREFIX,
-                                  {'name': 'platform-new',
-                                   'size': 10,
-                                   'logical_volume': 'platform-lv'},
+        response = self.post_json('/controller_fs',
+                                  {'name': 'test',
+                                   'size': 10},
                                   headers=self.API_HEADERS,
                                   expect_errors=True)
 
         # Verify appropriate exception is raised
         self.assertEqual(response.content_type, 'application/json')
-        self.assertEqual(response.status_code, http_client.FORBIDDEN)
-        self.assertIn("Operation not permitted", response.json['error_message'])
+        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
+        self.assertIn("Unsupported controller filesystem", response.json['error_message'])
+
+    def test_post_allowed(self):
+
+        # Rook Ceph must be as storage backend
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        # Must be AIO-DX
+        system_dict = self.system.as_dict()
+        system_dict['system_mode'] = constants.SYSTEM_MODE_DUPLEX
+        system_dict['system_type'] = constants.TIS_AIO_BUILD
+        self.dbapi.isystem_update(self.system.uuid, system_dict)
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        response = self.post_json('/controller_fs',
+                                  {'name': 'ceph-float',
+                                   'size': 20},
+                                  headers=self.API_HEADERS,
+                                  expect_errors=False)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
