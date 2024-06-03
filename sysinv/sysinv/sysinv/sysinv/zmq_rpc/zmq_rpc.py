@@ -99,6 +99,7 @@ class ZmqRpcServer(object):
                                                       raise_on_no_answer=False)
                     v6_results = dns.resolver.resolve(self.host, 'AAAA',
                                                       raise_on_no_answer=False)
+                    host_ip = None
                     dns_results = None
                     if v6_results:
                         dns_results = v6_results
@@ -109,6 +110,7 @@ class ZmqRpcServer(object):
                     else:
                         LOG.error("Failed to resolve DNS host {}".format(self.host))
                         return
+
                     self.endpoint = get_tcp_endpoint(host_ip, self.port)
                     LOG.debug("Resolved fqdn host={} host_ip={} endpoint={}"
                               .format(self.host, host_ip, self.endpoint))
