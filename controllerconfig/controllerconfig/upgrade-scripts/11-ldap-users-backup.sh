@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2023 Wind River Systems, Inc.
+# Copyright (c) 2023-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -14,19 +14,18 @@ FROM_RELEASE=$1
 TO_RELEASE=$2
 ACTION=$3
 
-# This will log to /var/log/platform.log
 function log {
-    logger -p local1.info $1
+    echo "$(date -Iseconds | cut -d'+' -f1): ${NAME}[$$]: INFO: $*" >> "/var/log/software.log" 2>&1
 }
 
 # Logs using the 'log' function and exits with error
 function exit_with_error {
-    log "$NAME: $1 (RETURNED: $?)"
+    log "$1 (RETURNED: $?)"
     exit 1
 }
 
 # Script start
-log "$NAME: Saving backup of openldap schema files from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
+log "Saving backup of openldap schema files from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 
 if [[ "${ACTION}" == "start" ]] && [[ "${FROM_RELEASE}" == "21.12" ]] && [[ "${TO_RELEASE}" == "22.12" ]]; then
 
@@ -34,7 +33,7 @@ if [[ "${ACTION}" == "start" ]] && [[ "${FROM_RELEASE}" == "21.12" ]] && [[ "${T
     echo $distributed_cloud_role)
 
     if [[ $DISTRIBUTED_CLOUD_ROLE == "subcloud" ]] ; then
-        log "$NAME: No actions required for subclouds"
+        log "No actions required for subclouds"
         exit 0
     fi
 
@@ -46,21 +45,21 @@ if [[ "${ACTION}" == "start" ]] && [[ "${FROM_RELEASE}" == "21.12" ]] && [[ "${T
     mkdir $BACKUP_DIR \
     || exit_with_error "ERROR - Failed to create directory $BACKUP_DIR"
 
-    log "$NAME: Successfully created directory $BACKUP_DIR"
+    log "Successfully created directory $BACKUP_DIR"
 
     /usr/sbin/slapcat -F /etc/openldap/schema -l $BACKUP_DIR/ldap.db \
     || exit_with_error "ERROR - Failed to export ldap data to $BACKUP_DIR/ldap.db"
 
-    log "$NAME: Successfully exported $BACKUP_DIR/ldap.db"
+    log "Successfully exported $BACKUP_DIR/ldap.db"
 
     chmod -R go= $BACKUP_DIR \
     || exit_with_error "ERROR - Failed to set permissions to $BACKUP_DIR/ldap.db"
 
-    log "$NAME: Successfully set permissions for $BACKUP_DIR/ldap.db"
+    log "Successfully set permissions for $BACKUP_DIR/ldap.db"
 
-    log "$NAME: Script finished successfully."
+    log "Script finished successfully."
 else
-    log "$NAME: No actions required for from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
+    log "No actions required for from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 fi
 
 exit 0

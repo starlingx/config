@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2023 Wind River Systems, Inc.
+# Copyright (c) 2023-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -7,10 +7,10 @@
 #
 
 import argparse
+import logging as LOG
 import os
 import subprocess
 import sys
-from controllerconfig.common import log
 from sysinv.conductor import rpcapiproxy as conductor_rpcapi
 from cgtsclient import client as cgts_client
 from oslo_config import cfg
@@ -18,7 +18,6 @@ from oslo_context import context
 from sysinv.common import constants
 
 CONF = cfg.CONF
-LOG = log.get_logger(__name__)
 
 
 class CgtsClient(object):
@@ -84,7 +83,10 @@ def main():
         print("Invalid option {}".format(sys.arg))
         return 1
     if args.action == "activate":
-        log.configure()
+        log_format = ('%(asctime)s: ' + '[%(process)s]: '
+                      '%(filename)s(%(lineno)s): %(levelname)s: %(message)s')
+        LOG.basicConfig(filename="/var/log/software.log",
+                        format=log_format, level=LOG.INFO, datefmt="%FT%T")
         LOG.info(
             "{} invoked with from_release = {} "
             "to_release = {} "

@@ -16,14 +16,13 @@ FROM_RELEASE=$1
 TO_RELEASE=$2
 ACTION=$3
 
-# This will log to /var/log/platform.log
 function log {
-    logger -p local1.info $1
+    echo "$(date -Iseconds | cut -d'+' -f1): ${NAME}[$$]: INFO: $*" >> "/var/log/software.log" 2>&1
 }
 
 # Only run this script during upgrade-activate and from release 22.12
 if [[ "$ACTION" != "activate" ||  "$FROM_RELEASE" != "22.12" ]]; then
-    log "$NAME: skipping encryption-fs service parameter deletion."
+    log "skipping encryption-fs service parameter deletion."
     exit 0
 fi
 

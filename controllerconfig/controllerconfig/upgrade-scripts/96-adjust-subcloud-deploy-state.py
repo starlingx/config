@@ -10,15 +10,12 @@
 # after the deprecation of subcloud reconfig and the old
 # deploy status.
 
+import logging as LOG
 import sys
 
 from dcmanager.common import consts as dcmanager_consts
 import psycopg2
 
-from controllerconfig.common import log
-
-
-LOG = log.get_logger(__name__)
 
 DEPLOY_STATUS_MAP = {
     dcmanager_consts.DEPLOY_STATE_DEPLOY_PREP_FAILED:
@@ -47,7 +44,10 @@ def main():
             print("Invalid option %s." % sys.argv[arg])
             return 1
         arg += 1
-    log.configure()
+    log_format = ('%(asctime)s: ' + '[%(process)s]: '
+                  '%(filename)s(%(lineno)s): %(levelname)s: %(message)s')
+    LOG.basicConfig(filename="/var/log/software.log",
+                    format=log_format, level=LOG.INFO, datefmt="%FT%T")
     LOG.info(
         "%s invoked from_release = %s to_release = %s action = %s"
         % (sys.argv[0], from_release, to_release, action)

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2022 Wind River Systems, Inc.
+# Copyright (c) 2022-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -17,9 +17,8 @@ FROM_RELEASE=$1
 TO_RELEASE=$2
 ACTION=$3
 
-# This will log to /var/log/platform.log
 function log {
-    logger -p local1.info $1
+    echo "$(date -Iseconds | cut -d'+' -f1): ${NAME}[$$]: INFO: $*" >> "/var/log/software.log" 2>&1
 }
 
 # Script start
@@ -27,7 +26,7 @@ if [[ "${ACTION}" != "activate" ]]; then
     exit 0
 fi
 
-log "$NAME: Starting docker health check script from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
+log "Starting docker health check script from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 
 # Docker is considered in a "bad state" if the service isn't active or
 # if "/var/lib/docker/tmp" doesn't exist, as it won't be able to download images
@@ -36,16 +35,16 @@ while [ "$(systemctl is-active docker)" != "active" ] || [ ! -d "/var/lib/docker
 do
     attempts=$(( $attempts + 1 ))
     if [ "$attempts" -gt "$MAX_ATTEMPTS" ]; then
-        log "$NAME: Could not fix docker service."
+        log "Could not fix docker service."
         exit 0
     fi
-    log "$NAME: Docker in bad state. Restarting docker service. Attempt: $attempts/$MAX_ATTEMPTS"
+    log "Docker in bad state. Restarting docker service. Attempt: $attempts/$MAX_ATTEMPTS"
 
     systemctl restart docker
 
     sleep $TIME_STEP
 done
 
-log "$NAME: Docker service is active and healthy"
+log "Docker service is active and healthy"
 
 exit 0

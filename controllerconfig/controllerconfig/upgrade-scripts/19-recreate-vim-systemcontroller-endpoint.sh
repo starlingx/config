@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2022-2023 Wind River Systems, Inc.
+# Copyright (c) 2022-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -31,20 +31,19 @@ TMP_FOLDER=$(mktemp -d /tmp/XXXXX)
 MANIFEST_NAME="remove_vim"
 MANIFEST_FILE="${TMP_FOLDER}/${MANIFEST_NAME}.yaml"
 
-# This will log to /var/log/platform.log
 function log {
-    logger -p local1.info $1
+    echo "$(date -Iseconds | cut -d'+' -f1): ${NAME}[$$]: INFO: $*" >> "/var/log/software.log" 2>&1
 }
 
 # Script start
-log "$NAME: Starting to recreate vim's keystone endpoints in SystemController from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
+log "Starting to recreate vim's keystone endpoints in SystemController from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 
 if [[ "${ACTION}" == "activate" ]] && [[ "${FROM_RELEASE}" == "22.12" ]] && [[ ${IS_DEBIAN} != 0 ]] && [[ $distributed_cloud_role == "systemcontroller" ]]; then
 
     source /etc/platform/openrc
 
     #Remove all endpoints for vim in SystemController region
-    log "$NAME: Removing old vim keystone endpoints for SystemController"
+    log "Removing old vim keystone endpoints for SystemController"
     openstack endpoint list --region SystemController --service nfv -f value -c ID | \
     xargs -r openstack endpoint delete
 
@@ -56,7 +55,7 @@ if [[ "${ACTION}" == "activate" ]] && [[ "${FROM_RELEASE}" == "22.12" ]] && [[ $
     #Find active controller's mgmt IP
     ACTIVE_CONTROLLER_IP=$(cat /etc/hosts | awk -v host=$HOSTNAME '$2 == host {print $1}')
 
-    log "$NAME: Using $HOSTNAME mgmt IP to apply manifest on puppet - $ACTIVE_CONTROLLER_IP"
+    log "Using $HOSTNAME mgmt IP to apply manifest on puppet - $ACTIVE_CONTROLLER_IP"
 
     #Run manifest
     /usr/local/bin/puppet-manifest-apply.sh ${HIERADATA_FOLDER} ${ACTIVE_CONTROLLER_IP} controller runtime ${MANIFEST_FILE}
@@ -64,9 +63,9 @@ if [[ "${ACTION}" == "activate" ]] && [[ "${FROM_RELEASE}" == "22.12" ]] && [[ $
     #Remove the file
     rm ${MANIFEST_FILE}
 
-    log "$NAME: SystemController's vim endpoints recreation finished successfully from $FROM_RELEASE to $TO_RELEASE"
+    log "SystemController's vim endpoints recreation finished successfully from $FROM_RELEASE to $TO_RELEASE"
 else
-    log "$NAME: No actions required for from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
+    log "No actions required for from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 fi
 
 exit 0

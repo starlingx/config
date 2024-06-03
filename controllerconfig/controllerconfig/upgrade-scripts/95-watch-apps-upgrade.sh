@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2023 Wind River Systems, Inc.
+# Copyright (c) 2023-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -23,12 +23,11 @@ UPGRADE_IN_PROGRESS_APPS_FILE='/etc/platform/.upgrade_in_progress_apps'
 UPDATE_RESULT_SLEEP=30
 UPDATE_RESULT_ATTEMPTS=45  # ~22.5 min to allow updates to complete.
 
-# This will log to /var/log/platform.log
 function log {
-    logger -p local1.info $1
+    echo "$(date -Iseconds | cut -d'+' -f1): ${NAME}[$$]: INFO: $*" >> "/var/log/software.log" 2>&1
 }
 
-log "$NAME: Starting application upgrade watcher script from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
+log "Starting application upgrade watcher script from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 
 if [ "$ACTION" == "activate" ]; then
 
@@ -37,14 +36,14 @@ if [ "$ACTION" == "activate" ]; then
     source /etc/platform/platform.conf
 
     if [ ! -f $UPGRADE_IN_PROGRESS_APPS_FILE ]; then
-        log "$NAME: No file with application upgrade in progress found, skipping script."
+        log "No file with application upgrade in progress found, skipping script."
         exit 0
     fi
 
     # Loop over upgraded apps and wait them to become 'applied' or 'uploaded' with the new version
     APPS_LIST=$(cat $UPGRADE_IN_PROGRESS_APPS_FILE)
     for tries in $(seq 1 $UPDATE_RESULT_ATTEMPTS); do
-        log "$NAME: Checking applications status... Retry ${tries} of ${UPDATE_RESULT_ATTEMPTS}"
+        log "Checking applications status... Retry ${tries} of ${UPDATE_RESULT_ATTEMPTS}"
         ALL_UPGRADED="true"
         UPGRADE_IN_PROGRESS_APPS_LIST=""
         for app in $APPS_LIST; do
@@ -65,19 +64,19 @@ if [ "$ACTION" == "activate" ]; then
                     "applied"|"uploaded")
                         ALARMS=$(fm alarm-list --nowrap --uuid --query "alarm_id=750.005;entity_type_id=k8s_application;entity_instance_id=${UPGRADE_APP_NAME}" | head -n-1 | tail -n+4 | awk '{print $2}')
                         for alarm in ${ALARMS}; do
-                            log "$NAME: WARN: A stale 750.005 Application Update In Progress alarm was found for ${UPGRADE_APP_NAME}. Clearing it (UUID: ${alarm})."
+                            log "WARN: A stale 750.005 Application Update In Progress alarm was found for ${UPGRADE_APP_NAME}. Clearing it (UUID: ${alarm})."
                             fm alarm-delete $alarm
                         done
-                        log "$NAME: ${UPGRADE_APP_NAME} has been updated to version ${UPGRADE_APP_VERSION} from version ${EXISTING_APP_VERSION}"
+                        log "${UPGRADE_APP_NAME} has been updated to version ${UPGRADE_APP_VERSION} from version ${EXISTING_APP_VERSION}"
                         ;;
                     *)
-                        log "$NAME: ${UPGRADE_APP_NAME} update in progress to version ${UPGRADE_APP_VERSION} from version ${EXISTING_APP_VERSION}"
+                        log "${UPGRADE_APP_NAME} update in progress to version ${UPGRADE_APP_VERSION} from version ${EXISTING_APP_VERSION}"
                         UPGRADE_IN_PROGRESS_APPS_LIST="${app} ${UPGRADE_IN_PROGRESS_APPS_LIST}"
                         ALL_UPGRADED="false"
                         ;;
                 esac
             else
-                log "$NAME: WARN: ${UPGRADE_APP_NAME} is on '${UPDATING_APP_STATUS}' state but the version is not updated to ${UPGRADE_APP_VERSION} from version ${EXISTING_APP_VERSION}"
+                log "WARN: ${UPGRADE_APP_NAME} is on '${UPDATING_APP_STATUS}' state but the version is not updated to ${UPGRADE_APP_VERSION} from version ${EXISTING_APP_VERSION}"
                 UPGRADE_IN_PROGRESS_APPS_LIST="${app} ${UPGRADE_IN_PROGRESS_APPS_LIST}"
                 ALL_UPGRADED="false"
             fi
@@ -93,15 +92,15 @@ if [ "$ACTION" == "activate" ]; then
     done
 
     if [ $tries == $UPDATE_RESULT_ATTEMPTS ]; then
-        log "$NAME: One or more apps (${APPS_LIST// /, }) were not updated in the alloted time. Exiting for manual intervention..."
+        log "One or more apps (${APPS_LIST// /, }) were not updated in the alloted time. Exiting for manual intervention..."
         exit 1
     fi
 
     # remove upgrade in progress file
-    log "$NAME: Removing temporary file: $UPGRADE_IN_PROGRESS_APPS_FILE"
+    log "Removing temporary file: $UPGRADE_IN_PROGRESS_APPS_FILE"
     [[ -f $UPGRADE_IN_PROGRESS_APPS_FILE ]] && rm -f $UPGRADE_IN_PROGRESS_APPS_FILE
 
-    log "$NAME: Completed application upgrade watcher script from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
+    log "Completed application upgrade watcher script from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 else
-    log "$NAME: No actions required for from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
+    log "No actions required for from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 fi

@@ -3,15 +3,11 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-import sys
-
 import datetime
+import logging as LOG
 import psycopg2
-from controllerconfig.common import log
+import sys
 from oslo_utils import uuidutils
-
-
-LOG = log.get_logger(__name__)
 
 
 def main():
@@ -35,7 +31,10 @@ def main():
             return 1
         arg += 1
 
-    log.configure()
+    log_format = ('%(asctime)s: ' + '[%(process)s]: '
+                  '%(filename)s(%(lineno)s): %(levelname)s: %(message)s')
+    LOG.basicConfig(filename="/var/log/software.log",
+                    format=log_format, level=LOG.INFO, datefmt="%FT%T")
 
     if from_release == "22.12" and action == "migrate":
         try:

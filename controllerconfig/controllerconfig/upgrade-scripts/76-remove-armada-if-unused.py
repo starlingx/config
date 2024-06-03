@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2022 Wind River Systems, Inc.
+# Copyright (c) 2022-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -10,6 +10,7 @@
 # - armada kubernetes namespace
 # - armada docker image
 
+import logging as LOG
 import os
 import psutil
 import ruamel.yaml as yaml
@@ -19,15 +20,16 @@ from cgtsclient import client as cgts_client
 from cgtsclient import exc as client_exception
 from eventlet.green import subprocess
 from time import sleep
-from controllerconfig.common import log
 from sysinv.common import exception
 from sysinv.common import utils as common_utils
 from sysinv.helm import utils as helm_utils
 from sysinv.common.kubernetes import KUBERNETES_ADMIN_CONF
 from tsconfig.tsconfig import PLATFORM_PATH
 
-LOG = log.get_logger(__name__)
-log.configure()
+log_format = ('%(asctime)s: ' + '[%(process)s]: '
+              '%(filename)s(%(lineno)s): %(levelname)s: %(message)s')
+LOG.basicConfig(filename="/var/log/software.log",
+                format=log_format, level=LOG.INFO, datefmt="%FT%T")
 
 ARMADA_MANIFEST_DIRECTORY = os.path.join(PLATFORM_PATH, 'armada')
 ARMADA_NS = 'armada'

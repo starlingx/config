@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Copyright (c) 2022 Wind River Systems, Inc.
+# Copyright (c) 2022-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -7,10 +7,9 @@
 # in kubernetes
 #
 # This script can be removed in the release that follows stx7
+import logging as LOG
 import subprocess
 import sys
-from controllerconfig.common import log
-LOG = log.get_logger(__name__)
 
 
 def main():
@@ -32,7 +31,10 @@ def main():
             print("Invalid option %s." % sys.argv[arg])
             return 1
         arg += 1
-    log.configure()
+    log_format = ('%(asctime)s: ' + '[%(process)s]: '
+                  '%(filename)s(%(lineno)s): %(levelname)s: %(message)s')
+    LOG.basicConfig(filename="/var/log/software.log",
+                    format=log_format, level=LOG.INFO, datefmt="%FT%T")
 
     if action == 'activate' and from_release >= '21.12':
         LOG.info("%s invoked with from_release = %s to_release = %s "
