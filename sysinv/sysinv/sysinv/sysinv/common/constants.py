@@ -2590,9 +2590,12 @@ ISSUER = "Issuer"
 # USM deploy state
 DEPLOY_STATE_HOST = 'host'  # host is being deploy
 DEPLOY_STATE_HOST_FAILED = 'host-failed'  # host deployment failed
+
 # USM deploy host state
 DEPLOY_HOST_PENDING = 'pending'  # host is pending for new deployment
 DEPLOY_HOST_DEPLOYED = 'deployed'  # new software is deployed to the host
+DEPLOY_HOST_ROLLBACK_PENDING = 'rollback-pending'  # host is pending for rollback
+DEPLOY_HOST_ROLLBACK_DEPLOYED = 'rollback-deployed'  # rollback release is deployed to the host
 
 # API operations
 API_POST = 'post'
