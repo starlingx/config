@@ -1374,6 +1374,291 @@ class StorageCephTestCases(base.FunctionalTest):
                          self.get_json('/storage_backend')['storage_backends'][0]['backend'])
 
 
+class StorageCephRookTestCases(base.FunctionalTest):
+
+    def setUp(self):
+        super(StorageCephRookTestCases, self).setUp()
+        self.system = dbutils.create_test_isystem()
+        self.cluster = dbutils.create_test_cluster(system_id=self.system.id)
+        self.tier = dbutils.create_test_storage_tier(forclusterid=self.cluster.id)
+        self.load = dbutils.create_test_load()
+        self.host = dbutils.create_test_ihost(forisystemid=self.system.id)
+
+        # Patch management network for ceph
+        self.dbapi = dbapi.get_instance()
+        p = mock.patch.object(self.dbapi, 'networks_get_by_type')
+        p.start().return_value = [{'network_type': constants.NETWORK_TYPE_MGMT}]
+        self.addCleanup(p.stop)
+
+    def assertDeleted(self, fullPath):
+        self.get_json(fullPath, expect_errors=True)  # Make sure this line raises an error
+
+    #
+    # StorageCephRook API
+    #
+
+    def test_post_missing_confirm(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'capabilities': {'test_bparam3': 'foo'}
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn('nWARNING : THIS OPERATION IS NOT REVERSIBLE AND CANNOT BE CANCELLED',
+                      response.json['error_message'])
+
+    def test_post_and_confirm(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'capabilities': {'test_bparam3': 'foo'},
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.SB_TYPE_CEPH_ROOK,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
+
+    def test_post_with_invalid_svc_and_confirm(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'services': 'invalid_svc',
+            'capabilities': {'test_bparam3': 'foo'},
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn('Service invalid_svc is not supported for the ceph-rook backend',
+                      response.json['error_message'])
+
+    def test_post_with_valid_svc_all_svc_param_and_confirm(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'services': constants.SB_SVC_CEPH_ROOK_BLOCK,
+            'capabilities': {'test_bparam3': 'foo',
+                             'test_sparam1': 'bar'},
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.SB_TYPE_CEPH_ROOK,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
+
+    def test_post_with_svc_deployment_model_and_confirm(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'services': constants.SB_SVC_CEPH_ROOK_BLOCK,
+            'deployment': constants.CEPH_ROOK_DEPLOYMENT_OPEN,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.SB_TYPE_CEPH_ROOK,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
+        self.assertEqual(constants.SB_SVC_CEPH_ROOK_BLOCK,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['services'])  # Result
+        self.assertEqual(constants.CEPH_ROOK_DEPLOYMENT_OPEN,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['capabilities']['deployment_model'])  # Result
+
+    def test_post_with_invalid_deployment_model_and_confirm(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'deployment': 'invalid_deployment_model',
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['capabilities']['deployment_model'])  # Result
+
+    def test_post_with_valid_deployment_model_and_confirm(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'deployment': constants.CEPH_ROOK_DEPLOYMENT_OPEN,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.CEPH_ROOK_DEPLOYMENT_OPEN,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['capabilities']['deployment_model'])  # Result
+
+    def test_post_with_invalid_dedicated_deployment_model_and_confirm(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'deployment': constants.CEPH_ROOK_DEPLOYMENT_DEDICATED,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, response.status_int)
+        self.assertEqual('application/json', response.content_type)
+        self.assertTrue(response.json['error_message'])
+        self.assertIn('Deployment_model dedicated is not supported in duplex system mode '
+                      'that there are no worker hosts', response.json['error_message'])
+
+    def test_post_and_confirm_modify_with_invalid_svc(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'confirmed': True
+        }
+        default_services = f'{constants.SB_SVC_CEPH_ROOK_BLOCK},{constants.SB_SVC_CEPH_ROOK_FILESYSTEM}'
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.SB_TYPE_CEPH_ROOK,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
+
+        patch_response = self.patch_dict_json('/storage_ceph_rook/%s' % response.json['uuid'],
+                                              headers={'User-Agent': 'sysinv'},
+                                              services='%s,invalid_svc' % default_services,
+                                              expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, patch_response.status_int)
+        self.assertEqual('application/json', patch_response.content_type)
+        self.assertTrue(patch_response.json['error_message'])
+        self.assertIn('Service invalid_svc is not supported for the '
+                      'ceph-rook backend', patch_response.json['error_message'])
+
+    def test_post_and_confirm_modify_with_exclusive_svc(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'confirmed': True
+        }
+        default_services = f'{constants.SB_SVC_CEPH_ROOK_BLOCK},{constants.SB_SVC_CEPH_ROOK_FILESYSTEM}'
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.SB_TYPE_CEPH_ROOK,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
+
+        patch_response = self.patch_dict_json('/storage_ceph_rook/%s' % response.json['uuid'],
+                                              headers={'User-Agent': 'sysinv'},
+                                              services='%s,%s' % (default_services, constants.SB_SVC_CEPH_ROOK_ECBLOCK),
+                                              expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, patch_response.status_int)
+        self.assertEqual('application/json', patch_response.content_type)
+        self.assertTrue(patch_response.json['error_message'])
+        self.assertIn('Service block and ecblock are not supported for the ceph-rook backend in same time',
+                      patch_response.json['error_message'])
+
+    def test_post_and_confirm_modify_with_svc_with_params(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'capabilities': {'test_bparam3': 'foo'},
+            'confirmed': True
+        }
+        default_services = f'{constants.SB_SVC_CEPH_ROOK_BLOCK},{constants.SB_SVC_CEPH_ROOK_FILESYSTEM}'
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.SB_TYPE_CEPH_ROOK,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
+
+        patch_response = self.patch_dict_json('/storage_ceph_rook/%s' % response.json['uuid'],
+                                              headers={'User-Agent': 'sysinv'},
+                                              services='%s,%s' % (default_services, constants.SB_SVC_CEPH_ROOK_OBJECT),
+                                              capabilities=jsonutils.dumps({'test_sparam1': 'bar'}),
+                                              expect_errors=False)
+        self.assertEqual(http_client.OK, patch_response.status_int)
+        self.assertIn(constants.SB_SVC_CEPH_ROOK_OBJECT,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['services'])  # Result
+        self.assertEqual({constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP: constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER,
+                          'test_sparam1': 'bar'},  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['capabilities'])  # Result
+
+    def test_post_and_confirm_modify_with_valid_deployment_model(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.SB_TYPE_CEPH_ROOK,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
+
+        patch_response = self.patch_dict_json('/storage_ceph_rook/%s' % response.json['uuid'],
+                                              headers={'User-Agent': 'sysinv'},
+                                              capabilities=jsonutils.dumps({
+                                                  constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP:
+                                                  constants.CEPH_ROOK_DEPLOYMENT_OPEN}),
+                                              expect_errors=False)
+        self.assertEqual(http_client.OK, patch_response.status_int)
+        self.assertEqual(constants.CEPH_ROOK_DEPLOYMENT_OPEN,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['capabilities']['deployment_model'])  # Result
+
+    def test_post_and_confirm_modify_with_invalid_deployment_model(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.SB_TYPE_CEPH_ROOK,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
+
+        patch_response = self.patch_dict_json('/storage_ceph_rook/%s' % response.json['uuid'],
+                                              headers={'User-Agent': 'sysinv'},
+                                              capabilities=jsonutils.dumps({
+                                                  constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP:
+                                                  'invalid_deployment_model'}),
+                                              expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, patch_response.status_int)
+        self.assertEqual('application/json', patch_response.content_type)
+        self.assertTrue(patch_response.json['error_message'])
+        self.assertIn('Deployment_model invalid_deployment_model is not supported',
+                      patch_response.json['error_message'])
+
+    def test_post_and_confirm_modify_with_unsupported_deployment_model(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.SB_TYPE_CEPH_ROOK,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
+
+        patch_response = self.patch_dict_json('/storage_ceph_rook/%s' % response.json['uuid'],
+                                              headers={'User-Agent': 'sysinv'},
+                                              capabilities=jsonutils.dumps({
+                                                  constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP:
+                                                  constants.CEPH_ROOK_DEPLOYMENT_DEDICATED}),
+                                              expect_errors=True)
+        self.assertEqual(http_client.BAD_REQUEST, patch_response.status_int)
+        self.assertEqual('application/json', patch_response.content_type)
+        self.assertTrue(patch_response.json['error_message'])
+        self.assertIn('Change deployment model controller<->dedicated is not supported.',
+                      patch_response.json['error_message'])
+
+    def test_post_and_list(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'capabilities': {constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP: constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER},
+            'confirmed': True
+        }
+        response = self.post_json('/storage_ceph_rook/', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.SB_TYPE_CEPH_ROOK,  # Expected
+                         self.get_json('/storage_ceph_rook/%s/' %
+                                       response.json['uuid'])['backend'])  # Result
+        self.assertEqual(constants.SB_TYPE_CEPH_ROOK,
+                         self.get_json('/storage_backend')['storage_backends'][0]['backend'])
+
+
 class StorageBackendConfigTest(base.FunctionalTest):
     def setUp(self):
         super(StorageBackendConfigTest, self).setUp()
