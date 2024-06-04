@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 
 from eventlet.green import subprocess
@@ -424,13 +424,17 @@ class StorageController(rest.RestController):
 
         # Set status for newly created OSD.
         if rpc_stor['function'] == constants.STOR_FUNCTION_OSD:
-            ihost_id = rpc_stor['forihostid']
-            ihost = pecan.request.dbapi.ihost_get(ihost_id)
-            if ihost['operational'] == constants.OPERATIONAL_ENABLED:
-                # We are running live manifests
-                rpc_stor['state'] = constants.SB_STATE_CONFIGURING
+            if StorageBackendConfig.has_backend(pecan.request.dbapi,
+                                                constants.SB_TYPE_CEPH_ROOK):
+                rpc_stor['state'] = constants.SB_STATE_CONFIGURING_WITH_APP
             else:
-                rpc_stor['state'] = constants.SB_STATE_CONFIGURING_ON_UNLOCK
+                ihost_id = rpc_stor['forihostid']
+                ihost = pecan.request.dbapi.ihost_get(ihost_id)
+                if ihost['operational'] == constants.OPERATIONAL_ENABLED:
+                    # We are running live manifests
+                    rpc_stor['state'] = constants.SB_STATE_CONFIGURING
+                else:
+                    rpc_stor['state'] = constants.SB_STATE_CONFIGURING_ON_UNLOCK
 
         # Save istor
         rpc_stor.save()
@@ -450,6 +454,13 @@ class StorageController(rest.RestController):
         if (rpc_stor['state'] == constants.SB_STATE_CONFIGURING and
                 rpc_stor['function'] == constants.STOR_FUNCTION_OSD):
             runtime_manifests = True
+
+        # Override the runtime manifest call if the Ceph Rook backend is
+        # configured. Appliction apply will make changes, not runtime puppet
+        # manifests
+        if StorageBackendConfig.has_backend(pecan.request.dbapi,
+                                            constants.SB_TYPE_CEPH_ROOK):
+            runtime_manifests = False
 
         pecan.request.rpcapi.update_ceph_osd_config(pecan.request.context,
                                                     ihost, rpc_stor['uuid'],
@@ -485,7 +496,8 @@ class StorageController(rest.RestController):
                                                 ihost['hostname']))
             self.delete_stor(stor_uuid)
         elif (stor.function == constants.STOR_FUNCTION_OSD and
-              stor.state == constants.SB_STATE_CONFIGURING_ON_UNLOCK):
+              stor.state in [constants.SB_STATE_CONFIGURING_ON_UNLOCK,
+                             constants.SB_STATE_CONFIGURING_WITH_APP]):
             # Host must be locked
             if ihost['administrative'] != constants.ADMIN_LOCKED:
                 raise wsme.exc.ClientSideError(_("Host %s must be locked." %
@@ -532,6 +544,11 @@ def _satisfy_other_conditions_to_delete_osd():
         pecan.request.dbapi,
         constants.SB_TYPE_CEPH
     )
+    has_ceph_rook_backend = StorageBackendConfig.has_backend(
+        pecan.request.dbapi,
+        target=constants.SB_TYPE_CEPH_ROOK
+    )
+
     if is_simplex and is_ceph_backend_configured:
         LOG.info('Verifying simplex is allowed to delete OSD')
 
@@ -550,10 +567,16 @@ def _satisfy_other_conditions_to_delete_osd():
         if not all_pools_size_gt_one:
             raise wsme.exc.ClientSideError(_(pools_size_err_msg))
         return True
+    elif has_ceph_rook_backend:
+        # TODO: will need to call into the app for approval
+        LOG.info('Assuming stor deletion is allowed for as a ceph rook '
+                 'is present ? {}.'.format(has_ceph_rook_backend))
+        return True
     else:
         LOG.info('System is not allowed to delete stor. is simplex ? {}.'
-                 'is ceph configured ? {}.'
-                 .format(is_simplex, is_ceph_backend_configured))
+                 'is ceph configured ? {}. is ceph rook configured ? {}.'
+                 .format(is_simplex, is_ceph_backend_configured,
+                         has_ceph_rook_backend))
     return False
 
 
@@ -590,41 +613,45 @@ def _check_host(stor):
     stor_model = ceph.get_ceph_storage_model()
 
     # semantic check: whether OSD can be added to this host.
-    if stor_model == constants.CEPH_STORAGE_MODEL:
-        if ihost.personality != constants.STORAGE:
-            msg = ("Storage model is '%s'. Storage devices can only be added "
-                   "to storage nodes." % stor_model)
+    if StorageBackendConfig.has_backend(pecan.request.dbapi,
+                                        constants.SB_TYPE_CEPH):
+        if stor_model == constants.CEPH_STORAGE_MODEL:
+            if ihost.personality != constants.STORAGE:
+                msg = ("Storage model is '%s'. Storage devices can only be added "
+                       "to storage nodes." % stor_model)
+                raise wsme.exc.ClientSideError(_(msg))
+        elif stor_model == constants.CEPH_CONTROLLER_MODEL:
+            if ihost.personality != constants.CONTROLLER:
+                msg = ("Storage model is '%s'. Storage devices can only be added "
+                       "to controller nodes." % stor_model)
+                raise wsme.exc.ClientSideError(_(msg))
+        elif stor_model == constants.CEPH_UNDEFINED_MODEL:
+            msg = ("Please install storage-0 or configure a Ceph monitor "
+                   "on a worker node before adding storage devices.")
             raise wsme.exc.ClientSideError(_(msg))
-    elif stor_model == constants.CEPH_CONTROLLER_MODEL:
-        if ihost.personality != constants.CONTROLLER:
-            msg = ("Storage model is '%s'. Storage devices can only be added "
-                   "to controller nodes." % stor_model)
-            raise wsme.exc.ClientSideError(_(msg))
-    elif stor_model == constants.CEPH_UNDEFINED_MODEL:
-        msg = ("Please install storage-0 or configure a Ceph monitor "
-               "on a worker node before adding storage devices.")
-        raise wsme.exc.ClientSideError(_(msg))
 
-    # semantic check: whether host is operationally acceptable
-    if (stor_model == constants.CEPH_CONTROLLER_MODEL or
-            stor_model == constants.CEPH_AIO_SX_MODEL):
-        if (ihost['administrative'] == constants.ADMIN_UNLOCKED and
-                ihost['operational'] != constants.OPERATIONAL_ENABLED):
-            msg = _("Host %s must be unlocked and operational state "
-                    "enabled." % ihost['hostname'])
-            raise wsme.exc.ClientSideError(msg)
-    else:
-        if ihost['administrative'] != constants.ADMIN_LOCKED:
-            raise wsme.exc.ClientSideError(_("Host %s must be locked." %
-                                             ihost['hostname']))
+        # semantic check: whether host is operationally acceptable
+        if (stor_model == constants.CEPH_CONTROLLER_MODEL or
+                stor_model == constants.CEPH_AIO_SX_MODEL):
+            if (ihost['administrative'] == constants.ADMIN_UNLOCKED and
+                    ihost['operational'] != constants.OPERATIONAL_ENABLED):
+                msg = _("Host %s must be unlocked and operational state "
+                        "enabled." % ihost['hostname'])
+                raise wsme.exc.ClientSideError(msg)
+        else:
+            if ihost['administrative'] != constants.ADMIN_LOCKED:
+                raise wsme.exc.ClientSideError(_("Host %s must be locked." %
+                                                 ihost['hostname']))
 
     # semantic check: whether system has a ceph backend
-    if not StorageBackendConfig.has_backend_configured(
-            pecan.request.dbapi,
-            constants.SB_TYPE_CEPH
-    ):
+    if (not StorageBackendConfig.has_backend(pecan.request.dbapi,
+                                             constants.SB_TYPE_CEPH) and
+        not StorageBackendConfig.has_backend(pecan.request.dbapi,
+                                             constants.SB_TYPE_CEPH_ROOK)):
         raise wsme.exc.ClientSideError(_(
-            "System must have a %s backend" % constants.SB_TYPE_CEPH))
+            "System must have either a %s or a %s backend" % (
+                constants.SB_TYPE_CEPH,
+                constants.SB_TYPE_CEPH_ROOK)))
 
     # semantic check: whether host can be locked or unsafely force locked based on
     # ceph monitors availability
@@ -886,13 +913,17 @@ def _create(stor):
 
     # Set status for newly created OSD.
     if function == constants.STOR_FUNCTION_OSD:
-        ihost_id = stor['forihostid']
-        ihost = pecan.request.dbapi.ihost_get(ihost_id)
-        if ihost['operational'] == constants.OPERATIONAL_ENABLED:
-            # We are running live manifests
-            create_attrs['state'] = constants.SB_STATE_CONFIGURING
+        if StorageBackendConfig.has_backend(pecan.request.dbapi,
+                                            constants.SB_TYPE_CEPH_ROOK):
+            create_attrs['state'] = constants.SB_STATE_CONFIGURING_WITH_APP
         else:
-            create_attrs['state'] = constants.SB_STATE_CONFIGURING_ON_UNLOCK
+            ihost_id = stor['forihostid']
+            ihost = pecan.request.dbapi.ihost_get(ihost_id)
+            if ihost['operational'] == constants.OPERATIONAL_ENABLED:
+                # We are running live manifests
+                create_attrs['state'] = constants.SB_STATE_CONFIGURING
+            else:
+                create_attrs['state'] = constants.SB_STATE_CONFIGURING_ON_UNLOCK
     else:
         create_attrs['state'] = constants.SB_STATE_CONFIGURED
 
@@ -1007,6 +1038,13 @@ def _create(stor):
         runtime_manifests = False
         if ihost['operational'] == constants.OPERATIONAL_ENABLED:
             runtime_manifests = True
+
+        # Override the runtime manifest call if the Ceph Rook backend is
+        # configured. Appliction apply will make changes, not runtime puppet
+        # manifests
+        if StorageBackendConfig.has_backend(pecan.request.dbapi,
+                                            constants.SB_TYPE_CEPH_ROOK):
+            runtime_manifests = False
 
         pecan.request.rpcapi.update_ceph_osd_config(pecan.request.context,
                                                     ihost, new_stor['uuid'],
