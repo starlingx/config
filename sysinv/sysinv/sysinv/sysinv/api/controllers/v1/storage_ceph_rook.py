@@ -14,7 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2021,2024 Wind River Systems, Inc.
 # Copyright (c) 2020 Intel Corporation, Inc
 #
 
@@ -46,10 +46,11 @@ from sysinv import objects
 LOG = log.getLogger(__name__)
 
 HIERA_DATA = {
-    'backend': [],
-    constants.SB_SVC_GLANCE: [],
-    constants.SB_SVC_CINDER: [],
-    constants. SB_SVC_NOVA: [],
+    'backend': [constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP],
+    constants. SB_SVC_CEPH_ROOK_BLOCK: [],
+    constants. SB_SVC_CEPH_ROOK_ECBLOCK: [],
+    constants. SB_SVC_CEPH_ROOK_FILESYSTEM: [],
+    constants. SB_SVC_CEPH_ROOK_OBJECT: [],
 }
 
 
@@ -81,13 +82,13 @@ class StorageCephRook(base.APIBase):
     "Represents the storage backend (file, lvm, or ceph)."
 
     state = wtypes.text
-    "The state of the backend. It can be configured or configuring."
+    "The state of the backend. It can be configured, configuring-with-app."
 
     name = wtypes.text
     "The name of the backend (to differentiate between multiple common backends)."
 
     task = wtypes.text
-    "Current task of the corresponding cinder backend."
+    "Current task of the corresponding application."
 
     services = wtypes.text
     "The openstack services that are supported by this storage backend."
@@ -104,9 +105,13 @@ class StorageCephRook(base.APIBase):
     network = wtypes.text
     "The network for backend components"
 
+    # Deployment parameter: [API-only field]
+    deployment = wtypes.text
+    "The deployment model for the storage backend"
+
     def __init__(self, **kwargs):
         defaults = {'uuid': uuidutils.generate_uuid(),
-                    'state': constants.SB_STATE_CONFIGURING,
+                    'state': constants.SB_STATE_CONFIGURING_WITH_APP,
                     'task': constants.SB_TASK_NONE,
                     'capabilities': {},
                     'services': None,
@@ -117,6 +122,10 @@ class StorageCephRook(base.APIBase):
         # 'confirmed' is not part of objects.storage_backend.fields
         # (it's an API-only attribute)
         self.fields.append('confirmed')
+
+        # 'deployment' is not part of objects.storage_backend.fields
+        # (it's an API-only attribute)
+        self.fields.append('deployment')
 
         # Set the value for any of the field
         for k in self.fields:
@@ -296,19 +305,52 @@ def _discover_and_validate_backend_hiera_data(caps_dict):
     pass
 
 
-def _discover_and_validate_glance_hiera_data(caps_dict):
+def _discover_and_validate_block_hiera_data(caps_dict):
     # Currently there is no backend specific hiera_data for this backend
     pass
 
 
-def _discover_and_validate_cinder_hiera_data(caps_dict):
+def _discover_and_validate_ecblock_hiera_data(caps_dict):
     # Currently there is no backend specific hiera_data for this backend
     pass
 
 
-def _discover_and_validate_nova_hiera_data(caps_dict):
+def _discover_and_validate_filesystem_hiera_data(caps_dict):
     # Currently there is no backend specific hiera_data for this backend
     pass
+
+
+def _discover_and_validate_object_hiera_data(caps_dict):
+    # Currently there is no backend specific hiera_data for this backend
+    pass
+
+
+def _create_default_ceph_rook_db_entries():
+    try:
+        isystem = pecan.request.dbapi.isystem_get_one()
+    except exception.NotFound:
+        # When adding the backend, the system DB entry should
+        # have already been created, but it's safer to just check
+        LOG.info('System is not configured. Cannot create Cluster '
+                 'DB entry')
+        return
+
+    # Create the default primary cluster
+    db_cluster = pecan.request.dbapi.cluster_create(
+        {'uuid': uuidutils.generate_uuid(),
+         'cluster_uuid': None,
+         'type': constants.SB_TYPE_CEPH_ROOK,
+         'name': constants.CLUSTER_CEPH_ROOK_DEFAULT_NAME,
+         'system_id': isystem.id})
+
+    # Create the default primary ceph storage tier
+    LOG.info("Create primary ceph rook tier record.")
+    pecan.request.dbapi.storage_tier_create(
+        {'forclusterid': db_cluster.id,
+         'name': constants.SB_TIER_DEFAULT_NAMES[constants.SB_TIER_TYPE_CEPH],
+         'type': constants.SB_TIER_TYPE_CEPH,
+         'status': constants.SB_TIER_STATUS_DEFINED,
+         'capabilities': {}})
 
 
 def _check_backend_ceph_rook(req, storage_ceph_rook, confirmed=False):
@@ -318,18 +360,42 @@ def _check_backend_ceph_rook(req, storage_ceph_rook, confirmed=False):
     # Discover the latest hiera_data for the supported service
     _discover_and_validate_backend_hiera_data(capabilities)
 
-    for k in HIERA_DATA['backend']:
-        if not capabilities.get(k, None):
-            raise wsme.exc.ClientSideError("Missing required backend "
-                                           "parameter: %s" % k)
+    # Check if deployment model is supported
+    deployment_model = capabilities.get('deployment_model', '')
+    if deployment_model not in constants.CEPH_ROOK_DEPLOYMENTS_SUPPORTED:
+        raise wsme.exc.ClientSideError("Deployment_model %s is not supported" % deployment_model)
+
+    # Check system mode
+    isystem = pecan.request.dbapi.isystem_get_one()
+    if deployment_model == constants.CEPH_ROOK_DEPLOYMENT_DEDICATED:
+        if isystem.system_mode == constants.SYSTEM_MODE_SIMPLEX:
+            raise wsme.exc.ClientSideError("Deployment_model %s is not supported in %s "
+                                           "system mode" %
+                                           (constants.CEPH_ROOK_DEPLOYMENT_DEDICATED,
+                                            constants.SYSTEM_MODE_SIMPLEX))
+        else:
+            hosts = pecan.request.dbapi.ihost_get_by_personality(constants.WORKER)
+            if len(hosts) <= 0:
+                raise wsme.exc.ClientSideError("Deployment_model %s is not supported in %s "
+                                           "system mode that there are no worker hosts" %
+                                           (constants.CEPH_ROOK_DEPLOYMENT_DEDICATED,
+                                            constants.SYSTEM_MODE_DUPLEX))
 
     # go through the service list and validate
     req_services = api_helper.getListFromServices(storage_ceph_rook)
+    if (constants.SB_SVC_CEPH_ROOK_BLOCK in req_services and
+            constants.SB_SVC_CEPH_ROOK_ECBLOCK in req_services):
+        raise wsme.exc.ClientSideError("Service %s and %s are not supported for the"
+                                       " %s backend in same time" %
+                                       (constants.SB_SVC_CEPH_ROOK_BLOCK,
+                                        constants.SB_SVC_CEPH_ROOK_ECBLOCK,
+                                        constants.SB_TYPE_CEPH_ROOK))
+
     for svc in req_services:
         if svc not in constants.SB_CEPH_ROOK_SVCS_SUPPORTED:
             raise wsme.exc.ClientSideError("Service %s is not supported for the"
                                            " %s backend" %
-                                           (svc, constants.SB_TYPE_FILE))
+                                           (svc, constants.SB_TYPE_CEPH_ROOK))
 
         # Service is valid. Discover the latest hiera_data for the supported service
         discover_func = eval('_discover_and_validate_' + svc + '_hiera_data')
@@ -341,10 +407,77 @@ def _check_backend_ceph_rook(req, storage_ceph_rook, confirmed=False):
                 raise wsme.exc.ClientSideError("Missing required %s service "
                                                    "parameter: %s" % (svc, k))
 
-    # Update based on any discovered values
-    storage_ceph_rook['capabilities'] = capabilities
-    storage_ceph_rook['state'] = constants.SB_STATE_CONFIGURED
-    storage_ceph_rook['task'] = constants.SB_TASK_NONE
+    # Additional checks based on operation
+    if req == constants.SB_API_OP_CREATE:
+        # Check required backend capabilities
+        for k in HIERA_DATA['backend']:
+            if not capabilities.get(k, None):
+                raise wsme.exc.ClientSideError("Missing required backend "
+                                               "parameter: %s" % k)
+
+        # Only one is allowed
+        try:
+            pecan.request.dbapi.storage_backend_get_by_name(
+                storage_ceph_rook.get('name'))
+            raise wsme.exc.ClientSideError(
+                _("%s already exists. Only one %s storage backend is allowed. "
+                  "Please modify the existing backend." % (
+                      storage_ceph_rook.get('name'),
+                      storage_ceph_rook.get('backend'))))
+        except exception.StorageBackendNotFoundByName:
+            pass
+
+        # The ceph-rook backend must be associated with a storage tier
+        tierId = storage_ceph_rook.get('tier_id') or storage_ceph_rook.get('tier_uuid')
+        if not tierId:
+            if api_helper.is_primary_ceph_rook_backend(storage_ceph_rook['name']):
+                # Adding the default ceph backend, use the default ceph tier
+                try:
+                    tier = pecan.request.dbapi.storage_tier_query(
+                        {'name': constants.SB_TIER_DEFAULT_NAMES[
+                            constants.SB_TIER_TYPE_CEPH]})
+                except exception.StorageTierNotFoundByName:
+                    try:
+                        # When we try to create the default storage backend
+                        # it expects the default cluster and storage tier
+                        # to be already created.
+                        # They were initially created when conductor started,
+                        # but since ceph is no longer enabled by default, we
+                        # should just create it here.
+                        _create_default_ceph_rook_db_entries()
+                        tier = pecan.request.dbapi.storage_tier_query(
+                            {'name': constants.SB_TIER_DEFAULT_NAMES[
+                                constants.SB_TIER_TYPE_CEPH]})
+                    except Exception as e:
+                        LOG.exception(e)
+                        raise wsme.exc.ClientSideError(
+                            _("Error creating default ceph database entries"))
+            else:
+                raise wsme.exc.ClientSideError(_("No tier specified for this "
+                                                 "backend."))
+        else:
+            try:
+                tier = pecan.request.dbapi.storage_tier_get(tierId)
+            except exception.StorageTierNotFound:
+                raise wsme.exc.ClientSideError(_("No tier with uuid %s found.") % tierId)
+        storage_ceph_rook.update({'tier_id': tier.id})
+
+    elif req == constants.SB_API_OP_MODIFY:
+        pass
+
+    elif req == constants.SB_API_OP_DELETE:
+        # check the state of the application to see if it's deployed
+        try:
+            app = pecan.request.dbapi.kube_app_get(constants.SB_APP_MAP[
+                constants.SB_TYPE_CEPH_ROOK])
+            if app.status not in [constants.APP_UPLOAD_IN_PROGRESS,
+                                  constants.APP_UPLOAD_SUCCESS,
+                                  constants.APP_UPLOAD_FAILURE]:
+                raise wsme.exc.ClientSideError(
+                    _("%s is deployed. Cannot delete %s") % (
+                        app.name, storage_ceph_rook['name']))
+        except exception.KubeAppNotFound:
+            pass
 
     # Check for confirmation
     if not confirmed:
@@ -358,18 +491,11 @@ def _check_backend_ceph_rook(req, storage_ceph_rook, confirmed=False):
 
 def _apply_backend_changes(op, sb_obj):
     if op == constants.SB_API_OP_CREATE:
-        # This is a DB only change => Set the state to configured
-        pecan.request.dbapi.storage_ceph_rook_update(
-            sb_obj.uuid,
-            {'state': constants.SB_STATE_CONFIGURED})
-
-        services = api_helper.getListFromServices(sb_obj.as_dict())
-        pecan.request.rpcapi.update_ceph_rook_config(
-                                                pecan.request.context,
-                                                sb_obj.get('uuid'),
-                                                services)
+        # TODO(rchurch): Trigger and application apply to force the new changes into play
+        pass
 
     elif op == constants.SB_API_OP_MODIFY:
+        # TODO(rchurch): Trigger and application apply to force the new changes into play
         pass
 
     elif op == constants.SB_API_OP_DELETE:
@@ -381,13 +507,31 @@ def _apply_backend_changes(op, sb_obj):
 #
 
 def _set_default_values(storage_ceph_rook):
+    deployment = storage_ceph_rook.get('deployment', '')
+    if deployment not in constants.CEPH_ROOK_DEPLOYMENTS_SUPPORTED:
+        deployment = constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER
+
+    def_services = f'{constants.SB_SVC_CEPH_ROOK_BLOCK},{constants.SB_SVC_CEPH_ROOK_FILESYSTEM}'
+    def_capabilities = {
+        constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP: deployment
+    }
+
+    def_state = constants.SB_STATE_CONFIGURING_WITH_APP
+
+    try:
+        app = pecan.request.dbapi.kube_app_get(constants.SB_APP_MAP[
+            constants.SB_TYPE_CEPH_ROOK])
+        def_task = app.status
+    except exception.KubeAppNotFound:
+        def_task = constants.APP_NOT_PRESENT
+
     defaults = {
         'backend': constants.SB_TYPE_CEPH_ROOK,
         'name': constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH_ROOK],
-        'state': constants.SB_STATE_CONFIGURING,
-        'task': constants.SB_TASK_NONE,
-        'services': None,
-        'capabilities': {}
+        'state': def_state,
+        'task': def_task,
+        'services': def_services,
+        'capabilities': def_capabilities
     }
 
     sf = api_helper.set_backend_data(storage_ceph_rook,
@@ -419,16 +563,7 @@ def _create(storage_ceph_rook):
     # Retreive the main StorageBackend object.
     storage_backend_obj = pecan.request.dbapi.storage_backend_get(storage_ceph_rook_obj.id)
 
-    # Only apply runtime manifests if at least one controller is unlocked and
-    # available/degraded.
-    controller_hosts = pecan.request.dbapi.ihost_get_by_personality(
-            constants.CONTROLLER)
-    valid_controller_hosts = [h for h in controller_hosts if
-                              h['administrative'] == constants.ADMIN_UNLOCKED and
-                              h['availability'] in [constants.AVAILABILITY_AVAILABLE,
-                                                     constants.AVAILABILITY_DEGRADED]]
-    if valid_controller_hosts:
-        _apply_backend_changes(constants.SB_API_OP_CREATE, storage_backend_obj)
+    _apply_backend_changes(constants.SB_API_OP_CREATE, storage_backend_obj)
 
     return storage_ceph_rook_obj
 
@@ -455,6 +590,40 @@ def _pre_patch_checks(storage_ceph_rook_obj, patch_obj):
             _hiera_data_semantic_checks(patch_caps_dict)
 
             current_caps_dict = storage_ceph_rook_dict.get('capabilities', {})
+
+            current_deployment = current_caps_dict.get('deployment_model', '')
+            new_deployment = patch_caps_dict.get('deployment_model', '')
+            invalid_model_updates = [constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER,
+                                         constants.CEPH_ROOK_DEPLOYMENT_DEDICATED]
+
+            hosts = []
+
+            if new_deployment:
+                if (current_caps_dict['deployment_model'] in invalid_model_updates and
+                        patch_caps_dict['deployment_model'] in invalid_model_updates):
+                    raise wsme.exc.ClientSideError(
+                        _("Change deployment model %s is not supported.") % '<->'.join(
+                            invalid_model_updates))
+
+                # Check OSDs
+                if (new_deployment == constants.CEPH_ROOK_DEPLOYMENT_DEDICATED):
+                    hosts = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+
+                elif (new_deployment == constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER):
+                    hosts = pecan.request.dbapi.ihost_get_by_personality(constants.WORKER)
+
+                qtd_host_with_osds = 0
+                for host in hosts:
+                    istors = pecan.request.dbapi.istor_get_by_ihost(host.uuid)
+                    for stor in istors:
+                        if stor.function == constants.STOR_FUNCTION_OSD:
+                            qtd_host_with_osds += 1
+
+                if qtd_host_with_osds > 0:
+                    raise wsme.exc.ClientSideError(
+                        _("The %s deployment model has %s OSDs deployed"
+                          % (current_deployment, qtd_host_with_osds)))
+
             for k in (set(current_caps_dict.keys()) -
                       set(patch_caps_dict.keys())):
                 patch_caps_dict[k] = current_caps_dict[k]
@@ -552,11 +721,8 @@ def _patch(storcephrook_uuid, patch):
 
 
 def _delete(sb_uuid):
-    # LOG.error("sb_uuid %s" % sb_uuid)
 
     storage_ceph_rook_obj = pecan.request.dbapi.storage_ceph_rook_get(sb_uuid)
-
-    # LOG.error("delete %s" % storage_ceph_rook_obj.as_dict())
 
     # Execute the common semantic checks for all backends, if backend is not
     # present this will not return

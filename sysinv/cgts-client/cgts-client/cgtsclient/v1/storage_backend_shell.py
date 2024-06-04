@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2021 Wind River Systems, Inc.
+# Copyright (c) 2013-2021,2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -71,6 +71,10 @@ def do_storage_backend_show(cc, args):
            metavar='<tier_uuid>',
            help=('Optional storage tier uuid for additional backends (ceph '
                  'only)'))
+@utils.arg('-d', '--deployment',
+           metavar='<deployment_model>',
+           help=('Optional deployment_model, default: controller ( Required for ceph-rook '
+                 'only). Allowed values: [controller, dedicated, open]'))
 @utils.arg('-c', '--ceph_conf',
            metavar='<ceph_conf>',
            help='Location of the Ceph configuration file used for provisioning'
@@ -113,6 +117,10 @@ def do_storage_backend_add(cc, args):
            metavar='<services>',
            help=('Optional string of comma separated services to add/update. '
                  'Valid values are: "cinder, glance, swift"'))
+@utils.arg('-d', '--deployment',
+           metavar='<deployment_model>',
+           help=('Optional deployment_model, default: controller ( Required for ceph-rook '
+                 'only). Allowed values: [controller, dedicated, open]'))
 @utils.arg('-c', '--ceph_conf',
            metavar='<ceph_conf>',
            help=('Location of the Ceph configuration file used for provisioning'

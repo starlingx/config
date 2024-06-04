@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2018 Wind River Systems, Inc.
+# Copyright (c) 2013-2018,2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -13,6 +13,7 @@ from cgtsclient.common import utils
 from cgtsclient import exc
 from cgtsclient.v1 import storage_ceph  # noqa
 from cgtsclient.v1 import storage_ceph_external  # noqa
+from cgtsclient.v1 import storage_ceph_rook  # noqa
 from cgtsclient.v1 import storage_external  # noqa
 from cgtsclient.v1 import storage_file  # noqa
 from cgtsclient.v1 import storage_lvm  # noqa
@@ -131,14 +132,14 @@ def _display_next_steps():
 
 
 def backend_add(cc, backend, args):
-    backend = backend.replace('-', '_')
+    backend_type = backend.replace('-', '_')
 
     # allowed storage_backend fields
     allowed_fields = ['name', 'services', 'confirmed', 'ceph_conf']
 
     # allowed backend specific backends
     if backend in constants.SB_SUPPORTED:
-        backend_attrs = getattr(eval('storage_' + backend),
+        backend_attrs = getattr(eval('storage_' + backend_type),
                                 'CREATION_ATTRIBUTES')
         allowed_fields = list(set(allowed_fields + backend_attrs))
 
@@ -158,7 +159,7 @@ def backend_add(cc, backend, args):
     if not fields['capabilities']:
         del fields['capabilities']
 
-    backend_client = getattr(cc, 'storage_' + backend)
+    backend_client = getattr(cc, 'storage_' + backend_type)
     backend_client.create(**fields)
     _display_next_steps()
 
@@ -198,6 +199,9 @@ def backend_modify(cc, args):
         for k, v in attr_dict.items():
             if k in backend_attrs:
                 fields[k] = v
+
+    if backend == constants.SB_TYPE_CEPH_ROOK:
+        attr_dict['deployment_model'] = vars(args).get('deployment')
 
     # Move tha rest of the attributes to the capabilities, used for hiera data
     # overrides
