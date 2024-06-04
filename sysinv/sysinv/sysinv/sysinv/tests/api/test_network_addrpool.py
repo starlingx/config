@@ -110,7 +110,8 @@ class NetworkAddrpoolTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
         network = dbutils.create_test_network(**kw)
         return network
 
-    def _setup_context(self):
+    def _setup_context(self, add_worker=False):
+        # controller-0
         self.host0 = self._create_test_host(personality=constants.CONTROLLER, unit=0,
                                             id=1, mgmt_ip="1.1.1.1")
         self.c0_oam_if = dbutils.create_test_interface(ifname='enp0s3', forihostid=self.host0.id)
@@ -123,6 +124,7 @@ class NetworkAddrpoolTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
         dbutils.create_test_interface_network_type_assign(self.c0_mgmt_if.id,
                                                           constants.NETWORK_TYPE_CLUSTER_HOST)
 
+        # controller-1
         self.host1 = self._create_test_host(personality=constants.CONTROLLER, unit=1,
                                             id=2, mgmt_ip="1.1.1.2")
         self.c1_oam_if = dbutils.create_test_interface(ifname='enp0s3', forihostid=self.host1.id)
@@ -135,6 +137,16 @@ class NetworkAddrpoolTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
                                                           constants.NETWORK_TYPE_MGMT)
         dbutils.create_test_interface_network_type_assign(self.c1_mgmt_if.id,
                                                           constants.NETWORK_TYPE_CLUSTER_HOST)
+
+        # worker-0
+        if add_worker:
+            self.host2 = self._create_test_host(personality=constants.WORKER, unit=0, id=3)
+            self.w0_mgmt_if = dbutils.create_test_interface(ifname='enp0s8',
+                                                            forihostid=self.host2.id)
+            dbutils.create_test_interface_network_type_assign(self.w0_mgmt_if.id,
+                                                            constants.NETWORK_TYPE_MGMT)
+            dbutils.create_test_interface_network_type_assign(self.w0_mgmt_if.id,
+                                                            constants.NETWORK_TYPE_CLUSTER_HOST)
 
     def create_test_interface(self, ifname='test0', host=None):
         if not host:
@@ -201,8 +213,8 @@ class TestPostMixin(NetworkAddrpoolTestCase):
             elif addr.name == f"{constants.CONTROLLER_1_HOSTNAME}-{constants.NETWORK_TYPE_MGMT}":
                 self.assertEqual(addr.interface_id, self.c1_mgmt_if.id)
 
-    def test_success_create_network_addrpool_secondary(self):
-        self._setup_context()
+    def test_success_create_network_addrpool_secondary_mgmt(self):
+        self._setup_context(add_worker=True)
         # add primary
         net_type = constants.NETWORK_TYPE_MGMT
         ndict = self.get_post_object(self.networks[net_type].uuid,
@@ -235,19 +247,396 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         self.assertEqual(response['network_uuid'], self.networks[net_type].uuid)
 
         addr_list = dbutils.get_address_table()
+        self.assertEqual(8, len(addr_list))
+        ip4_list = list()
+        ip6_list = list()
+        for addr in addr_list:
+            self.assertIn(addr.name,
+                          [f"{constants.CONTROLLER_HOSTNAME}-{net_type}",
+                           f"{constants.CONTROLLER_0_HOSTNAME}-{net_type}",
+                           f"{constants.CONTROLLER_1_HOSTNAME}-{net_type}",
+                           f"worker-0-{net_type}"])
+            if addr.name == f"{constants.CONTROLLER_HOSTNAME}-{net_type}":
+                self.assertEqual(addr.interface_id, None)
+            elif addr.name == f"{constants.CONTROLLER_0_HOSTNAME}-{net_type}":
+                self.assertEqual(addr.interface_id, self.c0_mgmt_if.id)
+            elif addr.name == f"{constants.CONTROLLER_1_HOSTNAME}-{net_type}":
+                self.assertEqual(addr.interface_id, self.c1_mgmt_if.id)
+            elif addr.name == f"worker-0-{net_type}":
+                self.assertEqual(addr.interface_id, self.w0_mgmt_if.id)
+
+            if addr.family == constants.IPV6_FAMILY:
+                ip6_list.append(addr)
+            elif addr.family == constants.IPV4_FAMILY:
+                ip4_list.append(addr)
+
+        self.assertEqual(4, len(ip4_list))
+        self.assertEqual(4, len(ip6_list))
+
+    def test_success_create_network_addrpool_secondary_cluster_host(self):
+        self._setup_context(add_worker=True)
+        # add primary
+        net_type = constants.NETWORK_TYPE_CLUSTER_HOST
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['cluster-host-ipv4'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        # Check HTTP response is successful
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        # add secondary
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['cluster-host-ipv6'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        # Check HTTP response is successful
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        uuid = response.json['uuid']
+        # Verify that the object was created and some basic attribute matches
+        response = self.get_json(self.get_single_url(uuid))
+        self.assertEqual(response['address_pool_name'], self.address_pools['cluster-host-ipv6'].name)
+        self.assertEqual(response['address_pool_id'], self.address_pools['cluster-host-ipv6'].id)
+        self.assertEqual(response['address_pool_uuid'], self.address_pools['cluster-host-ipv6'].uuid)
+        self.assertEqual(response['network_name'], self.networks[net_type].name)
+        self.assertEqual(response['network_id'], self.networks[net_type].id)
+        self.assertEqual(response['network_uuid'], self.networks[net_type].uuid)
+
+        addr_list = dbutils.get_address_table()
+        self.assertEqual(8, len(addr_list))
+        ip4_list = list()
+        ip6_list = list()
+        for addr in addr_list:
+            self.assertIn(addr.name,
+                          [f"{constants.CONTROLLER_HOSTNAME}-{net_type}",
+                           f"{constants.CONTROLLER_0_HOSTNAME}-{net_type}",
+                           f"{constants.CONTROLLER_1_HOSTNAME}-{net_type}",
+                           f"worker-0-{net_type}"])
+            if addr.name == f"{constants.CONTROLLER_HOSTNAME}-{net_type}":
+                self.assertEqual(addr.interface_id, None)
+            elif addr.name == f"{constants.CONTROLLER_0_HOSTNAME}-{net_type}":
+                self.assertEqual(addr.interface_id, self.c0_mgmt_if.id)
+            elif addr.name == f"{constants.CONTROLLER_1_HOSTNAME}-{net_type}":
+                self.assertEqual(addr.interface_id, self.c1_mgmt_if.id)
+            elif addr.name == f"worker-0-{net_type}":
+                self.assertEqual(addr.interface_id, self.w0_mgmt_if.id)
+
+            if addr.family == constants.IPV6_FAMILY:
+                ip6_list.append(addr)
+            elif addr.family == constants.IPV4_FAMILY:
+                ip4_list.append(addr)
+
+        self.assertEqual(4, len(ip4_list))
+        self.assertEqual(4, len(ip6_list))
+
+    def test_success_create_network_addrpool_secondary_cluster_dual_stack_1(self):
+        """ send cluster dual-stack secondary configuration in the order
+            - cluster-host, cluster-service, cluster-pod
+            check that calls conductor API
+        """
+        p = mock.patch('sysinv.common.utils.is_initial_config_complete')
+        self.mock_utils_is_initial_config_complete = p.start()
+        self.mock_utils_is_initial_config_complete.return_value = True
+        self.addCleanup(p.stop)
+
+        self._setup_context()
+
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_kubernetes_dual_stack_config')
+        self.mock_rpcapi_update_kubernetes_dual_stack_config = p.start()
+        self.addCleanup(p.stop)
+
+        #####################################
+        # add primary
+        net_type = constants.NETWORK_TYPE_CLUSTER_HOST
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['cluster-host-ipv4'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        self.mock_rpcapi_update_kubernetes_dual_stack_config.assert_not_called()
+
+        # add primary
+        net_type = constants.NETWORK_TYPE_CLUSTER_POD
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['cluster-pod-ipv4'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        self.mock_rpcapi_update_kubernetes_dual_stack_config.assert_not_called()
+
+        # add primary
+        net_type = constants.NETWORK_TYPE_CLUSTER_SERVICE
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['cluster-service-ipv4'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        self.mock_rpcapi_update_kubernetes_dual_stack_config.assert_not_called()
+
+        #####################################
+        # add secondary
+        net_type = constants.NETWORK_TYPE_CLUSTER_HOST
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['cluster-host-ipv6'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        # Check HTTP response is successful
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+        chost_sec_pool_uuid = response.json['uuid']
+
+        self.mock_rpcapi_update_kubernetes_dual_stack_config.assert_not_called()
+
+        # add secondary
+        net_type = constants.NETWORK_TYPE_CLUSTER_SERVICE
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['cluster-service-ipv6'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+        cservice_sec_pool_uuid = response.json['uuid']
+
+        self.mock_rpcapi_update_kubernetes_dual_stack_config.assert_not_called()
+
+        # add secondary
+        net_type = constants.NETWORK_TYPE_CLUSTER_POD
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['cluster-pod-ipv6'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+        cpod_sec_pool_uuid = response.json['uuid']
+
+        self.mock_rpcapi_update_kubernetes_dual_stack_config.\
+            assert_called_with(mock.ANY, constants.IPV6_FAMILY, False)
+        self.mock_rpcapi_update_kubernetes_dual_stack_config.reset_mock()
+
+        # remove the secondary
+        response = self.delete(self.get_single_url(chost_sec_pool_uuid),
+                               headers=self.API_HEADERS,
+                               expect_errors=False)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+        self.mock_rpcapi_update_kubernetes_dual_stack_config.assert_not_called()
+
+        response = self.delete(self.get_single_url(cservice_sec_pool_uuid),
+                               headers=self.API_HEADERS,
+                               expect_errors=False)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+        self.mock_rpcapi_update_kubernetes_dual_stack_config.assert_not_called()
+
+        response = self.delete(self.get_single_url(cpod_sec_pool_uuid),
+                               headers=self.API_HEADERS,
+                               expect_errors=False)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+
+        self.mock_rpcapi_update_kubernetes_dual_stack_config.\
+            assert_called_with(mock.ANY, constants.IPV6_FAMILY, True)
+
+    def test_success_create_network_addrpool_secondary_cluster_dual_stack_2(self):
+        """ send cluster dual-stack configuration in the order
+            - cluster-service, cluster-pod, cluster-host
+            check that calls conductor API
+        """
+
+        p = mock.patch('sysinv.common.utils.is_initial_config_complete')
+        self.mock_utils_is_initial_config_complete = p.start()
+        self.mock_utils_is_initial_config_complete.return_value = True
+        self.addCleanup(p.stop)
+
+        self._setup_context()
+
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_kubernetes_dual_stack_config')
+        self.mock_rpcapi_update_kubernetes_dual_stack_config = p.start()
+        self.addCleanup(p.stop)
+
+        #####################################
+        # add primary
+        net_type = constants.NETWORK_TYPE_CLUSTER_HOST
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['cluster-host-ipv4'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        self.mock_rpcapi_update_kubernetes_dual_stack_config.assert_not_called()
+
+        # add primary
+        net_type = constants.NETWORK_TYPE_CLUSTER_POD
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['cluster-pod-ipv4'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        self.mock_rpcapi_update_kubernetes_dual_stack_config.assert_not_called()
+
+        # add primary
+        net_type = constants.NETWORK_TYPE_CLUSTER_SERVICE
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['cluster-service-ipv4'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        self.mock_rpcapi_update_kubernetes_dual_stack_config.assert_not_called()
+
+        #####################################
+        # add secondary
+        net_type = constants.NETWORK_TYPE_CLUSTER_SERVICE
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['cluster-service-ipv6'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+        cservice_sec_pool_uuid = response.json['uuid']
+
+        self.mock_rpcapi_update_kubernetes_dual_stack_config.assert_not_called()
+
+        # add secondary
+        net_type = constants.NETWORK_TYPE_CLUSTER_POD
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['cluster-pod-ipv6'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+        cpod_sec_pool_uuid = response.json['uuid']
+
+        self.mock_rpcapi_update_kubernetes_dual_stack_config.assert_not_called()
+
+        # add secondary
+        net_type = constants.NETWORK_TYPE_CLUSTER_HOST
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['cluster-host-ipv6'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+        chost_sec_pool_uuid = response.json['uuid']
+
+        self.mock_rpcapi_update_kubernetes_dual_stack_config.\
+            assert_called_with(mock.ANY, constants.IPV6_FAMILY, False)
+        self.mock_rpcapi_update_kubernetes_dual_stack_config.reset_mock()
+
+        # remove the secondary
+        response = self.delete(self.get_single_url(chost_sec_pool_uuid),
+                               headers=self.API_HEADERS,
+                               expect_errors=False)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+        self.mock_rpcapi_update_kubernetes_dual_stack_config.assert_not_called()
+
+        response = self.delete(self.get_single_url(cservice_sec_pool_uuid),
+                               headers=self.API_HEADERS,
+                               expect_errors=False)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+        self.mock_rpcapi_update_kubernetes_dual_stack_config.assert_not_called()
+
+        response = self.delete(self.get_single_url(cpod_sec_pool_uuid),
+                               headers=self.API_HEADERS,
+                               expect_errors=False)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+
+        self.mock_rpcapi_update_kubernetes_dual_stack_config.\
+            assert_called_with(mock.ANY, constants.IPV6_FAMILY, True)
+
+    def test_success_create_delete_create_network_addrpool_secondary_cluster_host(self):
+        self._setup_context()
+        p = mock.patch('sysinv.common.utils.is_initial_config_complete')
+        self.mock_utils_is_initial_config_complete = p.start()
+        self.mock_utils_is_initial_config_complete.return_value = True
+        self.addCleanup(p.stop)
+        p = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
+        self.mock_utils_get_system_mode = p.start()
+        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_DUPLEX
+        self.addCleanup(p.stop)
+
+        # add primary
+        net_type = constants.NETWORK_TYPE_CLUSTER_HOST
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['cluster-host-ipv4'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        # Check HTTP response is successful
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        # add secondary
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['cluster-host-ipv6'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        # Check HTTP response is successful
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        sec_pool_uuid = response.json['uuid']
+        # remove the secondary
+        response = self.delete(self.get_single_url(sec_pool_uuid),
+                               headers=self.API_HEADERS,
+                               expect_errors=False)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+
+        # re-add the same secondary
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        sec_pool_uuid = response.json['uuid']
+        # Verify that the object was created and some basic attribute matches
+        response = self.get_json(self.get_single_url(sec_pool_uuid))
+        self.assertEqual(response['address_pool_name'], self.address_pools['cluster-host-ipv6'].name)
+        self.assertEqual(response['address_pool_id'], self.address_pools['cluster-host-ipv6'].id)
+        self.assertEqual(response['address_pool_uuid'], self.address_pools['cluster-host-ipv6'].uuid)
+        self.assertEqual(response['network_name'], self.networks[net_type].name)
+        self.assertEqual(response['network_id'], self.networks[net_type].id)
+        self.assertEqual(response['network_uuid'], self.networks[net_type].uuid)
+
+        addr_list = dbutils.get_address_table()
         self.assertEqual(6, len(addr_list))
         ip4_list = list()
         ip6_list = list()
         for addr in addr_list:
             self.assertIn(addr.name,
-                          [f"{constants.CONTROLLER_HOSTNAME}-{constants.NETWORK_TYPE_MGMT}",
-                           f"{constants.CONTROLLER_0_HOSTNAME}-{constants.NETWORK_TYPE_MGMT}",
-                           f"{constants.CONTROLLER_1_HOSTNAME}-{constants.NETWORK_TYPE_MGMT}"])
-            if addr.name == f"{constants.CONTROLLER_HOSTNAME}-{constants.NETWORK_TYPE_MGMT}":
+                          [f"{constants.CONTROLLER_HOSTNAME}-{net_type}",
+                           f"{constants.CONTROLLER_0_HOSTNAME}-{net_type}",
+                           f"{constants.CONTROLLER_1_HOSTNAME}-{net_type}"])
+            if addr.name == f"{constants.CONTROLLER_HOSTNAME}-{net_type}":
                 self.assertEqual(addr.interface_id, None)
-            elif addr.name == f"{constants.CONTROLLER_0_HOSTNAME}-{constants.NETWORK_TYPE_MGMT}":
+            elif addr.name == f"{constants.CONTROLLER_0_HOSTNAME}-{net_type}":
                 self.assertEqual(addr.interface_id, self.c0_mgmt_if.id)
-            elif addr.name == f"{constants.CONTROLLER_1_HOSTNAME}-{constants.NETWORK_TYPE_MGMT}":
+            elif addr.name == f"{constants.CONTROLLER_1_HOSTNAME}-{net_type}":
                 self.assertEqual(addr.interface_id, self.c1_mgmt_if.id)
 
             if addr.family == constants.IPV6_FAMILY:
@@ -984,7 +1373,7 @@ class TestDelete(NetworkAddrpoolTestCase):
         self.mock_utils_is_initial_config_complete.return_value = True
         self.addCleanup(p.stop)
 
-        net_type = constants.NETWORK_TYPE_CLUSTER_HOST
+        net_type = constants.NETWORK_TYPE_CLUSTER_POD
         net_pool = dbutils.create_test_network_addrpool(
             address_pool_id=self.address_pools['cluster-pod-ipv4'].id,
             network_id=self.networks[net_type].id)

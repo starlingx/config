@@ -485,11 +485,21 @@ class KubernetesPuppet(base.BasePuppet):
         return address.address
 
     def _get_host_node_config(self, host):
-        node_ip = self._get_address_by_name(
-            host.hostname, constants.NETWORK_TYPE_CLUSTER_HOST).address
-        return {
-            'platform::kubernetes::params::node_ip': node_ip
-        }
+        host_node_config = dict()
+        node_ip = self._get_address_by_name(host.hostname,
+                                            constants.NETWORK_TYPE_CLUSTER_HOST).address
+        host_node_config.update({'platform::kubernetes::params::node_ip': node_ip})
+
+        try:
+            node_ip_secondary = self._get_secondary_address_by_name(host.hostname,
+                                                                constants.NETWORK_TYPE_CLUSTER_HOST)
+            if node_ip_secondary:
+                host_node_config.update(
+                    {'platform::kubernetes::params::node_ip_secondary': node_ip_secondary.address})
+        except exception.AddressNotFoundByName:
+            pass
+
+        return host_node_config
 
     def _get_host_label_config(self, host):
 
