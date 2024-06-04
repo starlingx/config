@@ -110,7 +110,7 @@ class IPsecConnection(object):
         '''Callback for read events'''
         try:
             client_address = sock.getpeername()
-            data = sock.recv(4096)
+            data = sock.recv(8192)
             LOG.debug("Read({})".format(client_address))
             if data:
                 # A readable client socket has data
