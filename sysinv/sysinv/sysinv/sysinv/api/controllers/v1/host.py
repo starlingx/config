@@ -4855,9 +4855,9 @@ class HostController(rest.RestController):
             labels = pecan.request.dbapi.label_get_by_host(hostupdate.ihost_orig['uuid'])
             if cutils.has_openstack_compute(labels):
                 # Required: make sure present
-                if not cutils.is_filesystem_enabled(pecan.request.dbapi,
-                                                    hostupdate.ihost_orig['uuid'],
-                                                    constants.FILESYSTEM_NAME_INSTANCES):
+                if not cutils.is_host_filesystem_enabled(pecan.request.dbapi,
+                                                         hostupdate.ihost_orig['uuid'],
+                                                         constants.FILESYSTEM_NAME_INSTANCES):
                     self._semantic_check_nova_local_storage(
                         hostupdate.ihost_orig['uuid'],
                         hostupdate.ihost_orig['personality'],
@@ -6078,9 +6078,9 @@ class HostController(rest.RestController):
         labels = pecan.request.dbapi.label_get_by_host(ihost['uuid'])
         if cutils.has_openstack_compute(labels):
             # Required: make sure present
-            if not cutils.is_filesystem_enabled(pecan.request.dbapi,
-                                                ihost['uuid'],
-                                                constants.FILESYSTEM_NAME_INSTANCES):
+            if not cutils.is_host_filesystem_enabled(pecan.request.dbapi,
+                                                     ihost['uuid'],
+                                                     constants.FILESYSTEM_NAME_INSTANCES):
                 self._semantic_check_nova_local_storage(ihost['uuid'],
                                                         ihost['personality'],
                                                         required=True)
