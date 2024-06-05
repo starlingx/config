@@ -1263,7 +1263,7 @@ class HostController(rest.RestController):
 
         for h in ihosts:
             self._update_controller_personality(h)
-            self._update_host_mgmt_ip(self, h)
+            self._update_host_mgmt_ip(h)
 
         return ihosts
 
@@ -1303,7 +1303,7 @@ class HostController(rest.RestController):
             host['capabilities'].update({'Personality': activity})
 
     @staticmethod
-    def _update_host_mgmt_ip(self, host):
+    def _update_host_mgmt_ip(host):
         try:
             host['mgmt_ip'] = utils.get_mgmt_ip(host.hostname)
         except exception.AddressNotFoundByName:
@@ -1449,7 +1449,7 @@ class HostController(rest.RestController):
         rpc_ihost = objects.host.get_by_uuid(pecan.request.context,
                                              uuid)
         self._update_controller_personality(rpc_ihost)
-        self._update_host_mgmt_ip(self, rpc_ihost)
+        self._update_host_mgmt_ip(rpc_ihost)
 
         return Host.convert_with_links(rpc_ihost)
 
@@ -3329,22 +3329,16 @@ class HostController(rest.RestController):
             # the hostname.
             if controller_0_exists:
                 hostname = constants.CONTROLLER_1_HOSTNAME
-                mgmt_ip = _get_controller_address(hostname)
                 if hostupdate:
-                    hostupdate.ihost_val_update({'hostname': hostname,
-                                                 'mgmt_ip': mgmt_ip})
+                    hostupdate.ihost_val_update({'hostname': hostname})
                 else:
                     patched_ihost['hostname'] = hostname
-                    patched_ihost['mgmt_ip'] = mgmt_ip
             elif controller_1_exists:
                 hostname = constants.CONTROLLER_0_HOSTNAME
-                mgmt_ip = _get_controller_address(hostname)
                 if hostupdate:
-                    hostupdate.ihost_val_update({'hostname': hostname,
-                                                 'mgmt_ip': mgmt_ip})
+                    hostupdate.ihost_val_update({'hostname': hostname})
                 else:
                     patched_ihost['hostname'] = hostname
-                    patched_ihost['mgmt_ip'] = mgmt_ip
             else:
                 raise wsme.exc.ClientSideError(
                     _("Attempting to provision a controller when none "
@@ -3391,10 +3385,9 @@ class HostController(rest.RestController):
             for h in reversed(max_storage_hostnames):
                 if h not in current_storage:
                     hostname = h
-                    mgmt_ip = _get_storage_address(hostname)
-                    LOG.info("Found new hostname=%s mgmt_ip=%s "
+                    LOG.info("Found new hostname=%s"
                              "current_storage=%s" %
-                             (hostname, mgmt_ip, current_storage))
+                             (hostname, current_storage))
                     break
 
             if patched_ihost['hostname']:
@@ -3406,11 +3399,9 @@ class HostController(rest.RestController):
                           (patched_ihost['hostname'], hostname)))
 
             if hostupdate:
-                hostupdate.ihost_val_update({'hostname': hostname,
-                                             'mgmt_ip': mgmt_ip})
+                hostupdate.ihost_val_update({'hostname': hostname})
             else:
                 patched_ihost['hostname'] = hostname
-                patched_ihost['mgmt_ip'] = mgmt_ip
 
     @staticmethod
     def _optimize_delta_handling(delta_handle):
