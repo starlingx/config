@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018-2021 Wind River Systems, Inc.
+# Copyright (c) 2018-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -70,6 +70,7 @@ LABEL_DISABLE_NOHZ_FULL = 'disable-nohz-full'
 LABEL_OPENVSWITCH = 'openvswitch'
 LABEL_REMOTE_STORAGE = 'remote-storage'
 LABEL_SRIOVDP = 'sriovdp'
+LABEL_SRIOVDP_VHOSTNET = 'sriovdp-vhostnet'
 
 # Label values
 LABEL_VALUE_ENABLED = 'enabled'

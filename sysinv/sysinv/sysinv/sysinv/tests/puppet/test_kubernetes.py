@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -130,7 +130,7 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
         return config
 
     def _get_sriovdp_iface_config(self, vendor, device, driver, ifclass, pfName, pciAddress,
-                                  datanetwork):
+                                  datanetwork, vhostnet):
         config = [{
             "resourceName": '{}_net_{}'.format(ifclass, datanetwork).replace("-", "_"),
             "selectors": {
@@ -143,18 +143,21 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
         }]
         if interface.is_a_mellanox_device(self.context, self.iface):
             config[0]['selectors']['isRdma'] = True
+        if vhostnet:
+            config[0]['selectors']['needVhostNet'] = True
         return config
 
     def _generate_sriovdp_config(self):
         return self.operator.kubernetes._get_host_pcidp_config(self.host)  # pylint: disable=no-member
 
     def _get_sriovdp_config(self, vendor, device,
-                            driver, ifclass='pci-sriov', pfName=None, pciAddress=None, datanetwork=None):
+                            driver, ifclass='pci-sriov', pfName=None, pciAddress=None,
+                            datanetwork=None, vhostnet=False):
 
         iface_config = []
         if datanetwork:
             iface_config = self._get_sriovdp_iface_config(
-                vendor, device, driver, ifclass, pfName, pciAddress, datanetwork)
+                vendor, device, driver, ifclass, pfName, pciAddress, datanetwork, vhostnet)
 
         fpga_config = []
         if device == dconstants.PCI_DEVICE_ID_FPGA_INTEL_5GNR_FEC_VF:
@@ -235,6 +238,39 @@ class SriovdpTestCase(test_interface.InterfaceTestCaseMixin, dbbase.BaseHostTest
             pfName="%s#1,2" % self.port['name'],
             datanetwork=self.datanetwork['name']
         )
+        self.assertEqual(expected, actual)
+
+    @mock.patch.object(utils, 'get_sriov_vf_index')
+    def test_generate_sriovdp_config_vhostnet(self, mock_get_sriov_vf_index):
+        mock_get_sriov_vf_index.side_effect = [1, 2]
+
+        vhostnet_key = constants.SRIOVDP_VHOSTNET_LABEL.split('=')[0]
+        vhostnet_val = constants.SRIOVDP_VHOSTNET_LABEL.split('=')[1]
+        dbutils.create_test_label(
+                    host_id=self.host.id,
+                    label_key=vhostnet_key,
+                    label_value=vhostnet_val)
+
+        self._setup_iface_configuration()
+        test_config = {
+            'pf_vendor': 'Intel Corporation [8086]',
+            'pf_device': '10fd',
+            'pf_driver': 'ixgbe',
+            'vf_device': '10ed',
+            'vf_driver': 'ixgbevf'
+        }
+        self._update_sriov_port_config(test_config)
+
+        actual = self._generate_sriovdp_config()
+        expected = self._get_sriovdp_config(
+            self._get_pcidp_vendor_id(self.port),
+            test_config['vf_device'],
+            test_config['vf_driver'],
+            pfName="%s#1,2" % self.port['name'],
+            datanetwork=self.datanetwork['name'],
+            vhostnet=True
+        )
+        mock_get_sriov_vf_index.assert_called()
         self.assertEqual(expected, actual)
 
     def test_generate_sriovdp_config_invalid(self):

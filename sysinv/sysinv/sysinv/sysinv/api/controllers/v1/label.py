@@ -1,4 +1,4 @@
-# Copyright (c) 2018-2023 Wind River Systems, Inc.
+# Copyright (c) 2018-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -350,6 +350,7 @@ def _check_host_locked(host, host_labels):
              common.LABEL_OPENVSWITCH,
              common.LABEL_REMOTE_STORAGE,
              common.LABEL_SRIOVDP,
+             common.LABEL_SRIOVDP_VHOSTNET,
              constants.KUBE_TOPOLOGY_MANAGER_LABEL,
              constants.KUBE_CPU_MANAGER_LABEL]
 
