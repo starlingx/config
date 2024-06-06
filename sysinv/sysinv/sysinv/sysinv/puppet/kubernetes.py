@@ -723,9 +723,17 @@ class KubernetesPuppet(base.BasePuppet):
         else:
             return sriov_vf_driver
 
-    def _get_pcidp_network_resources_by_ifclass(self, ifclass):
-        resources = {}
+    def _get_pcidp_network_resources_by_ifclass(self, host, ifclass):
 
+        labels = self.dbapi.label_get_by_host(host.uuid)
+        need_vhostnet = False
+        for l in labels:
+            if (constants.SRIOVDP_VHOSTNET_LABEL ==
+                    str(l.label_key) + '=' + str(l.label_value)):
+                need_vhostnet = True
+                break
+
+        resources = {}
         interfaces = self._get_network_interfaces_by_class(ifclass)
         for iface in interfaces:
 
@@ -818,6 +826,9 @@ class KubernetesPuppet(base.BasePuppet):
                 if interface.is_a_mellanox_device(self.context, iface):
                     resource['selectors']['isRdma'] = True
 
+                if need_vhostnet:
+                    resource['selectors']['needVhostNet'] = True
+
                 resources[dn_name] = resource
 
         return list(resources.values())
@@ -883,8 +894,8 @@ class KubernetesPuppet(base.BasePuppet):
         # Construct a list of all PCI passthrough and SRIOV resources
         # for use with the SRIOV device plugin
         sriov_resources = self._get_pcidp_network_resources_by_ifclass(
-            constants.INTERFACE_CLASS_PCI_SRIOV)
+            host, constants.INTERFACE_CLASS_PCI_SRIOV)
         pcipt_resources = self._get_pcidp_network_resources_by_ifclass(
-            constants.INTERFACE_CLASS_PCI_PASSTHROUGH)
+            host, constants.INTERFACE_CLASS_PCI_PASSTHROUGH)
         fec_resources = self._get_pcidp_fec_resources(host)
         return json.dumps({'resourceList': sriov_resources + pcipt_resources + fec_resources})
