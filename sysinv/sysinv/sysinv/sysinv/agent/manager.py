@@ -58,6 +58,7 @@ from sysinv.agent import disk
 from sysinv.agent import partition
 from sysinv.agent import pv
 from sysinv.agent import lvg
+from sysinv.agent import lv
 from sysinv.agent import pci
 from sysinv.agent import node
 from sysinv.agent import fpga
@@ -202,6 +203,7 @@ class AgentManager(service.PeriodicService):
         self._ifpga_operator = fpga.FpgaOperator()
         self._ipv_operator = pv.PVOperator()
         self._ipartition_operator = partition.PartitionOperator()
+        self._host_fs_operator = lv.LVOperator()
         self._ilvg_operator = lvg.LVGOperator()
         self._lldp_operator = lldp_plugin.SysinvLldpPlugin()
         self._iconfig_read_config_reported = None
@@ -259,7 +261,6 @@ class AgentManager(service.PeriodicService):
 
         initial_reports_required = \
                 self.INVENTORY_REPORTS_REQUIRED - self._inventory_reported
-        initial_reports_required.discard(self.HOST_FILESYSTEMS)
 
         if self._inventory_reported:
             utils.touch(constants.SYSINV_REPORTED)
@@ -1060,6 +1061,26 @@ class AgentManager(service.PeriodicService):
             LOG.exception("Sysinv Agent exception updating ipv conductor.")
             pass
 
+        host_fs = self._host_fs_operator.ilv_get_supported_hostfs()
+        try:
+            rpcapi.hostfs_update_by_ihost(icontext,
+                                          ihost['uuid'],
+                                          host_fs)
+            self._inventory_reported.add(self.HOST_FILESYSTEMS)
+        except RemoteError as e:
+            # ignore because active controller is not yet upgraded,
+            # so it's current load may not implement this RPC call
+            if "NameError" in str(e):
+                LOG.warn("Skip report host filesystems. "
+                            "Upgrade in progress.")
+                self._inventory_reported.add(self.HOST_FILESYSTEMS)
+            else:
+                LOG.exception(f"Failed to report host filesystems update: {e}")
+            pass
+        except exception.SysinvException:
+            LOG.exception("Sysinv Agent exception updating host_fs conductor.")
+            pass
+
         ilvg = self._ilvg_operator.ilvg_get()
         try:
             rpcapi.ilvg_update_by_ihost(icontext,
@@ -1426,7 +1447,6 @@ class AgentManager(service.PeriodicService):
                     icontext, self._ihost_uuid, filesystems)
                 self._prev_fs = filesystems
 
-            self._inventory_reported.add(self.HOST_FILESYSTEMS)
         except Exception as e:
             LOG.exception(
                 "Sysinv Agent exception creating the host filesystems."
@@ -1672,6 +1692,32 @@ class AgentManager(service.PeriodicService):
                     pass
 
             self._create_host_filesystems(rpcapi, icontext)
+
+            # Update host filesystems
+            host_fs = self._host_fs_operator.ilv_get_supported_hostfs()
+            if ((self._prev_fs is None) or
+                    (self._prev_fs != host_fs)):
+                self._prev_fs = host_fs
+            try:
+                rpcapi.hostfs_update_by_ihost(icontext,
+                                              self._ihost_uuid,
+                                              host_fs)
+                self._inventory_reported.add(self.HOST_FILESYSTEMS)
+            except RemoteError as e:
+                # ignore because active controller is not yet upgraded,
+                # so it's current load may not implement this RPC call
+                if "NameError" in str(e):
+                    LOG.warn("Skip report host filesystems. "
+                                "Upgrade in progress.")
+                    self._inventory_reported.add(self.HOST_FILESYSTEMS)
+                else:
+                    LOG.exception(f"Failed to report host filesystems update: {e}")
+                pass
+            except exception.SysinvException:
+                LOG.exception("Sysinv Agent exception updating host_fs"
+                                " conductor.")
+                self._prev_fs = None
+                pass
 
             # Collect FPGA PCI data for this host.
             # We know that the PCI address of the N3000 can change the first time

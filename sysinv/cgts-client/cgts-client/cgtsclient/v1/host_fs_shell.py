@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2019,2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -13,10 +13,10 @@ from cgtsclient.v1 import ihost as ihost_utils
 
 
 def _print_fs_show(fs):
-    fields = ['uuid', 'name', 'size', 'logical_volume',
+    fields = ['uuid', 'name', 'size', 'logical_volume', 'state',
               'created_at', 'updated_at']
 
-    labels = ['uuid', 'name', 'size', 'logical_volume',
+    labels = ['uuid', 'name', 'size', 'logical_volume', 'state',
               'created_at', 'updated_at']
 
     data = [(f, getattr(fs, f)) for f in fields]
@@ -26,8 +26,8 @@ def _print_fs_show(fs):
 def _print_fs_list(cc, ihost_uuid):
     fs_list = cc.host_fs.list(ihost_uuid)
 
-    field_labels = ['UUID', 'FS Name', 'Size in GiB', 'Logical Volume']
-    fields = ['uuid', 'name', 'size', 'logical_volume']
+    field_labels = ['UUID', 'FS Name', 'Size in GiB', 'Logical Volume', 'State']
+    fields = ['uuid', 'name', 'size', 'logical_volume', 'state']
     utils.print_list(fs_list, fields, field_labels, sortby=1)
 
 
@@ -117,6 +117,7 @@ def do_host_fs_delete(cc, args):
         raise exc.CommandError('Filesystem delete failed: host %s: '
                                'name %s' % (args.hostnameorid,
                                             args.name))
+    _print_fs_list(cc, ihost.uuid)
 
 
 @utils.arg('hostnameorid',

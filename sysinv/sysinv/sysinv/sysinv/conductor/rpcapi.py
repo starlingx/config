@@ -473,6 +473,24 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
                                        ipart_dict_array=ipart_dict_array,
                                        first_report=first_report))
 
+    def hostfs_update_by_ihost(self, context, ihost_uuid, hostfs_dict_array):
+        """Create or update the filesystem for an ihost with the supplied
+        data.
+
+        This method allows records for a host filesystem for ihost
+        to be created, or updated.
+
+        :param context: an admin context
+        :param ihost_uuid: ihost uuid unique id
+        :param hostfs_dict_array: initial values for the filesystems
+        :returns: pass or fail
+        """
+
+        return self.call(context,
+                         self.make_msg('hostfs_update_by_ihost',
+                                       ihost_uuid=ihost_uuid,
+                                       hostfs_dict_array=hostfs_dict_array))
+
     def update_partition_config(self, context, partition):
         """Asynchronously, have a conductor configure the physical volume
         partitions.

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019 Wind River Systems, Inc.
+# Copyright (c) 2019,2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -23,6 +23,7 @@ class HostFS(base.SysinvObject):
         'name': utils.str_or_none,
         'size': utils.int_or_none,
         'logical_volume': utils.str_or_none,
+        'state': utils.str_or_none,
 
         'forihostid': int,
         'ihost_uuid': utils.str_or_none,

@@ -252,7 +252,9 @@ class StoragePuppet(base.BasePuppet):
         config = {}
 
         for fs in filesystems:
-            if fs.name == constants.FILESYSTEM_NAME_IMAGE_CONVERSION:
+            if (fs.name == constants.FILESYSTEM_NAME_IMAGE_CONVERSION and
+                    fs.state not in [constants.HOST_FS_STATUS_DELETING,
+                                     constants.HOST_FS_STATUS_DELETING_ON_UNLOCK]):
                 config.update({
                     'platform::filesystem::conversion::params::conversion_enabled': True,
                     'platform::filesystem::conversion::params::lv_size': fs.size,
@@ -269,7 +271,9 @@ class StoragePuppet(base.BasePuppet):
         config = {}
 
         for fs in filesystems:
-            if fs.name == constants.FILESYSTEM_NAME_INSTANCES:
+            if (fs.name == constants.FILESYSTEM_NAME_INSTANCES and
+                    fs.state not in [constants.HOST_FS_STATUS_DELETING,
+                                     constants.HOST_FS_STATUS_DELETING_ON_UNLOCK]):
                 config.update({
                     'platform::filesystem::instances::params::instances_enabled': True,
                     'platform::filesystem::instances::params::lv_size': fs.size,
@@ -286,7 +290,9 @@ class StoragePuppet(base.BasePuppet):
         config = {}
 
         for fs in filesystems:
-            if fs.name == constants.FILESYSTEM_NAME_CEPH:
+            if (fs.name == constants.FILESYSTEM_NAME_CEPH and
+                    fs.state not in [constants.HOST_FS_STATUS_DELETING,
+                                     constants.HOST_FS_STATUS_DELETING_ON_UNLOCK]):
                 config.update({
                     'platform::filesystem::ceph::params::ceph_enabled': True,
                     'platform::filesystem::ceph::params::lv_size': fs.size,

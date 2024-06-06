@@ -1048,6 +1048,7 @@ def get_test_host_fs(**kw):
         'size': kw.get('size', 2029),
         'logical_volume': kw.get('logical_volume', 'scratch-lv'),
         'forihostid': kw.get('forihostid', 1),
+        'state': kw.get('state'),
     }
     return host_fs
 

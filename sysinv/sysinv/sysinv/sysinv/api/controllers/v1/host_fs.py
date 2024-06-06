@@ -49,6 +49,8 @@ class HostFs(base.APIBase):
 
     logical_volume = wsme.wsattr(wtypes.text)
 
+    state = wsme.wsattr(wtypes.text)
+
     forihostid = int
     "The ihostid that this host_fs belongs to"
 
@@ -72,7 +74,7 @@ class HostFs(base.APIBase):
         host_fs = HostFs(**rpc_host_fs.as_dict())
         if not expand:
             host_fs.unset_fields_except(['uuid', 'name', 'size',
-                                        'logical_volume',
+                                        'logical_volume', 'state',
                                          'created_at', 'updated_at',
                                          'ihost_uuid', 'forihostid'])
 
@@ -239,7 +241,6 @@ class HostFsController(rest.RestController):
 
             for p_obj in p_obj_list:
                 if p_obj['path'] == '/action':
-                    value = p_obj['value']
                     patch.remove(p_list)
 
         for p_list in patch:
@@ -251,9 +252,27 @@ class HostFsController(rest.RestController):
                 elif p_obj['path'] == '/size':
                     size = p_obj['value']
 
+            current_state = [fs['state'] for fs in current_host_fs_list if
+                                                            fs['name'] == fs_name]
+
             if fs_name not in [fs['name'] for fs in current_host_fs_list]:
                 msg = _("HostFs update failed: invalid filesystem "
                         "'%s' " % fs_display_name)
+                raise wsme.exc.ClientSideError(msg)
+
+            elif (fs_name in constants.HOSTFS_CREATION_ALLOWED and
+                    constants.HOST_FS_STATUS_READY != current_state[0]):
+                msg = _("HostFs update failed: resize for optional filesystem {} is "
+                        "only possible with state {}.".format(fs_name,
+                                                            constants.HOST_FS_STATUS_READY))
+                raise wsme.exc.ClientSideError(msg)
+
+            elif (current_state[0] in [constants.HOST_FS_STATUS_CREATE_IN_SVC,
+                                       constants.HOST_FS_STATUS_CREATE_ON_UNLOCK,
+                                       constants.HOST_FS_STATUS_DELETING,
+                                       constants.HOST_FS_STATUS_DELETING_ON_UNLOCK]):
+                msg = _("HostFs update failed: It is not possible to resize filesystems "
+                        "with some current update status.")
                 raise wsme.exc.ClientSideError(msg)
 
             elif not cutils.is_int_like(size):
@@ -323,8 +342,9 @@ class HostFsController(rest.RestController):
 
         for fs in host_fs_list_new:
             if fs.name in modified_fs:
-                value = {'size': fs.size}
-                pecan.request.dbapi.host_fs_update(fs.uuid, value)
+                values = {'size': fs.size,
+                          'state': constants.HOST_FS_STATUS_MODIFYING}
+                pecan.request.dbapi.host_fs_update(fs.uuid, values)
 
         try:
             if (host.invprovision in [constants.PROVISIONED,
@@ -352,12 +372,22 @@ class HostFsController(rest.RestController):
         staged = _delete(host_fs)
 
         try:
-            # TODO(rchurch): Need to add a state/status column to the host_fs DB
-            # so status information can be passed to the end-user
             if staged:
-                LOG.info("STAGING: %s filesystem to be deleted at unlock" % host_fs['name'])
+                # If the host's invprovision state is 'provisioning', the fs was not
+                # created previously and it is only necessary to remove it from the
+                # database.
+                if host.invprovision == constants.PROVISIONING:
+                    pecan.request.dbapi.host_fs_destroy(host_fs['id'])
+                    LOG.info("%s filesystem deleted" % host_fs['name'])
+                else:
+                    update = {'state': constants.HOST_FS_STATUS_DELETING_ON_UNLOCK}
+                    pecan.request.dbapi.host_fs_update(host_fs['id'], update)
+                    LOG.info("STAGING: %s filesystem to be deleted at unlock" % host_fs['name'])
             else:
+                update = {'state': constants.HOST_FS_STATUS_DELETING}
+                pecan.request.dbapi.host_fs_update(host_fs['id'], update)
                 LOG.info("REQUEST: %s filesystem will be deleted NOW" % host_fs['name'])
+
                 pecan.request.rpcapi.update_host_filesystem_config(
                         pecan.request.context,
                         host=host,
@@ -387,17 +417,21 @@ class HostFsController(rest.RestController):
             raise wsme.exc.ClientSideError(_("Invalid data: failed to create a"
                                              " filesystem"))
         try:
-            # TODO(rchurch): Need to add a state/status column to the host_fs DB
-            # so status information can be passed to the end-user
             if staged:
+                update = {'state': constants.HOST_FS_STATUS_CREATE_ON_UNLOCK}
+                pecan.request.dbapi.host_fs_update(host_fs['id'], update)
                 LOG.info("STAGING: %s filesystem to be created at unlock" % host_fs['name'])
             else:
+                update = {'state': constants.HOST_FS_STATUS_CREATE_IN_SVC}
+                pecan.request.dbapi.host_fs_update(host_fs['id'], update)
                 LOG.info("REQUEST: %s filesystem will be created NOW" % host_fs['name'])
                 pecan.request.rpcapi.update_host_filesystem_config(
                     pecan.request.context,
                     host=host,
                     filesystem_list=[host_fs['name']],)
 
+            # Update object to display correct state
+            host_fs.update(update)
         except Exception as e:
             msg = _("Failed to add filesystem name for %s" % host.hostname)
             LOG.error("%s with exception %s" % (msg, e))
@@ -444,14 +478,15 @@ def _check_host_fs(host_fs):
 
     # FILESYSTEM_NAME_INSTANCES:
     # Make sure there is only a single source for /var/lib/nova/instances
-    ihost_ilvgs = pecan.request.dbapi.ilvg_get_by_ihost(ihost_uuid)
-    for lvg in ihost_ilvgs:
-        if (lvg.lvm_vg_name == constants.LVG_NOVA_LOCAL and
-                lvg.vg_state != constants.LVG_DEL):
-            raise wsme.exc.ClientSideError(_(
-                "Cannot create %s while volume group %s is enabled. Delete the "
-                "volume group and try again.") % (
-                    host_fs['name'], constants.LVG_NOVA_LOCAL))
+    if host_fs['name'] == constants.FILESYSTEM_NAME_INSTANCES:
+        ihost_ilvgs = pecan.request.dbapi.ilvg_get_by_ihost(ihost_uuid)
+        for lvg in ihost_ilvgs:
+            if (lvg.lvm_vg_name == constants.LVG_NOVA_LOCAL and
+                    lvg.vg_state != constants.LVG_DEL):
+                raise wsme.exc.ClientSideError(_(
+                    "Cannot create %s while volume group %s is enabled. Delete the "
+                    "volume group and try again.") % (
+                        host_fs['name'], constants.LVG_NOVA_LOCAL))
 
     # FILESYSTEM_NAME_IMAGE_CONVERSION:
     # Can be created at any time as this needs to reside on both controllers
@@ -465,6 +500,31 @@ def _check_host_fs(host_fs):
             raise wsme.exc.ClientSideError(
                 _("Controller must be available/online/degraded to add %s filesystem") %
                 host_fs['name'])
+
+    # FILESYSTEM_NAME_CEPH:
+    # Can be created with the host unlocked/enabled or during the initial unlock.
+    # This filesystem can reside in any controller or worker nodes and requires Rook
+    # Ceph as the storage backend.
+    # Note: This fs can also be used with Ceph bare metal, but creation is not done
+    # with system host-fs-add.
+    if host_fs['name'] == constants.FILESYSTEM_NAME_CEPH:
+        # Check if neither CONTROLLER nor WORKER are in ihost['subfunctions']
+        if not (constants.CONTROLLER in ihost['subfunctions'] or constants.WORKER in
+                                                        ihost['subfunctions']):
+            msg = _("Filesystem {} can only be added on {} and {} nodes").format(
+                                                        constants.FILESYSTEM_NAME_CEPH,
+                                                        constants.CONTROLLER,
+                                                        constants.WORKER)
+            raise wsme.exc.ClientSideError(msg)
+
+        # Check if Rook Ceph is configured as the storage backend
+        rook_ceph = pecan.request.dbapi.storage_backend_get_list_by_type(
+            backend_type=constants.SB_TYPE_CEPH_ROOK)
+        if not rook_ceph:
+            msg = _("{} must be configured as the storage backend to create/delete "
+                    "host-fs {}.").format(constants.SB_TYPE_CEPH_ROOK,
+                                          host_fs['name'])
+            raise wsme.exc.ClientSideError(msg)
 
 
 def _create(host_fs):
@@ -496,6 +556,17 @@ def _create(host_fs):
         LOG.warning(msg)
         raise wsme.exc.ClientSideError(msg)
 
+    if requested_growth_gib < 1:
+            msg = _("HostFs update failed: Minimum FS size is 1 GiB.")
+            LOG.warning(msg)
+            raise wsme.exc.ClientSideError(msg)
+
+    if host_fs['name'] == constants.FILESYSTEM_NAME_INSTANCES or (ihost['administrative'] ==
+            constants.ADMIN_LOCKED and ihost['availability'] == constants.AVAILABILITY_ONLINE):
+        staged = True
+    else:
+        staged = False
+
     data = {
         'name': host_fs['name'],
         'size': host_fs['size'],
@@ -505,7 +576,6 @@ def _create(host_fs):
     forihostid = ihost['id']
     host_fs = pecan.request.dbapi.host_fs_create(forihostid, data)
 
-    staged = True if host_fs['name'] == constants.FILESYSTEM_NAME_INSTANCES else False
     return (staged, host_fs)
 
 
@@ -514,13 +584,21 @@ def _delete(host_fs):
 
     _check_host_fs(host_fs)
 
-    ihost = pecan.request.dbapi.ihost_get(host_fs['forihostid'])
-    try:
-        pecan.request.dbapi.host_fs_destroy(host_fs['id'])
-    except exception.HTTPNotFound:
-        msg = _("Deleting Filesystem failed: host %s filesystem %s"
-                % (ihost.hostname, host_fs['name']))
+    allowed_states = [constants.HOST_FS_STATUS_READY,
+                      constants.HOST_FS_STATUS_CREATE_ON_UNLOCK,
+                      constants.HOST_FS_STATUS_UPDATE_ERROR]
+
+    if host_fs['state'] not in allowed_states:
+        msg = _("HostFs update failed: deletion for optional filesystem '{}' is "
+                "only possible for states {}.".format(host_fs['name'], allowed_states))
         raise wsme.exc.ClientSideError(msg)
 
-    staged = True if host_fs['name'] == constants.FILESYSTEM_NAME_INSTANCES else False
+    ihost = pecan.request.dbapi.ihost_get(host_fs['forihostid'])
+
+    if host_fs['name'] == constants.FILESYSTEM_NAME_INSTANCES or (ihost['administrative'] ==
+            constants.ADMIN_LOCKED and ihost['availability'] == constants.AVAILABILITY_ONLINE):
+        staged = True
+    else:
+        staged = False
+
     return staged
