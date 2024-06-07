@@ -57,8 +57,10 @@ NONDUPLICATE_NETWORK_TYPES = (constants.NETWORK_TYPE_MGMT,
                               constants.NETWORK_TYPE_STORAGE,
                               constants.NETWORK_TYPE_ADMIN)
 
-OPERATION_CREATE = 'create'
-OPERATION_DELETE = 'delete'
+CONTROLLER_ADDRESS_FIELDS = {
+    constants.CONTROLLER_HOSTNAME: ('floating_address_id', 'floating_address'),
+    constants.CONTROLLER_0_HOSTNAME: ('controller0_address_id', 'controller0_address'),
+    constants.CONTROLLER_1_HOSTNAME: ('controller1_address_id', 'controller1_address')}
 
 
 class InterfaceNetwork(base.APIBase):
@@ -145,33 +147,32 @@ class InterfaceNetworkController(rest.RestController):
 
         interface_obj = pecan.request.dbapi.iinterface_get(interface_uuid)
         interface_id = interface_obj.id
-        network_id, network_type = self._get_network_id_and_type(network_uuid)
+        network = pecan.request.dbapi.network_get(network_uuid)
         host = pecan.request.dbapi.ihost_get(interface_obj.ihost_uuid)
 
         interface_network_dict['interface_id'] = interface_id
-        interface_network_dict['network_id'] = network_id
+        interface_network_dict['network_id'] = network.id
 
         self._check_interface_class(interface_uuid)
-        self._check_assigned_network_type(network_type)
+        self._check_assigned_network_type(network.type)
         self._check_duplicate_interface_network(interface_network_dict)
-        self._check_duplicate_type(host, interface_uuid, network_type)
-        self._check_pxeboot_network(interface_id, network_type)
-        self._check_oam_network(interface_id, network_type)
-        self._check_network_type_and_host_type(host, network_type)
-        self._check_network_type_and_interface_type(interface_obj, network_type)
-        self._check_cluster_host_on_controller(host, interface_obj, network_type)
+        self._check_duplicate_type(host, interface_uuid, network.type)
+        self._check_pxeboot_network(interface_id, network.type)
+        self._check_oam_network(interface_id, network.type)
+        self._check_network_type_and_host_type(host, network.type)
+        self._check_network_type_and_interface_type(interface_obj, network.type)
+        self._check_cluster_host_on_controller(host, interface_obj, network.type)
 
         result = pecan.request.dbapi.interface_network_create(interface_network_dict)
 
         # Update address mode based on network type
-        addrpools = None
-        if network_type in [constants.NETWORK_TYPE_MGMT,
+        addrpools = pecan.request.dbapi.address_pools_get_by_network(network.id)
+        if network.type in [constants.NETWORK_TYPE_MGMT,
                             constants.NETWORK_TYPE_OAM,
                             constants.NETWORK_TYPE_CLUSTER_HOST,
                             constants.NETWORK_TYPE_ADMIN]:
             modes = {constants.IPV4_FAMILY: constants.IPV4_DISABLED,
                      constants.IPV6_FAMILY: constants.IPV6_DISABLED}
-            addrpools = pecan.request.dbapi.address_pools_get_by_network(network_id)
             for addrpool in addrpools:
                 if addrpool.family == constants.IPV4_FAMILY:
                     modes[addrpool.family] = constants.IPV4_STATIC
@@ -181,9 +182,9 @@ class InterfaceNetworkController(rest.RestController):
                 utils.update_address_mode(interface_obj, family, mode, None)
 
         # Assign an address to the interface
-        _update_host_address(host, interface_obj, network_type)
+        _update_host_addresses(host, interface_obj, network, addrpools)
 
-        if network_type == constants.NETWORK_TYPE_MGMT:
+        if network.type == constants.NETWORK_TYPE_MGMT:
             ethernet_port_mac = None
             if not interface_obj.uses:
                 # Get the ethernet port associated with the interface
@@ -197,16 +198,8 @@ class InterfaceNetworkController(rest.RestController):
                 tmp_interface = interface_obj.as_dict()
                 ethernet_port_mac = tmp_interface['imac']
             _update_host_mgmt_mac(host, ethernet_port_mac)
-            cutils.perform_distributed_cloud_config(pecan.request.dbapi,
-                                                    interface_id, host)
-        elif network_type == constants.NETWORK_TYPE_ADMIN:
-            pecan.request.rpcapi.update_admin_config(pecan.request.context, host)
-            cutils.perform_distributed_cloud_config(pecan.request.dbapi,
-                                                    interface_id, host)
-        elif network_type == constants.NETWORK_TYPE_OAM:
-            pecan.request.rpcapi.initialize_oam_config(pecan.request.context, host)
 
-        self._interface_network_operation_complete(OPERATION_CREATE, network_type, addrpools)
+        self._operation_complete(constants.API_POST, result, addrpools, host)
 
         return InterfaceNetwork.convert_with_links(result)
 
@@ -243,17 +236,36 @@ class InterfaceNetworkController(rest.RestController):
             pecan.request.context, interface_network_uuid)
         return InterfaceNetwork.convert_with_links(rpc_interface_network)
 
-    def _interface_network_operation_complete(self, operation, network_type, addrpools):
-        if network_type == constants.NETWORK_TYPE_MGMT:
+    def _operation_complete(self, operation, interface_network, addrpools, host=None):
+        def _get_host():
+            return host if host else pecan.request.dbapi.ihost_get(interface_network.forihostid)
+
+        if interface_network.network_type == constants.NETWORK_TYPE_OAM:
+            if operation == constants.API_POST:
+                pecan.request.rpcapi.initialize_oam_config(pecan.request.context, _get_host())
+
+        elif interface_network.network_type == constants.NETWORK_TYPE_MGMT:
             if (utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and
                     cutils.is_initial_config_complete()):
-                # Management Network reconfiguration after initial config complete
-                # is just supported by AIO-SX, set the flag
                 pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
-                if operation == OPERATION_CREATE:
+                if operation == constants.API_POST:
                     address_pool.add_management_addresses_to_no_proxy_list(addrpools)
-                else:
+                elif operation == constants.API_DELETE:
                     address_pool.remove_management_addresses_from_no_proxy_list(addrpools)
+            dc_role = utils.get_distributed_cloud_role()
+            if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+                cutils.update_subcloud_routes(pecan.request.dbapi, [_get_host()])
+            elif dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+                if operation == constants.API_POST:
+                    cutils.update_system_controller_routes(pecan.request.dbapi,
+                                                           interface_network.interface_id,
+                                                           _get_host())
+
+        elif interface_network.network_type == constants.NETWORK_TYPE_ADMIN:
+            host = _get_host()
+            disable = operation == constants.API_DELETE
+            cutils.update_subcloud_routes(pecan.request.dbapi, [host])
+            pecan.request.rpcapi.update_admin_config(pecan.request.context, host, disable)
 
     def _check_interface_class(self, interface_uuid):
         interface = pecan.request.dbapi.iinterface_get(interface_uuid)
@@ -426,7 +438,6 @@ class InterfaceNetworkController(rest.RestController):
     def delete(self, interface_network_uuid):
         # Delete address allocated to the interface
         if_network_obj = pecan.request.dbapi.interface_network_get(interface_network_uuid)
-        network = pecan.request.dbapi.network_get(if_network_obj.network_uuid)
         addrpools = pecan.request.dbapi.address_pools_get_by_network(if_network_obj.network_id)
         for addrpool in addrpools:
             address = None
@@ -438,143 +449,60 @@ class InterfaceNetworkController(rest.RestController):
             if address:
                 pecan.request.dbapi.address_remove_interface(address.uuid)
         pecan.request.dbapi.interface_network_destroy(interface_network_uuid)
-        self._interface_network_operation_complete(OPERATION_DELETE, network.type, addrpools)
+        self._operation_complete(constants.API_DELETE, if_network_obj, addrpools)
 
 
-def _update_host_address(host, interface, network_type):
-    if network_type == constants.NETWORK_TYPE_MGMT:
-        _update_host_mgmt_address(host, interface)
-    elif network_type == constants.NETWORK_TYPE_ADMIN:
-        _update_host_admin_address(host, interface)
-    elif network_type == constants.NETWORK_TYPE_CLUSTER_HOST:
-        _update_host_cluster_address(host, interface)
-    elif network_type == constants.NETWORK_TYPE_IRONIC:
-        _update_host_ironic_address(host, interface)
-    elif network_type == constants.NETWORK_TYPE_STORAGE:
-        _update_host_storage_address(host, interface)
+# Networks for which addresses have to be updated. The associated value dictates wether addresses
+# can be allocated dynamically.
+ADDRESS_UPDATE_NETWORKS = {constants.NETWORK_TYPE_MGMT: True,
+                           constants.NETWORK_TYPE_OAM: False,
+                           constants.NETWORK_TYPE_CLUSTER_HOST: True,
+                           constants.NETWORK_TYPE_PXEBOOT: False,
+                           constants.NETWORK_TYPE_STORAGE: True,
+                           constants.NETWORK_TYPE_ADMIN: False,
+                           constants.NETWORK_TYPE_IRONIC: False}
+
+
+def _update_host_addresses(host, interface, network, addrpools):
+    if network.type not in ADDRESS_UPDATE_NETWORKS:
+        return
+
     if host.personality == constants.CONTROLLER:
-        if network_type == constants.NETWORK_TYPE_OAM:
-            _update_host_oam_address(host, interface)
-        elif network_type == constants.NETWORK_TYPE_PXEBOOT:
-            _update_host_pxeboot_address(host, interface)
+        if network.type == constants.NETWORK_TYPE_OAM and \
+                utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
+            hostname = constants.CONTROLLER_HOSTNAME
+        else:
+            hostname = host.hostname
+        id_field, addr_field = CONTROLLER_ADDRESS_FIELDS.get(hostname)
+        for addrpool in addrpools:
+            address_id = getattr(addrpool, id_field)
+            if address_id:
+                pecan.request.dbapi.address_update(address_id, {'interface_id': interface.id})
+                if network.type == constants.NETWORK_TYPE_MGMT and \
+                        addrpool.uuid == network.pool_uuid:
+                    pecan.request.rpcapi.mgmt_ip_set_by_ihost(
+                        pecan.request.context, host.uuid, interface.id,
+                        getattr(addrpool, addr_field))
+        return
 
-
-def _dynamic_address_allocation():
-    mgmt_network = pecan.request.dbapi.network_get_by_type(
-        constants.NETWORK_TYPE_MGMT)
-    return mgmt_network.dynamic
+    address_name = cutils.format_address_name(host.hostname, network.type)
+    addresses = pecan.request.dbapi.address_get_by_name(address_name)
+    pools_with_addrs = set()
+    if addresses:
+        updates = {'interface_id': interface.id}
+        for addr in addresses:
+            pecan.request.dbapi.address_update(addr.uuid, updates)
+            pools_with_addrs.add(addr.pool_uuid)
+    if len(addrpools) > len(pools_with_addrs):
+        if network.dynamic and ADDRESS_UPDATE_NETWORKS.get(network.type, False):
+            for addrpool in addrpools:
+                if addrpool.uuid not in pools_with_addrs:
+                    _allocate_pool_address(interface.id, addrpool.uuid, address_name)
 
 
 def _allocate_pool_address(interface_id, pool_uuid, address_name=None):
     address_pool.AddressPoolController.assign_address(
         interface_id, pool_uuid, address_name)
-
-
-def _update_host_mgmt_address(host, interface):
-    """Check if the host has a static management IP address assigned
-    and ensure the address is populated against the interface.  Otherwise,
-    if using dynamic address allocation, then allocate an address
-    """
-
-    mgmt_ip = utils.lookup_static_ip_address(
-        host.hostname, constants.NETWORK_TYPE_MGMT)
-
-    if mgmt_ip:
-        pecan.request.rpcapi.mgmt_ip_set_by_ihost(
-            pecan.request.context, host.uuid, interface['id'], mgmt_ip)
-    elif _dynamic_address_allocation():
-        mgmt_pool_uuid = pecan.request.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_MGMT
-        ).pool_uuid
-        address_name = cutils.format_address_name(host.hostname,
-                                                  constants.NETWORK_TYPE_MGMT)
-        _allocate_pool_address(interface['id'], mgmt_pool_uuid, address_name)
-
-
-def _update_host_admin_address(host, interface):
-    address_name = cutils.format_address_name(host.hostname,
-                                              constants.NETWORK_TYPE_ADMIN)
-    addresses = pecan.request.dbapi.address_get_by_name(address_name)
-    for addr in addresses:
-        updates = {'interface_id': interface['id']}
-        pecan.request.dbapi.address_update(addr.uuid, updates)
-    if len(addresses) == 0:
-        # For non-controller hosts, allocate address from pool if dynamic
-        admin_network = pecan.request.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_ADMIN)
-        if admin_network.dynamic:
-            _allocate_pool_address(interface['id'],
-                                   admin_network.pool_uuid,
-                                   address_name)
-
-
-def _update_host_oam_address(host, interface):
-    if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
-        address_name = cutils.format_address_name(constants.CONTROLLER_HOSTNAME,
-                                                  constants.NETWORK_TYPE_OAM)
-    else:
-        address_name = cutils.format_address_name(host.hostname,
-                                                  constants.NETWORK_TYPE_OAM)
-    addresses = pecan.request.dbapi.address_get_by_name(address_name)
-    for addr in addresses:
-        updates = {'interface_id': interface['id']}
-        pecan.request.dbapi.address_update(addr.uuid, updates)
-
-
-def _update_host_pxeboot_address(host, interface):
-    address_name = cutils.format_address_name(host.hostname,
-                                              constants.NETWORK_TYPE_PXEBOOT)
-    addresses = pecan.request.dbapi.address_get_by_name(address_name)
-    for addr in addresses:
-        updates = {'interface_id': interface['id']}
-        pecan.request.dbapi.address_update(addr.uuid, updates)
-
-
-def _update_host_cluster_address(host, interface):
-    """
-    Check if the host has a cluster-host IP address assigned
-    and the address is populated against the interface.
-    Otherwise, allocate an address from the pool.
-    """
-    address_name = cutils.format_address_name(
-        host.hostname, constants.NETWORK_TYPE_CLUSTER_HOST)
-    addresses = pecan.request.dbapi.address_get_by_name(address_name)
-    for addr in addresses:
-        updates = {'interface_id': interface['id']}
-        pecan.request.dbapi.address_update(addr.uuid, updates)
-    if len(addresses) == 0:
-        cluster_host_network = pecan.request.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_CLUSTER_HOST)
-        if cluster_host_network.dynamic:
-            _allocate_pool_address(interface['id'],
-                                   cluster_host_network.pool_uuid,
-                                   address_name)
-
-
-def _update_host_ironic_address(host, interface):
-    address_name = cutils.format_address_name(host.hostname,
-                                              constants.NETWORK_TYPE_IRONIC)
-    addresses = pecan.request.dbapi.address_get_by_name(address_name)
-    for addr in addresses:
-        updates = {'interface_id': interface['id']}
-        pecan.request.dbapi.address_update(addr.uuid, updates)
-
-
-def _update_host_storage_address(host, interface):
-    address_name = cutils.format_address_name(host.hostname,
-                                              constants.NETWORK_TYPE_STORAGE)
-    addresses = pecan.request.dbapi.address_get_by_name(address_name)
-    for addr in addresses:
-        updates = {'interface_id': interface['id']}
-        pecan.request.dbapi.address_update(addr.uuid, updates)
-    if len(addresses) == 0:
-        # For non-controller hosts, allocate address from pool if dynamic
-        storage_network = pecan.request.dbapi.network_get_by_type(
-            constants.NETWORK_TYPE_STORAGE)
-        if storage_network.dynamic:
-            _allocate_pool_address(interface['id'],
-                                   storage_network.pool_uuid,
-                                   address_name)
 
 
 def _update_host_mgmt_mac(host, mgmt_mac):

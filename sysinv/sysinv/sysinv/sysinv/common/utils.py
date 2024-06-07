@@ -1764,133 +1764,164 @@ def is_partition_the_last(dbapi, partition):
     return True
 
 
+def get_network_address_pools(dbapi, networktype, primary_only):
+    pools = []
+    try:
+        network = dbapi.network_get_by_type(networktype)
+        if primary_only:
+            if network.pool_uuid:
+                pools.append(dbapi.address_pool_get(network.pool_uuid))
+        else:
+            pools = dbapi.address_pools_get_by_network(network.id)
+    except exception.NetworkTypeNotFound:
+        pass
+    return pools
+
+
+def get_central_cloud_gateway_network_and_addresses(dbapi, primary_only):
+    # If the Admin network exists, use its gateway addresses. If not, use Management's instead.
+    for networktype in [constants.NETWORK_TYPE_ADMIN, constants.NETWORK_TYPE_MGMT]:
+        pools = get_network_address_pools(dbapi, networktype, primary_only)
+        if pools:
+            gateway_addresses = {}
+            for pool in pools:
+                if pool.gateway_address:
+                    gateway_addresses[pool.family] = pool.gateway_address
+            return networktype, gateway_addresses
+    return None, {}
+
+
+def update_subcloud_routes(dbapi, hosts=None, primary_only=True):
+    # Add the routes back to the system controller.
+    # Assumption is we do not have to do any error checking
+    # for local & reachable gateway etc, as config_subcloud
+    # will have already done these checks before allowing
+    # the system controller gateway into the database.
+
+    cc_network_addr_pools = get_network_address_pools(dbapi,
+        constants.NETWORK_TYPE_SYSTEM_CONTROLLER, primary_only)
+    if not cc_network_addr_pools:
+        LOG.warning("DC Config: Failed to retrieve central cloud network")
+        return
+
+    if hosts is None:
+        hosts = dbapi.ihost_get_by_personality(constants.CONTROLLER)
+    host_index = {host.id: host for host in hosts}
+    if not host_index:
+        return
+
+    route_query_values = {}
+    for cc_pool in cc_network_addr_pools:
+        route_query_values[cc_pool.family] = {'family': cc_pool.family,
+                                              'network': cc_pool.network,
+                                              'prefix': cc_pool.prefix}
+
+    networktype, gateway_addresses = get_central_cloud_gateway_network_and_addresses(dbapi,
+                                                                                     primary_only)
+    host_route_create_values = {}
+    if gateway_addresses:
+        iface_network_list = dbapi.interface_networks_get_by_network_type(networktype)
+        for iface_network in iface_network_list:
+            host = host_index.get(iface_network.forihostid, None)
+            if not host:
+                continue
+            for family, query_dict in route_query_values.items():
+                gateway_address = gateway_addresses.get(family, None)
+                if gateway_address:
+                    create_dict = query_dict.copy()
+                    create_dict['gateway'] = gateway_address
+                    create_dict['interface_id'] = iface_network.interface_id
+                    create_dict['metric'] = 1
+                    host_route_create_values.setdefault(host.id, {})[family] = create_dict
+
+    def get_route_description(route):
+        return "network: {}/{}, gateway: {}, interface: {}, host: {}".format(route.network,
+            route.prefix, route.gateway, route.ifname, host_index[route.forihostid].hostname)
+
+    for host in host_index.values():
+        host_route_create_dict = host_route_create_values.get(host.id, {})
+        for family, query_dict in route_query_values.items():
+            create_dict = host_route_create_dict.get(family, None)
+            existing_routes = dbapi.routes_get_by_field_values(host.id, **query_dict)
+            for route in existing_routes:
+                if create_dict:
+                    # If route already exists, skip creation
+                    if route.interface_id == create_dict['interface_id'] and \
+                            route.gateway == create_dict['gateway'] and \
+                            route.metric == create_dict['metric']:
+                        del host_route_create_dict[family]
+                        continue
+                route_descr = get_route_description(route)
+                LOG.info("DC Config: Removing route to system controller: {}".format(route_descr))
+                # If route exists but interface_id and gateway do not match, erase
+                dbapi.route_destroy(route.id)
+
+    for host_route_create_dict in host_route_create_values.values():
+        for create_values in host_route_create_dict.values():
+            interface_id = create_values.pop('interface_id')
+            route = dbapi.route_create(interface_id, create_values)
+            route_descr = get_route_description(route)
+            LOG.info("DC Config: Added route to system controller: {}".format(route_descr))
+
+
+def update_system_controller_routes(dbapi, mgmt_iface_id, host=None):
+    # Add routes to get from this controller to all the existing subclouds.
+    # Do this by copying all the routes configured on the management
+    # interface on the mate controller (if it exists).
+
+    if host:
+        host_id = host.id
+    else:
+        mgmt_iface = dbapi.iinterface_get(mgmt_iface_id)
+        host_id = mgmt_iface.forihostid
+
+    controller_hosts = dbapi.ihost_get_by_personality(constants.CONTROLLER)
+    mate_controller = None
+    for controller_host in controller_hosts:
+        if controller_host.id != host_id:
+            mate_controller = controller_host
+            break
+
+    if not mate_controller:
+        LOG.info("DC Config: Mate controller for host id %s not found. Routes not added." % host_id)
+        return
+
+    mate_interfaces = dbapi.iinterface_get_all(forihostid=mate_controller.id)
+    for interface in mate_interfaces:
+        if constants.NETWORK_TYPE_MGMT in interface.networktypelist:
+            mate_mgmt_iface = interface
+            break
+    else:
+        LOG.error("Management interface for host %d not found." % mate_controller.hostname)
+        return
+
+    routes = dbapi.routes_get_by_interface(mate_mgmt_iface.id)
+    for route in routes:
+        new_route = {'family': route.family,
+                     'network': route.network,
+                     'prefix': route.prefix,
+                     'gateway': route.gateway,
+                     'metric': route.metric}
+        try:
+            dbapi.route_create(mgmt_iface_id, new_route)
+        except exception.RouteAlreadyExists:
+            LOG.info("DC Config: Attempting to add duplicate route to system controller.")
+
+        LOG.info("DC Config: Added route to subcloud: %s/%s gw:%s on mgmt_iface_id: %s" %
+                 (new_route['network'], new_route['prefix'], new_route['gateway'], mgmt_iface_id))
+
+
 def perform_distributed_cloud_config(dbapi, mgmt_iface_id, host):
     """
     Check if we are running in distributed cloud mode and perform any
     necessary configuration.
     """
-
     system = dbapi.isystem_get_one()
-    if system.distributed_cloud_role == \
-            constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
-        # Add routes to get from this controller to all the existing subclouds.
-        # Do this by copying all the routes configured on the management
-        # interface on the mate controller (if it exists).
-        mgmt_iface = dbapi.iinterface_get(mgmt_iface_id)
-        controller_hosts = dbapi.ihost_get_by_personality(constants.CONTROLLER)
-        mate_controller_id = None
-        for controller in controller_hosts:
-            if controller.id != mgmt_iface.forihostid:
-                # Found the mate controller
-                mate_controller_id = controller.id
-                break
-        else:
-            LOG.info("Mate controller for host id %d not found. Routes not "
-                     "added." % mgmt_iface.forihostid)
-            return
-
-        mate_interfaces = dbapi.iinterface_get_all(
-            forihostid=mate_controller_id)
-        for interface in mate_interfaces:
-            if constants.NETWORK_TYPE_MGMT in interface.networktypelist:
-                mate_mgmt_iface = interface
-                break
-        else:
-            LOG.error("Management interface for host id %d not found." %
-                      mate_controller_id)
-            return
-
-        routes = dbapi.routes_get_by_interface(mate_mgmt_iface.id)
-        for route in routes:
-            new_route = {
-                'family': route.family,
-                'network': route.network,
-                'prefix': route.prefix,
-                'gateway': route.gateway,
-                'metric': route.metric
-            }
-            try:
-                dbapi.route_create(mgmt_iface_id, new_route)
-            except exception.RouteAlreadyExists:
-                LOG.info("DC Config: Attempting to add duplicate route "
-                         "to system controller.")
-                pass
-
-            LOG.info("DC Config: Added route to subcloud: "
-                     "%s/%s gw:%s on mgmt_iface_id: %s" %
-                     (new_route['network'], new_route['prefix'],
-                      new_route['gateway'], mgmt_iface_id))
-
-    elif (system.distributed_cloud_role ==
-            constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD and
-            host['personality'] == constants.CONTROLLER):
-        # Add the route back to the system controller.
-        # Assumption is we do not have to do any error checking
-        # for local & reachable gateway etc, as config_subcloud
-        # will have already done these checks before allowing
-        # the system controller gateway into the database.
-        nettype = None
-        try:
-            # Prefer admin network
-            sc_network = dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_ADMIN)
-            cc_gtwy_addr_name = '%s-%s' % (
-                constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME,
-                constants.NETWORK_TYPE_ADMIN)
-            nettype = constants.NETWORK_TYPE_ADMIN
-        except exception.NetworkTypeNotFound:
-            sc_network = dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_MGMT)
-            cc_gtwy_addr_name = '%s-%s' % (
-                constants.SYSTEM_CONTROLLER_GATEWAY_IP_NAME,
-                constants.NETWORK_TYPE_MGMT)
-            nettype = constants.NETWORK_TYPE_MGMT
-            pass
-
-        cc_gtwy_addr = get_primary_address_by_name(dbapi, cc_gtwy_addr_name, nettype)
-        if not cc_gtwy_addr:
-            LOG.warning("DC Config: Failed to retrieve central "
-                        "cloud gateway ip address")
-            return
-
-        try:
-            cc_network = dbapi.network_get_by_type(
-                constants.NETWORK_TYPE_SYSTEM_CONTROLLER)
-        except exception.NetworkTypeNotFound:
-            LOG.warning("DC Config: Failed to retrieve central "
-                        "cloud network")
-            return
-
-        cc_network_addr_pool = dbapi.address_pool_get(
-            cc_network.pool_uuid)
-
-        route = {
-            'family': cc_network_addr_pool.family,
-            'network': cc_network_addr_pool.network,
-            'prefix': cc_network_addr_pool.prefix,
-            'gateway': cc_gtwy_addr.address,
-            'metric': 1
-        }
-
-        for ifnet in dbapi.interface_network_get_by_interface(mgmt_iface_id):
-            if ifnet.network_id == sc_network.id:
-                break
-        else:
-            LOG.warning("DC Config: Failed to retrieve network for interface "
-                        "id %s", mgmt_iface_id)
-            return
-
-        try:
-            dbapi.route_create(mgmt_iface_id, route)
-        except exception.RouteAlreadyExists:
-            LOG.info("DC Config: Attempting to add duplicate route "
-                     "to system controller.")
-            pass
-
-        LOG.info("DC Config: Added route to system "
-                 "controller: %s/%s gw:%s on mgmt_iface_id: %s" %
-                 (cc_network_addr_pool.network, cc_network_addr_pool.prefix,
-                  cc_gtwy_addr.address, mgmt_iface_id))
+    if system.distributed_cloud_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
+        update_system_controller_routes(dbapi, mgmt_iface_id, host)
+    elif (system.distributed_cloud_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD and
+            host.personality == constants.CONTROLLER):
+        update_subcloud_routes(dbapi, [host])
 
 
 def is_upgrade_in_progress(dbapi):

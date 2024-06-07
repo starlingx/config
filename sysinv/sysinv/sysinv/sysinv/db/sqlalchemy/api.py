@@ -1409,6 +1409,23 @@ class Connection(api.Connection):
             raise exception.NodeNotFound(node=mgmt_mac)
 
     @db_objects.objectify(objects.host)
+    def ihosts_get_by_addrpool(self, addrpool_id,
+                               limit=None, marker=None,
+                               sort_key=None, sort_dir=None):
+        query = model_query(models.ihost)
+        query = add_host_options(query)
+        query = (query.
+                 join(models.Interfaces,
+                      models.Interfaces.forihostid == models.ihost.id).
+                 join(models.InterfaceNetworks,
+                      models.InterfaceNetworks.interface_id == models.Interfaces.id).
+                 join(models.NetworkAddressPools,
+                      models.NetworkAddressPools.network_id == models.InterfaceNetworks.network_id).
+                 filter(models.NetworkAddressPools.address_pool_id == addrpool_id))
+        return _paginate_query(models.ihost, limit, marker,
+                               sort_key, sort_dir, query)
+
+    @db_objects.objectify(objects.host)
     def ihost_update(self, server, values, context=None):
         with _session_for_write() as session:
             query = model_query(models.ihost, session=session)
@@ -5160,13 +5177,14 @@ class Connection(api.Connection):
             return query.one()
 
     def network_destroy(self, network_uuid):
-        query = model_query(models.Networks)
-        query = add_identity_filter(query, network_uuid)
-        try:
-            query.one()
-        except NoResultFound:
-            raise exception.NetworkNotFound(network_uuid=network_uuid)
-        query.delete()
+        with _session_for_write() as session:
+            query = model_query(models.Networks, session=session)
+            query = add_identity_filter(query, network_uuid)
+            try:
+                network = query.one()
+            except NoResultFound:
+                raise exception.NetworkNotFound(network_uuid=network_uuid)
+            session.delete(network)
 
     def _network_addrpool_get(self, network_addrpool_uuid):
         query = model_query(models.NetworkAddressPools)
@@ -5725,6 +5743,30 @@ class Connection(api.Connection):
                                  None, None, query)
         return result
 
+    @db_objects.objectify(objects.route)
+    def routes_get_by_field_values(self, host_id, limit=None, marker=None,
+                                   sort_key=None, sort_dir=None, **kwargs):
+
+        def _add_filter(query, field):
+            value = kwargs.get(field, None)
+            if value:
+                query = query.filter(getattr(models.Routes, field) == value)
+            return query
+
+        query = model_query(models.Routes)
+        query = (query.
+                 join(models.Interfaces,
+                      models.Interfaces.id == models.Routes.interface_id).
+                 filter(models.Interfaces.forihostid == host_id))
+        query = _add_filter(query, 'family')
+        query = _add_filter(query, 'network')
+        query = _add_filter(query, 'prefix')
+        query = _add_filter(query, 'gateway')
+        query = _add_filter(query, 'metric')
+
+        return _paginate_query(models.Routes, limit, marker,
+                               sort_key, sort_dir, query)
+
     def route_destroy(self, route_uuid):
         query = model_query(models.Routes)
         query = add_identity_filter(query, route_uuid)
@@ -5951,14 +5993,15 @@ class Connection(api.Connection):
                                sort_key, sort_dir, query)
 
     def address_pool_destroy(self, address_pool_uuid):
-        query = model_query(models.AddressPools)
-        query = add_identity_filter(query, address_pool_uuid)
-        try:
-            query.one()
-        except NoResultFound:
-            raise exception.AddressPoolNotFound(
-                address_pool_uuid=address_pool_uuid)
-        query.delete()
+        with _session_for_write() as session:
+            query = model_query(models.AddressPools, session=session)
+            query = add_identity_filter(query, address_pool_uuid)
+            try:
+                addrpool = query.one()
+            except NoResultFound:
+                raise exception.AddressPoolNotFound(
+                    address_pool_uuid=address_pool_uuid)
+            session.delete(addrpool)
 
     # SENSORS
     def _sensor_analog_create(self, hostid, values):

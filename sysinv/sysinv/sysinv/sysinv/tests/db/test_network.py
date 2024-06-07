@@ -169,19 +169,13 @@ class DbNetworkTestCaseIPv4(base.BaseHostTestCase):
                                                             'network_id': net.id})
         self.dbapi.address_pool_destroy(pool6.uuid)
 
-        net_pool_query = self.dbapi.network_addrpool_get(new_net_pool6.uuid)
-        self.assertEqual(net_pool_query.address_pool_uuid, None)
-        self.assertEqual(net_pool_query.address_pool_name, None)
-        self.assertEqual(net_pool_query.address_pool_id, None)
-        self.assertEqual(net_pool_query.network_id, net.id)
-        self.assertEqual(net_pool_query.network_uuid, net.uuid)
-        self.assertEqual(net_pool_query.network_type, net.type)
+        self.assertRaises(exception.NetworkAddrpoolNotFound,
+                          self.dbapi.network_addrpool_get, new_net_pool6.uuid)
 
-        self.dbapi.network_destroy(net.uuid)
-        net_pool_query = self.dbapi.network_addrpool_get(new_net_pool6.uuid)
-        self.assertEqual(net_pool_query.address_pool_uuid, None)
-        self.assertEqual(net_pool_query.address_pool_name, None)
-        self.assertEqual(net_pool_query.address_pool_id, None)
-        self.assertEqual(net_pool_query.network_id, None)
-        self.assertEqual(net_pool_query.network_uuid, None)
-        self.assertEqual(net_pool_query.network_type, None)
+        self.dbapi.address_pool_destroy(pool4.uuid)
+
+        self.assertRaises(exception.NetworkAddrpoolNotFound,
+                          self.dbapi.network_addrpool_get, net_pool_q.uuid)
+
+        self.assertRaises(exception.NetworkNotFound,
+                          self.dbapi.network_get, net.uuid)

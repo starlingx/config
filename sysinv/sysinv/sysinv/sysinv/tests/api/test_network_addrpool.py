@@ -728,6 +728,49 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         self.assertEqual('controller-0-mgmt', c0_address.name)
         self.assertEqual('controller-1-mgmt', c1_address.name)
 
+    def test_success_create_network_addrpool_secondary_admin(self):
+        p = mock.patch('sysinv.api.controllers.v1.utils.get_distributed_cloud_role')
+        self.mock_utils_get_system_mode = p.start()
+        self.mock_utils_get_system_mode.return_value = constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD
+        self.addCleanup(p.stop)
+
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
+        self.mock_rpcapi_update_admin_config = p.start()
+        self.addCleanup(p.stop)
+
+        admin_network = self._find_network_by_type(constants.NETWORK_TYPE_ADMIN)
+        admin_pool_ipv4 = self.address_pools['admin-ipv4']
+        admin_pool_ipv6 = self.address_pools['admin-ipv6']
+
+        controller0 = self._create_test_host(constants.CONTROLLER, unit=0)
+        c0_admin0 = self.create_test_interface('c0_admin0', controller0)
+
+        controller1 = self._create_test_host(constants.CONTROLLER, unit=1)
+        c1_admin0 = self.create_test_interface('c1_admin0', controller1)
+
+        dbutils.create_test_network_addrpool(address_pool_id=admin_pool_ipv4.id,
+                                             network_id=admin_network.id)
+
+        dbutils.create_test_interface_network(interface_id=c0_admin0.id,
+                                              network_id=admin_network.id)
+        dbutils.create_test_interface_network(interface_id=c1_admin0.id,
+                                              network_id=admin_network.id)
+
+        ndict = self.get_post_object(admin_network.uuid, admin_pool_ipv6.uuid)
+        response = self.post_json(self.API_PREFIX, ndict, headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        updated_ipv6_pool = self.dbapi.address_pool_get(admin_pool_ipv6.id)
+        self.assertIsNotNone(updated_ipv6_pool.floating_address)
+        self.assertIsNotNone(updated_ipv6_pool.controller0_address)
+        self.assertIsNotNone(updated_ipv6_pool.controller1_address)
+
+        self.mock_rpcapi_update_admin_config.assert_called()
+        self.assertEqual(2, self.mock_rpcapi_update_admin_config.call_count)
+        for call in self.mock_rpcapi_update_admin_config.call_args_list:
+            self.assertEqual(False, call.kwargs['disable'])
+
 
 class TestDelete(NetworkAddrpoolTestCase):
     """ Tests deletion.
@@ -1109,6 +1152,41 @@ class TestDelete(NetworkAddrpoolTestCase):
         self.assertIn(msg, response.json['error_message'])
 
         self.mock_rpcapi_set_mgmt_network_reconfig_flag.assert_not_called()
+
+    def test_success_delete_admin_network_addrpool_secondary(self):
+        p = mock.patch('sysinv.common.utils.is_initial_config_complete')
+        self.mock_utils_is_initial_config_complete = p.start()
+        self.mock_utils_is_initial_config_complete.return_value = True
+        self.addCleanup(p.stop)
+
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
+        self.mock_rpcapi_update_admin_config = p.start()
+        self.addCleanup(p.stop)
+
+        net_type = constants.NETWORK_TYPE_ADMIN
+        network = self.networks[net_type]
+        dbutils.create_test_network_addrpool(
+            address_pool_id=self.address_pools['admin-ipv4'].id,
+            network_id=network.id)
+        net_pool_2 = dbutils.create_test_network_addrpool(
+            address_pool_id=self.address_pools['admin-ipv6'].id,
+            network_id=network.id)
+
+        controller0 = self._create_test_host(constants.CONTROLLER, unit=0)
+        c0_admin0 = self.create_test_interface('c0_admin0', controller0)
+
+        controller1 = self._create_test_host(constants.CONTROLLER, unit=1)
+        c1_admin0 = self.create_test_interface('c1_admin0', controller1)
+
+        dbutils.create_test_interface_network(interface_id=c0_admin0.id, network_id=network.id)
+        dbutils.create_test_interface_network(interface_id=c1_admin0.id, network_id=network.id)
+
+        response = self.delete(self.get_single_url(net_pool_2.uuid), headers=self.API_HEADERS)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+
+        self.assertEqual(2, self.mock_rpcapi_update_admin_config.call_count)
+        for call in self.mock_rpcapi_update_admin_config.call_args_list:
+            self.assertEqual(False, call.kwargs['disable'])
 
 
 class TestList(NetworkAddrpoolTestCase):

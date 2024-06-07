@@ -545,9 +545,10 @@ class AddressPoolController(rest.RestController):
                 self._check_valid_address(subnet, address)
 
     def _check_existing_addresses(self, addrpool, updates):
+        updated_fields = self.context['updated_fields']
         existing_addresses = {}
         for addr_field in ADDRESS_FIELDS.keys():
-            if not self._is_field_updated(addrpool, updates, addr_field):
+            if addr_field not in updated_fields:
                 continue
             ip_address = updates[addr_field]
             if not ip_address:
@@ -562,31 +563,26 @@ class AddressPoolController(rest.RestController):
             existing_addresses[addr_field] = address
         return existing_addresses
 
-    def _is_field_updated(self, addrpool, updates, field):
-        if field not in updates:
-            return False
-        return updates[field] != getattr(addrpool, field)
-
     def _validate_updates(self, addrpool, network_types, updates):
         self._parse_nullable_fields(updates)
 
         original_addrpool = addrpool.as_dict()
         new_addrpool = copy.deepcopy(original_addrpool)
-        self._apply_updates(new_addrpool, updates)
+        updated_fields = self._apply_updates(new_addrpool, updates)
+        self.context['updated_fields'] = updated_fields
 
         subnet = self._get_addrpool_subnet(new_addrpool)
 
-        if self._is_field_updated(addrpool, updates, 'name'):
+        if 'name' in updated_fields:
             self._validate_name(new_addrpool)
 
         needs_ranges_validation = False
-        if (self._is_field_updated(addrpool, updates, 'prefix') or
-                self._is_field_updated(addrpool, updates, 'network')):
+        if any(field in updated_fields for field in ['prefix', 'network']):
             self._check_valid_subnet(subnet, original_addrpool['family'])
             self._check_pool_overlap(new_addrpool, network_types)
             needs_ranges_validation = True
 
-        if self._is_field_updated(addrpool, updates, 'ranges'):
+        if 'ranges' in updated_fields:
             self._validate_range_updates(addrpool, updates)
             self._sort_ranges(new_addrpool)
             needs_ranges_validation = True
@@ -594,27 +590,39 @@ class AddressPoolController(rest.RestController):
         if needs_ranges_validation:
             self._check_valid_ranges(new_addrpool, subnet)
 
-        if self._is_field_updated(addrpool, updates, 'order'):
+        if 'order' in updated_fields:
             AddressPool._validate_allocation_order(new_addrpool['order'])
 
         self._validate_addresses(subnet, new_addrpool)
         self._check_address_duplicates(new_addrpool)
-        self._do_network_specific_validations(addrpool, new_addrpool, network_types, updates)
+        self._check_required_addresses(new_addrpool, network_types)
         return self._check_existing_addresses(addrpool, updates)
 
     def _apply_updates(self, addrpool_dict, updates):
+        updated_fields = set()
         for field, value in updates.items():
-            addrpool_dict[field] = value
+            if addrpool_dict[field] != value:
+                addrpool_dict[field] = value
+                updated_fields.add(field)
+        return updated_fields
 
-    def _do_network_specific_validations(self, original_addrpool, updated_addrpool, network_types,
-                                         updates):
+    FLOATING_ADDR_FIELD = ['floating_address']
+    ALL_CTL_ADDR_FIELDS = ['floating_address', 'controller0_address', 'controller1_address']
+
+    def _get_required_address_fields(self, network_types):
         if constants.NETWORK_TYPE_OAM in network_types:
-            self._do_oam_validations(original_addrpool, updated_addrpool, updates)
+            if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
+                return self.FLOATING_ADDR_FIELD
+            else:
+                return self.ALL_CTL_ADDR_FIELDS
+        if constants.NETWORK_TYPE_MGMT in network_types:
+            return self.ALL_CTL_ADDR_FIELDS
+        if constants.NETWORK_TYPE_ADMIN in network_types:
+            return self.ALL_CTL_ADDR_FIELDS
+        return []
 
-    def _do_oam_validations(self, original_addrpool, updated_addrpool, updates):
-        fields = ['floating_address']
-        if utils.get_system_mode() != constants.SYSTEM_MODE_SIMPLEX:
-            fields.extend(['controller0_address', 'controller1_address'])
+    def _check_required_addresses(self, updated_addrpool, network_types):
+        fields = self._get_required_address_fields(network_types)
         null_fields = [field for field in fields if updated_addrpool[field] is None]
         if null_fields:
             msg = _("The field%s must not be empty: %s" %
@@ -721,20 +729,28 @@ class AddressPoolController(rest.RestController):
     def _get_network_types(self, networks):
         return {network.type for network in networks}
 
+    def _get_hosts(self, addrpool):
+        hosts = self.context.get('hosts', None)
+        if not hosts:
+            hosts = pecan.request.dbapi.ihosts_get_by_addrpool(addrpool.id)
+            self.context['hosts'] = hosts
+        return hosts
+
     def _get_system_mode(self):
-        mode = self.cache.get('system_mode', None)
+        mode = self.context.get('system_mode', None)
         if not mode:
             mode = utils.get_system_mode()
-            self.cache['system_mode'] = mode
+            self.context['system_mode'] = mode
         return mode
 
-    def _setup_cache(self):
-        self.cache = {}
+    def _setup_contex(self):
+        self.context = {}
 
     def _update_address_pool(self, address_pool_uuid, patch):
-        self._setup_cache()
+        self._setup_contex()
         addrpool = self._get_one(address_pool_uuid)
         networks = self._get_networks(addrpool)
+        is_primary = self._is_primary(addrpool, networks)
         network_types = self._get_network_types(networks)
         updates = self._get_updates(patch)
         self._check_modification_allowed(network_types)
@@ -742,7 +758,7 @@ class AddressPoolController(rest.RestController):
         field_updates = self._update_addresses(addrpool, network_types, updates, existing_addresses)
         addrpool = self._apply_addrpool_updates(addrpool, updates, field_updates)
         self._update_no_proxy_list(addrpool, network_types, updates)
-        self._address_pool_updated(addrpool, network_types)
+        self._operation_complete(addrpool, network_types, is_primary, constants.API_PATCH)
         return addrpool
 
     def _apply_addrpool_updates(self, addrpool, updates, field_updates):
@@ -896,20 +912,38 @@ class AddressPoolController(rest.RestController):
         no_proxy_entry = _get_docker_no_proxy_entry()
         if not no_proxy_entry:
             return
+        addr_fields = ['floating_address', 'controller0_address']
+        updated_fields = [f for f in addr_fields if f in self.context['updated_fields']]
         to_remove = []
         to_add = []
-        for field in ['floating_address', 'controller0_address']:
-            if self._is_field_updated(addrpool, updates, field):
-                old = getattr(addrpool, field)
-                if old:
-                    to_remove.append(addrpool.family, old)
-                new = updates[field]
-                if new:
-                    to_add.append(addrpool.family, new)
+        for field in updated_fields:
+            old = getattr(addrpool, field)
+            if old:
+                to_remove.append(addrpool.family, old)
+            new = updates[field]
+            if new:
+                to_add.append(addrpool.family, new)
         if to_remove or to_add:
             _update_docker_no_proxy_list(no_proxy_entry, to_remove, to_add)
 
-    def _address_pool_updated(self, addrpool, network_types):
+    def _is_primary(self, addrpool, networks):
+        return any(network.pool_uuid == addrpool.uuid for network in networks)
+
+    SUBCLOUD_GATEWAY_NETWORKS = [constants.NETWORK_TYPE_ADMIN, constants.NETWORK_TYPE_MGMT]
+
+    def _update_dc_routes(self, network_types, operation):
+        if operation == constants.API_PATCH:
+            if 'gateway_address' not in self.context['updated_fields']:
+                return
+        if all(net_type not in network_types for net_type in self.SUBCLOUD_GATEWAY_NETWORKS):
+            return
+        if utils.get_distributed_cloud_role() != constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+            return
+        cutils.update_subcloud_routes(pecan.request.dbapi)
+
+    def _operation_complete(self, addrpool, network_types, is_primary, operation):
+        self._update_dc_routes(network_types, operation)
+
         if constants.NETWORK_TYPE_OAM in network_types:
             pecan.request.rpcapi.update_oam_config(pecan.request.context)
 
@@ -918,9 +952,24 @@ class AddressPoolController(rest.RestController):
                     cutils.is_initial_config_complete():
                 pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
 
+        if constants.NETWORK_TYPE_ADMIN in network_types:
+            if is_primary and operation == constants.API_DELETE:
+                # If the primary address pool was deleted, the network was also deleted through
+                # cascading. In this case, update config in all controllers.
+                hosts = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+            else:
+                hosts = self._get_hosts(addrpool)
+            if hosts:
+                disable = is_primary and operation == constants.API_DELETE
+                for host in hosts:
+                    pecan.request.rpcapi.update_admin_config(pecan.request.context, host,
+                                                             disable=disable)
+
     def _check_delete_primary(self, addrpool, networks):
         nets = []
         for network in networks:
+            if network.type in SUBCLOUD_WRITABLE_NETWORK_TYPES:
+                continue
             if network.pool_uuid == addrpool.uuid:
                 nets.append(network.type)
         if nets:
@@ -928,6 +977,15 @@ class AddressPoolController(rest.RestController):
                     "%s: %s. Not possible to delete." %
                     ('s' if len(nets) > 1 else '', ', '.join(nets)))
             raise wsme.exc.ClientSideError(msg)
+
+    def _get_secondary_pools(self, networks):
+        sec_pools = []
+        for network in networks:
+            pools = pecan.request.dbapi.address_pools_get_by_network(network.id)
+            for pool in pools:
+                if pool.uuid != network.pool_uuid:
+                    sec_pools.append(pool)
+        return sec_pools
 
     @wsme_pecan.wsexpose(AddressPoolCollection, types.uuid, types.uuid, int,
                          wtypes.text, wtypes.text)
@@ -958,18 +1016,33 @@ class AddressPoolController(rest.RestController):
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, address_pool_uuid):
         """Delete an IP address pool."""
-        self._setup_cache()
+        self._setup_contex()
         addrpool = self._get_one(address_pool_uuid)
         networks = self._get_networks(addrpool)
+        is_primary = self._is_primary(addrpool, networks)
         network_types = self._get_network_types(networks)
 
         self._check_delete_primary(addrpool, networks)
         self._check_modification_allowed(network_types)
 
+        if constants.NETWORK_TYPE_ADMIN in network_types:
+            # Retrieve hosts to cache before deleting db objects
+            self._get_hosts(addrpool)
+
         # if proxy is being used, remove the old management network IPs
         # from the no_proxy list
         if has_to_update_no_proxy_list(network_types):
             remove_management_addresses_from_no_proxy_list([addrpool])
+
+        # If the primary pool is being removed, the network will be automatically removed and also
+        # the network-addrpool entry for the secondary pool. The addresses from the secondary pool
+        # have to be disassociated from the interfaces that were associated with the network.
+        secondary_pools = self._get_secondary_pools(networks) if is_primary else []
+        for pool in secondary_pools:
+            addresses = pecan.request.dbapi.addresses_get_by_pool(pool.id)
+            for addr in addresses:
+                if addr.interface_id:
+                    pecan.request.dbapi.address_update(addr.id, {'interface_id': None})
 
         addresses = pecan.request.dbapi.addresses_get_by_pool(addrpool.id)
         for addr in addresses:
@@ -979,22 +1052,7 @@ class AddressPoolController(rest.RestController):
         # network and interface association.
         pecan.request.dbapi.address_pool_destroy(address_pool_uuid)
 
-        if networks:
-            # Delete associated network_addrpool database entries
-            netpools = pecan.request.dbapi.network_addrpool_get_by_pool_id(addrpool.id)
-            for netpool in netpools:
-                pecan.request.dbapi.network_addrpool_destroy(netpool.uuid)
-
-        if constants.NETWORK_TYPE_ADMIN in network_types:
-            # If the admin address pool is deleted, this allows the
-            # subcloud to automatically revert to using the management
-            # network
-            chosts = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
-            for host in chosts:
-                pecan.request.rpcapi.update_admin_config(pecan.request.context, host, disable=True)
-
-        if constants.NETWORK_TYPE_OAM in network_types:
-            pecan.request.rpcapi.update_oam_config(pecan.request.context)
+        self._operation_complete(addrpool, network_types, is_primary, constants.API_DELETE)
 
 
 def _get_docker_no_proxy_entry():
@@ -1029,14 +1087,6 @@ def _update_docker_no_proxy_list(no_proxy_entry, to_remove=None, to_add=None):
     pecan.request.dbapi.service_parameter_update(no_proxy_entry.uuid, {'value': no_proxy_string})
 
 
-def is_mgmt_network_associated_to_interface():
-    if_networks = pecan.request.dbapi.interface_networks_get_by_network_type(
-        constants.NETWORK_TYPE_MGMT)
-    if if_networks:
-        return True
-    return False
-
-
 def has_to_update_no_proxy_list(network_types):
     if constants.NETWORK_TYPE_MGMT not in network_types:
         return False
@@ -1044,7 +1094,7 @@ def has_to_update_no_proxy_list(network_types):
         return False
     if not cutils.is_initial_config_complete():
         return False
-    if is_mgmt_network_associated_to_interface():
+    if utils.is_network_associated_to_interface(constants.NETWORK_TYPE_MGMT):
         return True
     return False
 
