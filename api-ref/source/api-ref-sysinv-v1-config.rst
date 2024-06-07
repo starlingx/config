@@ -266,16 +266,6 @@ itemNotFound (404)
                "rel": "bookmark"
          }
       ],
-      "upgrade": [
-         {
-               "href": "http://10.10.10.3:6385/v1/upgrade/",
-               "rel": "self"
-         },
-         {
-               "href": "http://10.10.10.3:6385/upgrade/",
-               "rel": "bookmark"
-         }
-      ],
       "datanetworks": [
          {
                "href": "http://10.10.10.3:6385/v1/datanetworks/",
