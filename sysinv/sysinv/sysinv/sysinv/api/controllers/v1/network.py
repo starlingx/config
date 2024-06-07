@@ -176,15 +176,13 @@ class NetworkController(rest.RestController):
                     .format(networktype, constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD))
             raise wsme.exc.ClientSideError(msg)
         if (networktype == constants.NETWORK_TYPE_MGMT):
-            # There are ansible rules using the explicit name: 'management' in the addrpool
+            # There are ansible rules using the explicit name: 'management-ipv4' and
+            # 'management-ipv6' in the addrpool
             # since the AIO-SX allows mgmt network reconfiguration it is necessary to enforce
-            # the use of addrpool named 'management'.
+            # the use of addrpool named 'management-ipv4' and 'management-ipv6'.
             if pool_uuid:
                 pool = pecan.request.dbapi.address_pool_get(pool_uuid)
-                if constants.DUAL_STACK_COMPATIBILITY_MODE:
-                    pool_name = address_pool.MANAGEMENT_ADDRESS_POOL_NAMES[None]
-                else:
-                    pool_name = address_pool.MANAGEMENT_ADDRESS_POOL_NAMES[pool.family]
+                pool_name = address_pool.MANAGEMENT_ADDRESS_POOL_NAMES[pool.family]
                 if pool['name'] != pool_name:
                     msg = _("Network of type {} must use the addrpool named '{}' for {}."
                             .format(networktype, pool_name, constants.IP_FAMILIES[pool.family]))

@@ -2573,10 +2573,6 @@ MGMT_IPSEC_ENABLED = 'enabled'
 MGMT_IPSEC_DISABLED = 'disabled'
 MGMT_IPSEC_UPGRADING = 'upgrading'
 
-# If True, makes outputs compatible with single stack versions of ansible-playbooks and stx-puppet.
-# Shall be removed when the other projects are updated.
-DUAL_STACK_COMPATIBILITY_MODE = True
-
 # certificate constants
 VALIDITY = "Validity"
 NOT_BEFORE = "Not Before"

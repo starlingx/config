@@ -64,9 +64,27 @@ def get_region_name():
     return None
 
 
-def get_oam_ip():
-    cmd = 'source /etc/platform/openrc && ' \
-        '(system addrpool-list --nowrap | awk  \'$4 == "oam" { print $14 }\')'
+def _get_primary_pool(network_type):
+    cmd = f'source /etc/platform/openrc && ' \
+        f'(system network-list --nowrap | awk  \'$8 == "{network_type}" ' \
+        f'{{ print $12 }}\')'
+
+    sub = subprocess.Popen(
+        cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = sub.communicate()
+    if sub.returncode == 0:
+        return stdout.decode('utf-8').rstrip('\n')
+    else:
+        LOG.error('Command failed:\n %s\n. %s\n%s\n'
+                  % (cmd, stdout.decode('utf-8'), stderr.decode('utf-8')))
+        raise Exception(f'Cannot retrieve primary {network_type} pool.')
+
+
+def get_primary_oam_ip():
+    primary_oam_pool = _get_primary_pool('oam')
+    cmd = f'source /etc/platform/openrc && ' \
+        f'(system addrpool-list --nowrap | awk ' \
+        f'\'$2 == "{primary_oam_pool}" {{ print $14 }}\')'
 
     sub = subprocess.Popen(
         cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -137,7 +155,7 @@ def retrieve_certificate(certificate, namespace='deployment'):
 def get_old_default_CN_by_cert(certificate):
     """Return the old default CN per certificate
     """
-    oam_ip = get_oam_ip()
+    oam_ip = get_primary_oam_ip()
     default_CN_by_cert = {
         'system-restapi-gui-certificate': oam_ip,
         'system-registry-local-certificate': oam_ip,

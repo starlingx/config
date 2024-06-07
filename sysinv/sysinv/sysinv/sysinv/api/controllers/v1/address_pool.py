@@ -65,23 +65,13 @@ SUBCLOUD_WRITABLE_NETWORK_TYPES = ['admin']
 
 # Address pools of oam and system controller oam are allowed to be of
 # overlapped prefix in the subcloud.
-if constants.DUAL_STACK_COMPATIBILITY_MODE:
-    OAM_ADDRESS_POOL_OVERLAP_INDEX = {'oam': 'system-controller-oam-subnet',
-                                      'oam-ipv4': 'system-controller-oam-subnet-ipv4',
-                                      'oam-ipv6': 'system-controller-oam-subnet-ipv6'}
-else:
-    OAM_ADDRESS_POOL_OVERLAP_INDEX = {'oam-ipv4': 'system-controller-oam-subnet-ipv4',
-                                      'oam-ipv6': 'system-controller-oam-subnet-ipv6'}
+OAM_ADDRESS_POOL_OVERLAP_INDEX = {'oam-ipv4': 'system-controller-oam-subnet',
+                                   'oam-ipv6': 'system-controller-oam-subnet'}
 
 # Address pool for the management network in an AIO-SX installation
 # is allowed to be deleted/modified post install
-if constants.DUAL_STACK_COMPATIBILITY_MODE:
-    MANAGEMENT_ADDRESS_POOL_NAMES = {None: 'management',
-                                     constants.IPV4_FAMILY: 'management-ipv4',
-                                     constants.IPV6_FAMILY: 'management-ipv6'}
-else:
-    MANAGEMENT_ADDRESS_POOL_NAMES = {constants.IPV4_FAMILY: 'management-ipv4',
-                                     constants.IPV6_FAMILY: 'management-ipv6'}
+MANAGEMENT_ADDRESS_POOL_NAMES = {constants.IPV4_FAMILY: 'management-ipv4',
+                                    constants.IPV6_FAMILY: 'management-ipv6'}
 AIOSX_WRITABLE_ADDRPOOLS = MANAGEMENT_ADDRESS_POOL_NAMES.values()
 
 
@@ -403,9 +393,10 @@ class AddressPoolController(rest.RestController):
         return False
 
     def _validate_aiosx_mgmt_update(self, addrpool, new_name=None):
-        # There are ansible rules using the explicit name: 'management' in the addrpool
+        # There are ansible rules using the explicit name: 'management-ipv4' and
+        # 'management-ipv6' in the addrpool
         # since the AIO-SX allows mgmt network reconfiguration it is necessary to enforce
-        # the use of addrpool named 'management'.
+        # the use of addrpool named 'management-ipv4' and 'management-ipv6'.
 
         if (utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and
                 addrpool.name in AIOSX_WRITABLE_ADDRPOOLS):

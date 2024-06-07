@@ -246,8 +246,6 @@ class TestPostMixin(NetworkTestCase):
             self.pxeboot_subnet)
 
     def _get_mgmt_addrpool_name(self):
-        if constants.DUAL_STACK_COMPATIBILITY_MODE:
-            return 'management'
         if self.primary_address_family == constants.IPV6_FAMILY:
             return 'management-ipv6'
         return 'management-ipv4'
