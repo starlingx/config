@@ -25,6 +25,7 @@ from pecan import rest
 import random
 import uuid
 import wsme
+import copy
 from wsme import types as wtypes
 import wsmeext.pecan as wsme_pecan
 
@@ -55,6 +56,11 @@ ADDRPOOL_CONTROLLER1_ADDRESS_ID = 'controller1_address_id'
 ADDRPOOL_FLOATING_ADDRESS_ID = 'floating_address_id'
 ADDRPOOL_GATEWAY_ADDRESS_ID = 'gateway_address_id'
 
+ADDRESS_FIELDS = {'gateway_address': 'gateway_address_id',
+                  'floating_address': 'floating_address_id',
+                  'controller0_address': 'controller0_address_id',
+                  'controller1_address': 'controller1_address_id'}
+
 # Address pools for the admin and system controller networks in the subcloud
 # are allowed to be deleted/modified post install.
 SUBCLOUD_WRITABLE_ADDRPOOLS = ['system-controller-subnet',
@@ -65,14 +71,28 @@ SUBCLOUD_WRITABLE_NETWORK_TYPES = ['admin']
 
 # Address pools of oam and system controller oam are allowed to be of
 # overlapped prefix in the subcloud.
-OAM_ADDRESS_POOL_OVERLAP_INDEX = {'oam-ipv4': 'system-controller-oam-subnet',
-                                   'oam-ipv6': 'system-controller-oam-subnet'}
+OAM_ADDRESS_POOL_OVERLAP_INDEX = {'oam': ['system-controller-oam-subnet',
+                                          'system-controller-oam-subnet-ipv4',
+                                          'system-controller-oam-subnet-ipv6'],
+                                  'oam-ipv4': ['system-controller-oam-subnet',
+                                               'system-controller-oam-subnet-ipv4'],
+                                  'oam-ipv6': ['system-controller-oam-subnet',
+                                               'system-controller-oam-subnet-ipv6'],
+                                  'system-controller-oam-subnet': ['oam',
+                                                                   'oam-ipv4',
+                                                                   'oam-ipv6'],
+                                  'system-controller-oam-subnet-ipv4': ['oam',
+                                                                        'oam-ipv4'],
+                                  'system-controller-oam-subnet-ipv6': ['oam',
+                                                                        'oam-ipv6']}
 
 # Address pool for the management network in an AIO-SX installation
 # is allowed to be deleted/modified post install
 MANAGEMENT_ADDRESS_POOL_NAMES = {constants.IPV4_FAMILY: 'management-ipv4',
                                     constants.IPV6_FAMILY: 'management-ipv6'}
 AIOSX_WRITABLE_ADDRPOOLS = MANAGEMENT_ADDRESS_POOL_NAMES.values()
+
+AIOSX_WRITABLE_NETWORK_TYPES = [constants.NETWORK_TYPE_MGMT]
 
 
 class AddressPoolPatchType(types.JsonPatchType):
@@ -91,12 +111,8 @@ class AddressPoolPatchType(types.JsonPatchType):
     @staticmethod
     def readonly_attrs():
         """These attributes cannot be updated."""
-        # Once the initial configuration is complete, pool resizing is
-        # disallowed
-        if cutils.is_initial_config_complete():
-            return ['/network', '/prefix']
-        else:
-            return ['/network']
+        return ['/id', '/uuid', '/controller0_address_id', '/controller1_address_id',
+                '/floating_address_id', '/gateway_address_id']
 
     @staticmethod
     def validate(patch):
@@ -133,6 +149,9 @@ class AddressPool(base.APIBase):
 
     prefix = int
     "Network IP prefix length"
+
+    family = int
+    "Network address family"
 
     order = wtypes.text
     "Address allocation scheme order"
@@ -190,7 +209,7 @@ class AddressPool(base.APIBase):
         pool = AddressPool(**rpc_addrpool.as_dict())
         if not expand:
             pool.unset_fields_except(['uuid', 'name',
-                                      'network', 'prefix', 'order', 'ranges',
+                                      'network', 'prefix', 'family', 'order', 'ranges',
                                       'controller0_address',
                                       'controller0_address_id',
                                       'controller1_address',
@@ -323,10 +342,16 @@ class AddressPoolController(rest.RestController):
     def _check_pool_overlap(self, addrpool):
         current_pool_ip_set = netaddr.IPSet([f"{addrpool['network']}/"
                                              f"{addrpool['prefix']}"])
+        overlap_names = OAM_ADDRESS_POOL_OVERLAP_INDEX.get(addrpool['name'], [])
         pools = pecan.request.dbapi.address_pools_get_all()
         for pool in pools:
-            if pool.name in OAM_ADDRESS_POOL_OVERLAP_INDEX and \
-                    addrpool['name'] == OAM_ADDRESS_POOL_OVERLAP_INDEX[pool.name]:
+            # If it is the same pool that is being modified, skip
+            if pool.uuid == addrpool['uuid']:
+                continue
+            # If it is not the same family, skip
+            if pool.family != addrpool['family']:
+                continue
+            if pool.name in overlap_names:
                 # we are ignoring overlap in this case as subcloud oam and
                 # system-controller oam are sharable.
                 continue
@@ -360,17 +385,19 @@ class AddressPoolController(rest.RestController):
             raise exception.AddressPoolRangeContainsDuplicates(
                 start=start, end=end)
 
-    def _check_valid_ranges(self, addrpool):
+    def _get_addrpool_subnet(self, addrpool):
+        return netaddr.IPNetwork(addrpool['network'] + "/" + str(addrpool['prefix']))
+
+    def _check_valid_subnet(self, subnet, family=None):
+        utils.is_valid_subnet(subnet, family)
+
+    def _check_valid_ranges(self, addrpool, subnet):
         ipset = netaddr.IPSet()
-        prefix = addrpool['prefix']
-        network = netaddr.IPNetwork(addrpool['network'] + "/" + str(prefix))
         for start, end in addrpool['ranges']:
-            self._check_valid_range(network, start, end, ipset)
+            self._check_valid_range(subnet, start, end, ipset)
             ipset.update(netaddr.IPRange(start, end))
 
-    def _check_valid_address(self, addrpool_dict, address):
-        subnet = netaddr.IPNetwork(
-            addrpool_dict['network'] + "/" + str(addrpool_dict['prefix']))
+    def _check_valid_address(self, subnet, address):
         addr = netaddr.IPAddress(address)
         utils.is_valid_address_within_subnet(addr, subnet)
 
@@ -424,23 +451,51 @@ class AddressPoolController(rest.RestController):
                             "specified for standalone AIO-SX")
                     raise wsme.exc.ClientSideError(msg)
 
-    def _check_pool_readonly(self, addrpool):
+    def _validate_name(self, addrpool):
+        AddressPool._validate_name(addrpool['name'])
+        self._check_name_conflict(addrpool)
+
+    def _check_modification_allowed(self, network_types):
+        # No restrictions if it is not associated with a network
+        if not network_types:
+            return
+        # No restrictions during initial config
+        if not cutils.is_initial_config_complete():
+            return
+        if constants.NETWORK_TYPE_OAM in network_types:
+            utils.check_disallow_during_upgrades()
+        self._check_pool_readonly(network_types)
+        self._check_host_lock_required(network_types)
+
+    def _check_pool_readonly(self, network_types):
+        # OAM address pools are writable
+        if constants.NETWORK_TYPE_OAM in network_types:
+            return
         # The admin and system controller address pools which exist on the
         # subcloud are expected for re-home a subcloud to new system controllers.
-        if (addrpool.name not in SUBCLOUD_WRITABLE_ADDRPOOLS and
-                not self._is_aiosx_writable_pool(addrpool, True)):
-            networks = pecan.request.dbapi.networks_get_by_pool(addrpool.id)
-            # An addresspool except the admin and system controller's pools
-            # are considered read-only after the initial configuration is
-            # complete. During bootstrap it should be modifiable even though
-            # it is allocated to a network.
-            # The management address pool can be changed just for AIO-SX
-            if networks and cutils.is_initial_config_complete():
-                if any(network.type in SUBCLOUD_WRITABLE_NETWORK_TYPES
-                       for network in networks):
-                    return
-                # network managed address pool, no changes permitted
-                raise exception.AddressPoolReadonly()
+        if all(nw_type in SUBCLOUD_WRITABLE_NETWORK_TYPES for nw_type in network_types):
+            return
+        if self._get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
+            if all(nw_type in AIOSX_WRITABLE_NETWORK_TYPES for nw_type in network_types):
+                return
+        # An addresspool except the admin and system controller's pools
+        # are considered read-only after the initial configuration is
+        # complete. During bootstrap it should be modifiable even though
+        # it is allocated to a network.
+        # The management address pool can be changed just for AIO-SX
+        raise exception.AddressPoolReadonly()
+
+    def _check_host_lock_required(self, network_types):
+        if self._get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
+            if all(t not in AIOSX_WRITABLE_NETWORK_TYPES for t in network_types):
+                return
+            chosts = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+            for host in chosts:
+                if utils.is_aio_simplex_host_unlocked(host):
+                    msg = _("Cannot complete the action because Host {} "
+                            "is in administrative state = unlocked"
+                            .format(host['hostname']))
+                    raise wsme.exc.ClientSideError(msg)
 
     def _make_default_range(self, addrpool):
         ipset = netaddr.IPSet([addrpool['network'] + "/" + str(addrpool['prefix'])])
@@ -523,7 +578,9 @@ class AddressPoolController(rest.RestController):
             address['name'] = address_name
         return dbapi.address_create(address)
 
-    def _validate_range_updates(self, addrpool, updates):
+    def _validate_range_updates(self, addrpool, updates, network_types):
+        if network_types == {constants.NETWORK_TYPE_OAM}:
+            return
         addresses = pecan.request.dbapi.addresses_get_by_pool(addrpool.id)
         if not addresses:
             return
@@ -538,15 +595,109 @@ class AddressPoolController(rest.RestController):
             if a['address'] in removed_ranges:
                 raise exception.AddressPoolRangesExcludeExistingAddress()
 
-    def _validate_updates(self, addrpool, updates):
-        if 'name' in updates:
-            AddressPool._validate_name(updates['name'])
+    def _check_address_duplicates(self, addrpool_dict):
+        addr_map = {}
+        for field in ADDRESS_FIELDS.keys():
+            addr = addrpool_dict[field]
+            if not addr:
+                continue
+            if addr in addr_map:
+                msg = _("%s can not be the same as %s: %s" % (field, addr_map[addr], addr))
+                raise wsme.exc.ClientSideError(msg)
+            addr_map[addr] = field
+
+    def _validate_addresses(self, subnet, addrpool):
+        for addr_field in ADDRESS_FIELDS.keys():
+            address = addrpool[addr_field]
+            if address:
+                self._check_valid_address(subnet, address)
+
+    def _validate_allowed_fields(self, updates, network_types):
+        # For now, only the OAM address pools can have all their fields updated. Full edit will be
+        # unrestricted when the dual stack feature is fully implemented.
+        if network_types == {constants.NETWORK_TYPE_OAM}:
+            return
+        restricted_fields = ['network', 'prefix', 'floating_address', 'controller0_address',
+                             'controller1_address', 'gateway_address']
+        updated = [field for field in updates.keys() if field in restricted_fields]
+        if updated:
+            msg = _("The field%s can not be updated: %s" %
+                    ('s' if len(updated) > 1 else '', ', '.join(updates)))
+            raise wsme.exc.ClientSideError(msg)
+
+    def _is_field_updated(self, addrpool_dict, updates, field):
+        if field not in updates:
+            return False
+        return updates[field] != addrpool_dict[field]
+
+    def _validate_updates(self, addrpool, network_types, updates):
+        self._validate_allowed_fields(updates, network_types)
+
+        self._parse_nullable_fields(updates)
+
+        original_addrpool = addrpool.as_dict()
+        new_addrpool = copy.deepcopy(original_addrpool)
+        self._apply_updates(new_addrpool, updates)
+
+        subnet = self._get_addrpool_subnet(new_addrpool)
+
+        if self._is_field_updated(original_addrpool, updates, 'name'):
             self._validate_aiosx_mgmt_update(addrpool, updates['name'])
-        if 'order' in updates:
-            AddressPool._validate_allocation_order(updates['order'])
-        if 'ranges' in updates:
-            self._validate_range_updates(addrpool, updates)
-        return
+            self._validate_name(new_addrpool)
+
+        if (self._is_field_updated(original_addrpool, updates, 'prefix') or
+                self._is_field_updated(original_addrpool, updates, 'network')):
+            self._check_valid_subnet(subnet, original_addrpool['family'])
+            self._check_pool_overlap(new_addrpool)
+
+        if self._is_field_updated(original_addrpool, updates, 'ranges'):
+            self._validate_range_updates(addrpool, updates, network_types)
+            self._sort_ranges(new_addrpool)
+            self._check_valid_ranges(new_addrpool, subnet)
+
+        if self._is_field_updated(original_addrpool, updates, 'order'):
+            AddressPool._validate_allocation_order(new_addrpool['order'])
+
+        self._validate_addresses(subnet, new_addrpool)
+        self._check_address_duplicates(new_addrpool)
+        self._do_network_specific_validations(original_addrpool, new_addrpool, network_types,
+                                              updates)
+
+    def _apply_updates(self, addrpool_dict, updates):
+        for field, value in updates.items():
+            addrpool_dict[field] = value
+
+    def _do_network_specific_validations(self, original_addrpool, updated_addrpool, network_types,
+                                         updates):
+        if constants.NETWORK_TYPE_OAM in network_types:
+            self._do_oam_validations(original_addrpool, updated_addrpool, updates)
+
+    def _do_oam_validations(self, original_addrpool, updated_addrpool, updates):
+        fields = ['floating_address']
+        if utils.get_system_mode() != constants.SYSTEM_MODE_SIMPLEX:
+            fields.extend(['controller0_address', 'controller1_address'])
+        null_fields = [field for field in fields if updated_addrpool[field] is None]
+        if null_fields:
+            msg = _("The field%s must not be empty: %s" %
+                    ('s' if len(null_fields) > 1 else '', ', '.join(null_fields)))
+            raise wsme.exc.ClientSideError(msg)
+        gateway_field = 'gateway_address'
+        if self._is_field_updated(original_addrpool, updates, gateway_field):
+            if not original_addrpool[gateway_field]:
+                msg = _("OAM gateway IP is not allowed to be configured %s. "
+                        "There is already a management gateway address configured.")
+                raise wsme.exc.ClientSideError(msg % updates[gateway_field])
+
+    NULLABLE_FIELDS = ['floating_address', 'controller0_address', 'controller1_address',
+                       'gateway_address']
+
+    NULL_VALUES = ('none', 'null', 'nothing', 'empty', 'undefined', 'unspecified')
+
+    def _parse_nullable_fields(self, updates):
+        for field, value in updates.items():
+            if field in self.NULLABLE_FIELDS:
+                if value.lower() in self.NULL_VALUES:
+                    updates[field] = None
 
     def _remove_mgmt_ips_from_no_proxy_list(self, addresses):
         if addresses:
@@ -606,9 +757,12 @@ class AddressPoolController(rest.RestController):
         self._set_defaults(addrpool_dict)
         self._sort_ranges(addrpool_dict)
 
+        subnet = self._get_addrpool_subnet(addrpool_dict)
+
         # Check for semantic conflicts
         self._check_name_conflict(addrpool_dict)
-        self._check_valid_ranges(addrpool_dict)
+        self._check_valid_subnet(subnet)
+        self._check_valid_ranges(addrpool_dict, subnet)
         self._check_pool_overlap(addrpool_dict)
         self._check_aiosx_mgmt(addrpool_dict)
 
@@ -619,22 +773,22 @@ class AddressPoolController(rest.RestController):
 
         # Create addresses if specified
         if floating_address:
-            self._check_valid_address(addrpool_dict, floating_address)
+            self._check_valid_address(subnet, floating_address)
             f_addr = self._address_create(addrpool_dict, floating_address)
             addrpool_dict[ADDRPOOL_FLOATING_ADDRESS_ID] = f_addr.id
 
         if controller0_address:
-            self._check_valid_address(addrpool_dict, controller0_address)
+            self._check_valid_address(subnet, controller0_address)
             c0_addr = self._address_create(addrpool_dict, controller0_address)
             addrpool_dict[ADDRPOOL_CONTROLLER0_ADDRESS_ID] = c0_addr.id
 
         if controller1_address:
-            self._check_valid_address(addrpool_dict, controller1_address)
+            self._check_valid_address(subnet, controller1_address)
             c1_addr = self._address_create(addrpool_dict, controller1_address)
             addrpool_dict[ADDRPOOL_CONTROLLER1_ADDRESS_ID] = c1_addr.id
 
         if gateway_address:
-            self._check_valid_address(addrpool_dict, gateway_address)
+            self._check_valid_address(subnet, gateway_address)
             g_addr = self._address_create(addrpool_dict, gateway_address)
             addrpool_dict[ADDRPOOL_GATEWAY_ADDRESS_ID] = g_addr.id
 
@@ -657,6 +811,42 @@ class AddressPoolController(rest.RestController):
 
         return new_pool
 
+    def _get_networks(self, addrpool):
+        return pecan.request.dbapi.networks_get_by_pool(addrpool.id)
+
+    def _get_network_types(self, networks):
+        return {network.type for network in networks}
+
+    def _get_system_mode(self):
+        mode = self.cache.get('system_mode', None)
+        if not mode:
+            mode = utils.get_system_mode()
+            self.cache['system_mode'] = mode
+        return mode
+
+    def _setup_cache(self):
+        self.cache = {}
+
+    def _update_address_pool(self, address_pool_uuid, patch):
+        self._setup_cache()
+        addrpool = self._get_one(address_pool_uuid)
+        networks = self._get_networks(addrpool)
+        network_types = self._get_network_types(networks)
+        updates = self._get_updates(patch)
+        self._check_modification_allowed(network_types)
+        self._validate_updates(addrpool, network_types, updates)
+        field_updates = self._update_addresses(addrpool, network_types, updates)
+        addrpool = self._apply_addrpool_updates(addrpool, updates, field_updates)
+        self._address_pool_updated(addrpool, network_types)
+        return addrpool
+
+    def _apply_addrpool_updates(self, addrpool, updates, field_updates):
+        if updates:
+            addrpool = pecan.request.dbapi.address_pool_update(addrpool.uuid, updates)
+        for field, value in field_updates.items():
+            setattr(addrpool, field, value)
+        return addrpool
+
     def _get_updates(self, patch):
         """Retrieve the updated attributes from the patch request."""
         updates = {}
@@ -669,6 +859,109 @@ class AddressPoolController(rest.RestController):
         rpc_addrpool = objects.address_pool.get_by_uuid(
             pecan.request.context, address_pool_uuid)
         return AddressPool.convert_with_links(rpc_addrpool)
+
+    def _prefix_updated(self, addrpool, updates):
+        prefix_field = 'prefix'
+        if prefix_field not in updates:
+            return False
+        return getattr(addrpool, prefix_field) != updates[prefix_field]
+
+    def _update_addresses(self, addrpool, network_types, updates):
+        update_cmds = {}
+        delete_cmds = set()
+        create_cmds = {}
+        field_updates = {}
+
+        prefix_updated = self._prefix_updated(addrpool, updates)
+
+        for addr_field, addr_id_field in ADDRESS_FIELDS.items():
+            current_addr = getattr(addrpool, addr_field)
+            if addr_field in updates:
+                new_addr = updates.pop(addr_field)
+                if new_addr != current_addr:
+                    if not new_addr:
+                        delete_cmds.add(addr_id_field)
+                        continue
+                    if not current_addr:
+                        values = {'address': new_addr}
+                        if prefix_updated:
+                            values['prefix'] = updates['prefix']
+                        create_cmds[addr_field] = values
+                        continue
+                    update_cmds.setdefault(addr_field, {})['address'] = new_addr
+            if prefix_updated and current_addr:
+                update_cmds.setdefault(addr_field, {})['prefix'] = updates['prefix']
+
+        commands = {'update': update_cmds, 'delete': delete_cmds, 'create': create_cmds}
+
+        self._apply_network_specific_address_updates(addrpool, network_types, commands)
+
+        self._apply_address_update_cmds(addrpool, updates, update_cmds, field_updates)
+        self._process_address_delete_cmds(addrpool, updates, delete_cmds, field_updates)
+        self._process_address_create_cmds(addrpool, updates, create_cmds, field_updates)
+
+        return field_updates
+
+    def _apply_address_update_cmds(self, addrpool, updates, update_index, field_updates):
+        for addr_field, values in update_index.items():
+            addr_id_field = ADDRESS_FIELDS[addr_field]
+            address_obj = pecan.request.dbapi.address_get_by_id(getattr(addrpool, addr_id_field))
+            pecan.request.dbapi.address_update(address_obj.uuid, values)
+            if 'address' in values:
+                field_updates[addr_field] = values['address']
+
+    def _process_address_delete_cmds(self, addrpool, updates, delete_index, field_updates):
+        for addr_id_field in delete_index:
+            pecan.request.dbapi.address_destroy_by_id(getattr(addrpool, addr_id_field))
+            updates[addr_id_field] = None
+
+    def _process_address_create_cmds(self, addrpool, updates, create_index, field_updates):
+        if not create_index:
+            return
+        create_params = {'address_pool_id': addrpool.id,
+                         'prefix': addrpool.prefix,
+                         'family': addrpool.family,
+                         'enable_dad': constants.IP_DAD_STATES[addrpool.family]}
+        for addr_field, values in create_index.items():
+            addr_id_field = ADDRESS_FIELDS[addr_field]
+            params = create_params.copy()
+            params.update(values)
+            address = pecan.request.dbapi.address_create(params)
+            field_updates[addr_field] = address.address
+            updates[addr_id_field] = address.id
+
+    def _apply_network_specific_address_updates(self, addrpool, network_types, commands):
+        if constants.NETWORK_TYPE_OAM in network_types:
+            self._apply_oam_address_updates(addrpool, commands)
+
+    def _apply_oam_address_updates(self, addrpool, commands):
+        system = pecan.request.dbapi.isystem_get_one()
+        if system.capabilities.get('simplex_to_duplex_migration') or \
+                system.capabilities.get('simplex_to_duplex-direct_migration'):
+            self._aio_sx_to_dx_oam_migration(addrpool, commands)
+
+    def _aio_sx_to_dx_oam_migration(self, addrpool, commands):
+        create_cmd = commands['create'].get('controller0_address', None)
+        if not create_cmd:
+            return
+        floating_address = pecan.request.dbapi.address_get_by_id(addrpool.floating_address_id)
+        create_cmd['interface_id'] = floating_address.interface_id
+        commands['update'].setdefault('floating_address', {})['interface_id'] = None
+
+    def _address_pool_updated(self, addrpool, network_types):
+        if constants.NETWORK_TYPE_OAM in network_types:
+            pecan.request.rpcapi.update_oam_config(pecan.request.context)
+
+    def _check_delete_primary(self, addrpool, networks):
+        nets = []
+        for network in networks:
+            if network.pool_uuid == addrpool.uuid:
+                nets.append(network.type)
+        if nets:
+            msg = _("Address pool is the primary for the following network"
+                    "%s: %s. Not possible to delete." %
+                    ('s' if len(nets) > 1 else '', ', '.join(nets)))
+            raise wsme.exc.ClientSideError(msg)
 
     @wsme_pecan.wsexpose(AddressPoolCollection, types.uuid, types.uuid, int,
                          wtypes.text, wtypes.text)
@@ -693,28 +986,28 @@ class AddressPoolController(rest.RestController):
     @wsme_pecan.wsexpose(AddressPool, types.uuid, body=[AddressPoolPatchType])
     def patch(self, address_pool_uuid, patch):
         """Updates attributes of an IP address pool."""
-        addrpool = self._get_one(address_pool_uuid)
-        updates = self._get_updates(patch)
-        self._check_pool_readonly(addrpool)
-        self._validate_updates(addrpool, updates)
-        return pecan.request.dbapi.address_pool_update(
-            address_pool_uuid, updates)
+        return self._update_address_pool(address_pool_uuid, patch)
 
     @cutils.synchronized(LOCK_NAME)
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, address_pool_uuid):
         """Delete an IP address pool."""
+        self._setup_cache()
         addrpool = self._get_one(address_pool_uuid)
-        self._check_pool_readonly(addrpool)
+        networks = self._get_networks(addrpool)
+        network_types = self._get_network_types(networks)
 
-        networks = pecan.request.dbapi.networks_get_by_pool(addrpool.id)
+        if constants.NETWORK_TYPE_OAM in network_types:
+            # For now, primary address pool check is being done only for OAM
+            self._check_delete_primary(addrpool, networks)
+
+        self._check_modification_allowed(network_types)
 
         admin_network_reconfig = False
         if (utils.get_distributed_cloud_role() ==
                 constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
-            if (networks and cutils.is_initial_config_complete()):
-                if any(network.type == constants.NETWORK_TYPE_ADMIN
-                       for network in networks):
+            if (network_types and cutils.is_initial_config_complete()):
+                if constants.NETWORK_TYPE_ADMIN in network_types:
                     # The admin address pool can be deleted at runtime
                     admin_network_reconfig = True
 
@@ -736,11 +1029,10 @@ class AddressPoolController(rest.RestController):
             # The admin and system controller can be deleted/re-added during re-homing
             # a subcloud to new system controllers
             if cutils.is_initial_config_complete() and \
-               (networks or addr_assigned_to_interface) and \
+               (network_types or addr_assigned_to_interface) and \
                (addrpool.name not in SUBCLOUD_WRITABLE_ADDRPOOLS) and \
                not self._is_aiosx_writable_pool(addrpool, True) and \
-               not any(network.type == constants.NETWORK_TYPE_ADMIN
-                       for network in networks):
+               constants.NETWORK_TYPE_ADMIN not in network_types:
                 raise exception.AddressPoolInUseByAddresses()
             else:
                 # Must be a request as a result of network reconfiguration
@@ -759,6 +1051,12 @@ class AddressPoolController(rest.RestController):
         # network and interface association.
         pecan.request.dbapi.address_pool_destroy(address_pool_uuid)
 
+        if networks:
+            # Delete associated network_addrpool database entries
+            netpools = pecan.request.dbapi.network_addrpool_get_by_pool_id(addrpool.id)
+            for netpool in netpools:
+                pecan.request.dbapi.network_addrpool_destroy(netpool.uuid)
+
         if (admin_network_reconfig):
             # If the admin address pool is deleted, this allows the
             # subcloud to automatically revert to using the management
@@ -768,3 +1066,6 @@ class AddressPoolController(rest.RestController):
             for host in chosts:
                 pecan.request.rpcapi.update_admin_config(
                     pecan.request.context, host, disable=True)
+
+        if constants.NETWORK_TYPE_OAM in network_types:
+            pecan.request.rpcapi.update_oam_config(pecan.request.context)

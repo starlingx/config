@@ -5579,6 +5579,15 @@ class Connection(api.Connection):
             raise exception.AddressNotFound(address_uuid=address_uuid)
         query.delete()
 
+    def address_destroy_by_id(self, address_id):
+        query = model_query(models.Addresses)
+        query = add_identity_filter(query, address_id)
+        try:
+            query.one()
+        except NoResultFound:
+            raise exception.AddressNotFoundById(address_id=address_id)
+        query.delete()
+
     def address_remove_interface(self, address_uuid):
         query = model_query(models.Addresses)
         query = add_identity_filter(query, address_uuid)

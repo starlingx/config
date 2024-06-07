@@ -128,6 +128,12 @@ def do_addrpool_add(cc, args):
 @utils.arg('--name',
            metavar='<name>',
            help="Name of the Address Pool]")
+@utils.arg('--network',
+           metavar='<network address>',
+           help="Network IP address")
+@utils.arg('--prefix',
+           metavar='<network prefix>',
+           help="Network IP address prefix length")
 @utils.arg('--ranges',
            metavar='<ranges>',
            help="The inclusive range of addresses to allocate "
@@ -135,13 +141,23 @@ def do_addrpool_add(cc, args):
 @utils.arg('--order',
            metavar='<sequential | random>',
            help="The allocation order within the start/end range")
-@utils.arg('--prefix',
-           metavar='<prefix>',
-           help="CIDR prefix, only modifiable during bootstrap phase.")
+@utils.arg('--floating-address',
+           metavar='<floating address>',
+           help="The floating address")
+@utils.arg('--controller0-address',
+           metavar='<controller0 address>',
+           help="The address of controller-0")
+@utils.arg('--controller1-address',
+           metavar='<controller1 address>',
+           help="The address of controller-1")
+@utils.arg('--gateway-address',
+           metavar='<gateway address>',
+           help="The gateway address")
 def do_addrpool_modify(cc, args):
     """Modify interface attributes."""
 
-    rwfields = ['name', 'ranges', 'order', 'prefix']
+    rwfields = ['name', 'network', 'prefix', 'order', 'ranges', 'floating_address',
+                'controller0_address', 'controller1_address', 'gateway_address']
 
     data = dict((k, v) for (k, v) in vars(args).items()
                 if k in rwfields and not (v is None))
