@@ -9,6 +9,7 @@ Tests for the API / network / methods.
 """
 
 import mock
+import netaddr
 
 from six.moves import http_client
 
@@ -412,6 +413,139 @@ class TestPostMixin(NetworkTestCase):
         self.assertEqual(response.status_code, http_client.BAD_REQUEST)
         self.assertIn("Unknown attribute for argument network: foo",
                       response.json['error_message'])
+
+    def test_fail_address_pool_overlap(self):
+        oamnet = self._create_test_network('oam',
+                                           constants.NETWORK_TYPE_OAM,
+                                           self.oam_subnets,
+                                           link_addresses=True)
+
+        chnet = self._create_test_network('cluster-host',
+                                          constants.NETWORK_TYPE_CLUSTER_HOST,
+                                          self.cluster_host_subnets,
+                                          link_addresses=True)
+
+        mgmtnet = self._create_test_network('management',
+                                            constants.NETWORK_TYPE_MGMT,
+                                            self.mgmt_subnets,
+                                            link_addresses=True)
+
+        oam_pool = self._find_network_address_pools(oamnet.id)[0]
+        ch_pool = self._find_network_address_pools(chnet.id)[0]
+        mgmt_pool = self._find_network_address_pools(mgmtnet.id)[0]
+
+        nw_pools = self.dbapi.network_addrpool_get_by_network_id(mgmtnet.id)
+        for nw_pool in nw_pools:
+            self.dbapi.network_addrpool_destroy(nw_pool.uuid)
+
+        self.dbapi.network_destroy(mgmtnet.uuid)
+
+        if self.mgmt_subnet.version == constants.IPV4_FAMILY:
+            oam_subnet = netaddr.IPNetwork('192.169.1.0/24')
+            ch_subnet = netaddr.IPNetwork('192.169.2.0/24')
+            mgmt_subnet = netaddr.IPNetwork('192.169.0.0/16')
+        else:
+            oam_subnet = netaddr.IPNetwork('fdaa:0:0:1:1::/80')
+            ch_subnet = netaddr.IPNetwork('fdaa:0:0:1:2::/80')
+            mgmt_subnet = netaddr.IPNetwork('fdaa:0:0:1::/64')
+
+        self.dbapi.address_pool_update(oam_pool.uuid,
+                                       {'network': str(oam_subnet.ip),
+                                        'prefix': str(oam_subnet.prefixlen),
+                                        'ranges': [[str(oam_subnet[1]), str(oam_subnet[-1])]]})
+        self.dbapi.address_pool_update(ch_pool.uuid,
+                                       {'network': str(ch_subnet.ip),
+                                        'prefix': str(ch_subnet.prefixlen),
+                                        'ranges': [[str(ch_subnet[1]), str(ch_subnet[-1])]]})
+        self.dbapi.address_pool_update(mgmt_pool.uuid,
+                                       {'network': str(mgmt_subnet.ip),
+                                        'prefix': str(mgmt_subnet.prefixlen),
+                                        'ranges': [[str(mgmt_subnet[1]), str(mgmt_subnet[-1])]]})
+
+        controller0 = self._create_test_host(constants.CONTROLLER)
+
+        c0_if0 = dbutils.create_test_interface(
+            ifname='c0-if0',
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=controller0.id,
+            ihost_uuid=controller0.uuid)
+
+        self.dbapi.address_mode_update(c0_if0.id, {'family': oam_pool.family, 'mode': 'pool',
+                                                   'address_pool_id': oam_pool.id})
+
+        ndict = self.get_post_object(constants.NETWORK_TYPE_MGMT,
+                                     mgmt_pool.uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.CONFLICT)
+        msg = (f"Address pool '{mgmt_pool.name}' {{{mgmt_pool.uuid}}} "
+               f"{mgmt_subnet.ip}/{mgmt_subnet.prefixlen} overlaps with: "
+               f"'{oam_pool.name}' {{{oam_pool.uuid}}} assigned to oam network and "
+               f"to '{c0_if0.ifname}' interface in host {controller0.hostname}, "
+               f"'{ch_pool.name}' {{{ch_pool.uuid}}} assigned to cluster-host network")
+        self.assertIn(msg, response.json['error_message'])
+
+    def test_create_management_existing_addresses(self):
+        subnet = self.mgmt_subnet
+
+        mgmt_pool = dbutils.create_test_address_pool(
+            name='management',
+            family=subnet.version,
+            network=str(subnet.ip),
+            prefix=subnet.prefixlen,
+            ranges=[[str(subnet[2]), str(subnet[-1])]])
+
+        other_pool = dbutils.create_test_address_pool(
+            name='existing-pool',
+            family=subnet.version,
+            network=str(subnet.ip),
+            prefix=subnet.prefixlen,
+            ranges=[[str(subnet[1]), str(subnet[-1])]])
+
+        updates = {}
+        addresses = {}
+        ip_address = subnet[2]
+        fields = ['floating_address_id', 'controller0_address_id', 'controller1_address_id']
+        values = {'family': subnet.version,
+                  'prefix': subnet.prefixlen,
+                  'address_pool_id': other_pool.id}
+        for id_field in fields:
+            address = self.dbapi.address_get_by_address(str(ip_address))
+            values['name'] = id_field
+            self.dbapi.address_update(address.id, values)
+            ip_address += 1
+            updates[id_field] = address.id
+            addresses[id_field] = address
+
+        gateway_address = self.dbapi.address_get_by_address(str(subnet[1]))
+        values['name'] = 'gateway_address'
+        self.dbapi.address_update(gateway_address.id, values)
+
+        self.dbapi.address_pool_update(other_pool.uuid, updates)
+        self.dbapi.address_pool_update(mgmt_pool.uuid, {'gateway_address_id': gateway_address.id})
+
+        ndict = self.get_post_object(constants.NETWORK_TYPE_MGMT, mgmt_pool.uuid)
+        response = self.post_json(self.API_PREFIX, ndict, headers=self.API_HEADERS)
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        gateway_address = self.dbapi.address_get(gateway_address.id)
+        floating_address = self.dbapi.address_get(addresses['floating_address_id'].id)
+        c0_address = self.dbapi.address_get(addresses['controller0_address_id'].id)
+        c1_address = self.dbapi.address_get(addresses['controller1_address_id'].id)
+
+        self.assertEqual(mgmt_pool.uuid, floating_address.pool_uuid)
+        self.assertEqual(mgmt_pool.uuid, c0_address.pool_uuid)
+        self.assertEqual(mgmt_pool.uuid, c1_address.pool_uuid)
+
+        self.assertEqual('controller-gateway-mgmt', gateway_address.name)
+        self.assertEqual('controller-mgmt', floating_address.name)
+        self.assertEqual('controller-0-mgmt', c0_address.name)
+        self.assertEqual('controller-1-mgmt', c1_address.name)
 
 
 class TestDelete(NetworkTestCase):

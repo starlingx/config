@@ -57,6 +57,9 @@ NONDUPLICATE_NETWORK_TYPES = (constants.NETWORK_TYPE_MGMT,
                               constants.NETWORK_TYPE_STORAGE,
                               constants.NETWORK_TYPE_ADMIN)
 
+OPERATION_CREATE = 'create'
+OPERATION_DELETE = 'delete'
+
 
 class InterfaceNetwork(base.APIBase):
 
@@ -160,33 +163,22 @@ class InterfaceNetworkController(rest.RestController):
 
         result = pecan.request.dbapi.interface_network_create(interface_network_dict)
 
-        # Management Network reconfiguration after initial config complete
-        # is just supported by AIO-SX, set the flag
-        is_mgmt_reconfig = False
-        if (network_type == constants.NETWORK_TYPE_MGMT and
-                utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and
-                cutils.is_initial_config_complete() and
-                host.hostname == constants.CONTROLLER_0_HOSTNAME):
-            pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
-            is_mgmt_reconfig = True
-
         # Update address mode based on network type
+        addrpools = None
         if network_type in [constants.NETWORK_TYPE_MGMT,
                             constants.NETWORK_TYPE_OAM,
                             constants.NETWORK_TYPE_CLUSTER_HOST,
                             constants.NETWORK_TYPE_ADMIN]:
-            pool_uuid = pecan.request.dbapi.network_get_by_type(network_type).pool_uuid
-            pool = pecan.request.dbapi.address_pool_get(pool_uuid)
-            if pool.family == constants.IPV4_FAMILY:
-                utils.update_address_mode(interface_obj, constants.IPV4_FAMILY,
-                                          constants.IPV4_STATIC, None)
-                utils.update_address_mode(interface_obj, constants.IPV6_FAMILY,
-                                          constants.IPV6_DISABLED, None)
-            else:
-                utils.update_address_mode(interface_obj, constants.IPV6_FAMILY,
-                                          constants.IPV6_STATIC, None)
-                utils.update_address_mode(interface_obj, constants.IPV4_FAMILY,
-                                          constants.IPV4_DISABLED, None)
+            modes = {constants.IPV4_FAMILY: constants.IPV4_DISABLED,
+                     constants.IPV6_FAMILY: constants.IPV6_DISABLED}
+            addrpools = pecan.request.dbapi.address_pools_get_by_network(network_id)
+            for addrpool in addrpools:
+                if addrpool.family == constants.IPV4_FAMILY:
+                    modes[addrpool.family] = constants.IPV4_STATIC
+                else:
+                    modes[addrpool.family] = constants.IPV6_STATIC
+            for family, mode in modes.items():
+                utils.update_address_mode(interface_obj, family, mode, None)
 
         # Assign an address to the interface
         _update_host_address(host, interface_obj, network_type)
@@ -214,9 +206,7 @@ class InterfaceNetworkController(rest.RestController):
         elif network_type == constants.NETWORK_TYPE_OAM:
             pecan.request.rpcapi.initialize_oam_config(pecan.request.context, host)
 
-        # update service-parameter no_proxy field if necessary
-        if is_mgmt_reconfig:
-            self._add_mgmt_ips_to_no_proxy_list()
+        self._interface_network_operation_complete(OPERATION_CREATE, network_type, addrpools)
 
         return InterfaceNetwork.convert_with_links(result)
 
@@ -253,38 +243,17 @@ class InterfaceNetworkController(rest.RestController):
             pecan.request.context, interface_network_uuid)
         return InterfaceNetwork.convert_with_links(rpc_interface_network)
 
-    def _add_mgmt_ips_to_no_proxy_list(self):
-
-        try:
-            # get no_proxy from service-parameter-list
-            no_proxy_entry = pecan.request.dbapi.service_parameter_get_one(
-                service=constants.SERVICE_TYPE_DOCKER,
-                section=constants.SERVICE_PARAM_SECTION_DOCKER_PROXY,
-                name=constants.SERVICE_PARAM_NAME_DOCKER_NO_PROXY
-            )
-
-        except exception.NotFound:
-            # Proxy is not being used. Nothing to do.
-            return
-
-        mgmt_ip = utils.lookup_static_ip_address(
-            constants.CONTROLLER_HOSTNAME, constants.NETWORK_TYPE_MGMT)
-        mgmt_0_ip = utils.lookup_static_ip_address(
-            constants.CONTROLLER_0_HOSTNAME, constants.NETWORK_TYPE_MGMT)
-
-        # for IPv6 need to add brackets
-        if cutils.is_valid_ipv6(mgmt_ip):
-            mgmt_ip = "[" + mgmt_ip + "]"
-            mgmt_0_ip = "[" + mgmt_0_ip + "]"
-
-        no_proxy_list = no_proxy_entry.value.split(',')
-        no_proxy_list.append(mgmt_ip)
-        no_proxy_list.append(mgmt_0_ip)
-
-        no_proxy_string = ','.join(no_proxy_list)
-
-        # update the DB with no_proxy list wihtout the mgmt IPs
-        pecan.request.dbapi.service_parameter_update(no_proxy_entry.uuid, {'value': no_proxy_string})
+    def _interface_network_operation_complete(self, operation, network_type, addrpools):
+        if network_type == constants.NETWORK_TYPE_MGMT:
+            if (utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX and
+                    cutils.is_initial_config_complete()):
+                # Management Network reconfiguration after initial config complete
+                # is just supported by AIO-SX, set the flag
+                pecan.request.rpcapi.set_mgmt_network_reconfig_flag(pecan.request.context)
+                if operation == OPERATION_CREATE:
+                    address_pool.add_management_addresses_to_no_proxy_list(addrpools)
+                else:
+                    address_pool.remove_management_addresses_from_no_proxy_list(addrpools)
 
     def _check_interface_class(self, interface_uuid):
         interface = pecan.request.dbapi.iinterface_get(interface_uuid)
@@ -456,20 +425,20 @@ class InterfaceNetworkController(rest.RestController):
     @wsme_pecan.wsexpose(None, types.uuid, status_code=204)
     def delete(self, interface_network_uuid):
         # Delete address allocated to the interface
-        if_network_obj = pecan.request.dbapi.interface_network_get(
-            interface_network_uuid)
+        if_network_obj = pecan.request.dbapi.interface_network_get(interface_network_uuid)
         network = pecan.request.dbapi.network_get(if_network_obj.network_uuid)
-        pool_uuid = pecan.request.dbapi.network_get_by_type(network.type).pool_uuid
-        address = None
-        try:
-            address = pecan.request.dbapi.addresses_get_by_interface_pool(
-                if_network_obj.interface_uuid, pool_uuid)
-        except exception.AddressNotFoundByInterfacePool:
-            pass
-        if address:
-            pecan.request.dbapi.address_remove_interface(address.uuid)
-
+        addrpools = pecan.request.dbapi.address_pools_get_by_network(if_network_obj.network_id)
+        for addrpool in addrpools:
+            address = None
+            try:
+                address = pecan.request.dbapi.address_get_by_interface_pool(
+                    if_network_obj.interface_id, addrpool.id)
+            except exception.AddressNotFoundByInterfacePool:
+                pass
+            if address:
+                pecan.request.dbapi.address_remove_interface(address.uuid)
         pecan.request.dbapi.interface_network_destroy(interface_network_uuid)
+        self._interface_network_operation_complete(OPERATION_DELETE, network.type, addrpools)
 
 
 def _update_host_address(host, interface, network_type):

@@ -2127,42 +2127,45 @@ class ConductorManager(service.PeriodicService):
         address_name = cutils.format_address_name(hostname, iface_type)
         address_family = IPNetwork(ip_address).version
         try:
-            address = self.dbapi.address_get_by_address(ip_address)
-            address_uuid = address['uuid']
+            existing_address = self.dbapi.address_get_by_address(ip_address)
+            address_uuid = existing_address['uuid']
             search_addr = self.dbapi.address_get_by_name_and_family(address_name,
                                                                address_family)
             # If name is already set, return
-            if search_addr:
-                if (search_addr.uuid == address_uuid and iface_id is None):
+            if search_addr and search_addr.uuid == address_uuid and iface_id is None:
+                if pool_uuid is None or search_addr.pool_uuid == pool_uuid:
                     LOG.info(f"returning, address '{address_uuid}' exists and iface_id is None")
-                    return
+                    return search_addr
         except exception.AddressNotFoundByAddress:
             address_uuid = None
         except exception.AddressNotFoundByNameAndFamily:
             pass
 
-        address_pool = None
+        addrpool = None
         if pool_uuid:
-            address_pool = self.dbapi.address_pool_get(pool_uuid)
+            addrpool = self.dbapi.address_pool_get(pool_uuid)
         else:
             network = self.dbapi.network_get_by_type(iface_type)
-            address_pool = self.dbapi.address_pool_get(network.pool_uuid)
+            addrpool = self.dbapi.address_pool_get(network.pool_uuid)
 
-        if address_pool:
+        if addrpool:
             values = {
                 'name': address_name,
                 'family': address_family,
-                'prefix': address_pool.prefix,
+                'prefix': addrpool.prefix,
                 'address': ip_address,
-                'address_pool_id': address_pool.id,
-            }
+                'address_pool_id': addrpool.id}
+
             if iface_id:
                 values['interface_id'] = iface_id
 
             if address_uuid:
+                if existing_address.pool_uuid != addrpool.uuid:
+                    address_pool.remove_address_from_pool(existing_address, self.dbapi)
                 address = self.dbapi.address_update(address_uuid, values)
             else:
                 address = self.dbapi.address_create(values)
+            address_pool.add_address_to_pool(addrpool, address.id, hostname, self.dbapi)
 
         self._generate_dnsmasq_hosts_file()
         return address

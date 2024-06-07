@@ -1151,3 +1151,26 @@ def get_mgmt_ip(hostname):
         address = get_primary_address_by_name(address_name,
                                                     constants.NETWORK_TYPE_MGMT, True)
         return address.address
+
+
+def is_address_assigned(address, dbapi=None):
+    '''
+    Returns true if any of the following conditions are true:
+      - The address is assigned to an interface
+      - The address is assigned to an address pool which is assigned to a network
+      - The address is assigned to an address pool which is assigned to an interface, via the
+        address mode configuration
+    '''
+    if address.interface_id is not None:
+        return True
+    if address.pool_uuid is None:
+        return False
+    if not dbapi:
+        dbapi = pecan.request.dbapi
+    nw_addrpools = dbapi.network_addrpool_get_by_pool_id(address.pool_id)
+    if nw_addrpools:
+        return True
+    addr_modes = dbapi.address_modes_get_by_address_pool(address.pool_id)
+    if addr_modes:
+        return True
+    return False

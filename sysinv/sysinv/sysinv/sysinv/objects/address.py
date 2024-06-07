@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015 Wind River Systems, Inc.
+# Copyright (c) 2015-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -23,6 +23,7 @@ class Address(base.SysinvObject):
               'uuid': utils.uuid_or_none,
               'forihostid': utils.int_or_none,
               'interface_id': utils.int_or_none,
+              'pool_id': utils.int_or_none,
               'pool_uuid': utils.uuid_or_none,
               'ifname': utils.str_or_none,
               'family': utils.int_or_none,
@@ -33,6 +34,7 @@ class Address(base.SysinvObject):
               }
 
     _foreign_fields = {'interface_id': 'interface:id',
+                       'pool_id': 'address_pool:id',
                        'pool_uuid': 'address_pool:uuid',
                        'ifname': 'interface:ifname',
                        'forihostid': 'interface:forihostid'}

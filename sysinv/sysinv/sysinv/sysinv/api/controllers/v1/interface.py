@@ -16,7 +16,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -50,6 +50,7 @@ from sysinv.api.controllers.v1 import ptp_interface
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
+from sysinv.common import address_pool as caddress_pool
 from sysinv import objects
 from sysinv.objects import utils as object_utils
 
@@ -984,30 +985,32 @@ def _check_address_mode(op, interface, ihost, existing_interface):
         raise exception.AddressPoolRequiresAddressMode(
             family=constants.IP_FAMILIES[constants.IPV4_FAMILY])
 
+    ipv4_pool_obj = None
     if ipv4_mode == constants.IPV4_POOL:
         if not ipv4_pool:
             raise exception.AddressPoolRequired(
                 family=constants.IP_FAMILIES[constants.IPV4_FAMILY])
-        pool = pecan.request.dbapi.address_pool_get(ipv4_pool)
-        if pool['family'] != constants.IPV4_FAMILY:
+        ipv4_pool_obj = pecan.request.dbapi.address_pool_get(ipv4_pool)
+        if ipv4_pool_obj['family'] != constants.IPV4_FAMILY:
             raise exception.AddressPoolFamilyMismatch()
         # Convert to UUID
-        ipv4_pool = pool['uuid']
+        ipv4_pool = ipv4_pool_obj['uuid']
         interface['ipv4_pool'] = ipv4_pool
 
     if ipv6_mode != constants.IPV6_POOL and ipv6_pool:
         raise exception.AddressPoolRequiresAddressMode(
             family=constants.IP_FAMILIES[constants.IPV6_FAMILY])
 
+    ipv6_pool_obj = None
     if ipv6_mode == constants.IPV6_POOL:
         if not ipv6_pool:
             raise exception.AddressPoolRequired(
                 family=constants.IP_FAMILIES[constants.IPV6_FAMILY])
-        pool = pecan.request.dbapi.address_pool_get(ipv6_pool)
-        if pool['family'] != constants.IPV6_FAMILY:
+        ipv6_pool_obj = pecan.request.dbapi.address_pool_get(ipv6_pool)
+        if ipv6_pool_obj['family'] != constants.IPV6_FAMILY:
             raise exception.AddressPoolFamilyMismatch()
         # Convert to UUID
-        ipv6_pool = pool['uuid']
+        ipv6_pool = ipv6_pool_obj['uuid']
         interface['ipv6_pool'] = ipv6_pool
 
     if existing_interface:
@@ -1029,6 +1032,19 @@ def _check_address_mode(op, interface, ihost, existing_interface):
                         interface_id, constants.IPV6_FAMILY):
                     raise exception.AddressesStillExist(
                         family=constants.IP_FAMILIES[constants.IPV6_FAMILY])
+
+    _check_address_pool_overlap(ipv4_pool_obj, ipv6_pool_obj)
+
+
+def _check_address_pool_overlap(ipv4_pool, ipv6_pool):
+    pools = []
+    if ipv4_pool:
+        pools.append(ipv4_pool)
+    if ipv6_pool:
+        pools.append(ipv6_pool)
+
+    if pools:
+        caddress_pool.check_address_pools_overlaps(pecan.request.dbapi, pools)
 
 
 def _check_network_type_and_port(interface, ihost,

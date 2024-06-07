@@ -8,16 +8,20 @@
 #
 
 import mock
+import netaddr
 from six.moves import http_client
 
+from sysinv.tests.api import base
 from sysinv.api.controllers.v1 import interface as api_if_v1
 from sysinv.common import constants
-from sysinv.tests.api import base
 from sysinv.tests.db import utils as dbutils
 from sysinv.db import api as dbapi
 
 
 class InterfaceNetworkTestCase(base.FunctionalTest):
+    # API_HEADERS are a generic header passed to most API calls
+    API_HEADERS = {'User-Agent': 'sysinv-test'}
+
     def setUp(self):
         super(InterfaceNetworkTestCase, self).setUp()
         self.dbapi = dbapi.get_instance()
@@ -68,6 +72,9 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
             link_capacity=1000,
             vlan_id=2,
             address_pool_id=self.address_pool_mgmt.id)
+        dbutils.create_test_network_addrpool(
+            address_pool_id=self.address_pool_mgmt.id,
+            network_id=self.mgmt_network.id)
         self.mgmt_c0_address = dbutils.create_test_address(
                 family=constants.IPV4_FAMILY,
                 address='192.168.204.2',
@@ -95,6 +102,9 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
             link_capacity=10000,
             vlan_id=3,
             address_pool_id=self.address_pool_cluster_host.id)
+        dbutils.create_test_network_addrpool(
+            address_pool_id=self.address_pool_cluster_host.id,
+            network_id=self.cluster_host_network.id)
         self.address_pool_oam = dbutils.create_test_address_pool(
             id=3,
             network='128.224.150.0',
@@ -106,6 +116,9 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
             name='oam',
             type=constants.NETWORK_TYPE_OAM,
             address_pool_id=self.address_pool_oam.id)
+        dbutils.create_test_network_addrpool(
+            address_pool_id=self.address_pool_oam.id,
+            network_id=self.oam_network.id)
         self.oam_address = dbutils.create_test_address(
                 family=constants.IPV4_FAMILY,
                 address='10.10.10.3',
@@ -122,6 +135,9 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
             id=4,
             type=constants.NETWORK_TYPE_PXEBOOT,
             address_pool_id=self.address_pool_pxeboot.id)
+        dbutils.create_test_network_addrpool(
+            address_pool_id=self.address_pool_pxeboot.id,
+            network_id=self.pxeboot_network.id)
         self.pxeboot_address = dbutils.create_test_address(
                 family=constants.IPV4_FAMILY,
                 address='192.168.202.3',
@@ -141,6 +157,9 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
             link_capacity=10000,
             vlan_id=8,
             address_pool_id=self.address_pool_admin.id)
+        dbutils.create_test_network_addrpool(
+            address_pool_id=self.address_pool_admin.id,
+            network_id=self.admin_network.id)
         self.address_pool_storage = dbutils.create_test_address_pool(
             id=6,
             network='192.168.209.0',
@@ -151,6 +170,9 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
             id=6,
             type=constants.NETWORK_TYPE_STORAGE,
             address_pool_id=self.address_pool_storage.id)
+        dbutils.create_test_network_addrpool(
+            address_pool_id=self.address_pool_storage.id,
+            network_id=self.storage_network.id)
 
     def _post_and_check(self, ndict, expect_errors=False):
         response = self.post_json('%s' % self._get_path(), ndict,
@@ -183,19 +205,6 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
 
     def _delete_interface_and_check(self, iface_uuid, expect_errors=False, error_message=None):
         response = self.delete('%s' % self._get_interface_path(iface_uuid),
-                                  expect_errors)
-        if expect_errors:
-            self.assertEqual(http_client.BAD_REQUEST, response.status_int)
-            self.assertEqual('application/json', response.content_type)
-            self.assertTrue(response.json['error_message'])
-            if error_message:
-                self.assertIn(error_message, response.json['error_message'])
-        else:
-            self.assertEqual(http_client.NO_CONTENT, response.status_int)
-        return response
-
-    def _delete_address_pool_and_check(self, addrpool_uuid, expect_errors=False, error_message=None):
-        response = self.delete('%s' % self._get_addrpool_path(addrpool_uuid),
                                   expect_errors)
         if expect_errors:
             self.assertEqual(http_client.BAD_REQUEST, response.status_int)
@@ -563,7 +572,140 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
             error_message="Cannot delete an interface still assigned to a network of")
 
         # delete address pool and then admin interface, no error expected
-        self._delete_address_pool_and_check(self.address_pool_admin.uuid, expect_errors=False)
+        self.dbapi.address_pool_destroy(self.address_pool_admin.uuid)
         self._delete_interface_and_check(admin_interface.uuid, expect_errors=False)
 
-        self.mock_utils_is_aio_simplex_system.return_value = True
+    def test_create_mgmt_update_no_proxy_list(self):
+        sysmode = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
+        self.mock_utils_get_system_mode = sysmode.start()
+        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
+        self.addCleanup(sysmode.stop)
+
+        iniconf = mock.patch('sysinv.common.utils.is_initial_config_complete')
+        self.mock_utils_is_initial_config_complete = iniconf.start()
+        self.mock_utils_is_initial_config_complete.return_value = True
+        self.addCleanup(iniconf.stop)
+
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.set_mgmt_network_reconfig_flag')
+        self.mock_rpcapi_set_mgmt_network_reconfig_flag = p.start()
+        self.addCleanup(p.stop)
+
+        c0_mgmt0 = dbutils.create_test_interface(
+            ifname='c0-mgmt0', id=2,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=self.controller.id,
+            ihost_uuid=self.controller.uuid)
+
+        mgmt_subnet = netaddr.IPNetwork('{}/{}'.format(self.address_pool_mgmt.network,
+                                                       self.address_pool_mgmt.prefix))
+        mgmt_floating = dbutils.create_test_address(
+            name="mgmt-floating",
+            family=mgmt_subnet.version,
+            address=str(mgmt_subnet[2]),
+            prefix=mgmt_subnet.prefixlen,
+            address_pool_id=self.address_pool_mgmt.id)
+
+        mgmt_controller0 = dbutils.create_test_address(
+            name="mgmt-controller0",
+            family=mgmt_subnet.version,
+            address=str(mgmt_subnet[3]),
+            prefix=mgmt_subnet.prefixlen,
+            address_pool_id=self.address_pool_mgmt.id)
+
+        self.dbapi.address_pool_update(self.address_pool_mgmt.uuid,
+                                       {'floating_address_id': mgmt_floating.id,
+                                        'controller0_address_id': mgmt_controller0.id})
+
+        param_values = {'service': constants.SERVICE_TYPE_DOCKER,
+                        'section': constants.SERVICE_PARAM_SECTION_DOCKER_PROXY,
+                        'name': constants.SERVICE_PARAM_NAME_DOCKER_NO_PROXY,
+                        'value': ''}
+
+        dbutils.create_test_service_parameter(**param_values)
+
+        controller_interface_network = dbutils.post_get_test_interface_network(
+            interface_uuid=c0_mgmt0.uuid,
+            network_uuid=self.mgmt_network.uuid)
+
+        self._post_and_check(controller_interface_network)
+
+        no_proxy_entry = self.dbapi.service_parameter_get_one(
+            service=constants.SERVICE_TYPE_DOCKER,
+            section=constants.SERVICE_PARAM_SECTION_DOCKER_PROXY,
+            name=constants.SERVICE_PARAM_NAME_DOCKER_NO_PROXY)
+
+        self.assertEqual(','.join([mgmt_floating.address,
+                                   mgmt_controller0.address]),
+                         no_proxy_entry.value)
+
+        self.mock_rpcapi_set_mgmt_network_reconfig_flag.assert_called_once()
+
+
+class InterfaceNetworkDeleteTestCase(InterfaceNetworkTestCase):
+
+    def setUp(self):
+        super(InterfaceNetworkDeleteTestCase, self).setUp()
+
+    def test_delete_mgmt_update_no_proxy_list(self):
+        sysmode = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
+        self.mock_utils_get_system_mode = sysmode.start()
+        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
+        self.addCleanup(sysmode.stop)
+
+        iniconf = mock.patch('sysinv.common.utils.is_initial_config_complete')
+        self.mock_utils_is_initial_config_complete = iniconf.start()
+        self.mock_utils_is_initial_config_complete.return_value = True
+        self.addCleanup(iniconf.stop)
+
+        p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.set_mgmt_network_reconfig_flag')
+        self.mock_rpcapi_set_mgmt_network_reconfig_flag = p.start()
+        self.addCleanup(p.stop)
+
+        c0_mgmt0 = dbutils.create_test_interface(
+            ifname='c0-mgmt0', id=2,
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=self.controller.id,
+            ihost_uuid=self.controller.uuid)
+
+        mgmt_subnet = netaddr.IPNetwork('{}/{}'.format(self.address_pool_mgmt.network,
+                                                       self.address_pool_mgmt.prefix))
+        mgmt_floating = dbutils.create_test_address(
+            name="mgmt-floating",
+            family=mgmt_subnet.version,
+            address=str(mgmt_subnet[2]),
+            prefix=mgmt_subnet.prefixlen,
+            address_pool_id=self.address_pool_mgmt.id)
+
+        mgmt_controller0 = dbutils.create_test_address(
+            name="mgmt-controller0",
+            family=mgmt_subnet.version,
+            address=str(mgmt_subnet[3]),
+            prefix=mgmt_subnet.prefixlen,
+            interface_id=c0_mgmt0.id,
+            address_pool_id=self.address_pool_mgmt.id)
+
+        self.dbapi.address_pool_update(self.address_pool_mgmt.uuid,
+                                       {'floating_address_id': mgmt_floating.id,
+                                        'controller0_address_id': mgmt_controller0.id})
+
+        param_values = {'service': constants.SERVICE_TYPE_DOCKER,
+                        'section': constants.SERVICE_PARAM_SECTION_DOCKER_PROXY,
+                        'name': constants.SERVICE_PARAM_NAME_DOCKER_NO_PROXY,
+                        'value': ','.join([mgmt_floating.address, mgmt_controller0.address])}
+
+        dbutils.create_test_service_parameter(**param_values)
+
+        ifnw = dbutils.create_test_interface_network(interface_id=c0_mgmt0.id,
+                                                     network_id=self.mgmt_network.id)
+
+        response = self.delete(self._get_path(ifnw.uuid), headers=self.API_HEADERS)
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+
+        no_proxy_entry = self.dbapi.service_parameter_get_one(
+            service=constants.SERVICE_TYPE_DOCKER,
+            section=constants.SERVICE_PARAM_SECTION_DOCKER_PROXY,
+            name=constants.SERVICE_PARAM_NAME_DOCKER_NO_PROXY)
+
+        self.assertEqual('', no_proxy_entry.value)
+
+        self.mock_rpcapi_set_mgmt_network_reconfig_flag.assert_called_once()

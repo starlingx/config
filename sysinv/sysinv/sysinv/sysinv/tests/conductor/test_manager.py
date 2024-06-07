@@ -6197,6 +6197,41 @@ class ManagerTestCaseInternal(base.BaseHostTestCase):
         ihost['install_output'] = 'text'
         ihost['console'] = 'ttyS0,115200'
 
+        # Create the management addresses and associate them with unassigned address pools, to
+        # test the _create_or_update_address function. The addresses are expected to be updated,
+        # removed from the unassigned pool and assigned to the corresponding management pool. The
+        # address pools are also expected to be updated.
+        # The allocated IPv4 will conflict with the existing 'pool-addr-ipv4', so the later will be
+        # used instead of a newly created one.
+        # The IPv6 address will be retrieved by name ('newhost-mgmt') and family.
+
+        objects = {constants.IPV4_FAMILY: {'main_pool': pool_mgmt4, 'addr_name': 'pool-addr-ipv4'},
+                   constants.IPV6_FAMILY: {'main_pool': pool_mgmt6, 'addr_name': 'newhost-mgmt'}}
+
+        for family, family_dict in objects.items():
+            main_pool = family_dict['main_pool']
+            other_pool = dbutils.create_test_address_pool(
+                name='other-pool-ipv{}'.format(family),
+                family=main_pool.family,
+                network=main_pool.network,
+                prefix=main_pool.prefix,
+                ranges=main_pool.ranges)
+
+            subnet = netaddr.IPNetwork(f"{main_pool.network}/{main_pool.prefix}")
+            pool_addr = dbutils.create_test_address(
+                name=family_dict['addr_name'],
+                family=main_pool.family,
+                address=str(subnet[5]),
+                prefix=main_pool.prefix,
+                address_pool_id=other_pool.id)
+
+            self.dbapi.address_pool_update(other_pool.uuid, {'floating_address_id': pool_addr.id})
+
+            family_dict['other_pool'] = other_pool
+            family_dict['address'] = pool_addr
+
+        self.dbapi.address_pool_update(pool_mgmt4.uuid, {'order': 'sequential'})
+
         self.service.configure_ihost(self.context, ihost)
 
         addr_mgmt4 = self.dbapi.address_get_by_name_and_family(
@@ -6220,6 +6255,14 @@ class ManagerTestCaseInternal(base.BaseHostTestCase):
             f"{worker_name}-{constants.NETWORK_TYPE_CLUSTER_HOST}",
             constants.IPV6_FAMILY)
         self.assertEqual(addr_clhost6.pool_uuid, pool_clhost6.uuid)
+
+        for family_dict in objects.values():
+            main_pool = self.dbapi.address_pool_get(family_dict['main_pool'].id)
+            other_pool = self.dbapi.address_pool_get(family_dict['other_pool'].id)
+            address = self.dbapi.address_get(family_dict['address'].id)
+            self.assertEqual(f"{worker_name}-mgmt", address.name)
+            self.assertEqual(main_pool.uuid, address.pool_uuid)
+            self.assertIsNone(other_pool.floating_address_id)
 
     def test_configure_ihost_allocate_addresses_for_host_no_net_pool_object(self):
         # the data-migration for upgrade was not implemented yet for the dual-stack feature
@@ -6290,3 +6333,55 @@ class ManagerTestCaseInternal(base.BaseHostTestCase):
                           self.dbapi.address_get_by_name_and_family,
                           f"{worker_name}-{constants.NETWORK_TYPE_CLUSTER_HOST}",
                           constants.IPV6_FAMILY)
+
+    def test_mgmt_ip_set_by_ihost(self):
+        p = mock.patch('sysinv.conductor.manager.ConductorManager._generate_dnsmasq_hosts_file')
+        self.mock_manager_generate_dnsmasq_hosts_file = p.start()
+        self.addCleanup(p.stop)
+
+        controller0 = self._create_test_host(constants.CONTROLLER, unit=0)
+
+        c0_mgmt0 = dbutils.create_test_interface(
+            ifname='c0_mgm0',
+            ifclass=constants.INTERFACE_CLASS_PLATFORM,
+            forihostid=controller0.id,
+            ihost_uuid=controller0.uuid)
+
+        mgmt_network = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
+        mgmt_pool = self._find_network_address_pools(mgmt_network.id)[0]
+
+        subnet = netaddr.IPNetwork('{}/{}'.format(mgmt_pool.network, mgmt_pool.prefix))
+
+        other_pool = dbutils.create_test_address_pool(
+            name='existing-pool',
+            family=subnet.version,
+            network=str(subnet.ip),
+            prefix=subnet.prefixlen,
+            ranges=[[str(subnet[1]), str(subnet[-1])]])
+
+        dbutils.create_test_interface_network(interface_id=c0_mgmt0.id,
+                                              network_id=mgmt_network.id)
+
+        self.dbapi.address_update(mgmt_pool.controller0_address_id,
+                                  {'address_pool_id': other_pool.id,
+                                   'name': 'existing-pool-c0'})
+        self.dbapi.address_pool_update(
+            mgmt_pool.id, {'controller0_address_id': None})
+        self.dbapi.address_pool_update(
+            other_pool.id, {'controller0_address_id': mgmt_pool.controller0_address_id})
+
+        self.service.mgmt_ip_set_by_ihost(None, controller0.uuid, c0_mgmt0.id,
+                                          mgmt_pool.controller0_address)
+
+        updated_address = self.dbapi.address_get(mgmt_pool.controller0_address_id)
+        self.assertEqual(mgmt_pool.uuid, updated_address.pool_uuid)
+        self.assertEqual('controller-0-mgmt', updated_address.name)
+        self.assertEqual(c0_mgmt0.id, updated_address.interface_id)
+
+        updated_mgmt_pool = self.dbapi.address_pool_get(mgmt_pool.id)
+        self.assertEqual(updated_address.id, updated_mgmt_pool.controller0_address_id)
+
+        updated_other_pool = self.dbapi.address_pool_get(other_pool.id)
+        self.assertIsNone(updated_other_pool.controller0_address_id)
+
+        self.mock_manager_generate_dnsmasq_hosts_file.assert_called()

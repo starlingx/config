@@ -797,7 +797,7 @@ class AddressPoolAlreadyExists(Conflict):
 
 
 class AddressPoolOverlaps(Conflict):
-    message = _("Address pool %(network)s/%(prefix)s overlaps with %(name)s address pool.")
+    pass
 
 
 class AddressPoolFamilyMismatch(Conflict):
@@ -811,7 +811,7 @@ class AddressPoolRequiresAddressMode(Conflict):
 
 class AddressPoolRangesExcludeExistingAddress(Conflict):
     message = (_("The new address pool ranges excludes addresses that have "
-                 "already been allocated."))
+                 "already been allocated: %(addresses)s"))
 
 
 class AddressPoolRangeTransposed(Conflict):
