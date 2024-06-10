@@ -18,11 +18,14 @@ import psycopg2
 
 from sysinv.common import constants
 
+DEFAULT_POSTGRES_PORT = 5432
+
 
 def main():
     action = None
     from_release = None
     to_release = None  # noqa
+    postgres_port = DEFAULT_POSTGRES_PORT
     arg = 1
     while arg < len(sys.argv):
         if arg == 1:
@@ -33,7 +36,7 @@ def main():
             action = sys.argv[arg]
         elif arg == 4:
             # optional port parameter for USM upgrade
-            # port = sys.argv[arg]
+            postgres_port = sys.argv[arg]
             pass
         else:
             print(f"Invalid option {sys.argv[arg]}.")
@@ -51,19 +54,19 @@ def main():
                      "sysinv i_host table,"
                      f"from the release {from_release} to {to_release} with "
                      f"action: {action}")
-            update_mgmt_ipsec(constants.MGMT_IPSEC_UPGRADING)
+            update_mgmt_ipsec(constants.MGMT_IPSEC_UPGRADING, postgres_port)
         except Exception as ex:
             LOG.exception(ex)
             print(ex)
             return 1
 
 
-def update_mgmt_ipsec(value):
+def update_mgmt_ipsec(value, port):
     """This function update mgmt_ipsec in in capabilities of sysinv
        i_host table to the value.
     """
 
-    conn = psycopg2.connect("dbname='sysinv' user='postgres'")
+    conn = psycopg2.connect("dbname='sysinv' user='postgres' port=%s" % port)
     with conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("select uuid, capabilities from i_host;")

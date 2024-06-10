@@ -17,10 +17,14 @@ import psycopg2
 from sysinv.common import constants
 
 
+DEFAULT_POSTGRES_PORT = 5432
+
+
 def main():
     action = None
     from_release = None
     to_release = None  # noqa
+    postgres_port = DEFAULT_POSTGRES_PORT
     arg = 1
     while arg < len(sys.argv):
         if arg == 1:
@@ -31,7 +35,7 @@ def main():
             action = sys.argv[arg]
         elif arg == 4:
             # optional port parameter for USM upgrade
-            # port = sys.argv[arg]
+            postgres_port = sys.argv[arg]
             pass
         else:
             print(f"Invalid option {sys.argv[arg]}.")
@@ -49,19 +53,19 @@ def main():
                      "cstates_available information from capabilities column, "
                      f"from the release {from_release} to {to_release} with "
                      f"action: {action}")
-            remove_cstates_and_frequency_info()
+            remove_cstates_and_frequency_info(postgres_port)
         except Exception as ex:
             LOG.exception(ex)
             print(ex)
             return 1
 
 
-def remove_cstates_and_frequency_info():
+def remove_cstates_and_frequency_info(port):
     """This function removes the information of cstates, min and max frequency
     from the capabilities column.
     """
 
-    conn = psycopg2.connect("dbname='sysinv' user='postgres'")
+    conn = psycopg2.connect("dbname='sysinv' user='postgres' port=%s" % port)
     with conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("select uuid, capabilities from i_host;")

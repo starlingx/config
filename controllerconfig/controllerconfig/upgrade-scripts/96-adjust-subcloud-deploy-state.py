@@ -17,6 +17,8 @@ from dcmanager.common import consts as dcmanager_consts
 import psycopg2
 
 
+DEFAULT_POSTGRES_PORT = 5432
+
 DEPLOY_STATUS_MAP = {
     dcmanager_consts.DEPLOY_STATE_DEPLOY_PREP_FAILED:
         dcmanager_consts.DEPLOY_STATE_PRE_CONFIG_FAILED,
@@ -29,6 +31,7 @@ def main():
     action = None
     from_release = None
     to_release = None
+    postgres_port = DEFAULT_POSTGRES_PORT
     arg = 1
     while arg < len(sys.argv):
         if arg == 1:
@@ -38,8 +41,7 @@ def main():
         elif arg == 3:
             action = sys.argv[arg]
         elif arg == 4:
-            # postgres_port = sys.argv[arg]
-            pass
+            postgres_port = sys.argv[arg]
         else:
             print("Invalid option %s." % sys.argv[arg])
             return 1
@@ -55,7 +57,8 @@ def main():
     res = 0
     if action == 'migrate' and from_release == '22.12':
         try:
-            conn = psycopg2.connect("dbname=dcmanager user=postgres")
+            conn = psycopg2.connect("dbname=dcmanager user=postgres port=%s" %
+                                    postgres_port)
             do_update_deploy_status(conn)
         except psycopg2.OperationalError:
             # Since neither tsconfig or /etc/platform/platform.conf have

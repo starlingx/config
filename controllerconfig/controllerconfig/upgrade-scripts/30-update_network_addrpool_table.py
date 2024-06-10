@@ -10,10 +10,14 @@ import sys
 from oslo_utils import uuidutils
 
 
+DEFAULT_POSTGRES_PORT = 5432
+
+
 def main():
     action = None
     from_release = None
     to_release = None  # noqa
+    postgres_port = DEFAULT_POSTGRES_PORT
     arg = 1
     while arg < len(sys.argv):
         if arg == 1:
@@ -24,7 +28,7 @@ def main():
             action = sys.argv[arg]
         elif arg == 4:
             # optional port parameter for USM upgrade
-            # port = sys.argv[arg]
+            postgres_port = sys.argv[arg]
             pass
         else:
             print("Invalid option %s." % sys.argv[arg])
@@ -40,16 +44,16 @@ def main():
         try:
             LOG.info("network-addrpool table migration from release %s to %s"
                      " with action: %s" % (from_release, to_release, action))
-            do_network_addrpool_migration_work()
+            do_network_addrpool_migration_work(postgres_port)
         except Exception as ex:
             LOG.exception(ex)
             print(ex)
             return 1
 
 
-def do_network_addrpool_migration_work():
+def do_network_addrpool_migration_work(port):
 
-    conn = psycopg2.connect("dbname='sysinv' user='postgres'")
+    conn = psycopg2.connect("dbname='sysinv' user='postgres' port=%s" % port)
     with conn:
         net_dict = get_networks(conn)
 
