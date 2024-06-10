@@ -43,7 +43,7 @@ def get_region_name(dbapi):
 
 
 def get_usm_endpoint(token):
-    return token.get_service_url("usm", "usm")
+    return token.get_service_internal_url("usm", "usm")
 
 
 def get_software_upgrade(region_name, timeout=30):
