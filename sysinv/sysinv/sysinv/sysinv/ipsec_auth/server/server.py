@@ -30,6 +30,7 @@ LOG = logging.getLogger(__name__)
 class IPsecServer(object):
 
     sel = selectors.DefaultSelector()
+    host = constants.DEFAULT_BIND_ADDR
 
     def __init__(self, port=constants.DEFAULT_LISTEN_PORT):
         self.port = port
@@ -40,7 +41,7 @@ class IPsecServer(object):
             ssocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             ssocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             ssocket.setblocking(False)
-            ssocket.bind(constants.TCP_SERVER)
+            ssocket.bind((self.host, self.port))
             ssocket.listen()
 
             self._create_pid_file()
