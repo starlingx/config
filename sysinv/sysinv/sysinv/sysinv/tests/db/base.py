@@ -546,6 +546,14 @@ class BaseSystemTestCase(BaseIPv4Mixin, DbTestCase):
     def _find_address_by_id(self, address_id):
         return self.addresses_by_id.get(address_id, None)
 
+    def _set_dc_role(self, dc_role):
+        system = self.dbapi.isystem_get_one()
+        self.dbapi.isystem_update(system.uuid, {'distributed_cloud_role': dc_role})
+
+    def _set_system_mode(self, system_mode):
+        system = self.dbapi.isystem_get_one()
+        self.dbapi.isystem_update(system.uuid, {'system_mode': system_mode})
+
 
 @six.add_metaclass(abc.ABCMeta)
 class BaseHostTestCase(BaseSystemTestCase):

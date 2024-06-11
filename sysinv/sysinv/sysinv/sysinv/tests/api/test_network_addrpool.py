@@ -166,6 +166,10 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         dbutils.cleanup_network_addrpool_table()
         dbutils.cleanup_address_table()
 
+    def _create_test_static_ips(self):
+        # Skip static addresses creation
+        pass
+
     def test_success_create_network_addrpool_primary(self):
         self._setup_context()
         # Test creation of object
@@ -689,10 +693,7 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         self._setup_context()
         net_type = constants.NETWORK_TYPE_MGMT
 
-        p = mock.patch('sysinv.api.controllers.v1.utils.get_distributed_cloud_role')
-        self.mock_utils_get_system_mode = p.start()
-        self.mock_utils_get_system_mode.return_value = constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD
-        self.addCleanup(p.stop)
+        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
 
         mgmt_subnet = netaddr.IPNetwork('3001::/64')
         ranges = [(str(mgmt_subnet[2]), str(mgmt_subnet[-2]))]
@@ -921,10 +922,7 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         self.assertIn(msg, response.json['error_message'])
 
     def test_create_management_secondary_for_aio_sx(self):
-        sysmode = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = sysmode.start()
-        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
-        self.addCleanup(sysmode.stop)
+        self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
 
         iniconf = mock.patch('sysinv.common.utils.is_initial_config_complete')
         self.mock_utils_is_initial_config_complete = iniconf.start()
@@ -1020,10 +1018,7 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         self.mock_rpcapi_set_mgmt_network_reconfig_flag.assert_called_once()
 
     def test_fail_create_management_secondary_for_aio_sx_host_unlocked(self):
-        sysmode = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = sysmode.start()
-        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
-        self.addCleanup(sysmode.stop)
+        self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
 
         iniconf = mock.patch('sysinv.common.utils.is_initial_config_complete')
         self.mock_utils_is_initial_config_complete = iniconf.start()
@@ -1118,10 +1113,7 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         self.assertEqual('controller-1-mgmt', c1_address.name)
 
     def test_success_create_network_addrpool_secondary_admin(self):
-        p = mock.patch('sysinv.api.controllers.v1.utils.get_distributed_cloud_role')
-        self.mock_utils_get_system_mode = p.start()
-        self.mock_utils_get_system_mode.return_value = constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD
-        self.addCleanup(p.stop)
+        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
 
         p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
         self.mock_rpcapi_update_admin_config = p.start()
@@ -1173,10 +1165,7 @@ class TestDelete(NetworkAddrpoolTestCase):
         dbutils.cleanup_network_addrpool_table()
 
     def test_error_delete_mgmt_network_addrpool_primary_aio_sx_config_complete(self):
-        p = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = p.start()
-        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
-        self.addCleanup(p.stop)
+        self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
 
         p = mock.patch('sysinv.common.utils.is_initial_config_complete')
         self.mock_utils_is_initial_config_complete = p.start()
@@ -1194,10 +1183,7 @@ class TestDelete(NetworkAddrpoolTestCase):
         self.assertEqual(response.status_code, http_client.BAD_REQUEST)
 
     def test_error_delete_mgmt_network_addrpool_primary_aio_dx_config_complete(self):
-        p = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = p.start()
-        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_DUPLEX
-        self.addCleanup(p.stop)
+        self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
 
         p = mock.patch('sysinv.common.utils.is_initial_config_complete')
         self.mock_utils_is_initial_config_complete = p.start()
@@ -1215,13 +1201,10 @@ class TestDelete(NetworkAddrpoolTestCase):
         self.assertEqual(response.status_code, http_client.BAD_REQUEST)
 
     def test_success_delete_oam_network_addrpool_secondary(self):
+        self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
+
         p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_oam_config')
         self.mock_rpcapi_update_oam_config = p.start()
-        self.addCleanup(p.stop)
-
-        p = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = p.start()
-        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
         self.addCleanup(p.stop)
 
         p = mock.patch('sysinv.common.utils.is_initial_config_complete')
@@ -1260,10 +1243,7 @@ class TestDelete(NetworkAddrpoolTestCase):
         self.mock_rpcapi_update_oam_config.assert_called_once()
 
     def test_success_delete_mgmt_network_addrpool_secondary(self):
-        p = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = p.start()
-        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
-        self.addCleanup(p.stop)
+        self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
 
         p = mock.patch('sysinv.common.utils.is_initial_config_complete')
         self.mock_utils_is_initial_config_complete = p.start()
@@ -1300,10 +1280,7 @@ class TestDelete(NetworkAddrpoolTestCase):
                          self.networks[net_type].primary_pool_family)
 
     def test_error_delete_oam_network_addrpool_primary(self):
-        p = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = p.start()
-        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
-        self.addCleanup(p.stop)
+        self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
 
         p = mock.patch('sysinv.common.utils.is_initial_config_complete')
         self.mock_utils_is_initial_config_complete = p.start()
@@ -1321,10 +1298,7 @@ class TestDelete(NetworkAddrpoolTestCase):
         self.assertEqual(response.status_code, http_client.BAD_REQUEST)
 
     def test_error_delete_pxeboot_network_addrpool_primary(self):
-        p = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = p.start()
-        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
-        self.addCleanup(p.stop)
+        self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
 
         p = mock.patch('sysinv.common.utils.is_initial_config_complete')
         self.mock_utils_is_initial_config_complete = p.start()
@@ -1342,10 +1316,7 @@ class TestDelete(NetworkAddrpoolTestCase):
         self.assertEqual(response.status_code, http_client.BAD_REQUEST)
 
     def test_error_delete_cluster_host_network_addrpool_primary(self):
-        p = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = p.start()
-        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
-        self.addCleanup(p.stop)
+        self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
 
         p = mock.patch('sysinv.common.utils.is_initial_config_complete')
         self.mock_utils_is_initial_config_complete = p.start()
@@ -1363,10 +1334,7 @@ class TestDelete(NetworkAddrpoolTestCase):
         self.assertEqual(response.status_code, http_client.BAD_REQUEST)
 
     def test_error_delete_cluster_pod_network_addrpool_primary(self):
-        p = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = p.start()
-        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
-        self.addCleanup(p.stop)
+        self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
 
         p = mock.patch('sysinv.common.utils.is_initial_config_complete')
         self.mock_utils_is_initial_config_complete = p.start()
@@ -1384,10 +1352,7 @@ class TestDelete(NetworkAddrpoolTestCase):
         self.assertEqual(response.status_code, http_client.BAD_REQUEST)
 
     def test_error_delete_cluster_service_network_addrpool_primary(self):
-        p = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = p.start()
-        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
-        self.addCleanup(p.stop)
+        self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
 
         p = mock.patch('sysinv.common.utils.is_initial_config_complete')
         self.mock_utils_is_initial_config_complete = p.start()
@@ -1405,10 +1370,7 @@ class TestDelete(NetworkAddrpoolTestCase):
         self.assertEqual(response.status_code, http_client.BAD_REQUEST)
 
     def test_error_delete_storage_network_addrpool_primary(self):
-        p = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = p.start()
-        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
-        self.addCleanup(p.stop)
+        self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
 
         p = mock.patch('sysinv.common.utils.is_initial_config_complete')
         self.mock_utils_is_initial_config_complete = p.start()
@@ -1426,10 +1388,7 @@ class TestDelete(NetworkAddrpoolTestCase):
         self.assertEqual(response.status_code, http_client.BAD_REQUEST)
 
     def test_delete_management_secondary_aio_sx(self):
-        sysmode = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = sysmode.start()
-        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
-        self.addCleanup(sysmode.stop)
+        self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
 
         iniconf = mock.patch('sysinv.common.utils.is_initial_config_complete')
         self.mock_utils_is_initial_config_complete = iniconf.start()
@@ -1505,10 +1464,7 @@ class TestDelete(NetworkAddrpoolTestCase):
         self.mock_rpcapi_set_mgmt_network_reconfig_flag.assert_called_once()
 
     def test_fail_delete_management_secondary_aio_sx_host_unlocked(self):
-        sysmode = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = sysmode.start()
-        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
-        self.addCleanup(sysmode.stop)
+        self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
 
         iniconf = mock.patch('sysinv.common.utils.is_initial_config_complete')
         self.mock_utils_is_initial_config_complete = iniconf.start()

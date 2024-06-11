@@ -1,6 +1,6 @@
 # vim: tabstop=4 shiftwidth=4 softtabstop=4
 #
-# Copyright (c) 2017 Wind River Systems, Inc.
+# Copyright (c) 2017-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -9,16 +9,16 @@ from sqlalchemy import Column, MetaData, Table
 from sqlalchemy import Integer
 from sysinv.common import constants
 from sysinv.common import utils as cutils
-from sysinv.api.controllers.v1 import address_pool
+from sysinv.common import address_pool as caddress_pool
 from tsconfig.tsconfig import system_mode
 
 
 def _populate_address_fields(address_pool_table, addresses_table, networks_table):
     prefix_to_field_name = {
-        constants.CONTROLLER_HOSTNAME: address_pool.ADDRPOOL_FLOATING_ADDRESS_ID,
-        constants.CONTROLLER_0_HOSTNAME: address_pool.ADDRPOOL_CONTROLLER0_ADDRESS_ID,
-        constants.CONTROLLER_1_HOSTNAME: address_pool.ADDRPOOL_CONTROLLER1_ADDRESS_ID,
-        constants.CONTROLLER_GATEWAY: address_pool.ADDRPOOL_GATEWAY_ADDRESS_ID,
+        constants.CONTROLLER_HOSTNAME: caddress_pool.FLOATING_ADDRESS_ID,
+        constants.CONTROLLER_0_HOSTNAME: caddress_pool.CONTROLLER0_ADDRESS_ID,
+        constants.CONTROLLER_1_HOSTNAME: caddress_pool.CONTROLLER1_ADDRESS_ID,
+        constants.CONTROLLER_GATEWAY: caddress_pool.GATEWAY_ADDRESS_ID,
     }
     networks = list(networks_table.select().execute())
     if len(networks) > 0:

@@ -17,7 +17,7 @@ from oslo_utils import uuidutils
 from sysinv.tests.api import base
 from sysinv.common import constants
 from sysinv.common import exception
-from sysinv.api.controllers.v1.address_pool import ADDRESS_FIELDS
+from sysinv.common.address_pool import ADDRESS_TO_ID_FIELD_INDEX
 from sysinv.tests.db import base as dbbase
 from sysinv.tests.db import utils as dbutils
 
@@ -107,10 +107,6 @@ class AddressPoolTestCase(base.FunctionalTest, dbbase.BaseHostTestCase):
     def find_addrpool_by_networktype(self, networktype):
         network = self._find_network_by_type(networktype)
         return self._find_network_address_pools(network.id)[0]
-
-    def set_dc_role(self, dc_role):
-        system = self.dbapi.isystem_get_one()
-        self.dbapi.isystem_update(system.uuid, {'distributed_cloud_role': dc_role})
 
 
 class TestPatchMixin(object):
@@ -286,7 +282,7 @@ class TestPatchMixin(object):
     def test_fail_address_not_in_subnet(self):
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
         address = str(self.mgmt_subnet[2])
-        for addr_field in ADDRESS_FIELDS.keys():
+        for addr_field in ADDRESS_TO_ID_FIELD_INDEX.keys():
             response = self.patch_oam_fail(addrpool, http_client.BAD_REQUEST,
                                            **{addr_field: address})
             self.assertIn(f"IP Address {address} is not in subnet: {self.oam_subnet.ip}/"
@@ -302,7 +298,7 @@ class TestPatchMixin(object):
         else:
             address = '192.168.208.0'
             version = 4
-        for addr_field in ADDRESS_FIELDS.keys():
+        for addr_field in ADDRESS_TO_ID_FIELD_INDEX.keys():
             response = self.patch_oam_fail(addrpool, http_client.BAD_REQUEST,
                                            **{addr_field: address})
             self.assertIn(f"Invalid IP version {version}: {address}. Please configure valid "
@@ -313,7 +309,7 @@ class TestPatchMixin(object):
     def test_fail_address_is_network_address(self):
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
         address = str(self.oam_subnet[0])
-        for addr_field in ADDRESS_FIELDS.keys():
+        for addr_field in ADDRESS_TO_ID_FIELD_INDEX.keys():
             response = self.patch_oam_fail(addrpool, http_client.BAD_REQUEST,
                                            **{addr_field: address})
             self.assertIn(f"Invalid IP address: {address}. Cannot use network address: {address}. "
@@ -323,7 +319,7 @@ class TestPatchMixin(object):
     def test_fail_address_is_broadcast_address(self):
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
         address = str(self.oam_subnet[-1])
-        for addr_field in ADDRESS_FIELDS.keys():
+        for addr_field in ADDRESS_TO_ID_FIELD_INDEX.keys():
             response = self.patch_oam_fail(addrpool, http_client.BAD_REQUEST,
                                            **{addr_field: address})
             self.assertIn(f"Cannot use broadcast address: {address}. "
@@ -331,10 +327,7 @@ class TestPatchMixin(object):
                           response.json['error_message'])
 
     def test_remove_address(self):
-        sysmode = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = sysmode.start()
-        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
-        self.addCleanup(sysmode.stop)
+        self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
 
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
         deleted_ids = [addrpool.controller0_address_id, addrpool.controller1_address_id]
@@ -355,7 +348,7 @@ class TestPatchMixin(object):
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
         new_address = self.oam_subnet[-10]
 
-        for addr_field, id_field in ADDRESS_FIELDS.items():
+        for addr_field, id_field in ADDRESS_TO_ID_FIELD_INDEX.items():
             address_id = getattr(addrpool, id_field)
 
             response = self.patch_oam_success(addrpool, **{addr_field: str(new_address)})
@@ -387,10 +380,7 @@ class TestPatchMixin(object):
             self.assertEqual(new_prefix, address.prefix)
 
     def test_modify_prefix_and_addresses(self):
-        sysmode = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = sysmode.start()
-        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
-        self.addCleanup(sysmode.stop)
+        self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
 
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
 
@@ -443,7 +433,7 @@ class TestPatchMixin(object):
             ranges = [['5102::1', '5102::ffff']]
         response = self.patch_oam_fail(addrpool, http_client.BAD_REQUEST,
                                        network=network, ranges=ranges)
-        self.assertIn(f"IP Address {addrpool.gateway_address} is not in subnet: {network}/"
+        self.assertIn(f"IP Address {addrpool.floating_address} is not in subnet: {network}/"
                       f"{addrpool.prefix}. Please configure valid "
                       f"IPv{addrpool.family} address.",
                       response.json['error_message'])
@@ -471,7 +461,7 @@ class TestPatchMixin(object):
 
     def test_fail_duplicate_address_existing(self):
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
-        field_list = list(ADDRESS_FIELDS.keys())
+        field_list = list(ADDRESS_TO_ID_FIELD_INDEX.keys())
         for first in range(len(field_list)):  # pylint: disable=consider-using-enumerate
             field1 = field_list[first]
             for second in range(len(field_list)):  # pylint: disable=consider-using-enumerate
@@ -489,7 +479,7 @@ class TestPatchMixin(object):
     def test_fail_duplicate_address_new(self):
         new_address = str(self.oam_subnet[20])
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
-        field_list = list(ADDRESS_FIELDS.keys())
+        field_list = list(ADDRESS_TO_ID_FIELD_INDEX.keys())
         for first in range(len(field_list)):  # pylint: disable=consider-using-enumerate
             field1 = field_list[first]
             for second in range(first + 1, len(field_list)):
@@ -520,10 +510,7 @@ class TestPatchMixin(object):
         self._test_fail_empty_addresses(constants.NETWORK_TYPE_OAM)
 
     def test_fail_empty_addresses_oam_aio_sx(self):
-        sysmode = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = sysmode.start()
-        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
-        self.addCleanup(sysmode.stop)
+        self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
         self._test_fail_empty_addresses(constants.NETWORK_TYPE_OAM, True)
 
     def test_fail_empty_addresses_mgmt(self):
@@ -631,7 +618,7 @@ class TestPatchMixin(object):
 
         values = {}
         mgmt_pool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_MGMT)
-        for id_field in ADDRESS_FIELDS.values():
+        for id_field in ADDRESS_TO_ID_FIELD_INDEX.values():
             addr_id = getattr(mgmt_pool, id_field)
             self.assertIsNotNone(addr_id)
             self.dbapi.address_update(addr_id, {'address_pool_id': None, 'name': id_field})
@@ -684,7 +671,7 @@ class TestPatchMixin(object):
             controller1_address=mgmt_pool.controller1_address)
 
         values = {}
-        for id_field in ADDRESS_FIELDS.values():
+        for id_field in ADDRESS_TO_ID_FIELD_INDEX.values():
             addr_id = getattr(mgmt_pool, id_field)
             self.assertIsNotNone(addr_id)
             self.dbapi.address_update(addr_id, {'address_pool_id': test_pool.id, 'name': id_field})
@@ -720,7 +707,7 @@ class TestPatchMixin(object):
         self.assertEqual('controller-1-mgmt', controller1_address.name)
 
         test_pool = self.dbapi.address_pool_get(test_pool.id)
-        for id_field in ADDRESS_FIELDS.values():
+        for id_field in ADDRESS_TO_ID_FIELD_INDEX.values():
             self.assertIsNone(getattr(test_pool, id_field))
 
     def test_fail_add_new_addresses_existing(self):
@@ -774,21 +761,21 @@ class TestPatchMixin(object):
 
         msg = ("Address {} already assigned to the following address pool: {}".format(
             mgmt_addr.address, mgmt_pool.uuid))
-        for addr_field in ADDRESS_FIELDS.keys():
+        for addr_field in ADDRESS_TO_ID_FIELD_INDEX.keys():
             response = self.patch_fail(test_pool, http_client.BAD_REQUEST,
                                        **{addr_field: mgmt_addr.address})
             self.assertIn(msg, response.json['error_message'])
 
         msg = ("Address {} already assigned to the following address pool: {}".format(
             if1_addr.address, if1_pool.uuid))
-        for addr_field in ADDRESS_FIELDS.keys():
+        for addr_field in ADDRESS_TO_ID_FIELD_INDEX.keys():
             response = self.patch_fail(test_pool, http_client.BAD_REQUEST,
                                        **{addr_field: if1_addr.address})
             self.assertIn(msg, response.json['error_message'])
 
         msg = ("Address {} already assigned to the {} interface in host {}".format(
             if0_addr.address, if0_addr.ifname, if0_addr.forihostid))
-        for addr_field in ADDRESS_FIELDS.keys():
+        for addr_field in ADDRESS_TO_ID_FIELD_INDEX.keys():
             response = self.patch_fail(test_pool, http_client.BAD_REQUEST,
                                        **{addr_field: if0_addr.address})
             self.assertIn(msg, response.json['error_message'])
@@ -844,7 +831,7 @@ class TestPatchMixin(object):
         self.mock_rpcapi_update_admin_config = p.start()
         self.addCleanup(p.stop)
 
-        self.set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
+        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
         controller0 = self._create_test_host(constants.CONTROLLER, unit=0)
         c0_if0 = self.create_test_interface('c0-if0', controller0)
         network = self._find_network_by_type(constants.NETWORK_TYPE_ADMIN)
@@ -879,7 +866,7 @@ class TestPatchMixin(object):
         self.mock_rpcapi_update_admin_config = p.start()
         self.addCleanup(p.stop)
 
-        self.set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
+        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
         controller0 = self._create_test_host(constants.CONTROLLER, unit=0)
         admin0 = self.create_test_interface('admin0', controller0)
         mgmt0 = self.create_test_interface('mgm0', controller0)
@@ -926,7 +913,7 @@ class TestPatchMixin(object):
     def test_change_mgmt_gateway_in_subcloud(self):
         self.mock_utils_is_initial_config_complete.return_value = False
 
-        self.set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
+        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
 
         controller0 = self._create_test_host(constants.CONTROLLER, unit=0)
         c0_mgmt0 = self.create_test_interface('c0_mgm0', controller0)
@@ -1232,7 +1219,7 @@ class TestPostMixin(object):
             controller0_address=str(subnet[3]),
             controller1_address=str(subnet[4]))
 
-        field_list = list(ADDRESS_FIELDS.keys())
+        field_list = list(ADDRESS_TO_ID_FIELD_INDEX.keys())
         for first in range(len(field_list)):  # pylint: disable=consider-using-enumerate
             field1 = field_list[first]
             for second in range(first + 1, len(field_list)):
@@ -1257,7 +1244,7 @@ class TestPostMixin(object):
         addresses = {}
         addr_fields = {}
         ip_addr = subnet[1]
-        for addr_field, id_field in ADDRESS_FIELDS.items():
+        for addr_field, id_field in ADDRESS_TO_ID_FIELD_INDEX.items():
             addr = dbutils.create_test_address(
                 name=id_field,
                 family=subnet.version,
@@ -1322,7 +1309,7 @@ class TestPostMixin(object):
         addr_fields = {}
         addr_id_fields = {}
         ip_addr = subnet[1]
-        for addr_field, id_field in ADDRESS_FIELDS.items():
+        for addr_field, id_field in ADDRESS_TO_ID_FIELD_INDEX.items():
             addr = dbutils.create_test_address(
                 name=id_field,
                 family=subnet.version,
@@ -1375,7 +1362,7 @@ class TestPostMixin(object):
         self.assertEqual('test-pool-controller1_address', controller1_address.name)
 
         existing_pool = self.dbapi.address_pool_get(existing_pool.id)
-        for id_field in ADDRESS_FIELDS.values():
+        for id_field in ADDRESS_TO_ID_FIELD_INDEX.values():
             self.assertIsNone(getattr(existing_pool, id_field))
 
     def test_addresses_new_and_existing(self):
@@ -1468,12 +1455,12 @@ class TestPostMixin(object):
             network=str(subnet.ip),
             prefix=str(subnet.prefixlen))
 
-        for addr_field in ADDRESS_FIELDS.keys():
+        for addr_field in ADDRESS_TO_ID_FIELD_INDEX.keys():
             del ndict[addr_field]
 
         msg = ("Address {} already assigned to the following address pool: {}".format(
             mgmt_addr.address, mgmt_pool.uuid))
-        for addr_field in ADDRESS_FIELDS.keys():
+        for addr_field in ADDRESS_TO_ID_FIELD_INDEX.keys():
             ndict[addr_field] = mgmt_addr.address
             response = self.post_json(self.API_PREFIX, ndict,
                                       headers=self.API_HEADERS, expect_errors=True)
@@ -1484,7 +1471,7 @@ class TestPostMixin(object):
 
         msg = ("Address {} already assigned to the following address pool: {}".format(
             if1_addr.address, if1_pool.uuid))
-        for addr_field in ADDRESS_FIELDS.keys():
+        for addr_field in ADDRESS_TO_ID_FIELD_INDEX.keys():
             ndict[addr_field] = if1_addr.address
             response = self.post_json(self.API_PREFIX, ndict,
                                       headers=self.API_HEADERS, expect_errors=True)
@@ -1495,7 +1482,7 @@ class TestPostMixin(object):
 
         msg = ("Address {} already assigned to the {} interface in host {}".format(
             if0_addr.address, if0_addr.ifname, if0_addr.forihostid))
-        for addr_field in ADDRESS_FIELDS.keys():
+        for addr_field in ADDRESS_TO_ID_FIELD_INDEX.keys():
             ndict[addr_field] = if0_addr.address
             response = self.post_json(self.API_PREFIX, ndict,
                                       headers=self.API_HEADERS, expect_errors=True)
@@ -1570,10 +1557,7 @@ class TestDelete(AddressPoolTestCase):
         self.mock_rpcapi_update_oam_config.assert_called_once()
 
     def test_mgmt_address_pool_delete_secondary(self):
-        sysmode = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = sysmode.start()
-        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
-        self.addCleanup(sysmode.stop)
+        self._set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
 
         network = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
         primary_addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_MGMT)
@@ -1637,7 +1621,7 @@ class TestDelete(AddressPoolTestCase):
         self.mock_rpcapi_update_admin_config = p.start()
         self.addCleanup(p.stop)
 
-        self.set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
+        self._set_dc_role(constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD)
 
         mgmt_net = self._find_network_by_type(constants.NETWORK_TYPE_MGMT)
         admin_net = self._find_network_by_type(constants.NETWORK_TYPE_ADMIN)

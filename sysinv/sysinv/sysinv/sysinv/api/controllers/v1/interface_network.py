@@ -40,6 +40,7 @@ from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
+from sysinv.common import address_pool as caddress_pool
 
 LOG = log.getLogger(__name__)
 
@@ -181,8 +182,8 @@ class InterfaceNetworkController(rest.RestController):
             for family, mode in modes.items():
                 utils.update_address_mode(interface_obj, family, mode, None)
 
-        # Assign an address to the interface
-        _update_host_addresses(host, interface_obj, network, addrpools)
+        caddress_pool.assign_network_addresses_to_interface(host, interface_obj.id, network,
+                                                            addrpools, pecan.request.dbapi)
 
         if network.type == constants.NETWORK_TYPE_MGMT:
             ethernet_port_mac = None
@@ -440,69 +441,14 @@ class InterfaceNetworkController(rest.RestController):
         if_network_obj = pecan.request.dbapi.interface_network_get(interface_network_uuid)
         addrpools = pecan.request.dbapi.address_pools_get_by_network(if_network_obj.network_id)
         for addrpool in addrpools:
-            address = None
             try:
                 address = pecan.request.dbapi.address_get_by_interface_pool(
                     if_network_obj.interface_id, addrpool.id)
+                pecan.request.dbapi.address_remove_interface(address.uuid)
             except exception.AddressNotFoundByInterfacePool:
                 pass
-            if address:
-                pecan.request.dbapi.address_remove_interface(address.uuid)
         pecan.request.dbapi.interface_network_destroy(interface_network_uuid)
         self._operation_complete(constants.API_DELETE, if_network_obj, addrpools)
-
-
-# Networks for which addresses have to be updated. The associated value dictates wether addresses
-# can be allocated dynamically.
-ADDRESS_UPDATE_NETWORKS = {constants.NETWORK_TYPE_MGMT: True,
-                           constants.NETWORK_TYPE_OAM: False,
-                           constants.NETWORK_TYPE_CLUSTER_HOST: True,
-                           constants.NETWORK_TYPE_PXEBOOT: False,
-                           constants.NETWORK_TYPE_STORAGE: True,
-                           constants.NETWORK_TYPE_ADMIN: False,
-                           constants.NETWORK_TYPE_IRONIC: False}
-
-
-def _update_host_addresses(host, interface, network, addrpools):
-    if network.type not in ADDRESS_UPDATE_NETWORKS:
-        return
-
-    if host.personality == constants.CONTROLLER:
-        if network.type == constants.NETWORK_TYPE_OAM and \
-                utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
-            hostname = constants.CONTROLLER_HOSTNAME
-        else:
-            hostname = host.hostname
-        id_field, addr_field = CONTROLLER_ADDRESS_FIELDS.get(hostname)
-        for addrpool in addrpools:
-            address_id = getattr(addrpool, id_field)
-            if address_id:
-                pecan.request.dbapi.address_update(address_id, {'interface_id': interface.id})
-                if network.type == constants.NETWORK_TYPE_MGMT and \
-                        addrpool.uuid == network.pool_uuid:
-                    pecan.request.rpcapi.mgmt_ip_set_by_ihost(
-                        pecan.request.context, host.uuid, interface.id,
-                        getattr(addrpool, addr_field))
-        return
-
-    address_name = cutils.format_address_name(host.hostname, network.type)
-    addresses = pecan.request.dbapi.address_get_by_name(address_name)
-    pools_with_addrs = set()
-    if addresses:
-        updates = {'interface_id': interface.id}
-        for addr in addresses:
-            pecan.request.dbapi.address_update(addr.uuid, updates)
-            pools_with_addrs.add(addr.pool_uuid)
-    if len(addrpools) > len(pools_with_addrs):
-        if network.dynamic and ADDRESS_UPDATE_NETWORKS.get(network.type, False):
-            for addrpool in addrpools:
-                if addrpool.uuid not in pools_with_addrs:
-                    _allocate_pool_address(interface.id, addrpool.uuid, address_name)
-
-
-def _allocate_pool_address(interface_id, pool_uuid, address_name=None):
-    address_pool.AddressPoolController.assign_address(
-        interface_id, pool_uuid, address_name)
 
 
 def _update_host_mgmt_mac(host, mgmt_mac):

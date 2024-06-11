@@ -19,7 +19,6 @@ from sysinv.api.controllers.v1 import types
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import utils
 from sysinv.common import constants
-from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv.common import address_pool as caddress_pool
 from sysinv import objects
@@ -137,102 +136,12 @@ class NetworkAddresspoolController(rest.RestController):
             networks, limit, url=resource_url, expand=expand,
             sort_key=sort_key, sort_dir=sort_dir)
 
-    def _populate_network_addresses(self, pool, network, addresses, net_pool):
-        """Populate the address table with host addresses and if associated with
-           with a interface update that information in the table
-
-        Args:
-            pool (object.AddressPool): the address pool object
-            network (object.Network): the network object
-            addresses (dict[key=addr-name,value=IP]): if there are adresses allocated to controllers
-                              and gateway it will provide the IP value, otherwise value=None
-            net_pool (object.NetworkAddressPool): network-addrpoool object
-        """
-        if_net_list = pecan.request.dbapi.interface_network_get_by_network_id(net_pool.network_id)
-        hostname_dict = dict()
-        non_crtl_hostname_list = list()
-        for if_net in if_net_list:
-            host = pecan.request.dbapi.ihost_get(if_net.forihostid)
-            hostname_dict.update({host.hostname: if_net})
-            if host.personality != constants.CONTROLLER:
-                non_crtl_hostname_list.append(host.hostname)
-
-        # add the non-controller hosts in addresses
-        for hostname in non_crtl_hostname_list:
-            addr_name = f"{hostname}-{net_pool.network_type}"
-            try:
-                addr = pecan.request.dbapi.address_get_by_name_and_family(addr_name, pool.family)
-                addresses.update({hostname: addr.address})
-            except Exception:
-                addresses.update({hostname: None})
-
-        opt_fields = {}
-        for name, address in addresses.items():
-            address_name = cutils.format_address_name(name, network['type'])
-            if not address:
-                address = address_pool.AddressPoolController.allocate_address(
-                    pool, order=address_pool.SEQUENTIAL_ALLOCATION)
-            LOG.debug("address_name={} address={}".format(address_name, address))
-            values = {
-                'address_pool_id': pool.id,
-                'address': str(address),
-                'prefix': pool['prefix'],
-                'family': pool['family'],
-                'enable_dad': constants.IP_DAD_STATES[pool['family']],
-                'name': address_name,
-            }
-
-            addr_intf = dict()
-            for hostname in hostname_dict:
-                if address_name == f"{hostname}-{net_pool.network_type}":
-                    addr_intf.update({'interface_id':
-                                    hostname_dict[hostname].interface_id})
-                    break
-
-            if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX \
-                    and net_pool.network_type == constants.NETWORK_TYPE_OAM:
-                if address_name == f"{constants.CONTROLLER}-{net_pool.network_type}":
-                    # To re-visit: is last hostname looked up intended here ?
-                    if 'hostname' in locals():
-                        addr_intf.update({'interface_id':
-                                        hostname_dict[hostname].interface_id})
-
-            # Check for address existent before creation
-            try:
-                address_obj = pecan.request.dbapi.address_get_by_address(str(address))
-                upd_values = {'name': address_name, 'address_pool_id': pool.id}
-                upd_values.update(addr_intf)
-                pecan.request.dbapi.address_update(address_obj.uuid, upd_values)
-                if address_obj.pool_id != pool.id:
-                    # If the address already exists, it could belong to an unassigned address pool
-                    # and has to be removed from it
-                    address_pool.remove_address_from_pool(address_obj)
-            except exception.AddressNotFoundByAddress:
-                values.update(addr_intf)
-                address_obj = pecan.request.dbapi.address_create(values)
-
-            # Update address pool with associated address
-            if name == constants.CONTROLLER_0_HOSTNAME:
-                opt_fields.update({
-                    address_pool.ADDRPOOL_CONTROLLER0_ADDRESS_ID:
-                        address_obj.id})
-            elif name == constants.CONTROLLER_1_HOSTNAME:
-                opt_fields.update({
-                    address_pool.ADDRPOOL_CONTROLLER1_ADDRESS_ID:
-                        address_obj.id})
-            elif name == constants.CONTROLLER_HOSTNAME:
-                opt_fields.update({
-                    address_pool.ADDRPOOL_FLOATING_ADDRESS_ID: address_obj.id})
-            elif name == constants.CONTROLLER_GATEWAY:
-                opt_fields.update({
-                    address_pool.ADDRPOOL_GATEWAY_ADDRESS_ID: address_obj.id})
-
-        # update pool with addresses IDs
-        if opt_fields:
-            pecan.request.dbapi.address_pool_update(pool.uuid, opt_fields)
-
     def _check_modification_allowed(self, operation, network):
-        if network.type == constants.NETWORK_TYPE_OAM:
+        if network.type in [constants.NETWORK_TYPE_OAM,
+                            constants.NETWORK_TYPE_CLUSTER_HOST,
+                            constants.NETWORK_TYPE_CLUSTER_POD,
+                            constants.NETWORK_TYPE_CLUSTER_SERVICE,
+                            constants.NETWORK_TYPE_STORAGE]:
             return
         if network.type == constants.NETWORK_TYPE_MGMT:
             if utils.get_system_mode() == constants.SYSTEM_MODE_SIMPLEX:
@@ -244,12 +153,7 @@ class NetworkAddresspoolController(rest.RestController):
                                .format(host['hostname']))
                         raise wsme.exc.ClientSideError(msg)
                 return
-        elif network.type in [constants.NETWORK_TYPE_CLUSTER_HOST,
-                              constants.NETWORK_TYPE_CLUSTER_POD,
-                              constants.NETWORK_TYPE_CLUSTER_SERVICE]:
-            return
         elif network.type not in [constants.NETWORK_TYPE_PXEBOOT,
-                                  constants.NETWORK_TYPE_STORAGE,
                                   constants.NETWORK_TYPE_MULTICAST]:
             return
         if cutils.is_initial_config_complete():
@@ -384,9 +288,8 @@ class NetworkAddresspoolController(rest.RestController):
         if values:
             pecan.request.dbapi.network_update(network.uuid, values)
 
-        # add the addresses
-        addresses = utils.PopulateAddresses.create_network_addresses(pool, network)
-        self._populate_network_addresses(pool, network, addresses, result)
+        caddress_pool.populate_network_pool_addresses(pool, network.type, pecan.request.dbapi)
+        caddress_pool.assign_pool_addresses_to_interfaces(pool, network, pecan.request.dbapi)
 
         hosts = None
         if network.type == constants.NETWORK_TYPE_ADMIN:

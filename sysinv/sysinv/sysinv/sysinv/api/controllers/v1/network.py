@@ -29,7 +29,6 @@ import wsmeext.pecan as wsme_pecan
 
 from oslo_log import log
 from sysinv._i18n import _
-from sysinv.api.controllers.v1 import address_pool
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import types
@@ -186,54 +185,6 @@ class NetworkController(rest.RestController):
         if addresses:
             raise exception.NetworkAddressPoolInUse()
 
-    def _populate_network_addresses(self, pool, network, addresses):
-        opt_fields = {}
-        for name, address in addresses.items():
-            address_name = cutils.format_address_name(name, network['type'])
-            if not address:
-                address = address_pool.AddressPoolController.allocate_address(
-                    pool, order=address_pool.SEQUENTIAL_ALLOCATION)
-
-            LOG.debug("address_name={} address={}".format(address_name, address))
-            values = {
-                'address_pool_id': pool.id,
-                'address': str(address),
-                'prefix': pool['prefix'],
-                'family': pool['family'],
-                'enable_dad': constants.IP_DAD_STATES[pool['family']],
-                'name': address_name,
-            }
-
-            # Check for address existent before creation
-            try:
-                address_obj = pecan.request.dbapi.address_get_by_address(str(address))
-                pecan.request.dbapi.address_update(
-                    address_obj.uuid, {'name': address_name, 'address_pool_id': pool.id})
-                if address_obj.pool_id != pool.id:
-                    # If the address already exists, it could belong to an unassigned address pool
-                    # and has to be removed from it
-                    address_pool.remove_address_from_pool(address_obj)
-            except exception.AddressNotFoundByAddress:
-                address_obj = pecan.request.dbapi.address_create(values)
-
-            # Update address pool with associated address
-            if name == constants.CONTROLLER_0_HOSTNAME:
-                opt_fields.update({
-                    address_pool.ADDRPOOL_CONTROLLER0_ADDRESS_ID:
-                        address_obj.id})
-            elif name == constants.CONTROLLER_1_HOSTNAME:
-                opt_fields.update({
-                    address_pool.ADDRPOOL_CONTROLLER1_ADDRESS_ID:
-                        address_obj.id})
-            elif name == constants.CONTROLLER_HOSTNAME:
-                opt_fields.update({
-                    address_pool.ADDRPOOL_FLOATING_ADDRESS_ID: address_obj.id})
-            elif name == constants.CONTROLLER_GATEWAY:
-                opt_fields.update({
-                    address_pool.ADDRPOOL_GATEWAY_ADDRESS_ID: address_obj.id})
-        if opt_fields:
-            pecan.request.dbapi.address_pool_update(pool.uuid, opt_fields)
-
     def _get_addrpool(self, network):
         pool_uuid = network.pop('pool_uuid', None)
         if not pool_uuid:
@@ -267,9 +218,7 @@ class NetworkController(rest.RestController):
                                                                     "network_id": result.id})
             LOG.info(f"added network-addrpool {net_pool.uuid}")
 
-            # the new network-addrpool API will take care of addresses
-            addresses = utils.PopulateAddresses.create_network_addresses(pool, network)
-            self._populate_network_addresses(pool, network, addresses)
+            caddress_pool.populate_network_pool_addresses(pool, networktype, pecan.request.dbapi)
 
         # If the host has already been created, make an RPC request
         # reconfigure the service endpoints. As oam network is processed
@@ -356,6 +305,15 @@ class NetworkController(rest.RestController):
                                 "is in administrative state = unlocked"
                                 .format(network['type'], network_uuid, host['hostname']))
                         raise wsme.exc.ClientSideError(msg)
+
+        # InterfaceNetwork objects are automatically removed from the database when the network is
+        # destroyed. However, addresses have to be explicitly unassigned from the interfaces.
+        addrpools = pecan.request.dbapi.address_pools_get_by_network(network.id)
+        for addrpool in addrpools:
+            addresses = pecan.request.dbapi.addresses_get_by_pool(addrpool.id)
+            for address in addresses:
+                if address.interface_id:
+                    pecan.request.dbapi.address_update(address.id, {'interface_id': None})
 
         pecan.request.dbapi.network_destroy(network_uuid)
 
