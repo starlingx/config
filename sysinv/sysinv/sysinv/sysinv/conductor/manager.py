@@ -15098,7 +15098,10 @@ class ConductorManager(service.PeriodicService):
         """
         host_upgrade = self.dbapi.host_upgrade_get_by_host(host.id)
         target_load = self.dbapi.load_get(host_upgrade.target_load)
-        return target_load.software_version == tsc.SW_VERSION
+        if target_load.software_version != tsc.SW_VERSION:
+            return False
+
+        return host.sw_version == tsc.SW_VERSION
 
     def create_barbican_secret(self, context, name, payload):
         """Calls Barbican API to create a secret
