@@ -1049,9 +1049,6 @@ class TestPatch(TestKubeUpgrade,
         self.assertEqual(result['to_version'], 'v1.43.2')
         self.assertEqual(result['state'], new_state)
 
-        # Verify that apps reapply evaluation was triggered
-        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
-
     def test_update_state_complete_incomplete_host(self):
         # Test updating the state of an upgrade to complete when a host has
         # not completed its upgrade
@@ -1214,6 +1211,9 @@ class TestDelete(TestKubeUpgrade,
         self.assertTrue(response.json['error_message'])
         self.fake_conductor_api.\
             remove_kube_control_plane_backup.assert_called()
+
+        # Verify that apps reapply evaluation was triggered
+        self.fake_conductor_api.evaluate_apps_reapply.assert_called_once()
 
     def test_delete_upgrade_not_complete(self):
         # Test deleting an upgrade when upgrade is not complete

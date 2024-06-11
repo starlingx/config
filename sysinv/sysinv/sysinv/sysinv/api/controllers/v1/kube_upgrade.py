@@ -757,11 +757,6 @@ class KubeUpgradeController(rest.RestController):
             if role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
                 dc_api.notify_dcmanager_kubernetes_upgrade_completed()
 
-            # Check if apps need to be reapplied
-            pecan.request.rpcapi.evaluate_apps_reapply(
-                pecan.request.context,
-                trigger={'type': constants.APP_EVALUATE_REAPPLY_TYPE_KUBE_UPGRADE_COMPLETE})
-
             return KubeUpgrade.convert_with_links(kube_upgrade_obj)
 
         elif updates['state'] == kubernetes.KUBE_POST_UPDATING_APPS:
@@ -825,3 +820,8 @@ class KubeUpgradeController(rest.RestController):
         fm_api.FaultAPIs().clear_fault(
             fm_constants.FM_ALARM_ID_KUBE_UPGRADE_IN_PROGRESS,
             entity_instance_id)
+
+        # Check if apps need to be reapplied
+        pecan.request.rpcapi.evaluate_apps_reapply(
+            pecan.request.context,
+            trigger={'type': constants.APP_EVALUATE_REAPPLY_TYPE_KUBE_UPGRADE_COMPLETE})
