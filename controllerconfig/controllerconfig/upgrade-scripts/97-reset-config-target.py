@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2021-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -8,14 +8,12 @@
 # requests in N+1 release and not due to potential stale configuration
 # from N release.
 
+import logging as LOG
 import sys
 
 from psycopg2.extras import RealDictCursor
 from controllerconfig import utils
 from controllerconfig.common import constants
-from controllerconfig.common import log
-
-LOG = log.get_logger(__name__)
 
 
 def main():
@@ -39,7 +37,10 @@ def main():
             return 1
         arg += 1
 
-    log.configure()
+    log_format = ('%(asctime)s: ' + '[%(process)s]: '
+                  '%(filename)s(%(lineno)s): %(levelname)s: %(message)s')
+    LOG.basicConfig(filename="/var/log/software.log",
+                    format=log_format, level=LOG.INFO, datefmt="%FT%T")
 
     LOG.debug("%s invoked with from_release = %s to_release = %s action = %s"
               % (sys.argv[0], from_release, to_release, action))

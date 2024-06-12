@@ -1,19 +1,15 @@
 #!/usr/bin/env python
-# Copyright (c) 2023 Wind River Systems, Inc.
+# Copyright (c) 2023-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+import logging as LOG
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
 import yaml
-
-from controllerconfig.common import log
-
-
-LOG = log.get_logger(__name__)
 
 
 def get_list_of_keys(from_release, to_release):
@@ -49,7 +45,11 @@ def main():
             return 1
         arg += 1
 
-    log.configure()
+    log_format = ('%(asctime)s: ' + '[%(process)s]: '
+                  '%(filename)s(%(lineno)s): %(levelname)s: %(message)s')
+    LOG.basicConfig(filename="/var/log/software.log",
+                    format=log_format, level=LOG.INFO, datefmt="%FT%T")
+
     LOG.info("%s invoked from_release = %s to_release = %s action = %s"
              % (sys.argv[0], from_release, to_release, action))
     res = 0

@@ -8,15 +8,13 @@
 # min and max frequency.
 
 import json
+import logging as LOG
 import sys
 
 from psycopg2.extras import RealDictCursor
 import psycopg2
 
-from controllerconfig.common import log
 from sysinv.common import constants
-
-LOG = log.get_logger(__name__)
 
 
 def main():
@@ -40,7 +38,10 @@ def main():
             return 1
         arg += 1
 
-    log.configure()
+    log_format = ('%(asctime)s: ' + '[%(process)s]: '
+                  '%(filename)s(%(lineno)s): %(levelname)s: %(message)s')
+    LOG.basicConfig(filename="/var/log/software.log",
+                    format=log_format, level=LOG.INFO, datefmt="%FT%T")
 
     if from_release == "22.12" and action == "migrate":
         try:

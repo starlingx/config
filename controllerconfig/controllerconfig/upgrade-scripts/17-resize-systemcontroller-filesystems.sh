@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2022 Wind River Systems, Inc.
+# Copyright (c) 2022-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -35,9 +35,8 @@ RESIZE_CHECK_MAX_RETRIES=5
 source /etc/platform/openrc
 source /etc/platform/platform.conf
 
-# This will log to /var/log/platform.log
 function log {
-    logger -p local1.info $1
+    echo "$(date -Iseconds | cut -d'+' -f1): ${NAME}[$$]: INFO: $*" >> "/var/log/software.log" 2>&1
 }
 
 function verify_fs_need_resizing {
@@ -59,7 +58,7 @@ function verify_space_to_resize {
     _AVAILABLE_DISK_SIZE=$(system host-lvg-list $_HOSTNAME | grep cgts-vg | awk '{ print $12; }')
     _INCREASE_DISK_SIZE=$(echo "$EXPANDED_PLATFORM_SIZE - $_PLATFORM_SIZE" | bc)
     _TOTAL_INCREASE_DISK_SIZE=$(echo "2 * $_INCREASE_DISK_SIZE" | bc) # need to resize platform and backup
-    log "$NAME: [$_HOSTNAME] Available cgts-vg space: ${_AVAILABLE_DISK_SIZE}G, need ${_TOTAL_INCREASE_DISK_SIZE}G to resize."
+    log "[$_HOSTNAME] Available cgts-vg space: ${_AVAILABLE_DISK_SIZE}G, need ${_TOTAL_INCREASE_DISK_SIZE}G to resize."
 
     echo $_INCREASE_DISK_SIZE # return value so that it can be assigned to variable
     return $(echo "! $_AVAILABLE_DISK_SIZE >= $_TOTAL_INCREASE_DISK_SIZE" | bc)
@@ -71,7 +70,7 @@ function resize_backup_filesystem {
 
     _BACKUP_SIZE=$(system host-fs-list $_HOSTNAME | grep backup | awk '{ print $6; }')
     _EXPANDED_BACKUP_SIZE=$(echo "$_BACKUP_SIZE + $_INCREASE_DISK_SIZE" | bc)
-    log "$NAME: [$_HOSTNAME] Current backup size is ${_BACKUP_SIZE}G, new size will be ${_EXPANDED_BACKUP_SIZE}G."
+    log "[$_HOSTNAME] Current backup size is ${_BACKUP_SIZE}G, new size will be ${_EXPANDED_BACKUP_SIZE}G."
     system host-fs-modify $_HOSTNAME backup=$_EXPANDED_BACKUP_SIZE
     sleep 5
 
@@ -81,79 +80,79 @@ function resize_backup_filesystem {
 
 function resize_platform_controllerfs {
     _PLATFORM_SIZE=$1
-    log "$NAME: Current platform size is ${_PLATFORM_SIZE}G, new size will be ${EXPANDED_PLATFORM_SIZE}G."
+    log "Current platform size is ${_PLATFORM_SIZE}G, new size will be ${EXPANDED_PLATFORM_SIZE}G."
     system controllerfs-modify platform=$EXPANDED_PLATFORM_SIZE
 
     for RETRY in $(seq $RESIZE_CHECK_MAX_RETRIES); do
-        log "$NAME: Retry $RETRY of $RESIZE_CHECK_MAX_RETRIES, checking if platform filesystem is resized and available..."
+        log "Retry $RETRY of $RESIZE_CHECK_MAX_RETRIES, checking if platform filesystem is resized and available..."
         OUTPUT=$(system controllerfs-list --column name --column size --column state | grep platform)
         _CURRENT_PLATFORM_SIZE=$(echo $OUTPUT | awk '{ print $4; }')
         _CURRENT_PLATFORM_STATE=$(echo $OUTPUT | awk '{ print $6; }')
-        log "$NAME: Current platform fs size/state: ${_CURRENT_PLATFORM_SIZE}/${_CURRENT_PLATFORM_STATE}"
+        log "Current platform fs size/state: ${_CURRENT_PLATFORM_SIZE}/${_CURRENT_PLATFORM_STATE}"
         if [[ ($_CURRENT_PLATFORM_SIZE -eq $EXPANDED_PLATFORM_SIZE) && ($_CURRENT_PLATFORM_STATE == "available") ]]; then
             return 0
         fi
         # if current size is less than the expanded size, retry the resize command
         if [[ $_CURRENT_PLATFORM_SIZE -lt $EXPANDED_PLATFORM_SIZE ]]; then
-            log "$NAME: Current platform size is less than ${EXPANDED_PLATFORM_SIZE}G, retrying resize command..."
+            log "Current platform size is less than ${EXPANDED_PLATFORM_SIZE}G, retrying resize command..."
             system controllerfs-modify platform=$EXPANDED_PLATFORM_SIZE
         fi
         sleep $RESIZE_SLEEP_TIME
     done
 
     if [[ $_CURRENT_PLATFORM_SIZE -eq $EXPANDED_PLATFORM_SIZE ]]; then
-        log "$NAME: [WARNING] platform fs is resized but not yet in available state."
+        log "[WARNING] platform fs is resized but not yet in available state."
         return 0
     fi
     return 1
 }
 
 # Script start
-log "$NAME: Starting filesystems resize on DC System Controller for increased parallel subcloud deployment for \
+log "Starting filesystems resize on DC System Controller for increased parallel subcloud deployment for \
     from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 
 if [[ "$ACTION" == "activate" ]]; then
     if [[ $distributed_cloud_role == "systemcontroller" ]]; then
-        log "$NAME: Verifying if filesystems need resizing..."
+        log "Verifying if filesystems need resizing..."
         if ! PLATFORM_SIZE=$(verify_fs_need_resizing); then
-            log "$NAME: No need to resize, platform filesystem has been resized already."
+            log "No need to resize, platform filesystem has been resized already."
             exit 0
         fi
-        log "$NAME: Platform filesystem needs resizing, current size is ${PLATFORM_SIZE}G,\
+        log "Platform filesystem needs resizing, current size is ${PLATFORM_SIZE}G,\
             ideal size is ${EXPANDED_PLATFORM_SIZE}G."
 
-        log "$NAME: Verifying if there is enough available space to resize..."
+        log "Verifying if there is enough available space to resize..."
         for NODE in "${NODE_LIST[@]}"; do
             if ! INCREASE_DISK_SIZE=$(verify_space_to_resize $PLATFORM_SIZE $NODE); then
-                log "$NAME: Not enough space in cgts-vg on $NODE to resize, parallel subcloud deployment will be \
+                log "Not enough space in cgts-vg on $NODE to resize, parallel subcloud deployment will be \
                     limited. Resize operations will be skipped."
                 exit 0
             fi
         done
-        log "$NAME: LVG cgts-vg has enough space for resizing, continuing with resize operations..."
+        log "LVG cgts-vg has enough space for resizing, continuing with resize operations..."
 
-        log "$NAME: Trying to resize host-fs backup for both controllers..."
+        log "Trying to resize host-fs backup for both controllers..."
         for NODE in "${NODE_LIST[@]}"; do
             if ! resize_backup_filesystem $INCREASE_DISK_SIZE $NODE; then
-                log "$NAME: Failed while resizing backup fs on $NODE, resize operation aborted."
+                log "Failed while resizing backup fs on $NODE, resize operation aborted."
                 exit 0
             fi
-            log "$NAME: Successfully resized backup filesystem on $NODE."
+            log "Successfully resized backup filesystem on $NODE."
         done
 
-        log "$NAME: Trying to resize controllerfs platform filesystem..."
+        log "Trying to resize controllerfs platform filesystem..."
         if ! resize_platform_controllerfs $PLATFORM_SIZE; then
-            log "$NAME: Failed while resizing controllerfs platform filesystem, resize operation aborted."
+            log "Failed while resizing controllerfs platform filesystem, resize operation aborted."
             exit 0
         fi
-        log "$NAME: Successfully resized controllerfs platform filesystem."
+        log "Successfully resized controllerfs platform filesystem."
     else
-        log "$NAME: Not a DC System Controller deployment. No filesystem resize needed."
+        log "Not a DC System Controller deployment. No filesystem resize needed."
     fi
-    log "$NAME: Filesystems resizing for DC System Controller finished successfully for \
+    log "Filesystems resizing for DC System Controller finished successfully for \
         from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 else
-    log "$NAME: No actions required for from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
+    log "No actions required for from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 fi
 
 exit 0

@@ -13,9 +13,8 @@ FROM_RELEASE=$1
 TO_RELEASE=$2
 ACTION=$3
 
-# This will log to /var/log/platform.log
 function log {
-    logger -p local1.info "$1"
+    echo "$(date -Iseconds | cut -d'+' -f1): ${NAME}[$$]: INFO: $*" >> "/var/log/software.log" 2>&1
 }
 
 DEPLOY_PLAYBOOK=$(ls /usr/local/share/applications/playbooks/*deployment-manager.yaml 2> /dev/null)
@@ -27,9 +26,9 @@ if [[ "${ACTION}" == "activate" ]]; then
     if kubectl --kubeconfig=/etc/kubernetes/admin.conf get namespace| grep -q deployment-manager
     then
         if [[ -z "${DEPLOY_OVERRIDES}" ]] || [[ -z "${DEPLOY_PLAYBOOK}" ]] || [[ -z "${DEPLOY_CHART}" ]]; then
-            log "$NAME: Script execution is skipped. There are no deploy files."
+            log "Script execution is skipped. There are no deploy files."
         else
-            log "$NAME: Refreshing deploy plug-in from $FROM_RELEASE to $TO_RELEASE"
+            log "Refreshing deploy plug-in from $FROM_RELEASE to $TO_RELEASE"
             /usr/local/bin/update-dm.sh ${DEPLOY_PLAYBOOK} \
                                         ${DEPLOY_CHART} \
                                         ${DEPLOY_OVERRIDES} \
@@ -37,10 +36,10 @@ if [[ "${ACTION}" == "activate" ]]; then
             exit $?
         fi
     else
-        log "$NAME: Script execution is skipped. There is no deploy plug-in running in ${FROM_RELEASE}."
+        log "Script execution is skipped. There is no deploy plug-in running in ${FROM_RELEASE}."
     fi
 else
-    log "$NAME: No actions required for from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
+    log "No actions required for from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 fi
 
 exit 0

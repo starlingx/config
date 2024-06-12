@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2022 Wind River Systems, Inc.
+# Copyright (c) 2022-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -16,21 +16,20 @@ ACTION=$3
 # Checks linux distro because barbican is not upgraded in centos
 IS_DEBIAN=$(grep -c "ID=debian" /etc/os-release)
 
-# This will log to /var/log/platform.log
 function log {
-    logger -p local1.info $1
+    echo "$(date -Iseconds | cut -d'+' -f1): ${NAME}[$$]: INFO: $*" >> "/var/log/software.log" 2>&1
 }
 
 # Script start
-log "$NAME: Starting barbican data migration from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
+log "Starting barbican data migration from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 
 if [[ "${ACTION}" == "migrate" ]] && [[ "${TO_RELEASE}" == "22.12" ]] && [[ ${IS_DEBIAN} != 0 ]]; then
 
     /usr/bin/barbican-db-manage upgrade
 
-    log "$NAME: Barbican data migration finished successfully from $FROM_RELEASE to $TO_RELEASE"
+    log "Barbican data migration finished successfully from $FROM_RELEASE to $TO_RELEASE"
 else
-    log "$NAME: No actions required for from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
+    log "No actions required for from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 fi
 
 exit 0

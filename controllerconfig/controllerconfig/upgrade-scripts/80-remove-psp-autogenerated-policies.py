@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Copyright (c) 2023 Wind River Systems, Inc.
+# Copyright (c) 2023-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -9,10 +9,9 @@
 # the platform upgrade to a system. The script will run only when from
 # release is 22.12 and during upgrade-activate.
 
+import logging as LOG
 import subprocess
 import sys
-from controllerconfig.common import log
-LOG = log.get_logger(__name__)
 
 
 def main():
@@ -34,7 +33,10 @@ def main():
             print("Invalid option %s." % sys.argv[arg])
             return 1
         arg += 1
-    log.configure()
+    log_format = ('%(asctime)s: ' + '[%(process)s]: '
+                  '%(filename)s(%(lineno)s): %(levelname)s: %(message)s')
+    LOG.basicConfig(filename="/var/log/software.log",
+                    format=log_format, level=LOG.INFO, datefmt="%FT%T")
 
     # only run this script if from 22.12 release and during upgrade-activate
     if from_release == '22.12' and action == 'activate':

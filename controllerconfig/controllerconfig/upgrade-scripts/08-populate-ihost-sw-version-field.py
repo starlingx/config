@@ -6,11 +6,10 @@
 # The purpose of this script is to populate the sw_version
 # field on i_host table.
 
+import logging as LOG
 import sys
 import psycopg2
-from controllerconfig.common import log
 
-LOG = log.get_logger(__name__)
 CONTROLLER_1_HOSTNAME = "controller-1"
 DEFAULT_POSTGRES_PORT = 5432
 
@@ -35,7 +34,10 @@ def main():
             print("Invalid option %s." % sys.argv[arg])
             return 1
         arg += 1
-    log.configure()
+    log_format = ('%(asctime)s: ' + '[%(process)s]: '
+                  '%(filename)s(%(lineno)s): %(levelname)s: %(message)s')
+    LOG.basicConfig(filename="/var/log/software.log",
+                    format=log_format, level=LOG.INFO, datefmt="%FT%T")
     LOG.info(
         "%s invoked from_release = %s to_release = %s action = %s"
         % (sys.argv[0], from_release, to_release, action)

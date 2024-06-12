@@ -15,18 +15,17 @@
 #   - 'localities' - default now is <region>
 #   - 'organization' - default now is 'starlingx'
 
+import logging as LOG
 import subprocess
 import sys
 import os
 from time import sleep
 import yaml
 
-from controllerconfig.common import log
 from cryptography.hazmat.primitives import serialization
 from sysinv.common import utils as sysinv_utils
 from oslo_serialization import base64
 
-LOG = log.get_logger(__name__)
 KUBE_CMD = 'kubectl --kubeconfig=/etc/kubernetes/admin.conf '
 TMP_FILENAME = '/tmp/update_cert.yml'
 RETRIES = 3
@@ -337,7 +336,10 @@ def main():
             print("Invalid option %s." % sys.argv[arg])
             return 1
         arg += 1
-    log.configure()
+    log_format = ('%(asctime)s: ' + '[%(process)s]: '
+                  '%(filename)s(%(lineno)s): %(levelname)s: %(message)s')
+    LOG.basicConfig(filename="/var/log/software.log",
+                    format=log_format, level=LOG.INFO, datefmt="%FT%T")
 
     if (action == 'activate' and from_release == '22.12'):
         LOG.info("%s invoked with from_release = %s to_release = %s "

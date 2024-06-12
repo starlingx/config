@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2022-2023 Wind River Systems, Inc.
+# Copyright (c) 2022-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -19,13 +19,12 @@ FROM_RELEASE=$1
 TO_RELEASE=$2
 ACTION=$3
 
-# This will log to /var/log/platform.log
 function log {
-    logger -p local1.info $1
+    echo "$(date -Iseconds | cut -d'+' -f1): ${NAME}[$$]: INFO: $*" >> "/var/log/software.log" 2>&1
 }
 
 # Script start
-log "$NAME: Starting updating openldap users from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
+log "Starting updating openldap users from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 
 if [[ "${ACTION}" == "activate" ]] && [[ "${TO_RELEASE}" == "22.12" ]]; then
 
@@ -33,23 +32,23 @@ if [[ "${ACTION}" == "activate" ]] && [[ "${TO_RELEASE}" == "22.12" ]]; then
     echo $distributed_cloud_role)
 
     if [[ $DISTRIBUTED_CLOUD_ROLE == "subcloud" ]] ; then
-        log "$NAME: No actions required for this system type"
+        log "No actions required for this system type"
         exit 0
     fi
 
     if [[ "${FROM_RELEASE}" == "21.12" ]]; then
         BACKUP_DIR="/opt/platform/config/$FROM_RELEASE/ldap"
         /usr/sbin/slapadd -F /etc/ldap/schema -l $BACKUP_DIR/ldap.db
-        log "$NAME: Successfully imported ldap data from $BACKUP_DIR/ldap.db"
+        log "Successfully imported ldap data from $BACKUP_DIR/ldap.db"
 
-        log "$NAME: Remove centos openldap folder"
+        log "Remove centos openldap folder"
         rm -rf /etc/openldap
 
         RC_RM=$?
         if [ ${RC_RM} -eq 0 ]; then
-            log "$NAME: Successfully removed centos openldap folder"
+            log "Successfully removed centos openldap folder"
         else
-            log "$NAME: ERROR - failed to remove centos openldap folder. (RETURNED: $RC_RM)"
+            log "ERROR - failed to remove centos openldap folder. (RETURNED: $RC_RM)"
         fi
     fi
 
@@ -57,13 +56,13 @@ if [[ "${ACTION}" == "activate" ]] && [[ "${TO_RELEASE}" == "22.12" ]]; then
 
     RC=$?
     if [ ${RC} -eq 0 ]; then
-        log "$NAME: Successfully updated openldap users. Script finished successfully."
+        log "Successfully updated openldap users. Script finished successfully."
     else
-        log "$NAME: ERROR - failed to update openldap users. (RETURNED: $RC)"
+        log "ERROR - failed to update openldap users. (RETURNED: $RC)"
         exit 1
     fi
 else
-    log "$NAME: No actions required for from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
+    log "No actions required for from release $FROM_RELEASE to $TO_RELEASE with action $ACTION"
 fi
 
 exit 0

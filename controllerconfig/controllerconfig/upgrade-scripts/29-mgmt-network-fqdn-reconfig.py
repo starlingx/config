@@ -14,13 +14,11 @@
 # - create a flag that will be used by sysinv and puppet code to not
 #     use FQDN entries
 
+import logging as LOG
 import sys
-
 import subprocess
 import os.path
 import socket
-
-from controllerconfig.common import log
 
 PLATFORM_CONF_PATH = '/etc/platform'
 PLATFORM_SIMPLEX_FLAG = '/etc/platform/simplex'
@@ -28,9 +26,6 @@ PLATFORM_SIMPLEX_FLAG = '/etc/platform/simplex'
 # upgrade from release <= 9.0 is not supported anymore
 UPGRADE_DO_NOT_USE_FQDN = PLATFORM_CONF_PATH + \
     '/.upgrade_do_not_use_fqdn'
-
-
-LOG = log.get_logger(__name__)
 
 
 def remove_unused_files_from_hieradata(to_release):
@@ -64,7 +59,10 @@ def main():
     arg = 1
     res = 0
 
-    log.configure()
+    log_format = ('%(asctime)s: ' + '[%(process)s]: '
+                  '%(filename)s(%(lineno)s): %(levelname)s: %(message)s')
+    LOG.basicConfig(filename="/var/log/software.log",
+                    format=log_format, level=LOG.INFO, datefmt="%FT%T")
 
     while arg < len(sys.argv):
         if arg == 1:
