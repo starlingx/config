@@ -16,6 +16,7 @@ from sysinv.common import rest_api
 from sysinv.ipsec_auth.common import constants
 from sysinv.ipsec_auth.common import utils
 from sysinv.ipsec_auth.common.objects import State
+from sysinv.ipsec_auth.common.objects import StatusCode
 from sysinv.ipsec_auth.common.objects import Token
 
 from cryptography import x509
@@ -92,20 +93,25 @@ class IPsecConnection(object):
     ROOT_CA_CRT = 'ca.crt'
 
     def __init__(self):
-        self.op_code = None
         self.hostname = None
+        self.mgmt_ipsec = None
         self.mgmt_subnet = None
+        self.op_code = None
         self.signed_cert = None
         self.tmp_pub_key = None
         self.tmp_priv_key = None
         self.uuid = None
-        self.op_code = None
-        self.mgmt_ipsec = None
+
+        self.state = State.STAGE_1
+        self.status_code = None
         self.ots_token = Token()
+
         self.ca_key = self._get_system_local_ca_secret_info(self.CA_KEY)
         self.ca_crt = self._get_system_local_ca_secret_info(self.CA_CRT)
         self.root_ca_crt = self._get_system_local_ca_secret_info(self.ROOT_CA_CRT)
-        self.state = State.STAGE_1
+
+        if not self.ca_key or not self.ca_crt or not self.root_ca_crt:
+            raise ValueError('Failed to retrieve system-local-ca information')
 
     def handle_messaging(self, sock, sel):
         '''Callback for read events'''
@@ -113,8 +119,8 @@ class IPsecConnection(object):
             client_address = sock.getpeername()
             LOG.debug("Read({})".format(client_address))
             data = utils.socket_recv_all_json(sock, 8192)
-            if data:
-                # A readable client socket has data
+            if data and self.state != State.END_STAGE:
+                # A readable client socket has data and it is not on END_STAGE
                 LOG.debug("Received {!r}".format(data))
                 self.state = State.get_next_state(self.state, self.op_code)
 
@@ -125,25 +131,27 @@ class IPsecConnection(object):
                 if self.state == State.STAGE_2:
                     self.ots_token.activate()
                 self.state = State.get_next_state(self.state, self.op_code)
-            elif self.state == State.END_STAGE:
-                self.ots_token.purge()
-                if self.op_code != constants.OP_CODE_CERT_VALIDATION:
-                    self._update_mgmt_ipsec_state(constants.MGMT_IPSEC_ENABLED)
+            else:
+                # Interpret empty result or END_STAGE as closed connection
+                if not data and self.state != State.END_STAGE:
+                    LOG.warn('No data received from client or empty buffer provided.')
                 self.keep_connection = False
-            elif not data:
-                # Interpret empty result as closed connection
-                LOG.info('No Data received from client or empty buffer provided.')
-                self._cleanup_connection_data()
-                self.keep_connection = False
+                LOG.info("Closing connection with {}".format(client_address))
         except Exception as e:
-            self._cleanup_connection_data()
+            # Exceptions should be handled below
+            # TODO (mbenedit): Log, handle and send failure status code to IPsec
+            # client. Additionally, create different types of failure statuses
+            # for each type of exception raised during IPsec server execution.
+            self.status_code = StatusCode.IPSEC_OP_FAILURE_GENERAL
             LOG.exception("%s" % (e))
             self.keep_connection = False
         finally:
             if not self.keep_connection:
-                LOG.info("Closing connection with {}".format(client_address))
+                self._cleanup_connection_data()
                 sock.close()
                 sel.unregister(sock)
+                LOG.info("Connection closed.")
+            LOG.debug("state: {}, status_code: {}".format(self.state, self.status_code))
 
     def _handle_write(self, recv_message: bytes):
         '''Validate received message and generate response message payload to be
@@ -151,9 +159,6 @@ class IPsecConnection(object):
         try:
             data = json.loads(recv_message.decode('utf-8'))
             payload = {}
-
-            if not self.ca_key or not self.ca_crt or not self.root_ca_crt:
-                raise ValueError('Failed to retrieve system-local-ca information')
 
             if self.state == State.STAGE_2:
                 LOG.info("Received IPSec Auth request")
@@ -165,16 +170,32 @@ class IPsecConnection(object):
                            "received in payload.")
                     raise ConnectionRefusedError(msg)
 
-                if self.op_code == constants.OP_CODE_CERT_VALIDATION:
+                if self.op_code == constants.OP_CODE_INITIAL_AUTH and \
+                   self.mgmt_ipsec == constants.MGMT_IPSEC_ENABLED:
+                    # Initial Auth operation w/ MGMT_IPSEC_ENABLED
+                    # This should return a payload with only IPSEC_OP_ENABLED
+                    # code and move IPsec Connection state to END_STAGE.
+                    LOG.info("Host is already IPsec enabled.")
+                    self.state = State.END_STAGE
+                    self.status_code = StatusCode.IPSEC_OP_ENABLED
+
+                    payload['status_code'] = self.status_code.value
+                elif self.op_code == constants.OP_CODE_CERT_VALIDATION:
+                    # Cert Validation operation
                     cert = x509.load_pem_x509_certificate(base64.b64decode(self.ca_crt))
-                    LOG.debug("Cert Serial:{}".format(cert.serial_number))
+                    LOG.debug("Cert Serial: {}".format(cert.serial_number))
+                    self.status_code = StatusCode.IPSEC_OP_SUCCESS
+
                     payload["ca_cert_serial"] = cert.serial_number
+                    payload['status_code'] = self.status_code.value
                 else:
+                    # Initial Auth and Cert Renewal operations
                     client_data = utils.get_client_host_info_by_mac(mac_addr)
                     self.hostname = client_data['hostname']
                     self.mgmt_subnet = client_data['mgmt_subnet']
                     self.unit_ip = client_data['unit_ip']
                     self.floating_ip = client_data['floating_ip']
+                    self.status_code = StatusCode.IPSEC_OP_IN_PROGRESS
 
                     pub_key = self._generate_tmp_key_pair()
                     token = self.ots_token.get_content()
@@ -186,10 +207,11 @@ class IPsecConnection(object):
                     payload["ca_cert"] = self.ca_crt.decode("utf-8")
                     payload["root_ca_cert"] = self.root_ca_crt.decode("utf-8")
                     payload["hash"] = hash_payload.decode("utf-8")
+                    payload['status_code'] = self.status_code.value
 
-                    LOG.info("Sending IPSec Auth Response")
+                LOG.info("Sending IPSec Auth response")
 
-            if self.state == State.STAGE_4:
+            elif self.state == State.STAGE_4:
                 LOG.info("Received IPSec Auth CSR request")
                 token = data["token"]
                 eiv = base64.b64decode(data["eiv"])
@@ -229,12 +251,13 @@ class IPsecConnection(object):
                                         self.floating_ip, 'utf-8')
 
                 hash_payload = utils.hash_and_sign_payload(self.ca_key, data)
+                self.status_code = StatusCode.IPSEC_OP_SUCCESS
 
                 payload["cert"] = self.signed_cert
                 payload["hash"] = hash_payload.decode("utf-8")
+                payload['status_code'] = self.status_code.value
 
-                LOG.info("Sending IPSec Auth CSR Response")
-
+                LOG.info("Sending IPSec Auth CSR response")
             payload = json.dumps(payload)
             LOG.debug("Payload: %s" % payload)
         except AttributeError as e:
@@ -286,14 +309,18 @@ class IPsecConnection(object):
 
         # Initial auth request
         if self.op_code == constants.OP_CODE_INITIAL_AUTH:
-            if self.uuid and self.mgmt_ipsec is None and mgmt_mac:
-                if not self._update_mgmt_ipsec_state(constants.MGMT_IPSEC_ENABLING):
-                    return False
+            if self.uuid and mgmt_mac:
+                if self.mgmt_ipsec is None:
+                    return self._update_mgmt_ipsec_state(constants.MGMT_IPSEC_ENABLING)
+                elif self.mgmt_ipsec == constants.MGMT_IPSEC_ENABLED:
+                    # Host is already enabled, do nothing and prepare payload
+                    # w/ IPSEC_OP_ENABLED.
+                    pass
             else:
                 LOG.error("Invalid request for operation: %s" % self.op_code)
                 return False
 
-        # Certificate renewal request
+        # Certificate renewal or Certificate Validation requests
         elif (self.op_code == constants.OP_CODE_CERT_RENEWAL or
                 self.op_code == constants.OP_CODE_CERT_VALIDATION):
             if self.uuid and self.mgmt_ipsec == constants.MGMT_IPSEC_ENABLED and mgmt_mac:
@@ -306,14 +333,19 @@ class IPsecConnection(object):
         return True
 
     def _cleanup_connection_data(self):
-        # Interpret empty result as closed connection
+        '''Clean up or update remaining data created during the execution of
+        IPsec operations.'''
         if self.ots_token:
             self.ots_token.purge()
 
-        if (self.op_code == constants.OP_CODE_INITIAL_AUTH and
-             self.mgmt_ipsec and
-             self.mgmt_ipsec != constants.MGMT_IPSEC_ENABLED and
-             self.mgmt_ipsec != constants.MGMT_IPSEC_UPGRADING):
+        if self.op_code != constants.OP_CODE_CERT_VALIDATION and \
+           self.status_code == StatusCode.IPSEC_OP_SUCCESS and \
+           self.state == State.END_STAGE:
+            return self._update_mgmt_ipsec_state(constants.MGMT_IPSEC_ENABLED)
+        elif self.op_code == constants.OP_CODE_INITIAL_AUTH and \
+             self.mgmt_ipsec and \
+             self.mgmt_ipsec != constants.MGMT_IPSEC_ENABLED and \
+             self.mgmt_ipsec != constants.MGMT_IPSEC_UPGRADING:
             return self._update_mgmt_ipsec_state(constants.MGMT_IPSEC_DISABLED)
 
         return True
@@ -356,9 +388,8 @@ class IPsecConnection(object):
             return
 
         data = secret.data.get(attr, None)
-        if data is None:
-            if attr == self.ROOT_CA_CRT:
-                data = secret.data.get(self.CA_CRT, None)
+        if not data and attr == self.ROOT_CA_CRT:
+            data = secret.data.get(self.CA_CRT, None)
 
         if data is None:
             LOG.error("Failed to retrieve %s info." % attr)

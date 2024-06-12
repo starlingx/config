@@ -24,6 +24,7 @@ from sysinv.ipsec_auth.client import config
 from sysinv.ipsec_auth.common import constants
 from sysinv.ipsec_auth.common import utils
 from sysinv.ipsec_auth.common.objects import State
+from sysinv.ipsec_auth.common.objects import StatusCode
 
 LOG = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ class Client(object):
         self.data = None
         self.ots_token = None
         self.local_addr = None
+        self.status_code = None
 
     # Generate message 1 - OP/MAC/HASH
     def _generate_message_1(self):
@@ -108,7 +110,7 @@ class Client(object):
         LOG.info("Generate AES Key (AK1).")
         ak1 = self._generate_ak1(puk1_data)
 
-        LOG.info("Generate Certificate Request (CSR).")
+        LOG.info("Generate Certificate Signing Request (CSR).")
         csr = self._create_csr(prk2)
 
         LOG.info("Encrypt CSR w/ AK1.")
@@ -140,9 +142,17 @@ class Client(object):
 
         LOG.debug("Received {!r})".format(data))
         msg = json.loads(data.decode('utf-8'))
+        self.status_code = StatusCode(msg["status_code"])
+
+        # TODO (mbenedit): Log and handle failure status code received
+        # from IPsec server.
+        if self.status_code == StatusCode.IPSEC_OP_ENABLED:
+            return True
+        elif self.status_code == StatusCode.IPSEC_OP_FAILURE_GENERAL:
+            return False
 
         if self.state == State.STAGE_2:
-            LOG.info("Received IPSec Auth Response")
+            LOG.info("Received IPSec Auth response")
 
             if self.op_code == constants.OP_CODE_CERT_VALIDATION:
                 server_cert_serial = msg['ca_cert_serial']
@@ -175,7 +185,7 @@ class Client(object):
                 utils.save_data(constants.TRUSTED_CA_CERT_0_PATH, ca_cert)
 
         if self.state == State.STAGE_4:
-            LOG.info("Received IPSec Auth CSR Response")
+            LOG.info("Received IPSec Auth CSR response")
             cert = base64.b64decode(msg['cert'])
             digest = base64.b64decode(msg['hash'])
 
@@ -252,10 +262,10 @@ class Client(object):
         payload = None
         if self.state == State.STAGE_1:
             payload = self._generate_message_1()
-            LOG.info("Sending IPSec Auth Request")
+            LOG.info("Sending IPSec Auth request")
         elif self.state == State.STAGE_3:
             payload = self._generate_message_3()
-            LOG.info("Sending IPSec Auth CSR Request")
+            LOG.info("Sending IPSec Auth CSR request")
 
         LOG.debug("Sending {!r})".format(payload))
 
@@ -280,8 +290,6 @@ class Client(object):
         keep_running = True
         while keep_running:
             for key, mask in sel.select(timeout=1):
-                connection = key.fileobj
-
                 LOG.debug("State{}".format(self.state))
                 if mask & selectors.EVENT_READ:
                     self.data = utils.socket_recv_all_json(sock, 8192)
@@ -299,6 +307,10 @@ class Client(object):
 
                         self.state = State.END_STAGE
 
+                    if self.status_code == StatusCode.IPSEC_OP_ENABLED:
+                        LOG.info("Host is already IPsec enabled.")
+                        self.state = State.END_STAGE
+
                     sel.modify(sock, selectors.EVENT_WRITE)
                     self.state = State.get_next_state(self.state, self.op_code)
 
@@ -312,7 +324,7 @@ class Client(object):
                     keep_running = False
 
         LOG.info("Shutting down")
-        sel.unregister(connection)
-        connection.close()
+        sel.unregister(sock)
+        sock.close()
         sel.close()
         sys.exit(exit_code)
