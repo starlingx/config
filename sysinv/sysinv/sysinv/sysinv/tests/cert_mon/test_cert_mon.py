@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -123,6 +123,33 @@ class CertMonTestCase(base.DbTestCase):
         mocked_rest_api_get.return_value = mock_certificates
         actual_certificates = cert_mon_utils.list_platform_certificates(self.keystone_token)
         self.assertEqual(actual_certificates, mock_certificates)
+
+    def test_uninstall_ca_certificate(self):
+        patcher = mock.patch('sysinv.cert_mon.utils.rest_api_request')
+        mocked_rest_api_req = patcher.start()
+        self.addCleanup(patcher.stop)
+
+        mock_uuid = '12345678-9abc-defg-hijk-lmnopqrstuvw'
+        cert_type = constants.CERT_MODE_SSL_CA
+        method = 'DELETE'
+
+        class AnyStringContaining(str):
+            def __eq__(self, string):
+                return self in string
+
+        cert_mon_utils.uninstall_ca_certificate(self.keystone_token, mock_uuid, cert_type)
+        mocked_rest_api_req.assert_called_once_with(self.keystone_token, method, AnyStringContaining(mock_uuid))
+
+    def test_uninstall_ca_certificate_not_allowed_type(self):
+        patcher = mock.patch('sysinv.cert_mon.utils.rest_api_request')
+        mocked_rest_api_req = patcher.start()
+        self.addCleanup(patcher.stop)
+
+        mock_uuid = '12345678-9abc-defg-hijk-lmnopqrstuvw'
+        cert_type = 'invalid'
+
+        cert_mon_utils.uninstall_ca_certificate(self.keystone_token, mock_uuid, cert_type)
+        mocked_rest_api_req.assert_not_called()
 
     def get_registry_watcher(self):
         class FakeContext(object):
@@ -254,6 +281,107 @@ class CertMonTestCase(base.DbTestCase):
         actual_data = mocked_rest_api_upload.call_args[0][3]
 
         self.assertEqual(actual_data['force'], str(force).lower())
+
+    def test_install_ca_not_yet_installed(self):
+        # This is a different subject and serial number from the one in 'rca_cert.pem',
+        # so it's expected that upload function to be called to install new cert
+        cert_subject = 'CN=not_starlingx'
+        good_serial_number = 1234567890
+        expected_to_install = True
+        self.install_ca_certificate_by_subject_with_installed_check(cert_subject,
+                                                                    good_serial_number,
+                                                                    expected_to_install)
+
+    def test_install_ca_already_installed(self):
+        # This is a different subject from the one in 'rca_cert.pem', but the serial
+        # number is the same, so it's expected that upload function is never called
+        cert_subject = 'CN=not_starlingx'
+        bad_serial_number = 518923625354339204099486224200794805079378585369
+        expected_to_install = False
+        self.install_ca_certificate_by_subject_with_installed_check(cert_subject,
+                                                                    bad_serial_number,
+                                                                    expected_to_install)
+
+    def test_install_different_ca_with_subject_duplicate(self):
+        # This is the same subject from the one in 'rca_cert.pem', different serial number.
+        # Since the flag removing on duplicates is True, it's expected that the upload
+        # function is called to install new cert
+        cert_subject = 'CN=starlingx'
+        good_serial_number = 1234567890
+        expected_to_install = True
+        self.install_ca_certificate_by_subject_with_installed_check(cert_subject,
+                                                                    good_serial_number,
+                                                                    expected_to_install)
+
+    def install_ca_certificate_by_subject_with_installed_check(self, subject, serial_number, expected_to_install):
+        token = self.keystone_token
+
+        new_certificate_file = 'rca_cert.pem'
+        new_certificate_serial = 518923625354339204099486224200794805079378585369
+        new_certificate_subject = 'CN=starlingx'
+        pem_file_path = self.get_data_file_path('%s' % new_certificate_file)
+
+        cert_content = None
+        with open(pem_file_path) as f:
+            cert_content = f.read()
+
+        cert_type = constants.CERT_MODE_SSL_CA
+
+        patcher = mock.patch('sysinv.cert_mon.utils.rest_api_upload')
+        mocked_rest_api_upload = patcher.start()
+        self.addCleanup(patcher.stop)
+
+        patcher2 = mock.patch('sysinv.cert_mon.utils.rest_api_request')
+        mocked_rest_api_req = patcher2.start()
+        self.addCleanup(patcher2.stop)
+
+        mocked_rest_api_req.return_value = {
+            'certificates': [
+                {
+                    'signature': cert_type + '_' + str(serial_number),
+                    'subject': subject,
+                    'certtype': cert_type,
+                    'uuid': 'fake_uuid'
+                }
+            ]
+        }
+
+        class FakeEventData(object):
+            ca_crt = cert_content
+
+        class FakeContext(object):
+            def get_token(self):
+                return token
+
+        class AnyStringEndingIn(str):
+            def __eq__(self, string):
+                return string.endswith(self)
+
+        class AnyStringContaining(str):
+            def __eq__(self, string):
+                return self in string
+
+        ca_cert_renew = cert_mon_watcher.SystemLocalCACertRenew(FakeContext())
+        ca_cert_renew.install_ca_certificate(FakeEventData(), cert_type, force=True, uninstall_subject_dup=True)
+
+        # Cert list is always called
+        cert_list_method = 'GET'
+        cert_list_url_suffix = '/certificate'
+        mocked_rest_api_req.assert_any_call(token, cert_list_method, AnyStringEndingIn(cert_list_url_suffix))
+
+        # Cert uninstall is called if serial is diffent but suject is the same
+        cert_uninstall_method = 'DELETE'
+        cert_uninstall_url_suffix = '/certificate/'
+
+        if new_certificate_subject == subject and new_certificate_serial != serial_number:
+            mocked_rest_api_req.assert_any_call(
+                token, cert_uninstall_method, AnyStringContaining(cert_uninstall_url_suffix))
+
+        # If expected to install, cert upload is called once
+        if expected_to_install:
+            mocked_rest_api_upload.assert_called_once_with(token, mock.ANY, mock.ANY, mock.ANY)
+        else:
+            mocked_rest_api_upload.assert_not_called()
 
     def test_update_platform_cert_with_already_installed_cert(self):
         # This is the serial number of 'cert-with-key.pem'

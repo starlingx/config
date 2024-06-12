@@ -62,7 +62,7 @@ class MonitorContext(object):
 
     def __init__(self):
         self.dc_role = None
-        self.kubernete_namespace = None
+        self.kubernetes_namespace = None
 
     def initialize(self):
         self.dc_role = utils.get_dc_role()
@@ -387,7 +387,7 @@ class DC_CertWatcher(CertWatcher):
         else:
             ns = ''
         self.namespace = ns
-        self.context.kubernete_namespace = ns
+        self.context.kubernetes_namespace = ns
         self.register_listener(AdminEndpointRenew(self.context))
         if dc_role == constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER:
             self.register_listener(
@@ -396,6 +396,21 @@ class DC_CertWatcher(CertWatcher):
                 )
             )
             self.register_listener(RootCARenew(self.context))
+
+
+class SystemLocalCACert_CertWatcher(CertWatcher):
+    def __init__(self):
+        super(SystemLocalCACert_CertWatcher, self).__init__()
+
+    def initialize(self):
+        self.context.initialize()
+
+        platcert_ca_ns = constants.CERT_NAMESPACE_PLATFORM_CA_CERTS
+        LOG.info('setting ns for system-local-ca RCA cert : %s & registering listener'
+                 % platcert_ca_ns)
+        self.namespace = constants.CERT_NAMESPACE_PLATFORM_CA_CERTS
+        self.context.kubernetes_namespace = platcert_ca_ns
+        self.register_listener(SystemLocalCACertRenew(self.context))
 
 
 class RestApiCert_CertWatcher(CertWatcher):
@@ -408,7 +423,7 @@ class RestApiCert_CertWatcher(CertWatcher):
         platcert_ns = constants.CERT_NAMESPACE_PLATFORM_CERTS
         LOG.info('setting ns for restapi cert : %s & registering listener' % platcert_ns)
         self.namespace = platcert_ns
-        self.context.kubernete_namespace = platcert_ns
+        self.context.kubernetes_namespace = platcert_ns
         self.register_listener(RestApiCertRenew(self.context))
 
 
@@ -422,7 +437,7 @@ class RegistryCert_CertWatcher(CertWatcher):
         platcert_ns = constants.CERT_NAMESPACE_PLATFORM_CERTS
         LOG.info('setting ns for registry cert : %s & registering listener' % platcert_ns)
         self.namespace = platcert_ns
-        self.context.kubernete_namespace = platcert_ns
+        self.context.kubernetes_namespace = platcert_ns
         self.register_listener(RegistryCertRenew(self.context))
 
 
@@ -436,7 +451,7 @@ class OpenldapCert_CertWatcher(CertWatcher):
         platcert_ns = constants.CERT_NAMESPACE_PLATFORM_CERTS
         LOG.info('setting ns for Openldap cert : %s & registering listener' % platcert_ns)
         self.namespace = platcert_ns
-        self.context.kubernete_namespace = platcert_ns
+        self.context.kubernetes_namespace = platcert_ns
         self.register_listener(OpenldapCertRenew(self.context))
 
 
@@ -459,8 +474,9 @@ class CertificateRenew(CertWatcherListener):
         new private key
         """
         kube_op = sys_kube.KubeOperator()
-        kube_op.kube_delete_secret(event_data.secret_name, self.context.kubernete_namespace)
-        LOG.info('Recreate secret %s:%s' % (self.context.kubernete_namespace, event_data.secret_name))
+        kube_op.kube_delete_secret(event_data.secret_name, self.context.kubernetes_namespace)
+        LOG.info('Recreate secret %s:%s'
+                 % (self.context.kubernetes_namespace, event_data.secret_name))
 
     def update_certificate(self, event_data):
         pass
@@ -706,6 +722,85 @@ class RootCARenew(CertificateRenew):
             raise Exception('Some secrets were not recreated successfully')
 
 
+class TrustedCARenew(CertificateRenew):
+    """Handles a renew event for a certificate that must be installed as a trusted platform cert.
+    """
+
+    def __init__(self, context, secret_name):
+        super(TrustedCARenew, self).__init__(context)
+        self.secret_name = secret_name
+        LOG.info('%s init with secretname: %s' % (self.__class__.__name__, self.secret_name))
+
+    def check_filter(self, event_data):
+        LOG.debug('%s: Received event_data %s' % (self.secret_name, event_data))
+        if self.secret_name == event_data.secret_name:
+            LOG.info('%s check_filter[%s], proceed on event_data: %s'
+                     % (self.__class__.__name__, self.secret_name, event_data))
+            return self.certificate_is_ready(event_data)
+        else:
+            return False
+
+    def do_action(self, event_data):
+        LOG.info('%s do_action: %s' % (self.__class__.__name__, event_data))
+        self.update_certificate(event_data)
+
+    def install_ca_certificate(self,
+                               event_data,
+                               cert_type,
+                               force=False,
+                               uninstall_subject_dup=False):
+        """Install CA certificate stored in a secret
+
+        Save the CA certificate from the secret into a PEM file and send it to the
+        platform to be installed. If force=True, the platform semantic checks will be
+        skipped.
+
+        :param event_data: the event_data that triggered this renew
+        :param cert_type: the type of the certificate that is being updated
+        :param force: whether to bypass semantic checks and force the update,
+            defaults to False
+        :param uninstall_subject_dup: whether to remove a existing cert with same subject.
+            Installation will not succeed if another CA certificate with same subject is
+            already installed as trusted and this flag is not enabled. Defaults to False.
+        """
+        token = self.context.get_token()
+        try:
+            cert_to_be_installed = x509.load_pem_x509_certificate(event_data.ca_crt.encode(),
+                                                                  default_backend())
+            installed_certificates = utils.list_platform_certificates(token)
+
+            for certificate in installed_certificates['certificates']:
+                if certificate['certtype'] != cert_type:
+                    continue
+
+                if str(cert_to_be_installed.serial_number) in certificate['signature']:
+                    LOG.info('Certificate %s is already installed. Skipping installation.' %
+                             certificate['signature'])
+                    return
+
+                if cert_to_be_installed.subject.rfc4514_string() == certificate['subject']:
+                    LOG.warning("A different certificate with same subject as %s is "
+                                "alredy installed as trusted." % certificate['signature'])
+                    if uninstall_subject_dup:
+                        LOG.warning("Uninstalling certificate %s, subject: %s" %
+                                    (certificate['signature'], certificate['subject']))
+                        utils.uninstall_ca_certificate(token, certificate['uuid'], cert_type)
+                    else:
+                        msg = ("The CA certificate of %s cannot be installed as trusted. "
+                               "The already installed certificate %s (uuid: %s) has the same "
+                               "subject (%s), which is not allowed." %
+                                (self.secret_name, certificate['signature'],
+                                certificate['uuid'], certificate['subject']))
+                        raise Exception(msg)
+
+            pem_file_path = utils.update_pemfile(event_data.ca_crt, "")
+            utils.update_platform_cert(token, cert_type, pem_file_path, force)
+
+        except Exception as e:
+            LOG.error("Error when updating certificates: %s" % e)
+            raise
+
+
 class PlatformCertRenew(CertificateRenew):
     """Handles a renew event for a certificate that must be installed as a platform cert.
     """
@@ -755,6 +850,18 @@ class PlatformCertRenew(CertificateRenew):
         except Exception as e:
             LOG.error("Error when updating certificates: %s" % e)
             raise
+
+
+class SystemLocalCACertRenew(TrustedCARenew):
+    def __init__(self, context):
+        super(SystemLocalCACertRenew, self).__init__(context, constants.LOCAL_CA_SECRET_NAME)
+
+    def update_certificate(self, event_data):
+        LOG.info('SystemLocalCACertRenew: Secret changes detected. Initiating CA certificate install')
+        self.install_ca_certificate(event_data,
+                                    constants.CERT_MODE_SSL_CA,
+                                    force=True,
+                                    uninstall_subject_dup=True)
 
 
 class RestApiCertRenew(PlatformCertRenew):

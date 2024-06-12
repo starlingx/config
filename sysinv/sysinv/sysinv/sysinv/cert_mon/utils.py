@@ -709,6 +709,24 @@ def list_platform_certificates(token):
     return rest_api_request(token, "GET", api_cmd)
 
 
+def uninstall_ca_certificate(token, uuid, cert_type):
+    """Uninstall Trusted CA certificate using the sysinv API
+    :param token: the token to access the sysinv API
+    :param uuid: the installed certificate uuid
+    :param cert_type: the type of the certificate. Currently only
+        'ssl_ca' is supported
+    """
+    LOG.info('Uninstalling certificate %s.' % uuid)
+    if cert_type != constants.CERT_MODE_SSL_CA:
+        LOG.error('Cannot uninstall CA certificate of type %s.' % cert_type)
+        return
+
+    sysinv_url = token.get_service_internal_url(constants.SERVICE_TYPE_PLATFORM,
+                                                constants.SYSINV_USERNAME)
+    api_cmd = sysinv_url + '/certificate/' + uuid
+    rest_api_request(token, "DELETE", api_cmd)
+
+
 def update_platform_cert(token, cert_type, pem_file_path, force=False):
     """Update a platform certificate using the sysinv API
     :param token: the token to access the sysinv API
