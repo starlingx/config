@@ -6196,13 +6196,16 @@ class HostController(rest.RestController):
 
         if isinstance(upgrade, usm_service.UsmUpgrade):
             to_host_deploy = usm_service.get_host_deploy(pecan.request.dbapi, to_host['hostname'])
-            if to_host_deploy['host_state'] == constants.DEPLOY_HOST_DEPLOYED:
+            if to_host_deploy['host_state'] in [constants.DEPLOY_HOST_DEPLOYED,
+                                                constants.DEPLOY_HOST_ROLLBACK_DEPLOYED]:
                 # to host has deployed
                 pass
             else:
                 from_host_deploy = usm_service.get_host_deploy(pecan.request.dbapi, from_host['hostname'])
-                if from_host_deploy['host_state'] == constants.DEPLOY_HOST_PENDING and \
-                        to_host_deploy['host_state'] == constants.DEPLOY_HOST_PENDING:
+                if from_host_deploy['host_state'] in [constants.DEPLOY_HOST_PENDING,
+                                                      constants.DEPLOY_HOST_ROLLBACK_PENDING] and \
+                        to_host_deploy['host_state'] in [constants.DEPLOY_HOST_PENDING,
+                                                         constants.DEPLOY_HOST_ROLLBACK_PENDING]:
                     # no host has started deploy yet
                     pass
                 else:
