@@ -46,7 +46,9 @@ from sysinv import objects
 LOG = log.getLogger(__name__)
 
 HIERA_DATA = {
-    'backend': [constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP],
+    'backend': [constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP,
+                constants.CEPH_BACKEND_REPLICATION_CAP,
+                constants.CEPH_BACKEND_MIN_REPLICATION_CAP],
     constants. SB_SVC_CEPH_ROOK_BLOCK: [],
     constants. SB_SVC_CEPH_ROOK_ECBLOCK: [],
     constants. SB_SVC_CEPH_ROOK_FILESYSTEM: [],
@@ -301,8 +303,77 @@ def _get_options_string(storage_file):
 
 
 def _discover_and_validate_backend_hiera_data(caps_dict):
-    # Currently there is no backend specific hiera_data for this backend
-    pass
+    # Validate parameters
+    for k in HIERA_DATA['backend']:
+        v = caps_dict.get(k, None)
+        if not v:
+            raise wsme.exc.ClientSideError("Missing required backend "
+                                           "parameter: %s" % k)
+
+        if cutils.is_aio_simplex_system(pecan.request.dbapi):
+            supported_replication = constants.AIO_SX_CEPH_REPLICATION_FACTOR_SUPPORTED
+        else:
+            supported_replication = constants.CEPH_REPLICATION_FACTOR_SUPPORTED
+
+        # Validate replication factor
+        if k == constants.CEPH_BACKEND_REPLICATION_CAP:
+            if caps_dict.get(constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP) != constants.CEPH_ROOK_DEPLOYMENT_OPEN:
+                v_supported = supported_replication
+                msg = _("Required backend parameter "
+                        "\'%s\' has invalid value \'%s\'. "
+                        "Supported values are %s." %
+                        (k, v, str(v_supported)))
+                try:
+                    v = int(v)
+                except ValueError:
+                    raise wsme.exc.ClientSideError(msg)
+                if v not in v_supported:
+                    raise wsme.exc.ClientSideError(msg)
+            else:
+                try:
+                    rep = int(caps_dict[constants.CEPH_BACKEND_REPLICATION_CAP])
+                    min_rep = int(caps_dict[constants.CEPH_BACKEND_MIN_REPLICATION_CAP])
+                except ValueError:
+                    raise wsme.exc.ClientSideError(_("The %s and %s must be a integer value." %
+                                                    (constants.CEPH_BACKEND_REPLICATION_CAP,
+                                                     constants.CEPH_BACKEND_MIN_REPLICATION_CAP)))
+                if min_rep > rep:
+                    raise wsme.exc.ClientSideError(_("The %s must be greater than %s" %
+                                                    (constants.CEPH_BACKEND_REPLICATION_CAP,
+                                                     constants.CEPH_BACKEND_MIN_REPLICATION_CAP)))
+
+        # Validate min replication factor
+        # In R5 the value for min_replication is fixed and determined
+        # from the value of replication factor as defined in
+        # constants.CEPH_REPLICATION_MAP_DEFAULT.
+        elif k == constants.CEPH_BACKEND_MIN_REPLICATION_CAP:
+            if caps_dict.get(constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP) != constants.CEPH_ROOK_DEPLOYMENT_OPEN:
+                rep = int(caps_dict[constants.CEPH_BACKEND_REPLICATION_CAP])
+                v_supported = constants.CEPH_REPLICATION_MAP_SUPPORTED[rep]
+                msg = _("Missing or invalid value for backend parameter \'%s\', "
+                        "when replication is set as \'%s\'. Supported values are "
+                        "%s." % (k, rep, str(v_supported)))
+                try:
+                    v = int(v)
+                except ValueError:
+                    raise wsme.exc.ClientSideError(msg)
+                if v not in v_supported:
+                    raise wsme.exc.ClientSideError(msg)
+            else:
+                try:
+                    rep = int(caps_dict[constants.CEPH_BACKEND_REPLICATION_CAP])
+                    min_rep = int(caps_dict[constants.CEPH_BACKEND_MIN_REPLICATION_CAP])
+                except ValueError:
+                    raise wsme.exc.ClientSideError(_("The %s and %s must be a integer value." %
+                                                    (constants.CEPH_BACKEND_REPLICATION_CAP,
+                                                     constants.CEPH_BACKEND_MIN_REPLICATION_CAP)))
+                if min_rep > rep:
+                    raise wsme.exc.ClientSideError(_("The %s must be greater than %s" %
+                                                    (constants.CEPH_BACKEND_REPLICATION_CAP,
+                                                     constants.CEPH_BACKEND_MIN_REPLICATION_CAP)))
+
+        else:
+            continue
 
 
 def _discover_and_validate_block_hiera_data(caps_dict):
@@ -511,9 +582,18 @@ def _set_default_values(storage_ceph_rook):
     if deployment not in constants.CEPH_ROOK_DEPLOYMENTS_SUPPORTED:
         deployment = constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER
 
+    if cutils.is_aio_simplex_system(pecan.request.dbapi):
+        def_replication = str(constants.AIO_SX_CEPH_REPLICATION_FACTOR_DEFAULT)
+    else:
+        def_replication = str(constants.CEPH_REPLICATION_FACTOR_DEFAULT)
+
+    def_min_replication = str(constants.CEPH_REPLICATION_MAP_DEFAULT[int(def_replication)])
+
     def_services = f'{constants.SB_SVC_CEPH_ROOK_BLOCK},{constants.SB_SVC_CEPH_ROOK_FILESYSTEM}'
     def_capabilities = {
-        constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP: deployment
+        constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP: deployment,
+        constants.CEPH_BACKEND_REPLICATION_CAP: def_replication,
+        constants.CEPH_BACKEND_MIN_REPLICATION_CAP: def_min_replication
     }
 
     def_state = constants.SB_STATE_CONFIGURING_WITH_APP
@@ -591,38 +671,53 @@ def _pre_patch_checks(storage_ceph_rook_obj, patch_obj):
 
             current_caps_dict = storage_ceph_rook_dict.get('capabilities', {})
 
-            current_deployment = current_caps_dict.get('deployment_model', '')
-            new_deployment = patch_caps_dict.get('deployment_model', '')
-            invalid_model_updates = [constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER,
-                                         constants.CEPH_ROOK_DEPLOYMENT_DEDICATED]
+            # If 'replication' parameter is provided with a valid value and optional
+            # 'min_replication' parameter is not provided, default its value
+            # depending on the 'replication' value.
+            if constants.CEPH_BACKEND_REPLICATION_CAP in patch_caps_dict:
+                req_replication = patch_caps_dict[constants.CEPH_BACKEND_REPLICATION_CAP]
+                if int(req_replication) in constants.CEPH_REPLICATION_FACTOR_SUPPORTED:
+                    if constants.CEPH_BACKEND_MIN_REPLICATION_CAP not in patch_caps_dict:
+                        req_min_replication = \
+                            str(constants.CEPH_REPLICATION_MAP_DEFAULT[int(req_replication)])
+                        patch_caps_dict[constants.CEPH_BACKEND_MIN_REPLICATION_CAP] = \
+                            req_min_replication
 
-            hosts = []
+            current_deployment = current_caps_dict.get(constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP, '')
+            if constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP in patch_caps_dict:
+                new_deployment = patch_caps_dict.get(constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP, '')
+                invalid_model_updates = [constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER,
+                                             constants.CEPH_ROOK_DEPLOYMENT_DEDICATED]
 
-            if new_deployment:
-                if (current_caps_dict['deployment_model'] in invalid_model_updates and
-                        patch_caps_dict['deployment_model'] in invalid_model_updates):
-                    raise wsme.exc.ClientSideError(
-                        _("Change deployment model %s is not supported.") % '<->'.join(
-                            invalid_model_updates))
+                hosts = []
 
-                # Check OSDs
-                if (new_deployment == constants.CEPH_ROOK_DEPLOYMENT_DEDICATED):
-                    hosts = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
+                if new_deployment and current_deployment != new_deployment:
+                    if (current_caps_dict[constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP] in invalid_model_updates and
+                            patch_caps_dict[constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP] in invalid_model_updates):
+                        raise wsme.exc.ClientSideError(
+                            _("Change deployment model %s is not supported.") % '<->'.join(
+                                invalid_model_updates))
 
-                elif (new_deployment == constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER):
-                    hosts = pecan.request.dbapi.ihost_get_by_personality(constants.WORKER)
+                    # Check OSDs
+                    if (new_deployment == constants.CEPH_ROOK_DEPLOYMENT_DEDICATED):
+                        hosts = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
 
-                qtd_host_with_osds = 0
-                for host in hosts:
-                    istors = pecan.request.dbapi.istor_get_by_ihost(host.uuid)
-                    for stor in istors:
-                        if stor.function == constants.STOR_FUNCTION_OSD:
-                            qtd_host_with_osds += 1
+                    elif (new_deployment == constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER):
+                        hosts = pecan.request.dbapi.ihost_get_by_personality(constants.WORKER)
 
-                if qtd_host_with_osds > 0:
-                    raise wsme.exc.ClientSideError(
-                        _("The %s deployment model has %s OSDs deployed"
-                          % (current_deployment, qtd_host_with_osds)))
+                    qtd_host_with_osds = 0
+                    for host in hosts:
+                        istors = pecan.request.dbapi.istor_get_by_ihost(host.uuid)
+                        for stor in istors:
+                            if stor.function == constants.STOR_FUNCTION_OSD:
+                                qtd_host_with_osds += 1
+
+                    if qtd_host_with_osds > 0:
+                        raise wsme.exc.ClientSideError(
+                            _("The %s deployment model has %s OSDs deployed"
+                              % (current_deployment, qtd_host_with_osds)))
+                else:
+                    patch_caps_dict[constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP] = current_deployment
 
             for k in (set(current_caps_dict.keys()) -
                       set(patch_caps_dict.keys())):
