@@ -265,7 +265,8 @@ class InterfaceNetworkController(rest.RestController):
         elif interface_network.network_type == constants.NETWORK_TYPE_ADMIN:
             host = _get_host()
             disable = operation == constants.API_DELETE
-            cutils.update_subcloud_routes(pecan.request.dbapi, [host])
+            if (utils.get_distributed_cloud_role() == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+                cutils.update_subcloud_routes(pecan.request.dbapi, [host])
             pecan.request.rpcapi.update_admin_config(pecan.request.context, host, disable)
 
     def _check_interface_class(self, interface_uuid):
