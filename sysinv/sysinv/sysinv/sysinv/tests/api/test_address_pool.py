@@ -276,12 +276,14 @@ class TestPatchMixin(object):
                                    controller1_address=str(subnet[4]))
 
     def test_fail_reverse_range(self):
+        start = str(self.oam_subnet[-2])
+        end = str(self.oam_subnet[1])
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
-        ranges = [[str(self.oam_subnet[-2]), str(self.oam_subnet[1])]]
+        ranges = [[start, end]]
         response = self.patch_oam_fail(addrpool, http_client.CONFLICT,
                                        ranges=ranges)
-        self.assertIn("start address must be less than end address",
-                      response.json['error_message'])
+        self.assertIn("Invalid range: start address %s must be less than end address %s" %
+                      (start, end), response.json['error_message'])
 
     def test_fail_address_not_in_subnet(self):
         addrpool = self.find_addrpool_by_networktype(constants.NETWORK_TYPE_OAM)
@@ -1148,12 +1150,48 @@ class TestPostMixin(object):
         # Check HTTP response is failed
         self.assertEqual('application/json', response.content_type)
         self.assertEqual(response.status_code, http_client.CONFLICT)
-        self.assertIn("start address must be less than end address",
-            response.json['error_message'])
+        self.assertIn("Invalid range: start address %s must be less than end address %s" %
+                      (start, end), response.json['error_message'])
 
     def test_address_pool_create_invalid_ranges(self):
+        network = str(self.mgmt_subnet.network)
+        prefix = self.mgmt_subnet.prefixlen
+
+        ndict = self.get_post_object('test', network, prefix)
+
+        start = str(self.oam_subnet[1])
+        end = str(self.mgmt_subnet[-2])
+
+        ndict['ranges'] = [[start, end]]
+
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.CONFLICT)
+        self.assertIn("Range start address %s is not within network %s/%d" %
+                      (start, network, prefix), response.json['error_message'])
+
         start = str(self.mgmt_subnet[1])
         end = str(self.oam_subnet[-2])
+
+        ndict['ranges'] = [[start, end]]
+
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.CONFLICT)
+        self.assertIn("Range end address %s is not within network %s/%d" % (end, network, prefix),
+            response.json['error_message'])
+
+    def test_address_pool_create_range_has_network_address(self):
+        start = str(self.mgmt_subnet[0])
+        end = str(self.mgmt_subnet[-2])
         network = str(self.mgmt_subnet.network)
         prefix = self.mgmt_subnet.prefixlen
 
@@ -1165,11 +1203,29 @@ class TestPostMixin(object):
                                   headers=self.API_HEADERS,
                                   expect_errors=True)
 
-        # Check HTTP response is failed
         self.assertEqual('application/json', response.content_type)
         self.assertEqual(response.status_code, http_client.CONFLICT)
-        self.assertIn("Address %s is not within network %s/%d" % (end, network, prefix),
-            response.json['error_message'])
+        self.assertIn("Address pool range cannot include network address: %s" % start,
+                      response.json['error_message'])
+
+    def test_address_pool_create_range_has_broadcast_address(self):
+        start = str(self.mgmt_subnet[1])
+        end = str(self.mgmt_subnet[-1])
+        network = str(self.mgmt_subnet.network)
+        prefix = self.mgmt_subnet.prefixlen
+
+        ndict = self.get_post_object('test', network, prefix)
+        ndict['ranges'] = [[start, end]]
+
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS,
+                                  expect_errors=True)
+
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.CONFLICT)
+        self.assertIn("Address pool range cannot include broadcast address: %s" % end,
+                      response.json['error_message'])
 
     def test_address_pool_create_floating_ip_not_in_subnet(self):
         self._test_create_address_pool_address_not_in_subnet('floating')

@@ -335,16 +335,16 @@ class AddressPoolController(rest.RestController):
             raise exception.AddressPoolRangeVersionMismatch()
         if start_address not in network:
             raise exception.AddressPoolRangeValueNotInNetwork(
-                address=start, network=str(network))
+                position='start', address=start, network=str(network))
         if end_address not in network:
             raise exception.AddressPoolRangeValueNotInNetwork(
-                address=end, network=str(network))
+                position='end', address=end, network=str(network))
         if start_address > end_address:
-            raise exception.AddressPoolRangeTransposed()
+            raise exception.AddressPoolRangeTransposed(start=start_address, end=end_address)
         if start_address == network.network:
-            raise exception.AddressPoolRangeCannotIncludeNetwork()
+            raise exception.AddressPoolRangeCannotIncludeNetwork(address=start_address)
         if end_address == network.broadcast:
-            raise exception.AddressPoolRangeCannotIncludeBroadcast()
+            raise exception.AddressPoolRangeCannotIncludeBroadcast(address=end_address)
         intersection = ipset & netaddr.IPSet(netaddr.IPRange(start, end))
         if intersection.size:
             raise exception.AddressPoolRangeContainsDuplicates(
