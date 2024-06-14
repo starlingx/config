@@ -265,7 +265,7 @@ class Client(object):
 
                 LOG.debug("State{}".format(self.state))
                 if mask & selectors.EVENT_READ:
-                    self.data = connection.recv(8192)
+                    self.data = utils.socket_recv_all_json(sock, 8192)
                     if not self._handle_rcvd_data(self.data):
                         raise ConnectionAbortedError("Error receiving data from server")
                     sel.modify(sock, selectors.EVENT_WRITE)

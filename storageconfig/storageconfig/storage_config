@@ -28,6 +28,8 @@ VOLATILE_CONFIG_FAIL="/var/run/.config_fail"
 DELAY_SEC=600
 IMA_POLICY=/etc/ima.policy
 FIRST_BOOT="/etc/platform/.first_boot"
+IPSEC_ENABLING_RETRIES=3
+IPSEC_ENABLING_DELAY=5
 
 fatal_error()
 {
