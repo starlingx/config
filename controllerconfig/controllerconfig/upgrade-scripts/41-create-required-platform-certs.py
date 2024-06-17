@@ -164,8 +164,12 @@ def get_old_default_CN_by_cert(certificate):
 
 
 def find_root_ca(intermediate_ca):
-    """Look in the trusted bundle for the RCA of the ICA provided
+    """Search for the RCA of the ICA provided
     """
+    if sysinv_utils.verify_self_signed_ca_cert(intermediate_ca):
+        LOG.warning("system-local-ca is using an RCA to sign platform certs.")
+        return intermediate_ca
+
     with open(TRUSTED_BUNDLE_FILEPATH, 'r') as file:
         bundle = file.read().encode('utf-8')
         for cert_obj in sysinv_utils.extract_certs_from_pem(bundle):
