@@ -14513,6 +14513,12 @@ class ConductorManager(service.PeriodicService):
 
         host = self.dbapi.ihost_get(ihost_id)
 
+        version_changed = (host.sw_version != sw_version)
+        if version_changed:
+            LOG.info("%s reports version change from %s to %s" %
+                     (host.hostname, host.sw_version, sw_version))
+            self.dbapi.ihost_update(host.uuid, {'sw_version': sw_version})
+
         host_upgrade = self.dbapi.host_upgrade_get_by_host(host.id)
 
         check_for_alarm = host_upgrade.software_load != host_upgrade.target_load
