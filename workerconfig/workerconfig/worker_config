@@ -28,6 +28,8 @@ VOLATILE_CONFIG_FAIL="/var/run/.config_fail"
 LOGFILE="/var/log/worker_config.log"
 IMA_POLICY=/etc/ima.policy
 FIRST_BOOT="/etc/platform/.first_boot"
+IPSEC_ENABLING_RETRIES=3
+IPSEC_ENABLING_DELAY=5
 
 # Copy of /opt/platform required for worker_services
 VOLATILE_PLATFORM_PATH=$VOLATILE_PATH/cpe_upgrade_opt_platform

@@ -31,7 +31,6 @@ class IPsecServer(object):
 
     def __init__(self, port=constants.DEFAULT_LISTEN_PORT):
         self.port = port
-        self.keep_running = True
 
     def run(self):
         '''Start accepting connections in TCP server'''
@@ -48,7 +47,7 @@ class IPsecServer(object):
 
             self.sel.register(ssocket, selectors.EVENT_READ, None)
 
-            while self.keep_running:
+            while True:
                 for key, _ in self.sel.select(timeout=1):
                     if key.data is None:
                         self._accept(key.fileobj)
@@ -86,6 +85,7 @@ class IPsecServer(object):
 class IPsecConnection(object):
 
     kubeapi = kubernetes.KubeOperator()
+    keep_connection = True
     CA_KEY = 'tls.key'
     CA_CRT = 'tls.crt'
     ROOT_CA_CRT = 'ca.crt'
@@ -110,8 +110,8 @@ class IPsecConnection(object):
         '''Callback for read events'''
         try:
             client_address = sock.getpeername()
-            data = sock.recv(8192)
             LOG.debug("Read({})".format(client_address))
+            data = utils.socket_recv_all_json(sock, 8192)
             if data:
                 # A readable client socket has data
                 LOG.debug("Received {!r}".format(data))
@@ -124,20 +124,24 @@ class IPsecConnection(object):
                 if self.state == State.STAGE_2:
                     self.ots_token.activate()
                 self.state = State.get_next_state(self.state)
-            elif self.state == State.STAGE_5 or not data:
+            elif self.state == State.STAGE_5:
                 self.ots_token.purge()
                 self._update_mgmt_ipsec_state(constants.MGMT_IPSEC_ENABLED)
-
+                self.keep_connection = False
+            elif not data:
                 # Interpret empty result as closed connection
-                LOG.info("Closing connection with {}".format(client_address))
-                sock.close()
-                sel.unregister(sock)
+                LOG.error('Failed to receive data from client or empty buffer provided.')
+                self._cleanup_connection_data()
+                self.keep_connection = False
         except Exception as e:
             self._cleanup_connection_data()
             LOG.exception("%s" % (e))
-            LOG.error("Closing. {}".format(sock.getpeername()))
-            sock.close()
-            sel.unregister(sock)
+            self.keep_connection = False
+        finally:
+            if not self.keep_connection:
+                LOG.info("Closing connection with {}".format(client_address))
+                sock.close()
+                sel.unregister(sock)
 
     def _handle_write(self, recv_message: bytes):
         '''Validate received message and generate response message payload to be
@@ -314,6 +318,8 @@ class IPsecConnection(object):
         if not utils.update_host_mgmt_ipsec_state(self.uuid, ipsec_state):
             LOG.error("Failed to update mgmt IPSec state to : {}".format(ipsec_state))
             return False
+
+        self.mgmt_ipsec = ipsec_state
 
         return True
 

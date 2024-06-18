@@ -182,6 +182,23 @@ def asymmetric_decrypt_data(key, data):
     )
 
 
+def socket_recv_all_json(socket, buff_size):
+    buffer = b''
+    delimiter = b'}'
+    iter = 0
+    while delimiter not in buffer and \
+          len(buffer) < buff_size and \
+          iter < 10:
+        data = socket.recv(buff_size)
+        if not data:
+            return None
+        buffer += data
+        iter = iter + 1
+    if delimiter not in buffer:
+        return None
+    return buffer
+
+
 def hash_payload(payload: dict):
     hash_algorithm = hashes.SHA256()
     hasher = hashes.Hash(hash_algorithm)
