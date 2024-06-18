@@ -1572,6 +1572,10 @@ class StorageCephRookTestCases(base.FunctionalTest):
                          self.get_json('/storage_ceph_rook/%s/' %
                                        response.json['uuid'])['services'])  # Result
         self.assertEqual({constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP: constants.CEPH_ROOK_DEPLOYMENT_CONTROLLER,
+                          constants.CEPH_BACKEND_REPLICATION_CAP:
+                            constants.CEPH_BACKEND_CAP_DEFAULT[constants.CEPH_BACKEND_REPLICATION_CAP],
+                          constants.CEPH_BACKEND_MIN_REPLICATION_CAP:
+                            constants.CEPH_BACKEND_CAP_DEFAULT[constants.CEPH_BACKEND_MIN_REPLICATION_CAP],
                           'test_sparam1': 'bar'},  # Expected
                          self.get_json('/storage_ceph_rook/%s/' %
                                        response.json['uuid'])['capabilities'])  # Result
