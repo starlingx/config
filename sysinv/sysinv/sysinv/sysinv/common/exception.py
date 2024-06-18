@@ -815,7 +815,7 @@ class AddressPoolRangesExcludeExistingAddress(Conflict):
 
 
 class AddressPoolRangeTransposed(Conflict):
-    message = _("start address must be less than end address")
+    message = _("Invalid range: start address %(start)s must be less than end address %(end)s")
 
 
 class AddressPoolRangeTooSmall(Conflict):
@@ -827,15 +827,15 @@ class AddressPoolRangeVersionMismatch(Conflict):
 
 
 class AddressPoolRangeValueNotInNetwork(Conflict):
-    message = _("Address %(address)s is not within network %(network)s")
+    message = _("Range %(position)s address %(address)s is not within network %(network)s")
 
 
 class AddressPoolRangeCannotIncludeNetwork(Conflict):
-    message = _("Address pool range cannot include network address")
+    message = _("Address pool range cannot include network address: %(address)s")
 
 
 class AddressPoolRangeCannotIncludeBroadcast(Conflict):
-    message = _("Address pool range cannot include broadcast address")
+    message = _("Address pool range cannot include broadcast address: %(address)s")
 
 
 class AddressPoolRangeContainsDuplicates(Conflict):
