@@ -287,11 +287,8 @@ class PlatformIPv4ControllerApiDNSPatchTestCase(ApiDNSPatchTestSuiteMixin,
     def test_patch_ip_version_mismatch(self):
         self.is_ipv4 = True
         self.patch_object = self._create_db_object()
-        self.patch_value_no_change = '2001:4860:4860::8888,2001:4860:4860::8844'
+        self.patch_value_no_change = '8.8.8.8,8.8.4.4'
         self.patch_value_changed = '2001:4860:4860::8888'
-        self.patch_value_more_than_permitted = '2001:4860:4860::8888,2001:4860:4860::8844,'\
-                                               '2001:4860:4860::4444,2001:4860:4860::8888'
-        self.patch_value_hostname = "dns.google"
 
         # Update value of patchable field
         response = self.patch_json(self.get_single_url(self.patch_object.uuid),
@@ -336,10 +333,8 @@ class PlatformIPv6ControllerApiDNSPatchTestCase(ApiDNSPatchTestSuiteMixin,
     def test_patch_ip_version_mismatch(self):
         self.is_ipv4 = False
         self.patch_object = self._create_db_object()
-        self.patch_value_no_change = '8.8.8.8,8.8.4.4'
+        self.patch_value_no_change = '2001:4860:4860::8888,2001:4860:4860::8844'
         self.patch_value_changed = '8.8.8.8'
-        self.patch_value_more_than_permitted = '8.8.8.8,8.8.4.4,9.9.9.9,9.8.8.9'
-        self.patch_value_hostname = "dns.google"
 
         # Update value of patchable field
         response = self.patch_json(self.get_single_url(self.patch_object.uuid),
@@ -376,3 +371,55 @@ class PlatformIPv6ControllerApiDNSDeleteTestCase(ApiDNSDeleteTestSuiteMixin,
                                                 base.FunctionalTest,
                                                 dbbase.ControllerHostTestCase):
     pass
+
+
+#  ============= Dual-stack IPv4 primary, IPv6 secondary environment tests ==============
+# Tests DNS Api operations for a Controller (IPv4/IPv6 dual-stack)
+class PlatformDualStackIPv4PrimaryControllerApiDNSPatchTestCase(ApiDNSPatchTestSuiteMixin,
+                                               dbbase.BaseDualStackPrimaryIPv4Mixin,
+                                               base.FunctionalTest,
+                                               dbbase.ControllerHostTestCase):
+    def test_valid_dual_stack_nameservers(self):
+        self.is_ipv4 = True
+        self.patch_object = self._create_db_object()
+        self.patch_value_no_change = '8.8.8.8,8.8.4.4'
+        self.patch_value_changed = '8.8.8.8,fd00::1'
+
+        # Update value of patchable field
+        response = self.patch_json(self.get_single_url(self.patch_object.uuid),
+                                   [{'path': self.patch_path_nameserver,
+                                     'value': self.patch_value_changed,
+                                     'op': 'replace'},
+                                     {"path": self.patch_path_action,
+                                      "value": "apply",
+                                      "op": "replace"}],
+                                   headers=self.API_HEADERS,
+                                   expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
+
+
+#  ============= Dual-stack IPv6 primary, IPv4 secondary environment tests ==============
+# Tests DNS Api operations for a Controller (IPv6/IPv4 dual-stack)
+class PlatformDualStackIPv6PrimaryControllerApiDNSPatchTestCase(ApiDNSPatchTestSuiteMixin,
+                                               dbbase.BaseDualStackPrimaryIPv6Mixin,
+                                               base.FunctionalTest,
+                                               dbbase.ControllerHostTestCase):
+    def test_valid_dual_stack_nameservers(self):
+        self.is_ipv4 = False
+        self.patch_object = self._create_db_object()
+        self.patch_value_no_change = '2001:4860:4860::8888,2001:4860:4860::8844'
+        self.patch_value_changed = '2001:4860:4860::8888,8.8.8.8'
+
+        # Update value of patchable field
+        response = self.patch_json(self.get_single_url(self.patch_object.uuid),
+                                   [{'path': self.patch_path_nameserver,
+                                     'value': self.patch_value_changed,
+                                     'op': 'replace'},
+                                     {"path": self.patch_path_action,
+                                      "value": "apply",
+                                      "op": "replace"}],
+                                   headers=self.API_HEADERS,
+                                   expect_errors=True)
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)
