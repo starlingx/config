@@ -7885,8 +7885,9 @@ class ConductorManager(service.PeriodicService):
         available_versions = set()
         latest_version_bundle = None
 
+        current_k8s_version = self._kube.kube_get_kubernetes_version().strip().lstrip('v')
         if k8s_version is None:
-            k8s_version = self._kube.kube_get_kubernetes_version().strip().lstrip('v')
+            k8s_version = current_k8s_version
         else:
             k8s_version = k8s_version.strip().lstrip('v')
 
@@ -7903,6 +7904,25 @@ class ConductorManager(service.PeriodicService):
                 LOG.debug("Kubernetes version {} is higher than {} which is "
                           "the maximum allowed for bundle {}"
                           .format(k8s_version,
+                                  bundle_metadata.k8s_maximum_version,
+                                  bundle_metadata.file_path))
+            elif ((k8s_upgrade_timing is not None) and
+                    (k8s_upgrade_timing == constants.APP_METADATA_TIMING_PRE) and
+                    (LooseVersion(current_k8s_version) <
+                     LooseVersion(bundle_metadata.k8s_minimum_version))):
+                LOG.debug("Running Kubernetes version {} is lower than {} which is "
+                          "the minimum required for pre updating with bundle {}"
+                          .format(current_k8s_version,
+                                  bundle_metadata.k8s_minimum_version,
+                                  bundle_metadata.file_path))
+            elif ((k8s_upgrade_timing is not None) and
+                    (k8s_upgrade_timing == constants.APP_METADATA_TIMING_PRE) and
+                    (bundle_metadata.k8s_maximum_version is not None) and
+                    (LooseVersion(current_k8s_version) >
+                     LooseVersion(bundle_metadata.k8s_maximum_version))):
+                LOG.debug("Running Kubernetes version {} is higher than {} which is "
+                          "the minimum required for pre updating with bundle {}"
+                          .format(current_k8s_version,
                                   bundle_metadata.k8s_maximum_version,
                                   bundle_metadata.file_path))
             elif (app.app_version != constants.APP_VERSION_PLACEHOLDER and
