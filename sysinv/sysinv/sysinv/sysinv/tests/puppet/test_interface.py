@@ -104,7 +104,9 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                      'sriov_vf_driver': kwargs.get('iface_sriov_vf_driver', None),
                      'max_tx_rate': kwargs.get('max_tx_rate', None),
                      'ipv4_mode': kwargs.get('ipv4_mode', None),
-                     'ipv6_mode': kwargs.get('ipv6_mode', None)}
+                     'ipv6_mode': kwargs.get('ipv6_mode', None),
+                     'ipv4_pool': kwargs.get('ipv4_pool', None),
+                     'ipv6_pool': kwargs.get('ipv6_pool', None)}
         db_interface = dbutils.create_test_interface(**interface)
         for network in networks:
             dbutils.create_test_interface_network_assign(db_interface['id'], network)
@@ -161,7 +163,9 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                      'networktype': networktype,
                      'imtu': 1500,
                      'ipv4_mode': kwargs.get('ipv4_mode', None),
-                     'ipv6_mode': kwargs.get('ipv6_mode', None)}
+                     'ipv6_mode': kwargs.get('ipv6_mode', None),
+                     'ipv4_pool': kwargs.get('ipv4_pool', None),
+                     'ipv6_pool': kwargs.get('ipv6_pool', None)}
         lower_iface['used_by'].append(interface['ifname'])
         db_interface = dbutils.create_test_interface(**interface)
         for network in networks:
@@ -203,7 +207,9 @@ class InterfaceTestCaseMixin(base.PuppetTestCaseMixin):
                      'txhashpolicy': 'layer2',
                      'primary_reselect': kwargs.get('primary_reselect', None),
                      'ipv4_mode': kwargs.get('ipv4_mode', None),
-                     'ipv6_mode': kwargs.get('ipv6_mode', None)}
+                     'ipv6_mode': kwargs.get('ipv6_mode', None),
+                     'ipv4_pool': kwargs.get('ipv4_pool', None),
+                     'ipv6_pool': kwargs.get('ipv6_pool', None)}
 
         aemode = kwargs.get('aemode', None)
         if aemode:
@@ -3641,15 +3647,30 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
         return self._get_new_address(None, family)
 
     def _setup_detached_address(self, iface, family):
-        addr, prefixlen = self._get_new_detached_address(family)
-        address = self._create_test_address(
-                name=f"{iface.ifname}-detached-ipv{family}",
-                family=family,
-                prefix=prefixlen,
-                address=addr,
-                interface_id=iface.id)
-        if (family == constants.IPV4_FAMILY and iface.ipv4_mode == constants.IPV4_STATIC or
-                family == constants.IPV6_FAMILY and iface.ipv6_mode == constants.IPV6_STATIC):
+        pool = None
+        if family == constants.IPV4_FAMILY and iface.ipv4_mode == constants.IPV4_POOL:
+            pool = self.dbapi.address_pool_get(iface.ipv4_pool)
+        elif family == constants.IPV6_FAMILY and iface.ipv4_mode == constants.IPV6_POOL:
+            pool = self.dbapi.address_pool_get(iface.ipv6_pool)
+
+        values = {'family': family, 'interface_id': iface.id}
+
+        if pool:
+            values['name'] = f"{iface.ifname}-pool-ipv{family}"
+            values['address_pool_id'] = pool.id
+            addr, prefixlen = self._get_new_pool_address(pool)
+        else:
+            values['name'] = f"{iface.ifname}-detached-ipv{family}"
+            addr, prefixlen = self._get_new_detached_address(family)
+
+        values['address'] = addr
+        values['prefix'] = prefixlen
+        address = self._create_test_address(**values)
+
+        if (family == constants.IPV4_FAMILY and iface.ipv4_mode in
+                {constants.IPV4_STATIC, constants.IPV4_POOL} or
+                family == constants.IPV6_FAMILY and iface.ipv6_mode in
+                {constants.IPV6_STATIC, constants.IPV6_POOL}):
             self._include_address(iface, None, address)
 
     def _setup_detached_addresses(self, iface):
@@ -4566,6 +4587,18 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
             kwargs['ipv6_addresses'] = addr_count
         return kwargs
 
+    def _get_pool_address_args(self, pools, addr_count):
+        kwargs = {}
+        if constants.IPV4_FAMILY in pools:
+            kwargs['ipv4_mode'] = constants.IPV4_POOL
+            kwargs['ipv4_pool'] = pools[constants.IPV4_FAMILY].uuid
+            kwargs['ipv4_addresses'] = addr_count
+        if constants.IPV6_FAMILY in pools:
+            kwargs['ipv6_mode'] = constants.IPV6_POOL
+            kwargs['ipv6_pool'] = pools[constants.IPV6_FAMILY].uuid
+            kwargs['ipv6_addresses'] = addr_count
+        return kwargs
+
     def test_worker_data_over_ethernet_static_addresses(self):
         self._create_host(constants.WORKER)
         system_dict = self.system.as_dict()
@@ -4614,6 +4647,39 @@ class InterfaceConfigTestMixin(InterfaceTestCaseMixin):
                 {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
                     NET: None, FAMILY: INET6, METHOD: STATIC,
                     OPTIONS: {POST_UP: [IPV6_CFG]}}],
+        }
+        self._validate_config(expected)
+
+    def test_address_mode_pool(self):
+        families = [self.primary_address_family]
+        if self.secondary_address_family:
+            families.append(self.secondary_address_family)
+
+        pools = {}
+        for family in families:
+            if family == constants.IPV4_FAMILY:
+                subnet = netaddr.IPNetwork('192.167.101.0/24')
+            else:
+                subnet = netaddr.IPNetwork('af00::/64')
+            test_pool = dbutils.create_test_address_pool(
+                name=f"test-ipv{family}", network=str(subnet.network),
+                family=family, prefix=subnet.prefixlen,
+                ranges=[[str(subnet[1]), str(subnet[-2])]])
+            pools[family] = test_pool
+
+        self._create_host(constants.CONTROLLER)
+        self._add_ethernet('platform0', constants.INTERFACE_CLASS_PLATFORM,
+                           **self._get_pool_address_args(pools, 1))
+        expected = {
+            'platform0': [
+                {NET: None, FAMILY: INET, METHOD: MANUAL,
+                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}},
+                {MODES: [SS_IPV4, DS_IPV4, DS_IPV6],
+                    NET: None, FAMILY: INET, METHOD: STATIC,
+                    OPTIONS: {POST_UP: [IPV6_CFG]}},
+                {MODES: [SS_IPV6, DS_IPV4, DS_IPV6],
+                    NET: None, FAMILY: INET6, METHOD: STATIC,
+                    OPTIONS: {POST_UP: [SET_TC, IPV6_CFG]}}],
         }
         self._validate_config(expected)
 
