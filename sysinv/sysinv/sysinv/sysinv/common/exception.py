@@ -594,6 +594,14 @@ class MultipleResults(SysinvException):
     message = _("More than one result found.")
 
 
+class ControllerFSNotFound(NotFound):
+    message = _("No ControllerFS with name %(uuid)s found.")
+
+
+class ControllerFSNameNotFound(NotFound):
+    message = _("No ControllerFS with name %(name)s found.")
+
+
 class NTPNotFound(NotFound):
     message = _("No NTP with id %(intp_id)s found.")
 

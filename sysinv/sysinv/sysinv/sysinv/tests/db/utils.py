@@ -461,13 +461,14 @@ def get_test_controller_fs(**kw):
     controller_fs = {
         'id': kw.get('id'),
         'uuid': kw.get('uuid'),
+
         'name': kw.get('name'),
-        'forisystemid': kw.get('forisystemid', None),
-        'state': kw.get('state'),
         'size': kw.get('size'),
         'logical_volume': kw.get('logical_volume'),
-        'replicated': kw.get('replicated'),
-        'isystem_uuid': kw.get('isystem_uuid', None)
+        'replicated': kw.get('replicated', False),
+        'state': kw.get('state'),
+
+        'forisystemid': kw.get('forisystemid', None),
     }
     return controller_fs
 
@@ -1191,6 +1192,40 @@ def get_test_lvm_storage_backend(**kw):
         'forisystemid': kw.get('forisystemid', None)
     }
     return inv
+
+
+def get_test_ceph_rook_storage_backend(**kw):
+    storage_ceph_rook = {
+        'id': kw.get('id'),
+        'uuid': kw.get('uuid'),
+        'backend': kw.get('backend', constants.SB_TYPE_CEPH_ROOK),
+        'name': kw.get('name',
+                       constants.SB_DEFAULT_NAMES[constants.SB_TYPE_CEPH_ROOK]),
+        'state': kw.get('state', None),
+        'task': kw.get('task', None),
+        'services': kw.get('services', "{},{}".format(
+            constants.SB_SVC_CEPH_ROOK_BLOCK,
+            constants.SB_SVC_CEPH_ROOK_FILESYSTEM)),
+        'capabilities': kw.get('capabilities',
+                               constants.CEPH_ROOK_BACKEND_CAP_DEFAULT),
+        'forisystemid': kw.get('forisystemid', None),
+    }
+    return storage_ceph_rook
+
+
+def create_ceph_rook_storage_backend(**kw):
+    """Create test Rook storage backend in DB and return DB object.
+
+    :param kw: kwargs with overriding values for datanework attributes.
+    :returns: Test datanetwork DB object.
+    """
+    rook_backend = get_test_ceph_rook_storage_backend(**kw)
+
+    if 'uuid' not in kw:
+        del rook_backend['uuid']
+
+    dbapi = db_api.get_instance()
+    return dbapi.storage_backend_create(rook_backend)
 
 
 def get_test_port(**kw):
