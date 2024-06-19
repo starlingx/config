@@ -8772,6 +8772,23 @@ class Connection(api.Connection):
                     filter_by(id=fs_id).\
                     delete()
 
+    def count_hosts_by_hostfs(self, name):
+        query = model_query(models.HostFs, read_deleted="no")
+        query = query.filter(models.HostFs.name == name)
+        return query.count()
+
+    @db_objects.objectify(objects.host)
+    def ihosts_get_by_hostfs(self, name,
+                            limit=None, marker=None,
+                            sort_key=None, sort_dir=None):
+        query = model_query(models.ihost)
+        query = add_host_options(query)
+        query = query.join(models.HostFs).filter(
+            models.HostFs.name == name)
+        return _paginate_query(models.ihost, limit, marker,
+                               sort_key, sort_dir,
+                               query)
+
     def _kube_host_upgrade_get(self, host_upgrade_id):
         query = model_query(models.KubeHostUpgrade)
         query = add_identity_filter(query, host_upgrade_id)
