@@ -571,26 +571,42 @@ class SystemController(rest.RestController):
                                                  " as %s" % https_enabled))
 
         if 'distributed_cloud_role' in updates:
-            # At this point dc role cannot be changed after initial
-            # configuration is complete
-            if (rpc_isystem['distributed_cloud_role'] is not None and
-                    cutils.is_initial_config_complete()):
-                raise wsme.exc.ClientSideError(
-                    _("distributed_cloud_role is already set "
-                      " as %s" % rpc_isystem['distributed_cloud_role']))
-            # allow set the role to None before the initial config
-            # is complete
-            elif ((distributed_cloud_role in
-                  [constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER,
-                   constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD] or
-                   distributed_cloud_role is None) and not
-                    cutils.is_initial_config_complete()):
+            valid_distributed_cloud_roles = [
+                None,
+                constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER,
+                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD
+            ]
+            if distributed_cloud_role not in valid_distributed_cloud_roles:
+                raise wsme.exc.ClientSideError(_("Unexpected value '%s' specified"
+                                                " for distributed_cloud_role"
+                                                % distributed_cloud_role))
+
+            if distributed_cloud_role == rpc_isystem['distributed_cloud_role']:
+                # idempotent/re-entrant
+                pass
+            elif not cutils.is_initial_config_complete():
+                # before initial configuration complete
                 change_dc_role = True
                 patched_system['distributed_cloud_role'] = distributed_cloud_role
             else:
-                raise wsme.exc.ClientSideError(_("Unexpected value %s specified"
-                                                 " for distributed_cloud_role"
-                                                 % distributed_cloud_role))
+                # after initial configuration is complete
+                if rpc_isystem['distributed_cloud_role'] is not None:
+                    # already set
+                    raise wsme.exc.ClientSideError(
+                        _("distributed_cloud_role is already set "
+                        " as '%s'" % rpc_isystem['distributed_cloud_role']))
+
+                if distributed_cloud_role == constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD:
+                    # enroll subcloud after factory bootstrap"
+                    # setting None -> 'subcloud'
+                    change_dc_role = True
+                    patched_system['distributed_cloud_role'] = distributed_cloud_role
+                else:
+                    # None -> 'systemcontroller'
+                    raise wsme.exc.ClientSideError(_("Cannot set distributed_cloud_role"
+                                                     " to '%s' after"
+                                                     " initial configuration"
+                                                     % distributed_cloud_role))
 
         if 'vswitch_type' in updates:
             if vswitch_type == rpc_isystem['capabilities']['vswitch_type']:
