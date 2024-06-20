@@ -12,8 +12,10 @@
 
 import logging as LOG
 import sys
-import psycopg2
 import uuid
+
+from packaging import version
+import psycopg2
 
 CONTROLLER_0_HOSTNAME = "controller-0"
 CONTROLLER_1_HOSTNAME = "controller-1"
@@ -49,7 +51,10 @@ def main():
         % (sys.argv[0], from_release, to_release, action)
     )
     res = 0
-    if action == 'migrate' and to_release == '24.09':
+    # TODO(heitormatsui) delete this script when "loads" table is deprecated
+    to_release_version = version.Version(to_release)
+    minimum_version = version.Version("24.09")
+    if action == 'migrate' and to_release_version >= minimum_version:
         try:
             conn = psycopg2.connect("dbname=sysinv user=postgres port=%s"
                                     % postgres_port)
