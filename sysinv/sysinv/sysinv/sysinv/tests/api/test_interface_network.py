@@ -272,6 +272,10 @@ class InterfaceNetworkTestCase(base.FunctionalTest):
         system = self.dbapi.isystem_get_one()
         self.dbapi.isystem_update(system.uuid, {'distributed_cloud_role': dc_role})
 
+    def set_system_mode(self, system_mode):
+        system = self.dbapi.isystem_get_one()
+        self.dbapi.isystem_update(system.uuid, {'system_mode': system_mode})
+
 
 class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
 
@@ -907,10 +911,7 @@ class InterfaceNetworkCreateTestCase(InterfaceNetworkTestCase):
         self._delete_interface_and_check(admin_interface.uuid, expect_errors=False)
 
     def test_create_mgmt_update_no_proxy_list(self):
-        sysmode = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = sysmode.start()
-        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
-        self.addCleanup(sysmode.stop)
+        self.set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
 
         iniconf = mock.patch('sysinv.common.utils.is_initial_config_complete')
         self.mock_utils_is_initial_config_complete = iniconf.start()
@@ -978,10 +979,7 @@ class InterfaceNetworkDeleteTestCase(InterfaceNetworkTestCase):
         super(InterfaceNetworkDeleteTestCase, self).setUp()
 
     def test_delete_mgmt_update_no_proxy_list(self):
-        sysmode = mock.patch('sysinv.api.controllers.v1.utils.get_system_mode')
-        self.mock_utils_get_system_mode = sysmode.start()
-        self.mock_utils_get_system_mode.return_value = constants.SYSTEM_MODE_SIMPLEX
-        self.addCleanup(sysmode.stop)
+        self.set_system_mode(constants.SYSTEM_MODE_SIMPLEX)
 
         iniconf = mock.patch('sysinv.common.utils.is_initial_config_complete')
         self.mock_utils_is_initial_config_complete = iniconf.start()

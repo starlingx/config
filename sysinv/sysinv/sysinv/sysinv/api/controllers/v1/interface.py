@@ -36,7 +36,6 @@ from oslo_log import log
 from oslo_utils import uuidutils
 from sysinv._i18n import _
 from sysinv.api.controllers.v1 import address
-from sysinv.api.controllers.v1 import address_pool
 from sysinv.api.controllers.v1 import base
 from sysinv.api.controllers.v1 import collection
 from sysinv.api.controllers.v1 import port as port_api
@@ -1577,8 +1576,7 @@ def _delete_addressing(interface, family, existing_interface):
 
 
 def _allocate_pool_address(interface_id, pool_uuid, address_name=None):
-    address_pool.AddressPoolController.assign_address(
-        interface_id, pool_uuid, address_name)
+    caddress_pool.alloc_pool_address_to_interface(interface_id, pool_uuid, address_name)
 
 
 def _update_ipv6_address_mode(interface, mode=None, pool=None):

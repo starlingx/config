@@ -91,7 +91,6 @@ import sqlalchemy
 from six.moves import http_client as httplib
 from sysinv._i18n import _
 from sysinv.agent import rpcapiproxy as agent_rpcapi
-from sysinv.api.controllers.v1 import address_pool
 from sysinv.api.controllers.v1 import cpu_utils
 from sysinv.api.controllers.v1 import kube_app as kube_api
 from sysinv.api.controllers.v1 import mtce_api
@@ -120,6 +119,7 @@ from sysinv.common.inotify import flags
 from sysinv.common.inotify import INotify
 from sysinv.common.retrying import retry
 from sysinv.common.storage_backend_conf import StorageBackendConfig
+from sysinv.common import address_pool as caddress_pool
 from cephclient import wrapper as ceph
 from sysinv.conductor import ceph as iceph
 from sysinv.conductor import kube_app
@@ -2161,19 +2161,18 @@ class ConductorManager(service.PeriodicService):
 
             if address_uuid:
                 if existing_address.pool_uuid != addrpool.uuid:
-                    address_pool.remove_address_from_pool(existing_address, self.dbapi)
+                    caddress_pool.disassociate_address_from_pool(existing_address, self.dbapi)
                 address = self.dbapi.address_update(address_uuid, values)
             else:
                 address = self.dbapi.address_create(values)
-            address_pool.add_address_to_pool(addrpool, address.id, hostname, self.dbapi)
+            caddress_pool.associate_address_to_pool(addrpool, address.id, hostname, self.dbapi)
 
         self._generate_dnsmasq_hosts_file()
         return address
 
     def _allocate_pool_address(self, interface_id, pool_uuid, address_name):
-        return address_pool.AddressPoolController.assign_address(
-            interface_id, pool_uuid, address_name, dbapi=self.dbapi
-        )
+        return caddress_pool.alloc_pool_address_to_interface(interface_id, pool_uuid,
+                                                              address_name, self.dbapi)
 
     def _allocate_cluster_host_address_for_host(self, host):
         """Allocates cluster-host address for a given host.

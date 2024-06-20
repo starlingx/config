@@ -22,7 +22,6 @@
 import netaddr
 import pecan
 from pecan import rest
-import random
 import uuid
 import wsme
 import copy
@@ -39,34 +38,16 @@ from sysinv.common import constants
 from sysinv.common import exception
 from sysinv.common import utils as cutils
 from sysinv.common import address_pool as caddress_pool
+from sysinv.common.address_pool import ADDRESS_TO_ID_FIELD_INDEX
 from sysinv import objects
 
 LOG = log.getLogger(__name__)
 
-# Defines the list of network address allocation schemes
-SEQUENTIAL_ALLOCATION = 'sequential'
-RANDOM_ALLOCATION = 'random'
-VALID_ALLOCATION_ORDER = [SEQUENTIAL_ALLOCATION, RANDOM_ALLOCATION]
+# Define the list of valid address allocation schemes
+VALID_ALLOCATION_ORDER = [caddress_pool.SEQUENTIAL_ALLOCATION, caddress_pool.RANDOM_ALLOCATION]
 
 # Defines the default allocation order if not specified
-DEFAULT_ALLOCATION_ORDER = RANDOM_ALLOCATION
-
-# Address Pool optional field names
-ADDRPOOL_CONTROLLER0_ADDRESS_ID = 'controller0_address_id'
-ADDRPOOL_CONTROLLER1_ADDRESS_ID = 'controller1_address_id'
-ADDRPOOL_FLOATING_ADDRESS_ID = 'floating_address_id'
-ADDRPOOL_GATEWAY_ADDRESS_ID = 'gateway_address_id'
-
-ADDRESS_FIELDS = {'gateway_address': 'gateway_address_id',
-                  'floating_address': 'floating_address_id',
-                  'controller0_address': 'controller0_address_id',
-                  'controller1_address': 'controller1_address_id'}
-
-CONTROLLER_ADDRESS_FIELDS = {
-    constants.CONTROLLER_GATEWAY: ('gateway_address', 'gateway_address_id'),
-    constants.CONTROLLER_HOSTNAME: ('floating_address', 'floating_address_id'),
-    constants.CONTROLLER_0_HOSTNAME: ('controller0_address', 'controller0_address_id'),
-    constants.CONTROLLER_1_HOSTNAME: ('controller1_address', 'controller1_address_id')}
+DEFAULT_ALLOCATION_ORDER = caddress_pool.RANDOM_ALLOCATION
 
 # Address pools for the admin and system controller networks in the subcloud
 # are allowed to be deleted/modified post install.
@@ -421,79 +402,6 @@ class AddressPoolController(rest.RestController):
         current = addrpool['ranges']
         addrpool['ranges'] = sorted(current, key=lambda x: netaddr.IPAddress(x[0]))
 
-    @classmethod
-    def _select_address(cls, available, order):
-        """
-        Chooses a new IP address from the set of available addresses according
-        to the allocation order directive.
-        """
-        if order == SEQUENTIAL_ALLOCATION:
-            return str(next(available.iter_ipranges())[0])
-        elif order == RANDOM_ALLOCATION:
-            index = random.randint(0, available.size - 1)
-            for r in available.iter_ipranges():
-                if index < r.size:
-                    return str(r[index])
-                index = index - r.size
-        else:
-            raise exception.AddressPoolInvalidAllocationOrder(order=order)
-
-    @classmethod
-    def allocate_address(cls, pool, dbapi=None, order=None):
-        """
-        Allocates the next available IP address from a pool.
-        """
-        if not dbapi:
-            dbapi = pecan.request.dbapi
-        # Build a set of defined ranges
-        defined = netaddr.IPSet()
-        for (start, end) in pool.ranges:
-            defined.update(netaddr.IPRange(start, end))
-        # Determine which addresses are already in use
-        addresses = dbapi.addresses_get_by_pool(pool.id)
-        inuse = netaddr.IPSet()
-        for a in addresses:
-            inuse.add(a.address)
-        # Calculate which addresses are still available
-        available = defined - inuse
-        if available.size == 0:
-            raise exception.AddressPoolExhausted(name=pool.name)
-        if order is None:
-            order = pool.order
-        # Select an address according to the allocation scheme
-        return cls._select_address(available, order)
-
-    # @cutils.synchronized("address-pool-allocation", external=True)
-    @classmethod
-    def assign_address(cls, interface_id, pool_uuid, address_name=None,
-                       dbapi=None):
-        """
-        Allocates the next available IP address from a pool and assigns it to
-        an interface object.
-        """
-        if not dbapi:
-            dbapi = pecan.request.dbapi
-        pool = dbapi.address_pool_get(pool_uuid)
-        ip_address = cls.allocate_address(pool, dbapi)
-        values = {'address': ip_address,
-                  'prefix': pool['prefix'],
-                  'family': pool['family'],
-                  'enable_dad': constants.IP_DAD_STATES[pool['family']],
-                  'address_pool_id': pool['id'],
-                  'interface_id': interface_id}
-        if address_name:
-            values['name'] = address_name
-        try:
-            existing_address = dbapi.address_get_by_address(ip_address)
-            if existing_address.pool_id != pool.id:
-                # If the address already exists, it could belong to an unassigned address pool
-                # and has to be removed from it
-                remove_address_from_pool(existing_address, dbapi)
-            address_obj = dbapi.address_update(existing_address.id, values)
-        except exception.AddressNotFoundByAddress:
-            address_obj = dbapi.address_create(values)
-        return address_obj
-
     def _validate_range_updates(self, addrpool, updates):
         addresses = pecan.request.dbapi.addresses_get_by_pool(addrpool.id)
         if not addresses:
@@ -503,7 +411,7 @@ class AddressPoolController(rest.RestController):
         for address in addresses:
             address_index[address.id] = address
 
-        for field, id_field in ADDRESS_FIELDS.items():
+        for id_field in ADDRESS_TO_ID_FIELD_INDEX.values():
             address_id = getattr(addrpool, id_field)
             if address_id:
                 address_index.pop(address_id, None)
@@ -529,7 +437,7 @@ class AddressPoolController(rest.RestController):
 
     def _check_address_duplicates(self, addrpool_dict):
         addr_map = {}
-        for field in ADDRESS_FIELDS.keys():
+        for field in ADDRESS_TO_ID_FIELD_INDEX.keys():
             addr = addrpool_dict.get(field, None)
             if not addr:
                 continue
@@ -539,7 +447,7 @@ class AddressPoolController(rest.RestController):
             addr_map[addr] = field
 
     def _validate_addresses(self, subnet, addrpool):
-        for addr_field in ADDRESS_FIELDS.keys():
+        for addr_field in ADDRESS_TO_ID_FIELD_INDEX.keys():
             address = addrpool[addr_field]
             if address:
                 self._check_valid_address(subnet, address)
@@ -547,7 +455,7 @@ class AddressPoolController(rest.RestController):
     def _check_existing_addresses(self, addrpool, updates):
         updated_fields = self.context['updated_fields']
         existing_addresses = {}
-        for addr_field in ADDRESS_FIELDS.keys():
+        for addr_field in ADDRESS_TO_ID_FIELD_INDEX.keys():
             if addr_field not in updated_fields:
                 continue
             ip_address = updates[addr_field]
@@ -658,7 +566,7 @@ class AddressPoolController(rest.RestController):
         existing_addresses = self._get_existing_addresses(addrpool, subnet)
 
         new_addresses = []
-        for addr_field, id_field in ADDRESS_FIELDS.items():
+        for addr_field, id_field in ADDRESS_TO_ID_FIELD_INDEX.items():
             ip_address = addrpool_dict.pop(addr_field, None)
             if not ip_address:
                 continue
@@ -686,7 +594,7 @@ class AddressPoolController(rest.RestController):
             for addr_field, address in existing_addresses.items():
                 # If the address already exists, it could belong to an unassigned address pool
                 # and has to be removed from it
-                remove_address_from_pool(address)
+                caddress_pool.disassociate_address_from_pool(address)
                 values['name'] = '{}-{}'.format(addrpool_dict['name'], addr_field)
                 pecan.request.dbapi.address_update(address.id, values)
 
@@ -699,7 +607,7 @@ class AddressPoolController(rest.RestController):
 
     def _get_existing_addresses(self, addrpool, subnet):
         address_index = {}
-        for field in ADDRESS_FIELDS.keys():
+        for field in ADDRESS_TO_ID_FIELD_INDEX.keys():
             address = getattr(addrpool, field, None)
             if not address:
                 continue
@@ -791,7 +699,7 @@ class AddressPoolController(rest.RestController):
         for field in update_cmds.keys():
             address = existing_addresses.pop(field, None)
             if address:
-                remove_address_from_pool(address)
+                caddress_pool.disassociate_address_from_pool(address)
                 pecan.request.dbapi.address_destroy(address.id)
 
     def _update_addresses(self, addrpool, network_types, updates, existing_addresses):
@@ -802,7 +710,7 @@ class AddressPoolController(rest.RestController):
 
         prefix_updated = self._prefix_updated(addrpool, updates)
 
-        for addr_field, addr_id_field in ADDRESS_FIELDS.items():
+        for addr_field, addr_id_field in ADDRESS_TO_ID_FIELD_INDEX.items():
             current_addr = getattr(addrpool, addr_field)
             if addr_field in updates:
                 new_addr = updates.pop(addr_field)
@@ -834,7 +742,7 @@ class AddressPoolController(rest.RestController):
 
     def _apply_address_update_cmds(self, addrpool, updates, update_index, field_updates):
         for addr_field, values in update_index.items():
-            addr_id_field = ADDRESS_FIELDS[addr_field]
+            addr_id_field = ADDRESS_TO_ID_FIELD_INDEX[addr_field]
             address_obj = pecan.request.dbapi.address_get_by_id(getattr(addrpool, addr_id_field))
             pecan.request.dbapi.address_update(address_obj.uuid, values)
             if 'address' in values:
@@ -845,7 +753,9 @@ class AddressPoolController(rest.RestController):
             pecan.request.dbapi.address_destroy_by_id(getattr(addrpool, addr_id_field))
             updates[addr_id_field] = None
 
-    FIELD_TO_HOSTNAME = {value[0]: key for key, value in CONTROLLER_ADDRESS_FIELDS.items()}
+    FIELD_TO_HOSTNAME = {caddress_pool.CONTROLLER0_ADDRESS: constants.CONTROLLER_0_HOSTNAME,
+                         caddress_pool.CONTROLLER1_ADDRESS: constants.CONTROLLER_1_HOSTNAME,
+                         caddress_pool.FLOATING_ADDRESS: constants.CONTROLLER_HOSTNAME}
 
     def _get_address_hostname(self, field, network_type, dc_role):
         if field == 'gateway_address':
@@ -871,7 +781,7 @@ class AddressPoolController(rest.RestController):
             dc_role = utils.get_distributed_cloud_role()
 
         for addr_field, values in create_index.items():
-            addr_id_field = ADDRESS_FIELDS[addr_field]
+            addr_id_field = ADDRESS_TO_ID_FIELD_INDEX[addr_field]
             params = create_params.copy()
             params.update(values)
             if network_type:
@@ -882,7 +792,7 @@ class AddressPoolController(rest.RestController):
             existing_addr = existing_addresses.get(addr_field, None)
             if existing_addr:
                 address = pecan.request.dbapi.address_update(existing_addr.id, params)
-                remove_address_from_pool(existing_addr)
+                caddress_pool.disassociate_address_from_pool(existing_addr)
             else:
                 address = pecan.request.dbapi.address_create(params)
             field_updates[addr_field] = address.address
@@ -1126,27 +1036,3 @@ def remove_management_addresses_from_no_proxy_list(addrpools):
         addresses = _collect_management_addresses(addrpool)
         if addresses:
             _update_docker_no_proxy_list(no_proxy_entry, to_remove=addresses)
-
-
-def remove_address_from_pool(address, dbapi=None):
-    if not address.pool_uuid:
-        return
-    if not dbapi:
-        dbapi = pecan.request.dbapi
-    addrpool = dbapi.address_pool_get(address.pool_uuid)
-    for field in ADDRESS_FIELDS.values():
-        if getattr(addrpool, field, None) is not None:
-            dbapi.address_pool_update(addrpool.id, {field: None})
-            LOG.info("Address {} removed from address pool {{{}}}, field '{}'".format(
-                address.address, addrpool.uuid, field))
-            return
-
-
-def add_address_to_pool(addrpool, address_id, hostname, dbapi=None):
-    field = CONTROLLER_ADDRESS_FIELDS.get(hostname, None)
-    if not field:
-        return
-    if getattr(addrpool, field[1]) != address_id:
-        if not dbapi:
-            dbapi = pecan.request.dbapi
-        dbapi.address_pool_update(addrpool.id, {field[1]: address_id})
