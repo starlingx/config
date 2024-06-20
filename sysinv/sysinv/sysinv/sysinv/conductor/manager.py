@@ -9669,6 +9669,47 @@ class ConductorManager(service.PeriodicService):
             cutils.touch(
                 self._get_oam_runtime_apply_file(standby_controller=True))
 
+    def update_kubernetes_dual_stack_config(self, context, family, disable=False):
+        personalities = [constants.CONTROLLER,
+                         constants.WORKER]
+        config_uuid = self._config_update_hosts(context, personalities)
+        ip_family = constants.IP_FAMILIES[family].lower()
+        LOG.info(f"kubernetes dual-stack config ip_family={ip_family} disable={disable}")
+
+        if not disable:
+            config_dict = {
+                "personalities": personalities,
+                "classes": ['platform::network::runtime',
+                            'platform::firewall::runtime',
+                            f'platform::kubernetes::kubeadm::dual_stack::{ip_family}::runtime',
+                            'platform::kubernetes::kubelet::update_node_ip::runtime',
+                            f'platform::sm::cluster_host::remove_ip_config::{ip_family}::runtime',
+                            f'platform::sm::cluster_host::add_ip_config::{ip_family}::runtime']
+            }
+        else:
+            config_dict = {
+                "personalities": personalities,
+                "classes": [f'platform::kubernetes::kubeadm::dual_stack::{ip_family}::runtime',
+                            'platform::kubernetes::kubelet::update_node_ip::runtime',
+                            'platform::firewall::runtime',
+                            'platform::network::runtime',
+                            f'platform::sm::cluster_host::remove_ip_config::{ip_family}::runtime']
+            }
+
+        self._config_apply_runtime_manifest(context, config_uuid, config_dict)
+
+        active_controller = utils.HostHelper.get_active_controller(self.dbapi)
+        personalities = [constants.CONTROLLER]
+        config_uuid = self._config_update_hosts(context, personalities, [active_controller.uuid])
+        config_dict = {
+            "personalities": personalities,
+            "host_uuids": [active_controller.uuid],
+            "classes": [f'platform::kubernetes::dual_stack::{ip_family}::runtime',
+                         'platform::kubernetes::certsans::runtime']
+        }
+        self._config_apply_runtime_manifest(context, config_uuid=config_uuid,
+                                            config_dict=config_dict)
+
     def update_user_config(self, context, host_uuids=None):
         """Update the user configuration"""
         LOG.info("update_user_config")

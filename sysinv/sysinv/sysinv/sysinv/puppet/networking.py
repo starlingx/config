@@ -33,6 +33,9 @@ class NetworkingPuppet(base.BasePuppet):
         config.update(self._get_ironic_network_config())
         config.update(self._get_admin_network_config())
         config.update(self._get_storage_network_config())
+
+        config.update(self._get_cluster_pod_config())
+        config.update(self._get_cluster_service_config())
         return config
 
     def get_host_config(self, host):
@@ -90,6 +93,16 @@ class NetworkingPuppet(base.BasePuppet):
 
     def _get_cluster_network_config(self):
         networktype = constants.NETWORK_TYPE_CLUSTER_HOST
+        config = self._get_network_config(networktype)
+        return config
+
+    def _get_cluster_pod_config(self):
+        networktype = constants.NETWORK_TYPE_CLUSTER_POD
+        config = self._get_network_config(networktype)
+        return config
+
+    def _get_cluster_service_config(self):
+        networktype = constants.NETWORK_TYPE_CLUSTER_SERVICE
         config = self._get_network_config(networktype)
         return config
 

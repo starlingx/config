@@ -138,12 +138,33 @@ class NetworkAddresspoolController(rest.RestController):
             sort_key=sort_key, sort_dir=sort_dir)
 
     def _populate_network_addresses(self, pool, network, addresses, net_pool):
+        """Populate the address table with host addresses and if associated with
+           with a interface update that information in the table
 
+        Args:
+            pool (object.AddressPool): the address pool object
+            network (object.Network): the network object
+            addresses (dict[key=addr-name,value=IP]): if there are adresses allocated to controllers
+                              and gateway it will provide the IP value, otherwise value=None
+            net_pool (object.NetworkAddressPool): network-addrpoool object
+        """
         if_net_list = pecan.request.dbapi.interface_network_get_by_network_id(net_pool.network_id)
         hostname_dict = dict()
+        non_crtl_hostname_list = list()
         for if_net in if_net_list:
             host = pecan.request.dbapi.ihost_get(if_net.forihostid)
             hostname_dict.update({host.hostname: if_net})
+            if host.personality != constants.CONTROLLER:
+                non_crtl_hostname_list.append(host.hostname)
+
+        # add the non-controller hosts in addresses
+        for hostname in non_crtl_hostname_list:
+            addr_name = f"{hostname}-{net_pool.network_type}"
+            try:
+                addr = pecan.request.dbapi.address_get_by_name_and_family(addr_name, pool.family)
+                addresses.update({hostname: addr.address})
+            except Exception:
+                addresses.update({hostname: None})
 
         opt_fields = {}
         for name, address in addresses.items():
@@ -223,11 +244,13 @@ class NetworkAddresspoolController(rest.RestController):
                                .format(host['hostname']))
                         raise wsme.exc.ClientSideError(msg)
                 return
-        elif network.type not in [constants.NETWORK_TYPE_CLUSTER_HOST,
-                                  constants.NETWORK_TYPE_PXEBOOT,
-                                  constants.NETWORK_TYPE_CLUSTER_POD,
-                                  constants.NETWORK_TYPE_CLUSTER_SERVICE,
-                                  constants.NETWORK_TYPE_STORAGE]:
+        elif network.type in [constants.NETWORK_TYPE_CLUSTER_HOST,
+                              constants.NETWORK_TYPE_CLUSTER_POD,
+                              constants.NETWORK_TYPE_CLUSTER_SERVICE]:
+            return
+        elif network.type not in [constants.NETWORK_TYPE_PXEBOOT,
+                                  constants.NETWORK_TYPE_STORAGE,
+                                  constants.NETWORK_TYPE_MULTICAST]:
             return
         if cutils.is_initial_config_complete():
             oper_text = 'create' if operation == constants.API_POST else 'delete'
@@ -237,6 +260,33 @@ class NetworkAddresspoolController(rest.RestController):
 
     def _check_address_pool_overlap(self, network, pool):
         caddress_pool.check_address_pools_overlaps(pecan.request.dbapi, [pool], {network.type})
+
+    def _check_cluster_dual_stack_config(self, operation, network):
+
+        cpod_pools = list()
+        cpod = pecan.request.dbapi.networks_get_by_type(constants.NETWORK_TYPE_CLUSTER_POD)
+        if cpod:
+            cpod_pools = pecan.request.dbapi.address_pools_get_by_network(cpod[0].id)
+
+        csvc_pools = list()
+        csvc = pecan.request.dbapi.networks_get_by_type(constants.NETWORK_TYPE_CLUSTER_SERVICE)
+        if csvc:
+            csvc_pools = pecan.request.dbapi.address_pools_get_by_network(csvc[0].id)
+
+        chost_pools = list()
+        chost = pecan.request.dbapi.networks_get_by_type(constants.NETWORK_TYPE_CLUSTER_HOST)
+        if chost:
+            chost_pools = pecan.request.dbapi.address_pools_get_by_network(chost[0].id)
+
+        if (operation == constants.API_POST) and (len(cpod_pools) > 1) \
+                and (len(csvc_pools) > 1) and (len(chost_pools) > 1):
+            return True
+
+        elif (operation == constants.API_DELETE) and (len(cpod_pools) == 1) \
+                and (len(chost_pools) == 1) and (len(csvc_pools) == 1):
+            return True
+
+        return False
 
     def _network_addresspool_operation_complete(self, operation, network, addrpool, hosts):
         if network.type == constants.NETWORK_TYPE_OAM:
@@ -262,6 +312,16 @@ class NetworkAddresspoolController(rest.RestController):
                 for host in hosts:
                     pecan.request.rpcapi.update_admin_config(pecan.request.context, host,
                                                              disable=disable)
+
+        elif network.type in [constants.NETWORK_TYPE_CLUSTER_HOST,
+                            constants.NETWORK_TYPE_CLUSTER_POD,
+                            constants.NETWORK_TYPE_CLUSTER_SERVICE] \
+                and self._check_cluster_dual_stack_config(operation, network) \
+                and cutils.is_initial_config_complete():
+            disable = True if operation == constants.API_DELETE else False
+            LOG.info(f"kubernetes dual_stack config( family{addrpool.family} disable={disable})")
+            pecan.request.rpcapi.update_kubernetes_dual_stack_config(pecan.request.context,
+                                                                     addrpool.family, disable)
 
     def _create_network_addrpool(self, network_addrpool):
         # Perform syntactic validation

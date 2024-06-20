@@ -940,7 +940,7 @@ class PopulateAddresses(object):
         elif network['type'] == constants.NETWORK_TYPE_PXEBOOT:
             addresses = PopulateAddresses._create_pxeboot_network_address()
         elif network['type'] == constants.NETWORK_TYPE_CLUSTER_HOST:
-            addresses = PopulateAddresses._create_cluster_host_network_address()
+            addresses = PopulateAddresses._create_cluster_host_network_address(pool)
         elif network['type'] == constants.NETWORK_TYPE_OAM:
             addresses = PopulateAddresses._create_oam_network_address(pool)
         elif network['type'] == constants.NETWORK_TYPE_MULTICAST:
@@ -1029,11 +1029,25 @@ class PopulateAddresses(object):
         return addresses
 
     @staticmethod
-    def _create_cluster_host_network_address():
-        addresses = collections.OrderedDict()
-        addresses[constants.CONTROLLER_HOSTNAME] = None
-        addresses[constants.CONTROLLER_0_HOSTNAME] = None
-        addresses[constants.CONTROLLER_1_HOSTNAME] = None
+    def _create_cluster_host_network_address(pool):
+        addresses = {}
+        if pool.floating_address:
+            addresses.update(
+                {constants.CONTROLLER_HOSTNAME: pool.floating_address})
+        else:
+            addresses.update({constants.CONTROLLER_HOSTNAME: None})
+
+        if pool.controller0_address:
+            addresses.update(
+                {constants.CONTROLLER_0_HOSTNAME: pool.controller0_address})
+        else:
+            addresses.update({constants.CONTROLLER_0_HOSTNAME: None})
+
+        if pool.controller1_address:
+            addresses.update(
+                {constants.CONTROLLER_1_HOSTNAME: pool.controller1_address})
+        else:
+            addresses.update({constants.CONTROLLER_1_HOSTNAME: None})
         return addresses
 
     @staticmethod

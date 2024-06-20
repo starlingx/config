@@ -766,11 +766,21 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         return self.call(context, self.make_msg('initialize_oam_config', host=host))
 
     def update_oam_config(self, context):
-        """Synchronously, have the conductor update the OAM configuration.
+        """Synchronously, have the conductor update the OAM network configuration.
 
         :param context: request context.
         """
         return self.call(context, self.make_msg('update_oam_config'))
+
+    def update_kubernetes_dual_stack_config(self, context, family, disable=False):
+        """Synchronously, have the conductor update the Dual-Stack config in kubernetes.
+
+        :param context: request context.
+        :param family:  IP address family.
+        :param disable: type of operation.
+        """
+        return self.call(context, self.make_msg('update_kubernetes_dual_stack_config',
+                                                family=family, disable=disable))
 
     def update_user_config(self, context, host_uuids=None):
         """Synchronously, have the conductor update the user configuration.
