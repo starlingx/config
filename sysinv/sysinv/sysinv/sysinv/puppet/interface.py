@@ -727,10 +727,12 @@ def get_interface_address_method(context, iface, network=None, address=None):
 
     has_static_addr = False
     if address:
-        if address.family == constants.IPV4_FAMILY and iface.ipv4_mode == constants.IPV4_STATIC:
-            has_static_addr = True
-        elif address.family == constants.IPV6_FAMILY and iface.ipv6_mode == constants.IPV6_STATIC:
-            has_static_addr = True
+        if address.family == constants.IPV4_FAMILY:
+            if iface.ipv4_mode in {constants.IPV4_STATIC, constants.IPV4_POOL}:
+                has_static_addr = True
+        elif address.family == constants.IPV6_FAMILY:
+            if iface.ipv6_mode in {constants.IPV6_STATIC, constants.IPV6_POOL}:
+                has_static_addr = True
 
     if iface.ifclass == constants.INTERFACE_CLASS_DATA:
         if has_static_addr:

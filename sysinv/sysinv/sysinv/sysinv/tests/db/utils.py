@@ -1407,14 +1407,22 @@ def create_test_interface(**kw):
 
     ipv4_mode = interface.get('ipv4_mode', None)
     if ipv4_mode:
-        dbapi.address_mode_update(interface_obj.id,
-                                  {'family': constants.IPV4_FAMILY, 'mode': ipv4_mode})
+        values = {'family': constants.IPV4_FAMILY, 'mode': ipv4_mode}
+        if ipv4_mode == constants.IPV4_POOL:
+            pool = dbapi.address_pool_get(interface.get('ipv4_pool'))
+            values['address_pool_id'] = pool.id
+            interface_obj.ipv4_pool = pool.uuid
+        dbapi.address_mode_update(interface_obj.id, values)
         interface_obj.ipv4_mode = ipv4_mode
 
     ipv6_mode = interface.get('ipv6_mode', None)
     if ipv6_mode:
-        dbapi.address_mode_update(interface_obj.id,
-                                  {'family': constants.IPV6_FAMILY, 'mode': ipv6_mode})
+        values = {'family': constants.IPV6_FAMILY, 'mode': ipv6_mode}
+        if ipv6_mode == constants.IPV6_POOL:
+            pool = dbapi.address_pool_get(interface.get('ipv6_pool'))
+            values['address_pool_id'] = pool.id
+            interface_obj.ipv6_pool = pool.uuid
+        dbapi.address_mode_update(interface_obj.id, values)
         interface_obj.ipv6_mode = ipv6_mode
 
     # assign the network to the interface
