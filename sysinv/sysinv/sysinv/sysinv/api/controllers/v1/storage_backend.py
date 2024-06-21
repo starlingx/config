@@ -41,6 +41,7 @@ from sysinv import objects
 
 # The following four imports implicitly pull in constants and functionality
 from sysinv.api.controllers.v1 import storage_ceph  # noqa: F401 pylint: disable=unused-import
+from sysinv.api.controllers.v1 import storage_ceph_rook  # noqa: F401 pylint: disable=unused-import
 from sysinv.api.controllers.v1 import storage_lvm  # noqa: F401 pylint: disable=unused-import
 from sysinv.api.controllers.v1 import storage_file  # noqa: F401 pylint: disable=unused-import
 from sysinv.api.controllers.v1 import storage_ceph_external  # noqa: F401 pylint: disable=unused-import
@@ -309,7 +310,7 @@ class StorageBackendController(rest.RestController):
 def _create(storage_backend):
     # Get and call the specific backend create function based on the backend
     # provided.
-    backend_create = getattr(eval('storage_' + storage_backend['backend']),
+    backend_create = getattr(eval('storage_' + storage_backend['backend'].replace('-', '_')),
                              '_create')
     new_backend = backend_create(storage_backend)
 

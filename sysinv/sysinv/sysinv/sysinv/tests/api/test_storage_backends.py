@@ -814,6 +814,24 @@ class StorageBackendTestCases(base.FunctionalTest):
         self.assertEqual(constants.SB_TYPE_CEPH,
                          self.get_json('/storage_backend')['storage_backends'][0]['backend'])
 
+    #
+    # StorageBackend API: Ceph-rook
+    #
+
+    def test_post_rook_ceph_valid_deployment_model_and_confirm(self):
+        vals = {
+            'backend': constants.SB_TYPE_CEPH_ROOK,
+            'capabilities': {constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP:
+                             constants.CEPH_ROOK_DEPLOYMENT_OPEN},
+            'confirmed': True
+        }
+        response = self.post_json('/storage_backend', vals, expect_errors=False)
+        self.assertEqual(http_client.OK, response.status_int)
+        self.assertEqual(constants.CEPH_ROOK_DEPLOYMENT_OPEN,  # Expected
+                         self.get_json('/storage_backend/%s/' %
+                                       response.json['uuid'])['capabilities']
+                                       [constants.CEPH_ROOK_BACKEND_DEPLOYMENT_CAP])  # Result
+
 
 class StorageFileTestCases(base.FunctionalTest):
 
