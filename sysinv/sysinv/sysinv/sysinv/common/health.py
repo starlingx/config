@@ -86,8 +86,13 @@ class Health(object):
         # is patch current if there is no deployment in progress in USM
         # TODO(heitormatsui): change the logic when there is a USM endpoint
         #  to return data per-host
-        deploy_in_progress = usm_service.get_platform_upgrade(self._dbapi, usm_only=True)
-        if deploy_in_progress:
+        try:
+            deploy_in_progress = usm_service.get_platform_upgrade(self._dbapi,
+                                                                  usm_only=True)
+        except exception.NotFound:
+            # no upgrade in progress
+            pass
+        else:
             success = False
             from_release = deploy_in_progress.from_load
             to_release = deploy_in_progress.to_load

@@ -9,6 +9,8 @@
 
 from oslo_log import log
 
+from sysinv.common import exception
+from sysinv.common import constants
 from sysinv.common.rest_api import get_token
 from sysinv.common.rest_api import rest_api_request
 
@@ -102,6 +104,10 @@ def get_platform_upgrade(dbapi, usm_only=False):
     except Exception:
         # it is ok, legacy upgrade does not have usm service available
         pass
+
+    if upgrade and upgrade.state == constants.DEPLOY_STATE_COMPLETED:
+        # USM upgrade completed
+        raise exception.NotFound()
 
     if upgrade is None and not usm_only:
         upgrade = dbapi.software_upgrade_get_one()
