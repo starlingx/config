@@ -33,8 +33,8 @@ class HealthController(rest.RestController):
                 "Unable to perform health query."))
         return output
 
-    @wsme_pecan.wsexpose(wtypes.text, wtypes.text, wtypes.text, wtypes.text)
-    def get_one(self, upgrade, relaxed=None, rootca=None):
+    @wsme_pecan.wsexpose(wtypes.text, wtypes.text, wtypes.text, wtypes.text, wtypes.text)
+    def get_one(self, upgrade, relaxed=None, rootca=None, alarm_ignore_list=None):
         """Validates the health of the system for an upgrade"""
         force = False
         if relaxed:
@@ -52,7 +52,7 @@ class HealthController(rest.RestController):
             try:
                 success, output = pecan.request.rpcapi.get_system_health(
                     pecan.request.context, kube_upgrade=True, force=force,
-                    kube_rootca_update=rootca)
+                    kube_rootca_update=rootca, alarm_ignore_list=alarm_ignore_list)
             except Exception as e:
                 LOG.exception(e)
                 raise wsme.exc.ClientSideError(_(
