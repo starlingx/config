@@ -28,8 +28,9 @@ VOLATILE_CONFIG_FAIL="/var/run/.config_fail"
 LOGFILE="/var/log/worker_config.log"
 IMA_POLICY=/etc/ima.policy
 FIRST_BOOT="/etc/platform/.first_boot"
-IPSEC_ENABLING_RETRIES=3
-IPSEC_ENABLING_DELAY=5
+IPSEC_RETRIES=3
+IPSEC_DELAY=5
+IPSEC_SERVER_PORT=54724
 
 # Copy of /opt/platform required for worker_services
 VOLATILE_PLATFORM_PATH=$VOLATILE_PATH/cpe_upgrade_opt_platform
@@ -135,6 +136,30 @@ wait_for_controller_services()
    return 1
 }
 
+validate_ca_cert_update()
+{
+    /usr/bin/ipsec-client -o 3 pxecontroller > /dev/null
+    if [ $? -eq 2 ]
+    then
+        ipsec_update_failed=1
+        for retry in $( seq 1 ${IPSEC_RETRIES} )
+        do
+            /usr/bin/ipsec-client -o 2 pxecontroller -f > /dev/null
+            if [ $? -eq 0 ]
+            then
+                ipsec_update_failed=0
+                break
+            fi
+            logger -t $0 -p warn "Updating IPsec cetificates failed (${retry}), retry in ${IPSEC_DELAY} seconds ..."
+            sleep ${IPSEC_DELAY}
+        done
+        if [ ${ipsec_update_failed} -ne 0 ]
+        then
+            warning_error "WARNING: Failed to update IPsec cetificates...."
+        fi
+    fi
+}
+
 start()
 {
     if [ -f /etc/platform/installation_failed ] ; then
@@ -206,7 +231,7 @@ start()
         logger -t $0 -p info "Config and enable IPsec ......"
 
         ipsec_enable_failed=1
-        for retry in $( seq 1 ${IPSEC_ENABLING_RETRIES} )
+        for retry in $( seq 1 ${IPSEC_RETRIES} )
         do
             /usr/bin/ipsec-client pxecontroller > /dev/null
             if [ $? -eq 0 ]
@@ -214,13 +239,24 @@ start()
                 ipsec_enable_failed=0
                 break
             fi
-            logger -t $0 -p warn "Enabling IPsec failed (${retry}), retry in ${IPSEC_ENABLING_DELAY} seconds ..."
-            sleep ${IPSEC_ENABLING_DELAY}
+            logger -t $0 -p warn "Enabling IPsec failed (${retry}), retry in ${IPSEC_DELAY} seconds ..."
+            sleep ${IPSEC_DELAY}
         done
         # Fail if retried maximum times
         if [ ${ipsec_enable_failed} -ne 0 ]
         then
             warning_error "WARNING: Failed to config and enable IPsec for the node"
+        fi
+    else
+        logger -t $0 -p info "Checking if IPsec Certificates is updated......"
+
+        #Verify if ipsec server is running
+        nc -z pxecontroller $IPSEC_SERVER_PORT
+        if [ $? -eq 0 ]
+        then
+            validate_ca_cert_update
+        else
+            warning_error "WARNING: IPSec server is not running...."
         fi
     fi
 

@@ -18,7 +18,6 @@ NAME=$(basename $0)
 KUBE_CONFIG=/etc/kubernetes/admin.conf
 IPSEC_CERT_DIR=/etc/swanctl/x509
 IPSEC_CERT_PATH="$IPSEC_CERT_DIR/system-ipsec-certificate-${HOSTNAME}.crt"
-#IPSEC_CERT_PATH="$IPSEC_CERT_DIR/system-ipsec-certificate-${HOSTNAME}.crt-fake"
 ERR_CA=0
 ERR_CERT=0
 ERR_RENEW=0
@@ -46,39 +45,6 @@ time_left_s_by_openssl() {
     fi
     echo $time_left_s
 }
-
-# Check if the trusted CA cert is consistent with system-local-ca
-# in kubernetes. If it's not consistent, call ipsec-client to renew.
-# This is for cases such as a node is offline and misses a system-local-ca
-# update.
-
-# Retrieve the serial number of system-local-ca cert.
-if [ ${ERR_CA} -eq 0 ]; then
-    serial_in_secret=$(kubectl --kubeconfig=/etc/kubernetes/admin.conf get secret system-local-ca -n cert-manager -o jsonpath='{.data.tls\.crt}' | base64 --decode | openssl x509 -noout -serial)
-
-    if [ "x${serial_in_secret}" = "x"  ]; then
-        LOG_error "Failed to retrieve system-local-ca from secret."
-        ERR_CA=1
-    fi
-fi
-
-# Retrieve the serial number of the IPsec trusted CA cert.
-if [ ${ERR_CA} -eq 0 ]; then
-    serial_in_file=$(openssl x509 -in /etc/swanctl/x509ca/system-local-ca-1.crt -noout -serial)
-
-    if [ "x${serial_in_file}" = "x"  ]; then
-        LOG_error "Failed to retrieve serial number from CA cert file."
-        ERR_CA=1
-    fi
-fi
-
-# Compare to decide if they are consistent.
-if [ ${ERR_CA} -eq 0 ]; then
-    if [ "${serial_in_secret}" != "${serial_in_file}" ]; then
-        LOG_info "IPsec trusted CA is diverse from system-local-ca."
-        RENEWAL_REQUIRED=1
-    fi
-fi
 
 # Check if it's time to renew IPsec certificate.
 if [ ${ERR_CERT} -eq 0 ]; then

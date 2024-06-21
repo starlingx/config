@@ -12,6 +12,7 @@ import time
 import threading
 
 from oslo_log import log as logging
+from sysinv.ipsec_auth.common import constants
 
 LOG = logging.getLogger(__name__)
 
@@ -21,48 +22,56 @@ class State(enum.Enum):
     STAGE_2 = 2
     STAGE_3 = 3
     STAGE_4 = 4
-    STAGE_5 = 5
+    END_STAGE = 5
 
     @staticmethod
-    def get_next_state(state):
+    def get_next_state(state, op):
         '''Get the next IPsec Auth state whenever a Stage is finished.
 
         The IPsec Auth server-client interaction is separated into 5 work stages.
-        STAGE_1: represents the initial stage where IPsec Auth client send
-                the first message with OP code, mac address and a hash to
-                IPsec Auth server.
-        STAGE_2: represents the stage of validation of the message 1 received
-                from the client and generation of a response message. If the
-                validation is satisfied, the IPsec Auth server will encapsulate
-                an OTS Token, client's hostname, generated public key,
-                system-local-ca's certificate and a signed hash of this payload
-                in the response message to send it to the client.
-        STAGE_3: represents the stage of validation of the message 2 received
-                from the server and generation of a response message. if the
-                validation is satisfied, the IPsec Auth Client will encapsulate
-                an OTS Token, an encrypted Initial Vector (eiv), an encrypted
-                symetric key (eak1), an encrypted certificate request (eCSR)
-                and a signed hash of this payload in the response message to
-                send it to the server.
-        STAGE_4: represents the stage of validation of the message 3 from the
-                client and generation of a final response message. If the
-                validation of the message is satisfied, the IPsec Auth server
-                will create a CertificateRequest resource with a CSR received
-                from client's message and will encapsulate the signed
-                Certificate, network info and a signed hash of this payload in
-                the response message to send it to the client.
-        STAGE_5: represents the final stage of IPsec PKI Auth procedure and demands
-                that IPsec Auth server and client close the connection that
-                finished STAGE_4.
+        STAGE_1:   represents the initial stage where IPsec Auth client send
+                   the first message with OP code, mac address and a hash to
+                   IPsec Auth server.
+        STAGE_2:   represents the stage of validation of the message 1 received
+                   from the client and generation of a response message. If the
+                   validation is satisfied, the IPsec Auth server will encapsulate
+                   an OTS Token, client's hostname, generated public key,
+                   system-local-ca's certificate and a signed hash of this payload
+                   in the response message to send it to the client.
+        STAGE_3:   represents the stage of validation of the message 2 received
+                   from the server and generation of a response message. if the
+                   validation is satisfied, the IPsec Auth Client will encapsulate
+                   an OTS Token, an encrypted Initial Vector (eiv), an encrypted
+                   symetric key (eak1), an encrypted certificate request (eCSR)
+                   and a signed hash of this payload in the response message to
+                   send it to the server.
+        STAGE_4:   represents the stage of validation of the message 3 from the
+                   client and generation of a final response message. If the
+                   validation of the message is satisfied, the IPsec Auth server
+                   will create a CertificateRequest resource with a CSR received
+                   from client's message and will encapsulate the signed
+                   Certificate, network info and a signed hash of this payload in
+                   the response message to send it to the client.
+        END_STAGE: represents the final stage of IPsec PKI Auth procedure and demands
+                   that IPsec Auth server and client close the connection that
+                   finished STAGE_4.
         '''
-        if state == State.STAGE_1:
-            state = State.STAGE_2
-        elif state == State.STAGE_2:
-            state = State.STAGE_3
-        elif state == State.STAGE_3:
-            state = State.STAGE_4
-        elif state == State.STAGE_4:
-            state = State.STAGE_5
+
+        if op == constants.OP_CODE_CERT_VALIDATION:
+            if state == State.STAGE_1:
+                state = State.STAGE_2
+            elif state == State.STAGE_2:
+                state = State.END_STAGE
+        else:
+            if state == State.STAGE_1:
+                state = State.STAGE_2
+            elif state == State.STAGE_2:
+                state = State.STAGE_3
+            elif state == State.STAGE_3:
+                state = State.STAGE_4
+            elif state == State.STAGE_4:
+                state = State.END_STAGE
+
         return state
 
 
