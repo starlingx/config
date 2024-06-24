@@ -136,7 +136,7 @@ class NetworkAddresspoolController(rest.RestController):
             networks, limit, url=resource_url, expand=expand,
             sort_key=sort_key, sort_dir=sort_dir)
 
-    def _check_modification_allowed(self, operation, network):
+    def _check_modification_allowed(self, operation, network, pool):
         if network.type in [constants.NETWORK_TYPE_OAM,
                             constants.NETWORK_TYPE_CLUSTER_HOST,
                             constants.NETWORK_TYPE_CLUSTER_POD,
@@ -153,8 +153,18 @@ class NetworkAddresspoolController(rest.RestController):
                                .format(host['hostname']))
                         raise wsme.exc.ClientSideError(msg)
                 return
-        elif network.type not in [constants.NETWORK_TYPE_PXEBOOT,
-                                  constants.NETWORK_TYPE_MULTICAST]:
+            else:
+                if network.pool_uuid != pool.uuid:
+                    # it is possible to add the secondary pool for management during runtime
+                    # A "config out-of-date" will be generated for the affected nodes.
+                    return
+        if network.type in [constants.NETWORK_TYPE_MULTICAST]:
+            if network.pool_uuid != pool.uuid:
+                # it is possible to add the secondary pool for multicast during runtime
+                # A "config out-of-date" will be generated for the affected nodes.
+                return
+        if network.type not in [constants.NETWORK_TYPE_PXEBOOT,
+                                constants.NETWORK_TYPE_MULTICAST]:
             return
         if cutils.is_initial_config_complete():
             oper_text = 'create' if operation == constants.API_POST else 'delete'
@@ -237,7 +247,7 @@ class NetworkAddresspoolController(rest.RestController):
         pool = pecan.request.dbapi.address_pool_get(network_addrpool['address_pool_uuid'])
         pool_family = constants.IP_FAMILIES[pool.family]
 
-        self._check_modification_allowed(constants.API_POST, network)
+        self._check_modification_allowed(constants.API_POST, network, pool)
         self._check_address_pool_overlap(network, pool)
 
         net_pool_list = pecan.request.dbapi.network_addrpool_get_by_network_id(network.id)
@@ -328,7 +338,7 @@ class NetworkAddresspoolController(rest.RestController):
         network = pecan.request.dbapi.network_get(to_delete['network_uuid'])
         pool = pecan.request.dbapi.address_pool_get(to_delete['address_pool_uuid'])
 
-        self._check_modification_allowed(constants.API_DELETE, network)
+        self._check_modification_allowed(constants.API_DELETE, network, pool)
 
         if network.pool_uuid == pool.uuid:
             # this operation is blocked for now
