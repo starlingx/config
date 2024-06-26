@@ -168,13 +168,6 @@ class NetworkController(rest.RestController):
         networks = pecan.request.dbapi.networks_get_by_type(networktype)
         if networks:
             raise exception.NetworkAlreadyExists(type=networktype)
-        if (networktype == constants.NETWORK_TYPE_ADMIN and
-            utils.get_distributed_cloud_role() !=
-                constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
-            msg = _("Network of type {} restricted to distributed cloud "
-                    "role of {}."
-                    .format(networktype, constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD))
-            raise wsme.exc.ClientSideError(msg)
 
     def _check_address_pool_overlap(self, pool, networktype):
         caddress_pool.check_address_pools_overlaps(pecan.request.dbapi, [pool], {networktype})
@@ -320,6 +313,8 @@ class NetworkController(rest.RestController):
         if network.type == constants.NETWORK_TYPE_ADMIN:
             hosts = pecan.request.dbapi.ihost_get_by_personality(constants.CONTROLLER)
             if hosts:
-                cutils.update_subcloud_routes(pecan.request.dbapi, hosts)
+                if (utils.get_distributed_cloud_role() ==
+                        constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD):
+                    cutils.update_subcloud_routes(pecan.request.dbapi, hosts)
                 for host in hosts:
                     pecan.request.rpcapi.update_admin_config(pecan.request.context, host, True)

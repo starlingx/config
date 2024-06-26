@@ -194,22 +194,6 @@ class TestPostMixin(object):
         self.assertIn("Network of type %s already exists." % network_type,
                       response.json['error_message'])
 
-    def _test_create_network_fail_subcloud_only(self, name, network_type, subnet):
-        address_pool_id = self._create_test_address_pool(name, subnet)['uuid']
-
-        ndict = self.get_post_object(network_type, address_pool_id)
-        response = self.post_json(self.API_PREFIX,
-                                  ndict,
-                                  headers=self.API_HEADERS,
-                                  expect_errors=True)
-
-        # Check HTTP response is failed
-        self.assertEqual('application/json', response.content_type)
-        self.assertEqual(response.status_code, http_client.BAD_REQUEST)
-        self.assertIn("Network of type %s restricted to distributed cloud "
-                      "role of subcloud." % network_type,
-                      response.json['error_message'])
-
     def _check_pool_address(self, addrpool, field, name):
         address_id = getattr(addrpool, field)
         self.assertIsNotNone(address_id)
@@ -458,11 +442,17 @@ class TestPostMixin(object):
                                    'controller1_address_id': 'controller-1-admin',
                                    'gateway_address_id': 'system-controller-gateway-ip-admin'})
 
-    def test_create_failure_admin_non_subcloud(self):
-        self._test_create_network_fail_subcloud_only(
-            'admin',
+    def test_create_success_admin_non_subcloud(self):
+        addrpool = self._create_test_address_pool('admin', self.admin_subnet)
+        p = mock.patch('sysinv.api.controllers.v1.utils.get_distributed_cloud_role')
+        self.mock_utils_get_distributed_cloud_role = p.start()
+        self.mock_utils_get_distributed_cloud_role.return_value = \
+            constants.DISTRIBUTED_CLOUD_ROLE_SYSTEMCONTROLLER
+        self.addCleanup(p.stop)
+
+        self._test_create_network_success(
             constants.NETWORK_TYPE_ADMIN,
-            self.admin_subnet)
+            addrpool)
 
     def test_create_fail_duplicate_pxeboot(self):
         self._test_create_network_fail_duplicate(
@@ -807,6 +797,12 @@ class TestDelete(NetworkTestCase):
     def test_delete_admin_dual_stack(self):
         p = mock.patch('sysinv.conductor.rpcapi.ConductorAPI.update_admin_config')
         self.mock_rpcapi_update_admin_config = p.start()
+        self.addCleanup(p.stop)
+
+        p = mock.patch('sysinv.api.controllers.v1.utils.get_distributed_cloud_role')
+        self.mock_get_distributed_cloud_role = p.start()
+        self.mock_get_distributed_cloud_role.return_value =\
+            constants.DISTRIBUTED_CLOUD_ROLE_SUBCLOUD
         self.addCleanup(p.stop)
 
         mgmt_network = self._create_test_network(
