@@ -780,7 +780,8 @@ class ConductorAPI(sysinv.openstack.common.rpc.proxy.RpcProxy):
         :param disable: type of operation.
         """
         return self.call(context, self.make_msg('update_kubernetes_dual_stack_config',
-                                                family=family, disable=disable))
+                                                family=family, disable=disable),
+                         timeout=RPC_TIMEOUT)
 
     def update_user_config(self, context, host_uuids=None):
         """Synchronously, have the conductor update the user configuration.
