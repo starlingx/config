@@ -217,8 +217,14 @@ class TestPostMixin(NetworkAddrpoolTestCase):
             elif addr.name == f"{constants.CONTROLLER_1_HOSTNAME}-{constants.NETWORK_TYPE_MGMT}":
                 self.assertEqual(addr.interface_id, self.c1_mgmt_if.id)
 
-    def test_success_create_network_addrpool_secondary_mgmt(self):
+    def test_success_create_network_addrpool_secondary_mgmt_before_initial_config_complete(self):
         self._setup_context(add_worker=True)
+
+        p = mock.patch('sysinv.common.utils.is_initial_config_complete')
+        self.mock_utils_is_initial_config_complete = p.start()
+        self.mock_utils_is_initial_config_complete.return_value = False
+        self.addCleanup(p.stop)
+
         # add primary
         net_type = constants.NETWORK_TYPE_MGMT
         ndict = self.get_post_object(self.networks[net_type].uuid,
@@ -229,6 +235,72 @@ class TestPostMixin(NetworkAddrpoolTestCase):
         # Check HTTP response is successful
         self.assertEqual('application/json', response.content_type)
         self.assertEqual(response.status_code, http_client.OK)
+
+        # add secondary
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['management-ipv6'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        # Check HTTP response is successful
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        uuid = response.json['uuid']
+        # Verify that the object was created and some basic attribute matches
+        response = self.get_json(self.get_single_url(uuid))
+        self.assertEqual(response['address_pool_name'], self.address_pools['management-ipv6'].name)
+        self.assertEqual(response['address_pool_id'], self.address_pools['management-ipv6'].id)
+        self.assertEqual(response['address_pool_uuid'], self.address_pools['management-ipv6'].uuid)
+        self.assertEqual(response['network_name'], self.networks[net_type].name)
+        self.assertEqual(response['network_id'], self.networks[net_type].id)
+        self.assertEqual(response['network_uuid'], self.networks[net_type].uuid)
+
+        addr_list = dbutils.get_address_table()
+        self.assertEqual(8, len(addr_list))
+        ip4_list = list()
+        ip6_list = list()
+        for addr in addr_list:
+            self.assertIn(addr.name,
+                          [f"{constants.CONTROLLER_HOSTNAME}-{net_type}",
+                           f"{constants.CONTROLLER_0_HOSTNAME}-{net_type}",
+                           f"{constants.CONTROLLER_1_HOSTNAME}-{net_type}",
+                           f"worker-0-{net_type}"])
+            if addr.name == f"{constants.CONTROLLER_HOSTNAME}-{net_type}":
+                self.assertEqual(addr.interface_id, None)
+            elif addr.name == f"{constants.CONTROLLER_0_HOSTNAME}-{net_type}":
+                self.assertEqual(addr.interface_id, self.c0_mgmt_if.id)
+            elif addr.name == f"{constants.CONTROLLER_1_HOSTNAME}-{net_type}":
+                self.assertEqual(addr.interface_id, self.c1_mgmt_if.id)
+            elif addr.name == f"worker-0-{net_type}":
+                self.assertEqual(addr.interface_id, self.w0_mgmt_if.id)
+
+            if addr.family == constants.IPV6_FAMILY:
+                ip6_list.append(addr)
+            elif addr.family == constants.IPV4_FAMILY:
+                ip4_list.append(addr)
+
+        self.assertEqual(4, len(ip4_list))
+        self.assertEqual(4, len(ip6_list))
+
+    def test_success_create_network_addrpool_secondary_mgmt_after_initial_config_complete(self):
+        self._setup_context(add_worker=True)
+
+        # add primary
+        net_type = constants.NETWORK_TYPE_MGMT
+        ndict = self.get_post_object(self.networks[net_type].uuid,
+                                     self.address_pools['management-ipv4'].uuid)
+        response = self.post_json(self.API_PREFIX,
+                                  ndict,
+                                  headers=self.API_HEADERS)
+        # Check HTTP response is successful
+        self.assertEqual('application/json', response.content_type)
+        self.assertEqual(response.status_code, http_client.OK)
+
+        p = mock.patch('sysinv.common.utils.is_initial_config_complete')
+        self.mock_utils_is_initial_config_complete = p.start()
+        self.mock_utils_is_initial_config_complete.return_value = True
+        self.addCleanup(p.stop)
 
         # add secondary
         ndict = self.get_post_object(self.networks[net_type].uuid,
