@@ -1250,10 +1250,9 @@ class AppOperator(object):
                     "Mandatory FluxCD yaml file doesn't exist "
                     "%s" % f))
 
-        # get global namespace
+        # get charts groups
         with io.open(root_kustomization_path, 'r', encoding='utf-8') as f:
             root_kustomization_yaml = next(yaml.safe_load_all(f))
-            global_namespace = AppOperator.get_global_namespace(root_kustomization_yaml)
             charts_groups = root_kustomization_yaml["resources"]
 
         # get the helm repo base url
@@ -1263,6 +1262,13 @@ class AppOperator(object):
             helm_repo_name = helm_repo_yaml["metadata"]["name"]
 
         charts = []
+
+        # Getting helmrelease result of "kubectl kustomize <fluxcd_directory>"
+        resources_list = cutils.get_resources_list_via_kubectl_kustomize(manifest)
+        if not resources_list:
+            return charts
+        helmreleases_from_kustomize_command = cutils.filter_helm_releases(resources_list)
+
         for chart_group in charts_groups:
             if chart_group != "base":
                 chart_path = os.path.join(manifest, chart_group)
@@ -1271,9 +1277,6 @@ class AppOperator(object):
                 if not os.path.isfile(chart_kustomization_path) or \
                         not os.path.isfile(helmrelease_path):
                     continue
-                with io.open(chart_kustomization_path, 'r', encoding='utf-8') as f:
-                    chart_kustomization_yaml = next(yaml.safe_load_all(f))
-                namespace = chart_kustomization_yaml.get("namespace", global_namespace)
                 with io.open(helmrelease_path, 'r', encoding='utf-8') as f:
                     helmrelease_yaml = next(yaml.safe_load_all(f))
                     metadata_name = helmrelease_yaml["metadata"]["name"]
@@ -1289,6 +1292,12 @@ class AppOperator(object):
                         chart_name,
                         chart_version)
                     release = helmrelease_yaml["spec"]["releaseName"]
+
+                    # Get the helmrelease namespace resulting from the "kubectl kustomize" command
+                    for helmrelease in helmreleases_from_kustomize_command:
+                        if helmrelease["spec"]["chart"]["spec"]["chart"] == chart_name:
+                            namespace = helmrelease['metadata']['namespace']
+                            break
 
                     # Dunno if we need to return these in order respecting dependsOn?
                     # dependencies = [dep["name"] for dep in helmrelease_yaml["spec"].
