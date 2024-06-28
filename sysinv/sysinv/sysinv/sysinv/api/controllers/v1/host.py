@@ -2110,6 +2110,13 @@ class HostController(rest.RestController):
                 ihost_obj[key] = parsed_patch_value
 
         delta = ihost_obj.obj_what_changed()
+
+        # bm_password is not part of the ihost_obj
+        # using bm_username as a kludge
+        password_changed = any(p['path'] == '/bm_password' for p in patch_obj)
+        if password_changed and not delta:
+            delta.add("bm_username")
+
         delta_handle = list(delta)
 
         uptime_update = False
@@ -4291,6 +4298,83 @@ class HostController(rest.RestController):
 
         return notify_mtc_check_action
 
+    def _bm_username_semantic_check(self, phost, patch_obj):
+        """ Parameters:
+            phost:         mutable dictionary patched host
+            patch_obj:     all changed paths
+            return patch_bm_username or None
+        """
+        hostname = phost.get('hostname', "unknown")
+        patch_bm_username = None
+        for p in patch_obj:
+            if p['path'] == '/bm_username':
+                patch_bm_username = p['value']
+                break
+        """
+        Snippet from ipmi v2 spec
+        -------------------------
+        User Name String in ASCII. 16 bytes max. Strings with fewer than
+        16 characters are terminated with a null (00h) character and 00h padded
+        to 16 bytes.
+        """
+        # bm_username - 16 characters no whitespace
+        if patch_bm_username:
+            if len(patch_bm_username) > 16:
+                raise wsme.exc.ClientSideError(
+                    _("%s: Rejected: Board management controller username "
+                    "is not valid. Cannot be longer than 16 characters." %
+                    (hostname)))
+
+            if re.search(r"\s", patch_bm_username):
+                raise wsme.exc.ClientSideError(
+                    _("%s: Rejected: Board management controller username "
+                    "is not valid. Whitespace characters are not permitted." %
+                    (hostname)))
+
+        return patch_bm_username
+
+    def _bm_password_semantic_check(self, phost, patch_obj,
+                                   patch_bm_username=None):
+        """ Parameters:
+            phost:         mutable dictionary patched host
+            patch_obj:     all changed paths
+            patch_bm_username: bmc username
+            returns patch_bm_password or None
+        """
+        hostname = phost.get('hostname', "unknown")
+        patch_bm_password = None
+        for p in patch_obj:
+            if p['path'] == '/bm_password':
+                patch_bm_password = p['value']
+                break
+        """
+        Snippet from ipmi v2 spec
+        -------------------------
+        The password is stored as a 16-byte or 20-byte (for IPMI v2.0/RCMP+)
+        'octet string'. All the values (0-255) are allowed for every byte.
+        """
+        # bm_password - 20 characters no whitespace
+        if patch_bm_password:
+            if not patch_bm_username:
+                raise wsme.exc.ClientSideError(
+                    _("%s Rejected: Board management controller password "
+                      "change attempt without corresponding username." %
+                      (hostname)))
+
+            if len(patch_bm_password) > 20:
+                raise wsme.exc.ClientSideError(
+                    _("%s: Rejected: Board management controller password "
+                    "is not valid. Cannot be longer than 20 characters." %
+                    (hostname)))
+
+            if re.search(r"\s", patch_bm_password):
+                raise wsme.exc.ClientSideError(
+                    _("%s: Rejected: Board management controller password "
+                    "is not valid. Whitespace characters are not permitted." %
+                    (hostname)))
+
+        return patch_bm_password
+
     def _bm_semantic_check_and_update(self, ohost, phost, delta, patch_obj,
                                       current_ihosts=None, hostupdate=None):
         """ Parameters:
@@ -4313,19 +4397,19 @@ class HostController(rest.RestController):
                   'bm_username',
                   'bm_password'}
 
-        password_exists = any(p['path'] == '/bm_password' for p in patch_obj)
+        # Semantic Check: Validate bm_username
+        patch_bm_username = self._bm_username_semantic_check(phost, patch_obj)
+
+        # Semantic Check: Validate bm_password
+        patch_bm_password = self._bm_password_semantic_check(phost, patch_obj,
+                                                            patch_bm_username)
+
+        password_exists = (patch_bm_password is not None)
         if not (delta.intersection(bm_set) or password_exists):
             return bm_type_changed_to_none
 
         if hostupdate:
             hostupdate.notify_mtce = True
-
-        patch_bm_password = None
-        for p in patch_obj:
-            if p['path'] == '/bm_password':
-                patch_bm_password = p['value']
-
-        password_exists = password_exists and patch_bm_password is not None
 
         bm_type_patch = phost.get('bm_type')
         # Semantic Check: Validate BM type against supported list
