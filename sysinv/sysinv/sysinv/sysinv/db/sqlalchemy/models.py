@@ -2154,6 +2154,7 @@ class HostFs(Base):
     name = Column(String(64))
     size = Column(Integer)
     logical_volume = Column(String(64))
+    state = Column(String(255))
     forihostid = Column(Integer, ForeignKey('i_host.id', ondelete='CASCADE'))
 
     host = relationship("ihost", lazy="joined", join_depth=1)

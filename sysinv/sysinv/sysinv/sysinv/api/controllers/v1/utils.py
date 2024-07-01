@@ -909,7 +909,8 @@ def is_host_lvg_updated(host_fs_list, host_lvg_list):
     LOG.info("Checking host_fs: %s" % [fs['name'] for fs in host_fs_list])
     for fs in host_fs_list:
         if fs['name'] in constants.FILESYSTEM_CONTROLLER_SUPPORTED_LIST:
-            if fs['updated_at']:
+            if fs['updated_at'] and fs['state'] not in [constants.HOST_FS_STATUS_READY,
+                                                        constants.HOST_FS_STATUS_IN_USE]:
                 if last_resize is None:
                     last_resize = fs['updated_at']
                 elif last_resize < fs['updated_at']:

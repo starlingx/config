@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020,2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -44,13 +44,16 @@ class ApiHostFSTestCaseMixin(base.FunctionalTest,
         super(ApiHostFSTestCaseMixin, self).setUp()
         self.host_fs_first = self._create_db_object('scratch',
                                                     8,
-                                                    'scratch-lv')
+                                                    'scratch-lv',
+                                                    constants.HOST_FS_STATUS_IN_USE)
         self.host_fs_second = self._create_db_object('backup',
                                                      20,
-                                                     'backup-lv')
+                                                     'backup-lv',
+                                                     constants.HOST_FS_STATUS_IN_USE)
         self.host_fs_third = self._create_db_object('docker',
                                                     30,
-                                                    'docker-lv')
+                                                    'docker-lv',
+                                                    constants.HOST_FS_STATUS_IN_USE)
         self.fake_conductor_api = FakeConductorAPI()
         p = mock.patch('sysinv.conductor.rpcapiproxy.ConductorAPI')
         self.mock_conductor_api = p.start()
@@ -79,13 +82,14 @@ class ApiHostFSTestCaseMixin(base.FunctionalTest,
                                                            sort_dir)
 
     def _create_db_object(self, host_fs_name, host_fs_size,
-                          host_lv, obj_id=None):
+                          host_lv, fs_state, obj_id=None):
         return dbutils.create_test_host_fs(id=obj_id,
                                            uuid=None,
                                            name=host_fs_name,
                                            forihostid=self.host.id,
                                            size=host_fs_size,
-                                           logical_volume=host_lv)
+                                           logical_volume=host_lv,
+                                           state=fs_state)
 
 
 class ApiHostFSListTestSuiteMixin(ApiHostFSTestCaseMixin):
@@ -352,13 +356,16 @@ class ApiHostFSPutTestSuiteMixin(ApiHostFSTestCaseMixin):
         # Add host fs for the new host
         self.host_fs_first = self._create_db_object('scratch',
                                                     8,
-                                                    'scratch-lv')
+                                                    'scratch-lv',
+                                                    constants.HOST_FS_STATUS_IN_USE)
         self.host_fs_second = self._create_db_object('backup',
                                                      20,
-                                                     'backup-lv')
+                                                     'backup-lv',
+                                                     constants.HOST_FS_STATUS_IN_USE)
         self.host_fs_third = self._create_db_object('docker',
                                                     30,
-                                                    'docker-lv')
+                                                    'docker-lv',
+                                                    constants.HOST_FS_STATUS_IN_USE)
 
         # Create a provisioned physical volume in database
         dbutils.create_test_pv(lvm_vg_name='cgts-vg',
@@ -394,16 +401,18 @@ class ApiHostFSPutTestSuiteMixin(ApiHostFSTestCaseMixin):
                                            unit=1,
                                            invprovision=constants.PROVISIONED)
 
-        # Add host fs for the new host
         self.host_fs_first = self._create_db_object('scratch',
                                                     8,
-                                                    'scratch-lv')
+                                                    'scratch-lv',
+                                                    constants.HOST_FS_STATUS_IN_USE)
         self.host_fs_second = self._create_db_object('backup',
                                                      20,
-                                                     'backup-lv')
+                                                     'backup-lv',
+                                                     constants.HOST_FS_STATUS_IN_USE)
         self.host_fs_third = self._create_db_object('docker',
                                                     30,
-                                                    'docker-lv')
+                                                    'docker-lv',
+                                                    constants.HOST_FS_STATUS_IN_USE)
 
         # Create a provisioned physical volume in database
         dbutils.create_test_pv(lvm_vg_name='cgts-vg',
@@ -504,6 +513,27 @@ class ApiHostFSDeleteTestSuiteMixin(ApiHostFSTestCaseMixin):
         self.assertIn("Unsupported filesystem",
                       response.json['error_message'])
 
+    # Test a valid DELETE operation with an optional filesystem allowed to
+    # be deleted
+    def test_delete_allowed(self):
+
+        # Rook Ceph or Ceph must be as storage backend for ceph fs
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        ceph_fs = self._create_db_object('ceph',
+                                         20,
+                                         'ceph-lv',
+                                         constants.HOST_FS_STATUS_READY)
+
+        uuid = ceph_fs.uuid
+        response = self.delete(self.get_single_fs_url(uuid),
+                            headers=self.API_HEADERS,
+                            expect_errors=False)
+
+        # Verify the expected API response for the delete
+        self.assertEqual(response.status_code, http_client.NO_CONTENT)
+
 
 class ApiHostFSPostTestSuiteMixin(ApiHostFSTestCaseMixin):
     """ Host FileSystem post operations
@@ -517,7 +547,8 @@ class ApiHostFSPostTestSuiteMixin(ApiHostFSTestCaseMixin):
         response = self.post_json('/host_fs',
                                   {'name': 'kubelet',
                                    'size': 10,
-                                   'logical_volume': 'kubelet-lv'},
+                                   'logical_volume': 'kubelet-lv',
+                                   'state': constants.HOST_FS_STATUS_IN_USE},
                                   headers=self.API_HEADERS,
                                   expect_errors=True)
 
@@ -526,3 +557,25 @@ class ApiHostFSPostTestSuiteMixin(ApiHostFSTestCaseMixin):
         self.assertEqual(response.status_code, http_client.BAD_REQUEST)
         self.assertIn("Unsupported filesystem",
                       response.json['error_message'])
+
+    # Test a valid POST operation with an optional filesystem allowed to
+    # be created
+    def test_post_allowed(self):
+
+        # Rook Ceph or Ceph must be as storage backend for ceph fs
+        backend = dbutils.get_test_storage_backend(backend=constants.SB_TYPE_CEPH_ROOK)
+        self.dbapi.storage_ceph_rook_create(backend)
+
+        # Create a logical volume
+        dbutils.create_test_lvg(lvm_vg_name='cgts-vg',
+                                forihostid=self.host.id)
+
+        response = self.post_json('/host_fs',
+                                {'ihost_uuid': self.host.uuid,
+                                 'name': 'ceph',
+                                 'size': 10},
+                            headers=self.API_HEADERS,
+                            expect_errors=False)
+
+        self.assertEqual(response.content_type, 'application/json')
+        self.assertEqual(response.status_code, http_client.OK)

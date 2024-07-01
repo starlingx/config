@@ -16,7 +16,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 #
-# Copyright (c) 2013-2023 Wind River Systems, Inc.
+# Copyright (c) 2013-2024 Wind River Systems, Inc.
 #
 
 
@@ -4679,7 +4679,8 @@ class Connection(object):
                       'size': 30,
                       'logical_volume': constants.FILESYSTEM_LV_DICT[
                            constants.FILESYSTEM_NAME_DOCKER],
-                      'forihostid': 1}
+                      'forihostid': 1,
+                      'state': constants.HOST_FS_STATUS_CREATE_IN_SVC}
         :returns: A filesystem.
         """
 

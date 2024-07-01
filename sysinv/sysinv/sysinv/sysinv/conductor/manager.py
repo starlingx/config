@@ -5224,6 +5224,9 @@ class ConductorManager(service.PeriodicService):
             fs_dict = {
                 'forihostid': forihostid,
             }
+            if 'state' not in fs.keys():
+                fs_dict['state'] = constants.HOST_FS_STATUS_IN_USE
+
             fs_dict.update(fs)
             found = False
 
@@ -6297,6 +6300,115 @@ class ConductorManager(service.PeriodicService):
                                   "failed" % ipv['uuid'])
 
         return
+
+    def hostfs_update_by_ihost(self, context, ihost_uuid, hostfs_dict_array):
+        """Create or update host_fs for an ihost with the supplied data.
+
+        This method allows records for a host-fs for ihost to be created,
+        or updated.
+
+        :param context: an admin context
+        :param ihost_uuid: ihost uuid unique id
+        :param hostfs_dict_array: values for existent filesystems
+        :returns: pass or fail
+        """
+        LOG.debug("PART hostfs_update_by_ihost %s ihost_uuid "
+                 "ipart_dict_array: %s" % (ihost_uuid, str(hostfs_dict_array)))
+
+        ihost_uuid.strip()
+        try:
+            ihost = self.dbapi.ihost_get(ihost_uuid)
+        except exception.ServerNotFound:
+            LOG.exception("Invalid ihost_uuid %s" % ihost_uuid)
+            return
+
+        try:
+            usm_service.get_platform_upgrade(self.dbapi)
+        except exception.NotFound:
+            # No upgrade in progress
+            pass
+        else:
+            if ihost.software_load != tsc.SW_VERSION:
+                LOG.info("Ignore updating host-fs for host: %s. Version "
+                         "%s mismatch." % (ihost.hostname, ihost.software_load))
+                return
+
+        if self._verify_restore_in_progress():
+            LOG.info("Ignore updating host-fs for host: {}. Restore "
+                     "in progress.".format(ihost.hostname))
+            return
+
+        forihostid = ihost['id']
+        db_hostfs_list = self.dbapi.host_fs_get_by_ihost(ihost_uuid)
+
+        new_filesystems = []
+        # Go through the LVs reported by the agent and make necessary modifications
+        for fs in hostfs_dict_array:
+            lv_size = int(round(  # pylint: disable=W1633
+                cutils.bytes_to_GiB(fs['size'])))
+            found = False
+            for db_fs in db_hostfs_list:
+                if fs['name'] == db_fs.name:
+                    found = True
+                    update_dict = {}
+                    if db_fs.state in [constants.HOST_FS_STATUS_CREATE_IN_SVC,
+                                            constants.HOST_FS_STATUS_CREATE_ON_UNLOCK]:
+                        update_dict.update({'state': constants.HOST_FS_STATUS_READY})
+                    elif (db_fs.state is None or db_fs.state in
+                                           [constants.HOST_FS_STATUS_MODIFYING,
+                                            constants.HOST_FS_STATUS_UPDATE_ERROR]):
+                        # On optional host filesystems, resize is only possible for Ready state
+                        if db_fs.name in constants.HOSTFS_CREATION_ALLOWED:
+                            update_dict.update({'state': constants.HOST_FS_STATUS_READY})
+                        # For default host filesystems, resize is possible from In-Use state
+                        else:
+                            update_dict.update({'state': constants.HOST_FS_STATUS_IN_USE})
+
+                        if db_fs.size != lv_size and db_fs.state == constants.HOST_FS_STATUS_UPDATE_ERROR:
+                            update_dict.update({'size': lv_size})
+
+                    if update_dict:
+                        self.dbapi.host_fs_update(db_fs.uuid, update_dict)
+                        LOG.info("Updating host-fs {} from host {} with "
+                                 "{}.".format(db_fs.name, forihostid,
+                                              str(update_dict)))
+            if not found:
+                if fs['name'] in constants.HOSTFS_CREATION_ALLOWED:
+                    # In the Ceph bare metal setup with 3 monitors on an AIO-DX,
+                    # the host-fs ceph is used.
+                    if (fs['name'] == constants.FILESYSTEM_NAME_CEPH and
+                            StorageBackendConfig.has_backend(
+                                        self.dbapi, constants.SB_TYPE_CEPH)):
+                        state = constants.HOST_FS_STATUS_IN_USE
+                    # Other optional filesystems must start in ready state
+                    else:
+                        state = constants.HOST_FS_STATUS_READY
+
+                    data = {
+                        'name': fs['name'],
+                        'size': lv_size,
+                        'logical_volume': fs['logical_volume'],
+                        'state': state
+                    }
+                    new_filesystems.append(data)
+
+        if new_filesystems:
+            context = ctx.RequestContext('admin', 'admin', is_admin=True)
+            self.create_host_filesystems(context, ihost_uuid, new_filesystems)
+
+        # Go through the database host filesystems and check if they exist in
+        # the dict reported by the agent
+        for db_fs in db_hostfs_list:
+            found = False
+            for fs in hostfs_dict_array:
+                if db_fs.logical_volume == fs['logical_volume']:
+                    found = True
+            if not found and db_fs.state in [constants.HOST_FS_STATUS_DELETING,
+                                             constants.HOST_FS_STATUS_DELETING_ON_UNLOCK,
+                                             constants.HOST_FS_STATUS_UPDATE_ERROR]:
+                self.dbapi.host_fs_destroy(db_fs.uuid)
+                LOG.info("host-fs {} from host {} has been successfully"
+                         " deleted.".format(db_fs.name, forihostid))
 
     @retry(retry_on_result=lambda x: x is False,
            wait_fixed=(constants.INIT_CEPH_INFO_INTERVAL_SECS * 1000))
@@ -9916,7 +10028,10 @@ class ConductorManager(service.PeriodicService):
             config_dict = {
                 "personalities": host.personality,
                 "classes": puppet_class,
-                "host_uuids": [host.uuid]
+                "host_uuids": [host.uuid],
+                "filesystem_list": filesystem_list,
+                puppet_common.REPORT_STATUS_CFG:
+                    puppet_common.REPORT_HOSTFS_CONFIG,
             }
 
             self._config_apply_runtime_manifest(context,
@@ -10615,6 +10730,12 @@ class ConductorManager(service.PeriodicService):
             success = _process_config_report(
                 self.report_controllerfs_config_success, [context, host_uuid],
                 self.report_controllerfs_config_failure, [host_uuid, error]
+            )
+        elif reported_cfg == puppet_common.REPORT_HOSTFS_CONFIG:
+            fs_list = iconfig['filesystem_list']
+            success = _process_config_report(
+                self.report_hostfs_config_success, [context, host_uuid, fs_list],
+                self.report_hostfs_config_failure, [host_uuid, fs_list, error]
             )
         # Kubernetes root CA host update
         elif reported_cfg in [puppet_common.REPORT_KUBE_CERT_UPDATE_TRUSTBOTHCAS,
@@ -11644,6 +11765,68 @@ class ConductorManager(service.PeriodicService):
                                                  fs.name,
                                                  host['hostname'],
                                                  reason)
+
+    def report_hostfs_config_success(self, context, host_uuid, fs_list):
+        """ Callback for Sysinv Agent
+
+        Configuring hostfs was successful, finalize operation. The
+        Agent calls this if manifest is applied correctly.
+        """
+        LOG.info("hostfs manifest success on host: %s" % host_uuid)
+
+        db_hostfs_list = self.dbapi.host_fs_get_by_ihost(host_uuid)
+
+        for fs in db_hostfs_list:
+            if fs.name in fs_list:
+                updates = None
+                # Valid for creation with runtime manifest. Creation on unlock will have database
+                # updated in hostfs_update_by_ihost()
+                if fs.state == constants.HOST_FS_STATUS_CREATE_IN_SVC:
+                    updates = {'state': constants.HOST_FS_STATUS_READY}
+
+                elif fs.state == constants.HOST_FS_STATUS_MODIFYING:
+                    # On optional host filesystems, resize is only possible for Ready state
+                    if fs.name in constants.HOSTFS_CREATION_ALLOWED:
+                        updates = {'state': constants.HOST_FS_STATUS_READY}
+                    # For default host filesystems, resize is possible from In-Use state
+                    else:
+                        updates = {'state': constants.HOST_FS_STATUS_IN_USE}
+
+                if updates:
+                    self.dbapi.host_fs_update(fs.uuid, updates)
+                    LOG.info("The state of host-fs {} from host {} is now "
+                             " {}.".format(fs.name, fs.forihostid, updates['state']))
+
+                # Valid for deletion with runtime manifest. Deletion during unlock will have database
+                # updated in hostfs_update_by_ihost()
+                elif fs.state == constants.HOST_FS_STATUS_DELETING:
+                    self.dbapi.host_fs_destroy(fs.uuid)
+                    LOG.info("host-fs {} has been successfully deleted.".format(fs.name))
+
+    def report_hostfs_config_failure(self, host_uuid, fs_list, error):
+        """ Callback for Sysinv Agent
+
+        Configuring hostfs failed, set filesystem to err. The agent
+        calls this if manifest failed to apply.
+        """
+
+        args = {'host': host_uuid, 'error': error}
+        LOG.error("hostfs manifest failed on host: %(host)s. Error: %(error)s" % args)
+
+        db_hostfs_list = self.dbapi.host_fs_get_by_ihost(host_uuid)
+
+        states = [constants.HOST_FS_STATUS_CREATE_IN_SVC,
+                  constants.HOST_FS_STATUS_MODIFYING,
+                  constants.HOST_FS_STATUS_DELETING]
+
+        for fs in db_hostfs_list:
+            if fs.name in fs_list and fs.state in states:
+                updates = {'state': constants.HOST_FS_STATUS_UPDATE_ERROR}
+                self.dbapi.host_fs_update(fs.uuid, updates)
+                LOG.warning("The state of host-fs {} from host {} is now {}. Retry is "
+                         " required or during the agent's next report there will "
+                         " be an update in the database to reflect the current state "
+                         " of the fs".format(fs.name, fs.forihostid, updates['state']))
 
     def report_upgrade_config_failure(self):
         """
