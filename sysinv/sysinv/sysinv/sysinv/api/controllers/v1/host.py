@@ -5626,30 +5626,6 @@ class HostController(rest.RestController):
             else:
                 raise wsme.exc.ClientSideError(
                     _("host-unlock rejected: software deploy to %s has not completed" % hostname))
-        phosts = []
-        try:
-            # Token is optional for admin url
-            # if (self._api_token is None or self._api_token.is_expired()):
-            #     self._api_token = rest_api.get_token()
-            system = pecan.request.dbapi.isystem_get_one()
-            response = patch_api.patch_query_hosts(
-                token=None,
-                timeout=constants.PATCH_DEFAULT_TIMEOUT_IN_SECS,
-                region_name=system.region_name)
-            phosts = response['data']
-        except Exception as e:
-            LOG.warn(_("No response from patch api %s e=%s" %
-                       (hostupdate.displayid, e)))
-            self._api_token = None
-            return
-
-        for phost in phosts:
-            if phost.get('hostname') == hostname:
-                if not phost.get('patch_current'):
-                    raise wsme.exc.ClientSideError(
-                        _("host-unlock rejected: Not patch current. "
-                          "'sw-patch host-install %s' is required." %
-                          hostupdate.displayid))
 
     def check_lock(self, hostupdate):
         """Check semantics on  host-lock."""
