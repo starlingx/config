@@ -502,7 +502,8 @@ class KubeUpgradeController(rest.RestController):
             kube_upgrade_obj.save()
 
             # Tell the conductor to update the required apps
-            pecan.request.rpcapi.kube_pre_application_update(pecan.request.context)
+            pecan.request.rpcapi.kube_pre_application_update(pecan.request.context,
+                                                             kube_upgrade_obj.to_version)
 
             LOG.info("Updating applications to match target Kubernetes version %s" %
                      kube_upgrade_obj.to_version)

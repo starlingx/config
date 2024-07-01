@@ -17609,38 +17609,50 @@ class ConductorManager(service.PeriodicService):
         kube_upgrade_obj.state = kubernetes.KUBE_UPGRADE_DOWNLOADED_IMAGES
         kube_upgrade_obj.save()
 
-    def kube_application_update(self, context, timing, success_state, failure_state):
+    def kube_application_update(self,
+                                context,
+                                k8s_version,
+                                timing,
+                                success_state,
+                                failure_state):
         """ Generic method to update applications during Kubernetes upgrade
 
         :param context: Context of the request.
         """
 
-        kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+        abort_states = [kubernetes.KUBE_UPGRADE_ABORTED,
+                        kubernetes.KUBE_UPGRADE_ABORTING,
+                        kubernetes.KUBE_UPGRADE_ABORTING_FAILED]
 
         # Update all apps that are compatible with the target k8s version.
         # Check for compatibility after updating since an app update may fail
         # and be reverted to a previous incompatible version.
-        if (self.update_apps_based_on_k8s_version(context,
-                                                  kube_upgrade_obj.to_version,
-                                                  timing) and
-                self._check_installed_apps_compatibility(kube_upgrade_obj.to_version)):
-            kube_upgrade_obj.state = success_state
-            LOG.info("Applications updated to match Kubernetes version %s."
-                    % (kube_upgrade_obj.to_version))
+        # Users may run kube-upgrade-abort during the pre update process. In such scenario,
+        # the Kubernetes upgrade should remain in one of the abort states.
+        if (self.update_apps_based_on_k8s_version(context, k8s_version, timing) and
+                self._check_installed_apps_compatibility(k8s_version)):
+            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+            if kube_upgrade_obj.state not in abort_states:
+                LOG.info("Applications updated to match Kubernetes version %s."
+                         % (kube_upgrade_obj.to_version))
+                kube_upgrade_obj.state = success_state
+                kube_upgrade_obj.save()
         else:
-            kube_upgrade_obj.state = failure_state
-            LOG.info("Failed to update applications to match Kubernetes version %s."
+            kube_upgrade_obj = objects.kube_upgrade.get_one(context)
+            if kube_upgrade_obj.state not in abort_states:
+                LOG.info("Failed to update applications to match Kubernetes version %s."
                     % (kube_upgrade_obj.to_version))
+                kube_upgrade_obj.state = failure_state
+                kube_upgrade_obj.save()
 
-        kube_upgrade_obj.save()
-
-    def kube_pre_application_update(self, context):
+    def kube_pre_application_update(self, context, k8s_version):
         """ Update applications before Kubernetes is upgraded.
 
         :param context: Context of the request.
         """
 
         self.kube_application_update(context,
+                                     k8s_version,
                                      constants.APP_METADATA_TIMING_PRE,
                                      kubernetes.KUBE_PRE_UPDATED_APPS,
                                      kubernetes.KUBE_PRE_UPDATING_APPS_FAILED)
@@ -17971,6 +17983,7 @@ class ConductorManager(service.PeriodicService):
         """
 
         self.kube_application_update(context,
+                                     k8s_version,
                                      constants.APP_METADATA_TIMING_POST,
                                      kubernetes.KUBE_POST_UPDATED_APPS,
                                      kubernetes.KUBE_POST_UPDATING_APPS_FAILED)
