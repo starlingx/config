@@ -83,8 +83,12 @@ On the client side, the same changes should be made as in example 1.  The
 minimum version that supports the new parameter should be specified.
 """
 
+from oslo_log import log
+
 from sysinv.openstack.common.rpc import common as rpc_common
 from sysinv.openstack.common.rpc import serializer as rpc_serializer
+
+LOG = log.getLogger(__name__)
 
 
 class RpcDispatcher(object):
@@ -151,6 +155,9 @@ class RpcDispatcher(object):
                 cb_namespace = proxyobj.RPC_API_NAMESPACE
             else:
                 cb_namespace = None
+                LOG.warning(f"Object: {type(proxyobj)} is missing the \
+                    RPC_API_NAMESPACE. Make sure the proper namespace is \
+                    provided.")
 
             if namespace != cb_namespace:
                 continue
@@ -159,6 +166,8 @@ class RpcDispatcher(object):
             if hasattr(proxyobj, "RPC_API_VERSION"):
                 rpc_api_version = proxyobj.RPC_API_VERSION
             else:
+                LOG.warning(f"Object: {type(proxyobj)} is missing the \
+                    RPC_API_VERSION. Setting default value as 1.0")
                 rpc_api_version = '1.0'
 
             is_compatible = rpc_common.version_is_compatible(rpc_api_version,
