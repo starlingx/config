@@ -225,7 +225,8 @@ class Interface(base.APIBase):
                                            'vlan_id', 'uses', 'usesmodify', 'used_by',
                                            'ipv4_mode', 'ipv6_mode', 'ipv4_pool', 'ipv6_pool',
                                            'sriov_numvfs', 'sriov_vf_driver', 'ptp_role',
-                                           'max_tx_rate', 'primary_reselect'])
+                                           'max_tx_rate', 'primary_reselect', 'created_at',
+                                           'updated_at'])
 
         # never expose the ihost_id attribute
         interface.ihost_id = wtypes.Unset
