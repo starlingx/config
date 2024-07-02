@@ -5092,12 +5092,15 @@ class Connection(object):
         """
 
     @abc.abstractmethod
-    def runtime_config_get_all(self, config_uuid=None, state=None, older_than=None):
+    def runtime_config_get_all(
+        self, config_uuid=None, state=None, older_than=None, forihostid=None
+    ):
         """Returns a list of runtime_config entries with a given filter
 
         :param config_uuid: runtime_config uuid
         :param state: runtime_config state
         :param older_than: date to filter entries older than it
+        :parm forihostid: runtime_config host id
         """
 
     @abc.abstractmethod

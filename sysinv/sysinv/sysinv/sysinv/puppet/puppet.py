@@ -204,7 +204,9 @@ class PuppetOperator(object):
         return False
 
     @puppet_context
-    def update_host_config(self, host, config_uuid=None):
+    def update_host_config(
+        self, host, config_uuid=None, generate_optimized_hieradata=False
+    ):
         """Update the host hiera configuration files for the supplied host"""
 
         self.config_uuid = config_uuid
@@ -212,7 +214,14 @@ class PuppetOperator(object):
         LOG.info("Updating hiera for host: %s "
                  "with config_uuid: %s" % (host.hostname, config_uuid))
         for puppet_plugin in self.puppet_plugins:
-            config.update(puppet_plugin.obj.get_host_config(host))
+            if puppet_plugin.obj.__class__.__name__ == 'KubernetesPuppet':
+                config.update(
+                    puppet_plugin.obj.get_host_config(
+                        host, generate_optimized_hieradata
+                    )
+                )
+            else:
+                config.update(puppet_plugin.obj.get_host_config(host))
 
         self._write_host_config(host, config)
 
