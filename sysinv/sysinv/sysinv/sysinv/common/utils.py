@@ -4178,3 +4178,52 @@ def update_drbd_secure_config(dbapi, conf):
                         "service %s section %s name %s value %s"
                         % (service, section, key, conf[key]))
                 raise wsme.exc.ClientSideError(msg)
+
+
+def get_resources_list_via_kubectl_kustomize(manifest_dir):
+    """
+    Executes the 'kubectl kustomize' command in the specified directory and returns the
+    generated output.
+
+    :param manifests_dir: String path of the directory containing the kustomization.yaml file.
+
+    :return: List of dictionaries for each resource.
+    """
+    resources_list = []
+
+    try:
+        cmd = ['kubectl', 'kustomize', manifest_dir]
+
+        process = subprocess.Popen(cmd,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        universal_newlines=True)
+
+        stdout, stderr = process.communicate()
+
+        if process.returncode != 0:
+            LOG.error(f"Error executing kubectl kustomize: {stderr}")
+            return resources_list
+
+        # Split the output into individual YAML resources
+        yaml_resources = stdout.split('---')
+        # Parse each YAML resource
+        resources_list = \
+            [yaml.safe_load(resource) for resource in yaml_resources if resource.strip()]
+
+    except Exception as e:
+        LOG.error(f"Error when trying to extract the return of the \
+                  command 'kubectl kustomize {manifest_dir}', reason: {e}")
+
+    return resources_list
+
+
+def filter_helm_releases(resources):
+    """
+    Filters the resources to include only those with kind 'HelmRelease'.
+
+    param: resources: The list of dictionaries representing the KRM resources.
+
+    Returns: List of dictionaries with kind 'HelmRelease'.
+    """
+
+    return [resource for resource in resources if resource.get('kind') == 'HelmRelease']
