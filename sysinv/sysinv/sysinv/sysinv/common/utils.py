@@ -77,6 +77,7 @@ import netaddr
 from oslo_concurrency import lockutils
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_utils import uuidutils
 from oslo_serialization import base64
 
 from fm_api import constants as fm_constants
@@ -4107,3 +4108,73 @@ def get_secrets_info(secrets_list=None):
 
     LOG.debug(certs_info)
     return certs_info
+
+
+def get_drbd_secure_config(dbapi):
+
+    sp_names = {
+        'hmac': constants.SERVICE_PARAM_NAME_DRBD_HMAC,
+        'secret': constants.SERVICE_PARAM_NAME_DRBD_SECRET,
+        'secure': constants.SERVICE_PARAM_NAME_DRBD_SECURE,
+    }
+    service = constants.SERVICE_TYPE_PLATFORM
+    section = constants.SERVICE_PARAM_SECTION_PLATFORM_DRBD
+    conf = {
+        'hmac': 'sha1',
+        'secret': "",
+        'secure': 'False',
+    }
+
+    for key in sp_names:
+        try:
+            val = dbapi.service_parameter_get_one(
+                service,
+                section,
+                sp_names[key])
+            conf[key] = val.value
+
+        except exception.NotFound:
+            LOG.info("System parameter %s does not exist", key)
+    LOG.info("get_drbd_secure_config: conf=%s", str(conf))
+
+    return conf
+
+
+def update_drbd_secure_config(dbapi, conf):
+
+    LOG.info("update_drbd_secure_config: conf=%s", str(conf))
+    sp_names = {
+        'hmac': constants.SERVICE_PARAM_NAME_DRBD_HMAC,
+        'secret': constants.SERVICE_PARAM_NAME_DRBD_SECRET,
+        'secure': constants.SERVICE_PARAM_NAME_DRBD_SECURE,
+    }
+
+    service = constants.SERVICE_TYPE_PLATFORM
+    section = constants.SERVICE_PARAM_SECTION_PLATFORM_DRBD
+
+    conf['secure'] = conf['secure'].title()
+    for key in sp_names:
+        try:
+            val = dbapi.service_parameter_get_one(
+                service,
+                section,
+                sp_names[key])
+            if conf[key] != val.value:
+                dbapi.service_parameter_update(
+                    val.uuid, {'value': conf[key]})
+
+        except exception.NotFound:
+            LOG.info("System parameter %s does not exist", key)
+            try:
+                dbapi.service_parameter_create({
+                    'uuid': uuidutils.generate_uuid(),
+                    'service': service,
+                    'section': section,
+                    'name': sp_names[key],
+                    'value': conf[key],
+                })
+            except exception.NotFound:
+                msg = _("Service parameter add failed:  "
+                        "service %s section %s name %s value %s"
+                        % (service, section, key, conf[key]))
+                raise wsme.exc.ClientSideError(msg)

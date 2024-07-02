@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015 Wind River Systems, Inc.
+# Copyright (c) 2015,2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -58,6 +58,10 @@ def do_drbdsync_show(cc, args):
            metavar='<round-trip-time ms>',
            default=None,
            help=argparse.SUPPRESS)
+@utils.arg('--secure',
+           metavar='<true/false>',
+           default=None,
+           help="Enable/Disable drbdconfig secure")
 def do_drbdsync_modify(cc, args):
     """Modify DRBD sync rate parameters."""
 
@@ -69,6 +73,8 @@ def do_drbdsync_modify(cc, args):
         attributes.append('link_util=%s' % args.util)
     if args.rtt_ms is not None:
         attributes.append('rtt_ms=%s' % args.rtt_ms)
+    if args.secure is not None:
+        attributes.append('secure=%s' % args.secure)
     if len(attributes) > 0:
         attributes.append('action=apply')
     else:
@@ -76,7 +82,7 @@ def do_drbdsync_modify(cc, args):
         return
 
     patch = utils.args_array_to_patch("replace", attributes)
-    rwfields = ['link_util', 'rtt_ms', 'action']
+    rwfields = ['link_util', 'rtt_ms', 'secure', 'action']
     for pa in patch:
         key = pa['path'][1:]
         if key not in rwfields:
